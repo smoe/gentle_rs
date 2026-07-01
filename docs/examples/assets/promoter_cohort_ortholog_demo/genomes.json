@@ -1,0 +1,21 @@
+{
+  "HumanPromoterToy": {
+    "description": "Synthetic human-labeled promoter cohort tutorial genome",
+    "sequence_local": "human_toy.fa",
+    "annotations_local": "human_toy.gtf",
+    "cache_dir": "cache"
+  },
+  "MousePromoterToy": {
+    "description": "Synthetic mouse-labeled ortholog promoter tutorial genome",
+    "sequence_local": "mouse_toy.fa",
+    "annotations_local": "mouse_toy.gtf",
+    "cache_dir": "cache"
+  },
+  "RatPromoterToy": {
+    "description": "Synthetic rat-labeled ortholog promoter tutorial genome",
+    "sequence_local": "rat_toy.fa",
+    "annotations_local": "rat_toy.gtf",
+    "cache_dir": "cache"
+  }
+}
+

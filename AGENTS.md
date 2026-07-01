@@ -12,11 +12,19 @@ Repository-local instructions for coding agents working in this project.
 Before non-trivial edits, read:
 
 1. [`docs/architecture.md`](docs/architecture.md)
-2. [`docs/roadmap.md`](docs/roadmap.md)
-3. Relevant interface docs for your change:
+2. [`docs/decisions.md`](docs/decisions.md)
+3. [`docs/roadmap.md`](docs/roadmap.md)
+4. Relevant interface docs for your change:
    - GUI: [`docs/gui.md`](docs/gui.md)
    - CLI: [`docs/cli.md`](docs/cli.md)
    - Protocol: [`docs/protocol.md`](docs/protocol.md)
+5. [`docs/CHANGELOG.md`](docs/CHANGELOG.md) when investigating completed
+   work, regressions, or historical status.
+6. [`docs/maintenance_chore_plan.md`](docs/maintenance_chore_plan.md) when
+   running recurring hygiene, drift, parity, release-readiness, provenance, or
+   decision-expiry chores.
+7. [`docs/quickstart_claude.md`](docs/quickstart_claude.md) when setting up or
+   explaining Claude-driven internal Agent Assistant or external checkout loops.
 
 ## Core Principles
 
@@ -36,16 +44,29 @@ Reference: [`docs/architecture.md`](docs/architecture.md)
 ## Planning and Status Discipline
 
 - Treat [`docs/roadmap.md`](docs/roadmap.md) as the source of truth for:
-  - known gaps,
-  - priority tracks,
-  - execution order.
+  - the current release gate,
+  - next-session priorities,
+  - high-level phase ordering,
+  - one-line parking-lot ideas.
 - If you materially change project status or close/open a gap, update
   `docs/roadmap.md` in the same change.
+- Do not add a `Done` entry to `docs/roadmap.md`. Move completed work directly
+  to [`docs/CHANGELOG.md`](docs/CHANGELOG.md) in the same session.
 - Put durable architecture constraints/invariants in
-  [`docs/architecture.md`](docs/architecture.md), not in ad-hoc code comments or
-  roadmap-only notes.
+  [`docs/decisions.md`](docs/decisions.md) or
+  [`docs/architecture.md`](docs/architecture.md), not in ad-hoc code comments
+  or roadmap-only notes.
 - Put speculative but non-committed future ideas in the roadmap parking-lot
   section, not mixed into priority phases or architecture invariants.
+- Use [`docs/maintenance_chore_plan.md`](docs/maintenance_chore_plan.md) for
+  recurring repo hygiene, architecture drift, test/provenance,
+  release-readiness, parity, and decision-expiry scans.
+- For session-close hygiene, prefer
+  `scripts/maintenance_chore.py session-close --plan PATH_OR_LABEL` before
+  handoff, then report any warnings or failures.
+- For weekly or post-merge drift review, prefer
+  `scripts/maintenance_chore.py drift-scan --base-ref REF` as the first pass,
+  then manually inspect any warning before treating it as a bug.
 
 ## Testing Expectations
 
@@ -91,11 +112,32 @@ Reference: the test-data provenance rule in
 References:
 
 - [`docs/architecture.md`](docs/architecture.md)
+- [`docs/decisions.md`](docs/decisions.md)
 - [`docs/roadmap.md`](docs/roadmap.md)
+- [`docs/CHANGELOG.md`](docs/CHANGELOG.md)
+- [`docs/maintenance_chore_plan.md`](docs/maintenance_chore_plan.md)
 
 ## Documentation and Handoff
 
 - Update docs when user-visible behavior changes.
+- Treat tutorials as an active user-contract layer, not passive afterthoughts:
+  when tutorial files, examples, command behavior, or generated tutorial docs
+  are touched, proactively check whether tutorial prose still matches the
+  implementation and whether the language is understandable for an experienced
+  wet-lab biologist.
+- During recurring maintenance, inspect tutorials for implementation drift,
+  readability, and biological teaching depth without waiting for an explicit
+  user reminder. Tutorials are intentionally close to the leaves of the system,
+  so small wording and teaching improvements are acceptable when they preserve
+  the underlying workflow contract and stay scoped to tutorial material.
+- Codex may record a `codex` tutorial review/sign-off for readability,
+  pedagogy, workflow clarity, and machine/human reproducibility. Such a review
+  does not replace human scientific approval and must not claim biological
+  correctness beyond repository evidence.
+- Tutorial review records should live in tutorial source/catalog metadata, not
+  in this policy file. Prefer reviewer identifiers such as `codex` and GitHub
+  handles such as `smoe`, plus review date, reviewed source-version date, target
+  audience, review kind, and verdict.
 - In handoff notes, list:
   - files changed,
   - tests run,
@@ -105,6 +147,10 @@ References:
 
 - Goal: make `cargo doc` output useful at module/API level for every file under
   `src/`.
+- Completion criterion: this plan is complete when every tracked Rust source
+  file under `src/` has a top-level `//!` summary, every `pub mod` in
+  `src/lib.rs` has a short `///` description, and the pilot expectations below
+  have been met or explicitly superseded in `docs/decisions.md`.
 - Baseline requirement:
   - each module/file should have a top-level `//!` summary,
   - each `pub mod` in `src/lib.rs` should carry a short `///` description,

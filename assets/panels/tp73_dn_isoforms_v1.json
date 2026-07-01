@@ -1,0 +1,159 @@
+{
+  "schema": "gentle.isoform_panel_resource.v1",
+  "panel_id": "tp73_dn_isoforms_v1",
+  "gene_symbol": "TP73",
+  "transcript_geometry_mode": "cds",
+  "assembly": "GRCh38",
+  "source": "Curated TP73 DeltaN isoform panel from ENA AY040827/AY040828/AY040829 with current Ensembl REST comparison",
+  "notes": "The ENA records describe DN p73 alpha, beta, and gamma mRNAs with complete CDS. They are intentionally carried as explicit external transcript evidence because TP73 terminal isoform interpretation is sensitive to cDNA/UTR annotation choices. Functional domain landmarks are omitted pending UniProt-backed curation; the current panel is meant first as a transcript/evidence resource for RNA-read review.",
+  "evidence": [
+    {
+      "evidence_id": "ena_ay040827",
+      "source_type": "ENA sequence",
+      "accession": "AY040827.1",
+      "label": "DNp73alpha",
+      "description": "Homo sapiens DN p73 alpha (TP73) mRNA, complete cds, alternatively spliced.",
+      "url": "https://www.ebi.ac.uk/ena/browser/view/AY040827",
+      "sequence_path": "data/resources/tp73_dn_ena_transcripts.fasta",
+      "sequence_length_bp": 2211,
+      "sequence_sha256": "df0a7a4158f6ad38b6aa64361d7d4f73eb377ac2f63a6d37ac582c06b197abe3",
+      "cds_start_1based": 235,
+      "cds_end_1based": 1998,
+      "retrieved_on": "2026-05-01"
+    },
+    {
+      "evidence_id": "ena_ay040828",
+      "source_type": "ENA sequence",
+      "accession": "AY040828.1",
+      "label": "DNp73beta",
+      "description": "Homo sapiens DN p73 beta (TP73) mRNA, complete cds, alternatively spliced.",
+      "url": "https://www.ebi.ac.uk/ena/browser/view/AY040828",
+      "sequence_path": "data/resources/tp73_dn_ena_transcripts.fasta",
+      "sequence_length_bp": 2117,
+      "sequence_sha256": "9778290bdd92f87943a5d49b3eefce78d0444ad2ef3c55e33427e30a011aa37c",
+      "cds_start_1based": 235,
+      "cds_end_1based": 1587,
+      "retrieved_on": "2026-05-01"
+    },
+    {
+      "evidence_id": "ena_ay040829",
+      "source_type": "ENA sequence",
+      "accession": "AY040829.1",
+      "label": "DNp73gamma",
+      "description": "Homo sapiens DN p73 gamma (TP73) mRNA, complete cds, alternatively spliced.",
+      "url": "https://www.ebi.ac.uk/ena/browser/view/AY040829",
+      "sequence_path": "data/resources/tp73_dn_ena_transcripts.fasta",
+      "sequence_length_bp": 2062,
+      "sequence_sha256": "88102b6672d45663e0606a707222c93f8e94e31f33cbbb7ed57a5dcfbf382d19",
+      "cds_start_1based": 235,
+      "cds_end_1based": 1515,
+      "retrieved_on": "2026-05-01"
+    },
+    {
+      "evidence_id": "ensembl_tp73_rest_2026_05_01",
+      "source_type": "Ensembl REST lookup/sequence",
+      "accession": "ENSG00000078900.17",
+      "label": "TP73 current Ensembl REST snapshot",
+      "description": "Current Ensembl REST lookup/symbol TP73 with transcript cDNA/CDS sequence/id comparison; gene at GRCh38 chr1:3652516-3736201 forward strand.",
+      "url": "https://rest.ensembl.org/lookup/symbol/homo_sapiens/TP73?expand=1",
+      "retrieved_on": "2026-05-01"
+    }
+  ],
+  "evaluations": [
+    {
+      "evaluation_id": "tp73_dn_ena_vs_ensembl_2026_05_01",
+      "title": "TP73 DeltaN ENA records compared with current Ensembl TP73 transcripts",
+      "created_on": "2026-05-01",
+      "method": "Fetched ENA FASTA/EMBL records AY040827-AY040829 and Ensembl REST TP73 lookup plus cDNA/CDS sequences; compared cDNA lengths, CDS offsets, CDS lengths, and direct base differences.",
+      "status": "warning",
+      "summary": "All three ENA CDS annotations start at cDNA position 235 and differ from the closest current Ensembl CDS by one synonymous base at CDS position 372 (ACT vs ACC, Thr124 unchanged). Beta and gamma have the same cDNA lengths as their closest Ensembl transcripts; alpha shares CDS length/offset with ENST00000378288.8 but the complete ENA cDNA is much shorter than the current Ensembl cDNA, so alpha UTR/extent should be treated cautiously.",
+      "source_evidence_ids": [
+        "ena_ay040827",
+        "ena_ay040828",
+        "ena_ay040829",
+        "ensembl_tp73_rest_2026_05_01"
+      ],
+      "isoform_ids": [
+        "dnp73alpha",
+        "dnp73beta",
+        "dnp73gamma"
+      ],
+      "rows": [
+        {
+          "isoform_id": "dnp73alpha",
+          "evidence_id": "ena_ay040827",
+          "compared_to": "ENST00000378288.8",
+          "status": "cds_near_match_utr_divergent",
+          "summary": "ENA alpha has 2211 bp cDNA and 1764 bp CDS (235..1998). The closest current Ensembl alpha-like transcript has 5120 bp cDNA and 1764 bp CDS with the same CDS start offset, but differs at one synonymous CDS base and has a much longer transcript extent.",
+          "metrics": [
+            {"key": "ena_cdna_length_bp", "value": "2211"},
+            {"key": "ena_cds_length_bp", "value": "1764"},
+            {"key": "ensembl_cdna_length_bp", "value": "5120"},
+            {"key": "ensembl_cds_length_bp", "value": "1764"},
+            {"key": "cds_difference", "value": "c.372T>C; ACT->ACC; Thr124 unchanged"}
+          ]
+        },
+        {
+          "isoform_id": "dnp73beta",
+          "evidence_id": "ena_ay040828",
+          "compared_to": "ENST00000378285.5",
+          "status": "single_synonymous_cds_difference",
+          "summary": "ENA beta and the closest current Ensembl beta-like transcript both have 2117 bp cDNA, 1353 bp CDS, and CDS start at cDNA position 235, with one synonymous coding-base difference.",
+          "metrics": [
+            {"key": "ena_cdna_length_bp", "value": "2117"},
+            {"key": "ena_cds_length_bp", "value": "1353"},
+            {"key": "ensembl_cdna_length_bp", "value": "2117"},
+            {"key": "ensembl_cds_length_bp", "value": "1353"},
+            {"key": "cds_difference", "value": "c.372T>C; ACT->ACC; Thr124 unchanged"}
+          ]
+        },
+        {
+          "isoform_id": "dnp73gamma",
+          "evidence_id": "ena_ay040829",
+          "compared_to": "ENST00000378280.5",
+          "status": "single_synonymous_cds_difference",
+          "summary": "ENA gamma and the closest current Ensembl gamma-like transcript both have 2062 bp cDNA, 1281 bp CDS, and CDS start at cDNA position 235, with one synonymous coding-base difference.",
+          "metrics": [
+            {"key": "ena_cdna_length_bp", "value": "2062"},
+            {"key": "ena_cds_length_bp", "value": "1281"},
+            {"key": "ensembl_cdna_length_bp", "value": "2062"},
+            {"key": "ensembl_cds_length_bp", "value": "1281"},
+            {"key": "cds_difference", "value": "c.372T>C; ACT->ACC; Thr124 unchanged"}
+          ]
+        }
+      ]
+    }
+  ],
+  "isoforms": [
+    {
+      "isoform_id": "dnp73alpha",
+      "label": "DNp73alpha",
+      "transcript_ids": ["AY040827.1", "AY040827", "ENST00000378288.8", "ENST00000378288"],
+      "transactivation_class": "dominant_negative",
+      "expected_length_aa": 587,
+      "reference_start_aa": 1,
+      "reference_end_aa": 587,
+      "domains": []
+    },
+    {
+      "isoform_id": "dnp73beta",
+      "label": "DNp73beta",
+      "transcript_ids": ["AY040828.1", "AY040828", "ENST00000378285.5", "ENST00000378285"],
+      "transactivation_class": "dominant_negative",
+      "expected_length_aa": 450,
+      "reference_start_aa": 1,
+      "reference_end_aa": 450,
+      "domains": []
+    },
+    {
+      "isoform_id": "dnp73gamma",
+      "label": "DNp73gamma",
+      "transcript_ids": ["AY040829.1", "AY040829", "ENST00000378280.5", "ENST00000378280"],
+      "transactivation_class": "dominant_negative",
+      "expected_length_aa": 426,
+      "reference_start_aa": 1,
+      "reference_end_aa": 426,
+      "domains": []
+    }
+  ]
+}

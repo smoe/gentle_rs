@@ -100,6 +100,20 @@ pub struct SyncReport {
     pub resource: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UcscRmskInstallReport {
+    pub schema: String,
+    pub assembly_database: String,
+    pub source: String,
+    pub resource_output: String,
+    pub index_output: String,
+    pub row_count: usize,
+    pub truncated: bool,
+    pub resource_report: SyncReport,
+    pub index_report: SyncReport,
+    pub warnings: Vec<String>,
+}
+
 fn now_unix_ms() -> u128 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -234,14 +248,14 @@ fn parse_rebase_withrefm(text: &str, commercial_only: bool) -> Vec<RebaseEnzymeR
             last_tag = None;
             continue;
         }
-        if let Some(rest) = line.strip_prefix('<') {
-            if let Some(pos) = rest.find('>') {
-                let tag = rest[..pos].trim().to_string();
-                let value = rest[pos + 1..].trim().to_string();
-                fields.insert(tag.clone(), value);
-                last_tag = Some(tag);
-                continue;
-            }
+        if let Some(rest) = line.strip_prefix('<')
+            && let Some(pos) = rest.find('>')
+        {
+            let tag = rest[..pos].trim().to_string();
+            let value = rest[pos + 1..].trim().to_string();
+            fields.insert(tag.clone(), value);
+            last_tag = Some(tag);
+            continue;
         }
         if let Some(tag) = &last_tag {
             let extra = line.trim();
@@ -881,7 +895,7 @@ fn parse_attract_db_text(
         };
         let len = column_value(&record, map.len)
             .and_then(|value| value.parse::<usize>().ok())
-            .unwrap_or_else(|| motif_iupac.len());
+            .unwrap_or(motif_iupac.len());
         let gene_id = column_value(&record, map.gene_id);
         let experiment = column_value(&record, map.experiment);
         let family = column_value(&record, map.family);
@@ -943,9 +957,10 @@ fn parse_attract_db_text(
                 motif_length
             ));
         }
-        if let Some(candidate_pfm) = candidate_pfm {
-            if candidate_pfm.a.len() != motif_length {
-                warnings.push(format!(
+        if let Some(candidate_pfm) = candidate_pfm
+            && candidate_pfm.a.len() != motif_length
+        {
+            warnings.push(format!(
                     "ATtRACT row {} ('{}' / '{}') keeps consensus-only matching because motif length {} does not match PWM length {}.",
                     row_idx + 2,
                     gene_name,
@@ -953,7 +968,6 @@ fn parse_attract_db_text(
                     motif_length,
                     candidate_pfm.a.len()
                 ));
-            }
         }
     }
 
@@ -1175,38 +1189,80 @@ pub fn prepare_ucsc_rmsk_index(
     })
 }
 
+pub fn install_ucsc_rmsk(
+    assembly_database: Option<&str>,
+    input_override: Option<&str>,
+    resource_output: Option<&str>,
+    index_output: Option<&str>,
+    max_records: Option<usize>,
+) -> Result<UcscRmskInstallReport, String> {
+    let assembly_database = assembly_database
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(crate::ucsc_rmsk::DEFAULT_UCSC_RMSK_ASSEMBLY);
+    let source = input_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::ucsc_rmsk::ucsc_rmsk_download_url(assembly_database));
+    let resource_path = resource_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::ucsc_rmsk::default_ucsc_rmsk_resource_path(assembly_database));
+    let index_path = index_output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::ucsc_rmsk::default_ucsc_rmsk_index_path(assembly_database));
+    let resource_report = sync_ucsc_rmsk(
+        &source,
+        Some(resource_path.as_str()),
+        Some(assembly_database),
+        max_records,
+    )?;
+    let snapshot = crate::ucsc_rmsk::read_ucsc_rmsk_resource_snapshot(&resource_report.output)?;
+    let mut warnings = snapshot.warnings.clone();
+    if snapshot.truncated {
+        warnings.push(
+            "UCSC rmsk install wrote a truncated resource snapshot; interval-index preparation was skipped."
+                .to_string(),
+        );
+        return Err(format!(
+            "Refusing to install truncated UCSC rmsk resource for '{}'; remove --limit or run sync-only for fixtures",
+            assembly_database
+        ));
+    }
+    let index_report = prepare_ucsc_rmsk_index(&resource_report.output, Some(index_path.as_str()))?;
+    Ok(UcscRmskInstallReport {
+        schema: "gentle.ucsc_rmsk_install_report.v1".to_string(),
+        assembly_database: assembly_database.to_string(),
+        source,
+        resource_output: resource_report.output.clone(),
+        index_output: index_report.output.clone(),
+        row_count: index_report.item_count,
+        truncated: false,
+        resource_report,
+        index_report,
+        warnings,
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::test_support::write_stored_zip_archive;
+
     use super::*;
     use tempfile::tempdir;
 
     fn write_synthetic_attract_zip() -> std::path::PathBuf {
         let temp = tempdir().expect("tempdir");
         let root = temp.keep();
-        let db_path = root.join("ATtRACT_db.txt");
-        let pwm_path = root.join("pwm.txt");
-        fs::write(
-            &db_path,
-            "Gene_name\tGene_id\tOrganism\tMatrix_id\tMotif\tLen\tExperiment\tDomain\tPubmed\tQuality_score\nSRSF1\tENSG00000136450\tHomo sapiens\tM001\tGAAGAA\t6\tSELEX\tRRM\t12345\t4.2\nPTBP1\tENSG00000011304\tHomo sapiens\tM002\tUCUU\t4\tCLIP\tRRM\t23456\t3.1\n",
-        )
-        .expect("write attract db");
-        fs::write(
-            &pwm_path,
-            "M001\nA\t5\t0\t0\t0\t5\t5\nC\t0\t5\t0\t0\t0\t0\nG\t0\t0\t5\t0\t0\t0\nT\t0\t0\t0\t5\t0\t0\n\nM003\nA\t1\t1\t1\t1\nC\t1\t1\t1\t1\nG\t1\t1\t1\t1\nT\t1\t1\t1\t1\n",
-        )
-        .expect("write pwm placeholder");
+        let db_text = "Gene_name\tGene_id\tOrganism\tMatrix_id\tMotif\tLen\tExperiment\tDomain\tPubmed\tQuality_score\nSRSF1\tENSG00000136450\tHomo sapiens\tM001\tGAAGAA\t6\tSELEX\tRRM\t12345\t4.2\nPTBP1\tENSG00000011304\tHomo sapiens\tM002\tUCUU\t4\tCLIP\tRRM\t23456\t3.1\n";
+        let pwm_text = "M001\nA\t5\t0\t0\t0\t5\t5\nC\t0\t5\t0\t0\t0\t0\nG\t0\t0\t5\t0\t0\t0\nT\t0\t0\t0\t5\t0\t0\n\nM003\nA\t1\t1\t1\t1\nC\t1\t1\t1\t1\nG\t1\t1\t1\t1\nT\t1\t1\t1\t1\n";
         let archive_path = root.join("attract.zip");
-        let output = Command::new("zip")
-            .arg("-jq")
-            .arg(&archive_path)
-            .arg(&db_path)
-            .arg(&pwm_path)
-            .output()
-            .expect("run zip");
-        assert!(
-            output.status.success(),
-            "zip command failed: {}",
-            String::from_utf8_lossy(&output.stderr)
+        write_stored_zip_archive(
+            &archive_path,
+            &[
+                ("ATtRACT_db.txt", db_text.as_bytes()),
+                ("pwm.txt", pwm_text.as_bytes()),
+            ],
         );
         archive_path
     }
@@ -1307,6 +1363,29 @@ mod tests {
             Some(crate::ucsc_rmsk::UCSC_RMSK_INTERVAL_INDEX_SCHEMA)
         );
         assert_eq!(json["chromosome_count"].as_u64(), Some(1));
+    }
+
+    #[test]
+    fn installs_ucsc_rmsk_resource_and_interval_index_from_fixture_source() {
+        let td = tempdir().expect("tempdir");
+        let resource = td.path().join("rmsk.resource.json");
+        let index = td.path().join("rmsk.index.json");
+        let report = install_ucsc_rmsk(
+            Some("hg38"),
+            Some("test_files/fixtures/resources/ucsc.rmsk.hg38.edge.txt"),
+            Some(resource.to_string_lossy().as_ref()),
+            Some(index.to_string_lossy().as_ref()),
+            None,
+        )
+        .expect("install rmsk");
+        assert_eq!(report.schema, "gentle.ucsc_rmsk_install_report.v1");
+        assert_eq!(report.row_count, 4);
+        assert!(resource.exists());
+        assert!(index.exists());
+        let index_json: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(index).expect("read rmsk index"))
+                .expect("parse index");
+        assert_eq!(index_json["chromosome_aliases"]["1"].as_str(), Some("chr1"));
     }
 
     #[test]

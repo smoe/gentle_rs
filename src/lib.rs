@@ -24,12 +24,17 @@ pub mod amino_acids;
 pub mod app;
 /// ATtRACT RNA-binding motif registry and runtime snapshot helpers.
 pub mod attract_motifs;
+/// Small shared helpers for GENtle command-line binaries.
+pub mod cli_support;
 /// Shared DNA display configuration and visibility policies.
 pub mod dna_display;
 /// DNA/RNA ladder catalogs and migration helper utilities.
 pub mod dna_ladder;
 /// Core DNA sequence model and sequence-level biological operations.
 pub mod dna_sequence;
+/// Local GUI repro harness for bisecting DNA-viewer layout surfaces.
+#[doc(hidden)]
+pub mod dna_viewer_repro;
 /// Internal egui compatibility helpers used during GUI API migrations.
 pub(crate) mod egui_compat;
 /// Shared deterministic operation engine and state model.
@@ -42,16 +47,27 @@ pub mod ensembl_gene;
 pub mod ensembl_protein;
 /// Restriction-enzyme catalog loading and convenience selection helpers.
 pub mod enzymes;
+/// Shared exon length and coding-frame cue helpers.
+pub mod exon_frame;
+/// Overlay-discoverable external-service provider configuration catalogs.
+pub mod external_service_providers;
 /// Expert-view data contracts for feature-centric deep-inspection UIs.
 pub mod feature_expert;
 /// Feature location/strand utilities used across render and engine code.
 pub mod feature_location;
 /// GC-content computations and display helpers.
 pub mod gc_contents;
+/// Catalog-extensible gene-group knowledge records and validation helpers.
+pub mod gene_groups;
 /// Genome catalog, preparation, indexing, extraction, and BLAST integration.
 pub mod genomes;
 /// Gibson assembly planning contracts and deterministic preview derivation.
 pub mod gibson_planning;
+/// Optional GUI profiling hooks for evidence-based latency investigations.
+pub mod gui_profiler;
+/// Embedded GUI translation catalogs and runtime presentation-language state.
+#[path = "app/i18n.rs"]
+pub(crate) mod i18n;
 /// Embedded icon/resource helpers for GUI rendering.
 pub mod icons;
 /// IUPAC nucleotide-code conversion and validation helpers.
@@ -72,6 +88,8 @@ pub mod main_area_dna;
 pub mod mcp_server;
 /// Methylation-site detection and state helpers.
 pub mod methylation_sites;
+/// microRNA seed-site scanning reports over annotated sequence records.
+pub mod mirna;
 /// NCBI sequence XML (`GBSet/GBSeq`, `INSDSet/INSDSeq`) parsing helpers.
 pub mod ncbi_genbank_xml;
 /// Open-reading-frame detection logic.
@@ -86,6 +104,8 @@ pub mod protein_gel;
 pub mod protocol_cartoon;
 /// Position-specific scoring matrix (motif) primitives.
 pub mod pssm;
+/// Publication-associated external dataset catalog and download preparation.
+pub mod publication_resources;
 /// Shared DNA rendering entry points.
 pub mod render_dna;
 /// Circular-map DNA renderer.
@@ -126,6 +146,8 @@ pub mod sequence_rows_restriction_enzymes;
 pub mod service_readiness;
 /// Generated/derived shell-help documentation helpers.
 pub mod shell_docs;
+/// Deterministic SVG-to-PDF conversion helpers for headless adapters.
+pub mod svg_pdf;
 /// Deterministic SVG-to-PNG rasterization helpers for headless adapters.
 pub mod svg_png;
 /// Hidden shared support helpers for internal tests across library and binaries.

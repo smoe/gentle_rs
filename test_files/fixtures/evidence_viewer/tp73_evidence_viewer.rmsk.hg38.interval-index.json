@@ -1,0 +1,90 @@
+{
+  "schema": "gentle.ucsc_rmsk_interval_index.v1",
+  "source_resource": "test_files/fixtures/evidence_viewer/tp73_evidence_viewer.rmsk.hg38.json",
+  "provider": "UCSC Genome Browser",
+  "assembly_database": "hg38",
+  "table": "rmsk",
+  "coordinate_system": "UCSC 0-based half-open genomic intervals",
+  "row_count": 3,
+  "chromosome_count": 1,
+  "chromosomes": {
+    "chr1": [
+      {
+        "source_row": 0,
+        "bin": 585,
+        "chromosome": "chr1",
+        "start_0based": 3652600,
+        "end_0based_exclusive": 3652820,
+        "strand": "+",
+        "rep_name": "L1PA2",
+        "rep_class": "LINE",
+        "rep_family": "L1",
+        "normalized_alias": "LINE/L1",
+        "swScore": 912,
+        "milliDiv": 21,
+        "milliDel": 3,
+        "milliIns": 1,
+        "id": "1001"
+      },
+      {
+        "source_row": 1,
+        "bin": 585,
+        "chromosome": "chr1",
+        "start_0based": 3653000,
+        "end_0based_exclusive": 3653180,
+        "strand": "-",
+        "rep_name": "AluY",
+        "rep_class": "SINE",
+        "rep_family": "Alu",
+        "normalized_alias": "SINE/Alu",
+        "swScore": 743,
+        "milliDiv": 18,
+        "milliDel": 2,
+        "milliIns": 0,
+        "id": "1002"
+      },
+      {
+        "source_row": 2,
+        "bin": 585,
+        "chromosome": "chr1",
+        "start_0based": 3736000,
+        "end_0based_exclusive": 3736350,
+        "strand": "+",
+        "rep_name": "MER5B",
+        "rep_class": "DNA",
+        "rep_family": "hAT-Charlie",
+        "normalized_alias": "DNA/hAT-Charlie",
+        "swScore": 601,
+        "milliDiv": 65,
+        "milliDel": 4,
+        "milliIns": 2,
+        "id": "1003"
+      }
+    ]
+  },
+  "chromosome_aliases": {
+    "1": "chr1"
+  },
+  "class_family_index": {
+    "DNA/hAT-Charlie": [
+      2
+    ],
+    "LINE/L1": [
+      0
+    ],
+    "SINE/Alu": [
+      1
+    ]
+  },
+  "repeat_name_index": {
+    "AluY": [
+      1
+    ],
+    "L1PA2": [
+      0
+    ],
+    "MER5B": [
+      2
+    ]
+  }
+}

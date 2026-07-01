@@ -1,0 +1,6 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "shell_line": "planning protein-expression-handoff --objective '{\"schema\":\"gentle.planning_objective.v1\",\"biological_intent\":\"protein_expression_max_yield\"}' --format json",
+  "timeout_secs": 180
+}

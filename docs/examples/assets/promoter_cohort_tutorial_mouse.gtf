@@ -1,0 +1,3 @@
+chr1	tutorial	gene	101	260	.	+	.	gene_id "ENSMUSG_TUTORIAL_TRP73"; gene_name "Trp73";
+chr1	tutorial	transcript	151	250	.	+	.	gene_id "ENSMUSG_TUTORIAL_TRP73"; gene_name "Trp73"; transcript_id "TX_MOUSE_TRP73";
+chr1	tutorial	exon	151	250	.	+	.	gene_id "ENSMUSG_TUTORIAL_TRP73"; gene_name "Trp73"; transcript_id "TX_MOUSE_TRP73"; exon_number "1";

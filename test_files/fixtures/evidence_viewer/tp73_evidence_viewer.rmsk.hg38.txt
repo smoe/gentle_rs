@@ -1,0 +1,4 @@
+bin swScore milliDiv milliDel milliIns genoName genoStart genoEnd genoLeft strand repName repClass repFamily repStart repEnd repLeft id
+585 912 21 3 1 chr1 3652600 3652820 -245596436 + L1PA2 LINE L1 120 340 0 1001
+585 743 18 2 0 chr1 3653000 3653180 -245596076 - AluY SINE Alu 1 181 0 1002
+585 601 65 4 2 chr1 3736000 3736350 -245512906 + MER5B DNA hAT-Charlie 10 360 0 1003

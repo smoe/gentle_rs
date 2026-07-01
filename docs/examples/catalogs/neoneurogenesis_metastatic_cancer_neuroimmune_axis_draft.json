@@ -1,0 +1,320 @@
+{
+  "schema": "gentle.gene_group_catalog.v1",
+  "external_resources": [],
+  "groups": [
+    {
+      "id": "neoneurogenesis_metastatic_cancer_neuroimmune_axis",
+      "label": "Neoneurogenesis metastatic cancer neuro-immune axis",
+      "aliases": [
+        "neuneurogenesis",
+        "tumor innervation",
+        "cancer neoneurogenesis",
+        "perineural neuroimmune axis"
+      ],
+      "short_description": "Review-gated draft group for tumor innervation, perineural migration, and nerve-associated immune evasion in metastatic cancer.",
+      "long_definition": "Genes and receptor pathways induced or co-opted in metastatic cancers that support tumor innervation, perineural migration, neural niche formation, and nerve-associated immune evasion. This is a review-gated neoneurogenesis draft, not a curated ontology import.",
+      "organism": "Homo sapiens",
+      "taxon_id": "9606",
+      "symbol_namespace": "HGNC",
+      "usages": [
+        "gene_group",
+        "regulatory_context",
+        "promoter_tfbs",
+        "rna_read_context"
+      ],
+      "tags": [
+        "cancer_neuroscience",
+        "tumor_innervation",
+        "perineural_invasion",
+        "immune_evasion"
+      ],
+      "members": [
+        {
+          "symbol": "NGF",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "tumors can release nerve growth factor to stimulate nerve growth and invasion-associated neoneurogenesis",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "BDNF",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "neurotrophic factor implicated in tumor nerve interactions and migration/invasion programs",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "GDNF",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "nerve-derived GDNF attracts cancer cells through RET signaling in perineural invasion",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "ARTN",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "GDNF-family artemin supports cancer cell invasion and neuronal plasticity in perineural niches",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "NRTN",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "GDNF-family neurotrophic factor considered with artemin/GDNF in tumor-nerve signaling",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "RET",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "receptor tyrosine kinase for GDNF-family signaling linked to perineural cancer-cell migration",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "GFRA1",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "GDNF family receptor alpha 1 co-receptor for GDNF-RET perineural invasion signaling",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "GFRA3",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "GDNF-family co-receptor often paired with artemin signaling in tumor-nerve interactions",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "NTRK1",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "TrkA receptor for NGF, linked to tumor neurotrophin signaling and perineural invasion",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "NTRK2",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "TrkB receptor for BDNF/NTF4, included for tumor neurotrophin migration programs",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "NTRK3",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "TrkC receptor for NTF3, included for neurotrophin-axis review",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "NGFR",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "p75 neurotrophin receptor, low-affinity neurotrophin receptor implicated in invasion/spread contexts",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "GABBR2",
+          "aliases": [],
+          "external_ids": {
+            "PMID": [
+              "40505831"
+            ]
+          },
+          "evidence_note": "TAp73alpha-HDAC2/REST derepression activates the neuronal receptor GABBR2 in melanoma cells, promoting EMT markers, invasiveness, proliferation, and metastasis in PMID:40505831",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "REST",
+          "aliases": [],
+          "external_ids": {
+            "PMID": [
+              "40505831"
+            ]
+          },
+          "evidence_note": "REST is part of the HDAC2/REST repressor complex that is disassembled by TAp73alpha, derepressing neuronal GABBR2 in the metastatic melanoma axis described in PMID:40505831",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "EFNB1",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "exosome-packaged EphrinB1 potentiates tumor innervation/axonogenesis in head-and-neck cancer models",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "SEMA4D",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "semaphorin CD100 links nervous/immune biology with tumor angiogenesis, macrophage regulation, and invasive growth",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "PLXNB1",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "high-affinity SEMA4D receptor considered with semaphorin-driven invasive growth",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "NTN1",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "netrin axon-guidance ligand with cancer survival/migration and neuroimmune relevance",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "NRP1",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "neuropilin axon-guidance/VEGF co-receptor with tumor and immune-regulatory roles",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "NRP2",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "neuropilin family co-receptor for semaphorin/VEGF-context tumor migration and lymphatic/neural guidance review",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "L1CAM",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "neural cell-adhesion molecule associated with invasive/metastatic cancer behavior and neural-like migration",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "NCAM1",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "neural cell-adhesion molecule used by Schwann-cell/tumor contact and perineural niche models",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "MMP2",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "matrix remodeling enzyme noted in nerve-associated tumor migration and perineural invasion contexts",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "MMP9",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "matrix remodeling enzyme noted with neurotrophin-linked invasion and perineural niche remodeling",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "CXCL12",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "chemokine cue in neural niche/cancer migration discussions, paired with CXCR4",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "CXCR4",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "receptor for CXCL12, included for neuroimmune chemotaxis and metastatic migration review",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "ADRB2",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "beta-adrenergic receptor mediating sympathetic neural signals that can suppress anti-tumor immunity",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "NT5E",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "CD73 adenosinergic immune-evasion marker highlighted in perineural immune-niche contexts",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "ENTPD1",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "CD39 adenosinergic partner to CD73, included for nerve-associated immune-evasion review",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        },
+        {
+          "symbol": "ADORA2A",
+          "aliases": [],
+          "external_ids": {},
+          "evidence_note": "A2A adenosine receptor, downstream immune-suppressive receptor in adenosinergic tumor niches",
+          "confidence": "agent_suggested",
+          "status": "draft",
+          "provenance": "agent-assisted candidate draft; provider=Codex; model=GPT-5; generated_at_utc=2026-05-06T00:00:00Z; requires review before promotion"
+        }
+      ],
+      "external_mappings": [],
+      "curation_status": "draft",
+      "source_kind": "ai_assisted_draft",
+      "provenance": "Codex literature-informed trial draft from neoneurogenesis/perineural invasion/tumor innervation review sources; requires expert review before use.",
+      "notes": [
+        "Generated as a review-gated draft; do not treat as curated until promoted by a user or project policy."
+      ]
+    }
+  ]
+}

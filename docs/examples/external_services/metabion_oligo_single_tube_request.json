@@ -1,0 +1,49 @@
+{
+  "schema": "gentle.external_service_request.v1",
+  "provider": "metabion",
+  "service_kind": "dna_oligo_single_tube",
+  "source_target": {
+    "kind": "line_items",
+    "name": "DEMO_DO_NOT_ORDER_tutorial_oligo_set",
+    "line_items": [
+      {
+        "name": "DEMO_DO_NOT_ORDER_forward_primer",
+        "sequence": "GATCGTACGTTAGCTAGTCA",
+        "note": "Synthetic tutorial line item. Verify biology and vendor representation before any real order."
+      },
+      {
+        "name": "DEMO_DO_NOT_ORDER_reverse_primer",
+        "sequence": "TCAGGATCAGTACGATCAGT",
+        "note": "Synthetic tutorial line item. Verify biology and vendor representation before any real order."
+      },
+      {
+        "name": "DEMO_DO_NOT_ORDER_probe_candidate",
+        "sequence": "ACCGTTAAGCGTACCTGACT",
+        "note": "Synthetic tutorial line item. Add real probe modifications only outside GENtle after review."
+      }
+    ]
+  },
+  "delivery_options": {
+    "yield_range": "25 nmol",
+    "purification": "desalted",
+    "delivery_form": "dry",
+    "qc": "vendor default"
+  },
+  "return_spec": {
+    "requested_payloads": [
+      "quote_metadata",
+      "handoff_bundle"
+    ],
+    "inline_max_bytes": 20000,
+    "redact_commercial_fields": true,
+    "prefer_artifact_bundle": true
+  },
+  "request_metadata": {
+    "tutorial": true,
+    "human_review_only": true,
+    "notes": [
+      "Synthetic tutorial request.",
+      "Do not submit without biological review and vendor-representation review."
+    ]
+  }
+}

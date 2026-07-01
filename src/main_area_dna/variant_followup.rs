@@ -118,6 +118,7 @@ impl MainAreaDna {
             self.variant_followup_window_pending_initial_render,
         );
         self.variant_followup_window_pending_initial_render = true;
+        self.variant_followup_window_focus_requested = true;
         self.show_variant_followup_window = true;
         self.log_promoter_design_status("window state stored", true);
         self.op_status = format!("Opened Promoter design from {source}");
@@ -125,7 +126,7 @@ impl MainAreaDna {
         true
     }
 
-    fn variant_followup_viewport_id(
+    pub(super) fn variant_followup_viewport_id(
         source_seq_id: &str,
         feature_id: Option<usize>,
     ) -> egui::ViewportId {
@@ -136,7 +137,17 @@ impl MainAreaDna {
         ))
     }
 
-    fn variant_followup_window_title(ui: &VariantFollowupUiState) -> String {
+    pub(super) fn variant_followup_embedded_window_id(ui: &VariantFollowupUiState) -> egui::Id {
+        egui::Id::new(format!(
+            "variant_followup_window_embedded_{}_{}",
+            ui.source_seq_id,
+            ui.source_feature_id
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string())
+        ))
+    }
+
+    pub(super) fn variant_followup_window_title(ui: &VariantFollowupUiState) -> String {
         let label = ui.gene_label.trim();
         if !label.is_empty() {
             format!("Promoter design - {} ({})", label, ui.source_seq_id)
@@ -222,7 +233,7 @@ impl MainAreaDna {
         if !gene_label.trim().is_empty() {
             return Self::sanitize_export_name_component(gene_label, "promoter");
         }
-        Self::sanitize_export_name_component(&feature.kind.to_string(), "promoter")
+        Self::sanitize_export_name_component(feature.kind.as_ref(), "promoter")
     }
 
     fn seed_variant_followup_defaults_for_feature(
@@ -293,6 +304,22 @@ impl MainAreaDna {
             cached_report: None,
             cached_alternative_promoter_comparison: None,
             cached_promoter_evidence_matrix: None,
+            cached_isoform_promoter_comparison: None,
+            promoter_expression_rows_json: "[]".to_string(),
+            promoter_expression_source_label: "GUI pasted expression evidence".to_string(),
+            cached_promoter_expression_evidence: None,
+            ortholog_anchor_species: String::new(),
+            ortholog_anchor_genome_id: String::new(),
+            ortholog_target_species: String::new(),
+            ortholog_target_genome_ids: String::new(),
+            ortholog_resource_path: String::new(),
+            ortholog_genome_catalog_path: String::new(),
+            ortholog_cache_dir: String::new(),
+            ortholog_cutrun_dataset_ids: String::new(),
+            ortholog_cutrun_read_report_ids: String::new(),
+            ortholog_relationship: GeneSetCohortRelationship::Unspecified,
+            cached_ortholog_promoter_cohort: None,
+            cached_ortholog_promoter_comparison: None,
             cached_candidates: None,
         };
         Ok(())
@@ -494,15 +521,15 @@ impl MainAreaDna {
     }
 
     fn variant_followup_apply_report_defaults(&mut self, report: &VariantPromoterContextReport) {
-        if self.variant_followup_ui.gene_label.trim().is_empty() {
-            if let Some(gene_label) = report.chosen_gene_label.as_deref() {
-                self.variant_followup_ui.gene_label = gene_label.to_string();
-            }
+        if self.variant_followup_ui.gene_label.trim().is_empty()
+            && let Some(gene_label) = report.chosen_gene_label.as_deref()
+        {
+            self.variant_followup_ui.gene_label = gene_label.to_string();
         }
-        if self.variant_followup_ui.transcript_id.trim().is_empty() {
-            if let Some(transcript_id) = report.chosen_transcript_id.as_deref() {
-                self.variant_followup_ui.transcript_id = transcript_id.to_string();
-            }
+        if self.variant_followup_ui.transcript_id.trim().is_empty()
+            && let Some(transcript_id) = report.chosen_transcript_id.as_deref()
+        {
+            self.variant_followup_ui.transcript_id = transcript_id.to_string();
         }
     }
 
@@ -510,15 +537,15 @@ impl MainAreaDna {
         &mut self,
         candidates: &PromoterReporterCandidateSet,
     ) {
-        if self.variant_followup_ui.gene_label.trim().is_empty() {
-            if let Some(gene_label) = candidates.chosen_gene_label.as_deref() {
-                self.variant_followup_ui.gene_label = gene_label.to_string();
-            }
+        if self.variant_followup_ui.gene_label.trim().is_empty()
+            && let Some(gene_label) = candidates.chosen_gene_label.as_deref()
+        {
+            self.variant_followup_ui.gene_label = gene_label.to_string();
         }
-        if self.variant_followup_ui.transcript_id.trim().is_empty() {
-            if let Some(transcript_id) = candidates.chosen_transcript_id.as_deref() {
-                self.variant_followup_ui.transcript_id = transcript_id.to_string();
-            }
+        if self.variant_followup_ui.transcript_id.trim().is_empty()
+            && let Some(transcript_id) = candidates.chosen_transcript_id.as_deref()
+        {
+            self.variant_followup_ui.transcript_id = transcript_id.to_string();
         }
     }
 
@@ -988,6 +1015,459 @@ impl MainAreaDna {
         }
     }
 
+    fn parse_variant_followup_promoter_expression_rows(
+        raw: &str,
+    ) -> Result<Vec<PromoterExpressionEvidenceInput>, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Ok(vec![]);
+        }
+        let value = serde_json::from_str::<serde_json::Value>(trimmed)
+            .map_err(|err| format!("Invalid promoter expression evidence JSON: {err}"))?;
+        if value.is_array() {
+            serde_json::from_value::<Vec<PromoterExpressionEvidenceInput>>(value)
+                .map_err(|err| format!("Invalid promoter expression evidence row array: {err}"))
+        } else {
+            serde_json::from_value::<PromoterExpressionEvidenceInput>(value)
+                .map(|row| vec![row])
+                .map_err(|err| format!("Invalid promoter expression evidence row: {err}"))
+        }
+    }
+
+    fn load_variant_followup_promoter_expression_json(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("JSON", &["json"])
+            .pick_file()
+        else {
+            self.op_status = "Promoter expression evidence load canceled".to_string();
+            return;
+        };
+        match std::fs::read_to_string(&path) {
+            Ok(text) => {
+                self.variant_followup_ui.promoter_expression_rows_json = text;
+                self.variant_followup_ui.cached_promoter_expression_evidence = None;
+                self.op_status = format!(
+                    "Loaded promoter expression evidence JSON from '{}'",
+                    path.display()
+                );
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not read promoter expression evidence JSON '{}': {err}",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    pub(super) fn summarize_variant_followup_promoter_expression_evidence(&mut self) {
+        let input = match self.variant_followup_input_seq_id() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_upstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_upstream_bp,
+            "promoter upstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_downstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_downstream_bp,
+            "promoter downstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let expression_rows = match Self::parse_variant_followup_promoter_expression_rows(
+            &self.variant_followup_ui.promoter_expression_rows_json,
+        ) {
+            Ok(rows) => rows,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizePromoterExpressionEvidence {
+                input,
+                gene_label: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.gene_label,
+                ),
+                transcript_id: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.transcript_id,
+                ),
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                expression_rows,
+                expression_source_label: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.promoter_expression_source_label,
+                ),
+                path: None,
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.promoter_expression_evidence) {
+            self.variant_followup_ui.cached_promoter_expression_evidence = Some(report);
+        }
+    }
+
+    fn parse_variant_followup_ortholog_list(raw: &str, label: &str) -> Result<Vec<String>, String> {
+        let values = raw
+            .split([',', ';', '\n'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if values.is_empty() {
+            Err(format!("{label} requires at least one value"))
+        } else {
+            Ok(values)
+        }
+    }
+
+    fn parse_variant_followup_ortholog_bindings(
+        raw: &str,
+    ) -> Result<BTreeMap<String, String>, String> {
+        let mut values = BTreeMap::new();
+        for token in raw.split([',', ';', '\n']).map(str::trim) {
+            if token.is_empty() {
+                continue;
+            }
+            let Some((species, genome_id)) = token.split_once('=') else {
+                return Err(format!(
+                    "Target genome bindings expect SPECIES=GENOME_ID, got '{token}'"
+                ));
+            };
+            let species = species.trim();
+            let genome_id = genome_id.trim();
+            if species.is_empty() || genome_id.is_empty() {
+                return Err(format!(
+                    "Target genome bindings expect non-empty SPECIES=GENOME_ID, got '{token}'"
+                ));
+            }
+            values.insert(species.to_string(), genome_id.to_string());
+        }
+        Ok(values)
+    }
+
+    fn variant_followup_optional_trimmed(raw: &str) -> Option<String> {
+        let value = raw.trim();
+        if value.is_empty() {
+            None
+        } else {
+            Some(value.to_string())
+        }
+    }
+
+    pub(super) fn summarize_variant_followup_ortholog_promoter_cohort(&mut self) {
+        let anchor_species = self.variant_followup_ui.ortholog_anchor_species.trim();
+        if anchor_species.is_empty() {
+            self.op_status = "Ortholog cohort requires an anchor species".to_string();
+            return;
+        }
+        let anchor_genome_id = self.variant_followup_ui.ortholog_anchor_genome_id.trim();
+        if anchor_genome_id.is_empty() {
+            self.op_status = "Ortholog cohort requires an anchor genome id".to_string();
+            return;
+        }
+        let anchor_gene_query =
+            Self::variant_followup_optional_text(&self.variant_followup_ui.gene_label)
+                .unwrap_or_else(|| self.variant_followup_ui.variant_label_or_id.clone());
+        if anchor_gene_query.trim().is_empty() {
+            self.op_status = "Ortholog cohort requires a gene label/query".to_string();
+            return;
+        }
+        let target_species = match Self::parse_variant_followup_ortholog_list(
+            &self.variant_followup_ui.ortholog_target_species,
+            "Ortholog target species",
+        ) {
+            Ok(values) => values,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let target_genome_ids = match Self::parse_variant_followup_ortholog_bindings(
+            &self.variant_followup_ui.ortholog_target_genome_ids,
+        ) {
+            Ok(values) => values,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let ortholog_resource_path = self.variant_followup_ui.ortholog_resource_path.trim();
+        if ortholog_resource_path.is_empty() {
+            self.op_status = "Ortholog cohort requires a local ortholog resource path".to_string();
+            return;
+        }
+        let upstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_upstream_bp,
+            "ortholog promoter upstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let downstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_downstream_bp,
+            "ortholog promoter downstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let mut transcript_ids = BTreeMap::new();
+        if let Some(transcript_id) =
+            Self::variant_followup_optional_text(&self.variant_followup_ui.transcript_id)
+        {
+            transcript_ids.insert(anchor_species.to_string(), transcript_id);
+        }
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::ResolveOrthologPromoterCohort {
+                anchor_species: anchor_species.to_string(),
+                anchor_genome_id: anchor_genome_id.to_string(),
+                anchor_gene_query: anchor_gene_query.trim().to_string(),
+                target_species,
+                target_genome_ids,
+                transcript_ids,
+                ortholog_resource_path: ortholog_resource_path.to_string(),
+                upstream_bp,
+                downstream_bp,
+                ambiguity_policy: OrthologAmbiguityPolicy::Reject,
+                relationship: self.variant_followup_ui.ortholog_relationship,
+                genome_catalog_path: Self::variant_followup_optional_trimmed(
+                    &self.variant_followup_ui.ortholog_genome_catalog_path,
+                ),
+                cache_dir: Self::variant_followup_optional_trimmed(
+                    &self.variant_followup_ui.ortholog_cache_dir,
+                ),
+                path: None,
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.ortholog_promoter_cohort) {
+            self.variant_followup_ui.cached_ortholog_promoter_comparison = None;
+            self.variant_followup_ui.cached_ortholog_promoter_cohort = Some(report);
+        }
+    }
+
+    pub(super) fn summarize_variant_followup_ortholog_promoter_comparison(&mut self) {
+        let Some(cohort) = self
+            .variant_followup_ui
+            .cached_ortholog_promoter_cohort
+            .clone()
+        else {
+            self.op_status =
+                "Resolve or load an ortholog promoter cohort before comparison".to_string();
+            return;
+        };
+        let motifs =
+            Self::promoter_design_parse_motif_tokens(&self.variant_followup_ui.score_track_motifs);
+        if motifs.is_empty() {
+            self.op_status =
+                "Ortholog promoter comparison requires at least one TF motif token".to_string();
+            return;
+        }
+        let cutrun_dataset_ids = Self::parse_variant_followup_ortholog_list(
+            &self.variant_followup_ui.ortholog_cutrun_dataset_ids,
+            "CUT&RUN dataset ids",
+        )
+        .unwrap_or_default();
+        let cutrun_read_report_ids = Self::parse_variant_followup_ortholog_list(
+            &self.variant_followup_ui.ortholog_cutrun_read_report_ids,
+            "CUT&RUN read report ids",
+        )
+        .unwrap_or_default();
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizeOrthologPromoterComparison {
+                cohort: Some(Box::new(cohort)),
+                cohort_path: None,
+                motifs,
+                score_kind: self.variant_followup_ui.score_track_value_kind,
+                clip_negative: self.variant_followup_ui.score_track_clip_negative,
+                relationship: self.variant_followup_ui.ortholog_relationship,
+                expression_rows: vec![],
+                expression_source_label: None,
+                cutrun_dataset_ids,
+                cutrun_read_report_ids,
+                path: None,
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.ortholog_promoter_comparison) {
+            self.variant_followup_ui.cached_ortholog_promoter_cohort = Some(report.cohort.clone());
+            self.variant_followup_ui.cached_ortholog_promoter_comparison = Some(report);
+        }
+    }
+
+    fn export_variant_followup_promoter_expression_evidence_json(&mut self) {
+        let input = match self.variant_followup_input_seq_id() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_upstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_upstream_bp,
+            "promoter upstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_downstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_downstream_bp,
+            "promoter downstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let expression_rows = match Self::parse_variant_followup_promoter_expression_rows(
+            &self.variant_followup_ui.promoter_expression_rows_json,
+        ) {
+            Ok(rows) => rows,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let default_name = format!(
+            "{}_promoter_expression_evidence.json",
+            Self::sanitize_export_name_component(&input, "promoter_design")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "Promoter expression evidence export canceled".to_string();
+            return;
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizePromoterExpressionEvidence {
+                input,
+                gene_label: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.gene_label,
+                ),
+                transcript_id: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.transcript_id,
+                ),
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                expression_rows,
+                expression_source_label: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.promoter_expression_source_label,
+                ),
+                path: Some(path.display().to_string()),
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.promoter_expression_evidence) {
+            self.variant_followup_ui.cached_promoter_expression_evidence = Some(report);
+        }
+    }
+
+    fn summarize_variant_followup_isoform_promoter_comparison(&mut self) {
+        let input = match self.variant_followup_input_seq_id() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_upstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_upstream_bp,
+            "promoter upstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_downstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_downstream_bp,
+            "promoter downstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizeIsoformPromoterComparison {
+                input,
+                gene_label: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.gene_label,
+                ),
+                transcript_id: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.transcript_id,
+                ),
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                include_feature_overlaps: true,
+                path: None,
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.isoform_promoter_comparison) {
+            self.variant_followup_ui.cached_isoform_promoter_comparison = Some(report);
+        }
+    }
+
+    fn export_variant_followup_isoform_promoter_comparison_json(&mut self) {
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_isoform_promoter_comparison
+            .clone()
+        else {
+            self.op_status =
+                "No cached isoform promoter comparison available for JSON export".to_string();
+            return;
+        };
+        let default_name = format!(
+            "{}_isoform_promoter_comparison.json",
+            Self::sanitize_export_name_component(&report.seq_id, "promoter_design")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "Isoform promoter comparison export canceled".to_string();
+            return;
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizeIsoformPromoterComparison {
+                input: report.seq_id.clone(),
+                gene_label: report.gene_label_filter.clone(),
+                transcript_id: report.transcript_id_filter.clone(),
+                promoter_upstream_bp: report.promoter_upstream_bp,
+                promoter_downstream_bp: report.promoter_downstream_bp,
+                include_feature_overlaps: true,
+                path: Some(path.display().to_string()),
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.isoform_promoter_comparison) {
+            self.variant_followup_ui.cached_isoform_promoter_comparison = Some(report);
+        }
+    }
+
     pub(super) fn use_variant_followup_alternative_promoter_row(
         &mut self,
         row: &AlternativePromoterComparisonRow,
@@ -1008,6 +1488,10 @@ impl MainAreaDna {
         self.variant_followup_ui.cached_report = None;
         self.variant_followup_ui.cached_candidates = None;
         self.variant_followup_ui.cached_promoter_evidence_matrix = None;
+        self.variant_followup_ui.cached_isoform_promoter_comparison = None;
+        self.variant_followup_ui.cached_promoter_expression_evidence = None;
+        self.variant_followup_ui.cached_ortholog_promoter_cohort = None;
+        self.variant_followup_ui.cached_ortholog_promoter_comparison = None;
         self.op_status = format!(
             "Promoter design now targets '{}' at {}..{}",
             row.representative_transcript_id
@@ -1037,9 +1521,44 @@ impl MainAreaDna {
         self.variant_followup_ui.cached_tfbs_track_similarity = None;
         self.variant_followup_ui.cached_report = None;
         self.variant_followup_ui.cached_candidates = None;
+        self.variant_followup_ui.cached_isoform_promoter_comparison = None;
+        self.variant_followup_ui.cached_promoter_expression_evidence = None;
+        self.variant_followup_ui.cached_ortholog_promoter_cohort = None;
+        self.variant_followup_ui.cached_ortholog_promoter_comparison = None;
         self.op_status = format!(
             "Promoter design evidence row '{}' selected at {}..{}",
             row.label, row.start_0based, row.end_0based_exclusive
+        );
+    }
+
+    pub(super) fn use_variant_followup_isoform_promoter_group(
+        &mut self,
+        group: &IsoformPromoterComparisonGroup,
+        promoter_upstream_bp: usize,
+        promoter_downstream_bp: usize,
+    ) {
+        if let Some(transcript_id) = group.transcript_ids.first() {
+            self.variant_followup_ui.transcript_id = transcript_id.to_string();
+        }
+        if let Some(gene_label) = group.gene_label.as_deref() {
+            self.variant_followup_ui.gene_label = gene_label.to_string();
+        }
+        self.variant_followup_ui.promoter_upstream_bp = promoter_upstream_bp.to_string();
+        self.variant_followup_ui.promoter_downstream_bp = promoter_downstream_bp.to_string();
+        self.variant_followup_ui.score_track_start_0based = group.start_0based.to_string();
+        self.variant_followup_ui.score_track_end_0based_exclusive =
+            group.end_0based_exclusive.to_string();
+        self.variant_followup_ui.cached_score_tracks = None;
+        self.variant_followup_ui.cached_tfbs_track_similarity = None;
+        self.variant_followup_ui.cached_report = None;
+        self.variant_followup_ui.cached_candidates = None;
+        self.variant_followup_ui.cached_promoter_evidence_matrix = None;
+        self.variant_followup_ui.cached_promoter_expression_evidence = None;
+        self.variant_followup_ui.cached_ortholog_promoter_cohort = None;
+        self.variant_followup_ui.cached_ortholog_promoter_comparison = None;
+        self.op_status = format!(
+            "Promoter design isoform group '{}' selected at {}..{}",
+            group.label, group.start_0based, group.end_0based_exclusive
         );
     }
 
@@ -1506,9 +2025,7 @@ impl MainAreaDna {
                     .to_string(),
             );
         }
-        if let Err(err) = self.ensure_variant_followup_reporter_backbone_loaded() {
-            return Err(err);
-        }
+        self.ensure_variant_followup_reporter_backbone_loaded()?;
         let backbone_seq_id = self
             .variant_followup_ui
             .reporter_backbone_seq_id
@@ -2662,7 +3179,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             plot_rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
             egui::StrokeKind::Inside,
         );
         let baseline_y = plot_rect.bottom() - 10.0;
@@ -2671,7 +3188,7 @@ impl MainAreaDna {
                 egui::pos2(plot_rect.left(), baseline_y),
                 egui::pos2(plot_rect.right(), baseline_y),
             ],
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(148, 163, 184)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(148, 163, 184)),
         );
         if track.scored_window_count == 0 {
             painter.text(
@@ -2708,7 +3225,7 @@ impl MainAreaDna {
                     egui::pos2(x, plot_rect.top() + 4.0),
                     egui::pos2(x, baseline_y),
                 ],
-                egui::Stroke::new(1.0, *color),
+                egui::Stroke::new(1.0_f32, *color),
             );
             painter.text(
                 egui::pos2(x + 3.0, plot_rect.top() + 2.0),
@@ -2728,7 +3245,7 @@ impl MainAreaDna {
         if forward_points.len() > 1 {
             painter.add(egui::Shape::line(
                 forward_points,
-                egui::Stroke::new(1.8, egui::Color32::from_rgb(14, 116, 144)),
+                egui::Stroke::new(1.8_f32, egui::Color32::from_rgb(14, 116, 144)),
             ));
         }
         let reverse_points = track
@@ -2740,7 +3257,7 @@ impl MainAreaDna {
         if reverse_points.len() > 1 {
             painter.add(egui::Shape::line(
                 reverse_points,
-                egui::Stroke::new(1.6, egui::Color32::from_rgb(180, 83, 9)),
+                egui::Stroke::new(1.6_f32, egui::Color32::from_rgb(180, 83, 9)),
             ));
         }
         painter.text(
@@ -2787,7 +3304,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             plot_rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(221, 214, 254)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(221, 214, 254)),
             egui::StrokeKind::Inside,
         );
         let denom = report
@@ -2823,7 +3340,7 @@ impl MainAreaDna {
             painter.rect_stroke(
                 interval_rect,
                 2.0,
-                egui::Stroke::new(0.8, egui::Color32::from_rgb(91, 33, 182)),
+                egui::Stroke::new(0.8_f32, egui::Color32::from_rgb(91, 33, 182)),
                 egui::StrokeKind::Inside,
             );
         }
@@ -2949,7 +3466,7 @@ impl MainAreaDna {
                         });
                     });
                     ui.vertical(|ui| {
-                        Self::paint_promoter_design_track_plot(ui, report, track, &markers);
+                        Self::paint_promoter_design_track_plot(ui, report, track, markers);
                     });
                 });
             }
@@ -3156,8 +3673,131 @@ impl MainAreaDna {
                             ui.end_row();
                         }
                     });
-                });
+            });
         });
+    }
+
+    fn render_variant_followup_cutrun_occupancy_support(&mut self, ui: &mut egui::Ui) {
+        egui::CollapsingHeader::new("TFBS + occupancy support")
+            .default_open(false)
+            .show(ui, |ui| {
+                let mut cutrun_settings_changed = false;
+                ui.small(
+                    egui::RichText::new(
+                        "Inspect CUT&RUN occupancy support for the promoter-design span through the shared engine report. Status labels are report fields, not GUI verdicts.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("dataset ids");
+                    if ui
+                        .text_edit_singleline(&mut self.cutrun_regulatory_dataset_ids)
+                        .changed()
+                    {
+                        cutrun_settings_changed = true;
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("read-report ids");
+                    if ui
+                        .text_edit_singleline(&mut self.cutrun_regulatory_read_report_ids)
+                        .changed()
+                    {
+                        cutrun_settings_changed = true;
+                    }
+                    if ui
+                        .small_button("Use latest for sequence")
+                        .on_hover_text(
+                            "Fill read-report ids with the newest saved CUT&RUN read report for this sequence",
+                        )
+                        .clicked()
+                    {
+                        self.seed_latest_cutrun_read_report_for_active_sequence();
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("promoter span 0-based");
+                    if ui
+                        .text_edit_singleline(&mut self.cutrun_regulatory_promoter_start_0based)
+                        .changed()
+                    {
+                        cutrun_settings_changed = true;
+                    }
+                    ui.label("..");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.cutrun_regulatory_promoter_end_0based_exclusive,
+                        )
+                        .changed()
+                    {
+                        cutrun_settings_changed = true;
+                    }
+                    if ui
+                        .small_button("Use score span")
+                        .on_hover_text(
+                            "Copy the current Promoter design score-track range into the CUT&RUN inspection span",
+                        )
+                        .clicked()
+                    {
+                        self.cutrun_regulatory_promoter_start_0based =
+                            self.variant_followup_ui.score_track_start_0based.clone();
+                        self.cutrun_regulatory_promoter_end_0based_exclusive = self
+                            .variant_followup_ui
+                            .score_track_end_0based_exclusive
+                            .clone();
+                        cutrun_settings_changed = true;
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("neighbor window bp");
+                    if ui
+                        .text_edit_singleline(&mut self.cutrun_regulatory_neighbor_window_bp)
+                        .changed()
+                    {
+                        cutrun_settings_changed = true;
+                    }
+                    ui.label("species filters");
+                    if ui
+                        .text_edit_singleline(&mut self.cutrun_regulatory_species_filters)
+                        .changed()
+                    {
+                        cutrun_settings_changed = true;
+                    }
+                });
+                if cutrun_settings_changed {
+                    self.cached_cutrun_regulatory_support = None;
+                    self.save_engine_ops_state();
+                }
+                ui.horizontal_wrapped(|ui| {
+                    let has_source = !Self::parse_ids(&self.cutrun_regulatory_dataset_ids).is_empty()
+                        || !Self::parse_ids(&self.cutrun_regulatory_read_report_ids).is_empty();
+                    if ui
+                        .add_enabled(
+                            has_source,
+                            egui::Button::new("Inspect TFBS occupancy support"),
+                        )
+                        .on_hover_text(
+                            "Run InspectCutRunRegulatorySupport through the shared engine contract and cache the returned TFBS occupancy support report.",
+                        )
+                        .clicked()
+                    {
+                        self.inspect_cutrun_regulatory_support_for_active_sequence();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.cached_cutrun_regulatory_support.is_some(),
+                            egui::Button::new("Export occupancy support JSON..."),
+                        )
+                        .on_hover_text(
+                            "Write the cached CUT&RUN regulatory-support report by rerunning the shared engine operation with an output path",
+                        )
+                        .clicked()
+                    {
+                        self.export_cached_cutrun_regulatory_support_json();
+                    }
+                });
+                self.render_cutrun_regulatory_support_summary_panel(ui);
+            });
     }
 
     fn render_variant_followup_alternative_promoter_summary(&mut self, ui: &mut egui::Ui) {
@@ -3396,6 +4036,593 @@ impl MainAreaDna {
         }
     }
 
+    fn promoter_expression_value_label(value: Option<f64>) -> String {
+        value
+            .map(|value| format!("{value:.3}"))
+            .unwrap_or_else(|| "-".to_string())
+    }
+
+    fn promoter_expression_matched_by_label(
+        records: &[crate::engine::PromoterExpressionEvidenceRecord],
+    ) -> String {
+        let mut values = records
+            .iter()
+            .flat_map(|record| record.matched_by.iter())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let overflow = values.len().saturating_sub(3);
+        values.truncate(3);
+        if values.is_empty() {
+            "-".to_string()
+        } else if overflow == 0 {
+            values.join(", ")
+        } else {
+            format!("{}, +{} more", values.join(", "), overflow)
+        }
+    }
+
+    fn render_variant_followup_promoter_expression_summary(&mut self, ui: &mut egui::Ui) {
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_promoter_expression_evidence
+            .as_ref()
+        else {
+            ui.small(
+                egui::RichText::new(
+                    "No promoter expression evidence cached yet. Paste or load expression rows, then run `Summarize expression evidence`. Expression rows are treated as association evidence, not causal proof.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Promoter expression evidence").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "{} promoter group(s), {} supplied expression row(s), {} assigned; source: {}",
+                    report.promoter_group_count,
+                    report.supplied_expression_record_count,
+                    report.assigned_expression_record_count,
+                    report.expression_source_label
+                ))
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            ui.small(
+                egui::RichText::new(
+                    "Interpretation: expression evidence is associated with promoter candidates; it does not establish promoter causation by itself.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            for warning in &report.warnings {
+                ui.small(
+                    egui::RichText::new(warning).color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+            if report.rows.is_empty() {
+                ui.small("No promoter groups received assigned expression rows.");
+            }
+            if !report.rows.is_empty() {
+                egui::ScrollArea::vertical()
+                    .id_salt(("variant_followup_promoter_expression_scroll", report.seq_id.as_str()))
+                    .max_height(220.0)
+                    .show(ui, |ui| {
+                        egui::Grid::new((
+                            "variant_followup_promoter_expression_grid",
+                            report.seq_id.as_str(),
+                        ))
+                        .num_columns(8)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.small(egui::RichText::new("group").strong());
+                            ui.small(egui::RichText::new("records").strong());
+                            ui.small(egui::RichText::new("mean").strong());
+                            ui.small(egui::RichText::new("max").strong());
+                            ui.small(egui::RichText::new("unit").strong());
+                            ui.small(egui::RichText::new("conditions").strong());
+                            ui.small(egui::RichText::new("samples").strong());
+                            ui.small(egui::RichText::new("matched by").strong());
+                            ui.end_row();
+                            for row in &report.rows {
+                                let conditions_label = if row.conditions.is_empty() {
+                                    "-".to_string()
+                                } else {
+                                    row.conditions.join(", ")
+                                };
+                            let sample_ids_label = if row.sample_ids.is_empty() {
+                                "-".to_string()
+                            } else {
+                                row.sample_ids.join(", ")
+                            };
+                            ui.small(row.label.as_str()).on_hover_text(format!(
+                                "{}\n{}",
+                                row.promoter_group_id,
+                                row.interpretation
+                            ));
+                            ui.small(row.expression_record_count.to_string());
+                            ui.monospace(Self::promoter_expression_value_label(row.mean_value));
+                            ui.monospace(Self::promoter_expression_value_label(row.max_value));
+                            ui.small(row.unit.as_deref().unwrap_or("-"));
+                            ui.small(conditions_label)
+                                .on_hover_text(row.conditions.join("\n"));
+                            ui.small(sample_ids_label)
+                                .on_hover_text(row.sample_ids.join("\n"));
+                            ui.small(Self::promoter_expression_matched_by_label(&row.records))
+                                .on_hover_text(
+                                    row.records
+                                        .iter()
+                                        .map(|record| {
+                                            format!(
+                                                "{}: {}",
+                                                record.evidence_id,
+                                                record.matched_by.join(", ")
+                                            )
+                                        })
+                                        .collect::<Vec<_>>()
+                                    .join("\n"),
+                                );
+                                ui.end_row();
+                            }
+                        });
+                    });
+            }
+            if !report.unassigned_expression_records.is_empty() {
+                ui.collapsing("Unassigned expression rows", |ui| {
+                    egui::Grid::new((
+                        "variant_followup_promoter_expression_unassigned",
+                        report.seq_id.as_str(),
+                    ))
+                    .num_columns(7)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small(egui::RichText::new("gene").strong());
+                        ui.small(egui::RichText::new("transcript").strong());
+                        ui.small(egui::RichText::new("promoter").strong());
+                        ui.small(egui::RichText::new("sample").strong());
+                        ui.small(egui::RichText::new("condition").strong());
+                        ui.small(egui::RichText::new("value").strong());
+                        ui.small(egui::RichText::new("unit").strong());
+                        ui.end_row();
+                        for row in report.unassigned_expression_records.iter().take(24) {
+                            ui.small(row.gene_label.as_deref().unwrap_or("-"));
+                            ui.small(row.transcript_id.as_deref().unwrap_or("-"));
+                            ui.small(row.promoter_label.as_deref().unwrap_or("-"));
+                            ui.small(row.sample_id.as_deref().unwrap_or("-"));
+                            ui.small(row.condition.as_deref().unwrap_or("-"));
+                            ui.monospace(format!("{:.3}", row.value));
+                            ui.small(row.unit.as_deref().unwrap_or("-"));
+                            ui.end_row();
+                        }
+                    });
+                    if report.unassigned_expression_records.len() > 24 {
+                        ui.small(
+                            egui::RichText::new(format!(
+                                "showing first 24 of {} unassigned row(s)",
+                                report.unassigned_expression_records.len()
+                            ))
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
+                    }
+                });
+            }
+        });
+    }
+
+    fn ortholog_cutrun_status_label(status: OrthologCutRunSupportStatus) -> &'static str {
+        match status {
+            OrthologCutRunSupportStatus::Confirmed => "confirmed",
+            OrthologCutRunSupportStatus::Nearby => "nearby",
+            OrthologCutRunSupportStatus::MotifOnly => "motif only",
+            OrthologCutRunSupportStatus::OccupancyOnly => "occupancy only",
+            OrthologCutRunSupportStatus::NoData => "no data",
+            OrthologCutRunSupportStatus::NotComparable => "not comparable",
+        }
+    }
+
+    fn render_variant_followup_ortholog_promoter_summary(&mut self, ui: &mut egui::Ui) {
+        let Some(cohort) = self
+            .variant_followup_ui
+            .cached_ortholog_promoter_cohort
+            .as_ref()
+        else {
+            ui.small(
+                egui::RichText::new(
+                    "No ortholog promoter cohort cached yet. Resolve a local ortholog resource to compare cross-species promoter association evidence.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Ortholog promoter cohort").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "{} resolved promoter window(s), {} unresolved target(s); relationship expectation: {:?}",
+                    cohort.resolved_promoter_count,
+                    cohort.unresolved_count,
+                    cohort.relationship
+                ))
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            ui.small(
+                egui::RichText::new(
+                    "Cross-species promoter evidence is association evidence. Similarity or occupancy agreement is not proof of conserved regulation.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            for warning in &cohort.warnings {
+                ui.small(
+                    egui::RichText::new(warning).color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+            if !cohort.rows.is_empty() {
+                egui::Grid::new((
+                    "variant_followup_ortholog_cohort_grid",
+                    cohort.request.anchor_gene_query.as_str(),
+                ))
+                .num_columns(8)
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.small(egui::RichText::new("species").strong());
+                    ui.small(egui::RichText::new("gene").strong());
+                    ui.small(egui::RichText::new("role").strong());
+                    ui.small(egui::RichText::new("strand").strong());
+                    ui.small(egui::RichText::new("TSS").strong());
+                    ui.small(egui::RichText::new("window").strong());
+                    ui.small(egui::RichText::new("tx").strong());
+                    ui.small(egui::RichText::new("orthology").strong());
+                    ui.end_row();
+                    for row in &cohort.rows {
+                        ui.small(row.species.as_str());
+                        ui.small(row.display_label.as_str());
+                        ui.small(format!("{:?}", row.role));
+                        ui.monospace(row.strand.as_str());
+                        ui.monospace(format!(
+                            "{} (local {})",
+                            row.tss_1based, row.tss_position_0based
+                        ));
+                        ui.monospace(format!(
+                            "{}:{}-{}",
+                            row.chromosome, row.promoter_start_1based, row.promoter_end_1based
+                        ));
+                        ui.small(row.transcript_id.as_str());
+                        ui.small(row.orthology_type.as_deref().unwrap_or("-"))
+                            .on_hover_text(row.orthology_evidence.join("\n"));
+                        ui.end_row();
+                    }
+                });
+            }
+            for unresolved in &cohort.unresolved_rows {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "Unresolved {}: {}",
+                        unresolved.species, unresolved.reason
+                    ))
+                    .color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+
+            let Some(comparison) = self
+                .variant_followup_ui
+                .cached_ortholog_promoter_comparison
+                .as_ref()
+            else {
+                return;
+            };
+            ui.add_space(6.0);
+            ui.label(egui::RichText::new("Ortholog promoter comparison").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "{} motif(s), {} pairwise TFBS row(s), {} CUT&RUN support row(s)",
+                    comparison.motifs_requested.len(),
+                    comparison.pairwise_tfbs_similarity.len(),
+                    comparison.cutrun_support.len()
+                ))
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            if !comparison.relationship_flags.is_empty() {
+                ui.collapsing("Relationship expectation flags", |ui| {
+                    for flag in &comparison.relationship_flags {
+                        ui.small(
+                            egui::RichText::new(format!(
+                                "{} / {}: {}",
+                                flag.flag_kind, flag.evidence_kind, flag.detail
+                            ))
+                            .color(egui::Color32::from_rgb(180, 83, 9)),
+                        );
+                    }
+                });
+            }
+            if !comparison.pairwise_tfbs_similarity.is_empty() {
+                ui.collapsing("Pairwise TFBS similarity", |ui| {
+                    egui::Grid::new("variant_followup_ortholog_tfbs_similarity_grid")
+                        .num_columns(5)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.small(egui::RichText::new("left").strong());
+                            ui.small(egui::RichText::new("right").strong());
+                            ui.small(egui::RichText::new("motifs").strong());
+                            ui.small(egui::RichText::new("raw r").strong());
+                            ui.small(egui::RichText::new("smoothed ρ").strong());
+                            ui.end_row();
+                            for row in &comparison.pairwise_tfbs_similarity {
+                                ui.small(format!("{}: {}", row.left_species, row.left_gene_label));
+                                ui.small(format!(
+                                    "{}: {}",
+                                    row.right_species, row.right_gene_label
+                                ));
+                                ui.monospace(row.shared_motif_count.to_string())
+                                    .on_hover_text(row.motif_ids.join(", "));
+                                ui.monospace(format!("{:+.3}", row.mean_raw_pearson));
+                                ui.monospace(format!("{:+.3}", row.mean_smoothed_spearman));
+                                ui.end_row();
+                            }
+                        });
+                });
+            }
+            if !comparison.conserved_tfbs_peaks.is_empty()
+                || !comparison.species_specific_tfbs_peaks.is_empty()
+            {
+                ui.collapsing("TFBS peak summaries", |ui| {
+                    for (label, rows) in [
+                        ("conserved", &comparison.conserved_tfbs_peaks),
+                        ("species-specific", &comparison.species_specific_tfbs_peaks),
+                    ] {
+                        for peak in rows.iter().take(12) {
+                            ui.small(format!(
+                                "{} {} | promoters={} | species={} | max {:.2}",
+                                label,
+                                Self::promoter_design_track_label(
+                                    &peak.tf_id,
+                                    peak.tf_name.as_deref(),
+                                ),
+                                peak.promoter_count,
+                                peak.species.join(", "),
+                                peak.max_score
+                            ));
+                        }
+                    }
+                });
+            }
+            if !comparison.cutrun_support.is_empty() {
+                ui.collapsing("CUT&RUN support", |ui| {
+                    egui::Grid::new("variant_followup_ortholog_cutrun_grid")
+                        .num_columns(5)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.small(egui::RichText::new("species").strong());
+                            ui.small(egui::RichText::new("gene").strong());
+                            ui.small(egui::RichText::new("state").strong());
+                            ui.small(egui::RichText::new("nearest").strong());
+                            ui.small(egui::RichText::new("sources").strong());
+                            ui.end_row();
+                            for row in &comparison.cutrun_support {
+                                ui.small(row.species.as_str());
+                                ui.small(row.gene_label.as_str());
+                                ui.small(Self::ortholog_cutrun_status_label(row.status))
+                                    .on_hover_text(row.detail.as_str());
+                                ui.monospace(
+                                    row.nearest_peak_distance_bp
+                                        .map(|value| format!("{value} bp"))
+                                        .unwrap_or_else(|| "-".to_string()),
+                                );
+                                ui.small(format!(
+                                    "{} dataset(s), {} read report(s)",
+                                    row.contributing_dataset_ids.len(),
+                                    row.contributing_read_report_ids.len()
+                                ))
+                                .on_hover_text(format!(
+                                    "{}\n{}",
+                                    row.contributing_dataset_ids.join("\n"),
+                                    row.contributing_read_report_ids.join("\n")
+                                ));
+                                ui.end_row();
+                            }
+                        });
+                });
+            }
+        });
+    }
+
+    fn render_variant_followup_isoform_promoter_comparison_summary(&mut self, ui: &mut egui::Ui) {
+        let mut use_group: Option<(IsoformPromoterComparisonGroup, usize, usize)> = None;
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_isoform_promoter_comparison
+            .as_ref()
+        else {
+            ui.small(
+                egui::RichText::new(
+                    "No isoform promoter comparison cached yet. Run `Compare isoform evidence` to separate common promoter evidence from promoter-group-specific differences.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Isoform promoter evidence").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "{} promoter group(s), {} transcript-window interpretation(s), {} comparison evidence item(s); {} common signature(s), {} differential signature(s)",
+                    report.promoter_group_count,
+                    report.transcript_window_count,
+                    report.comparison_evidence_item_count,
+                    report.common_evidence_signatures.len(),
+                    report.differential_evidence.len()
+                ))
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            if !report.comparison_evidence_kinds_observed.is_empty() {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "Compared evidence kinds: {}",
+                        report.comparison_evidence_kinds_observed.join(", ")
+                    ))
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            }
+            for warning in &report.warnings {
+                ui.small(
+                    egui::RichText::new(warning).color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+            let common_preview = report
+                .common_evidence_signatures
+                .iter()
+                .take(4)
+                .map(|signature| format!("{}: {}", signature.kind, signature.label))
+                .collect::<Vec<_>>();
+            if !common_preview.is_empty() {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "Common evidence: {}{}",
+                        common_preview.join("; "),
+                        if report.common_evidence_signatures.len() > common_preview.len() {
+                            format!(
+                                "; +{} more",
+                                report
+                                    .common_evidence_signatures
+                                    .len()
+                                    .saturating_sub(common_preview.len())
+                            )
+                        } else {
+                            String::new()
+                        }
+                    ))
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+                );
+            }
+            egui::ScrollArea::vertical()
+                .id_salt(("variant_followup_isoform_promoter_scroll", report.seq_id.as_str()))
+                .max_height(260.0)
+                .show(ui, |ui| {
+                    egui::Grid::new((
+                        "variant_followup_isoform_promoter_grid",
+                        report.seq_id.as_str(),
+                    ))
+                    .num_columns(7)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small(egui::RichText::new("group").strong());
+                        ui.small(egui::RichText::new("tx").strong());
+                        ui.small(egui::RichText::new("span").strong());
+                        ui.small(egui::RichText::new("evidence").strong());
+                        ui.small(egui::RichText::new("common").strong());
+                        ui.small(egui::RichText::new("unique").strong());
+                        ui.small(egui::RichText::new("action").strong());
+                        ui.end_row();
+                        for group in &report.groups {
+                            ui.small(group.label.as_str()).on_hover_text(
+                                if group.transcript_labels.is_empty() {
+                                    group.transcript_ids.join(", ")
+                                } else {
+                                    format!(
+                                        "{}\n{}",
+                                        group.transcript_ids.join(", "),
+                                        group.transcript_labels.join(", ")
+                                    )
+                                },
+                            );
+                            ui.small(group.transcript_count.to_string());
+                            ui.monospace(format!(
+                                "{}..{}",
+                                group.start_0based, group.end_0based_exclusive
+                            ));
+                            let mut kind_summary = group
+                                .evidence_kind_counts
+                                .iter()
+                                .map(|(kind, count)| format!("{kind}={count}"))
+                                .collect::<Vec<_>>();
+                            let kind_overflow = kind_summary.len().saturating_sub(4);
+                            kind_summary.truncate(4);
+                            let kind_label = if kind_overflow == 0 {
+                                kind_summary.join(", ")
+                            } else {
+                                format!("{}, +{} more", kind_summary.join(", "), kind_overflow)
+                            };
+                            ui.small(if kind_label.is_empty() {
+                                "n/a"
+                            } else {
+                                kind_label.as_str()
+                            });
+                            ui.small(group.common_evidence_signatures.len().to_string());
+                            ui.small(group.unique_evidence_signatures.len().to_string())
+                                .on_hover_text(
+                                    group
+                                        .unique_evidence_signatures
+                                        .iter()
+                                        .take(12)
+                                        .map(|signature| {
+                                            format!(
+                                                "{}: {} ({})",
+                                                signature.kind, signature.label, signature.source
+                                            )
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n"),
+                                );
+                            if ui
+                                .small_button("Use")
+                                .on_hover_text(
+                                    "Use this isoform promoter group as the current Promoter design transcript/range seed.",
+                                )
+                                .clicked()
+                            {
+                                use_group = Some((
+                                    group.clone(),
+                                    report.promoter_upstream_bp,
+                                    report.promoter_downstream_bp,
+                                ));
+                            }
+                            ui.end_row();
+                        }
+                    });
+                });
+            let differential_preview = report
+                .differential_evidence
+                .iter()
+                .take(5)
+                .map(|row| {
+                    format!(
+                        "{}: {} | present in {}",
+                        row.signature.kind,
+                        row.signature.label,
+                        row.present_group_ids.join(", ")
+                    )
+                })
+                .collect::<Vec<_>>();
+            if !differential_preview.is_empty() {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "Differential evidence preview: {}{}",
+                        differential_preview.join("; "),
+                        if report.differential_evidence.len() > differential_preview.len() {
+                            format!(
+                                "; +{} more",
+                                report
+                                    .differential_evidence
+                                    .len()
+                                    .saturating_sub(differential_preview.len())
+                            )
+                        } else {
+                            String::new()
+                        }
+                    ))
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+                );
+            }
+        });
+        if let Some((group, promoter_upstream_bp, promoter_downstream_bp)) = use_group {
+            self.use_variant_followup_isoform_promoter_group(
+                &group,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+            );
+        }
+    }
+
     fn render_variant_followup_window_contents(&mut self, ui: &mut egui::Ui) {
         let engine_available = self.engine.is_some();
         let source_seq_id = self.variant_followup_ui.source_seq_id.clone();
@@ -3411,6 +4638,8 @@ impl MainAreaDna {
         let mut similarity_params_changed = false;
         let mut summary_params_changed = false;
         let mut candidate_params_changed = false;
+        let mut expression_params_changed = false;
+        let mut ortholog_params_changed = false;
 
         ui.horizontal_wrapped(|ui| {
             ui.label(
@@ -3724,6 +4953,172 @@ impl MainAreaDna {
             });
             ui.end_row();
 
+            ui.label("Ortholog cohort");
+            ui.vertical(|ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("anchor species");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.ortholog_anchor_species,
+                        )
+                        .changed()
+                    {
+                        ortholog_params_changed = true;
+                    }
+                    ui.label("genome");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.ortholog_anchor_genome_id,
+                        )
+                        .changed()
+                    {
+                        ortholog_params_changed = true;
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("targets");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.ortholog_target_species,
+                        )
+                        .changed()
+                    {
+                        ortholog_params_changed = true;
+                    }
+                    ui.label("target genomes");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.ortholog_target_genome_ids,
+                        )
+                        .changed()
+                    {
+                        ortholog_params_changed = true;
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("resource");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.ortholog_resource_path,
+                        )
+                        .changed()
+                    {
+                        ortholog_params_changed = true;
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("catalog");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.ortholog_genome_catalog_path,
+                        )
+                        .changed()
+                    {
+                        ortholog_params_changed = true;
+                    }
+                    ui.label("cache");
+                    if ui
+                        .text_edit_singleline(&mut self.variant_followup_ui.ortholog_cache_dir)
+                        .changed()
+                    {
+                        ortholog_params_changed = true;
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("relationship");
+                    egui::ComboBox::from_id_salt("promoter_design_ortholog_relationship")
+                        .selected_text(format!("{:?}", self.variant_followup_ui.ortholog_relationship))
+                        .show_ui(ui, |ui| {
+                            for choice in [
+                                GeneSetCohortRelationship::Unspecified,
+                                GeneSetCohortRelationship::Manual,
+                                GeneSetCohortRelationship::CoRegulated,
+                                GeneSetCohortRelationship::AntiCoRegulated,
+                            ] {
+                                if ui
+                                    .selectable_value(
+                                        &mut self.variant_followup_ui.ortholog_relationship,
+                                        choice,
+                                        format!("{choice:?}"),
+                                    )
+                                    .changed()
+                                {
+                                    ortholog_params_changed = true;
+                                }
+                            }
+                        });
+                    ui.label("CUT&RUN datasets");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.ortholog_cutrun_dataset_ids,
+                        )
+                        .changed()
+                    {
+                        ortholog_params_changed = true;
+                    }
+                    ui.label("read reports");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.ortholog_cutrun_read_report_ids,
+                        )
+                        .changed()
+                    {
+                        ortholog_params_changed = true;
+                    }
+                });
+                ui.small(
+                    egui::RichText::new(
+                        "Local ortholog resources resolve cross-species promoter windows; any co-regulation expectation is reported as non-blocking evidence triage, not proof.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            });
+            ui.end_row();
+
+            ui.label("Expression evidence");
+            ui.vertical(|ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("source");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.promoter_expression_source_label,
+                        )
+                        .changed()
+                    {
+                        expression_params_changed = true;
+                    }
+                    if ui
+                        .small_button("Load JSON...")
+                        .on_hover_text(
+                            "Load one promoter expression evidence JSON row or an array of rows.",
+                        )
+                        .clicked()
+                    {
+                        self.load_variant_followup_promoter_expression_json();
+                    }
+                });
+                if ui
+                    .add(
+                        egui::TextEdit::multiline(
+                            &mut self.variant_followup_ui.promoter_expression_rows_json,
+                        )
+                        .desired_rows(4)
+                        .desired_width(560.0)
+                        .code_editor(),
+                    )
+                    .changed()
+                {
+                    expression_params_changed = true;
+                }
+                ui.small(
+                    egui::RichText::new(
+                        "Paste one PromoterExpressionEvidenceInput object or an array of rows. Rows are summarized as expression association evidence, not functional validation.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            });
+            ui.end_row();
+
             ui.label("TFBS focus half-window bp");
             if ui
                 .text_edit_singleline(&mut self.variant_followup_ui.tfbs_focus_half_window_bp)
@@ -3805,6 +5200,17 @@ impl MainAreaDna {
             self.variant_followup_ui
                 .cached_alternative_promoter_comparison = None;
             self.variant_followup_ui.cached_promoter_evidence_matrix = None;
+            self.variant_followup_ui.cached_isoform_promoter_comparison = None;
+            self.variant_followup_ui.cached_promoter_expression_evidence = None;
+            self.variant_followup_ui.cached_ortholog_promoter_cohort = None;
+            self.variant_followup_ui.cached_ortholog_promoter_comparison = None;
+        }
+        if expression_params_changed {
+            self.variant_followup_ui.cached_promoter_expression_evidence = None;
+        }
+        if ortholog_params_changed {
+            self.variant_followup_ui.cached_ortholog_promoter_cohort = None;
+            self.variant_followup_ui.cached_ortholog_promoter_comparison = None;
         }
 
         ui.separator();
@@ -3899,6 +5305,18 @@ impl MainAreaDna {
             if ui
                 .add_enabled(
                     engine_available && !source_missing,
+                    egui::Button::new("Compare isoform evidence"),
+                )
+                .on_hover_text(
+                    "Compare common and promoter-group-specific evidence across isoform-derived promoter windows.",
+                )
+                .clicked()
+            {
+                self.summarize_variant_followup_isoform_promoter_comparison();
+            }
+            if ui
+                .add_enabled(
+                    engine_available && !source_missing,
                     egui::Button::new("Build evidence matrix"),
                 )
                 .on_hover_text(
@@ -3907,6 +5325,43 @@ impl MainAreaDna {
                 .clicked()
             {
                 self.summarize_variant_followup_promoter_evidence_matrix();
+            }
+            if ui
+                .add_enabled(
+                    engine_available && !source_missing,
+                    egui::Button::new("Summarize expression evidence"),
+                )
+                .on_hover_text(
+                    "Assign supplied expression rows to promoter groups through the shared promoter expression evidence operation.",
+                )
+                .clicked()
+            {
+                self.summarize_variant_followup_promoter_expression_evidence();
+            }
+            if ui
+                .add_enabled(engine_available, egui::Button::new("Resolve ortholog cohort"))
+                .on_hover_text(
+                    "Resolve local ortholog mappings into promoter windows through the shared ortholog engine operation.",
+                )
+                .clicked()
+            {
+                self.summarize_variant_followup_ortholog_promoter_cohort();
+            }
+            if ui
+                .add_enabled(
+                    engine_available
+                        && self
+                            .variant_followup_ui
+                            .cached_ortholog_promoter_cohort
+                            .is_some(),
+                    egui::Button::new("Compare ortholog promoters"),
+                )
+                .on_hover_text(
+                    "Compare cached ortholog promoter windows for sequence association, TFBS similarity, and selected CUT&RUN support states.",
+                )
+                .clicked()
+            {
+                self.summarize_variant_followup_ortholog_promoter_comparison();
             }
             if ui
                 .add_enabled(
@@ -3969,6 +5424,40 @@ impl MainAreaDna {
             {
                 self.export_variant_followup_promoter_evidence_matrix_json();
             }
+            if ui
+                .add_enabled(
+                    engine_available
+                        && !source_missing
+                        && self
+                            .variant_followup_ui
+                            .cached_promoter_expression_evidence
+                            .is_some(),
+                    egui::Button::new("Export expression JSON..."),
+                )
+                .on_hover_text(
+                    "Write promoter expression association evidence through the shared engine report route.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_promoter_expression_evidence_json();
+            }
+            if ui
+                .add_enabled(
+                    engine_available
+                        && !source_missing
+                        && self
+                            .variant_followup_ui
+                            .cached_isoform_promoter_comparison
+                            .is_some(),
+                    egui::Button::new("Export isoform comparison JSON..."),
+                )
+                .on_hover_text(
+                    "Write the currently cached isoform promoter evidence comparison as JSON through the shared engine route.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_isoform_promoter_comparison_json();
+            }
             let has_candidates = self.variant_followup_ui.cached_candidates.is_some();
             if ui
                 .add_enabled(
@@ -4028,9 +5517,17 @@ impl MainAreaDna {
         ui.add_space(8.0);
         self.render_variant_followup_tfbs_track_similarity_summary(ui);
         ui.add_space(8.0);
+        self.render_variant_followup_cutrun_occupancy_support(ui);
+        ui.add_space(8.0);
         self.render_variant_followup_alternative_promoter_summary(ui);
         ui.add_space(8.0);
+        self.render_variant_followup_isoform_promoter_comparison_summary(ui);
+        ui.add_space(8.0);
         self.render_variant_followup_promoter_evidence_matrix_summary(ui);
+        ui.add_space(8.0);
+        self.render_variant_followup_promoter_expression_summary(ui);
+        ui.add_space(8.0);
+        self.render_variant_followup_ortholog_promoter_summary(ui);
         ui.add_space(8.0);
         self.render_variant_followup_report_summary(ui);
         ui.add_space(8.0);
@@ -4043,9 +5540,11 @@ impl MainAreaDna {
         }
         if self.variant_followup_ui.source_seq_id.trim().is_empty() {
             self.show_variant_followup_window = false;
+            self.variant_followup_window_focus_requested = false;
             return;
         }
         let pending_initial_render = self.variant_followup_window_pending_initial_render;
+        let focus_requested = self.variant_followup_window_focus_requested;
         self.log_promoter_design_status("render begin", pending_initial_render);
         let title = Self::variant_followup_window_title(&self.variant_followup_ui);
         let viewport_id = Self::variant_followup_viewport_id(
@@ -4055,27 +5554,62 @@ impl MainAreaDna {
         let default_size = Vec2::new(980.0, 720.0);
         let min_size = Vec2::new(760.0, 520.0);
         let content_min_size = Vec2::new(900.0, 640.0);
-        let builder = egui::ViewportBuilder::default()
-            .with_title(title.clone())
-            .with_inner_size([default_size.x, default_size.y])
-            .with_min_inner_size([min_size.x, min_size.y]);
-        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
-            if class == egui::ViewportClass::EmbeddedWindow {
-                let mut open = self.show_variant_followup_window;
-                let spec = crate::egui_compat::HostedWindowSpec::new(
-                    title.clone(),
-                    egui::Id::new(format!(
-                        "variant_followup_window_embedded_{}_{}",
+        if ctx.embed_viewports() {
+            let mut open = self.show_variant_followup_window;
+            let spec = crate::egui_compat::HostedWindowSpec::new(
+                title.clone(),
+                Self::variant_followup_embedded_window_id(&self.variant_followup_ui),
+                default_size,
+                min_size,
+            )
+            .foreground(focus_requested);
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                let backdrop_settings = current_window_backdrop_settings();
+                paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                egui::ScrollArea::both()
+                    .id_salt(format!(
+                        "variant_followup_scroll_embedded_{}_{}",
                         self.variant_followup_ui.source_seq_id,
                         self.variant_followup_ui
                             .source_feature_id
                             .map(|value| value.to_string())
                             .unwrap_or_else(|| "none".to_string())
-                    )),
+                    ))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        ui.set_min_size(content_min_size);
+                        self.render_variant_followup_window_body(ctx, ui, pending_initial_render);
+                    });
+            });
+            self.show_variant_followup_window = open;
+            if focus_requested {
+                if self.show_variant_followup_window {
+                    self.focus_variant_followup_window(ctx);
+                }
+                self.variant_followup_window_focus_requested = false;
+            }
+            return;
+        }
+        let builder = egui::ViewportBuilder::default()
+            .with_title(title.clone())
+            .with_inner_size([default_size.x, default_size.y])
+            .with_min_inner_size([min_size.x, min_size.y]);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            let viewport_ctx = ctx.ctx().clone();
+            if class == egui::ViewportClass::EmbeddedWindow {
+                let mut open = self.show_variant_followup_window;
+                let spec = crate::egui_compat::HostedWindowSpec::new(
+                    title.clone(),
+                    Self::variant_followup_embedded_window_id(&self.variant_followup_ui),
                     default_size,
                     min_size,
-                );
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                )
+                .foreground(focus_requested);
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     let backdrop_settings = current_window_backdrop_settings();
                     paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
                     egui::ScrollArea::both()
@@ -4095,7 +5629,7 @@ impl MainAreaDna {
                             );
                             ui.set_min_size(content_min_size);
                             self.render_variant_followup_window_body(
-                                ctx,
+                                &viewport_ctx,
                                 ui,
                                 pending_initial_render,
                             );
@@ -4105,33 +5639,75 @@ impl MainAreaDna {
                 return;
             }
 
-            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                let backdrop_settings = current_window_backdrop_settings();
-                paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                egui::ScrollArea::both()
-                    .id_salt(format!(
-                        "variant_followup_scroll_viewport_{}_{}",
-                        self.variant_followup_ui.source_seq_id,
-                        self.variant_followup_ui
-                            .source_feature_id
-                            .map(|value| value.to_string())
-                            .unwrap_or_else(|| "none".to_string())
-                    ))
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        ui.set_min_size(content_min_size);
-                        self.render_variant_followup_window_body(ctx, ui, pending_initial_render);
-                    });
-            });
+            crate::egui_compat::show_central_panel(
+                &mut *ctx,
+                egui::CentralPanel::default(),
+                |ui| {
+                    let backdrop_settings = current_window_backdrop_settings();
+                    paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                    egui::ScrollArea::both()
+                        .id_salt(format!(
+                            "variant_followup_scroll_viewport_{}_{}",
+                            self.variant_followup_ui.source_seq_id,
+                            self.variant_followup_ui
+                                .source_feature_id
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|| "none".to_string())
+                        ))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            ui.set_min_size(content_min_size);
+                            self.render_variant_followup_window_body(
+                                &viewport_ctx,
+                                ui,
+                                pending_initial_render,
+                            );
+                        });
+                },
+            );
 
             if crate::app::GENtleApp::viewport_close_requested_or_shortcut(ctx) {
                 self.show_variant_followup_window = false;
             }
         });
+        if focus_requested {
+            if self.show_variant_followup_window {
+                self.focus_variant_followup_window(ctx);
+            }
+            self.variant_followup_window_focus_requested = false;
+        }
+    }
+
+    fn focus_variant_followup_window(&mut self, ctx: &egui::Context) {
+        let source_seq_id = self.variant_followup_ui.source_seq_id.trim();
+        if source_seq_id.is_empty() {
+            return;
+        }
+        let viewport_id = Self::variant_followup_viewport_id(
+            source_seq_id,
+            self.variant_followup_ui.source_feature_id,
+        );
+        self.log_promoter_design_status(
+            "focus requested",
+            self.variant_followup_window_pending_initial_render,
+        );
+        if ctx.embed_viewports() {
+            let embedded_window_id =
+                Self::variant_followup_embedded_window_id(&self.variant_followup_ui);
+            ctx.move_to_top(egui::LayerId::new(
+                egui::Order::Foreground,
+                embedded_window_id,
+            ));
+            ctx.request_repaint();
+            return;
+        }
+        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
+        ctx.request_repaint();
     }
 
     fn render_variant_followup_window_body(

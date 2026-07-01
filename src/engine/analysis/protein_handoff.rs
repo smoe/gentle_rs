@@ -84,6 +84,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "BuildProteinToDnaHandoffReasoning requires a non-empty seq_id"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         if protein_seq_id.is_empty() {
@@ -91,6 +93,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "BuildProteinToDnaHandoffReasoning requires a non-empty protein_seq_id"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -102,6 +106,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Protein sequence '{}' not found", protein_seq_id),
+
+                cause_chain: vec![],
             })?;
         if !protein.is_protein_sequence() {
             return Err(EngineError {
@@ -111,12 +117,16 @@ impl GentleEngine {
                     protein_seq_id,
                     protein.molecule_type()
                 ),
+
+                cause_chain: vec![],
             });
         }
         if !self.state.sequences.contains_key(seq_id) {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             });
         }
 
@@ -154,12 +164,7 @@ impl GentleEngine {
                 protein.name().as_deref().unwrap_or(protein_seq_id)
             );
         }
-        if !graph
-            .objective
-            .required_roles
-            .iter()
-            .any(|role| *role == ConstructRole::Cds)
-        {
+        if !graph.objective.required_roles.contains(&ConstructRole::Cds) {
             graph.objective.required_roles.push(ConstructRole::Cds);
         }
 
@@ -299,6 +304,8 @@ impl GentleEngine {
                     "Could not derive any protein-to-DNA handoff candidates for '{}' on '{}'",
                     protein_seq_id, seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -436,6 +443,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?;
         let source_sequence_upper = source_seq
             .get_forward_string()
@@ -451,6 +460,8 @@ impl GentleEngine {
                     source.transcript_feature_id + 1,
                     seq_id
                 ),
+
+                cause_chain: vec![],
             })?;
         let (derived_transcript, _, _, _, _, _) = Self::derive_transcript_sequence_from_feature(
             &source_sequence_upper,
@@ -747,6 +758,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Protein sequence '{}' not found", protein_seq_id),
+
+                cause_chain: vec![],
             })?;
         let speed_profile_resolution = speed_profile
             .map(|profile| {

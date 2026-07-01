@@ -1,8 +1,7 @@
 //! JavaScript adapter wrappers over shared engine contracts.
 
 use crate::{
-    app::GENtleApp,
-    dna_sequence::DNAsequence,
+    dna_sequence::{self, DNAsequence},
     engine::{
         Engine, EngineStateSummary, FeatureExpertTarget, GentleEngine, Operation, ProjectState,
         Workflow,
@@ -13,6 +12,7 @@ use crate::{
     resource_sync,
 };
 use deno_core::*;
+use gentle_protocol::{EngineError, ErrorCode};
 use serde::Serialize;
 use std::borrow::Cow;
 
@@ -22,6 +22,20 @@ struct JsAnyhow(deno_core::anyhow::Error);
 impl From<deno_core::anyhow::Error> for JsAnyhow {
     fn from(value: deno_core::anyhow::Error) -> Self {
         Self(value)
+    }
+}
+
+impl From<EngineError> for JsAnyhow {
+    fn from(value: EngineError) -> Self {
+        Self::from_adapter_cause(value.code, "JS adapter command failed", value)
+    }
+}
+
+impl JsAnyhow {
+    fn from_adapter_cause(code: ErrorCode, message: &str, source: impl std::fmt::Display) -> Self {
+        let error = EngineError::new(code, message).with_cause(source);
+        let payload = serde_json::to_string(&error).unwrap_or_else(|_| error.to_string());
+        deno_core::anyhow::anyhow!(payload).into()
     }
 }
 
@@ -223,6 +237,63 @@ fn show_construct_reasoning_graph_impl(
     Ok(run.output)
 }
 
+fn list_construct_reasoning_inspection_actions_impl(
+    state: ProjectState,
+    graph_id: &str,
+    fact_id: &str,
+    annotation_id: &str,
+    summary_id: &str,
+) -> Result<serde_json::Value, JsAnyhow> {
+    let mut engine = GentleEngine::from_state(state);
+    let command = ShellCommand::ConstructReasoningListInspectionActions {
+        graph_id: graph_id.trim().to_string(),
+        fact_id: empty_to_none(fact_id).map(str::to_string),
+        annotation_id: empty_to_none(annotation_id).map(str::to_string),
+        candidate_id: None,
+        evidence_id: None,
+        seq_id: None,
+        action_kind: None,
+        summary_id: empty_to_none(summary_id).map(str::to_string),
+    };
+    let run = execute_shell_command(&mut engine, &command).map_err(|e| {
+        deno_core::anyhow::anyhow!("construct-reasoning list-inspection-actions failed: {e}")
+    })?;
+    Ok(run.output)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_construct_reasoning_inspection_action_impl(
+    state: ProjectState,
+    graph_id: &str,
+    action_id: &str,
+    word_size: usize,
+    step_bp: usize,
+    max_mismatches: usize,
+    tile_bp: Option<usize>,
+    dotplot_id: &str,
+    render_svg_path: &str,
+) -> Result<ShellUtilityApplyResponse, JsAnyhow> {
+    let mut engine = GentleEngine::from_state(state);
+    let command = ShellCommand::ConstructReasoningRunInspectionAction {
+        graph_id: graph_id.trim().to_string(),
+        action_id: action_id.trim().to_string(),
+        word_size,
+        step_bp,
+        max_mismatches,
+        tile_bp,
+        dotplot_id: empty_to_none(dotplot_id).map(str::to_string),
+        render_svg_path: empty_to_none(render_svg_path).map(str::to_string),
+    };
+    let run = execute_shell_command(&mut engine, &command).map_err(|e| {
+        deno_core::anyhow::anyhow!("construct-reasoning run-inspection-action failed: {e}")
+    })?;
+    Ok(ShellUtilityApplyResponse {
+        state: engine.state().clone(),
+        state_changed: run.state_changed,
+        output: run.output,
+    })
+}
+
 fn set_construct_reasoning_annotation_status_impl(
     state: ProjectState,
     graph_id: &str,
@@ -316,10 +387,62 @@ fn ask_agent_system_impl(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn plan_agent_system_impl(
+    state: ProjectState,
+    system_id: &str,
+    prompt: &str,
+    catalog_path: &str,
+    include_state_summary: bool,
+    max_candidates: u32,
+    allow_mutating_candidates: bool,
+) -> Result<serde_json::Value, JsAnyhow> {
+    let mut engine = GentleEngine::from_state(state);
+    let command = ShellCommand::AgentsPlan {
+        system_id: system_id.to_string(),
+        prompt: prompt.to_string(),
+        catalog_path: empty_to_none(catalog_path).map(str::to_string),
+        base_url_override: None,
+        model_override: None,
+        timeout_seconds: None,
+        connect_timeout_seconds: None,
+        read_timeout_seconds: None,
+        max_retries: None,
+        max_response_bytes: None,
+        include_state_summary,
+        max_candidates: (max_candidates > 0).then_some(max_candidates as usize),
+        allow_mutating_candidates,
+    };
+    let run = execute_shell_command(&mut engine, &command)
+        .map_err(|e| deno_core::anyhow::anyhow!("agents plan failed: {e}"))?;
+    Ok(run.output)
+}
+
+fn execute_agent_plan_impl(
+    state: ProjectState,
+    plan_input: &str,
+    candidate_id: &str,
+    confirm: bool,
+) -> Result<ShellUtilityApplyResponse, JsAnyhow> {
+    let mut engine = GentleEngine::from_state(state);
+    let command = ShellCommand::AgentsExecutePlan {
+        plan_input: plan_input.to_string(),
+        candidate_id: candidate_id.to_string(),
+        confirm,
+    };
+    let run = execute_shell_command(&mut engine, &command)
+        .map_err(|e| deno_core::anyhow::anyhow!("agents execute-plan failed: {e}"))?;
+    Ok(ShellUtilityApplyResponse {
+        state: engine.state().clone(),
+        state_changed: run.state_changed,
+        output: run.output,
+    })
+}
+
 #[op2]
 #[serde]
 fn load_dna(#[string] path: &str) -> Result<DNAsequence, JsAnyhow> {
-    let mut dna = GENtleApp::load_from_file(path).map_err(deno_core::anyhow::Error::from)?;
+    let mut dna = dna_sequence::load_from_file(path).map_err(deno_core::anyhow::Error::from)?;
 
     // Add default enzymes and stuff
     *dna.restriction_enzymes_mut() = active_restriction_enzymes();
@@ -368,15 +491,13 @@ fn write_gb(#[serde] seq: DNAsequence, #[string] path: &str) -> Result<(), JsAny
 #[op2]
 #[serde]
 fn load_project(#[string] path: &str) -> Result<ProjectState, JsAnyhow> {
-    let state = ProjectState::load_from_path(path).map_err(deno_core::anyhow::Error::from)?;
+    let state = ProjectState::load_from_path(path).map_err(JsAnyhow::from)?;
     Ok(state)
 }
 
 #[op2]
 fn save_project(#[serde] state: ProjectState, #[string] path: &str) -> Result<(), JsAnyhow> {
-    state
-        .save_to_path(path)
-        .map_err(deno_core::anyhow::Error::from)?;
+    state.save_to_path(path).map_err(JsAnyhow::from)?;
     Ok(())
 }
 
@@ -419,9 +540,7 @@ fn export_dna_ladders(
     #[string] path: &str,
     #[string] name_filter: &str,
 ) -> Result<crate::engine::DnaLadderExportReport, JsAnyhow> {
-    GentleEngine::export_dna_ladders(path, empty_to_none(name_filter))
-        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-        .map_err(Into::into)
+    GentleEngine::export_dna_ladders(path, empty_to_none(name_filter)).map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -430,17 +549,13 @@ fn export_rna_ladders(
     #[string] path: &str,
     #[string] name_filter: &str,
 ) -> Result<crate::engine::RnaLadderExportReport, JsAnyhow> {
-    GentleEngine::export_rna_ladders(path, empty_to_none(name_filter))
-        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-        .map_err(Into::into)
+    GentleEngine::export_rna_ladders(path, empty_to_none(name_filter)).map_err(JsAnyhow::from)
 }
 
 #[op2]
 #[serde]
 fn list_reference_genomes(#[string] catalog_path: &str) -> Result<Vec<String>, JsAnyhow> {
-    GentleEngine::list_reference_genomes(empty_to_none(catalog_path))
-        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-        .map_err(Into::into)
+    GentleEngine::list_reference_genomes(empty_to_none(catalog_path)).map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -450,8 +565,7 @@ fn list_reference_catalog_entries(
     #[string] filter: &str,
 ) -> Result<Vec<crate::genomes::GenomeCatalogListEntry>, JsAnyhow> {
     GentleEngine::list_reference_catalog_entries(empty_to_none(catalog_path), empty_to_none(filter))
-        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-        .map_err(Into::into)
+        .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -461,8 +575,7 @@ fn list_helper_catalog_entries(
     #[string] filter: &str,
 ) -> Result<Vec<crate::genomes::GenomeCatalogListEntry>, JsAnyhow> {
     GentleEngine::list_helper_catalog_entries(empty_to_none(catalog_path), empty_to_none(filter))
-        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-        .map_err(Into::into)
+        .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -475,8 +588,7 @@ fn list_helper_semantics_vocabulary(
         empty_to_none(vocabulary_path),
         empty_to_none(filter),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-    .map_err(Into::into)
+    .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -489,8 +601,7 @@ fn list_host_profile_catalog_entries(
         empty_to_none(catalog_path),
         empty_to_none(filter),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-    .map_err(Into::into)
+    .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -503,8 +614,7 @@ fn list_ensembl_installable_genomes(
         empty_to_none(collection),
         empty_to_none(filter),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-    .map_err(Into::into)
+    .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -523,6 +633,54 @@ fn show_construct_reasoning_graph(
     #[string] graph_id: &str,
 ) -> Result<serde_json::Value, JsAnyhow> {
     show_construct_reasoning_graph_impl(state, graph_id)
+}
+
+#[op2]
+#[serde]
+fn list_construct_reasoning_inspection_actions(
+    #[serde] state: ProjectState,
+    #[string] graph_id: &str,
+    #[string] fact_id: &str,
+    #[string] annotation_id: &str,
+    #[string] summary_id: &str,
+) -> Result<serde_json::Value, JsAnyhow> {
+    list_construct_reasoning_inspection_actions_impl(
+        state,
+        graph_id,
+        fact_id,
+        annotation_id,
+        summary_id,
+    )
+}
+
+#[op2]
+#[serde]
+fn run_construct_reasoning_inspection_action(
+    #[serde] state: ProjectState,
+    #[string] graph_id: &str,
+    #[string] action_id: &str,
+    word_size: u32,
+    step_bp: u32,
+    max_mismatches: u32,
+    tile_bp: u32,
+    #[string] dotplot_id: &str,
+    #[string] render_svg_path: &str,
+) -> Result<ShellUtilityApplyResponse, JsAnyhow> {
+    run_construct_reasoning_inspection_action_impl(
+        state,
+        graph_id,
+        action_id,
+        if word_size == 0 {
+            12
+        } else {
+            word_size as usize
+        },
+        if step_bp == 0 { 2 } else { step_bp as usize },
+        max_mismatches as usize,
+        (tile_bp > 0).then_some(tile_bp as usize),
+        dotplot_id,
+        render_svg_path,
+    )
 }
 
 #[op2]
@@ -578,6 +736,39 @@ fn ask_agent_system(
 
 #[op2]
 #[serde]
+fn plan_agent_system(
+    #[serde] state: Option<ProjectState>,
+    #[string] system_id: &str,
+    #[string] prompt: &str,
+    #[string] catalog_path: &str,
+    include_state_summary: bool,
+    max_candidates: u32,
+    allow_mutating_candidates: bool,
+) -> Result<serde_json::Value, JsAnyhow> {
+    plan_agent_system_impl(
+        state.unwrap_or_default(),
+        system_id,
+        prompt,
+        catalog_path,
+        include_state_summary,
+        max_candidates,
+        allow_mutating_candidates,
+    )
+}
+
+#[op2]
+#[serde]
+fn execute_agent_plan(
+    #[serde] state: Option<ProjectState>,
+    #[string] plan_input: &str,
+    #[string] candidate_id: &str,
+    confirm: bool,
+) -> Result<ShellUtilityApplyResponse, JsAnyhow> {
+    execute_agent_plan_impl(state.unwrap_or_default(), plan_input, candidate_id, confirm)
+}
+
+#[op2]
+#[serde]
 fn is_reference_genome_prepared(
     #[string] genome_id: &str,
     #[string] catalog_path: &str,
@@ -588,7 +779,7 @@ fn is_reference_genome_prepared(
         genome_id,
         empty_to_none(cache_dir),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))?;
+    .map_err(JsAnyhow::from)?;
     Ok(GenomePreparedResponse { prepared })
 }
 
@@ -604,8 +795,7 @@ fn list_reference_genome_genes(
         genome_id,
         empty_to_none(cache_dir),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-    .map_err(Into::into)
+    .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -627,8 +817,7 @@ fn blast_reference_genome(
         Some(&request),
         empty_to_none(cache_dir),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-    .map_err(Into::into)
+    .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -650,8 +839,7 @@ fn blast_helper_genome(
         empty_to_none(catalog_path),
         empty_to_none(cache_dir),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-    .map_err(Into::into)
+    .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -669,7 +857,7 @@ fn apply_operation_impl(
 ) -> Result<OperationApplyResponse, JsAnyhow> {
     let op: Operation = serde_json::from_str(op_json).map_err(deno_core::anyhow::Error::from)?;
     let mut engine = GentleEngine::from_state(state);
-    let result = engine.apply(op).map_err(deno_core::anyhow::Error::from)?;
+    let result = engine.apply(op).map_err(JsAnyhow::from)?;
     Ok(OperationApplyResponse {
         state: engine.state().clone(),
         result,
@@ -685,9 +873,7 @@ fn apply_workflow(
     let workflow: Workflow =
         serde_json::from_str(workflow_json).map_err(deno_core::anyhow::Error::from)?;
     let mut engine = GentleEngine::from_state(state);
-    let results = engine
-        .apply_workflow(workflow)
-        .map_err(deno_core::anyhow::Error::from)?;
+    let results = engine.apply_workflow(workflow).map_err(JsAnyhow::from)?;
     Ok(WorkflowApplyResponse {
         state: engine.state().clone(),
         results,
@@ -706,7 +892,7 @@ fn inspect_feature_expert(
     let engine = GentleEngine::from_state(state);
     let view = engine
         .inspect_feature_expert(seq_id, &target)
-        .map_err(deno_core::anyhow::Error::from)?;
+        .map_err(JsAnyhow::from)?;
     serde_json::to_value(view)
         .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
         .map_err(Into::into)
@@ -737,12 +923,18 @@ impl JavaScriptInterface {
         const LIST_ENSEMBL_INSTALLABLE_GENOMES: OpDecl = list_ensembl_installable_genomes();
         const LIST_CONSTRUCT_REASONING_GRAPHS: OpDecl = list_construct_reasoning_graphs();
         const SHOW_CONSTRUCT_REASONING_GRAPH: OpDecl = show_construct_reasoning_graph();
+        const LIST_CONSTRUCT_REASONING_INSPECTION_ACTIONS: OpDecl =
+            list_construct_reasoning_inspection_actions();
+        const RUN_CONSTRUCT_REASONING_INSPECTION_ACTION: OpDecl =
+            run_construct_reasoning_inspection_action();
         const SET_CONSTRUCT_REASONING_ANNOTATION_STATUS: OpDecl =
             set_construct_reasoning_annotation_status();
         const WRITE_BACK_CONSTRUCT_REASONING_ANNOTATION: OpDecl =
             write_back_construct_reasoning_annotation();
         const LIST_AGENT_SYSTEMS: OpDecl = list_agent_systems();
         const ASK_AGENT_SYSTEM: OpDecl = ask_agent_system();
+        const PLAN_AGENT_SYSTEM: OpDecl = plan_agent_system();
+        const EXECUTE_AGENT_PLAN: OpDecl = execute_agent_plan();
         const IS_REFERENCE_GENOME_PREPARED: OpDecl = is_reference_genome_prepared();
         const LIST_REFERENCE_GENOME_GENES: OpDecl = list_reference_genome_genes();
         const BLAST_REFERENCE_GENOME: OpDecl = blast_reference_genome();
@@ -774,10 +966,14 @@ impl JavaScriptInterface {
                 LIST_ENSEMBL_INSTALLABLE_GENOMES,
                 LIST_CONSTRUCT_REASONING_GRAPHS,
                 SHOW_CONSTRUCT_REASONING_GRAPH,
+                LIST_CONSTRUCT_REASONING_INSPECTION_ACTIONS,
+                RUN_CONSTRUCT_REASONING_INSPECTION_ACTION,
                 SET_CONSTRUCT_REASONING_ANNOTATION_STATUS,
                 WRITE_BACK_CONSTRUCT_REASONING_ANNOTATION,
                 LIST_AGENT_SYSTEMS,
                 ASK_AGENT_SYSTEM,
+                PLAN_AGENT_SYSTEM,
+                EXECUTE_AGENT_PLAN,
                 IS_REFERENCE_GENOME_PREPARED,
                 LIST_REFERENCE_GENOME_GENES,
                 BLAST_REFERENCE_GENOME,
@@ -847,6 +1043,30 @@ impl JavaScriptInterface {
                       function show_construct_reasoning_graph(state, graph_id) {
                         return Deno.core.ops.show_construct_reasoning_graph(state, graph_id);
                       }
+                      function list_construct_reasoning_inspection_actions(state, graph_id, options) {
+                        const opts = options ?? {};
+                        return Deno.core.ops.list_construct_reasoning_inspection_actions(
+                          state,
+                          graph_id,
+                          opts.fact_id ?? "",
+                          opts.annotation_id ?? "",
+                          opts.summary_id ?? ""
+                        );
+                      }
+                      function run_construct_reasoning_inspection_action(state, graph_id, action_id, options) {
+                        const opts = options ?? {};
+                        return Deno.core.ops.run_construct_reasoning_inspection_action(
+                          state,
+                          graph_id,
+                          action_id,
+                          Number.isInteger(opts.word_size) ? opts.word_size : 0,
+                          Number.isInteger(opts.step_bp) ? opts.step_bp : 0,
+                          Number.isInteger(opts.max_mismatches) ? opts.max_mismatches : 0,
+                          Number.isInteger(opts.tile_bp) ? opts.tile_bp : 0,
+                          opts.dotplot_id ?? "",
+                          opts.render_svg_path ?? ""
+                        );
+                      }
                       function set_construct_reasoning_annotation_status(state, graph_id, annotation_id, editable_status) {
                         return Deno.core.ops.set_construct_reasoning_annotation_status(
                           state,
@@ -878,6 +1098,28 @@ impl JavaScriptInterface {
 			          			(opts.include_state_summary === undefined) ? true : !!opts.include_state_summary
 			          		);
 			          	}
+                      function plan_agent_system(state, system_id, prompt, options) {
+                        const opts = options ?? {};
+                        return Deno.core.ops.plan_agent_system(
+                          (state === undefined ? null : state),
+                          system_id,
+                          prompt,
+                          opts.catalog_path ?? "",
+                          (opts.include_state_summary === undefined) ? true : !!opts.include_state_summary,
+                          Number.isInteger(opts.max_candidates) ? opts.max_candidates : 0,
+                          !!opts.allow_mutating_candidates
+                        );
+                      }
+                      function execute_agent_plan(state, plan, candidate_id, options) {
+                        const opts = options ?? {};
+                        const plan_input = (typeof plan === "string") ? plan : JSON.stringify(plan);
+                        return Deno.core.ops.execute_agent_plan(
+                          (state === undefined ? null : state),
+                          plan_input,
+                          candidate_id,
+                          !!opts.confirm
+                        );
+                      }
 	          	function is_reference_genome_prepared(genome_id, catalog_path, cache_dir) {
 	          		const status = Deno.core.ops.is_reference_genome_prepared(genome_id, catalog_path ?? "", cache_dir ?? "");
 	          		return !!status.prepared;
@@ -1178,6 +1420,20 @@ mod tests {
         value
     }
 
+    struct JasparReloadResetGuard;
+
+    impl Drop for JasparReloadResetGuard {
+        fn drop(&mut self) {
+            crate::tf_motifs::reload();
+        }
+    }
+
+    fn lock_jaspar_registry_for_test() -> std::sync::MutexGuard<'static, ()> {
+        crate::tf_motifs::test_registry_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     #[test]
     fn js_sync_rebase_resource_wrapper_writes_snapshot() {
         let td = tempdir().expect("tempdir");
@@ -1196,6 +1452,10 @@ mod tests {
 
     #[test]
     fn js_sync_jaspar_resource_wrapper_writes_snapshot() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
+        let _reset = JasparReloadResetGuard;
+
         let td = tempdir().expect("tempdir");
         let input_path = write_demo_jaspar_pfm(td.path());
         let output_path = td.path().join("motifs.json");
@@ -1264,6 +1524,10 @@ mod tests {
 
     #[test]
     fn js_sync_jaspar_wrapper_matches_shared_shell_report() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
+        let _reset = JasparReloadResetGuard;
+
         let td = tempdir().expect("tempdir");
         let input_path = write_demo_jaspar_pfm(td.path());
         let output_path = td.path().join("motifs.json");
@@ -1392,6 +1656,72 @@ mod tests {
     }
 
     #[test]
+    fn js_plan_agent_system_wrapper_uses_builtin_echo() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("agents.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    { "id": "builtin_echo", "label": "Built-in Echo", "transport": "builtin_echo" }
+  ]
+}"#,
+        )
+        .expect("write agent catalog");
+        let out = plan_agent_system_impl(
+            ProjectState::default(),
+            "builtin_echo",
+            "auto: state-summary",
+            catalog_path.to_string_lossy().as_ref(),
+            false,
+            1,
+            false,
+        )
+        .expect("plan agent");
+        assert_eq!(out["schema"].as_str(), Some("gentle.agent_plan_result.v1"));
+        assert_eq!(out["candidates"].as_array().map(Vec::len), Some(1));
+        assert_eq!(
+            out["candidates"][0]["shell_command"].as_str(),
+            Some("state-summary")
+        );
+    }
+
+    #[test]
+    fn js_execute_agent_plan_wrapper_runs_shell_candidate() {
+        let plan = serde_json::json!({
+            "schema": "gentle.agent_plan_result.v1",
+            "assistant_message": "ready",
+            "questions": [],
+            "candidates": [
+                {
+                    "candidate_id": "candidate-1",
+                    "title": "Set parameter",
+                    "rationale": "test shell execution",
+                    "kind": "shell",
+                    "mutating": true,
+                    "requires_confirmation": false,
+                    "execution_mode": "auto",
+                    "shell_command": "set-param max_fragments_per_container 123"
+                }
+            ]
+        });
+        let out = execute_agent_plan_impl(
+            ProjectState::default(),
+            &plan.to_string(),
+            "candidate-1",
+            false,
+        )
+        .expect("execute agent plan");
+        assert!(out.state_changed);
+        assert_eq!(
+            out.output["schema"].as_str(),
+            Some("gentle.agent_execution_result.v1")
+        );
+        assert_eq!(out.output["candidate_id"].as_str(), Some("candidate-1"));
+    }
+
+    #[test]
     fn js_ask_agent_system_accepts_null_state() {
         let td = tempdir().expect("tempdir");
         let catalog_path = td.path().join("agents.json");
@@ -1460,6 +1790,12 @@ mod tests {
                 }
                 if (typeof show_construct_reasoning_graph !== "function") {
                     throw new Error("show_construct_reasoning_graph wrapper is missing");
+                }
+                if (typeof list_construct_reasoning_inspection_actions !== "function") {
+                    throw new Error("list_construct_reasoning_inspection_actions wrapper is missing");
+                }
+                if (typeof run_construct_reasoning_inspection_action !== "function") {
+                    throw new Error("run_construct_reasoning_inspection_action wrapper is missing");
                 }
                 if (typeof set_construct_reasoning_annotation_status !== "function") {
                     throw new Error("set_construct_reasoning_annotation_status wrapper is missing");
@@ -1670,6 +2006,174 @@ mod tests {
                     row["fact_type"].as_str() == Some("adapter_restriction_capture_context")
                 }))
                 .unwrap_or(false)
+        );
+    }
+
+    #[test]
+    fn js_construct_reasoning_inspection_action_wrappers_match_shared_shell_output() {
+        let sequence = format!(
+            "{}{}{}{}{}",
+            "ACGT".repeat(12),
+            "AAAAAAAAAAAAAA",
+            "ATATATATATATATATATAT",
+            "GATTACAGATTACCCGGGGATTACAGATTA",
+            "GCGTACGCTATTTTTAGCGTACGC"
+        );
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "construct_reasoning_js_inspection".to_string(),
+            DNAsequence::from_sequence(&sequence).expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let graph = engine
+            .build_construct_reasoning_graph("construct_reasoning_js_inspection", None, None)
+            .expect("build construct-reasoning graph");
+        let repeat_fact = graph
+            .facts
+            .iter()
+            .find(|fact| fact.fact_type == "repeat_architecture_context")
+            .expect("repeat architecture fact");
+        let protocol_action = graph
+            .inspection_actions
+            .iter()
+            .find(|action| {
+                action.mode == gentle_protocol::DotplotMode::SelfReverseComplement
+                    && action
+                        .source_fact_ids
+                        .iter()
+                        .any(|id| id == &repeat_fact.fact_id)
+            })
+            .cloned()
+            .expect("revcomp repeat inspection action");
+        let direct_action = graph
+            .inspection_actions
+            .iter()
+            .find(|action| {
+                action.mode == gentle_protocol::DotplotMode::SelfForward
+                    && action
+                        .source_fact_ids
+                        .iter()
+                        .any(|id| id == &repeat_fact.fact_id)
+            })
+            .cloned()
+            .expect("direct repeat inspection action");
+        assert_ne!(direct_action.action_id, protocol_action.action_id);
+        state = engine.state().clone();
+
+        let wrapper_list = list_construct_reasoning_inspection_actions_impl(
+            state.clone(),
+            &graph.graph_id,
+            &repeat_fact.fact_id,
+            "",
+            "",
+        )
+        .expect("js inspection-action list wrapper");
+        let mut shell_engine = GentleEngine::from_state(state.clone());
+        let shell_list = execute_shell_command(
+            &mut shell_engine,
+            &ShellCommand::ConstructReasoningListInspectionActions {
+                graph_id: graph.graph_id.clone(),
+                fact_id: Some(repeat_fact.fact_id.clone()),
+                annotation_id: None,
+                candidate_id: None,
+                evidence_id: None,
+                seq_id: None,
+                action_kind: None,
+                summary_id: None,
+            },
+        )
+        .expect("shell inspection-action list");
+        assert_eq!(wrapper_list, shell_list.output);
+        assert!(wrapper_list["actions"].as_array().is_some_and(|actions| {
+            actions
+                .iter()
+                .any(|row| row["action_id"].as_str() == Some(protocol_action.action_id.as_str()))
+        }));
+        assert!(wrapper_list["actions"].as_array().is_some_and(|actions| {
+            actions.iter().any(|row| {
+                row["action_id"].as_str() == Some(direct_action.action_id.as_str())
+                    && row["mode"].as_str()
+                        == Some(gentle_protocol::DotplotMode::SelfForward.as_str())
+            }) && actions.iter().any(|row| {
+                row["action_id"].as_str() == Some(protocol_action.action_id.as_str())
+                    && row["mode"].as_str()
+                        == Some(gentle_protocol::DotplotMode::SelfReverseComplement.as_str())
+            })
+        }));
+
+        let filtered = list_construct_reasoning_inspection_actions_impl(
+            state.clone(),
+            &graph.graph_id,
+            "missing_fact",
+            "",
+            "",
+        )
+        .expect("js filtered inspection-action list");
+        assert_eq!(filtered["action_count"].as_u64(), Some(0));
+        assert!(
+            list_construct_reasoning_inspection_actions_impl(
+                state.clone(),
+                "missing_graph",
+                "",
+                "",
+                "",
+            )
+            .is_err()
+        );
+
+        let wrapper_run = run_construct_reasoning_inspection_action_impl(
+            state.clone(),
+            &graph.graph_id,
+            &protocol_action.action_id,
+            4,
+            1,
+            0,
+            Some(128),
+            "js_reasoning_action_plot",
+            "",
+        )
+        .expect("js inspection-action run wrapper");
+        assert!(wrapper_run.state_changed);
+        assert_eq!(
+            wrapper_run.output["schema"].as_str(),
+            Some("gentle.construct_reasoning_inspection_action_dotplot_run.v1")
+        );
+        assert_eq!(
+            wrapper_run.output["action"]["action_id"].as_str(),
+            Some(protocol_action.action_id.as_str())
+        );
+        assert_eq!(
+            wrapper_run.output["dotplot"]["dotplot_id"].as_str(),
+            Some("js_reasoning_action_plot")
+        );
+        assert_eq!(
+            wrapper_run.output["compute_parameters"]["span_start_0based"],
+            wrapper_run.output["dotplot"]["span_start_0based"]
+        );
+        assert_eq!(
+            wrapper_run.output["compute_parameters"]["span_end_0based"],
+            wrapper_run.output["dotplot"]["span_end_0based"]
+        );
+        let stored = GentleEngine::from_state(wrapper_run.state.clone())
+            .list_dotplot_views(Some("construct_reasoning_js_inspection"));
+        assert!(
+            stored
+                .iter()
+                .any(|row| row.dotplot_id == "js_reasoning_action_plot")
+        );
+        assert!(
+            run_construct_reasoning_inspection_action_impl(
+                state,
+                &graph.graph_id,
+                "missing_action",
+                4,
+                1,
+                0,
+                Some(128),
+                "js_missing_action_plot",
+                "",
+            )
+            .is_err()
         );
     }
 

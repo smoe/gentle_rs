@@ -25,7 +25,6 @@
 use crate::{
     DNA_LADDERS, RNA_LADDERS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
-    app::GENtleApp,
     dna_sequence::DNAsequence,
     ensembl_protein::EnsemblProteinEntry,
     enzymes::{
@@ -41,10 +40,10 @@ use crate::{
         GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
         GenomeSourcePlan, GenomeTranscriptRecord, HelperConstructInterpretation,
         HelperConstructVocabularyDoctorReport, HelperConstructVocabularyTerm,
-        PrepareGenomeActivityStatus, PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport,
-        PreparedCacheCleanupReport, PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
-        PreparedGenomeCompatibilityInspection, PreparedGenomeFallbackPolicy,
-        PreparedGenomeInspection, PreparedGenomeRemovalReport,
+        HelperVectorCardReport, HelperVectorCatalogDoctorReport, PrepareGenomeActivityStatus,
+        PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport, PreparedCacheCleanupReport,
+        PreparedCacheInspectionReport, PreparedGenomeCompatibilityInspection,
+        PreparedGenomeFallbackPolicy, PreparedGenomeInspection, PreparedGenomeRemovalReport,
         blast_external_binary_preflight_report, build_genbank_efetch_url,
         clear_prepared_cache_roots, default_helper_semantics_vocabulary_discovery_label,
         doctor_helper_construct_vocabulary, inspect_prepared_cache_roots,
@@ -56,7 +55,7 @@ use crate::{
     methylation_sites::MethylationMode,
     pool_gel::{GelSampleInput, export_pool_gel_svg},
     protease::{Protease, normalize_protease_name_token},
-    protocol_cartoon::{ProtocolCartoonKind, ProtocolCartoonTemplateBindings},
+    protocol_cartoon::ProtocolCartoonTemplateBindings,
     render_export::{export_circular_svg, export_linear_svg},
     render_feature_expert::render_feature_expert_svg,
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeKey},
@@ -73,6 +72,7 @@ use rayon::join;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha1::{Digest, Sha1};
 use std::{
     cell::Cell,
     cmp::Ordering,
@@ -93,14 +93,298 @@ use std::{
 use tempfile::NamedTempFile;
 
 pub use gentle_protocol::{
-    Arrangement, ArrangementMode, Container, ContainerId, ContainerKind, ContainerState,
-    GelBufferModel, GelRunConditions, GelTopologyForm, LineageEdge, LineageGraph,
-    LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus, NodeId, OpId,
-    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
-    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-    RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
-    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RunId, SeqId, SequenceOrigin,
+    AnnotationCandidate, AnnotationCandidateSummary, AnnotationCandidateWriteback, Arrangement,
+    ArrangementMode, ConstructCandidate, ConstructObjective, ConstructReasoningGraph,
+    ConstructReasoningInspectionAction, ConstructReasoningInspectionActionKind,
+    ConstructReasoningRepeatFamilyProvenance, ConstructReasoningRiskTask,
+    ConstructReasoningSeverity, ConstructReasoningStore, ConstructReasoningTaskSeverity,
+    ConstructRole, Container, ContainerId, ContainerKind, ContainerState, DecisionMethod,
+    DesignDecisionNode, DesignEvidence, DesignFact, DotplotMode, EditableStatus, EvidenceClass,
+    EvidenceScope, ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion,
+    GelBufferModel, GelRunConditions, GelTopologyForm, HostLifecycleRole, LineageEdge,
+    LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus,
+    NodeId, OpId, OrthologAmbiguityPolicy, OrthologPromoterCohortReport,
+    OrthologPromoterComparisonReport, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
+    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+    RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
+    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
+    ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
 };
+
+#[derive(Clone, Debug, Default)]
+struct ConstructReasoningCuratedRepeatSupport {
+    source_kind: String,
+    label: String,
+    repeat_name: Option<String>,
+    repeat_class: Option<String>,
+    repeat_family: Option<String>,
+    evidence_ids: Vec<String>,
+    internal_evidence_ids: Vec<String>,
+    source_refs: Vec<String>,
+}
+
+impl ConstructReasoningCuratedRepeatSupport {
+    fn to_json(&self) -> serde_json::Value {
+        json!({
+            "source_kind": self.source_kind,
+            "label": self.label,
+            "repeat_name": self.repeat_name,
+            "repeat_class": self.repeat_class,
+            "repeat_family": self.repeat_family,
+            "evidence_ids": self.evidence_ids,
+            "internal_evidence_ids": self.internal_evidence_ids,
+            "source_refs": self.source_refs,
+        })
+    }
+}
+
+#[cfg(test)]
+const CONSTRUCT_REASONING_ALU_LIKE_SOFT_CATALOG_CAVEAT: &str =
+    "until a curated repeat-family catalog";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum RepeatFamilyClassKind {
+    Alu,
+    Sine,
+    Line,
+    Ltr,
+    Satellite,
+    SimpleRepeat,
+}
+
+impl RepeatFamilyClassKind {
+    fn parent_class(self) -> Self {
+        match self {
+            Self::Alu => Self::Sine,
+            other => other,
+        }
+    }
+
+    fn bare_tag(self) -> &'static str {
+        match self {
+            Self::Alu => "alu",
+            Self::Sine => "sine",
+            Self::Line => "line",
+            Self::Ltr => "ltr",
+            Self::Satellite => "satellite",
+            Self::SimpleRepeat => "simple_repeat",
+        }
+    }
+
+    fn class_tag(self) -> &'static str {
+        match self.parent_class() {
+            Self::Alu | Self::Sine => "repeat_class_sine",
+            Self::Line => "repeat_class_line",
+            Self::Ltr => "repeat_class_ltr",
+            Self::Satellite => "repeat_class_satellite",
+            Self::SimpleRepeat => "repeat_class_simple_repeat",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct RepeatFamilyClassMapping {
+    family: Option<RepeatFamilyClassKind>,
+    class: Option<RepeatFamilyClassKind>,
+}
+
+impl RepeatFamilyClassMapping {
+    fn is_classified(self) -> bool {
+        self.family.is_some() || self.class.is_some()
+    }
+
+    fn merge(&mut self, other: Self) {
+        if self.family.is_none() {
+            self.family = other.family;
+        }
+        if self.class.is_none() {
+            self.class = other.class;
+        }
+        if self.class.is_none() {
+            if let Some(family) = self.family {
+                self.class = Some(family.parent_class());
+            }
+        }
+    }
+
+    fn primary_class(self) -> Option<RepeatFamilyClassKind> {
+        self.class
+            .or_else(|| self.family.map(RepeatFamilyClassKind::parent_class))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum RepeatFamilyAgreementStrength {
+    Class,
+    Family,
+}
+
+impl RepeatFamilyAgreementStrength {
+    fn confidence(self) -> f64 {
+        match self {
+            Self::Family => 0.95,
+            Self::Class => 0.9,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Family => "family",
+            Self::Class => "class",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConstructReasoningActionDotplotRequest {
+    pub seq_id: String,
+    pub mode: DotplotMode,
+    pub span_start_0based: usize,
+    pub span_end_0based: usize,
+    pub store_as: String,
+}
+
+pub fn bounded_center_window(
+    sequence_len: usize,
+    center_0based: usize,
+    half_window_bp: usize,
+) -> Option<(usize, usize)> {
+    if sequence_len == 0 {
+        return None;
+    }
+    let half_window_bp = half_window_bp.max(1);
+    let center_0based = center_0based.min(sequence_len.saturating_sub(1));
+    let target_span = half_window_bp
+        .saturating_mul(2)
+        .saturating_add(1)
+        .min(sequence_len);
+    let mut start = center_0based.saturating_sub(half_window_bp);
+    let mut end = center_0based
+        .saturating_add(half_window_bp)
+        .saturating_add(1)
+        .min(sequence_len);
+    let current_span = end.saturating_sub(start);
+    if current_span < target_span {
+        let deficit = target_span - current_span;
+        let shift_left = deficit.min(start);
+        start = start.saturating_sub(shift_left);
+        let remaining = deficit.saturating_sub(shift_left);
+        end = end.saturating_add(remaining).min(sequence_len);
+        let second_span = end.saturating_sub(start);
+        if second_span < target_span {
+            let second_deficit = target_span - second_span;
+            start = start.saturating_sub(second_deficit.min(start));
+        }
+    }
+    if end <= start {
+        end = (start + 1).min(sequence_len);
+    }
+    Some((start, end))
+}
+
+fn construct_reasoning_dotplot_mode_tag(mode: DotplotMode) -> &'static str {
+    match mode {
+        DotplotMode::SelfForward => "self",
+        DotplotMode::SelfReverseComplement => "revcomp",
+        DotplotMode::PairForward => "pair_forward",
+        DotplotMode::PairReverseComplement => "pair_revcomp",
+    }
+}
+
+fn normalize_construct_reasoning_dotplot_token(raw: &str) -> String {
+    let mut token = String::new();
+    for c in raw.chars() {
+        if c.is_ascii_alphanumeric() {
+            token.push(c.to_ascii_lowercase());
+        } else if matches!(c, '_' | '-' | '.') && !token.ends_with('_') {
+            token.push('_');
+        }
+    }
+    token.trim_matches('_').to_string()
+}
+
+pub fn construct_reasoning_action_dotplot_request(
+    action: &ConstructReasoningInspectionAction,
+    fallback_seq_id: &str,
+    sequence_len: usize,
+) -> Result<ConstructReasoningActionDotplotRequest, EngineError> {
+    if action.action_kind != ConstructReasoningInspectionActionKind::Dotplot {
+        return Err(EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Inspection action '{}' has unsupported kind '{}'",
+                action.action_id,
+                action.action_kind.as_str()
+            ),
+            cause_chain: vec![],
+        });
+    }
+    if sequence_len == 0 {
+        return Err(EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "Active sequence is empty; dotplot span unavailable".to_string(),
+            cause_chain: vec![],
+        });
+    }
+    let seq_id = action.seq_id.trim();
+    let fallback_seq_id = fallback_seq_id.trim();
+    let seq_id = if seq_id.is_empty() {
+        fallback_seq_id
+    } else {
+        seq_id
+    };
+    if seq_id.is_empty() {
+        return Err(EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "Inspection action has no sequence id for dotplot computation".to_string(),
+            cause_chain: vec![],
+        });
+    }
+
+    let focus_start_0based = action
+        .focus_start_0based
+        .min(sequence_len.saturating_sub(1));
+    let focus_end_0based_exclusive = action
+        .focus_end_0based_exclusive
+        .max(focus_start_0based.saturating_add(1))
+        .min(sequence_len);
+    let focus_span_bp = focus_end_0based_exclusive
+        .saturating_sub(focus_start_0based)
+        .max(1);
+    let target_span_bp = if sequence_len <= 200 {
+        sequence_len
+    } else {
+        focus_span_bp.saturating_mul(3).clamp(200, sequence_len)
+    };
+    let half_window_bp = target_span_bp.saturating_sub(1) / 2;
+    let focus_center_0based = focus_start_0based
+        .saturating_add(focus_span_bp / 2)
+        .min(sequence_len.saturating_sub(1));
+    let (span_start_0based, span_end_0based) =
+        bounded_center_window(sequence_len, focus_center_0based, half_window_bp).ok_or_else(
+            || EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Could not resolve a viewport for the repeat region".to_string(),
+                cause_chain: vec![],
+            },
+        )?;
+    let mode_tag = construct_reasoning_dotplot_mode_tag(action.mode);
+    let store_as = format!(
+        "{}_reasoning_{}_{}_{}",
+        normalize_construct_reasoning_dotplot_token(seq_id),
+        focus_start_0based.saturating_add(1),
+        focus_end_0based_exclusive,
+        mode_tag
+    );
+
+    Ok(ConstructReasoningActionDotplotRequest {
+        seq_id: seq_id.to_string(),
+        mode: action.mode,
+        span_start_0based,
+        span_end_0based,
+        store_as,
+    })
+}
 
 pub const DEFAULT_HOST_PROFILE_CATALOG_PATH: &str = "assets/host_profiles.json";
 pub const DEFAULT_CUTRUN_CATALOG_PATH: &str = "assets/cutrun.json";
@@ -314,6 +598,7 @@ pub const PRIMER_DESIGN_REPORTS_METADATA_KEY: &str = "primer_design_reports";
 const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
 const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
+const OLIGO_ORDER_FORM_SCHEMA: &str = "gentle.oligo_order_form.v1";
 const CDNA_ASSAY_TEST_REPORT_SCHEMA: &str = "gentle.cdna_assay_test_report.v1";
 const CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA: &str = "gentle.cdna_assay_transcript_map.v1";
 const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
@@ -328,6 +613,7 @@ const PROTEIN_DERIVATION_REPORTS_SCHEMA: &str = "gentle.protein_derivation_repor
 pub const PROTEIN_DERIVATION_REPORT_SCHEMA: &str = "gentle.protein_derivation_report.v1";
 pub const REVERSE_TRANSLATION_REPORTS_METADATA_KEY: &str = "reverse_translation_reports";
 const REVERSE_TRANSLATION_REPORTS_SCHEMA: &str = "gentle.reverse_translation_reports.v1";
+pub const EXON_SKIP_PLANS_METADATA_KEY: &str = "exon_skip_selection_plans";
 pub const REVERSE_TRANSLATION_REPORT_SCHEMA: &str = "gentle.reverse_translation_report.v1";
 pub const SEQUENCING_TRACES_METADATA_KEY: &str = "sequencing_traces";
 const SEQUENCING_TRACES_SCHEMA: &str = "gentle.sequencing_traces.v1";
@@ -336,6 +622,8 @@ pub const SEQUENCING_TRACE_IMPORT_REPORT_SCHEMA: &str = "gentle.sequencing_trace
 pub const SEQUENCING_CONFIRMATION_REPORTS_METADATA_KEY: &str = "sequencing_confirmation_reports";
 const SEQUENCING_CONFIRMATION_REPORTS_SCHEMA: &str = "gentle.sequencing_confirmation_reports.v1";
 pub const SEQUENCING_CONFIRMATION_REPORT_SCHEMA: &str = "gentle.sequencing_confirmation_report.v1";
+pub const GENE_SET_ARTIFACTS_METADATA_KEY: &str = "gene_set_artifacts";
+const GENE_SET_ARTIFACTS_SCHEMA: &str = "gentle.gene_set_artifacts.v1";
 pub const SEQUENCING_PRIMER_OVERLAY_REPORT_SCHEMA: &str =
     "gentle.sequencing_primer_overlay_report.v1";
 pub const SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA: &str =
@@ -346,6 +634,8 @@ pub const PLANNING_OBJECTIVE_SCHEMA: &str = "gentle.planning_objective.v1";
 pub const PLANNING_ESTIMATE_SCHEMA: &str = "gentle.planning_estimate.v1";
 pub const PLANNING_SUGGESTION_SCHEMA: &str = "gentle.planning_suggestion.v1";
 pub const PLANNING_SYNC_STATUS_SCHEMA: &str = "gentle.planning_sync_status.v1";
+pub const PLANNING_CLONING_CONSULTATION_SCHEMA: &str = "gentle.planning_cloning_consultation.v1";
+pub const PROTEIN_EXPRESSION_HANDOFF_SCHEMA: &str = "gentle.protein_expression_handoff.v1";
 const PLANNING_STORE_SCHEMA: &str = "gentle.planning_store.v1";
 pub const CONSTRUCT_REASONING_METADATA_KEY: &str = "construct_reasoning";
 pub const CONSTRUCT_OBJECTIVE_SCHEMA: &str = gentle_protocol::CONSTRUCT_OBJECTIVE_SCHEMA;
@@ -368,6 +658,19 @@ const CANDIDATE_MACRO_TEMPLATES_SCHEMA: &str = "gentle.candidate_macro_templates
 const GENOME_BED_TRACK_GENERATED_TAG: &str = "genome_bed_track";
 const GENOME_BIGWIG_TRACK_GENERATED_TAG: &str = "genome_bigwig_track";
 const GENOME_VCF_TRACK_GENERATED_TAG: &str = "genome_vcf_track";
+pub const MICROARRAY_TRACK_MANIFEST_SCHEMA: &str = "gentle.microarray_track_manifest.v1";
+pub const MICROARRAY_PROJECTION_REPORT_SCHEMA: &str = "gentle.microarray_projection_report.v1";
+pub const PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA: &str =
+    "gentle.probe_region_evidence_interpretation.v2";
+pub const PROBE_REGION_PLAN_SCHEMA: &str = "gentle.probe_region_plan.v1";
+pub const PROBE_REGION_OUTPUT_INSPECTION_SCHEMA: &str = "gentle.probe_region_output_inspection.v1";
+pub const PROBE_REGION_OUTPUT_SVG_EXPORT_SCHEMA: &str = "gentle.probe_region_output_svg_export.v1";
+pub const PROBE_REGION_EVIDENCE_SVG_EXPORT_SCHEMA: &str =
+    "gentle.probe_region_evidence_svg_export.v1";
+pub const PROBE_REGION_APT_IMPORT_REPORT_SCHEMA: &str = "gentle.probe_region_apt_import_report.v1";
+pub const GENOME_COORDINATE_PROJECTION_REPORT_SCHEMA: &str =
+    "gentle.genome_coordinate_projection_report.v1";
+const MICROARRAY_TRACK_GENERATED_TAG: &str = "microarray_track_projection";
 const DBSNP_VARIANT_MARKER_GENERATED_TAG: &str = "dbsnp_variant_marker";
 const BLAST_HIT_TRACK_GENERATED_TAG: &str = "blast_hit_track";
 const GENOME_ANNOTATION_PROJECTION_GENERATED_TAG: &str = "genome_annotation_projection";
@@ -409,6 +712,7 @@ pub const UNIPROT_ENSEMBL_EXON_COMPARE_SCHEMA: &str = "gentle.uniprot_ensembl_ex
 pub const UNIPROT_ENSEMBL_PEPTIDE_COMPARE_SCHEMA: &str =
     "gentle.uniprot_ensembl_peptide_compare.v1";
 const PROCESS_RUN_BUNDLE_SCHEMA: &str = "gentle.process_run_bundle.v1";
+const LAB_ASSISTANT_INSTRUCTIONS_SCHEMA: &str = "gentle.lab_assistant_instructions.v2";
 pub const ROUTINE_DECISION_TRACES_METADATA_KEY: &str = "routine_decision_traces";
 pub const ROUTINE_DECISION_TRACE_SCHEMA: &str = "gentle.routine_decision_trace.v1";
 pub const ROUTINE_DECISION_TRACE_STORE_SCHEMA: &str = "gentle.routine_decision_trace_store.v1";
@@ -433,9 +737,12 @@ const RNA_READ_TARGET_QUALITY_EXPORT_SCHEMA: &str = "gentle.rna_read_target_qual
 const RNA_READ_SCORE_DENSITY_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_score_density_svg_export.v1";
 const RNA_READ_ALIGNMENT_TSV_EXPORT_SCHEMA: &str = "gentle.rna_read_alignment_tsv_export.v1";
+const RNA_READ_ISOFORM_TRIAGE_TSV_EXPORT_SCHEMA: &str =
+    "gentle.rna_read_isoform_triage_tsv_export.v1";
 const RNA_READ_ALIGNMENT_DOTPLOT_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_alignment_dotplot_svg_export.v1";
 const RNA_READ_ALIGNMENT_INSPECTION_SCHEMA: &str = "gentle.rna_read_alignment_inspection.v1";
+const RNA_READ_ISOFORM_PREFLIGHT_SCHEMA: &str = "gentle.rna_read_isoform_preflight.v1";
 const RNA_READ_CONCATEMER_INSPECTION_SCHEMA: &str = "gentle.rna_read_concatemer_inspection.v1";
 const RNA_READ_ALIGNMENT_DETAIL_SCHEMA: &str = "gentle.rna_read_alignment_detail.v1";
 const CUTRUN_DATASET_LIST_SCHEMA: &str = "gentle.cutrun_dataset_list.v1";
@@ -509,6 +816,10 @@ const TF_QUERY_RESOLUTION_REPORT_SCHEMA: &str = "gentle.tf_query_resolution.v1";
 const VARIANT_PROMOTER_CONTEXT_SCHEMA: &str = "gentle.variant_promoter_context.v1";
 const ALTERNATIVE_PROMOTER_COMPARISON_SCHEMA: &str = "gentle.alternative_promoter_comparison.v1";
 const PROMOTER_EVIDENCE_MATRIX_SCHEMA: &str = "gentle.promoter_evidence_matrix.v1";
+const ISOFORM_PROMOTER_COMPARISON_SCHEMA: &str = "gentle.isoform_promoter_comparison.v1";
+const PROMOTER_EXPRESSION_EVIDENCE_SCHEMA: &str = "gentle.promoter_expression_evidence.v1";
+const PROMOTER_COHORT_COMPARISON_SCHEMA: &str = "gentle.promoter_cohort_comparison.v1";
+const PROMOTER_ARTIFACT_MANIFEST_SCHEMA: &str = "gentle.promoter_artifact_manifest.v1";
 const PROMOTER_REPORTER_CANDIDATES_SCHEMA: &str = "gentle.promoter_reporter_candidates.v1";
 const TFBS_REGION_SUMMARY_DEFAULT_LIMIT: usize = 200;
 const TFBS_REGION_SUMMARY_MAX_LIMIT: usize = 10_000;
@@ -620,24 +931,43 @@ mod cutrun;
 mod feature_coordinate_formulas;
 #[path = "engine/analysis/feature_expert_ops.rs"]
 mod feature_expert_ops;
+#[path = "engine/analysis/gene_sets.rs"]
+mod gene_sets;
 #[path = "engine/io/genome_tracks.rs"]
 mod genome_tracks;
 #[path = "engine/io/import_anchors.rs"]
 mod import_anchors;
 #[path = "engine/analysis/jaspar.rs"]
 mod jaspar;
+#[path = "engine/state/lab_assistant_export.rs"]
+mod lab_assistant_export;
 #[path = "engine/state/lineage_containers.rs"]
 mod lineage_containers;
+#[path = "engine/io/microarray_tracks.rs"]
+mod microarray_tracks;
 #[path = "engine/analysis/motif_statistics.rs"]
 mod motif_statistics;
 #[path = "engine/ops/operation_handlers.rs"]
 mod operation_handlers;
+#[path = "engine/analysis/orthologs.rs"]
+mod orthologs;
+#[path = "engine/io/probe_region_evidence_svg.rs"]
+mod probe_region_evidence_svg;
+#[cfg(test)]
+#[path = "engine/io/probe_region_glen_adapter.rs"]
+mod probe_region_glen_adapter;
+#[path = "engine/io/probe_regions.rs"]
+mod probe_regions;
 #[path = "engine/analysis/promoter_design.rs"]
 mod promoter_design;
 #[path = "engine/analysis/protein_handoff.rs"]
 mod protein_handoff;
+#[path = "engine/io/read_acquisition.rs"]
+mod read_acquisition;
 #[path = "engine/analysis/repeat_cohort.rs"]
 mod repeat_cohort;
+#[path = "engine/ops/reporter_ops.rs"]
+mod reporter_ops;
 #[path = "engine/analysis/rna_reads.rs"]
 mod rna_reads;
 #[path = "engine/state/sequence_ops.rs"]
@@ -648,6 +978,8 @@ mod sequencing_confirmation;
 mod sequencing_traces;
 #[path = "engine/analysis/variant_promoter.rs"]
 mod variant_promoter;
+#[path = "engine/io/zip_store.rs"]
+mod zip_store;
 
 #[path = "engine/protocol.rs"]
 pub mod protocol;
@@ -697,6 +1029,10 @@ fn default_cutrun_neighbor_window_bp() -> usize {
 
 fn default_rna_read_alignment_dotplot_max_points() -> usize {
     2_500
+}
+
+fn default_rna_read_preflight_max_control_match_probability() -> f64 {
+    0.0
 }
 
 fn default_splicing_reference_scope() -> SplicingScopePreset {
@@ -1207,10 +1543,14 @@ impl ProjectState {
         let text = std::fs::read_to_string(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not read state file '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         let mut state: Self = serde_json::from_str(&text).map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Could not parse state JSON '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         if let Err(err) = state.hydrate_candidate_store_from_external_ref(path) {
             if Self::strict_candidate_store_load_enabled() {
@@ -1245,6 +1585,8 @@ impl ProjectState {
         let text = serde_json::to_string_pretty(&state_for_disk).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize state: {e}"),
+
+            cause_chain: vec![],
         })?;
         let committed = Self::commit_candidate_store_transaction(sidecar_tx)?;
         if let Err(write_err) = Self::write_text_file_atomically(project_path, &text) {
@@ -1255,6 +1597,8 @@ impl ProjectState {
                         "{}; candidate-sidecar rollback also failed: {}",
                         write_err.message, rollback_err.message
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             return Err(write_err);
@@ -1305,6 +1649,8 @@ impl ProjectState {
                 "Could not create parent directory '{}' for state save: {e}",
                 parent.display()
             ),
+
+            cause_chain: vec![],
         })?;
         let mut tmp = NamedTempFile::new_in(&parent).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -1312,6 +1658,8 @@ impl ProjectState {
                 "Could not create temporary state file in '{}': {e}",
                 parent.display()
             ),
+
+            cause_chain: vec![],
         })?;
         tmp.write_all(text.as_bytes()).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -1319,6 +1667,8 @@ impl ProjectState {
                 "Could not write temporary state file for '{}': {e}",
                 path.display()
             ),
+
+            cause_chain: vec![],
         })?;
         tmp.flush().map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -1326,6 +1676,8 @@ impl ProjectState {
                 "Could not flush temporary state file for '{}': {e}",
                 path.display()
             ),
+
+            cause_chain: vec![],
         })?;
         tmp.as_file().sync_all().map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -1333,6 +1685,8 @@ impl ProjectState {
                 "Could not sync temporary state file for '{}': {e}",
                 path.display()
             ),
+
+            cause_chain: vec![],
         })?;
         tmp.persist(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -1341,6 +1695,8 @@ impl ProjectState {
                 path.display(),
                 e.error
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(())
     }
@@ -1372,6 +1728,8 @@ impl ProjectState {
                             "Could not create candidate-sidecar staging directory '{}': {e}",
                             candidate.display()
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
             }
@@ -1382,6 +1740,8 @@ impl ProjectState {
                 "Could not create unique candidate-sidecar staging directory under '{}'",
                 parent.display()
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1412,6 +1772,8 @@ impl ProjectState {
                 "Could not allocate candidate-sidecar backup path under '{}'",
                 parent.display()
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1480,6 +1842,8 @@ impl ProjectState {
                 "Could not read candidate-store index '{}': {e}",
                 index_path.display()
             ),
+
+            cause_chain: vec![],
         })?;
         let index: CandidateStoreDiskIndex =
             serde_json::from_str(&index_text).map_err(|e| EngineError {
@@ -1488,6 +1852,8 @@ impl ProjectState {
                     "Could not parse candidate-store index '{}': {e}",
                     index_path.display()
                 ),
+
+                cause_chain: vec![],
             })?;
         if !index.schema.trim().is_empty() && index.schema != CANDIDATE_SETS_DISK_INDEX_SCHEMA {
             return Err(EngineError {
@@ -1497,6 +1863,8 @@ impl ProjectState {
                     index.schema,
                     index_path.display()
                 ),
+
+                cause_chain: vec![],
             });
         }
         let index_dir = index_path
@@ -1517,6 +1885,8 @@ impl ProjectState {
                     records_path.display(),
                     entry.name
                 ),
+
+                cause_chain: vec![],
             })?;
             let reader = BufReader::new(file);
             let mut candidates: Vec<CandidateRecord> = vec![];
@@ -1528,6 +1898,8 @@ impl ProjectState {
                         line_no + 1,
                         records_path.display()
                     ),
+
+                    cause_chain: vec![],
                 })?;
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
@@ -1542,6 +1914,8 @@ impl ProjectState {
                             line_no + 1,
                             e
                         ),
+
+                        cause_chain: vec![],
                     })?;
                 candidates.push(candidate);
             }
@@ -1579,6 +1953,8 @@ impl ProjectState {
                     "Could not parse candidate-store reference metadata '{}': {e}",
                     CANDIDATE_SETS_METADATA_KEY
                 ),
+
+                cause_chain: vec![],
             })?;
         if reference.schema != CANDIDATE_SETS_REF_SCHEMA {
             return Ok(());
@@ -1587,6 +1963,8 @@ impl ProjectState {
         let store_value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not hydrate candidate-store metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.metadata
             .insert(CANDIDATE_SETS_METADATA_KEY.to_string(), store_value);
@@ -1608,6 +1986,8 @@ impl ProjectState {
                     "Could not parse candidate-store reference metadata '{}': {e}",
                     CANDIDATE_SETS_METADATA_KEY
                 ),
+
+                cause_chain: vec![],
             })?;
         if reference.schema != CANDIDATE_SETS_REF_SCHEMA {
             return Ok(None);
@@ -1665,6 +2045,8 @@ impl ProjectState {
                     "Could not create candidate-set records file '{}': {e}",
                     records_path.display()
                 ),
+
+                cause_chain: vec![],
             })?;
             let mut writer = BufWriter::new(records_file);
             for candidate in &set.candidates {
@@ -1674,6 +2056,8 @@ impl ProjectState {
                         "Could not serialize candidate record for set '{}': {e}",
                         set_name
                     ),
+
+                    cause_chain: vec![],
                 })?;
                 writer.write_all(b"\n").map_err(|e| EngineError {
                     code: ErrorCode::Io,
@@ -1681,6 +2065,8 @@ impl ProjectState {
                         "Could not write candidate record for set '{}': {e}",
                         set_name
                     ),
+
+                    cause_chain: vec![],
                 })?;
             }
             writer.flush().map_err(|e| EngineError {
@@ -1689,6 +2075,8 @@ impl ProjectState {
                     "Could not flush candidate-set records file '{}': {e}",
                     records_path.display()
                 ),
+
+                cause_chain: vec![],
             })?;
 
             index_entries.push(CandidateStoreDiskSetIndexEntry {
@@ -1711,6 +2099,8 @@ impl ProjectState {
         let index_text = serde_json::to_string_pretty(&index).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize candidate-store index: {e}"),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(&index_path, index_text).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -1718,6 +2108,8 @@ impl ProjectState {
                 "Could not write candidate-store index '{}': {e}",
                 index_path.display()
             ),
+
+            cause_chain: vec![],
         })?;
 
         let reference = CandidateStoreReference {
@@ -1732,6 +2124,8 @@ impl ProjectState {
         let reference_value = serde_json::to_value(reference).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize candidate-store reference metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.metadata
             .insert(CANDIDATE_SETS_METADATA_KEY.to_string(), reference_value);
@@ -1760,7 +2154,8 @@ impl ProjectState {
                             final_dir.display(),
                             backup.display()
                         ),
-                    })?;
+                    
+                        cause_chain: vec![],})?;
                     backup_dir = Some(backup);
                 }
                 if let Err(e) = std::fs::rename(&staging_dir, &final_dir) {
@@ -1775,6 +2170,8 @@ impl ProjectState {
                             final_dir.display(),
                             staging_dir.display()
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 Ok(CandidateSidecarCommitted::Replaced {
@@ -1794,6 +2191,8 @@ impl ProjectState {
                         final_dir.display(),
                         backup.display()
                     ),
+
+                    cause_chain: vec![],
                 })?;
                 Ok(CandidateSidecarCommitted::Removed {
                     final_dir,
@@ -1820,7 +2219,8 @@ impl ProjectState {
                                 "Could not remove partially committed candidate-sidecar directory '{}': {e}",
                                 final_dir.display()
                             ),
-                        })?;
+                        
+                            cause_chain: vec![],})?;
                     }
                     std::fs::rename(&backup, &final_dir).map_err(|e| EngineError {
                         code: ErrorCode::Io,
@@ -1829,6 +2229,8 @@ impl ProjectState {
                             backup.display(),
                             final_dir.display()
                         ),
+
+                        cause_chain: vec![],
                     })?;
                 } else if final_dir.exists() {
                     std::fs::remove_dir_all(&final_dir).map_err(|e| EngineError {
@@ -1837,7 +2239,8 @@ impl ProjectState {
                             "Could not remove new candidate-sidecar directory '{}' during rollback: {e}",
                             final_dir.display()
                         ),
-                    })?;
+                    
+                        cause_chain: vec![],})?;
                 }
                 Ok(())
             }
@@ -1853,6 +2256,8 @@ impl ProjectState {
                             backup.display(),
                             final_dir.display()
                         ),
+
+                        cause_chain: vec![],
                     })?;
                 }
                 Ok(())
@@ -1874,20 +2279,12 @@ impl ProjectState {
                             "Could not remove candidate-sidecar backup directory '{}': {e}",
                             backup.display()
                         ),
+
+                        cause_chain: vec![],
                     })?;
                 }
                 Ok(())
             }
-        }
-    }
-}
-
-impl PrimerDesignBackend {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Auto => "auto",
-            Self::Internal => "internal",
-            Self::Primer3 => "primer3",
         }
     }
 }
@@ -1949,49 +2346,8 @@ impl Default for OverlapExtensionMutagenesisConstraints {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct TfThresholdOverride {
-    pub tf: String,
-    pub min_llr_bits: Option<f64>,
-    pub min_llr_quantile: Option<f64>,
-}
-
 // Backward-compatible alias kept while adapter/docs migrate to SequenceAnchor.
 pub type AnchoredRegionAnchor = SequenceAnchor;
-
-impl GenomeTrackSource {
-    pub fn from_path(path: &str) -> Self {
-        let lower = path.trim().to_ascii_lowercase();
-        if lower.ends_with(".bw") || lower.ends_with(".bigwig") {
-            Self::BigWig
-        } else if lower.ends_with(".vcf") || lower.ends_with(".vcf.gz") {
-            Self::Vcf
-        } else {
-            Self::Bed
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Bed => "BED",
-            Self::BigWig => "BigWig",
-            Self::Vcf => "VCF",
-        }
-    }
-}
-
-impl Default for GenomeTrackSubscription {
-    fn default() -> Self {
-        Self {
-            source: GenomeTrackSource::Bed,
-            path: String::new(),
-            track_name: None,
-            min_score: None,
-            max_score: None,
-            clear_existing: false,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -2077,149 +2433,6 @@ pub struct CandidateMetricSummary {
     pub missing_in_candidates: usize,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// How feature-based candidate queries turn matching annotations into geometry.
-///
-/// Use this when finding intervals around features or feature boundaries.
-pub enum CandidateFeatureGeometryMode {
-    #[default]
-    FeatureSpan,
-    FeatureParts,
-    FeatureBoundaries,
-}
-
-impl CandidateFeatureGeometryMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::FeatureSpan => "feature_span",
-            Self::FeatureParts => "feature_parts",
-            Self::FeatureBoundaries => "feature_boundaries",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Which boundary of a matched feature is eligible when boundary mode is used.
-pub enum CandidateFeatureBoundaryMode {
-    #[default]
-    Any,
-    FivePrime,
-    ThreePrime,
-    Start,
-    End,
-}
-
-impl CandidateFeatureBoundaryMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Any => "any",
-            Self::FivePrime => "five_prime",
-            Self::ThreePrime => "three_prime",
-            Self::Start => "start",
-            Self::End => "end",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Strand relation required between a candidate query and matched feature.
-pub enum CandidateFeatureStrandRelation {
-    #[default]
-    Any,
-    Same,
-    Opposite,
-}
-
-impl CandidateFeatureStrandRelation {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Any => "any",
-            Self::Same => "same",
-            Self::Opposite => "opposite",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-/// Deterministic set algebra supported by candidate-set combination commands.
-pub enum CandidateSetOperator {
-    Union,
-    Intersect,
-    Subtract,
-}
-
-impl CandidateSetOperator {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Union => "union",
-            Self::Intersect => "intersect",
-            Self::Subtract => "subtract",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum CandidateObjectiveDirection {
-    #[default]
-    Maximize,
-    Minimize,
-}
-
-impl CandidateObjectiveDirection {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Maximize => "maximize",
-            Self::Minimize => "minimize",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// One objective dimension for Pareto-frontier ranking.
-pub struct CandidateObjectiveSpec {
-    pub metric: String,
-    #[serde(default)]
-    pub direction: CandidateObjectiveDirection,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Weighted scalar objective term used by `CandidatesScoreWeightedObjective`.
-pub struct CandidateWeightedObjectiveTerm {
-    pub metric: String,
-    pub weight: f64,
-    #[serde(default)]
-    pub direction: CandidateObjectiveDirection,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Stable tie-breaker used after objective scores compare equal.
-pub enum CandidateTieBreakPolicy {
-    #[default]
-    SeqStartEnd,
-    SeqEndStart,
-    LengthAscending,
-    LengthDescending,
-    SequenceLexicographic,
-}
-
-impl CandidateTieBreakPolicy {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::SeqStartEnd => "seq_start_end",
-            Self::SeqEndStart => "seq_end_start",
-            Self::LengthAscending => "length_ascending",
-            Self::LengthDescending => "length_descending",
-            Self::SequenceLexicographic => "sequence_lexicographic",
-        }
-    }
-}
-
 impl GuideU6TerminatorWindow {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -2275,6 +2488,7 @@ struct PrimerDesignStore {
     reports: HashMap<String, PrimerDesignReport>,
     qpcr_reports: HashMap<String, QpcrDesignReport>,
     restriction_cloning_handoffs: HashMap<String, RestrictionCloningPcrHandoffReport>,
+    oligo_order_forms: HashMap<String, OligoOrderForm>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2323,6 +2537,16 @@ struct SequencingConfirmationReportStore {
     schema: String,
     updated_at_unix_ms: u128,
     reports: BTreeMap<String, SequencingConfirmationReport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct GeneSetArtifactStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    resolutions: BTreeMap<String, GeneSetResolutionReport>,
+    promoter_cohorts: BTreeMap<String, GeneSetPromoterCohortReport>,
+    cutrun_support_reports: BTreeMap<String, GeneSetCutRunRegulatorySupportReport>,
 }
 
 impl PlanningProfileScope {
@@ -2387,6 +2611,7 @@ impl Default for PlanningObjective {
     fn default() -> Self {
         Self {
             schema: PLANNING_OBJECTIVE_SCHEMA.to_string(),
+            biological_intent: None,
             weight_time: 1.0,
             weight_cost: 1.0,
             weight_local_fit: 1.0,
@@ -2616,34 +2841,6 @@ impl BlastRunOptions {
     }
 }
 
-impl GenomeAnchorSide {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::FivePrime => "5prime",
-            Self::ThreePrime => "3prime",
-        }
-    }
-}
-
-impl GenomeAnnotationScope {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::Core => "core",
-            Self::Full => "full",
-        }
-    }
-}
-
-impl GenomeGeneExtractMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Gene => "gene",
-            Self::CodingWithPromoter => "coding_with_promoter",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Canonical engine operation contract.
 ///
@@ -2654,6 +2851,14 @@ pub enum Operation {
     LoadFile {
         path: String,
         as_id: Option<SeqId>,
+    },
+    CreateSequenceFromText {
+        sequence_text: String,
+        output_id: Option<SeqId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default)]
+        circular: bool,
     },
     SaveFile {
         seq_id: SeqId,
@@ -2710,6 +2915,8 @@ pub enum Operation {
     RenderIsoformArchitectureSvg {
         seq_id: SeqId,
         panel_id: String,
+        #[serde(default)]
+        expression_tsv_path: Option<String>,
         path: String,
     },
     RenderRnaStructureSvg {
@@ -2873,6 +3080,12 @@ pub enum Operation {
         #[serde(default)]
         template: RackPhysicalTemplateKind,
     },
+    ExportRackHeroSvg {
+        rack_id: String,
+        path: String,
+        #[serde(default)]
+        template: RackPhysicalTemplateKind,
+    },
     ExportRackOpenScad {
         rack_id: String,
         path: String,
@@ -2915,6 +3128,17 @@ pub enum Operation {
         path: String,
         #[serde(default)]
         run_id: Option<RunId>,
+    },
+    ExportLabAssistantInstructions {
+        path: String,
+        #[serde(default)]
+        run_id: Option<RunId>,
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        audience: Option<String>,
+        #[serde(default)]
+        format: Option<LabAssistantInstructionsFormat>,
     },
     PrepareGenome {
         genome_id: String,
@@ -3020,6 +3244,57 @@ pub enum Operation {
         max_score: Option<f64>,
         clear_existing: Option<bool>,
     },
+    ProjectMicroarrayTrack {
+        seq_id: SeqId,
+        manifest_path: String,
+        #[serde(default)]
+        contrasts: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        level: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_abs_logfc: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_adj_p: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_features: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clear_existing: Option<bool>,
+    },
+    ProjectProbeRegionOutput {
+        seq_id: SeqId,
+        output_dir: String,
+        #[serde(default)]
+        contrasts: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        level: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_abs_logfc: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_features: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clear_existing: Option<bool>,
+    },
+    InterpretProbeRegionEvidence {
+        seq_id: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        level: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_abs_logfc: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ProjectGenomeInterval {
+        source_genome_id: String,
+        target_genome_id: String,
+        projection_path: String,
+        chrom: String,
+        start_1based: usize,
+        end_1based: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        strand: Option<String>,
+    },
     ListCutRunDatasets {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         filter: Option<String>,
@@ -3112,6 +3387,255 @@ pub enum Operation {
         neighbor_window_bp: usize,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         species_filters: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ResolveGeneSet {
+        source: GeneSetRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default)]
+        allow_draft: bool,
+        #[serde(default)]
+        allow_deprecated: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ProduceGeneSetDirectList {
+        cache_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        query: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_version: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_version: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_digest: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        organism: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        taxon_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        symbol_namespace: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        review_status: Option<GeneSetResolutionReviewStatus>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        filters: Vec<GeneSetProducerFilter>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ProduceGeneSetOntologyAssignment {
+        cache_path: String,
+        term: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ontology_namespace: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_version: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_version: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_digest: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        organism: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        taxon_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        symbol_namespace: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        review_status: Option<GeneSetResolutionReviewStatus>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        filters: Vec<GeneSetProducerFilter>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ProduceGeneSetCoRegulatedCohort {
+        cache_path: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        dataset_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        contrast_labels: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        condition_labels: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        normalization_method: Option<String>,
+        scoring_method: String,
+        threshold_rule: String,
+        sign_direction_rule: String,
+        relationship: GeneSetCohortRelationship,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_version: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_version: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_digest: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        organism: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        taxon_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        symbol_namespace: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        review_status: Option<GeneSetResolutionReviewStatus>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        filters: Vec<GeneSetProducerFilter>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    BuildGeneSetPromoterCohort {
+        genome_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<GeneSetRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resolution: Option<Box<GeneSetResolutionReport>>,
+        #[serde(default)]
+        relationship: GeneSetCohortRelationship,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default)]
+        allow_draft: bool,
+        #[serde(default)]
+        allow_deprecated: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    InspectCutRunGeneSetRegulatorySupport {
+        genome_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<GeneSetRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resolution: Option<Box<GeneSetResolutionReport>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        promoter_cohort: Option<Box<GeneSetPromoterCohortReport>>,
+        #[serde(default)]
+        relationship: GeneSetCohortRelationship,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        dataset_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        read_report_ids: Vec<String>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default = "default_cutrun_neighbor_window_bp")]
+        neighbor_window_bp: usize,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        species_filters: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default)]
+        allow_draft: bool,
+        #[serde(default)]
+        allow_deprecated: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ResolveOrthologPromoterCohort {
+        anchor_species: String,
+        anchor_genome_id: String,
+        anchor_gene_query: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        target_species: Vec<String>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        target_genome_ids: BTreeMap<String, String>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        transcript_ids: BTreeMap<String, String>,
+        ortholog_resource_path: String,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default)]
+        ambiguity_policy: OrthologAmbiguityPolicy,
+        #[serde(default)]
+        relationship: GeneSetCohortRelationship,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    SummarizeOrthologPromoterComparison {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cohort: Option<Box<OrthologPromoterCohortReport>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cohort_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        motifs: Vec<String>,
+        #[serde(default = "default_tfbs_score_track_value_kind")]
+        score_kind: TfbsScoreTrackValueKind,
+        #[serde(default = "default_tfbs_score_track_clip_negative")]
+        clip_negative: bool,
+        #[serde(default)]
+        relationship: GeneSetCohortRelationship,
+        #[serde(default)]
+        expression_rows: Vec<PromoterExpressionEvidenceInput>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expression_source_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        cutrun_dataset_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        cutrun_read_report_ids: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -3572,6 +4096,23 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         output_prefix: Option<String>,
     },
+    PlanExonSkippedIsoform {
+        seq_id: SeqId,
+        transcript_feature_id: usize,
+        #[serde(default)]
+        criteria: Vec<ExonSkipSelectionCriterion>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        plan_id: Option<String>,
+    },
+    MaterializeExonSkippedIsoform {
+        plan_id: String,
+        #[serde(default)]
+        selected_candidate_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_prefix: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        return_kinds: Vec<ExonSkipReturnKind>,
+    },
     DeriveProteinSequences {
         seq_id: SeqId,
         #[serde(default)]
@@ -3705,8 +4246,14 @@ pub enum Operation {
         output_prefix: Option<SeqId>,
     },
     AlignSequences {
-        query_seq_id: SeqId,
-        target_seq_id: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        query: Option<SequenceScanTarget>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target: Option<SequenceScanTarget>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        query_seq_id: Option<SeqId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_seq_id: Option<SeqId>,
         #[serde(default)]
         query_span_start_0based: Option<usize>,
         #[serde(default)]
@@ -3795,6 +4342,40 @@ pub enum Operation {
         report_id: String,
         path: String,
     },
+    ReadAcquireStatus {
+        manifest_path: String,
+        cache_dir: String,
+        work_dir: String,
+    },
+    ReadAcquirePrepare {
+        manifest_path: String,
+        cache_dir: String,
+        work_dir: String,
+        #[serde(default)]
+        analysis_format: ReadAcquisitionAnalysisFormat,
+        #[serde(default)]
+        read_layout: ReadAcquisitionReadLayout,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        threads: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_size: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_free_gb: Option<u64>,
+        #[serde(default)]
+        drop_intermediate_fastq: bool,
+        #[serde(default)]
+        continue_on_error: bool,
+    },
+    ReadAcquireInspect {
+        sra_accession: String,
+        cache_dir: String,
+        work_dir: String,
+    },
+    ReadAcquireCancel {
+        sra_accession: String,
+        cache_dir: String,
+        work_dir: String,
+    },
     InterpretRnaReads {
         seq_id: SeqId,
         seed_feature_id: usize,
@@ -3834,6 +4415,22 @@ pub enum Operation {
         align_config_override: Option<RnaReadAlignConfig>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         selected_record_indices: Vec<usize>,
+    },
+    PreflightRnaReadIsoforms {
+        seq_id: SeqId,
+        seed_feature_id: usize,
+        #[serde(default)]
+        scope: SplicingScopePreset,
+        #[serde(default)]
+        seed_filter: RnaReadSeedFilterConfig,
+        #[serde(default)]
+        optimize_parameters: bool,
+        #[serde(default)]
+        positive_transcript_fasta_paths: Vec<String>,
+        #[serde(default)]
+        control_transcript_fasta_paths: Vec<String>,
+        #[serde(default = "default_rna_read_preflight_max_control_match_probability")]
+        max_control_match_probability: f64,
     },
     ListRnaReadReports {
         #[serde(default)]
@@ -3899,6 +4496,14 @@ pub enum Operation {
         concatemer_limit: usize,
         #[serde(default = "default_true")]
         continue_on_error: bool,
+        #[serde(default)]
+        prepare_sra: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        read_cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        read_work_dir: Option<String>,
+        #[serde(default)]
+        drop_intermediate_fastq: bool,
     },
     SummarizeTfbsRegion {
         seq_id: String,
@@ -3964,7 +4569,51 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         catalog_path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_set: Option<GeneSetRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_set_resolution: Option<Box<GeneSetResolutionReport>>,
+        #[serde(default)]
+        allow_draft: bool,
+        #[serde(default)]
+        allow_deprecated: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    SummarizePromoterCohortComparison {
+        genome_id: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        source_seq_ids: Vec<String>,
+        cohort_label: String,
+        #[serde(default)]
+        cohort_kind: PromoterCohortKind,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        genes: Vec<PromoterTfbsGeneQuery>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        motifs: Vec<String>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default = "default_tfbs_score_track_value_kind")]
+        score_kind: TfbsScoreTrackValueKind,
+        #[serde(default = "default_tfbs_score_track_clip_negative")]
+        clip_negative: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expression_source_label: Option<String>,
+        #[serde(default)]
+        expression_rows: Vec<PromoterExpressionEvidenceInput>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        cutrun_dataset_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        cutrun_read_report_ids: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -3985,7 +4634,17 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         catalog_path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_set: Option<GeneSetRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_set_resolution: Option<Box<GeneSetResolutionReport>>,
+        #[serde(default)]
+        allow_draft: bool,
+        #[serde(default)]
+        allow_deprecated: bool,
         path: String,
     },
     ScanTfbsHits {
@@ -4118,6 +4777,46 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    SummarizeIsoformPromoterComparison {
+        input: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        promoter_upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        promoter_downstream_bp: usize,
+        #[serde(default = "default_true")]
+        include_feature_overlaps: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    SummarizePromoterExpressionEvidence {
+        input: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        promoter_upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        promoter_downstream_bp: usize,
+        #[serde(default)]
+        expression_rows: Vec<PromoterExpressionEvidenceInput>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expression_source_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ExportPromoterArtifactManifest {
+        input: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_label: Option<String>,
+        #[serde(default)]
+        artifacts: Vec<PromoterArtifactManifestEntry>,
+        path: String,
+    },
     SuggestPromoterReporterFragments {
         input: SeqId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4132,6 +4831,54 @@ pub enum Operation {
         retain_upstream_beyond_variant_bp: usize,
         #[serde(default = "default_promoter_reporter_max_candidates")]
         max_candidates: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ListReporterCatalog {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    RecommendReporters {
+        #[serde(default)]
+        constraints: ReporterConstraints,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ExportReporterCorpus {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        path: String,
+        #[serde(default)]
+        format: ReporterCorpusExportFormat,
+    },
+    PlanReporterConstructHandoff {
+        candidate_set_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reporter_constraints: Option<ReporterConstraints>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reporter_backbone_seq_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reporter_backbone_load_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reference_fragment_seq_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        alternate_fragment_seq_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_prefix: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -4220,6 +4967,26 @@ pub enum Operation {
         selected_record_indices: Vec<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         subset_spec: Option<String>,
+    },
+    ExportRnaReadIsoformTriageTsv {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        selection: RnaReadHitSelection,
+        #[serde(default)]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subset_spec: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_identity_fraction: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_query_coverage_fraction: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_confirmed_transition_fraction: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_secondary_mappings: Option<usize>,
     },
     ExportRnaReadAlignmentDotplotSvg {
         report_id: String,
@@ -4623,6 +5390,61 @@ struct GenomeBedTrackImportReport {
     cancelled: bool,
     warnings: Vec<String>,
     skipped_wrong_chromosome_examples: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct MicroarrayTrackRow {
+    chromosome: String,
+    start_1based: usize,
+    end_1based: usize,
+    strand: Option<char>,
+    feature_id: String,
+    transcript_cluster_id: Option<String>,
+    exon_id: Option<String>,
+    probe_type: Option<String>,
+    logfc: Option<f64>,
+    ave_expr: Option<f64>,
+    p_value: Option<f64>,
+    adj_p_value: Option<f64>,
+    junction_start_edge: Option<String>,
+    junction_stop_edge: Option<String>,
+    junction_sequence: Option<String>,
+    gene_symbol: Option<String>,
+    has_cds: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct GenomeCoordinateProjectionBlock {
+    source_genome_id: String,
+    target_genome_id: String,
+    source_chrom: String,
+    source_start_1based: usize,
+    source_end_1based: usize,
+    source_strand: Option<char>,
+    target_chrom: String,
+    target_start_1based: usize,
+    target_end_1based: usize,
+    target_strand: Option<char>,
+    method: String,
+}
+
+#[derive(Debug, Clone)]
+struct ProjectedGenomeInterval {
+    target_chrom: String,
+    target_start_1based: usize,
+    target_end_1based: usize,
+    target_strand: Option<char>,
+    method: String,
+    status: String,
+}
+
+#[derive(Debug, Clone)]
+struct PendingMicroarrayFeature {
+    feature: gb_io::seq::Feature,
+    group_key: String,
+    contrast: String,
+    logfc: Option<f64>,
+    adj_p_value: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5106,6 +5928,8 @@ impl GentleEngine {
                     "Could not inspect prepared genome compatibility for '{}': {}",
                     anchor.genome_id, e
                 ),
+
+                cause_chain: vec![],
             })?;
         Ok(SequenceAnchorPreparedGenomeOptionsSummary {
             seq_id: seq_id.to_string(),
@@ -5162,6 +5986,8 @@ impl GentleEngine {
                     index,
                     subscriptions.len()
                 ),
+
+                cause_chain: vec![],
             });
         }
         let removed = subscriptions.remove(index);
@@ -5191,7 +6017,8 @@ impl GentleEngine {
                 message:
                     "No genome-anchored sequence is available. Extract a genome region or gene first."
                         .to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
         let mut report = self.apply_track_subscription_to_seq_ids(&seq_ids, &normalized);
         report.subscriptions_considered = 1;
@@ -5217,6 +6044,8 @@ impl GentleEngine {
                     index,
                     subscriptions.len()
                 ),
+
+                cause_chain: vec![],
             });
         };
         let seq_ids = self.list_sequences_with_genome_anchor();
@@ -5226,7 +6055,8 @@ impl GentleEngine {
                 message:
                     "No genome-anchored sequence is available. Extract a genome region or gene first."
                         .to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
         let mut report = self.apply_track_subscription_to_seq_ids(&seq_ids, &subscription);
         report.subscriptions_considered = 1;
@@ -5294,202 +6124,13 @@ impl GentleEngine {
     pub fn capabilities() -> Capabilities {
         Capabilities {
             protocol_version: "v1".to_string(),
-            supported_operations: vec![
-                "LoadFile".to_string(),
-                "SaveFile".to_string(),
-                "RenderSequenceSvg".to_string(),
-                "RenderDotplotSvg".to_string(),
-                "RenderTfbsScoreTracksSvg".to_string(),
-                "RenderTfbsScoreTrackCorrelationSvg".to_string(),
-                "RenderFeatureExpertSvg".to_string(),
-                "RenderIsoformArchitectureSvg".to_string(),
-                "RenderRnaStructureSvg".to_string(),
-                "RenderLineageSvg".to_string(),
-                "RenderPoolGelSvg".to_string(),
-                "RenderProteinGelSvg".to_string(),
-                "RenderProteinGelReportsSvg".to_string(),
-                "RenderProteaseDigestGelSvg".to_string(),
-                "RenderProtein2dGelSvg".to_string(),
-                "RenderProtocolCartoonSvg".to_string(),
-                "RenderProtocolCartoonTemplateSvg".to_string(),
-                "ValidateProtocolCartoonTemplate".to_string(),
-                "RenderProtocolCartoonTemplateWithBindingsSvg".to_string(),
-                "ExportProtocolCartoonTemplateJson".to_string(),
-                "ApplyGibsonAssemblyPlan".to_string(),
-                "CreateArrangementSerial".to_string(),
-                "SetArrangementLadders".to_string(),
-                "SetContainerDeclaredContentsExclusive".to_string(),
-                "CreateRackFromArrangement".to_string(),
-                "PlaceArrangementOnRack".to_string(),
-                "MoveRackPlacement".to_string(),
-                "MoveRackSamples".to_string(),
-                "MoveRackArrangementBlocks".to_string(),
-                "SetRackProfile".to_string(),
-                "ApplyRackTemplate".to_string(),
-                "SetRackFillDirection".to_string(),
-                "SetRackProfileCustom".to_string(),
-                "SetRackBlockedCoordinates".to_string(),
-                "ExportRackLabelsSvg".to_string(),
-                "ExportRackFabricationSvg".to_string(),
-                "ExportRackIsometricSvg".to_string(),
-                "ExportRackOpenScad".to_string(),
-                "ExportRackCarrierLabelsSvg".to_string(),
-                "ExportRackSimulationJson".to_string(),
-                "ExportDnaLadders".to_string(),
-                "ExportRnaLadders".to_string(),
-                "ExportPool".to_string(),
-                "ExportProcessRunBundle".to_string(),
-                "PrepareGenome".to_string(),
-                "ExtractGenomeRegion".to_string(),
-                "ExtractGenomeGene".to_string(),
-                "ExtractGenomePromoterSlice".to_string(),
-                "ExtendGenomeAnchor".to_string(),
-                "ImportGenomeBedTrack".to_string(),
-                "ImportGenomeBigWigTrack".to_string(),
-                "ImportGenomeVcfTrack".to_string(),
-                "ListCutRunDatasets".to_string(),
-                "ShowCutRunDatasetStatus".to_string(),
-                "PrepareCutRunDataset".to_string(),
-                "ProjectCutRunDataset".to_string(),
-                "InterpretCutRunReads".to_string(),
-                "ListCutRunReadReports".to_string(),
-                "ShowCutRunReadReport".to_string(),
-                "ExportCutRunReadCoverage".to_string(),
-                "InspectCutRunRegulatorySupport".to_string(),
-                "ImportIsoformPanel".to_string(),
-                "ImportUniprotSwissProt".to_string(),
-                "FetchUniprotSwissProt".to_string(),
-                "FetchEnsemblGene".to_string(),
-                "FetchEnsemblRegion".to_string(),
-                "FetchEnsemblProtein".to_string(),
-                "FetchGenBankAccession".to_string(),
-                "FetchDbSnpRegion".to_string(),
-                "FetchUniprotLinkedGenBank".to_string(),
-                "ImportUniprotEntrySequence".to_string(),
-                "ImportEnsemblGeneSequence".to_string(),
-                "ImportEnsemblProteinSequence".to_string(),
-                "ProjectUniprotToGenome".to_string(),
-                "QueryProteinResidueGenomicCoordinates".to_string(),
-                "AuditUniprotProjectionConsistency".to_string(),
-                "AuditUniprotProjectionParity".to_string(),
-                "ImportBlastHitsTrack".to_string(),
-                "DigestContainer".to_string(),
-                "MergeContainersById".to_string(),
-                "LigationContainer".to_string(),
-                "FilterContainerByMolecularWeight".to_string(),
-                "Digest".to_string(),
-                "FindRestrictionSites".to_string(),
-                "QueryRepeatAnnotations".to_string(),
-                "QueryRepeatOverlaps".to_string(),
-                "MaterializeRepeatFeatures".to_string(),
-                "BuildRepeatEnvironmentCohort".to_string(),
-                "MergeContainers".to_string(),
-                "Ligation".to_string(),
-                "Pcr".to_string(),
-                "PcrAdvanced".to_string(),
-                "PcrMutagenesis".to_string(),
-                "DesignPrimerPairs".to_string(),
-                "DesignInsertionPrimerPairs".to_string(),
-                "ExportPrimerDesignReport".to_string(),
-                "AssessPrimerPairSpecificity".to_string(),
-                "PrepareRestrictionCloningPcrHandoff".to_string(),
-                "PcrOverlapExtensionMutagenesis".to_string(),
-                "DesignQpcrAssays".to_string(),
-                "TestCdnaPcr".to_string(),
-                "TestCdnaQpcr".to_string(),
-                "TestCdnaQpcrFasta".to_string(),
-                "DeriveTranscriptSequences".to_string(),
-                "DeriveProteinSequences".to_string(),
-                "ReverseTranslateProteinSequence".to_string(),
-                "ProteaseDigestProteinSequence".to_string(),
-                "BuildProteinToDnaHandoffReasoning".to_string(),
-                "ComputeDotplot".to_string(),
-                "ComputeDotplotOverlay".to_string(),
-                "ComputeFlexibilityTrack".to_string(),
-                "DeriveSplicingReferences".to_string(),
-                "AlignSequences".to_string(),
-                "ConfirmConstructReads".to_string(),
-                "SuggestSequencingPrimers".to_string(),
-                "ListSequencingConfirmationReports".to_string(),
-                "ShowSequencingConfirmationReport".to_string(),
-                "ExportSequencingConfirmationReport".to_string(),
-                "ExportSequencingConfirmationSupportTsv".to_string(),
-                "InterpretRnaReads".to_string(),
-                "AlignRnaReadReport".to_string(),
-                "ListRnaReadReports".to_string(),
-                "ShowRnaReadReport".to_string(),
-                "SummarizeRnaReadGeneSupport".to_string(),
-                "InspectRnaReadGeneSupport".to_string(),
-                "RunRnaReadBatchMap".to_string(),
-                "SummarizeTfbsRegion".to_string(),
-                "SummarizeTfbsScoreTracks".to_string(),
-                "SummarizeTfbsTrackSimilarity".to_string(),
-                "SummarizeAlternativePromoterComparison".to_string(),
-                "SummarizePromoterEvidenceMatrix".to_string(),
-                "SummarizeMultiGenePromoterTfbs".to_string(),
-                "RenderMultiGenePromoterTfbsSvg".to_string(),
-                "ScanTfbsHits".to_string(),
-                "InspectJasparEntry".to_string(),
-                "SummarizeJasparEntries".to_string(),
-                "ResolveTfQueries".to_string(),
-                "BenchmarkJasparRegistry".to_string(),
-                "ListJasparCatalog".to_string(),
-                "SyncJasparRemoteMetadata".to_string(),
-                "AnnotatePromoterWindows".to_string(),
-                "SummarizeVariantPromoterContext".to_string(),
-                "SuggestPromoterReporterFragments".to_string(),
-                "MaterializeVariantAllele".to_string(),
-                "ExportRnaReadReport".to_string(),
-                "ExportRnaReadHitsFasta".to_string(),
-                "ExportRnaReadSampleSheet".to_string(),
-                "ExportRnaReadTargetQuality".to_string(),
-                "ExportRnaReadExonPathsTsv".to_string(),
-                "ExportRnaReadExonAbundanceTsv".to_string(),
-                "ExportRnaReadScoreDensitySvg".to_string(),
-                "ExportRnaReadAlignmentsTsv".to_string(),
-                "ExportRnaReadAlignmentDotplotSvg".to_string(),
-                "MaterializeRnaReadHitSequences".to_string(),
-                "ExtractRegion".to_string(),
-                "ExtractAnchoredRegion".to_string(),
-                "SelectCandidate".to_string(),
-                "FilterByMolecularWeight".to_string(),
-                "FilterByDesignConstraints".to_string(),
-                "GenerateCandidateSet".to_string(),
-                "GenerateCandidateSetBetweenAnchors".to_string(),
-                "DeleteCandidateSet".to_string(),
-                "UpsertGuideSet".to_string(),
-                "DeleteGuideSet".to_string(),
-                "FilterGuidesPractical".to_string(),
-                "GenerateGuideOligos".to_string(),
-                "ExportGuideOligos".to_string(),
-                "ExportGuideProtocolText".to_string(),
-                "ExportFeaturesBed".to_string(),
-                "InspectSequenceContextView".to_string(),
-                "ExportSequenceContextBundle".to_string(),
-                "ScoreCandidateSetExpression".to_string(),
-                "ScoreCandidateSetDistance".to_string(),
-                "FilterCandidateSet".to_string(),
-                "CandidateSetOp".to_string(),
-                "ScoreCandidateSetWeightedObjective".to_string(),
-                "TopKCandidateSet".to_string(),
-                "ParetoFrontierCandidateSet".to_string(),
-                "UpsertWorkflowMacroTemplate".to_string(),
-                "DeleteWorkflowMacroTemplate".to_string(),
-                "UpsertCandidateMacroTemplate".to_string(),
-                "DeleteCandidateMacroTemplate".to_string(),
-                "Reverse".to_string(),
-                "Complement".to_string(),
-                "ReverseComplement".to_string(),
-                "Branch".to_string(),
-                "SetDisplayVisibility".to_string(),
-                "SetLinearViewport".to_string(),
-                "SetTopology".to_string(),
-                "RecomputeFeatures".to_string(),
-                "SetParameter".to_string(),
-                "AnnotateTfbs".to_string(),
-            ],
+            supported_operations: gentle_protocol::public_engine_operation_names()
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect(),
             supported_export_formats: vec!["GenBank".to_string(), "Fasta".to_string()],
             deterministic_operation_log: true,
+            capability_registry: gentle_protocol::capability_registry().to_vec(),
         }
     }
 
@@ -5501,10 +6142,10 @@ impl GentleEngine {
 
         let mut ladders: Vec<DnaLadderInfo> = vec![];
         for name in DNA_LADDERS.names_sorted() {
-            if let Some(filter_text) = &filter {
-                if !name.to_ascii_lowercase().contains(filter_text) {
-                    continue;
-                }
+            if let Some(filter_text) = &filter
+                && !name.to_ascii_lowercase().contains(filter_text)
+            {
+                continue;
             }
             let Some(ladder) = DNA_LADDERS.get(&name) else {
                 continue;
@@ -5542,10 +6183,14 @@ impl GentleEngine {
         let text = serde_json::to_string_pretty(&catalog).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize DNA ladders JSON: {e}"),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write DNA ladders file '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(DnaLadderExportReport {
             path: path.to_string(),
@@ -5561,10 +6206,10 @@ impl GentleEngine {
 
         let mut ladders: Vec<RnaLadderInfo> = vec![];
         for name in RNA_LADDERS.names_sorted() {
-            if let Some(filter_text) = &filter {
-                if !name.to_ascii_lowercase().contains(filter_text) {
-                    continue;
-                }
+            if let Some(filter_text) = &filter
+                && !name.to_ascii_lowercase().contains(filter_text)
+            {
+                continue;
             }
             let Some(ladder) = RNA_LADDERS.get(&name) else {
                 continue;
@@ -5602,10 +6247,14 @@ impl GentleEngine {
         let text = serde_json::to_string_pretty(&catalog).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize RNA ladders JSON: {e}"),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA ladders file '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaLadderExportReport {
             path: path.to_string(),
@@ -5659,6 +6308,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Protease lookup requires a non-empty query".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let all = active_proteases();
@@ -5677,6 +6328,8 @@ impl GentleEngine {
             0 => Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Protease '{}' not found in the built-in catalog", trimmed),
+
+                cause_chain: vec![],
             }),
             _ => Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -5689,6 +6342,8 @@ impl GentleEngine {
                         .collect::<Vec<_>>()
                         .join(", ")
                 ),
+
+                cause_chain: vec![],
             }),
         }
     }
@@ -5755,10 +6410,14 @@ impl GentleEngine {
         let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize protease catalog JSON: {e}"),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write protease catalog file '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(ProteaseCatalogExportReport {
             path: path.to_string(),
@@ -5772,19 +6431,23 @@ impl GentleEngine {
                 EngineError {
                     code: ErrorCode::InvalidInput,
                     message: err.to_string(),
+                    cause_chain: vec![],
                 }
             }
             RnaStructureError::ToolNotFound { .. } => EngineError {
                 code: ErrorCode::Unsupported,
                 message: err.to_string(),
+                cause_chain: vec![],
             },
             RnaStructureError::ToolFailed { .. } => EngineError {
                 code: ErrorCode::Internal,
                 message: err.to_string(),
+                cause_chain: vec![],
             },
             RnaStructureError::Io { .. } => EngineError {
                 code: ErrorCode::Io,
                 message: err.to_string(),
+                cause_chain: vec![],
             },
         }
     }
@@ -5800,6 +6463,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         rna_structure::inspect_text(dna).map_err(Self::map_rna_structure_error)
     }
@@ -5816,6 +6481,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         rna_structure::render_svg(dna, path).map_err(Self::map_rna_structure_error)
     }
@@ -5844,6 +6511,8 @@ impl GentleEngine {
             } else {
                 format!("Could not open genome catalog '{}': {e}", requested_catalog)
             },
+
+            cause_chain: vec![],
         })?;
         let origin = catalog.catalog_origin_label().to_string();
         Ok((catalog, origin))
@@ -5875,6 +6544,8 @@ impl GentleEngine {
                 "Could not read host profile catalog '{}': {}",
                 resolved_catalog_path, e
             ),
+
+            cause_chain: vec![],
         })?;
         let catalog =
             serde_json::from_str::<gentle_protocol::HostProfileCatalog>(&raw).map_err(|e| {
@@ -5884,6 +6555,8 @@ impl GentleEngine {
                         "Could not parse host profile catalog '{}': {}",
                         resolved_catalog_path, e
                     ),
+
+                    cause_chain: vec![],
                 }
             })?;
         Ok((catalog, resolved_catalog_path))
@@ -5904,7 +6577,7 @@ impl GentleEngine {
         if tokens.is_empty() {
             return true;
         }
-        let mut haystack = vec![
+        let mut haystack = [
             profile.profile_id.as_str(),
             profile.species.as_str(),
             profile.strain.as_str(),
@@ -5976,6 +6649,8 @@ impl GentleEngine {
                     "Could not resolve source plan for genome '{}' in catalog '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -5991,6 +6666,8 @@ impl GentleEngine {
                     "Could not preview Ensembl catalog updates for '{}': {}",
                     catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6007,6 +6684,8 @@ impl GentleEngine {
                     "Could not apply Ensembl catalog updates for '{}': {}",
                     catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6022,6 +6701,8 @@ impl GentleEngine {
                     "Could not preview Ensembl catalog updates for '{}': {}",
                     catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6033,6 +6714,8 @@ impl GentleEngine {
             |e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not discover installable Ensembl genomes: {e}"),
+
+                cause_chain: vec![],
             },
         )
     }
@@ -6061,6 +6744,8 @@ impl GentleEngine {
                     "Could not preview Ensembl quick install for '{}' from '{}': {}",
                     species_dir, catalog_origin, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6088,6 +6773,8 @@ impl GentleEngine {
                     "Could not apply Ensembl quick install for '{}' from '{}': {}",
                     species_dir, catalog_origin, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6108,11 +6795,11 @@ impl GentleEngine {
         let started = Instant::now();
         let mut timed_out = false;
         let mut guarded_progress = |progress: PrepareGenomeProgress| -> bool {
-            if let Some(limit) = timeout {
-                if started.elapsed() >= limit {
-                    timed_out = true;
-                    return false;
-                }
+            if let Some(limit) = timeout
+                && started.elapsed() >= limit
+            {
+                timed_out = true;
+                return false;
             }
             on_progress(progress)
         };
@@ -6144,6 +6831,8 @@ impl GentleEngine {
                         species_dir, catalog_origin, e
                     )
                 },
+
+                cause_chain: vec![],
             })
     }
 
@@ -6274,6 +6963,8 @@ impl GentleEngine {
                     "Could not apply Ensembl catalog updates for '{}': {}",
                     catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6291,6 +6982,8 @@ impl GentleEngine {
                     "Could not remove genome catalog entry '{}' from '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6308,6 +7001,8 @@ impl GentleEngine {
                     "Could not remove helper catalog entry '{}' from '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6328,6 +7023,8 @@ impl GentleEngine {
                     "Could not remove prepared genome '{}' from '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6348,6 +7045,8 @@ impl GentleEngine {
                     "Could not remove prepared helper '{}' from '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6357,6 +7056,8 @@ impl GentleEngine {
         inspect_prepared_cache_roots(cache_roots).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not inspect prepared cache roots: {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -6366,6 +7067,8 @@ impl GentleEngine {
         clear_prepared_cache_roots(request).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not clear prepared cache roots: {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -6380,6 +7083,21 @@ impl GentleEngine {
     ) -> Result<Vec<GenomeCatalogListEntry>, EngineError> {
         let (catalog, _) = Self::open_helper_genome_catalog(catalog_path)?;
         Ok(catalog.list_entries(filter))
+    }
+
+    pub fn doctor_helper_vector_catalog(
+        catalog_path: Option<&str>,
+    ) -> Result<HelperVectorCatalogDoctorReport, EngineError> {
+        let (catalog, resolved_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        Ok(catalog.doctor_helper_vector_catalog(resolved_path))
+    }
+
+    pub fn list_helper_vector_cards(
+        catalog_path: Option<&str>,
+        filter: Option<&str>,
+    ) -> Result<HelperVectorCardReport, EngineError> {
+        let (catalog, resolved_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        Ok(catalog.helper_vector_cards(resolved_path, filter))
     }
 
     pub fn list_helper_semantics_vocabulary_terms(
@@ -6397,6 +7115,8 @@ impl GentleEngine {
                 "Could not list helper semantics vocabulary '{}': {}",
                 vocabulary_label, e
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -6428,6 +7148,8 @@ impl GentleEngine {
                     "Could not resolve source plan for helper '{}' in catalog '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6444,6 +7166,8 @@ impl GentleEngine {
                     "Could not interpret helper '{}' in catalog '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6464,6 +7188,8 @@ impl GentleEngine {
                     "Could not resolve cache dir for genome '{}' in catalog '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6484,6 +7210,8 @@ impl GentleEngine {
                     "Could not resolve cache dir for helper '{}' in catalog '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6504,6 +7232,8 @@ impl GentleEngine {
                     "Could not inspect prepared compatibility for genome '{}' in catalog '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6524,6 +7254,8 @@ impl GentleEngine {
                     "Could not inspect prepared compatibility for helper '{}' in catalog '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6544,6 +7276,8 @@ impl GentleEngine {
                     "Could not check prepared status for genome '{}': {}",
                     genome_id, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6564,6 +7298,8 @@ impl GentleEngine {
                     "Could not check prepared status for helper '{}': {}",
                     genome_id, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6584,6 +7320,8 @@ impl GentleEngine {
                     "Could not inspect prepare activity for genome '{}': {}",
                     genome_id, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6604,6 +7342,8 @@ impl GentleEngine {
                     "Could not inspect prepare activity for helper '{}': {}",
                     genome_id, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6624,6 +7364,8 @@ impl GentleEngine {
                     "Could not list genes for genome '{}' in catalog '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6644,6 +7386,8 @@ impl GentleEngine {
                     "Could not list features for helper '{}' in catalog '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6672,6 +7416,8 @@ impl GentleEngine {
                     "Could not run BLAST search against genome '{}' in catalog '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6700,6 +7446,8 @@ impl GentleEngine {
                     "Could not run BLAST search against helper '{}' in catalog '{}': {}",
                     genome_id, catalog_path, e
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -6713,50 +7461,62 @@ impl GentleEngine {
                     "Unsupported BLAST task '{}'. Expected one of: blastn-short, blastn",
                     raw
                 ),
+
+                cause_chain: vec![],
             }),
         }
     }
 
     fn validate_blast_thresholds(thresholds: &BlastThresholdOptions) -> Result<(), EngineError> {
-        if let Some(max_evalue) = thresholds.max_evalue {
-            if !max_evalue.is_finite() || max_evalue < 0.0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "BLAST max_evalue must be a finite number >= 0.0".to_string(),
-                });
-            }
+        if let Some(max_evalue) = thresholds.max_evalue
+            && (!max_evalue.is_finite() || max_evalue < 0.0)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "BLAST max_evalue must be a finite number >= 0.0".to_string(),
+
+                cause_chain: vec![],
+            });
         }
-        if let Some(identity) = thresholds.min_identity_percent {
-            if !identity.is_finite() || !(0.0..=100.0).contains(&identity) {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "BLAST min_identity_percent must be within [0, 100]".to_string(),
-                });
-            }
+        if let Some(identity) = thresholds.min_identity_percent
+            && (!identity.is_finite() || !(0.0..=100.0).contains(&identity))
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "BLAST min_identity_percent must be within [0, 100]".to_string(),
+
+                cause_chain: vec![],
+            });
         }
-        if let Some(qcov) = thresholds.min_query_coverage_percent {
-            if !qcov.is_finite() || !(0.0..=100.0).contains(&qcov) {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "BLAST min_query_coverage_percent must be within [0, 100]".to_string(),
-                });
-            }
+        if let Some(qcov) = thresholds.min_query_coverage_percent
+            && (!qcov.is_finite() || !(0.0..=100.0).contains(&qcov))
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "BLAST min_query_coverage_percent must be within [0, 100]".to_string(),
+
+                cause_chain: vec![],
+            });
         }
-        if let Some(min_len) = thresholds.min_alignment_length_bp {
-            if min_len == 0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "BLAST min_alignment_length_bp must be >= 1".to_string(),
-                });
-            }
+        if let Some(min_len) = thresholds.min_alignment_length_bp
+            && min_len == 0
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "BLAST min_alignment_length_bp must be >= 1".to_string(),
+
+                cause_chain: vec![],
+            });
         }
-        if let Some(min_bitscore) = thresholds.min_bit_score {
-            if !min_bitscore.is_finite() || min_bitscore < 0.0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "BLAST min_bit_score must be a finite number >= 0.0".to_string(),
-                });
-            }
+        if let Some(min_bitscore) = thresholds.min_bit_score
+            && (!min_bitscore.is_finite() || min_bitscore < 0.0)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "BLAST min_bit_score must be a finite number >= 0.0".to_string(),
+
+                cause_chain: vec![],
+            });
         }
         Ok(())
     }
@@ -6772,11 +7532,15 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("BLAST options in {source} must be a JSON object"),
+
+                cause_chain: vec![],
             });
         }
         serde_json::from_value::<BlastRunOptions>(value.clone()).map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Invalid BLAST options in {source}: {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -6802,6 +7566,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("BLAST defaults file '{}' does not exist", trimmed),
+
+                    cause_chain: vec![],
                 });
             }
             return Ok(None);
@@ -6809,10 +7575,14 @@ impl GentleEngine {
         let text = std::fs::read_to_string(p).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not read BLAST defaults file '{}': {}", trimmed, e),
+
+            cause_chain: vec![],
         })?;
         let value = serde_json::from_str::<serde_json::Value>(&text).map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Could not parse BLAST defaults file '{}': {}", trimmed, e),
+
+            cause_chain: vec![],
         })?;
         let parsed = Self::parse_blast_run_options_from_value(
             &value,
@@ -6867,6 +7637,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "BLAST max_hits must be >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Self::validate_blast_thresholds(&merged.thresholds)?;
@@ -6881,15 +7653,15 @@ impl GentleEngine {
         hit: &crate::genomes::BlastHit,
         t: &BlastThresholdOptions,
     ) -> bool {
-        if let Some(max_evalue) = t.max_evalue {
-            if hit.evalue > max_evalue {
-                return false;
-            }
+        if let Some(max_evalue) = t.max_evalue
+            && hit.evalue > max_evalue
+        {
+            return false;
         }
-        if let Some(min_identity_percent) = t.min_identity_percent {
-            if hit.identity_percent < min_identity_percent {
-                return false;
-            }
+        if let Some(min_identity_percent) = t.min_identity_percent
+            && hit.identity_percent < min_identity_percent
+        {
+            return false;
         }
         if let Some(min_query_coverage_percent) = t.min_query_coverage_percent {
             match hit.query_coverage_percent {
@@ -6897,15 +7669,15 @@ impl GentleEngine {
                 _ => return false,
             }
         }
-        if let Some(min_alignment_length_bp) = t.min_alignment_length_bp {
-            if hit.alignment_length < min_alignment_length_bp {
-                return false;
-            }
+        if let Some(min_alignment_length_bp) = t.min_alignment_length_bp
+            && hit.alignment_length < min_alignment_length_bp
+        {
+            return false;
         }
-        if let Some(min_bit_score) = t.min_bit_score {
-            if hit.bit_score < min_bit_score {
-                return false;
-            }
+        if let Some(min_bit_score) = t.min_bit_score
+            && hit.bit_score < min_bit_score
+        {
+            return false;
         }
         true
     }
@@ -6933,6 +7705,8 @@ impl GentleEngine {
                     "BLAST unique_best_hit requires exactly one remaining hit, found {}",
                     report.hit_count
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(())
@@ -7190,6 +7964,8 @@ impl GentleEngine {
                     format!("Could not plan genome refresh for '{genome_id}': {e}")
                 }
             },
+
+            cause_chain: vec![],
         })
     }
 
@@ -7206,11 +7982,11 @@ impl GentleEngine {
         let started = Instant::now();
         let mut timed_out = false;
         let mut guarded_progress = |progress: PrepareGenomeProgress| -> bool {
-            if let Some(limit) = timeout {
-                if started.elapsed() >= limit {
-                    timed_out = true;
-                    return false;
-                }
+            if let Some(limit) = timeout
+                && started.elapsed() >= limit
+            {
+                timed_out = true;
+                return false;
             }
             on_progress(progress)
         };
@@ -7253,6 +8029,8 @@ impl GentleEngine {
             } else {
                 format!("Could not {action_label} genome '{genome_id}': {e}")
             },
+
+            cause_chain: vec![],
         })
     }
 
@@ -7358,11 +8136,11 @@ impl GentleEngine {
         let started = Instant::now();
         let mut timed_out = false;
         let mut guarded_progress = |progress: PrepareGenomeProgress| -> bool {
-            if let Some(limit) = timeout {
-                if started.elapsed() >= limit {
-                    timed_out = true;
-                    return false;
-                }
+            if let Some(limit) = timeout
+                && started.elapsed() >= limit
+            {
+                timed_out = true;
+                return false;
             }
             on_progress(progress)
         };
@@ -7387,6 +8165,8 @@ impl GentleEngine {
                 } else {
                     format!("Could not prepare helper genome '{}': {e}", genome_id)
                 },
+
+                cause_chain: vec![],
             })
     }
 
@@ -7396,10 +8176,31 @@ impl GentleEngine {
         report: &PrepareGenomeReport,
     ) -> String {
         if report.lifecycle_status == "running" && report.reused_existing_activity {
-            let cache_suffix = cache_dir
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(|value| format!(" in '{}'", value))
+            let activity_location_suffix = report
+                .current_activity
+                .as_ref()
+                .and_then(|activity| {
+                    let status_path = activity.status_path.trim();
+                    if status_path.is_empty() {
+                        return None;
+                    }
+                    let install_dir = Path::new(status_path)
+                        .parent()
+                        .map(|path| path.display().to_string())
+                        .filter(|value| !value.is_empty());
+                    Some(match install_dir {
+                        Some(install_dir) => {
+                            format!(" in '{install_dir}' (activity status: '{status_path}')")
+                        }
+                        None => format!(" (activity status: '{status_path}')"),
+                    })
+                })
+                .or_else(|| {
+                    cache_dir
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(|value| format!(" in '{}'", value))
+                })
                 .unwrap_or_default();
             let phase_suffix = report
                 .current_activity
@@ -7409,7 +8210,7 @@ impl GentleEngine {
                 .unwrap_or_default();
             return format!(
                 "Genome preparation for '{}' is already running{}{}.",
-                genome_id, cache_suffix, phase_suffix
+                genome_id, activity_location_suffix, phase_suffix
             );
         }
         let status = if report.reused_existing {
@@ -7473,6 +8274,49 @@ impl GentleEngine {
         &self.journal
     }
 
+    fn operation_history_name(op: &Operation) -> String {
+        let debug = format!("{op:?}");
+        debug
+            .split([' ', '('])
+            .next()
+            .filter(|value| !value.is_empty())
+            .unwrap_or(debug.as_str())
+            .to_string()
+    }
+
+    fn history_transition_summary_for_record(
+        record: &OperationRecord,
+    ) -> EngineHistoryTransitionSummary {
+        EngineHistoryTransitionSummary {
+            op_id: record.result.op_id.clone(),
+            run_id: record.run_id.clone(),
+            operation: Self::operation_history_name(&record.op),
+        }
+    }
+
+    /// Return session-local multi-level undo/redo availability.
+    ///
+    /// History checkpoints are intentionally not serialized with project state;
+    /// this summary describes only the currently running engine instance.
+    pub fn history_summary(&self) -> EngineHistorySummary {
+        EngineHistorySummary {
+            schema: "gentle.engine_history_summary.v1".to_string(),
+            undo_count: self.undo_stack.len(),
+            redo_count: self.redo_stack.len(),
+            history_limit: self.history_limit_or_default(),
+            operation_log_count: self.journal.len(),
+            next_undo: self
+                .journal
+                .last()
+                .map(Self::history_transition_summary_for_record),
+            next_redo: self
+                .redo_stack
+                .last()
+                .and_then(|checkpoint| checkpoint.journal.last())
+                .map(Self::history_transition_summary_for_record),
+        }
+    }
+
     fn history_limit_or_default(&self) -> usize {
         if self.history_limit == 0 {
             Self::default_history_limit()
@@ -7524,6 +8368,7 @@ impl GentleEngine {
                 | Operation::ExportRackLabelsSvg { .. }
                 | Operation::ExportRackFabricationSvg { .. }
                 | Operation::ExportRackIsometricSvg { .. }
+                | Operation::ExportRackHeroSvg { .. }
                 | Operation::ExportRackOpenScad { .. }
                 | Operation::ExportRackCarrierLabelsSvg { .. }
                 | Operation::ExportRackSimulationJson { .. }
@@ -7531,6 +8376,7 @@ impl GentleEngine {
                 | Operation::ExportRnaLadders { .. }
                 | Operation::ExportPool { .. }
                 | Operation::ExportProcessRunBundle { .. }
+                | Operation::ExportLabAssistantInstructions { .. }
                 | Operation::ExportFeaturesBed { .. }
                 | Operation::InspectSequenceContextView { .. }
                 | Operation::ExportSequenceContextBundle { .. }
@@ -7540,6 +8386,11 @@ impl GentleEngine {
                 | Operation::ShowCutRunReadReport { .. }
                 | Operation::ExportCutRunReadCoverage { .. }
                 | Operation::InspectCutRunRegulatorySupport { .. }
+                | Operation::ReadAcquireStatus { .. }
+                | Operation::ReadAcquirePrepare { .. }
+                | Operation::ReadAcquireInspect { .. }
+                | Operation::ReadAcquireCancel { .. }
+                | Operation::PreflightRnaReadIsoforms { .. }
                 | Operation::ListRnaReadReports { .. }
                 | Operation::ShowRnaReadReport { .. }
                 | Operation::SummarizeRnaReadGeneSupport { .. }
@@ -7554,7 +8405,13 @@ impl GentleEngine {
                 | Operation::SummarizeTfbsTrackSimilarity { .. }
                 | Operation::SummarizeAlternativePromoterComparison { .. }
                 | Operation::SummarizePromoterEvidenceMatrix { .. }
+                | Operation::SummarizeIsoformPromoterComparison { .. }
+                | Operation::SummarizePromoterExpressionEvidence { .. }
+                | Operation::ExportPromoterArtifactManifest { .. }
                 | Operation::SummarizeMultiGenePromoterTfbs { .. }
+                | Operation::SummarizePromoterCohortComparison { .. }
+                | Operation::ResolveOrthologPromoterCohort { .. }
+                | Operation::SummarizeOrthologPromoterComparison { .. }
                 | Operation::RenderMultiGenePromoterTfbsSvg { .. }
                 | Operation::ScanTfbsHits { .. }
                 | Operation::InspectJasparEntry { .. }
@@ -7563,8 +8420,15 @@ impl GentleEngine {
                 | Operation::BenchmarkJasparRegistry { .. }
                 | Operation::ListJasparCatalog { .. }
                 | Operation::SyncJasparRemoteMetadata { .. }
+                | Operation::ProduceGeneSetDirectList { .. }
+                | Operation::ProduceGeneSetOntologyAssignment { .. }
+                | Operation::ProduceGeneSetCoRegulatedCohort { .. }
                 | Operation::SummarizeVariantPromoterContext { .. }
                 | Operation::SuggestPromoterReporterFragments { .. }
+                | Operation::ListReporterCatalog { .. }
+                | Operation::RecommendReporters { .. }
+                | Operation::ExportReporterCorpus { .. }
+                | Operation::PlanReporterConstructHandoff { .. }
                 | Operation::ExportRnaReadReport { .. }
                 | Operation::ExportRnaReadHitsFasta { .. }
                 | Operation::ExportRnaReadSampleSheet { .. }
@@ -7573,6 +8437,7 @@ impl GentleEngine {
                 | Operation::ExportRnaReadExonAbundanceTsv { .. }
                 | Operation::ExportRnaReadScoreDensitySvg { .. }
                 | Operation::ExportRnaReadAlignmentsTsv { .. }
+                | Operation::ExportRnaReadIsoformTriageTsv { .. }
                 | Operation::ExportRnaReadAlignmentDotplotSvg { .. }
                 | Operation::ListSequencingConfirmationReports { .. }
                 | Operation::ShowSequencingConfirmationReport { .. }
@@ -7614,6 +8479,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: "No operation to undo".to_string(),
+
+                cause_chain: vec![],
             });
         };
         let current = self.capture_history_checkpoint();
@@ -7632,6 +8499,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: "No operation to redo".to_string(),
+
+                cause_chain: vec![],
             });
         };
         let current = self.capture_history_checkpoint();
@@ -7992,6 +8861,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Gene query cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let resolved_transcript_id = transcript_id
@@ -8006,6 +8877,8 @@ impl GentleEngine {
                     "Could not load gene index for genome '{}': {}",
                     genome_id, e
                 ),
+
+                cause_chain: vec![],
             })?;
         let mut exact_matches: Vec<&GenomeGeneRecord> = genes
             .iter()
@@ -8025,6 +8898,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("No genes in '{}' match query '{}'", genome_id, query),
+
+                cause_chain: vec![],
             });
         }
         let requested_occurrence = occurrence;
@@ -8033,6 +8908,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Gene occurrence must be >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut warnings = vec![];
@@ -8053,6 +8930,8 @@ impl GentleEngine {
                     exact_matches.len(),
                     occurrence
                 ),
+
+                cause_chain: vec![],
             });
         };
 
@@ -8150,6 +9029,8 @@ impl GentleEngine {
             .map_err(|message| EngineError {
                 code: ErrorCode::NotFound,
                 message,
+
+                cause_chain: vec![],
             })?;
 
         if resolved_transcript_id.is_none() && transcript_records.len() > 1 {
@@ -8409,10 +9290,10 @@ impl GentleEngine {
         let mut seen: HashSet<String> = HashSet::new();
         let mut push_candidate = |candidate: String| {
             let normalized = Self::normalize_enzyme_match_token(&candidate);
-            if let Some(name) = lookup.get(&normalized) {
-                if seen.insert(name.clone()) {
-                    out.push(name.clone());
-                }
+            if let Some(name) = lookup.get(&normalized)
+                && seen.insert(name.clone())
+            {
+                out.push(name.clone());
             }
         };
         for idx in 0..tokens.len() {
@@ -8478,10 +9359,10 @@ impl GentleEngine {
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                 {
-                    if let Some(name) = Self::canonicalize_rebase_enzyme_name(token, &lookup) {
-                        if seen.insert(name.clone()) {
-                            ordered.push(name);
-                        }
+                    if let Some(name) = Self::canonicalize_rebase_enzyme_name(token, &lookup)
+                        && seen.insert(name.clone())
+                    {
+                        ordered.push(name);
                     }
                 }
             }
@@ -8500,6 +9381,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?;
         let cut_positions = Self::restriction_cloning_cut_positions_0based(dna);
         let unique_cutters = cut_positions
@@ -8689,6 +9572,8 @@ impl GentleEngine {
                     "Primer-design report '{}' has no accepted primer pairs",
                     report.report_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let pair_rank = pair_rank_1based.unwrap_or(1);
@@ -8696,6 +9581,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Restriction-cloning pair rank must be >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let pair_index = pair_rank - 1;
@@ -8709,6 +9596,8 @@ impl GentleEngine {
                     "Primer-design report '{}' does not have accepted pair rank {}",
                     report.report_id, pair_rank
                 ),
+
+                cause_chain: vec![],
             })?;
         let pair_geometry = report.pair_core_geometry(&selected_pair);
         let destination_vector_seq_id = destination_vector_seq_id.trim();
@@ -8716,6 +9605,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Restriction-cloning destination vector is empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let suggestions =
@@ -8744,7 +9635,8 @@ impl GentleEngine {
                                 available_names.join(", ")
                             )
                         },
-                    })
+                    
+                        cause_chain: vec![],})
         };
         let explicit_forward = forward_enzyme
             .map(str::trim)
@@ -8765,6 +9657,8 @@ impl GentleEngine {
                                 "Restriction-cloning single_site seed requires matching forward/reverse enzymes, got '{}' and '{}'",
                                 fwd, rev
                             ),
+
+                            cause_chain: vec![],
                         });
                     }
                     if let Some(raw) = explicit {
@@ -8785,7 +9679,8 @@ impl GentleEngine {
                                     "Vector '{}' has no recommended single-site restriction cutters for restriction-cloning seed generation",
                                     destination_vector_seq_id
                                 ),
-                            })?;
+                            
+                                cause_chain: vec![],})?;
                         (
                             suggestion.enzyme.clone(),
                             suggestion.enzyme.clone(),
@@ -8799,7 +9694,8 @@ impl GentleEngine {
                         return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message: "Restriction-cloning directed_pair seed requires both forward and reverse enzymes, or neither to use the top recommendation".to_string(),
-                        });
+                        
+                            cause_chain: vec![],});
                     }
                     if let (Some(fwd), Some(rev)) = (explicit_forward, explicit_reverse) {
                         let canonical_forward = canonicalize_enzyme(fwd, "forward")?;
@@ -8834,6 +9730,8 @@ impl GentleEngine {
                                         recommended.join(", ")
                                     )
                                 },
+
+                                cause_chain: vec![],
                             });
                         };
                         (
@@ -8852,7 +9750,8 @@ impl GentleEngine {
                                     "Vector '{}' has no recommended directed restriction-site pairs for restriction-cloning seed generation",
                                     destination_vector_seq_id
                                 ),
-                            })?;
+                            
+                                cause_chain: vec![],})?;
                         (
                             suggestion.forward_enzyme.clone(),
                             suggestion.reverse_enzyme.clone(),
@@ -9484,6 +10383,8 @@ impl GentleEngine {
         let mut dna = DNAsequence::from_sequence(&sequence).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not construct DNA sequence from genome slice: {e}"),
+
+            cause_chain: vec![],
         })?;
         let seq_id = self.unique_seq_id(&default_id);
         dna.set_name(seq_id.clone());
@@ -9575,6 +10476,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Track path cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if subscription
@@ -9586,6 +10489,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Track subscription requires min_score <= max_score".to_string(),
+
+                cause_chain: vec![],
             });
         }
         subscription.track_name = subscription
@@ -9635,6 +10540,8 @@ impl GentleEngine {
         let value = serde_json::to_value(subscriptions).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize genome track subscriptions: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -9757,6 +10664,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Candidate set name cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(trimmed.to_string())
@@ -9806,6 +10715,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize candidate-set metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -9845,6 +10756,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize isoform-panel metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -9874,6 +10787,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "panel_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let store = self.read_isoform_panel_store();
@@ -9889,6 +10804,8 @@ impl GentleEngine {
                     "Isoform panel '{}' was not imported for sequence '{}'",
                     probe, seq_id
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -9918,6 +10835,7 @@ impl GentleEngine {
         if store.reports.is_empty()
             && store.qpcr_reports.is_empty()
             && store.restriction_cloning_handoffs.is_empty()
+            && store.oligo_order_forms.is_empty()
         {
             self.state
                 .metadata
@@ -9929,6 +10847,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize primer-design metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -9972,6 +10892,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize protein-derivation metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -9994,6 +10916,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "report_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(trimmed.to_string())
@@ -10035,6 +10959,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize UniProt projection audit metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state.metadata.insert(
             UNIPROT_PROJECTION_AUDIT_REPORTS_METADATA_KEY.to_string(),
@@ -10081,6 +11007,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize UniProt projection audit parity metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state.metadata.insert(
             UNIPROT_PROJECTION_AUDIT_PARITY_REPORTS_METADATA_KEY.to_string(),
@@ -10095,6 +11023,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "report_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut out = String::with_capacity(trimmed.len());
@@ -10110,6 +11040,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(out)
@@ -10193,6 +11125,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("UniProt projection audit report '{}' not found", report_id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -10208,10 +11142,14 @@ impl GentleEngine {
                 "Could not serialize UniProt projection audit report '{}': {e}",
                 report.report_id
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write UniProt projection audit report to '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(report)
     }
@@ -10284,6 +11222,8 @@ impl GentleEngine {
                     "UniProt projection audit parity report '{}' not found",
                     report_id
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -10299,12 +11239,16 @@ impl GentleEngine {
                 "Could not serialize UniProt projection audit parity report '{}': {e}",
                 report.report_id
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!(
                 "Could not write UniProt projection audit parity report to '{path}': {e}"
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(report)
     }
@@ -10357,6 +11301,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize reverse-translation metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -10423,6 +11369,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "report_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut out = String::with_capacity(trimmed.len());
@@ -10438,6 +11386,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(out)
@@ -10476,6 +11426,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Primer-design report '{}' not found", report_id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -10491,10 +11443,14 @@ impl GentleEngine {
                 "Could not serialize primer-design report '{}': {e}",
                 report.report_id
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write primer-design report to '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(report)
     }
@@ -10531,6 +11487,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("qPCR design report '{}' not found", report_id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -10546,12 +11504,646 @@ impl GentleEngine {
                 "Could not serialize qPCR design report '{}': {e}",
                 report.report_id
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write qPCR design report to '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(report)
+    }
+
+    fn normalize_oligo_order_form_id(raw: &str) -> Result<String, EngineError> {
+        Self::normalize_primer_design_report_id(raw)
+    }
+
+    fn default_oligo_scale(raw: Option<&str>) -> String {
+        raw.map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("25nmol")
+            .to_string()
+    }
+
+    fn default_oligo_purification(raw: Option<&str>) -> String {
+        raw.map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("desalted")
+            .to_string()
+    }
+
+    fn normalize_oligo_sequence(raw: &str) -> String {
+        raw.chars()
+            .filter(|ch| !ch.is_whitespace())
+            .map(|ch| {
+                let up = ch.to_ascii_uppercase();
+                if up == 'U' { 'T' } else { up }
+            })
+            .collect()
+    }
+
+    fn normalize_oligo_modifications(values: &[String]) -> Vec<String> {
+        values
+            .iter()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    fn oligo_procurement_key(line: &OligoOrderLineItem) -> String {
+        format!(
+            "{}\u{1f}{}\u{1f}{}\u{1f}{}",
+            Self::normalize_oligo_sequence(&line.sequence_5_to_3),
+            line.modifications.join("\u{1e}"),
+            line.scale.trim(),
+            line.purification.trim()
+        )
+    }
+
+    fn oligo_sequence_reuse_key(line: &OligoOrderLineItem) -> String {
+        Self::normalize_oligo_sequence(&line.sequence_5_to_3)
+    }
+
+    fn short_sha1_id(prefix: &str, raw: &str) -> String {
+        let digest = Sha1::digest(raw.as_bytes());
+        format!("{prefix}_{:x}", digest)[..(prefix.len() + 1 + 16)].to_string()
+    }
+
+    fn deterministic_oligo_line_id(form_id: &str, line: &OligoOrderLineItem) -> String {
+        let provenance = &line.provenance;
+        let rank = provenance
+            .pair_rank
+            .map(|rank| format!("pair:{rank}"))
+            .or_else(|| provenance.assay_rank.map(|rank| format!("assay:{rank}")))
+            .unwrap_or_else(|| "rank:-".to_string());
+        let raw = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
+            form_id,
+            provenance.source_kind.trim(),
+            provenance.report_id.trim(),
+            rank,
+            provenance.role.trim(),
+            Self::oligo_procurement_key(line)
+        );
+        Self::short_sha1_id("oli", &raw)
+    }
+
+    fn deterministic_oligo_group_id(prefix: &str, form_id: &str, key: &str) -> String {
+        Self::short_sha1_id(prefix, &format!("{form_id}\n{key}"))
+    }
+
+    fn finalize_oligo_order_form(
+        &self,
+        mut form: OligoOrderForm,
+    ) -> Result<OligoOrderForm, EngineError> {
+        let form_id = Self::normalize_oligo_order_form_id(&form.form_id)?;
+        form.form_id = form_id.clone();
+        form.schema = OLIGO_ORDER_FORM_SCHEMA.to_string();
+        if form.created_at_unix_ms == 0 {
+            form.created_at_unix_ms = Self::now_unix_ms();
+        }
+        form.updated_at_unix_ms = Self::now_unix_ms();
+
+        let mut seen_line_ids = HashMap::<String, usize>::new();
+        for (idx, line) in form.line_items.iter_mut().enumerate() {
+            line.line_no = idx + 1;
+            line.sequence_5_to_3 = Self::normalize_oligo_sequence(&line.sequence_5_to_3);
+            if line.sequence_5_to_3.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Oligo order line {} has an empty sequence", idx + 1),
+                    cause_chain: vec![],
+                });
+            }
+            line.length_nt = line.sequence_5_to_3.len();
+            line.modifications = Self::normalize_oligo_modifications(&line.modifications);
+            if line.scale.trim().is_empty() {
+                line.scale = Self::default_oligo_scale(None);
+            }
+            if line.purification.trim().is_empty() {
+                line.purification = Self::default_oligo_purification(None);
+            }
+            if line.role.trim().is_empty() {
+                line.role = "oligo".to_string();
+            }
+            if line.provenance.role.trim().is_empty() {
+                line.provenance.role = line.role.clone();
+            }
+            if line.provenance.source_kind.trim().is_empty() {
+                line.provenance.source_kind = "generic_json".to_string();
+            }
+            if line.name.trim().is_empty() {
+                line.name = format!("{}_{}", form_id, line.role);
+            }
+            let base_id = Self::deterministic_oligo_line_id(&form_id, line);
+            let count = seen_line_ids.entry(base_id.clone()).or_insert(0);
+            *count += 1;
+            line.line_id = if *count == 1 {
+                base_id
+            } else {
+                format!("{base_id}_{}", *count)
+            };
+        }
+
+        let mut duplicate_by_key = HashMap::<String, Vec<String>>::new();
+        for line in &form.line_items {
+            duplicate_by_key
+                .entry(Self::oligo_procurement_key(line))
+                .or_default()
+                .push(line.line_id.clone());
+        }
+        let mut duplicate_groups = duplicate_by_key
+            .into_iter()
+            .filter_map(|(key, mut line_ids)| {
+                if line_ids.len() < 2 {
+                    return None;
+                }
+                line_ids.sort();
+                let line = form
+                    .line_items
+                    .iter()
+                    .find(|candidate| candidate.line_id == line_ids[0])?;
+                Some(OligoOrderDuplicateGroup {
+                    group_id: Self::deterministic_oligo_group_id("dup", &form_id, &key),
+                    line_ids,
+                    sequence_5_to_3: line.sequence_5_to_3.clone(),
+                    modifications: line.modifications.clone(),
+                    scale: line.scale.clone(),
+                    purification: line.purification.clone(),
+                })
+            })
+            .collect::<Vec<_>>();
+        duplicate_groups.sort_by(|left, right| left.group_id.cmp(&right.group_id));
+        form.duplicate_groups = duplicate_groups;
+
+        let mut reuse_by_sequence = HashMap::<String, Vec<&OligoOrderLineItem>>::new();
+        for line in &form.line_items {
+            reuse_by_sequence
+                .entry(Self::oligo_sequence_reuse_key(line))
+                .or_default()
+                .push(line);
+        }
+        let mut sequence_reuse_groups = reuse_by_sequence
+            .into_iter()
+            .filter_map(|(sequence, lines)| {
+                let procurement_tuple_count = lines
+                    .iter()
+                    .map(|line| Self::oligo_procurement_key(line))
+                    .collect::<BTreeSet<_>>()
+                    .len();
+                if procurement_tuple_count < 2 {
+                    return None;
+                }
+                let mut line_ids = lines
+                    .iter()
+                    .map(|line| line.line_id.clone())
+                    .collect::<Vec<_>>();
+                line_ids.sort();
+                Some(OligoOrderSequenceReuseGroup {
+                    group_id: Self::deterministic_oligo_group_id("reuse", &form_id, &sequence),
+                    line_ids,
+                    sequence_5_to_3: sequence,
+                    procurement_tuple_count,
+                })
+            })
+            .collect::<Vec<_>>();
+        sequence_reuse_groups.sort_by(|left, right| left.group_id.cmp(&right.group_id));
+        form.sequence_reuse_groups = sequence_reuse_groups;
+        form.warnings.retain(|warning| {
+            !warning
+                .contains("sequence(s) reused across different scale/purification/modifications")
+        });
+        if !form.sequence_reuse_groups.is_empty() {
+            form.warnings.push(format!(
+                "{} sequence(s) reused across different scale/purification/modifications; confirm this is intended.",
+                form.sequence_reuse_groups.len()
+            ));
+        }
+
+        if form.duplicate_review.status.trim().is_empty()
+            || form.duplicate_review.status == "not_required"
+            || form.duplicate_review.status == "review_required"
+        {
+            form.duplicate_review.status = if form.duplicate_groups.is_empty() {
+                "not_required".to_string()
+            } else {
+                "review_required".to_string()
+            };
+        }
+        if form.duplicate_review.default_action.trim().is_empty() {
+            form.duplicate_review.default_action = "keep_separate".to_string();
+        }
+        Ok(form)
+    }
+
+    pub fn create_oligo_order_form_from_request(
+        &mut self,
+        request: OligoOrderFormCreateRequest,
+    ) -> Result<OligoOrderForm, EngineError> {
+        let form_id = request
+            .form_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("oligo_order_form");
+        let form_id = Self::normalize_oligo_order_form_id(form_id)?;
+        let default_scale = Self::default_oligo_scale(Some(&request.scale));
+        let default_purification = Self::default_oligo_purification(Some(&request.purification));
+        let default_modifications = Self::normalize_oligo_modifications(&request.modifications);
+        let mut line_items = request.line_items;
+        for line in &mut line_items {
+            if line.scale.trim().is_empty() {
+                line.scale = default_scale.clone();
+            }
+            if line.purification.trim().is_empty() {
+                line.purification = default_purification.clone();
+            }
+            if line.modifications.is_empty() {
+                line.modifications = default_modifications.clone();
+            }
+        }
+        let form = self.finalize_oligo_order_form(OligoOrderForm {
+            form_id,
+            target_label: request.target_label.trim().to_string(),
+            source_note: request.source_note,
+            line_items,
+            duplicate_review: OligoOrderDuplicateReview {
+                default_action: "keep_separate".to_string(),
+                ..OligoOrderDuplicateReview::default()
+            },
+            ..OligoOrderForm::default()
+        })?;
+        let mut store = self.read_primer_design_store();
+        store
+            .oligo_order_forms
+            .insert(form.form_id.clone(), form.clone());
+        self.write_primer_design_store(store)?;
+        Ok(form)
+    }
+
+    fn primer_order_line(
+        report: &PrimerDesignReport,
+        pair: &PrimerDesignPairRecord,
+        role: &str,
+        primer: &PrimerDesignPrimerRecord,
+        scale: &str,
+        purification: &str,
+        modifications: &[String],
+    ) -> OligoOrderLineItem {
+        OligoOrderLineItem {
+            line_id: String::new(),
+            line_no: 0,
+            name: format!("{}_pair{}_{}", report.report_id, pair.rank, role),
+            role: role.to_string(),
+            sequence_5_to_3: primer.sequence.clone(),
+            length_nt: primer.sequence.len(),
+            modifications: modifications.to_vec(),
+            scale: scale.to_string(),
+            purification: purification.to_string(),
+            notes: None,
+            provenance: OligoOrderLineProvenance {
+                source_kind: "primer_report".to_string(),
+                report_id: report.report_id.clone(),
+                report_schema: report.schema.clone(),
+                template: report.template.clone(),
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
+                pair_rank: Some(pair.rank),
+                role: role.to_string(),
+                source_coordinates_0based: vec![SequenceRange0Based {
+                    start_0based: primer.start_0based,
+                    end_0based_exclusive: primer.end_0based_exclusive,
+                }],
+                ..OligoOrderLineProvenance::default()
+            },
+        }
+    }
+
+    pub fn create_oligo_order_form_from_primer_report(
+        &mut self,
+        report_id: &str,
+        pair_ranks: &[usize],
+        form_id: Option<&str>,
+        scale: Option<&str>,
+        purification: Option<&str>,
+        modifications: &[String],
+    ) -> Result<OligoOrderForm, EngineError> {
+        let report = self.get_primer_design_report(report_id)?;
+        let form_id = form_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| format!("{}_oligo_order", report.report_id));
+        let form_id = Self::normalize_oligo_order_form_id(&form_id)?;
+        let scale = Self::default_oligo_scale(scale);
+        let purification = Self::default_oligo_purification(purification);
+        let modifications = Self::normalize_oligo_modifications(modifications);
+        let mut line_items = Vec::new();
+        for rank in pair_ranks {
+            let pair = report
+                .pairs
+                .iter()
+                .find(|pair| pair.rank == *rank)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer report '{}' has no pair with rank {}",
+                        report.report_id, rank
+                    ),
+                    cause_chain: vec![],
+                })?;
+            line_items.push(Self::primer_order_line(
+                &report,
+                pair,
+                "forward",
+                &pair.forward,
+                &scale,
+                &purification,
+                &modifications,
+            ));
+            line_items.push(Self::primer_order_line(
+                &report,
+                pair,
+                "reverse",
+                &pair.reverse,
+                &scale,
+                &purification,
+                &modifications,
+            ));
+        }
+        let form = self.finalize_oligo_order_form(OligoOrderForm {
+            form_id,
+            target_label: report.template.clone(),
+            source_note: Some(format!("Created from primer report '{}'", report.report_id)),
+            line_items,
+            duplicate_review: OligoOrderDuplicateReview {
+                default_action: "keep_separate".to_string(),
+                ..OligoOrderDuplicateReview::default()
+            },
+            ..OligoOrderForm::default()
+        })?;
+        let mut store = self.read_primer_design_store();
+        store
+            .oligo_order_forms
+            .insert(form.form_id.clone(), form.clone());
+        self.write_primer_design_store(store)?;
+        Ok(form)
+    }
+
+    fn qpcr_order_line(
+        report: &QpcrDesignReport,
+        assay: &QpcrAssayRecord,
+        role: &str,
+        primer: &PrimerDesignPrimerRecord,
+        source_ranges_0based: Vec<SequenceRange0Based>,
+        scale: &str,
+        purification: &str,
+        modifications: &[String],
+    ) -> OligoOrderLineItem {
+        OligoOrderLineItem {
+            line_id: String::new(),
+            line_no: 0,
+            name: format!("{}_assay{}_{}", report.report_id, assay.rank, role),
+            role: role.to_string(),
+            sequence_5_to_3: primer.sequence.clone(),
+            length_nt: primer.sequence.len(),
+            modifications: modifications.to_vec(),
+            scale: scale.to_string(),
+            purification: purification.to_string(),
+            notes: None,
+            provenance: OligoOrderLineProvenance {
+                source_kind: "qpcr_report".to_string(),
+                report_id: report.report_id.clone(),
+                report_schema: report.schema.clone(),
+                template: report.template.clone(),
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
+                assay_rank: Some(assay.rank),
+                role: role.to_string(),
+                source_coordinates_0based: source_ranges_0based,
+                ..OligoOrderLineProvenance::default()
+            },
+        }
+    }
+
+    pub fn create_oligo_order_form_from_qpcr_report(
+        &mut self,
+        report_id: &str,
+        assay_ranks: &[usize],
+        include_probe: bool,
+        form_id: Option<&str>,
+        scale: Option<&str>,
+        purification: Option<&str>,
+        modifications: &[String],
+    ) -> Result<OligoOrderForm, EngineError> {
+        let report = self.get_qpcr_design_report(report_id)?;
+        let form_id = form_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| format!("{}_oligo_order", report.report_id));
+        let form_id = Self::normalize_oligo_order_form_id(&form_id)?;
+        let scale = Self::default_oligo_scale(scale);
+        let purification = Self::default_oligo_purification(purification);
+        let modifications = Self::normalize_oligo_modifications(modifications);
+        let mut line_items = Vec::new();
+        for rank in assay_ranks {
+            let assay = report
+                .assays
+                .iter()
+                .find(|assay| assay.rank == *rank)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "qPCR report '{}' has no assay with rank {}",
+                        report.report_id, rank
+                    ),
+                    cause_chain: vec![],
+                })?;
+            let context = assay.transcript_context.as_ref();
+            line_items.push(Self::qpcr_order_line(
+                &report,
+                assay,
+                "forward",
+                &assay.forward,
+                context
+                    .map(|ctx| ctx.forward_source_ranges_0based.clone())
+                    .filter(|ranges| !ranges.is_empty())
+                    .unwrap_or_else(|| {
+                        vec![SequenceRange0Based {
+                            start_0based: assay.forward.start_0based,
+                            end_0based_exclusive: assay.forward.end_0based_exclusive,
+                        }]
+                    }),
+                &scale,
+                &purification,
+                &modifications,
+            ));
+            line_items.push(Self::qpcr_order_line(
+                &report,
+                assay,
+                "reverse",
+                &assay.reverse,
+                context
+                    .map(|ctx| ctx.reverse_source_ranges_0based.clone())
+                    .filter(|ranges| !ranges.is_empty())
+                    .unwrap_or_else(|| {
+                        vec![SequenceRange0Based {
+                            start_0based: assay.reverse.start_0based,
+                            end_0based_exclusive: assay.reverse.end_0based_exclusive,
+                        }]
+                    }),
+                &scale,
+                &purification,
+                &modifications,
+            ));
+            if include_probe {
+                line_items.push(Self::qpcr_order_line(
+                    &report,
+                    assay,
+                    "probe",
+                    &assay.probe,
+                    context
+                        .map(|ctx| ctx.probe_source_ranges_0based.clone())
+                        .filter(|ranges| !ranges.is_empty())
+                        .unwrap_or_else(|| {
+                            vec![SequenceRange0Based {
+                                start_0based: assay.probe.start_0based,
+                                end_0based_exclusive: assay.probe.end_0based_exclusive,
+                            }]
+                        }),
+                    &scale,
+                    &purification,
+                    &modifications,
+                ));
+            }
+        }
+        let form = self.finalize_oligo_order_form(OligoOrderForm {
+            form_id,
+            target_label: report.template.clone(),
+            source_note: Some(format!("Created from qPCR report '{}'", report.report_id)),
+            line_items,
+            duplicate_review: OligoOrderDuplicateReview {
+                default_action: "keep_separate".to_string(),
+                ..OligoOrderDuplicateReview::default()
+            },
+            ..OligoOrderForm::default()
+        })?;
+        let mut store = self.read_primer_design_store();
+        store
+            .oligo_order_forms
+            .insert(form.form_id.clone(), form.clone());
+        self.write_primer_design_store(store)?;
+        Ok(form)
+    }
+
+    pub fn list_oligo_order_forms(&self) -> Vec<OligoOrderFormSummary> {
+        let store = self.read_primer_design_store();
+        let mut ids = store.oligo_order_forms.keys().cloned().collect::<Vec<_>>();
+        ids.sort();
+        ids.into_iter()
+            .filter_map(|id| store.oligo_order_forms.get(&id))
+            .map(|form| OligoOrderFormSummary {
+                form_id: form.form_id.clone(),
+                target_label: form.target_label.clone(),
+                created_at_unix_ms: form.created_at_unix_ms,
+                updated_at_unix_ms: form.updated_at_unix_ms,
+                line_count: form.line_items.len(),
+                duplicate_group_count: form.duplicate_groups.len(),
+                sequence_reuse_group_count: form.sequence_reuse_groups.len(),
+                duplicate_review_status: form.duplicate_review.status.clone(),
+            })
+            .collect()
+    }
+
+    pub fn get_oligo_order_form(&self, form_id: &str) -> Result<OligoOrderForm, EngineError> {
+        let form_id = Self::normalize_oligo_order_form_id(form_id)?;
+        self.read_primer_design_store()
+            .oligo_order_forms
+            .get(&form_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Oligo order form '{}' not found", form_id),
+                cause_chain: vec![],
+            })
+    }
+
+    pub fn export_oligo_order_form(
+        &self,
+        form_id: &str,
+        path: &str,
+    ) -> Result<OligoOrderForm, EngineError> {
+        let form = self.get_oligo_order_form(form_id)?;
+        let text = serde_json::to_string_pretty(&form).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize oligo order form '{}': {e}",
+                form.form_id
+            ),
+            cause_chain: vec![],
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write oligo order form to '{path}': {e}"),
+            cause_chain: vec![],
+        })?;
+        Ok(form)
+    }
+
+    pub fn review_oligo_order_form_duplicates(
+        &mut self,
+        form_id: &str,
+        reviewer: Option<&str>,
+        duplicate_action: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<OligoOrderForm, EngineError> {
+        let form_id = Self::normalize_oligo_order_form_id(form_id)?;
+        let mut store = self.read_primer_design_store();
+        let mut form = store
+            .oligo_order_forms
+            .get(&form_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Oligo order form '{}' not found", form_id),
+                cause_chain: vec![],
+            })?;
+        let action = duplicate_action
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("keep-separate");
+        let normalized_action = action.replace('-', "_");
+        if normalized_action != "keep_separate" {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported oligo duplicate review action '{}'; v1 only supports keep-separate",
+                    action
+                ),
+                cause_chain: vec![],
+            });
+        }
+        form.duplicate_review.status = "reviewed".to_string();
+        form.duplicate_review.default_action = "keep_separate".to_string();
+        form.duplicate_review.reviewer = reviewer
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        form.duplicate_review.note = note
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        form.duplicate_review.reviewed_at_unix_ms = Some(Self::now_unix_ms());
+        form.updated_at_unix_ms = Self::now_unix_ms();
+        store
+            .oligo_order_forms
+            .insert(form.form_id.clone(), form.clone());
+        self.write_primer_design_store(store)?;
+        Ok(form)
     }
 
     pub fn list_restriction_cloning_pcr_handoffs(
@@ -10600,6 +12192,8 @@ impl GentleEngine {
                     "Restriction-cloning PCR handoff report '{}' not found",
                     report_id
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -10615,12 +12209,16 @@ impl GentleEngine {
                 "Could not serialize restriction-cloning PCR handoff report '{}': {e}",
                 report.report_id
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!(
                 "Could not write restriction-cloning PCR handoff report to '{path}': {e}"
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(report)
     }
@@ -10679,6 +12277,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Protein-derivation report '{}' not found", report_id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -10694,10 +12294,14 @@ impl GentleEngine {
                 "Could not serialize protein-derivation report '{}': {e}",
                 report.report_id
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write protein-derivation report to '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(report)
     }
@@ -10759,6 +12363,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Reverse-translation report '{}' not found", report_id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -10774,10 +12380,14 @@ impl GentleEngine {
                 "Could not serialize reverse-translation report '{}': {e}",
                 report.report_id
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write reverse-translation report to '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(report)
     }
@@ -10957,6 +12567,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "inspect_sequence_context_view requires non-empty seq_id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let dna = self
@@ -10966,6 +12578,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?;
         let sequence_length_bp = dna.len();
         let mode = mode.unwrap_or(RenderSvgMode::Linear);
@@ -10974,7 +12588,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "Sequence-context inspection requires both viewport_start_0based and viewport_end_0based_exclusive"
                     .to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
         let (viewport_start_0based, viewport_end_0based_exclusive) = if let (
             Some(start),
@@ -10988,6 +12603,8 @@ impl GentleEngine {
                     message: format!(
                         "Invalid sequence-context viewport: start ({start}) must be < end ({end})"
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             if end > sequence_length_bp {
@@ -10997,6 +12614,8 @@ impl GentleEngine {
                         "Sequence-context viewport {}..{} is outside sequence length {}",
                         start, end, sequence_length_bp
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             (start, end)
@@ -11227,11 +12846,15 @@ impl GentleEngine {
         let text = serde_json::to_string_pretty(value).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize {artifact_label} for '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Self::ensure_output_parent_dir(path)?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write {artifact_label} to '{path}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -11245,6 +12868,8 @@ impl GentleEngine {
         std::fs::write(path, contents).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write {artifact_label} to '{path}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -11437,6 +13062,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "export_sequence_context_bundle requires non-empty output_dir".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let seq_id = seq_id.trim();
@@ -11444,6 +13071,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "export_sequence_context_bundle requires non-empty seq_id".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -11480,6 +13109,8 @@ impl GentleEngine {
                 "Could not create sequence-context bundle directory '{}': {e}",
                 output_dir
             ),
+
+            cause_chain: vec![],
         })?;
 
         let svg_path = output_dir_path.join("context.svg");
@@ -11497,6 +13128,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut display = self.state.display.clone();
         if matches!(mode, RenderSvgMode::Linear) && sequence_context_view.sequence_length_bp > 0 {
@@ -11557,6 +13190,8 @@ impl GentleEngine {
                         "Could not create empty sequence-context BED '{}': {e}",
                         feature_bed_path.display()
                     ),
+
+                    cause_chain: vec![],
                 })?;
                 Some(Self::empty_sequence_feature_bed_export_report(
                     seq_id,
@@ -11651,6 +13286,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("{context} cannot be computed on an empty sequence"),
+
+                cause_chain: vec![],
             });
         }
         if span_start_0based.is_some() != span_end_0based_exclusive.is_some() {
@@ -11659,6 +13296,8 @@ impl GentleEngine {
                 message: format!(
                     "{context} span requires both span_start_0based and span_end_0based_exclusive"
                 ),
+
+                cause_chain: vec![],
             });
         }
         let (start, end_exclusive) = match (span_start_0based, span_end_0based_exclusive) {
@@ -11672,6 +13311,8 @@ impl GentleEngine {
                 message: format!(
                     "Invalid {context} span {start}..{end_exclusive}: end must be > start"
                 ),
+
+                cause_chain: vec![],
             });
         }
         if start >= sequence_length_bp || end_exclusive > sequence_length_bp {
@@ -11680,6 +13321,8 @@ impl GentleEngine {
                 message: format!(
                     "{context} span {start}..{end_exclusive} is outside sequence length {sequence_length_bp}"
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok((start, end_exclusive))
@@ -11712,6 +13355,8 @@ impl GentleEngine {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("{context} requires non-empty seq_id"),
+
+                        cause_chain: vec![],
                     });
                 }
                 let dna = self
@@ -11721,6 +13366,8 @@ impl GentleEngine {
                     .ok_or_else(|| EngineError {
                         code: ErrorCode::NotFound,
                         message: format!("Sequence '{seq_id}' not found"),
+
+                        cause_chain: vec![],
                     })?;
                 let source_sequence_length_bp = dna.len();
                 let (scan_start_0based, scan_end_0based_exclusive) =
@@ -11750,6 +13397,8 @@ impl GentleEngine {
                             "Could not extract scan span {}..{} from '{}'",
                             scan_start_0based, scan_end_0based_exclusive, seq_id
                         ),
+
+                        cause_chain: vec![],
                     })?
                 };
                 Ok((
@@ -11773,6 +13422,8 @@ impl GentleEngine {
                     DNAsequence::from_sequence(sequence_text).map_err(|e| EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("Could not parse inline DNA sequence: {e}"),
+
+                        cause_chain: vec![],
                     })?;
                 dna.set_circular(matches!(topology, InlineSequenceTopology::Circular));
                 let source_sequence_length_bp = dna.len();
@@ -11803,6 +13454,8 @@ impl GentleEngine {
                             "Could not extract inline scan span {}..{}",
                             scan_start_0based, scan_end_0based_exclusive
                         ),
+
+                        cause_chain: vec![],
                     })?
                 };
                 let target_label = id_hint
@@ -11820,6 +13473,120 @@ impl GentleEngine {
                     scan_topology,
                     scan_dna,
                 ))
+            }
+        }
+    }
+
+    fn sequence_scan_target_from_legacy_alignment_fields(
+        target: Option<SequenceScanTarget>,
+        seq_id: Option<SeqId>,
+        span_start_0based: Option<usize>,
+        span_end_0based: Option<usize>,
+        role: &str,
+    ) -> Result<SequenceScanTarget, EngineError> {
+        let legacy_seq_id = seq_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if let Some(target) = target {
+            if legacy_seq_id.is_some() || span_start_0based.is_some() || span_end_0based.is_some() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "AlignSequences {role} accepts either '{role}' target or legacy {role}_seq_id/span fields, not both"
+                    ),
+
+                    cause_chain: vec![],
+                });
+            }
+            return Ok(target);
+        }
+        let Some(seq_id) = legacy_seq_id else {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "AlignSequences requires {role} or non-empty legacy {role}_seq_id"
+                ),
+
+                cause_chain: vec![],
+            });
+        };
+        Ok(SequenceScanTarget::SeqId {
+            seq_id: seq_id.to_string(),
+            span_start_0based,
+            span_end_0based_exclusive: span_end_0based,
+        })
+    }
+
+    fn resolve_pairwise_alignment_target(
+        &self,
+        target: &SequenceScanTarget,
+        context: &str,
+    ) -> Result<(String, String, Option<usize>, Option<usize>), EngineError> {
+        match target {
+            SequenceScanTarget::SeqId {
+                seq_id,
+                span_start_0based,
+                span_end_0based_exclusive,
+            } => {
+                let seq_id = seq_id.trim();
+                if seq_id.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("{context} requires non-empty seq_id"),
+
+                        cause_chain: vec![],
+                    });
+                }
+                let dna = self
+                    .state
+                    .sequences
+                    .get(seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+
+                        cause_chain: vec![],
+                    })?;
+                let (start, end) = Self::validate_sequence_scan_span(
+                    dna.len(),
+                    *span_start_0based,
+                    *span_end_0based_exclusive,
+                    context,
+                )?;
+                Ok((
+                    seq_id.to_string(),
+                    dna.get_forward_string(),
+                    Some(start),
+                    Some(end),
+                ))
+            }
+            SequenceScanTarget::InlineSequence {
+                sequence_text,
+                id_hint,
+                span_start_0based,
+                span_end_0based_exclusive,
+                ..
+            } => {
+                let dna = DNAsequence::from_sequence(sequence_text).map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Could not parse inline DNA sequence for {context}: {e}"),
+
+                    cause_chain: vec![],
+                })?;
+                let (start, end) = Self::validate_sequence_scan_span(
+                    dna.len(),
+                    *span_start_0based,
+                    *span_end_0based_exclusive,
+                    context,
+                )?;
+                let label = id_hint
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("inline_sequence")
+                    .to_string();
+                Ok((label, dna.get_forward_string(), Some(start), Some(end)))
             }
         }
     }
@@ -11858,7 +13625,8 @@ impl GentleEngine {
                 message:
                     "FindRestrictionSites requires at least one enzyme or configured preferred restriction enzymes"
                         .to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
 
         let catalog = active_restriction_enzymes();
@@ -11888,6 +13656,8 @@ impl GentleEngine {
                     "Unknown restriction enzyme(s) for FindRestrictionSites: {}",
                     missing.join(", ")
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok((filters, resolved))
@@ -11906,6 +13676,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "FindRestrictionSites max_sites_per_enzyme must be >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let (
@@ -11921,6 +13693,7 @@ impl GentleEngine {
 
         let mut report = RestrictionSiteScanReport {
             schema: RESTRICTION_SITE_SCAN_REPORT_SCHEMA.to_string(),
+            report_id: String::new(),
             target_kind,
             target_label,
             source_sequence_length_bp,
@@ -12029,6 +13802,7 @@ impl GentleEngine {
                 )
         });
         report.matched_site_count = report.rows.len();
+        report.report_id = Self::restriction_site_scan_report_id(&report);
         Ok(report)
     }
 
@@ -12058,6 +13832,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "summarize_tfbs_region requires non-empty seq_id".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -12068,12 +13844,16 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", request.seq_id),
+
+                cause_chain: vec![],
             })?;
         let sequence_length_bp = dna.len();
         if sequence_length_bp == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "TFBS region summary cannot be computed on an empty sequence".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -12086,6 +13866,8 @@ impl GentleEngine {
                     "Invalid TFBS focus range {}..{}: end must be > start",
                     focus_start, focus_end
                 ),
+
+                cause_chain: vec![],
             });
         }
         if focus_start >= sequence_length_bp || focus_end > sequence_length_bp {
@@ -12095,6 +13877,8 @@ impl GentleEngine {
                     "TFBS focus range {}..{} is outside sequence length {}",
                     focus_start, focus_end, sequence_length_bp
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -12105,7 +13889,8 @@ impl GentleEngine {
                 message:
                     "TFBS context range requires both context_start_0based and context_end_0based_exclusive"
                         .to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
         let (context_start, context_end) = match (
             request.context_start_0based,
@@ -12122,6 +13907,8 @@ impl GentleEngine {
                     "Invalid TFBS context range {}..{}: end must be > start",
                     context_start, context_end
                 ),
+
+                cause_chain: vec![],
             });
         }
         if context_start >= sequence_length_bp || context_end > sequence_length_bp {
@@ -12131,6 +13918,8 @@ impl GentleEngine {
                     "TFBS context range {}..{} is outside sequence length {}",
                     context_start, context_end, sequence_length_bp
                 ),
+
+                cause_chain: vec![],
             });
         }
         if context_start > focus_start || context_end < focus_end {
@@ -12140,6 +13929,8 @@ impl GentleEngine {
                     "TFBS context range {}..{} must contain focus range {}..{}",
                     context_start, context_end, focus_start, focus_end
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -12147,6 +13938,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "TFBS region summary limit must be >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let limit = request
@@ -12297,11 +14090,15 @@ impl GentleEngine {
                 "Could not serialize TFBS region summary '{}' for '{}': {e}",
                 summary.seq_id, path
             ),
+
+            cause_chain: vec![],
         })?;
         Self::ensure_output_parent_dir(path)?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write TFBS region summary to '{path}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -12348,6 +14145,8 @@ impl GentleEngine {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message: "Qualifier filter key must not be empty".to_string(),
+
+                        cause_chain: vec![],
                     });
                 }
                 filter.value_contains = filter
@@ -12375,6 +14174,8 @@ impl GentleEngine {
                                     "Invalid qualifier regex for key '{}': {e}",
                                     filter.key
                                 ),
+
+                                cause_chain: vec![],
                             })
                     })
                     .transpose()?;
@@ -12541,12 +14342,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "export_sequence_features_bed requires non-empty seq_id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if query.limit.is_some_and(|limit| limit == 0) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Feature BED export limit must be >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -12557,6 +14362,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", query.seq_id),
+
+                cause_chain: vec![],
             })?;
 
         let mut all_feature_rows: Vec<SequenceFeatureQueryRow> = vec![];
@@ -12608,6 +14415,8 @@ impl GentleEngine {
                     .map_err(|e| EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("Invalid label_regex '{}': {e}", pattern),
+
+                        cause_chain: vec![],
                     })
             })
             .transpose()?;
@@ -12638,6 +14447,8 @@ impl GentleEngine {
                         "Feature query row referenced missing feature_id {} on '{}'",
                         row.feature_id, query.seq_id
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let qualifiers = collect_qualifiers(feature);
             let (chrom, chrom_start_0based, chrom_end_0based_exclusive, coordinate_source) =
@@ -12675,6 +14486,8 @@ impl GentleEngine {
                     "Could not serialize qualifiers for feature {} on '{}': {e}",
                     row.feature_id, query.seq_id
                 ),
+
+                cause_chain: vec![],
             })?;
             export_rows.push(FeatureBedExportRow {
                 chrom,
@@ -12792,6 +14605,8 @@ impl GentleEngine {
                             "Could not serialize restriction-site qualifiers for '{}' on '{}': {e}",
                             site.enzyme.name, query.seq_id
                         ),
+
+                        cause_chain: vec![],
                     })?;
                 export_rows.push(FeatureBedExportRow {
                     chrom,
@@ -12891,6 +14706,8 @@ impl GentleEngine {
         let file = File::create(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not create BED export '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         let mut writer = BufWriter::new(file);
         for row in &selected_rows {
@@ -12911,11 +14728,15 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write BED export '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
         }
         writer.flush().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not flush BED export '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
 
         Ok(SequenceFeatureBedExportReport {
@@ -12949,6 +14770,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "query_sequence_features requires non-empty seq_id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         query.kind_in = query
@@ -12992,6 +14815,8 @@ impl GentleEngine {
                     .map_err(|e| EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("Invalid label_regex '{}': {e}", pattern),
+
+                        cause_chain: vec![],
                     })
             })
             .transpose()?;
@@ -13004,6 +14829,8 @@ impl GentleEngine {
                 message: format!(
                     "Invalid feature length filter: min_len_bp ({min_len}) must be <= max_len_bp ({max_len})"
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -13012,6 +14839,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "Feature range filter requires both start_0based and end_0based_exclusive"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -13022,6 +14851,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", query.seq_id),
+
+                cause_chain: vec![],
             })?;
         let sequence_length_bp = dna.len();
 
@@ -13032,6 +14863,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: "Feature range filter cannot be applied on empty sequence".to_string(),
+
+                    cause_chain: vec![],
                 });
             }
             if end_exclusive <= start {
@@ -13040,6 +14873,8 @@ impl GentleEngine {
                     message: format!(
                         "Invalid feature range filter: start ({start}) must be < end ({end_exclusive})"
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             if start >= sequence_length_bp || end_exclusive > sequence_length_bp {
@@ -13049,6 +14884,8 @@ impl GentleEngine {
                         "Feature range filter {}..{} is outside sequence length {}",
                         start, end_exclusive, sequence_length_bp
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             Some((start, end_exclusive))
@@ -13063,6 +14900,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: "Qualifier filter key must not be empty".to_string(),
+
+                    cause_chain: vec![],
                 });
             }
             filter.value_contains = filter
@@ -13090,6 +14929,8 @@ impl GentleEngine {
                                 "Invalid qualifier regex for key '{}': {e}",
                                 filter.key
                             ),
+
+                            cause_chain: vec![],
                         })
                 })
                 .transpose()?;
@@ -13239,10 +15080,10 @@ impl GentleEngine {
                         }
                     }
                 }
-                if let Some(regex) = regex {
-                    if !values.iter().any(|value| regex.is_match(value)) {
-                        return false;
-                    }
+                if let Some(regex) = regex
+                    && !values.iter().any(|value| regex.is_match(value))
+                {
+                    return false;
                 }
                 true
             });
@@ -13372,6 +15213,8 @@ impl GentleEngine {
                     "Unsupported planning profile schema '{}' (expected '{}')",
                     schema, PLANNING_PROFILE_SCHEMA
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(())
@@ -13388,6 +15231,8 @@ impl GentleEngine {
                     "Unsupported planning objective schema '{}' (expected '{}')",
                     schema, PLANNING_OBJECTIVE_SCHEMA
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(())
@@ -13457,6 +15302,8 @@ impl GentleEngine {
 
     fn normalize_planning_objective(mut objective: PlanningObjective) -> PlanningObjective {
         objective.schema = PLANNING_OBJECTIVE_SCHEMA.to_string();
+        objective.biological_intent =
+            Self::normalize_optional_planning_intent_text(objective.biological_intent.take());
         if !objective.weight_time.is_finite() || objective.weight_time < 0.0 {
             objective.weight_time = 0.0;
         }
@@ -13989,12 +15836,7 @@ impl GentleEngine {
         let mut terms = BTreeSet::new();
         terms.insert(compact.to_ascii_lowercase());
         terms.insert(compact.replace('.', "_").to_ascii_lowercase());
-        terms.insert(
-            compact
-                .replace('.', " ")
-                .replace('_', " ")
-                .to_ascii_lowercase(),
-        );
+        terms.insert(compact.replace(['.', '_'], " ").to_ascii_lowercase());
         terms.into_iter().collect()
     }
 
@@ -14409,6 +16251,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize planning metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -14451,6 +16295,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Cannot set profile scope 'effective' directly".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut store = self.read_planning_store();
@@ -14537,6 +16383,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Unsupported planning sync direction '{direction}'"),
+
+                cause_chain: vec![],
             });
         }
         if profile_patch.is_none() && objective_patch.is_none() {
@@ -14545,6 +16393,8 @@ impl GentleEngine {
                 message:
                     "Planning suggestion requires at least one of profile_patch/objective_patch"
                         .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let source = source.trim();
@@ -14552,6 +16402,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Planning suggestion source cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -14643,6 +16495,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "suggestion_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut store = self.read_planning_store();
@@ -14650,6 +16504,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Planning suggestion '{}' not found", target),
+
+                cause_chain: vec![],
             });
         };
         if suggestion.status != PlanningSuggestionStatus::Pending {
@@ -14660,6 +16516,8 @@ impl GentleEngine {
                     target,
                     suggestion.status.as_str()
                 ),
+
+                cause_chain: vec![],
             });
         }
         if let Some(profile_patch) = suggestion.profile_patch.clone() {
@@ -14693,6 +16551,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "suggestion_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut store = self.read_planning_store();
@@ -14700,6 +16560,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Planning suggestion '{}' not found", target),
+
+                cause_chain: vec![],
             });
         };
         if suggestion.status != PlanningSuggestionStatus::Pending {
@@ -14710,6 +16572,8 @@ impl GentleEngine {
                     target,
                     suggestion.status.as_str()
                 ),
+
+                cause_chain: vec![],
             });
         }
         suggestion.status = PlanningSuggestionStatus::Rejected;
@@ -14741,6 +16605,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Planning sync error message cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut store = self.read_planning_store();
@@ -14787,6 +16653,8 @@ impl GentleEngine {
                     "Unsupported construct objective schema '{}' (expected '{}')",
                     schema, CONSTRUCT_OBJECTIVE_SCHEMA
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(())
@@ -14812,6 +16680,13 @@ impl GentleEngine {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .map(|value| Self::normalize_id_token(&value))
+    }
+
+    fn normalize_optional_planning_intent_text(value: Option<String>) -> Option<String> {
+        value
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(|value| Self::normalize_routine_family_token(&value))
     }
 
     fn normalize_tag_like_text(values: &mut Vec<String>) {
@@ -15051,6 +16926,33 @@ impl GentleEngine {
             .collect();
         fact.based_on_evidence_ids.sort();
         fact.based_on_evidence_ids.dedup();
+        for severity in &mut fact.task_severities {
+            severity.rationale = severity.rationale.trim().to_string();
+            severity.score = Self::normalize_confidence_score(severity.score);
+            if let Some(score) = severity.score {
+                severity.severity = Self::construct_reasoning_severity_from_score(score);
+            }
+            severity.supporting_evidence_ids = severity
+                .supporting_evidence_ids
+                .iter()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect();
+            severity.supporting_evidence_ids.sort();
+            severity.supporting_evidence_ids.dedup();
+        }
+        fact.task_severities.retain(|severity| {
+            severity.severity != ConstructReasoningSeverity::None
+                && (!severity.rationale.is_empty() || !severity.supporting_evidence_ids.is_empty())
+        });
+        fact.task_severities.sort_by(|a, b| {
+            a.task
+                .cmp(&b.task)
+                .then(a.severity.cmp(&b.severity))
+                .then(a.rationale.cmp(&b.rationale))
+        });
+        fact.task_severities
+            .dedup_by(|a, b| a.task == b.task && a.rationale == b.rationale);
         fact.confidence = Self::normalize_confidence_score(fact.confidence);
         fact
     }
@@ -15626,6 +17528,766 @@ impl GentleEngine {
         }
     }
 
+    fn construct_reasoning_dotplot_modes_for_evidence_rows(
+        rows: &[&DesignEvidence],
+    ) -> Vec<DotplotMode> {
+        let context_tags = rows
+            .iter()
+            .flat_map(|row| row.context_tags.iter().map(String::as_str))
+            .collect::<BTreeSet<_>>();
+        let has_tag = |tags: &BTreeSet<&str>, tag: &str| tags.contains(tag);
+
+        let should_offer_forward = rows
+            .iter()
+            .any(|row| row.role == ConstructRole::MobileElement)
+            || [
+                "low_complexity",
+                "homopolymer_run",
+                "tandem_repeat",
+                "direct_repeat",
+                "repeat_dense",
+                "mapping_ambiguity_risk",
+                "polymerase_slippage_risk",
+                "alu_like",
+            ]
+            .iter()
+            .any(|tag| has_tag(&context_tags, tag));
+
+        let should_offer_revcomp = [
+            "inverted_repeat",
+            "palindromic_repeat_risk",
+            "inversion_risk",
+        ]
+        .iter()
+        .any(|tag| has_tag(&context_tags, tag));
+
+        let mut modes = vec![];
+        if should_offer_forward {
+            modes.push(DotplotMode::SelfForward);
+        }
+        if should_offer_revcomp {
+            modes.push(DotplotMode::SelfReverseComplement);
+        }
+        modes
+    }
+
+    fn construct_reasoning_repeat_family_class_from_token(raw: &str) -> RepeatFamilyClassMapping {
+        let token = Self::normalize_id_token(raw);
+        let token = ["repeat_name_", "repeat_class_", "repeat_family_"]
+            .iter()
+            .find_map(|prefix| token.strip_prefix(prefix))
+            .unwrap_or(token.as_str());
+        let compact = token.replace('_', "");
+        match compact.as_str() {
+            "alu" => RepeatFamilyClassMapping {
+                family: Some(RepeatFamilyClassKind::Alu),
+                class: Some(RepeatFamilyClassKind::Sine),
+            },
+            "sine" => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::Sine),
+            },
+            "line" => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::Line),
+            },
+            "ltr" => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::Ltr),
+            },
+            "satellite" | "satellites" => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::Satellite),
+            },
+            "simplerepeat" | "lowcomplexity" => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::SimpleRepeat),
+            },
+            _ if compact.starts_with("alu") => RepeatFamilyClassMapping {
+                family: Some(RepeatFamilyClassKind::Alu),
+                class: Some(RepeatFamilyClassKind::Sine),
+            },
+            _ if compact.starts_with("l1") || compact.starts_with("line") => {
+                RepeatFamilyClassMapping {
+                    family: None,
+                    class: Some(RepeatFamilyClassKind::Line),
+                }
+            }
+            _ if compact.starts_with("erv") => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::Ltr),
+            },
+            _ if compact.contains("satellite") => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::Satellite),
+            },
+            _ => RepeatFamilyClassMapping::default(),
+        }
+    }
+
+    fn construct_reasoning_repeat_family_class_from_value(raw: &str) -> RepeatFamilyClassMapping {
+        let mut mapping = Self::construct_reasoning_repeat_family_class_from_token(raw);
+        for part in raw
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+        {
+            mapping.merge(Self::construct_reasoning_repeat_family_class_from_token(
+                part,
+            ));
+        }
+        mapping
+    }
+
+    fn construct_reasoning_repeat_family_class_from_parts(
+        repeat_name: Option<&str>,
+        repeat_class: Option<&str>,
+        repeat_family: Option<&str>,
+    ) -> RepeatFamilyClassMapping {
+        let mut mapping = RepeatFamilyClassMapping::default();
+        for value in [repeat_class, repeat_family, repeat_name]
+            .into_iter()
+            .flatten()
+        {
+            mapping.merge(Self::construct_reasoning_repeat_family_class_from_value(
+                value,
+            ));
+        }
+        mapping
+    }
+
+    fn construct_reasoning_repeat_family_class_tags(
+        mapping: RepeatFamilyClassMapping,
+    ) -> Vec<String> {
+        let mut tags = vec![];
+        if let Some(family) = mapping.family {
+            tags.push(family.bare_tag().to_string());
+            if family != family.parent_class() {
+                tags.push(format!("repeat_family_{}", family.bare_tag()));
+            }
+            tags.push(family.parent_class().bare_tag().to_string());
+            tags.push(family.class_tag().to_string());
+        }
+        if let Some(class) = mapping.primary_class() {
+            tags.push(class.bare_tag().to_string());
+            tags.push(class.class_tag().to_string());
+        }
+        tags.sort();
+        tags.dedup();
+        tags
+    }
+
+    fn construct_reasoning_evidence_repeat_family_class(
+        row: &DesignEvidence,
+    ) -> RepeatFamilyClassMapping {
+        let repeat_name = Self::construct_reasoning_evidence_note_value(row, "repeat_name");
+        let repeat_class = Self::construct_reasoning_evidence_note_value(row, "repeat_class");
+        let repeat_family = Self::construct_reasoning_evidence_note_value(row, "repeat_family");
+        let mut mapping = Self::construct_reasoning_repeat_family_class_from_parts(
+            repeat_name.as_deref(),
+            repeat_class.as_deref(),
+            repeat_family.as_deref(),
+        );
+        for tag in &row.context_tags {
+            mapping.merge(Self::construct_reasoning_repeat_family_class_from_token(
+                tag,
+            ));
+        }
+        mapping
+    }
+
+    fn construct_reasoning_repeat_family_agreement_strength(
+        internal: RepeatFamilyClassMapping,
+        curated: RepeatFamilyClassMapping,
+    ) -> Option<RepeatFamilyAgreementStrength> {
+        if !internal.is_classified() || !curated.is_classified() {
+            return None;
+        }
+        if let (Some(internal_family), Some(curated_family)) = (internal.family, curated.family) {
+            if internal_family == curated_family {
+                return Some(RepeatFamilyAgreementStrength::Family);
+            }
+        }
+        let internal_class = internal.primary_class()?;
+        let curated_class = curated.primary_class()?;
+        (internal_class == curated_class).then_some(RepeatFamilyAgreementStrength::Class)
+    }
+
+    fn construct_reasoning_repeat_family_agreement_for_rows(
+        internal: &DesignEvidence,
+        curated: &DesignEvidence,
+    ) -> Option<RepeatFamilyAgreementStrength> {
+        Self::construct_reasoning_repeat_family_agreement_strength(
+            Self::construct_reasoning_evidence_repeat_family_class(internal),
+            Self::construct_reasoning_evidence_repeat_family_class(curated),
+        )
+    }
+
+    fn construct_reasoning_best_repeat_family_agreement_for_rows(
+        internal_rows: &[&DesignEvidence],
+        curated_rows: &[&DesignEvidence],
+    ) -> Option<RepeatFamilyAgreementStrength> {
+        internal_rows
+            .iter()
+            .flat_map(|internal| {
+                curated_rows.iter().filter_map(move |curated| {
+                    if Self::construct_reasoning_ranges_overlap(
+                        internal.start_0based,
+                        internal.end_0based_exclusive,
+                        curated.start_0based,
+                        curated.end_0based_exclusive,
+                    ) {
+                        Self::construct_reasoning_repeat_family_agreement_for_rows(
+                            internal, curated,
+                        )
+                    } else {
+                        None
+                    }
+                })
+            })
+            .max()
+    }
+
+    fn construct_reasoning_evidence_note_value(row: &DesignEvidence, key: &str) -> Option<String> {
+        let prefix = format!("{key}=");
+        row.notes
+            .iter()
+            .find_map(|note| note.strip_prefix(&prefix))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    }
+
+    fn construct_reasoning_evidence_has_tag(row: &DesignEvidence, tag: &str) -> bool {
+        row.context_tags.iter().any(|value| value == tag)
+    }
+
+    fn construct_reasoning_evidence_is_curated_repeat_annotation(row: &DesignEvidence) -> bool {
+        matches!(
+            row.role,
+            ConstructRole::RepeatRegion | ConstructRole::MobileElement
+        ) && (Self::construct_reasoning_evidence_has_tag(row, "curated_repeat_family")
+            || Self::construct_reasoning_evidence_has_tag(row, "ucsc_rmsk")
+            || Self::construct_reasoning_evidence_note_value(row, "repeat_source").is_some())
+    }
+
+    fn construct_reasoning_evidence_repeat_support(
+        row: &DesignEvidence,
+    ) -> Option<ConstructReasoningCuratedRepeatSupport> {
+        if !Self::construct_reasoning_evidence_is_curated_repeat_annotation(row) {
+            return None;
+        }
+        let source_kind = Self::construct_reasoning_evidence_note_value(row, "repeat_source")
+            .unwrap_or_else(|| {
+                if Self::construct_reasoning_evidence_has_tag(row, "ucsc_rmsk") {
+                    "ucsc_rmsk".to_string()
+                } else {
+                    "repeat_family_annotation".to_string()
+                }
+            });
+        let repeat_name = Self::construct_reasoning_evidence_note_value(row, "repeat_name");
+        let repeat_class = Self::construct_reasoning_evidence_note_value(row, "repeat_class");
+        let repeat_family = Self::construct_reasoning_evidence_note_value(row, "repeat_family");
+        let label = Self::construct_reasoning_repeat_family_display_label(
+            repeat_name.as_deref(),
+            repeat_class.as_deref(),
+            repeat_family.as_deref(),
+        );
+        let mut source_refs = row.provenance_refs.clone();
+        source_refs.sort();
+        source_refs.dedup();
+        Some(ConstructReasoningCuratedRepeatSupport {
+            source_kind,
+            label,
+            repeat_name,
+            repeat_class,
+            repeat_family,
+            evidence_ids: vec![row.evidence_id.clone()],
+            internal_evidence_ids: vec![],
+            source_refs,
+        })
+    }
+
+    fn construct_reasoning_curated_repeat_supports_internal_signal(
+        internal: &DesignEvidence,
+        curated: &DesignEvidence,
+    ) -> bool {
+        let internal_family_class =
+            Self::construct_reasoning_evidence_repeat_family_class(internal);
+        if !internal_family_class.is_classified() {
+            // Generic direct/inverted/low-complexity repeat calls are useful
+            // inspection cues, but they do not carry enough family/class
+            // specificity to let an arbitrary overlapping rmsk row corroborate
+            // them. Require an explicit class-level signal before upgrading.
+            return false;
+        }
+        Self::construct_reasoning_repeat_family_agreement_strength(
+            internal_family_class,
+            Self::construct_reasoning_evidence_repeat_family_class(curated),
+        )
+        .is_some()
+    }
+
+    fn construct_reasoning_curated_repeat_support_for_rows(
+        internal_rows: &[&DesignEvidence],
+        curated_rows: &[&DesignEvidence],
+    ) -> Vec<ConstructReasoningCuratedRepeatSupport> {
+        let mut by_label: BTreeMap<String, ConstructReasoningCuratedRepeatSupport> =
+            BTreeMap::new();
+        for internal in internal_rows {
+            for curated in curated_rows {
+                if !Self::construct_reasoning_ranges_overlap(
+                    internal.start_0based,
+                    internal.end_0based_exclusive,
+                    curated.start_0based,
+                    curated.end_0based_exclusive,
+                ) || !Self::construct_reasoning_curated_repeat_supports_internal_signal(
+                    internal, curated,
+                ) {
+                    continue;
+                }
+                let Some(mut support) = Self::construct_reasoning_evidence_repeat_support(curated)
+                else {
+                    continue;
+                };
+                support
+                    .internal_evidence_ids
+                    .push(internal.evidence_id.clone());
+                let key = Self::normalize_id_token(&support.label);
+                let entry = by_label.entry(key).or_insert_with(|| support.clone());
+                entry.evidence_ids.extend(support.evidence_ids);
+                entry
+                    .internal_evidence_ids
+                    .extend(support.internal_evidence_ids);
+                entry.source_refs.extend(support.source_refs);
+                entry.evidence_ids.sort();
+                entry.evidence_ids.dedup();
+                entry.internal_evidence_ids.sort();
+                entry.internal_evidence_ids.dedup();
+                entry.source_refs.sort();
+                entry.source_refs.dedup();
+            }
+        }
+        by_label.into_values().collect()
+    }
+
+    fn construct_reasoning_curated_repeat_support_labels(
+        support: &[ConstructReasoningCuratedRepeatSupport],
+    ) -> Vec<String> {
+        support
+            .iter()
+            .map(|row| row.label.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    fn construct_reasoning_curated_repeat_support_evidence_ids(
+        support: &[ConstructReasoningCuratedRepeatSupport],
+    ) -> Vec<String> {
+        support
+            .iter()
+            .flat_map(|row| row.evidence_ids.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    fn construct_reasoning_apply_curated_repeat_support_to_evidence(
+        evidence: &mut [DesignEvidence],
+        facts: &[DesignFact],
+    ) {
+        let Some(mobile_fact) = facts
+            .iter()
+            .find(|fact| fact.fact_type == "mobile_element_context")
+        else {
+            return;
+        };
+        if mobile_fact
+            .value_json
+            .get("curated_repeat_support_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            == 0
+        {
+            return;
+        }
+        let support_labels = mobile_fact
+            .value_json
+            .get("curated_repeat_family_labels")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let support_label_text = if support_labels.is_empty() {
+            "curated repeat-family annotation".to_string()
+        } else {
+            support_labels.join(", ")
+        };
+        let supported_internal_ids = mobile_fact
+            .value_json
+            .get("curated_repeat_support")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|support| {
+                support
+                    .get("internal_evidence_ids")
+                    .and_then(serde_json::Value::as_array)
+            })
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>();
+        if supported_internal_ids.is_empty() {
+            return;
+        }
+
+        for row in evidence {
+            if !supported_internal_ids.contains(&row.evidence_id)
+                || row.role != ConstructRole::MobileElement
+                || !Self::construct_reasoning_evidence_has_tag(row, "alu_like")
+                || Self::construct_reasoning_evidence_is_curated_repeat_annotation(row)
+            {
+                continue;
+            }
+            row.rationale = format!(
+                "Region shows a two-arm repeat structure with an A-rich tail consistent with a cautious Alu-like SINE heuristic, and overlapping curated repeat-family annotation supports the family assignment: {support_label_text}. This remains sequence evidence for inspection rather than a functional or validation verdict."
+            );
+            for note in &mut row.notes {
+                if note == "family_assignment=soft_heuristic" {
+                    *note = "family_assignment=curated_repeat_family_supported".to_string();
+                }
+            }
+            let support_note = format!("curated_repeat_support={support_label_text}");
+            if !row.notes.iter().any(|note| note == &support_note) {
+                row.notes.push(support_note);
+            }
+        }
+    }
+
+    fn construct_reasoning_repeat_family_provenance_for_evidence_rows(
+        rows: &[&DesignEvidence],
+    ) -> Option<ConstructReasoningRepeatFamilyProvenance> {
+        let mut supports = rows
+            .iter()
+            .filter_map(|row| Self::construct_reasoning_evidence_repeat_support(row))
+            .collect::<Vec<_>>();
+        if supports.is_empty() {
+            return None;
+        }
+        supports.sort_by(|a, b| a.label.cmp(&b.label));
+        let primary = supports.first()?;
+        let source_kind = if supports
+            .iter()
+            .any(|row| row.source_kind.eq_ignore_ascii_case("ucsc_rmsk"))
+        {
+            "ucsc_rmsk".to_string()
+        } else {
+            primary.source_kind.clone()
+        };
+        let evidence_ids = supports
+            .iter()
+            .flat_map(|row| row.evidence_ids.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let source_refs = supports
+            .iter()
+            .flat_map(|row| row.source_refs.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let curated_rows = rows
+            .iter()
+            .copied()
+            .filter(|row| Self::construct_reasoning_evidence_is_curated_repeat_annotation(row))
+            .collect::<Vec<_>>();
+        let internal_rows = rows
+            .iter()
+            .copied()
+            .filter(|row| !Self::construct_reasoning_evidence_is_curated_repeat_annotation(row))
+            .collect::<Vec<_>>();
+        let confidence = Self::construct_reasoning_best_repeat_family_agreement_for_rows(
+            &internal_rows,
+            &curated_rows,
+        )
+        .map(RepeatFamilyAgreementStrength::confidence)
+        .or_else(|| {
+            supports
+                .iter()
+                .any(|row| row.source_kind.eq_ignore_ascii_case("ucsc_rmsk"))
+                .then_some(0.8)
+        })
+        .or(Some(0.65));
+        Some(ConstructReasoningRepeatFamilyProvenance {
+            source_kind,
+            family_id: primary
+                .repeat_family
+                .as_ref()
+                .or(primary.repeat_name.as_ref())
+                .map(|value| Self::normalize_id_token(value)),
+            family_name: primary
+                .repeat_family
+                .clone()
+                .or_else(|| primary.repeat_name.clone())
+                .or_else(|| primary.repeat_class.clone()),
+            source_refs,
+            evidence_ids,
+            confidence,
+        })
+    }
+
+    fn construct_reasoning_context_tags_for_evidence_rows(rows: &[&DesignEvidence]) -> Vec<String> {
+        rows.iter()
+            .flat_map(|row| row.context_tags.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    fn construct_reasoning_driving_ids_for_evidence_rows(rows: &[&DesignEvidence]) -> Vec<String> {
+        rows.iter()
+            .map(|row| row.evidence_id.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    fn construct_reasoning_inspection_action_source_ids(mut ids: Vec<String>) -> Vec<String> {
+        ids = ids
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+        ids.sort();
+        ids.dedup();
+        ids
+    }
+
+    fn construct_reasoning_build_inspection_actions_for_source(
+        graph_id: &str,
+        seq_id: &str,
+        source_kind: &str,
+        source_id: &str,
+        source_label: &str,
+        source_rationale: &str,
+        source_fact_ids: Vec<String>,
+        source_annotation_ids: Vec<String>,
+        source_summary_ids: Vec<String>,
+        focus_range: Option<(usize, usize)>,
+        rows: Vec<&DesignEvidence>,
+    ) -> Vec<ConstructReasoningInspectionAction> {
+        let rows = rows
+            .into_iter()
+            .filter(|row| {
+                row.scope == EvidenceScope::SequenceSpan
+                    && row.end_0based_exclusive > row.start_0based
+            })
+            .collect::<Vec<_>>();
+        if rows.is_empty() {
+            return vec![];
+        }
+
+        let focus_rows = rows
+            .iter()
+            .copied()
+            .filter(|row| !Self::construct_reasoning_evidence_is_curated_repeat_annotation(row))
+            .collect::<Vec<_>>();
+        let focus_rows = if focus_rows.is_empty() {
+            rows.clone()
+        } else {
+            focus_rows
+        };
+        let focus_range = focus_range.filter(|(start, end)| end > start).or_else(|| {
+            let start = focus_rows.iter().map(|row| row.start_0based).min()?;
+            let end = focus_rows
+                .iter()
+                .map(|row| row.end_0based_exclusive)
+                .max()?;
+            (end > start).then_some((start, end))
+        });
+        let Some((focus_start_0based, focus_end_0based_exclusive)) = focus_range else {
+            return vec![];
+        };
+
+        let source_id = source_id.trim();
+        let source_label = source_label.trim();
+        let title = if source_label.is_empty() {
+            source_id
+        } else {
+            source_label
+        };
+        let title = if title.is_empty() {
+            "reasoning row"
+        } else {
+            title
+        };
+        let graph_token = Self::normalize_id_token(graph_id);
+        let source_token = Self::normalize_id_token(if source_id.is_empty() {
+            title
+        } else {
+            source_id
+        });
+        let source_kind_token = Self::normalize_id_token(source_kind);
+        let start_1based = focus_start_0based.saturating_add(1);
+        let end_1based = focus_end_0based_exclusive;
+        let context_tags = Self::construct_reasoning_context_tags_for_evidence_rows(&rows);
+        let driving_evidence_ids = Self::construct_reasoning_driving_ids_for_evidence_rows(&rows);
+        let repeat_family_provenance =
+            Self::construct_reasoning_repeat_family_provenance_for_evidence_rows(&rows);
+        let rationale = source_rationale.trim();
+        let source_fact_ids =
+            Self::construct_reasoning_inspection_action_source_ids(source_fact_ids);
+        let source_annotation_ids =
+            Self::construct_reasoning_inspection_action_source_ids(source_annotation_ids);
+        let source_summary_ids =
+            Self::construct_reasoning_inspection_action_source_ids(source_summary_ids);
+
+        Self::construct_reasoning_dotplot_modes_for_evidence_rows(&rows)
+            .into_iter()
+            .map(|mode| {
+                let (button_label, hover_kind) = match mode {
+                    DotplotMode::SelfForward => ("Dotplot", "self-forward"),
+                    DotplotMode::SelfReverseComplement => {
+                        ("RevComp Dotplot", "self-reverse-complement")
+                    }
+                    DotplotMode::PairForward => ("Pair Dotplot", "pair-forward"),
+                    DotplotMode::PairReverseComplement => {
+                        ("Pair RevComp Dotplot", "pair-reverse-complement")
+                    }
+                };
+                ConstructReasoningInspectionAction {
+                    action_id: format!(
+                        "inspection_{}_{}_{}_{}_{}_{}",
+                        graph_token,
+                        source_kind_token,
+                        source_token,
+                        mode.as_str(),
+                        focus_start_0based,
+                        focus_end_0based_exclusive
+                    ),
+                    action_kind: ConstructReasoningInspectionActionKind::Dotplot,
+                    button_label: button_label.to_string(),
+                    hover_text: format!(
+                        "Open a {hover_kind} dotplot centered on {start_1based}..{end_1based} for '{title}'"
+                    ),
+                    rationale: if rationale.is_empty() {
+                        format!("Inspect {hover_kind} similarity evidence for '{title}'")
+                    } else {
+                        rationale.to_string()
+                    },
+                    seq_id: seq_id.to_string(),
+                    mode,
+                    focus_start_0based,
+                    focus_end_0based_exclusive,
+                    driving_evidence_ids: driving_evidence_ids.clone(),
+                    source_fact_ids: source_fact_ids.clone(),
+                    source_annotation_ids: source_annotation_ids.clone(),
+                    source_summary_ids: source_summary_ids.clone(),
+                    context_tags: context_tags.clone(),
+                    repeat_family_provenance: repeat_family_provenance.clone(),
+                    ..ConstructReasoningInspectionAction::default()
+                }
+            })
+            .collect()
+    }
+
+    fn construct_reasoning_build_inspection_actions(
+        graph: &ConstructReasoningGraph,
+    ) -> Vec<ConstructReasoningInspectionAction> {
+        let evidence_by_id = graph
+            .evidence
+            .iter()
+            .map(|row| (row.evidence_id.as_str(), row))
+            .collect::<HashMap<_, _>>();
+        let candidates_by_id = graph
+            .annotation_candidates
+            .iter()
+            .map(|row| (row.annotation_id.as_str(), row))
+            .collect::<HashMap<_, _>>();
+        let mut actions_by_id: BTreeMap<String, ConstructReasoningInspectionAction> =
+            BTreeMap::new();
+
+        for fact in &graph.facts {
+            let rows = fact
+                .based_on_evidence_ids
+                .iter()
+                .filter_map(|id| evidence_by_id.get(id.as_str()).copied())
+                .collect::<Vec<_>>();
+            for action in Self::construct_reasoning_build_inspection_actions_for_source(
+                &graph.graph_id,
+                &graph.seq_id,
+                "fact",
+                &fact.fact_id,
+                &fact.label,
+                &fact.rationale,
+                vec![fact.fact_id.clone()],
+                vec![],
+                vec![],
+                None,
+                rows,
+            ) {
+                actions_by_id.insert(action.action_id.clone(), action);
+            }
+        }
+
+        for candidate in &graph.annotation_candidates {
+            let rows = evidence_by_id
+                .get(candidate.evidence_id.as_str())
+                .copied()
+                .into_iter()
+                .collect::<Vec<_>>();
+            for action in Self::construct_reasoning_build_inspection_actions_for_source(
+                &graph.graph_id,
+                &graph.seq_id,
+                "annotation",
+                &candidate.annotation_id,
+                &candidate.label,
+                &candidate.rationale,
+                vec![],
+                vec![candidate.annotation_id.clone()],
+                vec![],
+                Some((candidate.start_0based, candidate.end_0based_exclusive)),
+                rows,
+            ) {
+                actions_by_id.insert(action.action_id.clone(), action);
+            }
+        }
+
+        for summary in &graph.annotation_candidate_summaries {
+            let rows = summary
+                .annotation_ids
+                .iter()
+                .filter_map(|annotation_id| candidates_by_id.get(annotation_id.as_str()))
+                .filter_map(|candidate| evidence_by_id.get(candidate.evidence_id.as_str()).copied())
+                .collect::<Vec<_>>();
+            for action in Self::construct_reasoning_build_inspection_actions_for_source(
+                &graph.graph_id,
+                &graph.seq_id,
+                "summary",
+                &summary.summary_id,
+                &summary.title,
+                &summary.subtitle,
+                vec![],
+                summary.annotation_ids.clone(),
+                vec![summary.summary_id.clone()],
+                Some((summary.start_0based, summary.end_0based_exclusive)),
+                rows,
+            ) {
+                actions_by_id.insert(action.action_id.clone(), action);
+            }
+        }
+
+        actions_by_id.into_values().collect()
+    }
+
     fn normalize_construct_reasoning_graph(
         mut graph: ConstructReasoningGraph,
     ) -> ConstructReasoningGraph {
@@ -15737,6 +18399,7 @@ impl GentleEngine {
                 .then(a.title.cmp(&b.title))
                 .then(a.summary_id.cmp(&b.summary_id))
         });
+        graph.inspection_actions = Self::construct_reasoning_build_inspection_actions(&graph);
         Self::normalize_optional_note_text(&mut graph.notes);
         graph
     }
@@ -15795,12 +18458,11 @@ impl GentleEngine {
             .map(Self::normalize_construct_reasoning_graph)
             .map(|graph| (graph.graph_id.clone(), graph))
             .collect();
-        if let Some(preferred_graph_id) = store.preferred_graph_id.clone() {
-            if preferred_graph_id.trim().is_empty()
-                || !store.graphs.contains_key(&preferred_graph_id)
-            {
-                store.preferred_graph_id = None;
-            }
+        if let Some(preferred_graph_id) = store.preferred_graph_id.clone()
+            && (preferred_graph_id.trim().is_empty()
+                || !store.graphs.contains_key(&preferred_graph_id))
+        {
+            store.preferred_graph_id = None;
         }
         if store.objectives.is_empty()
             && store.graphs.is_empty()
@@ -15812,6 +18474,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize construct-reasoning metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -15904,6 +18568,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "graph_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         self.read_construct_reasoning_store()
@@ -15913,6 +18579,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Construct reasoning graph '{}' not found", target),
+
+                cause_chain: vec![],
             })
     }
 
@@ -15949,6 +18617,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "seq_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Self::select_construct_reasoning_graph_for_seq_id(
@@ -15961,6 +18631,8 @@ impl GentleEngine {
                 "No construct reasoning graph stored for sequence '{}'",
                 target
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -15973,6 +18645,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "seq_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let existing = Self::select_construct_reasoning_graph_for_seq_id(
@@ -16017,6 +18691,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "graph_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let annotation_id = annotation_id.trim();
@@ -16024,6 +18700,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "annotation_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut store = self.read_construct_reasoning_store();
@@ -16031,6 +18709,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Construct reasoning graph '{}' not found", graph_id),
+
+                cause_chain: vec![],
             });
         };
         let Some(candidate) = graph
@@ -16044,6 +18724,8 @@ impl GentleEngine {
                     "Annotation candidate '{}' not found in construct reasoning graph '{}'",
                     annotation_id, graph_id
                 ),
+
+                cause_chain: vec![],
             });
         };
         if candidate.editable_status == EditableStatus::Locked
@@ -16055,6 +18737,8 @@ impl GentleEngine {
                     "Annotation candidate '{}' in graph '{}' is locked",
                     annotation_id, graph_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         candidate.editable_status = editable_status;
@@ -16253,6 +18937,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "graph_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let annotation_id = annotation_id.trim();
@@ -16260,6 +18946,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "annotation_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let graph = self.construct_reasoning_graph(graph_id)?;
@@ -16274,6 +18962,8 @@ impl GentleEngine {
                     "Annotation candidate '{}' not found in construct reasoning graph '{}'",
                     annotation_id, graph_id
                 ),
+
+                cause_chain: vec![],
             })?;
         if !matches!(
             candidate.editable_status,
@@ -16285,6 +18975,8 @@ impl GentleEngine {
                     "Annotation candidate '{}' must be accepted before write-back",
                     annotation_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let evidence = graph
@@ -16298,7 +18990,8 @@ impl GentleEngine {
                     "Evidence '{}' referenced by annotation candidate '{}' was not found in graph '{}'",
                     candidate.evidence_id, annotation_id, graph_id
                 ),
-            })?;
+            
+                cause_chain: vec![],})?;
         let mut writeback = AnnotationCandidateWriteback {
             graph_id: graph.graph_id.clone(),
             annotation_id: candidate.annotation_id.clone(),
@@ -16337,6 +19030,8 @@ impl GentleEngine {
                     "Annotation candidate '{}' is not currently eligible for automatic write-back",
                     annotation_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let seq_id = graph.seq_id.clone();
@@ -16347,6 +19042,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?;
         if dna.features().iter().any(|feature| {
             Self::construct_reasoning_feature_matches_annotation_candidate(
@@ -16427,6 +19124,203 @@ impl GentleEngine {
         false
     }
 
+    fn construct_reasoning_repeat_feature_value(
+        feature: &gb_io::seq::Feature,
+        keys: &[&str],
+    ) -> Option<String> {
+        Self::first_nonempty_feature_qualifier(feature, keys)
+    }
+
+    fn construct_reasoning_repeat_feature_descriptor(
+        feature: &gb_io::seq::Feature,
+    ) -> Option<(String, Option<String>, Option<String>, Option<String>)> {
+        let generated = Self::feature_qualifier_text(feature, "gentle_generated")
+            .map(|value| value.trim().to_ascii_lowercase())
+            .unwrap_or_default();
+        let repeat_name = Self::construct_reasoning_repeat_feature_value(
+            feature,
+            &[
+                "rmsk_name",
+                "repeat_name",
+                "repName",
+                "rpt_name",
+                "rptName",
+                "mobile_element_type",
+                "mobile_element",
+            ],
+        );
+        let repeat_class = Self::construct_reasoning_repeat_feature_value(
+            feature,
+            &[
+                "repeat_class",
+                "rmsk_class",
+                "repClass",
+                "rpt_class",
+                "rptClass",
+            ],
+        );
+        let repeat_family = Self::construct_reasoning_repeat_feature_value(
+            feature,
+            &[
+                "repeat_family",
+                "rmsk_family",
+                "repFamily",
+                "rpt_family",
+                "rptFamily",
+            ],
+        );
+        let has_repeat_family_fields =
+            repeat_name.is_some() || repeat_class.is_some() || repeat_family.is_some();
+        let kind = feature.kind.to_string().to_ascii_lowercase();
+        let is_repeat_kind = matches!(kind.as_str(), "repeat_region" | "repeat" | "mobile_element");
+        if generated != "ucsc_rmsk" && !(is_repeat_kind && has_repeat_family_fields) {
+            return None;
+        }
+        let source_kind = if generated == "ucsc_rmsk" {
+            "ucsc_rmsk"
+        } else {
+            "repeat_family_annotation"
+        };
+        Some((
+            source_kind.to_string(),
+            repeat_name,
+            repeat_class,
+            repeat_family,
+        ))
+    }
+
+    fn construct_reasoning_feature_is_curated_repeat_annotation(
+        feature: &gb_io::seq::Feature,
+    ) -> bool {
+        Self::construct_reasoning_repeat_feature_descriptor(feature).is_some()
+    }
+
+    fn construct_reasoning_repeat_family_display_label(
+        repeat_name: Option<&str>,
+        repeat_class: Option<&str>,
+        repeat_family: Option<&str>,
+    ) -> String {
+        let primary = repeat_name
+            .or(repeat_family)
+            .or(repeat_class)
+            .unwrap_or("repeat family");
+        match (repeat_class, repeat_family) {
+            (Some(class), Some(family)) if !primary.eq_ignore_ascii_case(family) => {
+                format!("{primary} ({class}/{family})")
+            }
+            (Some(class), Some(family)) => format!("{primary} ({class}/{family})"),
+            (Some(class), None) if !primary.eq_ignore_ascii_case(class) => {
+                format!("{primary} ({class})")
+            }
+            (None, Some(family)) if !primary.eq_ignore_ascii_case(family) => {
+                format!("{primary} ({family})")
+            }
+            _ => primary.to_string(),
+        }
+    }
+
+    fn construct_reasoning_repeat_descriptor_tags(
+        source_kind: &str,
+        repeat_name: Option<&str>,
+        repeat_class: Option<&str>,
+        repeat_family: Option<&str>,
+    ) -> Vec<String> {
+        let mut tags = vec![
+            "curated_repeat_family".to_string(),
+            "repeat_family_annotation".to_string(),
+            source_kind.to_ascii_lowercase(),
+        ];
+        if source_kind.eq_ignore_ascii_case("ucsc_rmsk") {
+            tags.push("repeatmasker".to_string());
+        }
+        for (prefix, value) in [
+            ("repeat_name", repeat_name),
+            ("repeat_class", repeat_class),
+            ("repeat_family", repeat_family),
+        ] {
+            let Some(value) = value else {
+                continue;
+            };
+            let token = Self::normalize_id_token(value);
+            if token != "region" {
+                tags.push(format!("{prefix}_{token}"));
+                for part in value
+                    .split(|c: char| !c.is_ascii_alphanumeric())
+                    .map(str::trim)
+                    .filter(|part| !part.is_empty())
+                {
+                    let part_token = Self::normalize_id_token(part);
+                    if part_token != "region" {
+                        tags.push(part_token);
+                    }
+                }
+            }
+        }
+        tags.extend(Self::construct_reasoning_repeat_family_class_tags(
+            Self::construct_reasoning_repeat_family_class_from_parts(
+                repeat_name,
+                repeat_class,
+                repeat_family,
+            ),
+        ));
+        tags.sort();
+        tags.dedup();
+        tags
+    }
+
+    fn construct_reasoning_repeat_feature_notes(
+        source_kind: &str,
+        repeat_name: Option<&str>,
+        repeat_class: Option<&str>,
+        repeat_family: Option<&str>,
+        feature: &gb_io::seq::Feature,
+    ) -> Vec<String> {
+        let mut notes = vec![format!("repeat_source={source_kind}")];
+        if let Some(value) = repeat_name {
+            notes.push(format!("repeat_name={value}"));
+        }
+        if let Some(value) = repeat_class {
+            notes.push(format!("repeat_class={value}"));
+        }
+        if let Some(value) = repeat_family {
+            notes.push(format!("repeat_family={value}"));
+        }
+        for key in ["rmsk_annotation_id", "rmsk_index_path", "rmsk_row_offset"] {
+            if let Some(value) = Self::feature_qualifier_text(feature, key) {
+                notes.push(format!("{key}={value}"));
+            }
+        }
+        notes
+    }
+
+    fn construct_reasoning_repeat_feature_provenance_refs(
+        source_kind: &str,
+        repeat_name: Option<&str>,
+        repeat_class: Option<&str>,
+        repeat_family: Option<&str>,
+        feature: &gb_io::seq::Feature,
+    ) -> Vec<String> {
+        let mut refs = vec![feature.kind.to_string(), source_kind.to_string()];
+        if repeat_name.is_some() || repeat_class.is_some() || repeat_family.is_some() {
+            refs.push(format!(
+                "repeat_family:{}",
+                Self::construct_reasoning_repeat_family_display_label(
+                    repeat_name,
+                    repeat_class,
+                    repeat_family
+                )
+            ));
+        }
+        for key in ["rmsk_annotation_id", "rmsk_index_path"] {
+            if let Some(value) = Self::feature_qualifier_text(feature, key) {
+                refs.push(format!("{key}={value}"));
+            }
+        }
+        refs.sort();
+        refs.dedup();
+        refs
+    }
+
     fn construct_reasoning_role_from_feature(
         feature: &gb_io::seq::Feature,
     ) -> Option<ConstructRole> {
@@ -16500,6 +19394,9 @@ impl GentleEngine {
             return EvidenceClass::SoftHypothesis;
         }
         if role == ConstructRole::MobileElement {
+            if Self::construct_reasoning_feature_is_curated_repeat_annotation(feature) {
+                return EvidenceClass::ReliableAnnotation;
+            }
             return EvidenceClass::SoftHypothesis;
         }
         if matches!(role, ConstructRole::Exon | ConstructRole::SpliceBoundary)
@@ -16530,6 +19427,16 @@ impl GentleEngine {
         {
             tags.push(variant_class);
         }
+        if let Some((source_kind, repeat_name, repeat_class, repeat_family)) =
+            Self::construct_reasoning_repeat_feature_descriptor(feature)
+        {
+            tags.extend(Self::construct_reasoning_repeat_descriptor_tags(
+                &source_kind,
+                repeat_name.as_deref(),
+                repeat_class.as_deref(),
+                repeat_family.as_deref(),
+            ));
+        }
         tags.sort();
         tags.dedup();
         tags
@@ -16555,6 +19462,18 @@ impl GentleEngine {
         }
         if role == ConstructRole::Tfbs {
             return "TFBS-style annotation is kept as a soft hypothesis because binding evidence is context-sensitive.".to_string();
+        }
+        if let Some((source_kind, repeat_name, repeat_class, repeat_family)) =
+            Self::construct_reasoning_repeat_feature_descriptor(feature)
+        {
+            let label = Self::construct_reasoning_repeat_family_display_label(
+                repeat_name.as_deref(),
+                repeat_class.as_deref(),
+                repeat_family.as_deref(),
+            );
+            return format!(
+                "Curated repeat-family annotation from {source_kind} supports '{label}' as inspectable repeat/mobile-element context."
+            );
         }
         if role == ConstructRole::MobileElement {
             return "Mobile-element style annotation is kept as a soft hypothesis until a curated repeat-family catalog confirms the family assignment.".to_string();
@@ -16837,22 +19756,20 @@ impl GentleEngine {
             spans.sort_by_key(|row| (row.start_0based, row.end_0based_exclusive));
             let mut merged: Vec<LowComplexitySpan> = vec![];
             for span in spans {
-                if let Some(last) = merged.last_mut() {
-                    if span.start_0based
+                if let Some(last) = merged.last_mut()
+                    && span.start_0based
                         <= last
                             .end_0based_exclusive
                             .saturating_add(LOW_COMPLEXITY_STEP_BP)
-                    {
-                        last.end_0based_exclusive =
-                            last.end_0based_exclusive.max(span.end_0based_exclusive);
-                        last.complexity_score = last.complexity_score.min(span.complexity_score);
-                        last.normalized_entropy =
-                            last.normalized_entropy.min(span.normalized_entropy);
-                        last.unique_kmer_ratio = last.unique_kmer_ratio.min(span.unique_kmer_ratio);
-                        last.longest_homopolymer =
-                            last.longest_homopolymer.max(span.longest_homopolymer);
-                        continue;
-                    }
+                {
+                    last.end_0based_exclusive =
+                        last.end_0based_exclusive.max(span.end_0based_exclusive);
+                    last.complexity_score = last.complexity_score.min(span.complexity_score);
+                    last.normalized_entropy = last.normalized_entropy.min(span.normalized_entropy);
+                    last.unique_kmer_ratio = last.unique_kmer_ratio.min(span.unique_kmer_ratio);
+                    last.longest_homopolymer =
+                        last.longest_homopolymer.max(span.longest_homopolymer);
+                    continue;
                 }
                 merged.push(span);
             }
@@ -16866,25 +19783,24 @@ impl GentleEngine {
             spans.sort_by_key(|row| (row.start_0based, row.end_0based_exclusive));
             let mut merged: Vec<RepeatClusterSpan> = vec![];
             for span in spans {
-                if let Some(last) = merged.last_mut() {
-                    if last.label == span.label
-                        && span.start_0based <= last.end_0based_exclusive.saturating_add(max_gap_bp)
-                    {
-                        last.end_0based_exclusive =
-                            last.end_0based_exclusive.max(span.end_0based_exclusive);
-                        last.pair_count = last.pair_count.max(span.pair_count);
-                        last.risk_score = last.risk_score.max(span.risk_score);
-                        last.seed_examples.extend(span.seed_examples);
-                        last.seed_examples.sort();
-                        last.seed_examples.dedup();
-                        last.context_tags.extend(span.context_tags);
-                        last.context_tags.sort();
-                        last.context_tags.dedup();
-                        last.notes.extend(span.notes);
-                        last.notes.sort();
-                        last.notes.dedup();
-                        continue;
-                    }
+                if let Some(last) = merged.last_mut()
+                    && last.label == span.label
+                    && span.start_0based <= last.end_0based_exclusive.saturating_add(max_gap_bp)
+                {
+                    last.end_0based_exclusive =
+                        last.end_0based_exclusive.max(span.end_0based_exclusive);
+                    last.pair_count = last.pair_count.max(span.pair_count);
+                    last.risk_score = last.risk_score.max(span.risk_score);
+                    last.seed_examples.extend(span.seed_examples);
+                    last.seed_examples.sort();
+                    last.seed_examples.dedup();
+                    last.context_tags.extend(span.context_tags);
+                    last.context_tags.sort();
+                    last.context_tags.dedup();
+                    last.notes.extend(span.notes);
+                    last.notes.sort();
+                    last.notes.dedup();
+                    continue;
                 }
                 merged.push(span);
             }
@@ -16895,22 +19811,21 @@ impl GentleEngine {
             spans.sort_by_key(|row| (row.start_0based, row.end_0based_exclusive));
             let mut merged: Vec<AluLikeSpan> = vec![];
             for span in spans {
-                if let Some(last) = merged.last_mut() {
-                    if last.strand == span.strand
-                        && span.start_0based <= last.end_0based_exclusive.saturating_add(24)
-                    {
-                        if span.score > last.score {
-                            last.start_0based = last.start_0based.min(span.start_0based);
-                            last.end_0based_exclusive =
-                                last.end_0based_exclusive.max(span.end_0based_exclusive);
-                            last.tail_length_bp = last.tail_length_bp.max(span.tail_length_bp);
-                            last.arm_similarity = last.arm_similarity.max(span.arm_similarity);
-                            last.candidate_length_bp =
-                                last.end_0based_exclusive.saturating_sub(last.start_0based);
-                            last.score = span.score.max(last.score);
-                        }
-                        continue;
+                if let Some(last) = merged.last_mut()
+                    && last.strand == span.strand
+                    && span.start_0based <= last.end_0based_exclusive.saturating_add(24)
+                {
+                    if span.score > last.score {
+                        last.start_0based = last.start_0based.min(span.start_0based);
+                        last.end_0based_exclusive =
+                            last.end_0based_exclusive.max(span.end_0based_exclusive);
+                        last.tail_length_bp = last.tail_length_bp.max(span.tail_length_bp);
+                        last.arm_similarity = last.arm_similarity.max(span.arm_similarity);
+                        last.candidate_length_bp =
+                            last.end_0based_exclusive.saturating_sub(last.start_0based);
+                        last.score = span.score.max(last.score);
                     }
+                    continue;
                 }
                 merged.push(span);
             }
@@ -17335,16 +20250,16 @@ impl GentleEngine {
         for (idx, base) in bytes.iter().copied().enumerate() {
             if base == b'A' {
                 run_start.get_or_insert(idx);
-            } else if let Some(start) = run_start.take() {
-                if idx.saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP {
-                    poly_a_runs.push((start, idx));
-                }
+            } else if let Some(start) = run_start.take()
+                && idx.saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP
+            {
+                poly_a_runs.push((start, idx));
             }
         }
-        if let Some(start) = run_start.take() {
-            if bytes.len().saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP {
-                poly_a_runs.push((start, bytes.len()));
-            }
+        if let Some(start) = run_start.take()
+            && bytes.len().saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP
+        {
+            poly_a_runs.push((start, bytes.len()));
         }
         for (tail_start, tail_end) in poly_a_runs {
             for candidate_length_bp in (ALU_LIKE_MIN_BP..=ALU_LIKE_MAX_BP).step_by(20) {
@@ -17396,16 +20311,16 @@ impl GentleEngine {
         for (idx, base) in bytes.iter().copied().enumerate() {
             if base == b'T' {
                 run_start.get_or_insert(idx);
-            } else if let Some(start) = run_start.take() {
-                if idx.saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP {
-                    poly_t_runs.push((start, idx));
-                }
+            } else if let Some(start) = run_start.take()
+                && idx.saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP
+            {
+                poly_t_runs.push((start, idx));
             }
         }
-        if let Some(start) = run_start.take() {
-            if bytes.len().saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP {
-                poly_t_runs.push((start, bytes.len()));
-            }
+        if let Some(start) = run_start.take()
+            && bytes.len().saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP
+        {
+            poly_t_runs.push((start, bytes.len()));
         }
         for (tail_start, tail_end) in poly_t_runs {
             for candidate_length_bp in (ALU_LIKE_MIN_BP..=ALU_LIKE_MAX_BP).step_by(20) {
@@ -17863,6 +20778,29 @@ impl GentleEngine {
             let rationale =
                 Self::construct_reasoning_feature_rationale(feature, role, evidence_class);
             let context_tags = Self::construct_reasoning_feature_context_tags(feature);
+            let (feature_provenance_refs, feature_notes) =
+                if let Some((source_kind, repeat_name, repeat_class, repeat_family)) =
+                    Self::construct_reasoning_repeat_feature_descriptor(feature)
+                {
+                    (
+                        Self::construct_reasoning_repeat_feature_provenance_refs(
+                            &source_kind,
+                            repeat_name.as_deref(),
+                            repeat_class.as_deref(),
+                            repeat_family.as_deref(),
+                            feature,
+                        ),
+                        Self::construct_reasoning_repeat_feature_notes(
+                            &source_kind,
+                            repeat_name.as_deref(),
+                            repeat_class.as_deref(),
+                            repeat_family.as_deref(),
+                            feature,
+                        ),
+                    )
+                } else {
+                    (vec![feature.kind.to_string()], vec![])
+                };
             let strand = Some(
                 if feature_is_reverse(feature) {
                     "-"
@@ -17885,7 +20823,7 @@ impl GentleEngine {
                 evidence.push(DesignEvidence {
                     evidence_id: format!(
                         "feature_{}_{}_{}_{}_{}",
-                        Self::normalize_id_token(&feature.kind.to_string()),
+                        Self::normalize_id_token(feature.kind.as_ref()),
                         feature_id,
                         start_0based,
                         end_0based_exclusive,
@@ -17908,7 +20846,8 @@ impl GentleEngine {
                     },
                     context_tags: context_tags.clone(),
                     provenance_kind: "sequence_feature_annotation".to_string(),
-                    provenance_refs: vec![feature.kind.to_string()],
+                    provenance_refs: feature_provenance_refs.clone(),
+                    notes: feature_notes.clone(),
                     ..DesignEvidence::default()
                 });
             }
@@ -18085,7 +21024,7 @@ impl GentleEngine {
         }
         let sequence_ref = bytes[variant_start_0based] as char;
         let expected_ref = reference_allele.as_bytes()[0] as char;
-        if sequence_ref.to_ascii_uppercase() != expected_ref.to_ascii_uppercase() {
+        if !sequence_ref.eq_ignore_ascii_case(&expected_ref) {
             return vec![];
         }
 
@@ -18175,9 +21114,7 @@ impl GentleEngine {
             if oriented_ref.len() != 1 || oriented_alt.len() != 1 {
                 continue;
             }
-            if ref_codon[codon_pos].to_ascii_uppercase()
-                != oriented_ref.as_bytes()[0].to_ascii_uppercase()
-            {
+            if !ref_codon[codon_pos].eq_ignore_ascii_case(&oriented_ref.as_bytes()[0]) {
                 continue;
             }
             alt_codon[codon_pos] = oriented_alt.as_bytes()[0].to_ascii_uppercase();
@@ -18855,8 +21792,8 @@ impl GentleEngine {
                     .collect::<Vec<_>>();
                 let mut attribute_matches = component
                     .attributes
-                    .iter()
-                    .flat_map(|(_, value)| {
+                    .values()
+                    .flat_map(|value| {
                         Self::construct_reasoning_value_contains_any_term(
                             value,
                             rule.helper_component_attribute_terms,
@@ -19408,6 +22345,345 @@ impl GentleEngine {
         ids.sort();
         ids.dedup();
         ids
+    }
+
+    fn construct_reasoning_severity_from_score(score: f64) -> ConstructReasoningSeverity {
+        if score <= 0.0 {
+            ConstructReasoningSeverity::None
+        } else if score < 0.25 {
+            ConstructReasoningSeverity::Low
+        } else if score < 0.60 {
+            ConstructReasoningSeverity::Medium
+        } else {
+            ConstructReasoningSeverity::High
+        }
+    }
+
+    fn construct_reasoning_min_score_for_severity(severity: ConstructReasoningSeverity) -> f64 {
+        match severity {
+            ConstructReasoningSeverity::None => 0.0,
+            ConstructReasoningSeverity::Low => 0.20,
+            ConstructReasoningSeverity::Medium => 0.50,
+            ConstructReasoningSeverity::High => 0.85,
+        }
+    }
+
+    fn construct_reasoning_task_score(
+        severity: ConstructReasoningSeverity,
+        evidence_score: f64,
+    ) -> f64 {
+        let evidence_score = if evidence_score.is_finite() {
+            evidence_score.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        match severity {
+            ConstructReasoningSeverity::None => 0.0,
+            ConstructReasoningSeverity::Low => evidence_score.clamp(0.20, 0.24),
+            ConstructReasoningSeverity::Medium => evidence_score.clamp(0.50, 0.59),
+            ConstructReasoningSeverity::High => {
+                evidence_score.max(Self::construct_reasoning_min_score_for_severity(severity))
+            }
+        }
+    }
+
+    fn construct_reasoning_text_has_any(haystack: &str, needles: &[&str]) -> bool {
+        needles.iter().any(|needle| haystack.contains(needle))
+    }
+
+    fn construct_reasoning_objective_text(objective: &ConstructObjective) -> String {
+        let mut parts = vec![objective.title.as_str(), objective.goal.as_str()];
+        for value in [
+            objective.host_species.as_deref(),
+            objective.cell_type.as_deref(),
+            objective.tissue.as_deref(),
+            objective.organelle.as_deref(),
+            objective.expression_intent.as_deref(),
+            objective.propagation_host_profile_id.as_deref(),
+            objective.expression_host_profile_id.as_deref(),
+            objective.helper_profile_id.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            parts.push(value);
+        }
+        parts.extend(objective.medium_conditions.iter().map(String::as_str));
+        parts.extend(objective.required_host_traits.iter().map(String::as_str));
+        parts.extend(objective.forbidden_host_traits.iter().map(String::as_str));
+        parts.extend(objective.notes.iter().map(String::as_str));
+        parts.extend(
+            objective
+                .preferred_routine_families
+                .iter()
+                .map(String::as_str),
+        );
+        for role in &objective.required_roles {
+            parts.push(role.as_str());
+        }
+        for role in &objective.forbidden_roles {
+            parts.push(role.as_str());
+        }
+        for step in &objective.host_route {
+            parts.push(step.step_id.as_str());
+            parts.push(step.host_profile_id.as_str());
+            parts.push(step.role.as_str());
+            parts.push(step.rationale.as_str());
+            parts.extend(step.notes.iter().map(String::as_str));
+        }
+        for plan in &objective.adapter_restriction_capture_plans {
+            parts.push(plan.capture_id.as_str());
+            parts.push(plan.restriction_enzyme_name.as_str());
+            parts.extend(plan.extra_retrieval_enzyme_names.iter().map(String::as_str));
+            parts.extend(plan.notes.iter().map(String::as_str));
+        }
+        parts
+            .join(" ")
+            .replace('-', "_")
+            .replace('/', "_")
+            .replace('.', "_")
+            .to_ascii_lowercase()
+    }
+
+    fn construct_reasoning_objective_has_explicit_task_context(
+        objective: &ConstructObjective,
+        text: &str,
+    ) -> bool {
+        let metadata_present = objective.host_species.is_some()
+            || objective.cell_type.is_some()
+            || objective.tissue.is_some()
+            || objective.organelle.is_some()
+            || objective.expression_intent.is_some()
+            || objective.propagation_host_profile_id.is_some()
+            || objective.expression_host_profile_id.is_some()
+            || !objective.host_route.is_empty()
+            || !objective.medium_conditions.is_empty()
+            || objective.helper_profile_id.is_some()
+            || !objective.adapter_restriction_capture_plans.is_empty()
+            || !objective.required_host_traits.is_empty()
+            || !objective.forbidden_host_traits.is_empty()
+            || !objective.required_roles.is_empty()
+            || !objective.forbidden_roles.is_empty()
+            || !objective.preferred_routine_families.is_empty()
+            || !objective.notes.is_empty();
+        let task_words = [
+            "pcr",
+            "qpcr",
+            "amplicon",
+            "primer",
+            "nanopore",
+            "sequencing",
+            "read_mapping",
+            "mapping",
+            "alignment",
+            "rna_seq",
+            "illumina",
+            "clone",
+            "cloning",
+            "assembly",
+            "ligation",
+            "propagation",
+            "stability",
+            "maintenance",
+            "storage",
+        ];
+        metadata_present || Self::construct_reasoning_text_has_any(text, &task_words)
+    }
+
+    fn construct_reasoning_objective_task_relevance(
+        objective: &ConstructObjective,
+        task: ConstructReasoningRiskTask,
+    ) -> Option<(bool, &'static str)> {
+        let text = Self::construct_reasoning_objective_text(objective);
+        if !Self::construct_reasoning_objective_has_explicit_task_context(objective, &text) {
+            return None;
+        }
+
+        let has_propagation_or_storage = objective.host_route.iter().any(|step| {
+            matches!(
+                step.role,
+                HostLifecycleRole::Propagation | HostLifecycleRole::Storage
+            )
+        }) || objective.propagation_host_profile_id.is_some();
+        let has_expression = objective.expression_intent.is_some()
+            || objective.expression_host_profile_id.is_some()
+            || objective
+                .host_route
+                .iter()
+                .any(|step| step.role == HostLifecycleRole::Expression);
+        let has_adapter_capture = !objective.adapter_restriction_capture_plans.is_empty();
+        let relevant = match task {
+            ConstructReasoningRiskTask::Pcr => Self::construct_reasoning_text_has_any(
+                &text,
+                &[
+                    "pcr",
+                    "qpcr",
+                    "amplification",
+                    "amplicon",
+                    "primer",
+                    "mutagenesis",
+                ],
+            ),
+            ConstructReasoningRiskTask::NanoporeSequencing => {
+                Self::construct_reasoning_text_has_any(
+                    &text,
+                    &[
+                        "nanopore",
+                        "long_read",
+                        "long read",
+                        "direct_sequencing",
+                        "direct sequencing",
+                        "sequence_confirmation",
+                        "sequence confirmation",
+                    ],
+                ) || (Self::construct_reasoning_text_has_any(&text, &["sequencing"])
+                    && !Self::construct_reasoning_text_has_any(
+                        &text,
+                        &["illumina", "short_read", "short read"],
+                    ))
+            }
+            ConstructReasoningRiskTask::ReadMapping => Self::construct_reasoning_text_has_any(
+                &text,
+                &[
+                    "read_mapping",
+                    "read mapping",
+                    "mapping",
+                    "alignment",
+                    "align",
+                    "rna_seq",
+                    "rna seq",
+                    "rna_reads",
+                    "rna reads",
+                    "illumina",
+                    "nanopore",
+                    "sequencing",
+                ],
+            ),
+            ConstructReasoningRiskTask::CloningStability => {
+                has_adapter_capture
+                    || has_propagation_or_storage
+                    || Self::construct_reasoning_text_has_any(
+                        &text,
+                        &[
+                            "clone",
+                            "cloning",
+                            "assembly",
+                            "ligation",
+                            "gibson",
+                            "golden_gate",
+                            "restriction",
+                            "gateway",
+                            "infusion",
+                            "nebuilder",
+                            "topo",
+                            "transform",
+                            "recovery",
+                            "plasmid",
+                        ],
+                    )
+            }
+            ConstructReasoningRiskTask::ConstructMaintenance => {
+                has_propagation_or_storage
+                    || has_expression
+                    || Self::construct_reasoning_text_has_any(
+                        &text,
+                        &[
+                            "maintenance",
+                            "maintain",
+                            "propagation",
+                            "storage",
+                            "stability",
+                            "stable",
+                            "long_term",
+                            "long term",
+                            "plasmid",
+                        ],
+                    )
+            }
+        };
+        let reason = match (task, relevant) {
+            (ConstructReasoningRiskTask::Pcr, true) => {
+                "the objective names PCR, primers, amplicons, or amplification"
+            }
+            (ConstructReasoningRiskTask::Pcr, false) => {
+                "no PCR, primer, amplicon, or amplification step is named in the objective"
+            }
+            (ConstructReasoningRiskTask::NanoporeSequencing, true) => {
+                "the objective names nanopore, direct sequencing, or sequence confirmation"
+            }
+            (ConstructReasoningRiskTask::NanoporeSequencing, false) => {
+                "no nanopore, direct sequencing, or sequence-confirmation step is named in the objective"
+            }
+            (ConstructReasoningRiskTask::ReadMapping, true) => {
+                "the objective names sequencing, alignment, or read mapping"
+            }
+            (ConstructReasoningRiskTask::ReadMapping, false) => {
+                "no sequencing, alignment, or read-mapping step is named in the objective"
+            }
+            (ConstructReasoningRiskTask::CloningStability, true) => {
+                "the objective includes cloning, assembly, adapter capture, or propagation"
+            }
+            (ConstructReasoningRiskTask::CloningStability, false) => {
+                "no cloning, assembly, adapter-capture, or propagation step is named in the objective"
+            }
+            (ConstructReasoningRiskTask::ConstructMaintenance, true) => {
+                "the objective includes propagation, expression, storage, or long-term maintenance"
+            }
+            (ConstructReasoningRiskTask::ConstructMaintenance, false) => {
+                "no propagation, expression, storage, or long-term maintenance context is named in the objective"
+            }
+        };
+        Some((relevant, reason))
+    }
+
+    fn construct_reasoning_task_severity(
+        objective: &ConstructObjective,
+        task: ConstructReasoningRiskTask,
+        severity: ConstructReasoningSeverity,
+        evidence_score: f64,
+        rationale: impl Into<String>,
+        supporting_evidence_ids: Vec<String>,
+    ) -> ConstructReasoningTaskSeverity {
+        let mut supporting_evidence_ids = supporting_evidence_ids
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        supporting_evidence_ids.sort();
+        supporting_evidence_ids.dedup();
+        let mut score = Self::construct_reasoning_task_score(severity, evidence_score);
+        let mut rationale = rationale.into().trim().to_string();
+        if let Some((relevant, reason)) =
+            Self::construct_reasoning_objective_task_relevance(objective, task)
+        {
+            if relevant {
+                score = (score + 0.08).min(1.0);
+                if !rationale.is_empty() {
+                    rationale.push(' ');
+                }
+                rationale.push_str("Objective context makes this task directly relevant because ");
+                rationale.push_str(reason);
+                rationale.push('.');
+            } else {
+                score = score.min(0.05);
+                if !rationale.is_empty() {
+                    rationale.push(' ');
+                }
+                rationale.push_str(
+                    "Objective context does not currently perform this task, so the score is down-weighted because ",
+                );
+                rationale.push_str(reason);
+                rationale.push('.');
+            }
+        }
+        let severity = Self::construct_reasoning_severity_from_score(score);
+        ConstructReasoningTaskSeverity {
+            task,
+            severity,
+            score: Some(score),
+            rationale,
+            supporting_evidence_ids,
+        }
     }
 
     fn construct_reasoning_build_fact(
@@ -20373,6 +23649,12 @@ impl GentleEngine {
             .copied()
             .filter(|row| has_similarity_tag(row, "mapping_ambiguity_risk"))
             .collect::<Vec<_>>();
+        let curated_repeat_family_rows = repeat_region_rows
+            .iter()
+            .chain(mobile_element_rows.iter())
+            .copied()
+            .filter(|row| Self::construct_reasoning_evidence_is_curated_repeat_annotation(row))
+            .collect::<Vec<_>>();
 
         if !low_complexity_rows.is_empty()
             || !homopolymer_rows.is_empty()
@@ -20411,7 +23693,29 @@ impl GentleEngine {
             complexity_evidence_ids.extend(similarity_ids(&tandem_rows));
             complexity_evidence_ids.sort();
             complexity_evidence_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let pcr_complexity_severity = if !homopolymer_rows.is_empty() || !tandem_rows.is_empty()
+            {
+                ConstructReasoningSeverity::Medium
+            } else {
+                ConstructReasoningSeverity::Low
+            };
+            let nanopore_complexity_severity = if !homopolymer_rows.is_empty() {
+                ConstructReasoningSeverity::High
+            } else if !low_complexity_rows.is_empty() || !tandem_rows.is_empty() {
+                ConstructReasoningSeverity::Medium
+            } else {
+                ConstructReasoningSeverity::Low
+            };
+            let complexity_pcr_score = similarity_max_score(&low_complexity_rows)
+                .max(similarity_max_score(&homopolymer_rows))
+                .max(similarity_max_score(&tandem_rows))
+                .max(similarity_max_score(&slippage_risk_rows));
+            let complexity_nanopore_score = similarity_max_score(&low_complexity_rows)
+                .max(similarity_max_score(&homopolymer_rows))
+                .max(similarity_max_score(&tandem_rows))
+                .max(similarity_max_score(&nanopore_signal_rows))
+                .max(similarity_max_score(&nanopore_homopolymer_rows));
+            let mut complexity_fact = Self::construct_reasoning_build_fact(
                 "fact_sequence_complexity_context",
                 "sequence_complexity_context",
                 complexity_label,
@@ -20429,7 +23733,26 @@ impl GentleEngine {
                     "max_low_complexity_risk_score": similarity_max_score(&low_complexity_rows),
                     "max_polymerase_slippage_risk_score": similarity_max_score(&slippage_risk_rows),
                 }),
-            ));
+            );
+            complexity_fact.task_severities = vec![
+                Self::construct_reasoning_task_severity(
+                    objective,
+                    ConstructReasoningRiskTask::Pcr,
+                    pcr_complexity_severity,
+                    complexity_pcr_score,
+                    "Low-complexity, homopolymer, or tandem-repeat evidence can constrain primer placement and short-amplicon amplification.",
+                    complexity_evidence_ids.clone(),
+                ),
+                Self::construct_reasoning_task_severity(
+                    objective,
+                    ConstructReasoningRiskTask::NanoporeSequencing,
+                    nanopore_complexity_severity,
+                    complexity_nanopore_score,
+                    "Homopolymer and low-complexity evidence can affect raw-signal interpretation, basecalling, and local alignment confidence.",
+                    complexity_evidence_ids.clone(),
+                ),
+            ];
+            facts.push(complexity_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_sequence_complexity_context",
                 "evaluate_sequence_complexity_context",
@@ -20444,26 +23767,81 @@ impl GentleEngine {
         }
 
         if !direct_repeat_rows.is_empty() || !inverted_repeat_rows.is_empty() {
-            let repeat_architecture_status = if !inverted_repeat_rows.is_empty() {
+            let mut repeat_architecture_internal_rows = direct_repeat_rows.clone();
+            repeat_architecture_internal_rows.extend(inverted_repeat_rows.clone());
+            let curated_repeat_support = Self::construct_reasoning_curated_repeat_support_for_rows(
+                &repeat_architecture_internal_rows,
+                &curated_repeat_family_rows,
+            );
+            let repeat_architecture_agreement =
+                Self::construct_reasoning_best_repeat_family_agreement_for_rows(
+                    &repeat_architecture_internal_rows,
+                    &curated_repeat_family_rows,
+                );
+            let repeat_architecture_status = if !curated_repeat_support.is_empty() {
+                "curated_repeat_family_supported"
+            } else if !inverted_repeat_rows.is_empty() {
                 "direct_and_inverted_repeat_clusters"
             } else {
                 "direct_repeat_clusters"
             };
-            let repeat_architecture_label = if !inverted_repeat_rows.is_empty() {
+            let repeat_architecture_label = if !curated_repeat_support.is_empty() {
+                "Repeat/similarity architecture with curated repeat-family support".to_string()
+            } else if !inverted_repeat_rows.is_empty() {
                 "Repeat/similarity architecture detected".to_string()
             } else {
                 "Direct repeat architecture detected".to_string()
             };
-            let repeat_architecture_rationale = format!(
+            let mut repeat_architecture_rationale = format!(
                 "Sequence-derived repeat scanning detected {} direct-repeat cluster(s) and {} inverted-repeat cluster(s). These exact sequence patterns are kept as generated structural context because inversion or recombination relevance depends on the workflow.",
                 direct_repeat_rows.len(),
                 inverted_repeat_rows.len()
             );
+            if !curated_repeat_support.is_empty() {
+                let agreement_label = repeat_architecture_agreement
+                    .map(RepeatFamilyAgreementStrength::as_str)
+                    .unwrap_or("repeat-family");
+                repeat_architecture_rationale.push_str(&format!(
+                    " Overlapping curated repeat-family annotation(s) support this context through {agreement_label}-level agreement: {}.",
+                    Self::construct_reasoning_curated_repeat_support_labels(
+                        &curated_repeat_support
+                    )
+                    .join(", ")
+                ));
+            }
             let mut repeat_architecture_ids = similarity_ids(&direct_repeat_rows);
             repeat_architecture_ids.extend(similarity_ids(&inverted_repeat_rows));
+            repeat_architecture_ids.extend(
+                Self::construct_reasoning_curated_repeat_support_evidence_ids(
+                    &curated_repeat_support,
+                ),
+            );
             repeat_architecture_ids.sort();
             repeat_architecture_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let repeat_read_mapping_severity = if !curated_repeat_support.is_empty() {
+                ConstructReasoningSeverity::Medium
+            } else {
+                ConstructReasoningSeverity::Low
+            };
+            let repeat_cloning_severity = if !inverted_repeat_rows.is_empty() {
+                ConstructReasoningSeverity::High
+            } else {
+                ConstructReasoningSeverity::Medium
+            };
+            let repeat_maintenance_severity =
+                if !curated_repeat_support.is_empty() || !inverted_repeat_rows.is_empty() {
+                    ConstructReasoningSeverity::Medium
+                } else {
+                    ConstructReasoningSeverity::Low
+                };
+            let repeat_architecture_score = similarity_max_score(&direct_repeat_rows)
+                .max(similarity_max_score(&inverted_repeat_rows))
+                .max(
+                    repeat_architecture_agreement
+                        .map(RepeatFamilyAgreementStrength::confidence)
+                        .unwrap_or(0.0),
+                );
+            let mut repeat_architecture_fact = Self::construct_reasoning_build_fact(
                 "fact_repeat_architecture_context",
                 "repeat_architecture_context",
                 repeat_architecture_label,
@@ -20478,8 +23856,57 @@ impl GentleEngine {
                     "inverted_repeat_labels": similarity_labels(&inverted_repeat_rows),
                     "max_direct_repeat_risk_score": similarity_max_score(&direct_repeat_rows),
                     "max_inverted_repeat_risk_score": similarity_max_score(&inverted_repeat_rows),
+                    "curated_repeat_support_count": curated_repeat_support.len(),
+                    "curated_repeat_agreement": repeat_architecture_agreement
+                        .map(RepeatFamilyAgreementStrength::as_str),
+                    "curated_repeat_family_labels":
+                        Self::construct_reasoning_curated_repeat_support_labels(
+                            &curated_repeat_support
+                        ),
+                    "curated_repeat_support": curated_repeat_support
+                        .iter()
+                        .map(ConstructReasoningCuratedRepeatSupport::to_json)
+                        .collect::<Vec<_>>(),
                 }),
-            ));
+            );
+            if let Some(agreement) = repeat_architecture_agreement {
+                repeat_architecture_fact.confidence = Some(agreement.confidence());
+            }
+            repeat_architecture_fact.task_severities = vec![
+                Self::construct_reasoning_task_severity(
+                    objective,
+                    ConstructReasoningRiskTask::ReadMapping,
+                    repeat_read_mapping_severity,
+                    repeat_architecture_score,
+                    if !curated_repeat_support.is_empty() {
+                        "Curated repeat-family support makes the repeated interval less likely to be uniquely mappable without read-length or reference-context review."
+                    } else {
+                        "Exact repeat architecture can reduce local uniqueness, but without repeat-family support this remains lower priority than cloning stability review."
+                    },
+                    repeat_architecture_ids.clone(),
+                ),
+                Self::construct_reasoning_task_severity(
+                    objective,
+                    ConstructReasoningRiskTask::CloningStability,
+                    repeat_cloning_severity,
+                    repeat_architecture_score,
+                    if !inverted_repeat_rows.is_empty() {
+                        "Inverted or palindromic repeat evidence raises recombination and rearrangement concern for cloning stability."
+                    } else {
+                        "Direct repeat evidence can promote recombination or deletion during construct recovery and propagation."
+                    },
+                    repeat_architecture_ids.clone(),
+                ),
+                Self::construct_reasoning_task_severity(
+                    objective,
+                    ConstructReasoningRiskTask::ConstructMaintenance,
+                    repeat_maintenance_severity,
+                    repeat_architecture_score,
+                    "Repeat architecture is tracked for longer-term construct maintenance because repeated segments can rearrange under host and vector conditions.",
+                    repeat_architecture_ids.clone(),
+                ),
+            ];
+            facts.push(repeat_architecture_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_repeat_architecture_context",
                 "evaluate_repeat_architecture_context",
@@ -20494,30 +23921,99 @@ impl GentleEngine {
         }
 
         if !mobile_element_rows.is_empty() {
-            let mobile_element_status = if !alu_like_rows.is_empty() {
-                "alu_like_candidates_detected"
-            } else {
-                "mobile_element_candidates_detected"
-            };
+            let internal_mobile_element_rows = mobile_element_rows
+                .iter()
+                .copied()
+                .filter(|row| !Self::construct_reasoning_evidence_is_curated_repeat_annotation(row))
+                .collect::<Vec<_>>();
+            let curated_mobile_support = Self::construct_reasoning_curated_repeat_support_for_rows(
+                &internal_mobile_element_rows,
+                &curated_repeat_family_rows,
+            );
+            let curated_mobile_annotation_rows = mobile_element_rows
+                .iter()
+                .copied()
+                .filter(|row| Self::construct_reasoning_evidence_is_curated_repeat_annotation(row))
+                .collect::<Vec<_>>();
+            let mobile_element_status =
+                if !curated_mobile_support.is_empty() && !alu_like_rows.is_empty() {
+                    "curated_alu_sine_supported"
+                } else if !alu_like_rows.is_empty() {
+                    "alu_like_candidates_detected"
+                } else if !curated_mobile_annotation_rows.is_empty() {
+                    "curated_mobile_element_annotation_detected"
+                } else {
+                    "mobile_element_candidates_detected"
+                };
             let mobile_element_label = match mobile_element_status {
+                "curated_alu_sine_supported" => {
+                    "Alu/SINE mobile-element context backed by curated repeat annotation"
+                        .to_string()
+                }
                 "alu_like_candidates_detected" => {
                     "Alu-like mobile-element context detected".to_string()
                 }
+                "curated_mobile_element_annotation_detected" => {
+                    "Curated mobile-element annotation detected".to_string()
+                }
                 _ => "Mobile-element context detected".to_string(),
             };
-            let mobile_element_rationale = if !alu_like_rows.is_empty() {
+            let mobile_element_rationale = if !curated_mobile_support.is_empty()
+                && !alu_like_rows.is_empty()
+            {
+                format!(
+                    "Sequence-derived mobile-element heuristics detected {} Alu-like SINE candidate(s), and overlapping curated repeat-family annotation(s) support the call: {}.",
+                    alu_like_rows.len(),
+                    Self::construct_reasoning_curated_repeat_support_labels(
+                        &curated_mobile_support
+                    )
+                    .join(", ")
+                )
+            } else if !alu_like_rows.is_empty() {
                 format!(
                     "Sequence-derived mobile-element heuristics detected {} Alu-like SINE candidate(s). These remain soft hypotheses until a curated repeat-family catalog or external masker confirms the family assignment.",
                     alu_like_rows.len()
                 )
+            } else if !curated_mobile_annotation_rows.is_empty() {
+                format!(
+                    "Curated repeat-family annotation(s) mark {} mobile-element span(s): {}.",
+                    curated_mobile_annotation_rows.len(),
+                    similarity_labels(&curated_mobile_annotation_rows).join(", ")
+                )
             } else {
                 format!(
                     "Sequence-derived mobile-element heuristics detected {} candidate region(s), but none currently match the narrower Alu-like rule.",
-                    mobile_element_rows.len()
+                    internal_mobile_element_rows.len()
                 )
             };
-            let mobile_element_ids = similarity_ids(&mobile_element_rows);
-            facts.push(Self::construct_reasoning_build_fact(
+            let mut mobile_element_ids = similarity_ids(&mobile_element_rows);
+            mobile_element_ids.extend(
+                Self::construct_reasoning_curated_repeat_support_evidence_ids(
+                    &curated_mobile_support,
+                ),
+            );
+            mobile_element_ids.sort();
+            mobile_element_ids.dedup();
+            let mobile_read_mapping_severity = if !curated_mobile_support.is_empty()
+                || !curated_mobile_annotation_rows.is_empty()
+            {
+                ConstructReasoningSeverity::High
+            } else if !alu_like_rows.is_empty() {
+                ConstructReasoningSeverity::Medium
+            } else {
+                ConstructReasoningSeverity::Low
+            };
+            let mobile_maintenance_severity = if !curated_mobile_support.is_empty()
+                || !curated_mobile_annotation_rows.is_empty()
+            {
+                ConstructReasoningSeverity::Medium
+            } else {
+                ConstructReasoningSeverity::Low
+            };
+            let mobile_element_score = similarity_max_score(&internal_mobile_element_rows)
+                .max(similarity_max_score(&curated_mobile_annotation_rows))
+                .max(similarity_max_score(&alu_like_rows));
+            let mut mobile_element_fact = Self::construct_reasoning_build_fact(
                 "fact_mobile_element_context",
                 "mobile_element_context",
                 mobile_element_label,
@@ -20526,12 +24022,51 @@ impl GentleEngine {
                 json!({
                     "seq_id": seq_id,
                     "status": mobile_element_status,
-                    "mobile_element_candidate_count": mobile_element_rows.len(),
+                    "mobile_element_candidate_count": internal_mobile_element_rows.len(),
                     "alu_like_candidate_count": alu_like_rows.len(),
-                    "labels": similarity_labels(&mobile_element_rows),
-                    "max_mobile_element_score": similarity_max_score(&mobile_element_rows),
+                    "curated_mobile_element_annotation_count":
+                        curated_mobile_annotation_rows.len(),
+                    "labels": similarity_labels(&internal_mobile_element_rows),
+                    "curated_mobile_element_labels":
+                        similarity_labels(&curated_mobile_annotation_rows),
+                    "max_mobile_element_score":
+                        similarity_max_score(&internal_mobile_element_rows),
+                    "curated_repeat_support_count": curated_mobile_support.len(),
+                    "curated_repeat_family_labels":
+                        Self::construct_reasoning_curated_repeat_support_labels(
+                            &curated_mobile_support
+                        ),
+                    "curated_repeat_support": curated_mobile_support
+                        .iter()
+                        .map(ConstructReasoningCuratedRepeatSupport::to_json)
+                        .collect::<Vec<_>>(),
                 }),
-            ));
+            );
+            mobile_element_fact.task_severities = vec![
+                Self::construct_reasoning_task_severity(
+                    objective,
+                    ConstructReasoningRiskTask::ReadMapping,
+                    mobile_read_mapping_severity,
+                    mobile_element_score,
+                    if !curated_mobile_support.is_empty()
+                        || !curated_mobile_annotation_rows.is_empty()
+                    {
+                        "Curated repeat-family or mobile-element annotation increases read-mapping ambiguity concern for this interval."
+                    } else {
+                        "Internal mobile-element-like sequence remains a mapping review cue until curated family support confirms repeat class."
+                    },
+                    mobile_element_ids.clone(),
+                ),
+                Self::construct_reasoning_task_severity(
+                    objective,
+                    ConstructReasoningRiskTask::ConstructMaintenance,
+                    mobile_maintenance_severity,
+                    mobile_element_score,
+                    "Mobile-element-like context is tracked for construct maintenance because repeat-family sequence can contribute to rearrangement or unwanted genomic similarity.",
+                    mobile_element_ids.clone(),
+                ),
+            ];
+            facts.push(mobile_element_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_mobile_element_context",
                 "evaluate_mobile_element_context",
@@ -20568,7 +24103,23 @@ impl GentleEngine {
             pcr_risk_ids.extend(similarity_ids(&slippage_risk_rows));
             pcr_risk_ids.sort();
             pcr_risk_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let pcr_task_severity = if !slippage_risk_rows.is_empty()
+                && (!homopolymer_rows.is_empty() || !tandem_rows.is_empty())
+            {
+                ConstructReasoningSeverity::High
+            } else if !homopolymer_rows.is_empty()
+                || !tandem_rows.is_empty()
+                || !slippage_risk_rows.is_empty()
+            {
+                ConstructReasoningSeverity::Medium
+            } else {
+                ConstructReasoningSeverity::Low
+            };
+            let pcr_risk_score = similarity_max_score(&low_complexity_rows)
+                .max(similarity_max_score(&homopolymer_rows))
+                .max(similarity_max_score(&tandem_rows))
+                .max(similarity_max_score(&slippage_risk_rows));
+            let mut pcr_risk_fact = Self::construct_reasoning_build_fact(
                 "fact_pcr_operational_risk_context",
                 "pcr_operational_risk_context",
                 "PCR/amplification review suggested".to_string(),
@@ -20585,10 +24136,18 @@ impl GentleEngine {
                     "homopolymer_labels": similarity_labels(&homopolymer_rows),
                     "tandem_repeat_labels": similarity_labels(&tandem_rows),
                     "slippage_labels": similarity_labels(&slippage_risk_rows),
-                    "max_pcr_risk_score": similarity_max_score(&low_complexity_rows)
-                        .max(similarity_max_score(&slippage_risk_rows)),
+                    "max_pcr_risk_score": pcr_risk_score,
                 }),
-            ));
+            );
+            pcr_risk_fact.task_severities = vec![Self::construct_reasoning_task_severity(
+                objective,
+                ConstructReasoningRiskTask::Pcr,
+                pcr_task_severity,
+                pcr_risk_score,
+                "Repeat, homopolymer, tandem-repeat, or explicit slippage-risk evidence can affect primer placement, short amplicons, and polymerase behavior.",
+                pcr_risk_ids.clone(),
+            )];
+            facts.push(pcr_risk_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_pcr_operational_risk",
                 "evaluate_pcr_operational_risk",
@@ -20617,7 +24176,14 @@ impl GentleEngine {
             nanopore_risk_ids.extend(similarity_ids(&nanopore_homopolymer_rows));
             nanopore_risk_ids.sort();
             nanopore_risk_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let nanopore_task_severity = if !nanopore_homopolymer_rows.is_empty() {
+                ConstructReasoningSeverity::High
+            } else {
+                ConstructReasoningSeverity::Medium
+            };
+            let nanopore_risk_score = similarity_max_score(&nanopore_signal_rows)
+                .max(similarity_max_score(&nanopore_homopolymer_rows));
+            let mut nanopore_risk_fact = Self::construct_reasoning_build_fact(
                 "fact_nanopore_operational_risk_context",
                 "nanopore_operational_risk_context",
                 "Nanopore/direct-sequencing review suggested".to_string(),
@@ -20630,9 +24196,18 @@ impl GentleEngine {
                     "nanopore_homopolymer_risk_count": nanopore_homopolymer_rows.len(),
                     "signal_labels": similarity_labels(&nanopore_signal_rows),
                     "homopolymer_labels": similarity_labels(&nanopore_homopolymer_rows),
-                    "max_nanopore_risk_score": similarity_max_score(&nanopore_signal_rows),
+                    "max_nanopore_risk_score": nanopore_risk_score,
                 }),
-            ));
+            );
+            nanopore_risk_fact.task_severities = vec![Self::construct_reasoning_task_severity(
+                objective,
+                ConstructReasoningRiskTask::NanoporeSequencing,
+                nanopore_task_severity,
+                nanopore_risk_score,
+                "Homopolymer or low-complexity signal-risk evidence can affect nanopore basecalling and local alignment confidence.",
+                nanopore_risk_ids.clone(),
+            )];
+            facts.push(nanopore_risk_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_nanopore_operational_risk",
                 "evaluate_nanopore_operational_risk",
@@ -20661,7 +24236,14 @@ impl GentleEngine {
             mapping_risk_ids.extend(similarity_ids(&mobile_mapping_rows));
             mapping_risk_ids.sort();
             mapping_risk_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let mapping_task_severity = if !mobile_mapping_rows.is_empty() {
+                ConstructReasoningSeverity::High
+            } else {
+                ConstructReasoningSeverity::Low
+            };
+            let mapping_risk_score = similarity_max_score(&mapping_ambiguity_rows)
+                .max(similarity_max_score(&mobile_mapping_rows));
+            let mut mapping_risk_fact = Self::construct_reasoning_build_fact(
                 "fact_mapping_operational_risk_context",
                 "mapping_operational_risk_context",
                 "Repeat-driven mapping review suggested".to_string(),
@@ -20674,10 +24256,22 @@ impl GentleEngine {
                     "mobile_element_candidate_count": mobile_mapping_rows.len(),
                     "mapping_labels": similarity_labels(&mapping_ambiguity_rows),
                     "mobile_element_labels": similarity_labels(&mobile_mapping_rows),
-                    "max_mapping_risk_score": similarity_max_score(&mapping_ambiguity_rows)
-                        .max(similarity_max_score(&mobile_mapping_rows)),
+                    "max_mapping_risk_score": mapping_risk_score,
                 }),
-            ));
+            );
+            mapping_risk_fact.task_severities = vec![Self::construct_reasoning_task_severity(
+                objective,
+                ConstructReasoningRiskTask::ReadMapping,
+                mapping_task_severity,
+                mapping_risk_score,
+                if !mobile_mapping_rows.is_empty() {
+                    "Mobile-element or repeat-family evidence can substantially reduce mapping uniqueness without read-length and reference-context review."
+                } else {
+                    "Repeat-driven ambiguity can reduce local mapping uniqueness, but without family-backed evidence this remains a lower-priority mapping cue."
+                },
+                mapping_risk_ids.clone(),
+            )];
+            facts.push(mapping_risk_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_mapping_operational_risk",
                 "evaluate_mapping_operational_risk",
@@ -20706,7 +24300,19 @@ impl GentleEngine {
             cloning_risk_ids.extend(similarity_ids(&cloning_risk_rows));
             cloning_risk_ids.sort();
             cloning_risk_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let cloning_task_severity = if !inversion_risk_rows.is_empty() {
+                ConstructReasoningSeverity::High
+            } else {
+                ConstructReasoningSeverity::Medium
+            };
+            let maintenance_task_severity = if !inversion_risk_rows.is_empty() {
+                ConstructReasoningSeverity::High
+            } else {
+                ConstructReasoningSeverity::Medium
+            };
+            let cloning_risk_score = similarity_max_score(&inversion_risk_rows)
+                .max(similarity_max_score(&cloning_risk_rows));
+            let mut cloning_risk_fact = Self::construct_reasoning_build_fact(
                 "fact_cloning_stability_context",
                 "cloning_stability_context",
                 "Cloning stability review suggested".to_string(),
@@ -20719,10 +24325,32 @@ impl GentleEngine {
                     "cloning_stability_risk_count": cloning_risk_rows.len(),
                     "inversion_labels": similarity_labels(&inversion_risk_rows),
                     "cloning_labels": similarity_labels(&cloning_risk_rows),
-                    "max_cloning_risk_score": similarity_max_score(&inversion_risk_rows)
-                        .max(similarity_max_score(&cloning_risk_rows)),
+                    "max_cloning_risk_score": cloning_risk_score,
                 }),
-            ));
+            );
+            cloning_risk_fact.task_severities = vec![
+                Self::construct_reasoning_task_severity(
+                    objective,
+                    ConstructReasoningRiskTask::CloningStability,
+                    cloning_task_severity,
+                    cloning_risk_score,
+                    if !inversion_risk_rows.is_empty() {
+                        "Inverted-repeat or palindromic evidence raises recombination and rearrangement concern during cloning."
+                    } else {
+                        "Direct repeat evidence can destabilize recovery or maintenance of the cloned construct."
+                    },
+                    cloning_risk_ids.clone(),
+                ),
+                Self::construct_reasoning_task_severity(
+                    objective,
+                    ConstructReasoningRiskTask::ConstructMaintenance,
+                    maintenance_task_severity,
+                    cloning_risk_score,
+                    "Repeat-derived cloning-stability evidence is also relevant for longer-term propagation and construct maintenance.",
+                    cloning_risk_ids.clone(),
+                ),
+            ];
+            facts.push(cloning_risk_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_cloning_stability_context",
                 "evaluate_cloning_stability_context",
@@ -20761,7 +24389,45 @@ impl GentleEngine {
             similarity_risk_ids.extend(similarity_ids(&cloning_risk_rows));
             similarity_risk_ids.sort();
             similarity_risk_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let mut similarity_task_severities = vec![];
+            if !slippage_risk_rows.is_empty() {
+                similarity_task_severities.push(Self::construct_reasoning_task_severity(
+                    objective,
+                    ConstructReasoningRiskTask::Pcr,
+                    ConstructReasoningSeverity::Medium,
+                    similarity_max_score(&slippage_risk_rows),
+                    "Slippage-risk repeat evidence makes PCR/amplification review task-relevant.",
+                    similarity_ids(&slippage_risk_rows),
+                ));
+            }
+            if !mapping_ambiguity_rows.is_empty() {
+                similarity_task_severities.push(Self::construct_reasoning_task_severity(
+                    objective,
+                    ConstructReasoningRiskTask::ReadMapping,
+                    ConstructReasoningSeverity::Low,
+                    similarity_max_score(&mapping_ambiguity_rows),
+                    "Repeat-driven ambiguity can reduce local read-mapping uniqueness.",
+                    similarity_ids(&mapping_ambiguity_rows),
+                ));
+            }
+            if !inversion_risk_rows.is_empty() || !cloning_risk_rows.is_empty() {
+                let mut cloning_similarity_ids = similarity_ids(&inversion_risk_rows);
+                cloning_similarity_ids.extend(similarity_ids(&cloning_risk_rows));
+                similarity_task_severities.push(Self::construct_reasoning_task_severity(
+                    objective,
+                    ConstructReasoningRiskTask::CloningStability,
+                    if !inversion_risk_rows.is_empty() {
+                        ConstructReasoningSeverity::High
+                    } else {
+                        ConstructReasoningSeverity::Medium
+                    },
+                    similarity_max_score(&inversion_risk_rows)
+                        .max(similarity_max_score(&cloning_risk_rows)),
+                    "Repeat and inversion-risk evidence is most directly actionable for cloning-stability review.",
+                    cloning_similarity_ids,
+                ));
+            }
+            let mut similarity_risk_fact = Self::construct_reasoning_build_fact(
                 "fact_similarity_operational_risk_context",
                 "similarity_operational_risk_context",
                 "Similarity/low-complexity operational risks detected".to_string(),
@@ -20779,7 +24445,9 @@ impl GentleEngine {
                         .max(similarity_max_score(&inversion_risk_rows))
                         .max(similarity_max_score(&cloning_risk_rows)),
                 }),
-            ));
+            );
+            similarity_risk_fact.task_severities = similarity_task_severities;
+            facts.push(similarity_risk_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_similarity_operational_risk",
                 "evaluate_similarity_operational_risk",
@@ -21069,19 +24737,23 @@ impl GentleEngine {
                 .iter()
                 .map(|row| row.evidence_id.clone())
                 .collect::<Vec<_>>();
-            variant_related_evidence_ids.extend(evidence.iter().filter_map(|row| {
-                (row.scope == EvidenceScope::SequenceSpan
-                    && row.role != ConstructRole::Variant
-                    && variant_evidence_rows.iter().any(|variant| {
-                        Self::construct_reasoning_ranges_overlap(
-                            variant.start_0based,
-                            variant.end_0based_exclusive,
-                            row.start_0based,
-                            row.end_0based_exclusive,
-                        )
-                    }))
-                .then(|| row.evidence_id.clone())
-            }));
+            variant_related_evidence_ids.extend(
+                evidence
+                    .iter()
+                    .filter(|&row| {
+                        row.scope == EvidenceScope::SequenceSpan
+                            && row.role != ConstructRole::Variant
+                            && variant_evidence_rows.iter().any(|variant| {
+                                Self::construct_reasoning_ranges_overlap(
+                                    variant.start_0based,
+                                    variant.end_0based_exclusive,
+                                    row.start_0based,
+                                    row.end_0based_exclusive,
+                                )
+                            })
+                    })
+                    .map(|row| row.evidence_id.clone()),
+            );
             variant_related_evidence_ids.sort();
             variant_related_evidence_ids.dedup();
 
@@ -21222,6 +24894,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "seq_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let dna = self
@@ -21231,6 +24905,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?;
         let store = self.read_construct_reasoning_store();
         let existing_graph = graph_id
@@ -21254,6 +24930,8 @@ impl GentleEngine {
                         "Construct objective '{}' not found in construct reasoning store",
                         objective_id
                     ),
+
+                    cause_chain: vec![],
                 })?
         } else {
             Self::construct_reasoning_default_objective(seq_id, dna)
@@ -21275,6 +24953,7 @@ impl GentleEngine {
             &evidence,
             helper_interpretation.as_ref(),
         );
+        Self::construct_reasoning_apply_curated_repeat_support_to_evidence(&mut evidence, &facts);
         let mut annotation_candidates = Self::construct_reasoning_build_annotation_candidates(
             seq_id, &evidence, &facts, &decisions,
         );
@@ -21333,10 +25012,14 @@ impl GentleEngine {
                 "Could not serialize construct reasoning graph '{}': {e}",
                 graph.graph_id
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write construct reasoning graph to '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(graph)
     }
@@ -21377,6 +25060,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize dotplot analysis metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -21390,6 +25075,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("{kind}_id cannot be empty"),
+
+                cause_chain: vec![],
             });
         }
         let mut out = String::with_capacity(trimmed.len());
@@ -21406,6 +25093,8 @@ impl GentleEngine {
                 message: format!(
                     "{kind}_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(out)
@@ -21424,12 +25113,16 @@ impl GentleEngine {
                 message: format!(
                     "span_start_0based ({start}) must be within sequence length ({seq_len})"
                 ),
+
+                cause_chain: vec![],
             });
         }
         if end > seq_len {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("span_end_0based ({end}) must be <= sequence length ({seq_len})"),
+
+                cause_chain: vec![],
             });
         }
         if end <= start {
@@ -21438,6 +25131,8 @@ impl GentleEngine {
                 message: format!(
                     "Invalid span {start}..{end}; span_end_0based must be > span_start_0based"
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok((start, end))
@@ -21572,7 +25267,7 @@ impl GentleEngine {
         let label = repeat_name
             .or_else(|| repeat_family.clone())
             .or_else(|| repeat_class.clone())
-            .unwrap_or_else(|| kind);
+            .unwrap_or(kind);
         Some((label, repeat_class, repeat_family))
     }
 
@@ -21580,22 +25275,19 @@ impl GentleEngine {
         repeat_class: Option<&str>,
         repeat_family: Option<&str>,
     ) -> [u8; 3] {
-        let key = repeat_class
-            .or(repeat_family)
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        if key.contains("line") {
-            [239, 68, 68]
-        } else if key.contains("sine") {
-            [217, 119, 6]
-        } else if key.contains("ltr") {
-            [124, 58, 237]
-        } else if key.contains("satellite") {
-            [14, 116, 144]
-        } else if key.contains("simple") || key.contains("low_complexity") {
-            [100, 116, 139]
-        } else {
-            [71, 85, 105]
+        match Self::construct_reasoning_repeat_family_class_from_parts(
+            None,
+            repeat_class,
+            repeat_family,
+        )
+        .primary_class()
+        {
+            Some(RepeatFamilyClassKind::Line) => [239, 68, 68],
+            Some(RepeatFamilyClassKind::Sine) => [217, 119, 6],
+            Some(RepeatFamilyClassKind::Ltr) => [124, 58, 237],
+            Some(RepeatFamilyClassKind::Satellite) => [14, 116, 144],
+            Some(RepeatFamilyClassKind::SimpleRepeat) => [100, 116, 139],
+            Some(RepeatFamilyClassKind::Alu) | None => [71, 85, 105],
         }
     }
 
@@ -21890,12 +25582,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "ComputeDotplot requires word_size >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if step_bp == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "ComputeDotplot requires step_bp >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if query_sequence.len() < word_size {
@@ -21905,6 +25601,8 @@ impl GentleEngine {
                     "ComputeDotplot word_size ({word_size}) exceeds selected query span length ({})",
                     query_sequence.len()
                 ),
+
+                cause_chain: vec![],
             });
         }
         if reference_sequence.len() < word_size {
@@ -21914,6 +25612,8 @@ impl GentleEngine {
                     "ComputeDotplot word_size ({word_size}) exceeds selected reference span length ({})",
                     reference_sequence.len()
                 ),
+
+                cause_chain: vec![],
             });
         }
         let query_positions: Vec<usize> = (0..=query_sequence.len() - word_size)
@@ -21978,6 +25678,8 @@ impl GentleEngine {
                     "ComputeDotplot requested {} pair evaluations (limit {}); increase step_bp or reduce span",
                     pair_evaluations, MAX_DOTPLOT_PAIR_EVALUATIONS
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -22128,6 +25830,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "ComputeFlexibilityTrack requires bin_bp >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if sequence.is_empty() {
@@ -22267,6 +25971,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Dotplot view '{}' not found", dotplot_id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -22327,6 +26033,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Flexibility track '{}' not found", track_id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -22364,6 +26072,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize guide-design metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -22377,6 +26087,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "guide_set_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(trimmed.to_string())
@@ -22398,6 +26110,8 @@ impl GentleEngine {
             other => Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Unsupported guide strand '{}'; expected '+' or '-'", other),
+
+                cause_chain: vec![],
             }),
         }
     }
@@ -22415,18 +26129,24 @@ impl GentleEngine {
                     guide.start_0based,
                     guide.end_0based_exclusive
                 ),
+
+                cause_chain: vec![],
             });
         }
         if guide.seq_id.trim().is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Guide {} has empty seq_id", index + 1),
+
+                cause_chain: vec![],
             });
         }
         if matches!(guide.rank, Some(0)) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Guide {} rank must be >= 1", index + 1),
+
+                cause_chain: vec![],
             });
         }
         let protospacer = Self::normalize_iupac_text(&guide.protospacer)?;
@@ -22434,6 +26154,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Guide {} has empty protospacer", index + 1),
+
+                cause_chain: vec![],
             });
         }
         let pam = Self::normalize_iupac_text(&guide.pam)?;
@@ -22441,6 +26163,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Guide {} has empty PAM", index + 1),
+
+                cause_chain: vec![],
             });
         }
         if guide.cut_offset_from_protospacer_start >= protospacer.len() {
@@ -22452,6 +26176,8 @@ impl GentleEngine {
                     guide.cut_offset_from_protospacer_start,
                     protospacer.len()
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(GuideCandidate {
@@ -22479,6 +26205,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "guide set requires at least one guide".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut normalized = Vec::with_capacity(guides.len());
@@ -22489,6 +26217,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Duplicate guide_id '{}' in guide set", guide.guide_id),
+
+                    cause_chain: vec![],
                 });
             }
             normalized.push(guide);
@@ -22546,45 +26276,55 @@ impl GentleEngine {
     fn normalize_practical_filter_config(
         mut config: GuidePracticalFilterConfig,
     ) -> Result<GuidePracticalFilterConfig, EngineError> {
-        if let Some(min) = config.gc_min {
-            if !(0.0..=1.0).contains(&min) {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!("gc_min ({min}) must be between 0.0 and 1.0"),
-                });
-            }
+        if let Some(min) = config.gc_min
+            && !(0.0..=1.0).contains(&min)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("gc_min ({min}) must be between 0.0 and 1.0"),
+
+                cause_chain: vec![],
+            });
         }
-        if let Some(max) = config.gc_max {
-            if !(0.0..=1.0).contains(&max) {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!("gc_max ({max}) must be between 0.0 and 1.0"),
-                });
-            }
+        if let Some(max) = config.gc_max
+            && !(0.0..=1.0).contains(&max)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("gc_max ({max}) must be between 0.0 and 1.0"),
+
+                cause_chain: vec![],
+            });
         }
-        if let (Some(min), Some(max)) = (config.gc_min, config.gc_max) {
-            if min > max {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!("gc_min ({min}) must be <= gc_max ({max})"),
-                });
-            }
+        if let (Some(min), Some(max)) = (config.gc_min, config.gc_max)
+            && min > max
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("gc_min ({min}) must be <= gc_max ({max})"),
+
+                cause_chain: vec![],
+            });
         }
-        if let Some(max_run) = config.max_homopolymer_run {
-            if max_run == 0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "max_homopolymer_run must be >= 1".to_string(),
-                });
-            }
+        if let Some(max_run) = config.max_homopolymer_run
+            && max_run == 0
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "max_homopolymer_run must be >= 1".to_string(),
+
+                cause_chain: vec![],
+            });
         }
-        if let Some(max_repeat) = config.max_dinucleotide_repeat_units {
-            if max_repeat == 0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "max_dinucleotide_repeat_units must be >= 1".to_string(),
-                });
-            }
+        if let Some(max_repeat) = config.max_dinucleotide_repeat_units
+            && max_repeat == 0
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "max_dinucleotide_repeat_units must be >= 1".to_string(),
+
+                cause_chain: vec![],
+            });
         }
 
         let mut normalized_per_base = HashMap::new();
@@ -22597,12 +26337,16 @@ impl GentleEngine {
                         "Unsupported max_homopolymer_run_per_base key '{}'; expected A/C/G/T",
                         base
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             if *value == 0 {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("max_homopolymer_run_per_base for '{}' must be >= 1", base),
+
+                    cause_chain: vec![],
                 });
             }
             let key = if key == "U" {
@@ -22623,6 +26367,8 @@ impl GentleEngine {
                     code: ErrorCode::InvalidInput,
                     message: "required_5prime_base must be one canonical nucleotide (A/C/G/T)"
                         .to_string(),
+
+                    cause_chain: vec![],
                 });
             }
             config.required_5prime_base = Some(if normalized == "U" {
@@ -22671,6 +26417,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Guide page limit must be >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let guide_set_id = Self::normalize_guide_set_id(guide_set_id)?;
@@ -22682,6 +26430,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Guide set '{}' not found", guide_set_id),
+
+                cause_chain: vec![],
             })?;
         let total = set.guides.len();
         let clamped_offset = offset.min(total);
@@ -22710,6 +26460,8 @@ impl GentleEngine {
                     "No practical guide filter report found for '{}'",
                     guide_set_id
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -22735,6 +26487,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "oligo_set_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let store = self.read_guide_design_store();
@@ -22745,6 +26499,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Guide oligo set '{}' not found", id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -22780,6 +26536,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "oligo_set_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(trimmed.to_string())
@@ -22810,11 +26568,15 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: "oligo_set_id cannot be empty".to_string(),
+
+                    cause_chain: vec![],
                 });
             }
             let set = store.oligo_sets.get(id).ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Guide oligo set '{}' not found", id),
+
+                cause_chain: vec![],
             })?;
             if set.guide_set_id != guide_set_id {
                 return Err(EngineError {
@@ -22823,6 +26585,8 @@ impl GentleEngine {
                         "Guide oligo set '{}' belongs to '{}' (expected '{}')",
                         id, set.guide_set_id, guide_set_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             return Ok(set.clone());
@@ -22837,6 +26601,8 @@ impl GentleEngine {
                     "No oligo set is registered for guide set '{}'; run GenerateGuideOligos first",
                     guide_set_id
                 ),
+
+                cause_chain: vec![],
             })?;
         store
             .oligo_sets
@@ -22848,6 +26614,8 @@ impl GentleEngine {
                     "Guide oligo set '{}' referenced by '{}' is missing",
                     latest, guide_set_id
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -22857,6 +26625,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Workflow macro template name cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(trimmed.to_string())
@@ -22868,6 +26638,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Workflow macro parameter name cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let valid = trimmed.chars().enumerate().all(|(idx, ch)| match idx {
@@ -22881,6 +26653,8 @@ impl GentleEngine {
                     "Invalid workflow macro parameter name '{}' (expected [A-Za-z_][A-Za-z0-9_]*)",
                     trimmed
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(trimmed.to_string())
@@ -22904,6 +26678,8 @@ impl GentleEngine {
                     "Workflow macro template details_url '{}' must start with http:// or https://",
                     trimmed
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(Some(trimmed.to_string()))
@@ -22945,6 +26721,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize workflow macro template metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -22983,6 +26761,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Workflow macro template '{}' not found", name),
+
+                cause_chain: vec![],
             })
     }
 
@@ -23005,6 +26785,8 @@ impl GentleEngine {
                         "Workflow macro template '{}' does not define parameter '{}'",
                         template.name, key
                     ),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -23022,6 +26804,8 @@ impl GentleEngine {
                         "Workflow macro template '{}' is missing required parameter '{}'",
                         template.name, param.name
                     ),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -23030,6 +26814,8 @@ impl GentleEngine {
             Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").map_err(|e| EngineError {
                 code: ErrorCode::Internal,
                 message: format!("Could not compile workflow macro placeholder regex: {e}"),
+
+                cause_chain: vec![],
             })?;
         let mut missing: Vec<String> = vec![];
         for captures in placeholder_regex.captures_iter(&template.script) {
@@ -23041,6 +26827,8 @@ impl GentleEngine {
                             "Workflow macro template '{}' references undeclared parameter '{}'",
                             template.name, name
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 if !resolved.contains_key(name) {
@@ -23058,6 +26846,8 @@ impl GentleEngine {
                     template.name,
                     missing.join(", ")
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -23076,6 +26866,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Candidate macro template name cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(trimmed.to_string())
@@ -23087,6 +26879,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Candidate macro parameter name cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let valid = trimmed.chars().enumerate().all(|(idx, ch)| match idx {
@@ -23100,6 +26894,8 @@ impl GentleEngine {
                     "Invalid candidate macro parameter name '{}' (expected [A-Za-z_][A-Za-z0-9_]*)",
                     trimmed
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(trimmed.to_string())
@@ -23123,6 +26919,8 @@ impl GentleEngine {
                     "Candidate macro template details_url '{}' must start with http:// or https://",
                     trimmed
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(Some(trimmed.to_string()))
@@ -23164,6 +26962,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize candidate macro template metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -23202,6 +27002,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Candidate macro template '{}' not found", name),
+
+                cause_chain: vec![],
             })
     }
 
@@ -23224,6 +27026,8 @@ impl GentleEngine {
                         "Candidate macro template '{}' does not define parameter '{}'",
                         template.name, key
                     ),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -23241,6 +27045,8 @@ impl GentleEngine {
                         "Candidate macro template '{}' is missing required parameter '{}'",
                         template.name, param.name
                     ),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -23249,6 +27055,8 @@ impl GentleEngine {
             Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").map_err(|e| EngineError {
                 code: ErrorCode::Internal,
                 message: format!("Could not compile candidate macro placeholder regex: {e}"),
+
+                cause_chain: vec![],
             })?;
         let mut missing: Vec<String> = vec![];
         for captures in placeholder_regex.captures_iter(&template.script) {
@@ -23260,6 +27068,8 @@ impl GentleEngine {
                             "Candidate macro template '{}' references undeclared parameter '{}'",
                             template.name, name
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 if !resolved.contains_key(name) {
@@ -23277,6 +27087,8 @@ impl GentleEngine {
                     template.name,
                     missing.join(", ")
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -23300,6 +27112,8 @@ impl GentleEngine {
                     "Sequence '{seq_id}' has no genome anchor provenance (missing metadata '{}')",
                     PROVENANCE_METADATA_KEY
                 ),
+
+                cause_chain: vec![],
             });
         };
         let Some(entries) = provenance
@@ -23312,6 +27126,8 @@ impl GentleEngine {
                     "Sequence '{seq_id}' has no genome anchor provenance (missing '{}')",
                     GENOME_EXTRACTIONS_METADATA_KEY
                 ),
+
+                cause_chain: vec![],
             });
         };
 
@@ -23384,7 +27200,8 @@ impl GentleEngine {
             message: format!(
                 "Sequence '{seq_id}' is not anchored to a genome interval; run ExtractGenomeRegion/ExtractGenomeGene/ExtendGenomeAnchor first"
             ),
-        })
+        
+            cause_chain: vec![],})
     }
 
     fn latest_genome_extraction_provenance_for_seq(

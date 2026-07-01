@@ -30,6 +30,23 @@ checks.
   - `ensembl_mouse_trp73_all.fasta`
 - `sequencing_confirmation/`
   - `README.md`
+- `microarray_tracks/`
+  - `README.md`
+  - `clariomd.synthetic.manifest.json`
+  - `clariomd.synthetic.hg19_projected.manifest.json`
+  - `clariomd.synthetic.hg19-to-hg38.tsv`
+  - `clariomd.synthetic.AdTAp73alpha-AdGFP.tsv`
+  - `clariomd.synthetic.AdTAp73beta-AdGFP.tsv`
+  - `clariomd.tp73_vendor_subset.manifest.json`
+  - `clariomd.tp73_vendor_subset.AdTAp73alpha-AdGFP.tsv`
+  - `clariomd.tp73_vendor_subset.AdTAp73beta-AdGFP.tsv`
+- `probe_region_outputs/`
+  - `README.md`
+  - `clariom_pm_probe_interpretation/`
+- `affymetrix_clariom_d_human_na36_hg38_subset/`
+  - `README.md`
+  - `clariom_d_human_na36_hg38_gene_panel.probesets.tsv`
+  - `clariom_d_human_na36_hg38_gene_panel.transcripts.tsv`
 
 ## Provenance and usage
 
@@ -138,6 +155,46 @@ checks.
     `primer3_core` script.
 - Purpose: deterministic offline coverage for Primer3 normalization/provenance
   behavior without requiring a system Primer3 installation in CI.
+
+### `affymetrix_clariom_d_human_na36_hg38_subset/*`
+
+- Origin: derived minimal subset from Thermo Fisher/Affymetrix Clariom D Human
+  na36 hg38 NetAffx CSV support ZIPs.
+- Deterministic recreation:
+  - manually obtain the login-walled vendor ZIPs as described in
+    `data/resources/affymetrix/clariom_d_human_na36_hg38/README.md`
+  - run `scripts/extract_clariomd_gene_panel_fixture.py` with those ZIP paths
+    and this fixture directory as `--output-dir`
+- Primary usage:
+  - offline parser/projection tests that need realistic Clariom D probeset and
+    transcript-cluster IDs for a small TP73/PATZ1/p53-pathway gene panel
+  - future array-evidence development without committing full vendor NetAffx
+    annotation payloads
+- Runtime/parser role:
+  - intentionally stripped to minimal IDs, hg38 coordinates, feature types, and
+    gene symbols; it is not a replacement for the full vendor annotations.
+
+### `probe_region_outputs/clariom_pm_probe_interpretation/*`
+
+- Origin: hand-crafted synthetic completed helper-output directory for the
+  ClawBio Clariom PM-probe interpretation workflow example.
+- Deterministic recreation:
+  - use the committed `test_files/tp73.ncbi.gb` GRCh38.p14 chromosome-1 locus
+  - choose two tiny PM-probe intervals within the first TP73 exon and one
+    parent probeset-region row
+  - write fixed sample, condition, and log2 fold-change values
+  - mark the PM probe rows as `probe_level_input`
+- Primary usage:
+  - ClawBio example
+    `request_workflow_clariom_pm_probe_interpretation.json`
+  - offline smoke coverage for projection plus review-only probe-region
+    evidence interpretation without running R/APT or committing CEL/vendor
+    binary files.
+- Runtime/parser role:
+  - tiny stand-in for a completed
+    `arrays import-apt-probe-region-output ... --probe-intensity ...` directory;
+    it is not biological evidence and does not assess probe specificity,
+    multi-hit status, or isoform support.
 
 ### `mapping/*.fasta` (TP73/TP53 benchmark set)
 

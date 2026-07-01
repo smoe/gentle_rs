@@ -325,6 +325,10 @@ impl RenderDnaCircular {
         self.selected_enzyme.clone()
     }
 
+    pub fn hovered_restriction_enzyme(&self) -> Option<RestrictionEnzymePosition> {
+        self.hover_enzyme.clone()
+    }
+
     pub fn selected_reasoning_evidence_id(&self) -> Option<String> {
         self.selected_reasoning_evidence_id.clone()
     }
@@ -435,7 +439,7 @@ impl RenderDnaCircular {
 
         // Draw the filled section
         let fill_color = color.to_owned();
-        let stroke = Stroke::new(2.0, color);
+        let stroke = Stroke::new(2.0_f32, color);
 
         let shape = Shape::convex_polygon(filled_points, fill_color, stroke);
 
@@ -473,21 +477,21 @@ impl RenderDnaCircular {
             .features()
             .get(fp.feature_number)
             .cloned();
-        if let Some(feature) = feature {
-            if let Ok((from, to)) = feature.location.find_bounds() {
-                let text = format!("{}: {}-{}", &fp.label, from, to);
-                let font = FontId {
-                    size: 12.0,
-                    family: FontFamily::Monospace,
-                };
-                painter.text(
-                    self.area.left_bottom(),
-                    Align2::LEFT_BOTTOM,
-                    text,
-                    font.to_owned(),
-                    Color32::DARK_GRAY,
-                );
-            }
+        if let Some(feature) = feature
+            && let Ok((from, to)) = feature.location.find_bounds()
+        {
+            let text = format!("{}: {}-{}", &fp.label, from, to);
+            let font = FontId {
+                size: 12.0,
+                family: FontFamily::Monospace,
+            };
+            painter.text(
+                self.area.left_bottom(),
+                Align2::LEFT_BOTTOM,
+                text,
+                font.to_owned(),
+                Color32::DARK_GRAY,
+            );
         }
     }
 
@@ -588,7 +592,7 @@ impl RenderDnaCircular {
                 None => continue,
             };
             let radius = self.radius * 1.1 + self.radius * 0.05 * (orf.frame() as f32);
-            let stroke = Stroke::new(1.0, color);
+            let stroke = Stroke::new(1.0_f32, color);
             self.draw_pointed_arc(
                 orf.from(),
                 orf.to(),
@@ -606,7 +610,7 @@ impl RenderDnaCircular {
             return;
         }
         let radius_lower = self.radius * 0.97;
-        let stroke = Stroke::new(1.0, Color32::DARK_RED);
+        let stroke = Stroke::new(1.0_f32, Color32::DARK_RED);
         let methylation_sites = self.dna.read().unwrap().methylation_sites().to_owned();
         for site in methylation_sites.sites() {
             let point1 = self.pos2xy(*site as i64, self.radius);
@@ -656,7 +660,7 @@ impl RenderDnaCircular {
             (gc_region.gc() * 255.0) as u8,
             0,
         );
-        let stroke = Stroke::new(10.0, color);
+        let stroke = Stroke::new(10.0_f32, color);
         painter.line_segment([last_point, point], stroke);
         point
     }
@@ -879,11 +883,11 @@ impl RenderDnaCircular {
         evidence_class: EvidenceClass,
         editable_status: crate::engine::EditableStatus,
     ) -> Stroke {
-        let width = match evidence_class {
-            EvidenceClass::HardFact | EvidenceClass::UserOverride => 1.2,
-            EvidenceClass::ReliableAnnotation => 1.0,
-            EvidenceClass::ContextEvidence => 0.9,
-            EvidenceClass::SoftHypothesis => 0.8,
+        let width: f32 = match evidence_class {
+            EvidenceClass::HardFact | EvidenceClass::UserOverride => 1.2_f32,
+            EvidenceClass::ReliableAnnotation => 1.0_f32,
+            EvidenceClass::ContextEvidence => 0.9_f32,
+            EvidenceClass::SoftHypothesis => 0.8_f32,
         };
         match editable_status {
             crate::engine::EditableStatus::Draft => Stroke::new(
@@ -891,13 +895,13 @@ impl RenderDnaCircular {
                 Self::construct_reasoning_role_color(role).gamma_multiply(0.75),
             ),
             crate::engine::EditableStatus::Accepted => {
-                Stroke::new(width.max(1.4), Color32::from_rgb(22, 163, 74))
+                Stroke::new(width.max(1.4_f32), Color32::from_rgb(22, 163, 74))
             }
             crate::engine::EditableStatus::Rejected => {
-                Stroke::new(width.max(1.0), Color32::from_gray(116))
+                Stroke::new(width.max(1.0_f32), Color32::from_gray(116))
             }
             crate::engine::EditableStatus::Locked => {
-                Stroke::new(width.max(1.2), Color32::from_rgb(14, 116, 144))
+                Stroke::new(width.max(1.2_f32), Color32::from_rgb(14, 116, 144))
             }
         }
     }
@@ -1028,11 +1032,11 @@ impl RenderDnaCircular {
             let stroke = if self.selected_reasoning_evidence_id.as_deref()
                 == Some(band.evidence_id.as_str())
             {
-                Stroke::new(2.0, Color32::YELLOW)
+                Stroke::new(2.0_f32, Color32::YELLOW)
             } else if self.hovered_reasoning_evidence_id.as_deref()
                 == Some(band.evidence_id.as_str())
             {
-                Stroke::new(1.6, Color32::WHITE)
+                Stroke::new(1.6_f32, Color32::WHITE)
             } else {
                 Self::construct_reasoning_overlay_stroke(
                     band.role,
@@ -1304,7 +1308,7 @@ impl RenderDnaCircular {
                     painter.rect_stroke(
                         rect,
                         5.0,
-                        Stroke::new(1.4, ret.color.gamma_multiply(0.85)),
+                        Stroke::new(1.4_f32, ret.color.gamma_multiply(0.85)),
                         StrokeKind::Inside,
                     );
                     painter.text(
@@ -1629,7 +1633,7 @@ impl RenderDnaCircular {
             }
             let mut p4 = self.pos2xy(pos, self.radius * 1.28);
             p4.y = p3.y;
-            painter.line_segment([p1, p2], Stroke::new(1.2, cut_color));
+            painter.line_segment([p1, p2], Stroke::new(1.2_f32, cut_color));
             painter.line_segment([p2, p3], GRAY_1.to_owned());
 
             let align = if pos > self.sequence_length / 2 {
@@ -1637,13 +1641,13 @@ impl RenderDnaCircular {
             } else {
                 Align2::LEFT_CENTER
             };
-            if let Some(he) = &self.hover_enzyme {
-                if he.key == restriction_enzyme_key {
-                    painter.rect_filled(he.area, 0.0, Color32::LIGHT_YELLOW);
-                }
+            if let Some(he) = &self.hover_enzyme
+                && he.key == restriction_enzyme_key
+            {
+                painter.rect_filled(he.area, 0.0, Color32::LIGHT_YELLOW);
             }
             if selected_here {
-                painter.line_segment([p1, p2], Stroke::new(2.0, Color32::BLACK));
+                painter.line_segment([p1, p2], Stroke::new(2.0_f32, Color32::BLACK));
             }
             last_rect = painter.text(p4, align, label, font_tick.to_owned(), font_color);
             self.restriction_enzyme_sites

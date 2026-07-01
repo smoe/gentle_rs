@@ -10,6 +10,8 @@ use crate::feature_location::{feature_is_reverse, feature_ranges_sorted_i64};
 impl GentleEngine {
     const TFBS_BACKGROUND_TAIL_SHOW_QUANTILE: f64 = 0.95;
     const TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP: usize = 25;
+    pub(crate) const PROMOTER_COHORT_DIVERGENCE_SIMILARITY_THRESHOLD: f64 = 0.25;
+    pub(crate) const PROMOTER_COHORT_CONCORDANCE_SIMILARITY_THRESHOLD: f64 = 0.75;
 
     fn emit_tfbs_score_track_progress(
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
@@ -768,14 +770,14 @@ impl GentleEngine {
         clip_negative: bool,
         llr_modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
         true_log_odds_modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
-        mut on_progress: impl FnMut(usize, usize) -> bool,
+        on_progress: impl FnMut(usize, usize) -> bool,
     ) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>), EngineError> {
         let hits = Self::scan_tf_scores_with_topology_and_cancel(
             random_background,
             llr_matrix,
             true_log_odds_matrix,
             InlineSequenceTopology::Linear,
-            |scanned_steps, total_steps| on_progress(scanned_steps, total_steps),
+            on_progress,
         )?;
         let mut llr_background_scores = hits.iter().map(|row| row.2).collect::<Vec<_>>();
         let mut true_log_odds_background_scores = hits.iter().map(|row| row.4).collect::<Vec<_>>();
@@ -1014,6 +1016,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "SummarizeTfbsScoreTracks requires at least one motif".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let effective_motifs = Self::expand_tf_query_tokens(motifs)?;
@@ -1312,6 +1316,14 @@ impl GentleEngine {
         }
     }
 
+    fn stabilize_similarity_report_float(value: f64) -> f64 {
+        if !value.is_finite() {
+            return value;
+        }
+        const SCALE: f64 = 1_000_000_000_000.0;
+        (value * SCALE).round() / SCALE
+    }
+
     fn summarize_tfbs_track_similarity_row(
         anchor: &TfbsScoreTrackRow,
         candidate: &TfbsScoreTrackRow,
@@ -1341,22 +1353,22 @@ impl GentleEngine {
             candidate_tf_id: candidate.tf_id.clone(),
             candidate_tf_name: candidate.tf_name.clone(),
             overlap_window_count,
-            raw_pearson: Self::pearson_correlation(
+            raw_pearson: Self::stabilize_similarity_report_float(Self::pearson_correlation(
                 &anchor_signal[..overlap_window_count],
                 &candidate_signal[..overlap_window_count],
-            ),
-            smoothed_pearson: Self::pearson_correlation(
+            )),
+            smoothed_pearson: Self::stabilize_similarity_report_float(Self::pearson_correlation(
                 &anchor_smoothed[..overlap_window_count],
                 &candidate_smoothed[..overlap_window_count],
-            ),
-            raw_spearman: Self::spearman_correlation(
+            )),
+            raw_spearman: Self::stabilize_similarity_report_float(Self::spearman_correlation(
                 &anchor_signal[..overlap_window_count],
                 &candidate_signal[..overlap_window_count],
-            ),
-            smoothed_spearman: Self::spearman_correlation(
+            )),
+            smoothed_spearman: Self::stabilize_similarity_report_float(Self::spearman_correlation(
                 &anchor_smoothed[..overlap_window_count],
                 &candidate_smoothed[..overlap_window_count],
-            ),
+            )),
             signed_primary_peak_offset_bp: Self::summarize_tfbs_track_primary_peak_offset_bp(
                 anchor, candidate,
             ),
@@ -1444,6 +1456,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "SummarizeTfbsTrackSimilarity requires non-empty anchor_motif".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let (anchor_tf_id, anchor_tf_name_resolved, _anchor_consensus, _anchor_matrix_counts) =
@@ -1469,6 +1483,8 @@ impl GentleEngine {
                 message:
                     "SummarizeTfbsTrackSimilarity requires at least one candidate motif or ALL"
                         .to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -1561,6 +1577,8 @@ impl GentleEngine {
                     "Could not recover anchor motif '{}' from score-track summary",
                     anchor_tf_id
                 ),
+
+                cause_chain: vec![],
             })?;
 
         let mut rows = base_report
@@ -1608,10 +1626,10 @@ impl GentleEngine {
                 .then(left.candidate_tf_id.cmp(&right.candidate_tf_id))
         });
         let scanned_candidate_count = rows.len();
-        if let Some(limit) = limit {
-            if rows.len() > limit {
-                rows.truncate(limit);
-            }
+        if let Some(limit) = limit
+            && rows.len() > limit
+        {
+            rows.truncate(limit);
         }
 
         Ok(TfbsTrackSimilarityReport {
@@ -1822,15 +1840,19 @@ impl GentleEngine {
                 "Could not serialize TFBS score-track report '{}' for '{}': {e}",
                 report.seq_id, path
             ),
+
+            cause_chain: vec![],
         })?;
         Self::ensure_output_parent_dir(path)?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write TFBS score-track report to '{path}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
-    fn promoter_aligned_sequence(sequence: &str, strand: Option<char>) -> String {
+    pub(crate) fn promoter_aligned_sequence(sequence: &str, strand: Option<char>) -> String {
         if strand == Some('-') {
             Self::reverse_complement(sequence)
         } else {
@@ -1838,7 +1860,7 @@ impl GentleEngine {
         }
     }
 
-    fn promoter_oriented_tss_position_0based(
+    pub(crate) fn promoter_oriented_tss_position_0based(
         sequence_length_bp: usize,
         extract_start_1based: usize,
         tss_1based: usize,
@@ -1860,7 +1882,7 @@ impl GentleEngine {
         })
     }
 
-    fn promoter_local_position_to_genomic_1based(
+    pub(crate) fn promoter_local_position_to_genomic_1based(
         strand: Option<char>,
         promoter_start_1based: usize,
         promoter_end_1based: usize,
@@ -1877,7 +1899,7 @@ impl GentleEngine {
         })
     }
 
-    fn tfbs_track_positive_support_fraction(track: &TfbsScoreTrackRow) -> f64 {
+    pub(crate) fn tfbs_track_positive_support_fraction(track: &TfbsScoreTrackRow) -> f64 {
         if track.scored_window_count == 0 {
             return 0.0;
         }
@@ -1907,6 +1929,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "SummarizeMultiGenePromoterTfbs requires at least one gene query"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         if motifs.is_empty() {
@@ -1914,6 +1938,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "SummarizeMultiGenePromoterTfbs requires at least one TF motif query"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -1960,6 +1986,8 @@ impl GentleEngine {
                         genome_id,
                         e
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let oriented_sequence =
                 Self::promoter_aligned_sequence(&promoter_sequence, Some(strand));
@@ -1976,6 +2004,8 @@ impl GentleEngine {
                     "Could not place TSS for gene '{}' into promoter-oriented coordinates",
                     Self::genome_gene_display_label(&resolved.selected_gene)
                 ),
+
+                cause_chain: vec![],
             })?;
             let desired_promoter_length =
                 upstream_bp.saturating_add(downstream_bp).saturating_add(1);
@@ -2080,9 +2110,383 @@ impl GentleEngine {
             clip_negative,
             motifs_requested: motifs.to_vec(),
             gene_queries_requested: genes.to_vec(),
+            gene_set: None,
+            gene_set_resolution: None,
             returned_gene_count: gene_reports.len(),
             genes: gene_reports,
             summary_rows,
+            warnings,
+        })
+    }
+
+    pub(crate) fn summarize_promoter_cohort_pairwise_similarity(
+        left: &MultiGenePromoterTfbsGeneReport,
+        right: &MultiGenePromoterTfbsGeneReport,
+    ) -> Option<PromoterCohortPairwiseSimilarity> {
+        let mut motif_ids = vec![];
+        let mut raw_pearson_sum = 0.0;
+        let mut smoothed_spearman_sum = 0.0;
+        for left_track in &left.tfbs_score_tracks.tracks {
+            let Some(right_track) = right
+                .tfbs_score_tracks
+                .tracks
+                .iter()
+                .find(|track| track.tf_id == left_track.tf_id)
+            else {
+                continue;
+            };
+            let left_signal = Self::tfbs_track_display_signal(
+                left_track,
+                TfbsScoreTrackCorrelationSignalSource::MaxStrands,
+            );
+            let right_signal = Self::tfbs_track_display_signal(
+                right_track,
+                TfbsScoreTrackCorrelationSignalSource::MaxStrands,
+            );
+            let len = left_signal.len().min(right_signal.len());
+            if len < 2 {
+                continue;
+            }
+            let left_smoothed = Self::smooth_tfbs_track_signal(
+                &left_signal,
+                Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
+            );
+            let right_smoothed = Self::smooth_tfbs_track_signal(
+                &right_signal,
+                Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
+            );
+            raw_pearson_sum += Self::pearson_correlation(&left_signal[..len], &right_signal[..len]);
+            smoothed_spearman_sum +=
+                Self::spearman_correlation(&left_smoothed[..len], &right_smoothed[..len]);
+            motif_ids.push(left_track.tf_id.clone());
+        }
+        let shared_motif_count = motif_ids.len();
+        if shared_motif_count == 0 {
+            return None;
+        }
+        Some(PromoterCohortPairwiseSimilarity {
+            left_gene_label: left.display_label.clone(),
+            right_gene_label: right.display_label.clone(),
+            shared_motif_count,
+            mean_raw_pearson: Self::stabilize_similarity_report_float(
+                raw_pearson_sum / shared_motif_count as f64,
+            ),
+            mean_smoothed_spearman: Self::stabilize_similarity_report_float(
+                smoothed_spearman_sum / shared_motif_count as f64,
+            ),
+            motif_ids,
+        })
+    }
+
+    pub(crate) fn summarize_promoter_cohort_peak_sets(
+        summary_rows: &[MultiGenePromoterTfbsSummaryRow],
+        resolved_promoter_count: usize,
+    ) -> (
+        Vec<PromoterCohortTfbsPeakSummary>,
+        Vec<PromoterCohortTfbsPeakSummary>,
+    ) {
+        let mut by_tf = BTreeMap::<String, PromoterCohortTfbsPeakSummary>::new();
+        for row in summary_rows {
+            if row.max_score <= 0.0 && row.peak_position_0based.is_none() {
+                continue;
+            }
+            let entry =
+                by_tf
+                    .entry(row.tf_id.clone())
+                    .or_insert_with(|| PromoterCohortTfbsPeakSummary {
+                        tf_id: row.tf_id.clone(),
+                        tf_name: row.tf_name.clone(),
+                        promoter_count: 0,
+                        gene_labels: vec![],
+                        max_score: f64::NEG_INFINITY,
+                        peak_positions_promoter_relative_bp: vec![],
+                    });
+            if !entry
+                .gene_labels
+                .iter()
+                .any(|label| label == &row.gene_label)
+            {
+                entry.gene_labels.push(row.gene_label.clone());
+                entry.promoter_count = entry.promoter_count.saturating_add(1);
+            }
+            entry.max_score = entry.max_score.max(row.max_score);
+            if let Some(position) = row.peak_position_promoter_relative_bp {
+                entry.peak_positions_promoter_relative_bp.push(position);
+            }
+        }
+        let mut shared = vec![];
+        let mut cohort_specific = vec![];
+        for mut summary in by_tf.into_values() {
+            if !summary.max_score.is_finite() {
+                summary.max_score = 0.0;
+            }
+            summary.gene_labels.sort();
+            summary.peak_positions_promoter_relative_bp.sort();
+            if resolved_promoter_count > 0 && summary.promoter_count == resolved_promoter_count {
+                shared.push(summary);
+            } else {
+                cohort_specific.push(summary);
+            }
+        }
+        shared.sort_by(|left, right| {
+            right
+                .max_score
+                .total_cmp(&left.max_score)
+                .then(left.tf_id.cmp(&right.tf_id))
+        });
+        cohort_specific.sort_by(|left, right| {
+            right
+                .max_score
+                .total_cmp(&left.max_score)
+                .then(left.tf_id.cmp(&right.tf_id))
+        });
+        (shared, cohort_specific)
+    }
+
+    pub(crate) fn summarize_promoter_cohort_relationship_flags(
+        cohort_kind: PromoterCohortKind,
+        pairwise_similarity: &[PromoterCohortPairwiseSimilarity],
+    ) -> Vec<PromoterCohortRelationshipFlag> {
+        match cohort_kind {
+            PromoterCohortKind::Manual => vec![],
+            PromoterCohortKind::CoRegulated => pairwise_similarity
+                .iter()
+                .filter(|row| {
+                    row.mean_smoothed_spearman
+                        < Self::PROMOTER_COHORT_DIVERGENCE_SIMILARITY_THRESHOLD
+                })
+                .map(|row| PromoterCohortRelationshipFlag {
+                    flag_kind: "unexpected_divergence".to_string(),
+                    evidence_kind: "tfbs_score_track_similarity".to_string(),
+                    gene_labels: vec![row.left_gene_label.clone(), row.right_gene_label.clone()],
+                    detail: format!(
+                        "Declared co-regulated promoter cohort, but '{}' and '{}' have low mean smoothed TFBS-track Spearman similarity ({:+.3}; threshold < {:+.2}). This is an evidence-triage flag, not a regulatory verdict.",
+                        row.left_gene_label,
+                        row.right_gene_label,
+                        row.mean_smoothed_spearman,
+                        Self::PROMOTER_COHORT_DIVERGENCE_SIMILARITY_THRESHOLD,
+                    ),
+                })
+                .collect(),
+            PromoterCohortKind::AntiCoRegulated => pairwise_similarity
+                .iter()
+                .filter(|row| {
+                    row.mean_smoothed_spearman
+                        >= Self::PROMOTER_COHORT_CONCORDANCE_SIMILARITY_THRESHOLD
+                })
+                .map(|row| PromoterCohortRelationshipFlag {
+                    flag_kind: "unexpected_concordance".to_string(),
+                    evidence_kind: "tfbs_score_track_similarity".to_string(),
+                    gene_labels: vec![row.left_gene_label.clone(), row.right_gene_label.clone()],
+                    detail: format!(
+                        "Declared anti-co-regulated promoter cohort, but '{}' and '{}' have high mean smoothed TFBS-track Spearman similarity ({:+.3}; threshold >= {:+.2}). This is an evidence-triage flag, not a regulatory verdict.",
+                        row.left_gene_label,
+                        row.right_gene_label,
+                        row.mean_smoothed_spearman,
+                        Self::PROMOTER_COHORT_CONCORDANCE_SIMILARITY_THRESHOLD,
+                    ),
+                })
+                .collect(),
+        }
+    }
+
+    pub(crate) fn summarize_promoter_cohort_comparison(
+        &self,
+        genome_id: &str,
+        source_seq_ids: &[String],
+        cohort_label: &str,
+        cohort_kind: PromoterCohortKind,
+        genes: &[PromoterTfbsGeneQuery],
+        motifs: &[String],
+        upstream_bp: usize,
+        downstream_bp: usize,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        expression_rows: &[PromoterExpressionEvidenceInput],
+        expression_source_label: Option<&str>,
+        cutrun_dataset_ids: &[String],
+        cutrun_read_report_ids: &[String],
+    ) -> Result<PromoterCohortComparisonReport, EngineError> {
+        if genes.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "SummarizePromoterCohortComparison requires at least one gene query"
+                    .to_string(),
+
+                cause_chain: vec![],
+            });
+        }
+        if motifs.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "SummarizePromoterCohortComparison requires at least one TF motif query"
+                    .to_string(),
+
+                cause_chain: vec![],
+            });
+        }
+
+        let mut warnings = vec![];
+        if !source_seq_ids.is_empty() {
+            warnings.push(
+                "source_seq_ids are retained for traceability in this first slice; promoter windows are resolved from genome_id.".to_string(),
+            );
+        }
+        if !cutrun_dataset_ids.is_empty() || !cutrun_read_report_ids.is_empty() {
+            warnings.push(
+                "CUT&RUN source ids are retained in the cohort report; this first slice summarizes TFBS score-track peaks rather than resolving cross-promoter occupancy peaks.".to_string(),
+            );
+        }
+
+        let mut gene_reports = vec![];
+        let mut summary_rows = vec![];
+        for gene in genes {
+            match self.summarize_multi_gene_promoter_tfbs(
+                genome_id,
+                std::slice::from_ref(gene),
+                motifs,
+                upstream_bp,
+                downstream_bp,
+                score_kind,
+                clip_negative,
+                catalog_path,
+                cache_dir,
+            ) {
+                Ok(report) => {
+                    warnings.extend(report.warnings);
+                    gene_reports.extend(report.genes);
+                    summary_rows.extend(report.summary_rows);
+                }
+                Err(err) => {
+                    warnings.push(format!(
+                        "Could not resolve cohort gene/transcript query '{}': {}",
+                        gene.gene_query, err.message
+                    ));
+                }
+            }
+        }
+
+        let resolved_promoter_windows = gene_reports
+            .iter()
+            .map(|gene| PromoterCohortResolvedWindow {
+                gene_label: gene.display_label.clone(),
+                gene_query: gene.gene_query.clone(),
+                transcript_id: gene.transcript_id.clone(),
+                chromosome: gene.chromosome.clone(),
+                strand: gene.strand.clone(),
+                promoter_start_1based: gene.promoter_start_1based,
+                promoter_end_1based: gene.promoter_end_1based,
+                promoter_length_bp: gene.promoter_length_bp,
+                tss_1based: gene.tss_1based,
+                tss_position_0based: gene
+                    .tfbs_score_tracks
+                    .tss_markers
+                    .first()
+                    .map(|marker| marker.position_0based)
+                    .unwrap_or(upstream_bp.min(gene.promoter_length_bp.saturating_sub(1))),
+                sequence_orientation: gene.sequence_orientation.clone(),
+            })
+            .collect::<Vec<_>>();
+
+        let mut pairwise_similarity = vec![];
+        for left_idx in 0..gene_reports.len() {
+            for right_idx in left_idx.saturating_add(1)..gene_reports.len() {
+                if let Some(row) = Self::summarize_promoter_cohort_pairwise_similarity(
+                    &gene_reports[left_idx],
+                    &gene_reports[right_idx],
+                ) {
+                    pairwise_similarity.push(row);
+                }
+            }
+        }
+        pairwise_similarity.sort_by(|left, right| {
+            right
+                .mean_smoothed_spearman
+                .total_cmp(&left.mean_smoothed_spearman)
+                .then(left.left_gene_label.cmp(&right.left_gene_label))
+                .then(left.right_gene_label.cmp(&right.right_gene_label))
+        });
+        let relationship_flags =
+            Self::summarize_promoter_cohort_relationship_flags(cohort_kind, &pairwise_similarity);
+        warnings.extend(relationship_flags.iter().map(|flag| flag.detail.clone()));
+
+        let (shared_tfbs_peaks, cohort_specific_tfbs_peaks) =
+            Self::summarize_promoter_cohort_peak_sets(&summary_rows, gene_reports.len());
+        let expression_source_label = expression_source_label
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("expression_input");
+        let expression_associations = expression_rows
+            .iter()
+            .map(|row| PromoterCohortExpressionAssociation {
+                gene_label: row.gene_label.clone(),
+                transcript_id: row.transcript_id.clone(),
+                sample_id: row.sample_id.clone(),
+                condition: row.condition.clone(),
+                value: row.value,
+                unit: row.unit.clone(),
+                source: row
+                    .source
+                    .clone()
+                    .unwrap_or_else(|| expression_source_label.to_string()),
+                association_note:
+                    "Supplied expression metadata is carried for cohort review; no causal inference is made."
+                        .to_string(),
+            })
+            .collect::<Vec<_>>();
+
+        let multi_gene_promoter_tfbs = MultiGenePromoterTfbsReport {
+            schema: MULTI_GENE_PROMOTER_TFBS_REPORT_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            genome_id: genome_id.to_string(),
+            upstream_bp,
+            downstream_bp,
+            score_kind,
+            clip_negative,
+            motifs_requested: motifs.to_vec(),
+            gene_queries_requested: genes.to_vec(),
+            gene_set: None,
+            gene_set_resolution: None,
+            returned_gene_count: gene_reports.len(),
+            genes: gene_reports,
+            summary_rows: summary_rows.clone(),
+            warnings: warnings.clone(),
+        };
+
+        Ok(PromoterCohortComparisonReport {
+            schema: PROMOTER_COHORT_COMPARISON_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            cohort_label: cohort_label
+                .trim()
+                .is_empty()
+                .then(|| "promoter_cohort".to_string())
+                .unwrap_or_else(|| cohort_label.trim().to_string()),
+            cohort_kind,
+            genome_id: genome_id.to_string(),
+            source_seq_ids: source_seq_ids.to_vec(),
+            upstream_bp,
+            downstream_bp,
+            score_kind,
+            clip_negative,
+            motifs_requested: motifs.to_vec(),
+            gene_queries_requested: genes.to_vec(),
+            resolved_promoter_count: multi_gene_promoter_tfbs.returned_gene_count,
+            resolved_promoter_windows,
+            tfbs_score_track_summaries: summary_rows,
+            pairwise_similarity,
+            relationship_flags,
+            shared_tfbs_peaks,
+            cohort_specific_tfbs_peaks,
+            expression_associations,
+            cutrun_dataset_ids: cutrun_dataset_ids.to_vec(),
+            cutrun_read_report_ids: cutrun_read_report_ids.to_vec(),
+            multi_gene_promoter_tfbs: Some(multi_gene_promoter_tfbs),
             warnings,
         })
     }

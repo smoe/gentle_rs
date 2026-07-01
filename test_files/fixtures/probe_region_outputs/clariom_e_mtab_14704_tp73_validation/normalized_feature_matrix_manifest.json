@@ -1,0 +1,29 @@
+{
+  "artifacts": [
+    "region_intensity_chrom_order.csv",
+    "probe_intensity_chrom_order.csv",
+    "provenance.json"
+  ],
+  "coordinate_system": "hg38",
+  "genome_build": "GRCh38.p14",
+  "normalization": "glen-derived-rma",
+  "platform": "Clariom_D_Human",
+  "platform_package": "pd.clariom.d.human",
+  "sample_columns": [
+    "P_SKMel29_AdGFP_1.CEL",
+    "P_SKMel29_AdGFP_2.CEL",
+    "P_SKMel29_AdGFP_3.CEL",
+    "P_SKMel29_AdTAp73alpha_1.CEL",
+    "P_SKMel29_AdTAp73alpha_2.CEL",
+    "P_SKMel29_AdTAp73alpha_3.CEL",
+    "P_SKMel29_AdDNp73beta_1.CEL",
+    "P_SKMel29_AdDNp73beta_2.CEL",
+    "P_SKMel29_AdDNp73beta_3.CEL"
+  ],
+  "schema": "gentle.probe_region_normalized_matrix_manifest.v1",
+  "source_accession": "E-MTAB-14704",
+  "targets": [
+    "probeset",
+    "pm_probe"
+  ]
+}

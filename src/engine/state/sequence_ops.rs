@@ -21,6 +21,180 @@ pub(crate) struct PrimerDesignProgressContext<'a> {
     pub(crate) max_output: usize,
 }
 
+fn fact_subject(kind: FactSubjectKind, id: impl Into<String>) -> FactSubject {
+    FactSubject {
+        kind,
+        id: id.into(),
+    }
+}
+
+fn fact_subject_sort_key(subject: &FactSubject) -> (&'static str, &str) {
+    (subject.kind.as_str(), subject.id.as_str())
+}
+
+fn project_sequence_kind(dna: &DNAsequence) -> &'static str {
+    let normalized = dna
+        .molecule_type()
+        .unwrap_or("dsDNA")
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['_', '-'], "")
+        .replace(' ', "");
+    if normalized == "protein" || normalized == "peptide" {
+        "protein"
+    } else if matches!(
+        normalized.as_str(),
+        "rna" | "ssrna" | "singlestrandedrna" | "transcript" | "mrna"
+    ) {
+        "rna"
+    } else {
+        "dna"
+    }
+}
+
+fn fact_value_key(value: &Option<serde_json::Value>) -> String {
+    value
+        .as_ref()
+        .map(|value| serde_json::to_string(value).unwrap_or_default())
+        .unwrap_or_default()
+}
+
+fn fact_range_key(range: &Option<FactRange>) -> String {
+    range
+        .as_ref()
+        .map(|range| serde_json::to_string(range).unwrap_or_default())
+        .unwrap_or_default()
+}
+
+fn sort_project_facts(facts: &mut Vec<ProjectFact>) {
+    facts.sort_by(|a, b| {
+        a.fact
+            .cmp(&b.fact)
+            .then(fact_subject_sort_key(&a.subject).cmp(&fact_subject_sort_key(&b.subject)))
+            .then(a.enzyme.cmp(&b.enzyme))
+            .then(fact_range_key(&a.range).cmp(&fact_range_key(&b.range)))
+            .then(fact_value_key(&a.value).cmp(&fact_value_key(&b.value)))
+            .then(
+                a.basis
+                    .as_ref()
+                    .map(|basis| basis.report_id.as_str())
+                    .unwrap_or("")
+                    .cmp(
+                        b.basis
+                            .as_ref()
+                            .map(|basis| basis.report_id.as_str())
+                            .unwrap_or(""),
+                    ),
+            )
+    });
+}
+
+fn fact_range_contains(proven: Option<&FactRange>, required: Option<&FactRange>) -> bool {
+    match (proven, required) {
+        (_, None) => true,
+        (None, Some(_)) => false,
+        (Some(FactRange::WholeSequence), Some(_)) => true,
+        (Some(FactRange::Span { .. }), Some(FactRange::WholeSequence)) => false,
+        (
+            Some(FactRange::Span {
+                start_0based: proven_start,
+                end_0based_exclusive: proven_end,
+                topology: proven_topology,
+            }),
+            Some(FactRange::Span {
+                start_0based: required_start,
+                end_0based_exclusive: required_end,
+                topology: required_topology,
+            }),
+        ) => {
+            proven_topology == required_topology
+                && proven_start <= required_start
+                && proven_end >= required_end
+        }
+    }
+}
+
+fn fact_range_satisfies_atom(
+    fact_name: &str,
+    proven: Option<&FactRange>,
+    required: Option<&FactRange>,
+) -> bool {
+    if fact_name == "restriction_site.present" {
+        return required
+            .map(|required| fact_range_contains(Some(required), proven))
+            .unwrap_or(true);
+    }
+    fact_range_contains(proven, required)
+}
+
+fn normalize_fact_atom_subject(atom: &FactAtom) -> Option<FactSubject> {
+    atom.subject.clone().or_else(|| {
+        atom.id
+            .as_ref()
+            .map(|id| fact_subject(FactSubjectKind::Sequence, id.trim().to_string()))
+    })
+}
+
+fn fact_atom_subject_matches(atom: &FactAtom, fact: &ProjectFact) -> bool {
+    normalize_fact_atom_subject(atom)
+        .map(|subject| subject == fact.subject)
+        .unwrap_or(true)
+}
+
+fn fact_atom_scalar_matches(atom: &FactAtom, fact: &ProjectFact) -> bool {
+    if let Some(expected) = &atom.equals
+        && fact.value.as_ref() != Some(expected)
+    {
+        return false;
+    }
+    if let Some(compare) = &atom.compare {
+        let Some(actual) = fact.value.as_ref().and_then(serde_json::Value::as_f64) else {
+            return false;
+        };
+        let Some(expected) = compare.value.as_f64() else {
+            return false;
+        };
+        let ok = match compare.op.as_str() {
+            "eq" | "=" | "==" => (actual - expected).abs() < f64::EPSILON,
+            "ne" | "!=" => (actual - expected).abs() >= f64::EPSILON,
+            "gt" | ">" => actual > expected,
+            "gte" | ">=" => actual >= expected,
+            "lt" | "<" => actual < expected,
+            "lte" | "<=" => actual <= expected,
+            _ => false,
+        };
+        if !ok {
+            return false;
+        }
+    }
+    true
+}
+
+fn fact_atom_matches_fact(atom: &FactAtom, fact: &ProjectFact) -> bool {
+    atom.fact == fact.fact
+        && fact_atom_subject_matches(atom, fact)
+        && atom
+            .enzyme
+            .as_ref()
+            .map(|enzyme| {
+                fact.enzyme
+                    .as_ref()
+                    .map(|value| value.eq_ignore_ascii_case(enzyme))
+                    .unwrap_or(false)
+            })
+            .unwrap_or(true)
+        && fact_range_satisfies_atom(&fact.fact, fact.range.as_ref(), atom.range.as_ref())
+        && fact_atom_scalar_matches(atom, fact)
+}
+
+fn contradiction_fact_name(name: &str) -> Option<&'static str> {
+    match name {
+        "restriction_site.present" => Some("restriction_site.absent"),
+        "restriction_site.absent" => Some("restriction_site.present"),
+        _ => None,
+    }
+}
+
 impl GentleEngine {
     pub(crate) fn summarize_process_run_bundle_construct_reasoning_graph(
         graph: &ConstructReasoningGraph,
@@ -358,15 +532,15 @@ impl GentleEngine {
             let trimmed = token.trim_matches(|c: char| {
                 !c.is_ascii_alphanumeric() && c != '_' && c != '=' && c != '-'
             });
-            if let Some(value) = trimmed.strip_prefix("gel_topology=") {
-                if let Some(form) = gentle_protocol::GelTopologyForm::from_hint(value) {
-                    return form;
-                }
+            if let Some(value) = trimmed.strip_prefix("gel_topology=")
+                && let Some(form) = gentle_protocol::GelTopologyForm::from_hint(value)
+            {
+                return form;
             }
-            if let Some(form) = gentle_protocol::GelTopologyForm::from_hint(trimmed) {
-                if form.is_circular() {
-                    return form;
-                }
+            if let Some(form) = gentle_protocol::GelTopologyForm::from_hint(trimmed)
+                && form.is_circular()
+            {
+                return form;
             }
         }
         if lowered.contains("open circular")
@@ -401,6 +575,8 @@ impl GentleEngine {
                             "Digest timed out for enzyme '{}' (>{} ms)",
                             enzyme.name, 750
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 if rounds > max_rounds {
@@ -410,6 +586,8 @@ impl GentleEngine {
                             "Digest did not converge for enzyme '{}' within {} rounds",
                             enzyme.name, max_rounds
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
 
@@ -431,6 +609,8 @@ impl GentleEngine {
                             "Digest entered a repeated state for enzyme '{}'",
                             enzyme.name
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
 
@@ -452,6 +632,8 @@ impl GentleEngine {
                                 "Digest produced more than max_fragments_per_container={}",
                                 max_fragments
                             ),
+
+                            cause_chain: vec![],
                         });
                     }
                 }
@@ -474,6 +656,8 @@ impl GentleEngine {
                             "Digest stalled for enzyme '{}' (no fragment-count progress)",
                             enzyme.name
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 last_fragment_count = current_count;
@@ -495,11 +679,15 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Container '{container_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         if container.members.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Container '{container_id}' has no members"),
+
+                cause_chain: vec![],
             });
         }
         for seq_id in &container.members {
@@ -509,6 +697,8 @@ impl GentleEngine {
                     message: format!(
                         "Container '{container_id}' references unknown sequence '{seq_id}'"
                     ),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -523,6 +713,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "At least one container id is required for gel rendering".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut samples: Vec<GelSampleInput> = vec![];
@@ -535,11 +727,15 @@ impl GentleEngine {
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::NotFound,
                     message: format!("Container '{container_id}' not found"),
+
+                    cause_chain: vec![],
                 })?;
             if container.members.is_empty() {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Container '{container_id}' has no members"),
+
+                    cause_chain: vec![],
                 });
             }
             let mut members: Vec<crate::pool_gel::GelSampleMember> =
@@ -554,6 +750,8 @@ impl GentleEngine {
                         message: format!(
                             "Container '{container_id}' references unknown sequence '{seq_id}'"
                         ),
+
+                        cause_chain: vec![],
                     })?;
                 members.push(crate::pool_gel::GelSampleMember {
                     seq_id: seq_id.clone(),
@@ -589,6 +787,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Arrangement '{arrangement_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         if arrangement.mode != ArrangementMode::Serial {
             return Err(EngineError {
@@ -597,6 +797,8 @@ impl GentleEngine {
                     "Arrangement '{}' is mode '{:?}', only serial arrangements can render gels",
                     arrangement_id, arrangement.mode
                 ),
+
+                cause_chain: vec![],
             });
         }
         let mut samples = self.gel_samples_from_container_ids(&arrangement.lane_container_ids)?;
@@ -630,6 +832,8 @@ impl GentleEngine {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message: "arrangement_id cannot be empty".to_string(),
+
+                        cause_chain: vec![],
                     });
                 }
                 let (arrangement_samples, arrangement_ladders) =
@@ -643,6 +847,8 @@ impl GentleEngine {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message: "container_ids was provided but empty".to_string(),
+
+                        cause_chain: vec![],
                     });
                 }
                 self.gel_samples_from_container_ids(container_ids)?
@@ -653,7 +859,8 @@ impl GentleEngine {
                     message:
                         "RenderPoolGelSvg requires either inputs, container_ids, or arrangement_id"
                             .to_string(),
-                });
+
+                    cause_chain: vec![],});
                 }
                 let mut members: Vec<crate::pool_gel::GelSampleMember> =
                     Vec::with_capacity(inputs.len());
@@ -665,6 +872,8 @@ impl GentleEngine {
                         .ok_or_else(|| EngineError {
                             code: ErrorCode::NotFound,
                             message: format!("Sequence '{seq_id}' not found"),
+
+                            cause_chain: vec![],
                         })?;
                     members.push(crate::pool_gel::GelSampleMember {
                         seq_id: seq_id.clone(),
@@ -682,6 +891,8 @@ impl GentleEngine {
             EngineError {
                 code: ErrorCode::InvalidInput,
                 message: e,
+
+                cause_chain: vec![],
             }
         })
     }
@@ -694,6 +905,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "At least one container id is required".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut members = Vec::new();
@@ -706,6 +919,8 @@ impl GentleEngine {
                         "Container merge input count exceeds max_fragments_per_container={}",
                         self.max_fragments_per_container()
                     ),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -713,6 +928,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "No sequences found in selected containers".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(members)
@@ -726,6 +943,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Digest requires at least one enzyme".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -761,6 +980,8 @@ impl GentleEngine {
                     "None of the requested enzymes are known: {}",
                     enzymes.join(",")
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok((found, missing))
@@ -821,6 +1042,773 @@ impl GentleEngine {
         }
     }
 
+    pub fn project_fact_graph(&self) -> ProjectFactGraph {
+        self.project_fact_graph_with_restriction_evidence(&[])
+    }
+
+    pub fn project_fact_graph_with_restriction_evidence(
+        &self,
+        restriction_reports: &[RestrictionSiteScanReport],
+    ) -> ProjectFactGraph {
+        let mut facts: Vec<ProjectFact> = vec![];
+
+        for (id, dna) in &self.state.sequences {
+            let subject = fact_subject(FactSubjectKind::Sequence, id.clone());
+            facts.push(ProjectFact {
+                fact: "sequence.exists".to_string(),
+                subject: subject.clone(),
+                ..ProjectFact::default()
+            });
+            facts.push(ProjectFact {
+                fact: "sequence.kind".to_string(),
+                subject: subject.clone(),
+                value: Some(serde_json::json!(project_sequence_kind(dna))),
+                ..ProjectFact::default()
+            });
+            facts.push(ProjectFact {
+                fact: "sequence.length".to_string(),
+                subject: subject.clone(),
+                value: Some(serde_json::json!(dna.len())),
+                ..ProjectFact::default()
+            });
+            facts.push(ProjectFact {
+                fact: "sequence.circular".to_string(),
+                subject,
+                value: Some(serde_json::json!(dna.is_circular())),
+                ..ProjectFact::default()
+            });
+        }
+
+        if let Ok(serde_json::Value::Object(parameters)) =
+            serde_json::to_value(&self.state.parameters)
+        {
+            for (name, value) in parameters {
+                facts.push(ProjectFact {
+                    fact: "config.param".to_string(),
+                    domain: ProjectFactDomain::Config,
+                    subject: fact_subject(FactSubjectKind::Other, name),
+                    value: Some(value),
+                    ..ProjectFact::default()
+                });
+            }
+        }
+
+        facts.push(ProjectFact {
+            fact: "view.viewport".to_string(),
+            domain: ProjectFactDomain::View,
+            subject: fact_subject(FactSubjectKind::Ui, "linear_sequence".to_string()),
+            value: Some(serde_json::json!({
+                "start_bp": self.state.display.linear_view_start_bp,
+                "span_bp": self.state.display.linear_view_span_bp,
+            })),
+            ..ProjectFact::default()
+        });
+        facts.push(ProjectFact {
+            fact: "view.visible_tracks".to_string(),
+            domain: ProjectFactDomain::View,
+            subject: fact_subject(FactSubjectKind::Ui, "host".to_string()),
+            value: Some(serde_json::json!({
+                "sequence_panel": self.state.display.show_sequence_panel,
+                "linear_sequence_panel": self.state.display.show_linear_sequence_panel,
+                "map_panel": self.state.display.show_map_panel,
+                "features": self.state.display.show_features,
+                "cds_features": self.state.display.show_cds_features,
+                "gene_features": self.state.display.show_gene_features,
+                "mrna_features": self.state.display.show_mrna_features,
+                "repeat_features": self.state.display.show_repeat_features,
+                "array_features": self.state.display.show_array_features,
+                "construct_reasoning_overlay": self.state.display.show_construct_reasoning_overlay,
+                "tfbs": self.state.display.show_tfbs,
+                "restriction_enzymes": self.state.display.show_restriction_enzymes,
+                "gc_contents": self.state.display.show_gc_contents,
+                "open_reading_frames": self.state.display.show_open_reading_frames,
+                "methylation_sites": self.state.display.show_methylation_sites,
+            })),
+            ..ProjectFact::default()
+        });
+
+        for report in self.list_primer_design_reports() {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("primer_design")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "primer_design".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: report.op_id,
+                    run_id: report.run_id,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self.list_qpcr_design_reports() {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("qpcr_design")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "qpcr_design".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: report.op_id,
+                    run_id: report.run_id,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self.list_restriction_cloning_pcr_handoffs() {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("restriction_cloning_pcr_handoff")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "restriction_cloning_pcr_handoff".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: report.op_id,
+                    run_id: report.run_id,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self.list_reverse_translation_reports(None) {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("reverse_translation")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "reverse_translation".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: report.op_id,
+                    run_id: report.run_id,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self.list_protein_derivation_reports(None) {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("protein_derivation")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "protein_derivation".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: report.op_id,
+                    run_id: report.run_id,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self.list_sequencing_confirmation_reports(None) {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("sequencing_confirmation")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "sequencing_confirmation".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: None,
+                    run_id: None,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self.list_cutrun_read_reports(None) {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("cutrun_read")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "cutrun_read".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: None,
+                    run_id: None,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self.list_rna_read_reports(None) {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("rna_read")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "rna_read".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: report.op_id,
+                    run_id: report.run_id,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+
+        for dotplot in self.list_dotplot_views(None) {
+            facts.push(ProjectFact {
+                fact: "dotplot.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, dotplot.dotplot_id),
+                value: Some(serde_json::json!({
+                    "owner_seq_id": dotplot.owner_seq_id,
+                    "seq_id": dotplot.seq_id,
+                    "reference_seq_id": dotplot.reference_seq_id,
+                    "mode": dotplot.mode.as_str(),
+                    "series_count": dotplot.series_count,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for track in self.list_flexibility_tracks(None) {
+            facts.push(ProjectFact {
+                fact: "flexibility_track.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, track.track_id),
+                value: Some(serde_json::json!({
+                    "seq_id": track.seq_id,
+                    "model": serde_json::to_value(track.model).unwrap_or(serde_json::Value::Null),
+                    "bin_count": track.bin_count,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for set in self.list_candidate_sets() {
+            facts.push(ProjectFact {
+                fact: "candidate_set.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, set.name),
+                value: Some(serde_json::json!({
+                    "source_seq_ids": set.source_seq_ids,
+                    "candidate_count": set.candidate_count,
+                    "metrics": set.metrics,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for record in self.read_isoform_panel_store().records {
+            let subject = fact_subject(FactSubjectKind::Other, record.panel_id.clone());
+            let seq_id = record.seq_id.clone();
+            facts.push(ProjectFact {
+                fact: "isoform_panel.exists".to_string(),
+                subject: subject.clone(),
+                value: Some(serde_json::json!({
+                    "seq_id": seq_id,
+                    "panel_id": record.panel_id,
+                    "source_path": record.source_path,
+                    "strict": record.strict,
+                    "imported_at_unix_ms": record.imported_at_unix_ms,
+                    "gene_symbol": record.resource.gene_symbol,
+                    "isoform_count": record.resource.isoforms.len(),
+                    "evidence_count": record.resource.evidence.len(),
+                    "evaluation_count": record.resource.evaluations.len(),
+                })),
+                ..ProjectFact::default()
+            });
+            facts.push(ProjectFact {
+                fact: "isoform_panel.seq_id".to_string(),
+                subject,
+                value: Some(serde_json::json!(record.seq_id)),
+                ..ProjectFact::default()
+            });
+        }
+        if let Some(value) = self.state.metadata.get(EXON_SKIP_PLANS_METADATA_KEY) {
+            let plans_value = value.get("plans").cloned().unwrap_or_else(|| value.clone());
+            if let Ok(plans) = serde_json::from_value::<
+                std::collections::BTreeMap<String, ExonSkipSelectionPlan>,
+            >(plans_value)
+            {
+                for plan in plans.values() {
+                    facts.push(ProjectFact {
+                        fact: "exon_skip_plan.exists".to_string(),
+                        subject: fact_subject(FactSubjectKind::Other, plan.plan_id.clone()),
+                        value: Some(serde_json::json!({
+                            "seq_id": plan.seq_id,
+                            "transcript_feature_id": plan.transcript_feature_id,
+                            "transcript_id": plan.transcript_id,
+                            "candidate_count": plan.candidate_exons.len(),
+                            "selected_candidate_count": plan.selected_candidate_ids.len(),
+                        })),
+                        ..ProjectFact::default()
+                    });
+                }
+            }
+        }
+        for (container_id, container) in &self.state.container_state.containers {
+            facts.push(ProjectFact {
+                fact: "container.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, container_id.clone()),
+                value: Some(serde_json::json!({
+                    "kind": serde_json::to_value(&container.kind).unwrap_or(serde_json::Value::Null),
+                    "name": container.name,
+                    "member_count": container.members.len(),
+                    "declared_contents_exclusive": container.declared_contents_exclusive,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for (arrangement_id, arrangement) in &self.state.container_state.arrangements {
+            facts.push(ProjectFact {
+                fact: "arrangement.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, arrangement_id.clone()),
+                value: Some(serde_json::json!({
+                    "mode": serde_json::to_value(&arrangement.mode).unwrap_or(serde_json::Value::Null),
+                    "name": arrangement.name,
+                    "lane_count": arrangement.lane_container_ids.len(),
+                    "ladder_count": arrangement.ladders.len(),
+                    "default_rack_id": arrangement.default_rack_id,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for (rack_id, rack) in &self.state.container_state.racks {
+            facts.push(ProjectFact {
+                fact: "rack.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, rack_id.clone()),
+                value: Some(serde_json::json!({
+                    "name": rack.name,
+                    "profile_kind": serde_json::to_value(&rack.profile.kind).unwrap_or(serde_json::Value::Null),
+                    "rows": rack.profile.rows,
+                    "columns": rack.profile.columns,
+                    "placement_count": rack.placements.len(),
+                    "blocked_count": rack.profile.blocked_coordinates.len(),
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for template in self.list_workflow_macro_templates() {
+            facts.push(ProjectFact {
+                fact: "workflow_macro_template.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, template.name),
+                value: Some(serde_json::json!({
+                    "description": template.description,
+                    "details_url": template.details_url,
+                    "parameter_count": template.parameter_count,
+                    "created_at_unix_ms": template.created_at_unix_ms,
+                    "updated_at_unix_ms": template.updated_at_unix_ms,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for template in self.list_candidate_macro_templates() {
+            facts.push(ProjectFact {
+                fact: "candidate_macro_template.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, template.name),
+                value: Some(serde_json::json!({
+                    "description": template.description,
+                    "details_url": template.details_url,
+                    "parameter_count": template.parameter_count,
+                    "created_at_unix_ms": template.created_at_unix_ms,
+                    "updated_at_unix_ms": template.updated_at_unix_ms,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for instance in &self.state.lineage.macro_instances {
+            facts.push(ProjectFact {
+                fact: "macro_instance.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, instance.macro_instance_id.clone()),
+                value: Some(serde_json::json!({
+                    "routine_id": instance.routine_id,
+                    "template_name": instance.template_name,
+                    "run_id": instance.run_id,
+                    "status": instance.status,
+                    "status_message": instance.status_message,
+                    "expanded_op_count": instance.expanded_op_ids.len(),
+                    "input_count": instance.bound_inputs.len(),
+                    "output_count": instance.bound_outputs.len(),
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for graph in self.list_construct_reasoning_graph_summaries(None) {
+            facts.push(ProjectFact {
+                fact: "construct_reasoning_graph.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, graph.graph_id),
+                value: Some(serde_json::json!({
+                    "seq_id": graph.seq_id,
+                    "objective_id": graph.objective_id,
+                    "objective_title": graph.objective_title,
+                    "objective_goal": graph.objective_goal,
+                    "evidence_count": graph.evidence_count,
+                    "decision_count": graph.decision_count,
+                    "candidate_count": graph.candidate_count,
+                    "contains_protein_to_dna_handoff": graph.contains_protein_to_dna_handoff,
+                    "protein_to_dna_handoff_candidate_count": graph.protein_to_dna_handoff_candidate_count,
+                    "protein_to_dna_source_protein_seq_ids": graph.protein_to_dna_source_protein_seq_ids,
+                    "op_id": graph.op_id,
+                    "run_id": graph.run_id,
+                    "generated_at_unix_ms": graph.generated_at_unix_ms,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for trace in self.list_sequencing_traces(None) {
+            facts.push(ProjectFact {
+                fact: "sequencing_trace.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, trace.trace_id),
+                value: Some(serde_json::json!({
+                    "seq_id": trace.seq_id,
+                    "format": serde_json::to_value(trace.format).unwrap_or(serde_json::Value::Null),
+                    "called_base_count": trace.called_base_count,
+                    "confidence_value_count": trace.confidence_value_count,
+                    "peak_location_count": trace.peak_location_count,
+                    "source_path": trace.source_path,
+                    "imported_at_unix_ms": trace.imported_at_unix_ms,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for entry in self.list_uniprot_entries() {
+            facts.push(ProjectFact {
+                fact: "uniprot_entry.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, entry.entry_id),
+                value: Some(serde_json::json!({
+                    "accession": entry.accession,
+                    "primary_id": entry.primary_id,
+                    "sequence_length": entry.sequence_length,
+                    "feature_count": entry.feature_count,
+                    "ensembl_xref_count": entry.ensembl_xref_count,
+                    "nucleotide_xref_count": entry.nucleotide_xref_count,
+                    "source": entry.source,
+                    "imported_at_unix_ms": entry.imported_at_unix_ms,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for projection in self.list_uniprot_genome_projections(None) {
+            facts.push(ProjectFact {
+                fact: "uniprot_projection.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, projection.projection_id),
+                value: Some(serde_json::json!({
+                    "entry_id": projection.entry_id,
+                    "seq_id": projection.seq_id,
+                    "transcript_id_filter": projection.transcript_id_filter,
+                    "transcript_projection_count": projection.transcript_projection_count,
+                    "created_at_unix_ms": projection.created_at_unix_ms,
+                    "op_id": projection.op_id,
+                    "run_id": projection.run_id,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for entry in self.list_ensembl_gene_entries() {
+            facts.push(ProjectFact {
+                fact: "ensembl_gene_entry.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, entry.entry_id),
+                value: Some(serde_json::json!({
+                    "gene_id": entry.gene_id,
+                    "gene_symbol": entry.gene_symbol,
+                    "species": entry.species,
+                    "seq_region_name": entry.seq_region_name,
+                    "genomic_start_1based": entry.genomic_start_1based,
+                    "genomic_end_1based": entry.genomic_end_1based,
+                    "transcript_count": entry.transcript_count,
+                    "sequence_length": entry.sequence_length,
+                    "source_query": entry.source_query,
+                    "imported_at_unix_ms": entry.imported_at_unix_ms,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for entry in self.list_ensembl_protein_entries() {
+            facts.push(ProjectFact {
+                fact: "ensembl_protein_entry.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, entry.entry_id),
+                value: Some(serde_json::json!({
+                    "protein_id": entry.protein_id,
+                    "transcript_id": entry.transcript_id,
+                    "gene_symbol": entry.gene_symbol,
+                    "sequence_length": entry.sequence_length,
+                    "feature_count": entry.feature_count,
+                    "source_query": entry.source_query,
+                    "imported_at_unix_ms": entry.imported_at_unix_ms,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for set in self.list_guide_sets() {
+            facts.push(ProjectFact {
+                fact: "guide_set.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, set.guide_set_id),
+                value: Some(serde_json::json!({
+                    "guide_count": set.guide_count,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        let guide_store = self.read_guide_design_store();
+        for (guide_set_id, report) in guide_store.practical_filter_reports {
+            facts.push(ProjectFact {
+                fact: "guide_filter_report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, guide_set_id),
+                value: Some(serde_json::json!({
+                    "passed_count": report.passed_count,
+                    "rejected_count": report.rejected_count,
+                    "row_count": report.results.len(),
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for set in self.list_guide_oligo_sets(None) {
+            facts.push(ProjectFact {
+                fact: "guide_oligo_set.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, set.oligo_set_id),
+                value: Some(serde_json::json!({
+                    "guide_set_id": set.guide_set_id,
+                    "template_id": set.template.template_id,
+                    "record_count": set.records.len(),
+                })),
+                ..ProjectFact::default()
+            });
+        }
+
+        for report in restriction_reports {
+            Self::push_restriction_scan_facts(&mut facts, report);
+        }
+
+        sort_project_facts(&mut facts);
+        ProjectFactGraph {
+            schema: PROJECT_FACT_GRAPH_SCHEMA.to_string(),
+            facts,
+        }
+    }
+
+    fn push_restriction_scan_facts(
+        facts: &mut Vec<ProjectFact>,
+        report: &RestrictionSiteScanReport,
+    ) {
+        let report_id = if report.report_id.trim().is_empty() {
+            Self::restriction_site_scan_report_id(report)
+        } else {
+            report.report_id.trim().to_string()
+        };
+        let report_subject = fact_subject(FactSubjectKind::Report, report_id.clone());
+        let basis = FactBasis {
+            report_id: report_id.clone(),
+            report_kind: "restriction_scan".to_string(),
+            evidence_class: EvidenceClass::HardFact,
+            op_id: report.op_id.clone(),
+            run_id: report.run_id.clone(),
+        };
+        facts.push(ProjectFact {
+            fact: "report.exists".to_string(),
+            subject: report_subject,
+            value: Some(serde_json::json!("restriction_scan")),
+            basis: Some(basis.clone()),
+            ..ProjectFact::default()
+        });
+
+        if report.target_kind != "seq_id" {
+            return;
+        }
+        let subject = fact_subject(FactSubjectKind::Sequence, report.target_label.clone());
+        let range = Self::restriction_report_fact_range(report);
+        let skipped = report
+            .skipped_enzyme_names_due_to_max_sites
+            .iter()
+            .map(|name| name.to_ascii_lowercase())
+            .collect::<BTreeSet<_>>();
+
+        for enzyme in &report.enzymes_scanned {
+            if skipped.contains(&enzyme.to_ascii_lowercase()) {
+                continue;
+            }
+            let matching_hits = report
+                .rows
+                .iter()
+                .filter(|row| row.enzyme_name.eq_ignore_ascii_case(enzyme))
+                .collect::<Vec<_>>();
+            if matching_hits.is_empty() {
+                facts.push(ProjectFact {
+                    fact: "restriction_site.absent".to_string(),
+                    subject: subject.clone(),
+                    enzyme: Some(enzyme.clone()),
+                    range: Some(range.clone()),
+                    value: Some(serde_json::json!(0)),
+                    basis: Some(basis.clone()),
+                    ..ProjectFact::default()
+                });
+            } else {
+                for hit in matching_hits {
+                    facts.push(ProjectFact {
+                        fact: "restriction_site.present".to_string(),
+                        subject: subject.clone(),
+                        enzyme: Some(hit.enzyme_name.clone()),
+                        range: Some(FactRange::Span {
+                            start_0based: hit.source_recognition_start_0based,
+                            end_0based_exclusive: hit.source_recognition_end_0based_exclusive,
+                            topology: report.scan_topology,
+                        }),
+                        value: Some(serde_json::json!(true)),
+                        basis: Some(basis.clone()),
+                        ..ProjectFact::default()
+                    });
+                }
+            }
+        }
+    }
+
+    fn restriction_report_fact_range(report: &RestrictionSiteScanReport) -> FactRange {
+        if report.scan_start_0based == 0
+            && report.scan_end_0based_exclusive == report.source_sequence_length_bp
+        {
+            FactRange::WholeSequence
+        } else {
+            FactRange::Span {
+                start_0based: report.scan_start_0based,
+                end_0based_exclusive: report.scan_end_0based_exclusive,
+                topology: report.scan_topology,
+            }
+        }
+    }
+
+    pub fn restriction_site_scan_report_id(report: &RestrictionSiteScanReport) -> String {
+        let mut enzymes = report.enzymes_scanned.clone();
+        enzymes.sort();
+        let raw = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            report.op_id.as_deref().unwrap_or(""),
+            report.run_id.as_deref().unwrap_or(""),
+            report.target_kind,
+            report.target_label,
+            report.scan_start_0based,
+            report.scan_end_0based_exclusive,
+            report.scan_topology.as_str(),
+            enzymes.join(",")
+        );
+        Self::short_sha1_id("rsr", &raw)
+    }
+
+    pub fn evaluate_fact_expression_against_graph(
+        expression: &FactExpression,
+        graph: &ProjectFactGraph,
+    ) -> FactEvaluationResult {
+        let mut unmet_atoms = vec![];
+        let mut unknown_atoms = vec![];
+        let truth = Self::evaluate_fact_expression_inner(
+            expression,
+            graph,
+            &mut unmet_atoms,
+            &mut unknown_atoms,
+        );
+        FactEvaluationResult {
+            schema: FACT_EVALUATION_SCHEMA.to_string(),
+            truth,
+            unmet_atoms,
+            unknown_atoms,
+        }
+    }
+
+    pub fn evaluate_fact_expression(
+        &self,
+        expression: &FactExpression,
+        restriction_reports: &[RestrictionSiteScanReport],
+    ) -> FactEvaluationResult {
+        let graph = self.project_fact_graph_with_restriction_evidence(restriction_reports);
+        Self::evaluate_fact_expression_against_graph(expression, &graph)
+    }
+
+    fn evaluate_fact_expression_inner(
+        expression: &FactExpression,
+        graph: &ProjectFactGraph,
+        unmet_atoms: &mut Vec<FactAtom>,
+        unknown_atoms: &mut Vec<FactAtom>,
+    ) -> FactTruth {
+        match expression {
+            FactExpression::Atom(atom) => {
+                let truth = Self::evaluate_fact_atom(atom, graph);
+                match truth {
+                    FactTruth::Unsatisfied => unmet_atoms.push(atom.clone()),
+                    FactTruth::Unknown => unknown_atoms.push(atom.clone()),
+                    FactTruth::Satisfied => {}
+                }
+                truth
+            }
+            FactExpression::All { all } => {
+                let mut saw_unknown = false;
+                for child in all {
+                    match Self::evaluate_fact_expression_inner(
+                        child,
+                        graph,
+                        unmet_atoms,
+                        unknown_atoms,
+                    ) {
+                        FactTruth::Unsatisfied => return FactTruth::Unsatisfied,
+                        FactTruth::Unknown => saw_unknown = true,
+                        FactTruth::Satisfied => {}
+                    }
+                }
+                if saw_unknown {
+                    FactTruth::Unknown
+                } else {
+                    FactTruth::Satisfied
+                }
+            }
+            FactExpression::Any { any } => {
+                let mut saw_unknown = false;
+                for child in any {
+                    match Self::evaluate_fact_expression_inner(
+                        child,
+                        graph,
+                        unmet_atoms,
+                        unknown_atoms,
+                    ) {
+                        FactTruth::Satisfied => return FactTruth::Satisfied,
+                        FactTruth::Unknown => saw_unknown = true,
+                        FactTruth::Unsatisfied => {}
+                    }
+                }
+                if saw_unknown {
+                    FactTruth::Unknown
+                } else {
+                    FactTruth::Unsatisfied
+                }
+            }
+            FactExpression::Not { not } => {
+                let before_unmet = unmet_atoms.len();
+                match Self::evaluate_fact_expression_inner(not, graph, unmet_atoms, unknown_atoms) {
+                    FactTruth::Satisfied => FactTruth::Unsatisfied,
+                    FactTruth::Unsatisfied => {
+                        unmet_atoms.truncate(before_unmet);
+                        FactTruth::Satisfied
+                    }
+                    FactTruth::Unknown => {
+                        unmet_atoms.truncate(before_unmet);
+                        FactTruth::Unknown
+                    }
+                }
+            }
+        }
+    }
+
+    fn evaluate_fact_atom(atom: &FactAtom, graph: &ProjectFactGraph) -> FactTruth {
+        let Some(spec) = project_fact_type_spec(atom.fact.as_str()) else {
+            return FactTruth::Unknown;
+        };
+        let has_match = graph.facts.iter().any(|fact| {
+            fact_atom_matches_fact(atom, fact) && (!spec.requires_basis || fact.basis.is_some())
+        });
+        if has_match {
+            return FactTruth::Satisfied;
+        }
+        if spec.world == ProjectFactWorld::ClosedWorld {
+            return FactTruth::Unsatisfied;
+        }
+        if let Some(contradiction) = contradiction_fact_name(atom.fact.as_str()) {
+            let mut contradiction_atom = atom.clone();
+            contradiction_atom.fact = contradiction.to_string();
+            let contradicted = graph.facts.iter().any(|fact| {
+                fact_atom_matches_fact(&contradiction_atom, fact)
+                    && (!spec.requires_basis || fact.basis.is_some())
+            });
+            if contradicted {
+                return FactTruth::Unsatisfied;
+            }
+        }
+        FactTruth::Unknown
+    }
+
     pub(super) fn canonical_fasta_molecule(raw: Option<&str>) -> &'static str {
         let normalized = raw
             .unwrap_or("dsdna")
@@ -877,6 +1865,8 @@ impl GentleEngine {
         let mut file = File::create(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not create FASTA file '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
 
         let header = dna
@@ -896,16 +1886,22 @@ impl GentleEngine {
         writeln!(file, "{header_line}").map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write FASTA header to '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
 
         for chunk in seq.as_bytes().chunks(80) {
             file.write_all(chunk).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write FASTA sequence to '{path}': {e}"),
+
+                cause_chain: vec![],
             })?;
             file.write_all(b"\n").map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write FASTA newline to '{path}': {e}"),
+
+                cause_chain: vec![],
             })?;
         }
 
@@ -952,6 +1948,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "ExportPool requires at least one input sequence id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut members: Vec<PoolMember> = Vec::with_capacity(inputs.len());
@@ -963,6 +1961,8 @@ impl GentleEngine {
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::NotFound,
                     message: format!("Sequence '{seq_id}' not found"),
+
+                    cause_chain: vec![],
                 })?;
             let mut end = PoolEnd {
                 end_type: String::new(),
@@ -997,10 +1997,14 @@ impl GentleEngine {
         let text = serde_json::to_string_pretty(&export).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize pool JSON: {e}"),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write pool file '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok((pool_id, human_id, export.member_count))
     }
@@ -1043,6 +2047,11 @@ impl GentleEngine {
             Operation::LoadFile { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
             }
+            Operation::CreateSequenceFromText { output_id, .. } => {
+                if let Some(output_id) = output_id {
+                    Self::push_unique_token(&mut summary.sequence_ids, output_id);
+                }
+            }
             Operation::SaveFile { seq_id, .. }
             | Operation::RenderSequenceSvg { seq_id, .. }
             | Operation::ExportSequenceContextBundle { seq_id, .. }
@@ -1066,6 +2075,7 @@ impl GentleEngine {
             | Operation::ComputeFlexibilityTrack { seq_id, .. }
             | Operation::DeriveSplicingReferences { seq_id, .. }
             | Operation::InterpretRnaReads { seq_id, .. }
+            | Operation::PreflightRnaReadIsoforms { seq_id, .. }
             | Operation::SetTopology { seq_id, .. }
             | Operation::RecomputeFeatures { seq_id, .. }
             | Operation::AnnotateTfbs { seq_id, .. } => {
@@ -1101,12 +2111,22 @@ impl GentleEngine {
                 }
             }
             Operation::AlignSequences {
+                query,
+                target,
                 query_seq_id,
                 target_seq_id,
                 ..
             } => {
-                Self::push_unique_token(&mut summary.sequence_ids, query_seq_id);
-                Self::push_unique_token(&mut summary.sequence_ids, target_seq_id);
+                if let Some(SequenceScanTarget::SeqId { seq_id, .. }) = query {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                } else if let Some(seq_id) = query_seq_id.as_deref() {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
+                if let Some(SequenceScanTarget::SeqId { seq_id, .. }) = target {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                } else if let Some(seq_id) = target_seq_id.as_deref() {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
             }
             Operation::ListRnaReadReports { seq_id } => {
                 if let Some(seq_id) = seq_id.as_deref() {
@@ -1164,6 +2184,45 @@ impl GentleEngine {
             }
             Operation::ImportUniprotSwissProt { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
+            }
+            Operation::ListReporterCatalog {
+                catalog_path, path, ..
+            }
+            | Operation::RecommendReporters {
+                catalog_path, path, ..
+            } => {
+                if let Some(path) = catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                if let Some(path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
+            Operation::ExportReporterCorpus {
+                catalog_path, path, ..
+            } => {
+                if let Some(path) = catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                Self::push_unique_token(&mut summary.file_paths, path);
+            }
+            Operation::PlanReporterConstructHandoff {
+                candidate_set_path,
+                catalog_path,
+                reporter_backbone_load_path,
+                path,
+                ..
+            } => {
+                Self::push_unique_token(&mut summary.file_paths, candidate_set_path);
+                if let Some(path) = catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                if let Some(path) = reporter_backbone_load_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                if let Some(path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
             }
             Operation::ValidateProtocolCartoonTemplate { template_path } => {
                 Self::push_unique_token(&mut summary.file_paths, template_path);
@@ -1256,6 +2315,13 @@ impl GentleEngine {
             }
             _ => {}
         }
+        if let Operation::RenderIsoformArchitectureSvg {
+            expression_tsv_path: Some(path),
+            ..
+        } = op
+        {
+            Self::push_unique_token(&mut summary.file_paths, path);
+        }
         if let Operation::ImportGenomeBedTrack { path, .. }
         | Operation::ImportGenomeBigWigTrack { path, .. }
         | Operation::ImportGenomeVcfTrack { path, .. }
@@ -1272,6 +2338,7 @@ impl GentleEngine {
         | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
         | Operation::ExportRnaReadScoreDensitySvg { path, .. }
         | Operation::ExportRnaReadAlignmentsTsv { path, .. }
+        | Operation::ExportRnaReadIsoformTriageTsv { path, .. }
         | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. }
         | Operation::RenderTfbsScoreTracksSvg { path, .. }
         | Operation::RenderProtocolCartoonSvg { path, .. }
@@ -1280,6 +2347,19 @@ impl GentleEngine {
         | Operation::ExportProtocolCartoonTemplateJson { path, .. } = op
         {
             Self::push_unique_token(&mut summary.file_paths, path);
+        }
+        if let Operation::PreflightRnaReadIsoforms {
+            positive_transcript_fasta_paths,
+            control_transcript_fasta_paths,
+            ..
+        } = op
+        {
+            for path in positive_transcript_fasta_paths {
+                Self::push_unique_token(&mut summary.file_paths, path);
+            }
+            for path in control_transcript_fasta_paths {
+                Self::push_unique_token(&mut summary.file_paths, path);
+            }
         }
         if let Operation::SummarizeRnaReadGeneSupport {
             path: Some(path), ..
@@ -1345,6 +2425,7 @@ impl GentleEngine {
             | Operation::ExportRnaLadders { path, .. }
             | Operation::ExportPool { path, .. }
             | Operation::ExportProcessRunBundle { path, .. }
+            | Operation::ExportLabAssistantInstructions { path, .. }
             | Operation::ExportGuideOligos { path, .. }
             | Operation::ExportGuideProtocolText { path, .. }
             | Operation::ExportPrimerDesignReport { path, .. }
@@ -1358,6 +2439,7 @@ impl GentleEngine {
             | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
             | Operation::ExportRnaReadScoreDensitySvg { path, .. }
             | Operation::ExportRnaReadAlignmentsTsv { path, .. }
+            | Operation::ExportRnaReadIsoformTriageTsv { path, .. }
             | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. } => {
                 push(path);
             }
@@ -1384,6 +2466,16 @@ impl GentleEngine {
                 path: Some(path), ..
             } => push(path),
             Operation::SummarizeJasparEntries {
+                path: Some(path), ..
+            } => push(path),
+            Operation::ListReporterCatalog {
+                path: Some(path), ..
+            }
+            | Operation::RecommendReporters {
+                path: Some(path), ..
+            }
+            | Operation::ExportReporterCorpus { path, .. }
+            | Operation::PlanReporterConstructHandoff {
                 path: Some(path), ..
             } => push(path),
             _ => {}
@@ -1751,10 +2843,10 @@ impl GentleEngine {
         if let Some(snapshot) = trace.preflight_snapshot.as_mut() {
             Self::normalize_routine_decision_trace_preflight_snapshot(snapshot);
         }
-        if trace.preflight_history.is_empty() {
-            if let Some(snapshot) = trace.preflight_snapshot.clone() {
-                trace.preflight_history.push(snapshot);
-            }
+        if trace.preflight_history.is_empty()
+            && let Some(snapshot) = trace.preflight_snapshot.clone()
+        {
+            trace.preflight_history.push(snapshot);
         }
         trace.preflight_snapshot = trace.preflight_history.last().cloned();
 
@@ -1855,6 +2947,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "ExportProcessRunBundle requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let normalized_run_id = run_id_filter
@@ -1877,6 +2971,8 @@ impl GentleEngine {
                     "No operation records found for run_id '{}'",
                     normalized_run_id.unwrap_or_default()
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -2038,6 +3134,8 @@ impl GentleEngine {
                 EngineError {
                     code: ErrorCode::Internal,
                     message: format!("Could not serialize engine parameter snapshot: {e}"),
+
+                    cause_chain: vec![],
                 }
             })?,
             construct_reasoning,
@@ -2046,12 +3144,781 @@ impl GentleEngine {
         let text = serde_json::to_string_pretty(&bundle).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize run bundle JSON: {e}"),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write run bundle file '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(bundle)
+    }
+
+    pub(super) fn export_lab_assistant_instructions_file(
+        &self,
+        path: &str,
+        run_id_filter: Option<&str>,
+        title: Option<&str>,
+        audience: Option<&str>,
+        format: Option<LabAssistantInstructionsFormat>,
+    ) -> Result<LabAssistantInstructionsExport, EngineError> {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ExportLabAssistantInstructions requires non-empty path".to_string(),
+
+                cause_chain: vec![],
+            });
+        }
+        let output_format =
+            format.unwrap_or_else(|| LabAssistantInstructionsFormat::infer_from_path(path));
+        let normalized_run_id = run_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let selected_records: Vec<&OperationRecord> = self
+            .journal
+            .iter()
+            .filter(|record| {
+                normalized_run_id
+                    .map(|run_id| record.run_id == run_id)
+                    .unwrap_or(true)
+            })
+            .collect();
+        if normalized_run_id.is_some() && selected_records.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No operation records found for run_id '{}'",
+                    normalized_run_id.unwrap_or_default()
+                ),
+
+                cause_chain: vec![],
+            });
+        }
+
+        let op_ids = selected_records
+            .iter()
+            .map(|record| record.result.op_id.clone())
+            .collect::<BTreeSet<_>>();
+        let title = title
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .or_else(|| Self::infer_lab_assistant_title(&selected_records))
+            .unwrap_or_else(|| "GENtle cloning handoff".to_string());
+        let audience = audience
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("Lab assistant")
+            .to_string();
+
+        let material_rows = self.lab_assistant_material_rows(&selected_records, &op_ids);
+        let mut warning_lines = vec![];
+        let embedded_images = if matches!(
+            output_format,
+            LabAssistantInstructionsFormat::Odt | LabAssistantInstructionsFormat::Docx
+        ) {
+            match self.lab_assistant_default_embedded_images() {
+                Ok(images) => images,
+                Err(err) => {
+                    warning_lines.push(format!(
+                        "Could not embed lineage overview graphic: {}",
+                        err.message
+                    ));
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        let embedded_visuals = embedded_images
+            .iter()
+            .map(|image| image.visual_row("operation lineage overview"))
+            .collect::<Vec<_>>();
+        if selected_records.is_empty() {
+            warning_lines.push(
+                "No recorded operations were available; this export is a general handoff scaffold."
+                    .to_string(),
+            );
+        }
+        let step_sections = Self::lab_assistant_instruction_sections(&selected_records);
+        let no_cloning_specific_steps = step_sections
+            .iter()
+            .find(|section| section.heading == "Design-derived bench sequence")
+            .is_some_and(|section| {
+                section
+                    .steps
+                    .iter()
+                    .any(|step| step.contains("No cloning-specific operations"))
+            });
+        if no_cloning_specific_steps {
+            warning_lines.push(
+                "No cloning-specific operation was recognized in the selected run; review the run bundle or project history before bench work."
+                    .to_string(),
+            );
+        }
+
+        let checkpoint_lines = vec![
+            "Confirm every physical tube label matches the sequence/container IDs listed below."
+                .to_string(),
+            "Verify expected product lengths against the GENtle output and any gel/band summaries before proceeding."
+                .to_string(),
+            "If sequencing, restriction digest, or colony PCR confirmation is planned, keep sample IDs synchronized with this handoff."
+                .to_string(),
+        ];
+        let safety_lines = vec![
+            "Use institution-approved SOPs, kit manuals, and supervisor-approved conditions for all wet-lab execution."
+                .to_string(),
+            "GENtle exports design-derived intent and checkpoints; it does not replace local biosafety, chemical safety, or strain/vector approval."
+                .to_string(),
+            "Do not proceed when material labels, expected lengths, antibiotic/host context, or approval status are ambiguous."
+                .to_string(),
+        ];
+        let record_keeping_lines = vec![
+            "Record operator, date, reagent lot numbers, template/vector/insert tube IDs, and plate/tube coordinates."
+                .to_string(),
+            "Attach photos or instrument exports for gels, plates, colony PCR, digest checks, and sequencing chromatograms."
+                .to_string(),
+            "Store deviations from this handoff together with the GENtle project state or run bundle."
+                .to_string(),
+        ];
+        let summary_lines = vec![
+            format!(
+                "Selected {} operation record(s){}.",
+                selected_records.len(),
+                normalized_run_id
+                    .map(|run_id| format!(" for run_id `{run_id}`"))
+                    .unwrap_or_default()
+            ),
+            format!(
+                "Prepared {} material row(s) and {} instruction section(s).",
+                material_rows.len(),
+                step_sections.len()
+            ),
+            format!(
+                "Embedded {} graphical overview(s) in {} output.",
+                embedded_visuals.len(),
+                output_format.as_str()
+            ),
+        ];
+
+        let export = LabAssistantInstructionsExport {
+            schema: LAB_ASSISTANT_INSTRUCTIONS_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            title,
+            audience,
+            output_path: path.to_string(),
+            output_format,
+            run_id_filter: normalized_run_id.map(str::to_string),
+            selected_record_count: selected_records.len(),
+            material_rows,
+            step_sections,
+            embedded_visuals,
+            checkpoint_lines,
+            safety_lines,
+            record_keeping_lines,
+            warning_lines,
+            summary_lines,
+        };
+
+        let parent = Path::new(path)
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(parent).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create parent directory for lab assistant instructions '{path}': {e}"
+            ),
+
+            cause_chain: vec![],
+        })?;
+        let bytes = match output_format {
+            LabAssistantInstructionsFormat::Markdown => {
+                crate::engine::lab_assistant_export::render_markdown(&export).into_bytes()
+            }
+            LabAssistantInstructionsFormat::Odt => {
+                crate::engine::lab_assistant_export::render_odt(&export, &embedded_images).map_err(
+                    |e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!("Could not render ODT lab assistant report: {e}"),
+
+                        cause_chain: vec![],
+                    },
+                )?
+            }
+            LabAssistantInstructionsFormat::Docx => {
+                crate::engine::lab_assistant_export::render_docx(&export, &embedded_images)
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!("Could not render DOCX lab assistant report: {e}"),
+
+                        cause_chain: vec![],
+                    })?
+            }
+        };
+        std::fs::write(path, bytes).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write lab assistant instructions file '{path}': {e}"),
+
+            cause_chain: vec![],
+        })?;
+        Ok(export)
+    }
+
+    fn lab_assistant_default_embedded_images(
+        &self,
+    ) -> Result<Vec<crate::engine::lab_assistant_export::LabAssistantEmbeddedImage>, EngineError>
+    {
+        let svg = crate::lineage_export::export_lineage_svg(&self.state, &self.journal);
+        let rendered = crate::svg_png::render_svg_to_png_bytes(
+            &svg,
+            crate::svg_png::SvgPngRenderOptions {
+                scale: 1.5,
+                drop_dotplot_metadata: false,
+            },
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not rasterize lineage overview SVG: {e}"),
+
+            cause_chain: vec![],
+        })?;
+        Ok(vec![
+            crate::engine::lab_assistant_export::LabAssistantEmbeddedImage {
+                visual_id: "lineage_overview".to_string(),
+                label: "GENtle operation lineage overview".to_string(),
+                file_name: "lineage_overview.png".to_string(),
+                bytes: rendered.bytes,
+                width_px: rendered.width as usize,
+                height_px: rendered.height as usize,
+            },
+        ])
+    }
+
+    fn infer_lab_assistant_title(records: &[&OperationRecord]) -> Option<String> {
+        records.iter().find_map(|record| match &record.op {
+            Operation::ApplyGibsonAssemblyPlan { plan_json } => {
+                let plan: crate::gibson_planning::GibsonAssemblyPlan =
+                    serde_json::from_str(plan_json).ok()?;
+                let title = plan.title.trim();
+                (!title.is_empty()).then(|| format!("Lab handoff: {title}"))
+            }
+            Operation::PrepareRestrictionCloningPcrHandoff { .. } => {
+                Some("Lab handoff: restriction-cloning PCR".to_string())
+            }
+            Operation::Pcr { .. }
+            | Operation::PcrAdvanced { .. }
+            | Operation::PcrMutagenesis { .. } => {
+                Some("Lab handoff: PCR product preparation".to_string())
+            }
+            _ => None,
+        })
+    }
+
+    fn lab_assistant_material_rows(
+        &self,
+        records: &[&OperationRecord],
+        op_ids: &BTreeSet<String>,
+    ) -> Vec<LabAssistantMaterialRow> {
+        let mut referenced_sequence_ids = BTreeSet::new();
+        let mut created_sequence_ids = BTreeSet::new();
+        let mut referenced_container_ids = BTreeSet::new();
+        let mut referenced_arrangement_ids = BTreeSet::new();
+        for (index, record) in records.iter().enumerate() {
+            let summary = Self::summarize_run_bundle_operation_inputs(
+                &record.op,
+                &record.result.op_id,
+                &record.run_id,
+                index + 1,
+            );
+            referenced_sequence_ids.extend(summary.sequence_ids);
+            referenced_container_ids.extend(summary.container_ids);
+            referenced_arrangement_ids.extend(summary.arrangement_ids);
+            created_sequence_ids.extend(record.result.created_seq_ids.iter().cloned());
+        }
+
+        let root_sequence_ids = referenced_sequence_ids
+            .difference(&created_sequence_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut rows = vec![];
+        for seq_id in root_sequence_ids {
+            if let Some(row) = self.lab_assistant_sequence_material_row(&seq_id, "input_sequence") {
+                rows.push(row);
+            }
+        }
+        for seq_id in created_sequence_ids {
+            if let Some(row) = self.lab_assistant_sequence_material_row(&seq_id, "designed_output")
+            {
+                rows.push(row);
+            }
+        }
+
+        let created_container_ids =
+            self.state
+                .container_state
+                .containers
+                .iter()
+                .filter_map(|(container_id, container)| {
+                    container
+                        .created_by_op
+                        .as_deref()
+                        .filter(|op_id| op_ids.contains(*op_id))
+                        .map(|_| container_id.clone())
+                });
+        referenced_container_ids.extend(created_container_ids);
+        for container_id in referenced_container_ids {
+            let Some(container) = self.state.container_state.containers.get(&container_id) else {
+                continue;
+            };
+            rows.push(LabAssistantMaterialRow {
+                material_id: container_id.clone(),
+                display_name: container
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| container_id.clone()),
+                kind: format!("container_{:?}", container.kind).to_ascii_lowercase(),
+                source: "container_state".to_string(),
+                length_bp: None,
+                topology: None,
+                members: container.members.clone(),
+                notes: vec![format!(
+                    "Declared contents are {}.",
+                    if container.declared_contents_exclusive {
+                        "exclusive"
+                    } else {
+                        "not exclusive"
+                    }
+                )],
+            });
+        }
+
+        let created_arrangement_ids = self.state.container_state.arrangements.iter().filter_map(
+            |(arrangement_id, arrangement)| {
+                arrangement
+                    .created_by_op
+                    .as_deref()
+                    .filter(|op_id| op_ids.contains(*op_id))
+                    .map(|_| arrangement_id.clone())
+            },
+        );
+        referenced_arrangement_ids.extend(created_arrangement_ids);
+        for arrangement_id in referenced_arrangement_ids {
+            let Some(arrangement) = self.state.container_state.arrangements.get(&arrangement_id)
+            else {
+                continue;
+            };
+            rows.push(LabAssistantMaterialRow {
+                material_id: arrangement_id.clone(),
+                display_name: arrangement
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| arrangement_id.clone()),
+                kind: "arrangement".to_string(),
+                source: "container_state".to_string(),
+                length_bp: None,
+                topology: Some(format!("{:?}", arrangement.mode).to_ascii_lowercase()),
+                members: arrangement.lane_container_ids.clone(),
+                notes: arrangement
+                    .ladders
+                    .iter()
+                    .map(|ladder| format!("Gel ladder: {ladder}"))
+                    .collect(),
+            });
+        }
+
+        rows.sort_by(|left, right| {
+            left.kind
+                .cmp(&right.kind)
+                .then(left.material_id.cmp(&right.material_id))
+        });
+        rows
+    }
+
+    fn lab_assistant_sequence_material_row(
+        &self,
+        seq_id: &str,
+        source: &str,
+    ) -> Option<LabAssistantMaterialRow> {
+        let dna = self.state.sequences.get(seq_id)?;
+        Some(LabAssistantMaterialRow {
+            material_id: seq_id.to_string(),
+            display_name: dna.name().clone().unwrap_or_else(|| seq_id.to_string()),
+            kind: "sequence".to_string(),
+            source: source.to_string(),
+            length_bp: Some(dna.len()),
+            topology: Some(if dna.is_circular() {
+                "circular".to_string()
+            } else {
+                "linear".to_string()
+            }),
+            members: vec![],
+            notes: vec![],
+        })
+    }
+
+    fn lab_assistant_instruction_sections(
+        records: &[&OperationRecord],
+    ) -> Vec<LabAssistantInstructionSection> {
+        let mut prepare_steps = vec![
+            "Read this handoff completely before touching samples; resolve any unclear material IDs with the designing scientist."
+                .to_string(),
+            "Gather the listed DNA samples, primers/oligos, vectors, enzymes/kits, competent cells, media, antibiotics, and confirmation reagents required by the local SOP."
+                .to_string(),
+            "Create tube/plate labels that exactly match the material IDs and planned output IDs.".to_string(),
+        ];
+        if records.is_empty() {
+            prepare_steps.push(
+                "No recorded design operations were selected; use this export only as a checklist scaffold."
+                    .to_string(),
+            );
+        }
+
+        let mut bench_steps = vec![];
+        for record in records {
+            bench_steps.extend(Self::lab_assistant_steps_for_record(record));
+        }
+        if bench_steps.is_empty() {
+            bench_steps.push(
+                "No cloning-specific operations were recognized in the selected run; ask the designing scientist for the intended bench route before proceeding."
+                    .to_string(),
+            );
+        }
+
+        vec![
+            LabAssistantInstructionSection {
+                heading: "Before starting".to_string(),
+                steps: prepare_steps,
+            },
+            LabAssistantInstructionSection {
+                heading: "Design-derived bench sequence".to_string(),
+                steps: bench_steps,
+            },
+            LabAssistantInstructionSection {
+                heading: "After the bench work".to_string(),
+                steps: vec![
+                    "Compare observed bands, colonies, digests, or sequencing reads with the expected GENtle outputs before declaring success."
+                        .to_string(),
+                    "Keep unsuccessful or ambiguous outcomes; they are useful for redesign and troubleshooting."
+                        .to_string(),
+                ],
+            },
+        ]
+    }
+
+    fn lab_assistant_steps_for_record(record: &OperationRecord) -> Vec<String> {
+        match &record.op {
+            Operation::LoadFile { path, as_id } => vec![format!(
+                "Use design input `{}` from `{path}`.",
+                as_id.as_deref().unwrap_or("derived sequence ID")
+            )],
+            Operation::CreateSequenceFromText {
+                output_id,
+                name,
+                circular,
+                ..
+            } => vec![format!(
+                "Use inline {} sequence `{}`{} as a project input.",
+                if *circular { "circular" } else { "linear" },
+                output_id
+                    .as_deref()
+                    .or(name.as_deref())
+                    .unwrap_or("derived sequence ID"),
+                name.as_deref()
+                    .map(|value| format!(" ({value})"))
+                    .unwrap_or_default()
+            )],
+            Operation::Digest {
+                input,
+                enzymes,
+                output_prefix,
+            } => vec![format!(
+                "Digest `{input}` with {} and keep fragments under prefix `{}`.",
+                Self::lab_join_or_dash(enzymes),
+                output_prefix.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::DigestContainer {
+                container_id,
+                enzymes,
+                output_prefix,
+            } => vec![format!(
+                "Digest all contents of container `{container_id}` with {} and keep products under prefix `{}`.",
+                Self::lab_join_or_dash(enzymes),
+                output_prefix.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::Pcr {
+                template,
+                forward_primer,
+                reverse_primer,
+                output_id,
+                ..
+            } => vec![format!(
+                "Run PCR from template `{template}` with forward primer `{}` and reverse primer `{}`; expected product ID: `{}`.",
+                Self::lab_oligo_display(forward_primer),
+                Self::lab_oligo_display(reverse_primer),
+                Self::lab_expected_output(output_id.as_deref(), &record.result.created_seq_ids)
+            )],
+            Operation::PcrAdvanced {
+                template,
+                forward_primer,
+                reverse_primer,
+                output_id,
+                ..
+            } => vec![format!(
+                "Run constrained PCR from template `{template}` with forward primer `{}` and reverse primer `{}`; expected product ID: `{}`.",
+                Self::lab_oligo_display(&forward_primer.sequence),
+                Self::lab_oligo_display(&reverse_primer.sequence),
+                Self::lab_expected_output(output_id.as_deref(), &record.result.created_seq_ids)
+            )],
+            Operation::PcrMutagenesis {
+                template,
+                forward_primer,
+                reverse_primer,
+                mutations,
+                output_id,
+                ..
+            } => vec![format!(
+                "Run mutagenic PCR from template `{template}` with {} requested edit(s), forward primer `{}`, reverse primer `{}`, and expected product ID `{}`.",
+                mutations.len(),
+                Self::lab_oligo_display(&forward_primer.sequence),
+                Self::lab_oligo_display(&reverse_primer.sequence),
+                Self::lab_expected_output(output_id.as_deref(), &record.result.created_seq_ids)
+            )],
+            Operation::DesignPrimerPairs {
+                template,
+                report_id,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                ..
+            } => vec![format!(
+                "Use primer-design report `{}` for template `{template}`; expected amplicon window: {min_amplicon_bp}..{max_amplicon_bp} bp. Order or pick primers only after review.",
+                report_id.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::PrepareRestrictionCloningPcrHandoff {
+                template,
+                primer_report_id,
+                pair_index,
+                destination_vector_seq_id,
+                forward_enzyme,
+                reverse_enzyme,
+                ..
+            } => vec![format!(
+                "Prepare restriction-cloning PCR from template `{template}` using primer report `{primer_report_id}` pair {pair_index}; destination vector `{destination_vector_seq_id}`; enzyme setup: {}{}.",
+                forward_enzyme,
+                reverse_enzyme
+                    .as_deref()
+                    .map(|enzyme| format!(" / {enzyme}"))
+                    .unwrap_or_default()
+            )],
+            Operation::ApplyGibsonAssemblyPlan { plan_json } => {
+                Self::lab_steps_for_gibson_plan(plan_json, &record.result.created_seq_ids)
+            }
+            Operation::Ligation {
+                inputs,
+                circularize_if_possible,
+                output_id,
+                protocol,
+                ..
+            } => vec![format!(
+                "Ligate {} using {:?} ligation{}; expected product ID `{}`.",
+                Self::lab_join_or_dash(inputs),
+                protocol,
+                if *circularize_if_possible {
+                    " with circularization allowed"
+                } else {
+                    ""
+                },
+                Self::lab_expected_output(output_id.as_deref(), &record.result.created_seq_ids)
+            )],
+            Operation::LigationContainer {
+                container_id,
+                circularize_if_possible,
+                output_id,
+                protocol,
+                ..
+            } => vec![format!(
+                "Ligate products in container `{container_id}` using {:?} ligation{}; expected product ID `{}`.",
+                protocol,
+                if *circularize_if_possible {
+                    " with circularization allowed"
+                } else {
+                    ""
+                },
+                Self::lab_expected_output(output_id.as_deref(), &record.result.created_seq_ids)
+            )],
+            Operation::MergeContainers {
+                inputs,
+                output_prefix,
+            } => vec![format!(
+                "Pool sequence products {} into a shared container using output prefix `{}`.",
+                Self::lab_join_or_dash(inputs),
+                output_prefix.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::MergeContainersById {
+                container_ids,
+                output_prefix,
+            } => vec![format!(
+                "Pool containers {} using output prefix `{}`.",
+                Self::lab_join_or_dash(container_ids),
+                output_prefix.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::CreateArrangementSerial {
+                container_ids,
+                arrangement_id,
+                ..
+            } => vec![format!(
+                "Arrange containers {} in the listed lane/order sequence; arrangement ID `{}`.",
+                Self::lab_join_or_dash(container_ids),
+                arrangement_id.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::RenderPoolGelSvg {
+                inputs,
+                container_ids,
+                arrangement_id,
+                ..
+            } => vec![format!(
+                "Use the rendered gel plan to verify expected band positions for inputs `{}`{}{}.",
+                Self::lab_join_or_dash(inputs),
+                container_ids
+                    .as_ref()
+                    .map(|ids| format!(", containers `{}`", Self::lab_join_or_dash(ids)))
+                    .unwrap_or_default(),
+                arrangement_id
+                    .as_deref()
+                    .map(|id| format!(", arrangement `{id}`"))
+                    .unwrap_or_default()
+            )],
+            Operation::CreateRackFromArrangement {
+                arrangement_id,
+                rack_id,
+                ..
+            } => vec![format!(
+                "Prepare the physical rack/plate layout from arrangement `{arrangement_id}`; rack ID `{}`.",
+                rack_id.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::ExportRackLabelsSvg {
+                rack_id,
+                arrangement_id,
+                ..
+            } => vec![format!(
+                "Print or copy rack labels for rack `{rack_id}`{} and apply them before sample transfer.",
+                arrangement_id
+                    .as_deref()
+                    .map(|id| format!(" / arrangement `{id}`"))
+                    .unwrap_or_default()
+            )],
+            Operation::SaveFile { seq_id, path, .. } => vec![format!(
+                "Use exported sequence file `{path}` for designed sequence `{seq_id}` as the digital reference."
+            )],
+            _ => vec![],
+        }
+    }
+
+    fn lab_steps_for_gibson_plan(plan_json: &str, created_seq_ids: &[String]) -> Vec<String> {
+        let Ok(plan) =
+            serde_json::from_str::<crate::gibson_planning::GibsonAssemblyPlan>(plan_json)
+        else {
+            return vec![
+                "Run the recorded Gibson assembly plan; the plan JSON could not be summarized, so review the run bundle before bench work."
+                    .to_string(),
+            ];
+        };
+        let fragments = plan
+            .fragments
+            .iter()
+            .map(|fragment| {
+                format!(
+                    "`{}` ({}; {} orientation)",
+                    fragment.seq_id, fragment.role, fragment.orientation
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let order = plan
+            .assembly_order
+            .iter()
+            .map(|member| format!("{} `{}`", member.kind, member.id))
+            .collect::<Vec<_>>()
+            .join(" -> ");
+        let overlaps = plan
+            .junctions
+            .iter()
+            .filter_map(|junction| {
+                junction
+                    .required_overlap_bp
+                    .map(|bp| format!("{}: {bp} bp", junction.id))
+            })
+            .collect::<Vec<_>>();
+        let mut steps = vec![
+            format!(
+                "Prepare Gibson destination `{}` opened at `{}` and fragment(s): {}.",
+                plan.destination.seq_id,
+                plan.destination.opening.label,
+                if fragments.is_empty() {
+                    "none listed".to_string()
+                } else {
+                    fragments
+                }
+            ),
+            format!(
+                "Assemble in the designed order: {}.",
+                if order.is_empty() {
+                    "see GENtle plan".to_string()
+                } else {
+                    order
+                }
+            ),
+        ];
+        if !overlaps.is_empty() {
+            steps.push(format!(
+                "Check that ordered fragments provide the designed Gibson overlaps: {}.",
+                overlaps.join(", ")
+            ));
+        }
+        steps.push(format!(
+            "Expected assembled product ID: `{}` (requested topology: {}).",
+            Self::lab_expected_output(
+                (!plan.product.output_id_hint.trim().is_empty())
+                    .then_some(plan.product.output_id_hint.as_str()),
+                created_seq_ids,
+            ),
+            if plan.product.topology.trim().is_empty() {
+                "not specified"
+            } else {
+                plan.product.topology.trim()
+            }
+        ));
+        steps
+    }
+
+    fn lab_expected_output(explicit: Option<&str>, created_seq_ids: &[String]) -> String {
+        explicit
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .or_else(|| created_seq_ids.first().cloned())
+            .unwrap_or_else(|| "not recorded".to_string())
+    }
+
+    fn lab_join_or_dash(values: &[String]) -> String {
+        if values.is_empty() {
+            "-".to_string()
+        } else {
+            values.join(", ")
+        }
+    }
+
+    fn lab_oligo_display(sequence: &str) -> String {
+        let trimmed = sequence.trim();
+        if trimmed.len() <= 80 {
+            trimmed.to_string()
+        } else {
+            format!("{}... ({} nt)", &trimmed[..80], trimmed.len())
+        }
     }
 
     pub(crate) fn reverse_complement(seq: &str) -> String {
@@ -2091,6 +3958,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Invalid IUPAC nucleotide '{}'", *b as char),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -2118,6 +3987,8 @@ impl GentleEngine {
                 "TF motif '{}' was neither valid IUPAC text nor found in local motif registry",
                 token
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -2157,6 +4028,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Empty TF motif token".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if let Some(motif) = tf_motifs::resolve_motif_definition(&normalized) {
@@ -2178,6 +4051,8 @@ impl GentleEngine {
                 "TF motif '{}' was neither valid IUPAC text nor found in local motif registry",
                 token
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -2223,6 +4098,8 @@ impl GentleEngine {
                         "TF query '{}' did not match a local motif, a built-in TF group, or a family-like motif-name prefix",
                         trimmed
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             for matched in resolution.matches {
@@ -2249,6 +4126,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "At least one TF motif or TF query is required".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(expanded)
@@ -2266,6 +4145,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "ResolveTfQueries requires at least one non-empty query".to_string(),
+
+                cause_chain: vec![],
             });
         }
         normalized_queries.dedup();
@@ -2316,6 +4197,8 @@ impl GentleEngine {
                     "TFBS min_llr_quantile must be between 0.0 and 1.0, got {}",
                     min_llr_quantile
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(())
@@ -2398,10 +4281,10 @@ impl GentleEngine {
             ),
             ("gentle_generated".into(), Some("tfbs".to_string())),
         ];
-        if let Some(name) = tf_name {
-            if !name.trim().is_empty() {
-                qualifiers.push(("bound_moiety".into(), Some(name.trim().to_string())));
-            }
+        if let Some(name) = tf_name
+            && !name.trim().is_empty()
+        {
+            qualifiers.push(("bound_moiety".into(), Some(name.trim().to_string())));
         }
         gb_io::seq::Feature {
             kind: "TFBS".into(),
@@ -2438,6 +4321,8 @@ impl GentleEngine {
             let c = Self::iupac_letter_complement(*b).ok_or_else(|| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Invalid IUPAC nucleotide '{}'", *b as char),
+
+                cause_chain: vec![],
             })?;
             out.push(c as char);
         }
@@ -2595,6 +4480,8 @@ impl GentleEngine {
                             zero_based,
                             dna.len()
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 Ok(*zero_based)
@@ -2612,10 +4499,10 @@ impl GentleEngine {
                     if feature.kind.to_string().eq_ignore_ascii_case("SOURCE") {
                         continue;
                     }
-                    if let Some(expected_kind) = &kind_filter {
-                        if feature.kind.to_string().to_ascii_uppercase() != *expected_kind {
-                            continue;
-                        }
+                    if let Some(expected_kind) = &kind_filter
+                        && feature.kind.to_string().to_ascii_uppercase() != *expected_kind
+                    {
+                        continue;
                     }
                     if let Some(expected_label) = &label_filter {
                         let labels = Self::feature_labels(feature);
@@ -2648,6 +4535,8 @@ impl GentleEngine {
                     return Err(EngineError {
                         code: ErrorCode::NotFound,
                         message: format!("No feature matched sequence anchor '{}'", anchor_name),
+
+                        cause_chain: vec![],
                     });
                 }
                 matches.sort_unstable();
@@ -2658,7 +4547,8 @@ impl GentleEngine {
                         "Sequence anchor '{}' occurrence {} was requested, but only {} match(es) found",
                         anchor_name, idx, matches.len()
                     ),
-                })
+
+                    cause_chain: vec![],})
             }
         }
     }
@@ -2716,6 +4606,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Invalid primer base '{}'", *b as char),
+
+                    cause_chain: vec![],
                 });
             }
             ret.push(opts);
@@ -2770,6 +4662,8 @@ impl GentleEngine {
                         message: format!(
                             "Primer variant space ({total}) exceeds max_variants ({max_variants}); use Sample mode or raise limits"
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 let mut ret = Vec::with_capacity(total);
@@ -3328,6 +5222,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("{label}.min_length must be >= 1"),
+
+                cause_chain: vec![],
             });
         }
         if side.min_length > side.max_length {
@@ -3337,6 +5233,8 @@ impl GentleEngine {
                     "{label}.min_length ({}) must be <= {label}.max_length ({})",
                     side.min_length, side.max_length
                 ),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&side.min_gc_fraction) {
@@ -3346,6 +5244,8 @@ impl GentleEngine {
                     "{label}.min_gc_fraction ({}) must be between 0.0 and 1.0",
                     side.min_gc_fraction
                 ),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&side.max_gc_fraction) {
@@ -3355,6 +5255,8 @@ impl GentleEngine {
                     "{label}.max_gc_fraction ({}) must be between 0.0 and 1.0",
                     side.max_gc_fraction
                 ),
+
+                cause_chain: vec![],
             });
         }
         if side.min_gc_fraction > side.max_gc_fraction {
@@ -3364,6 +5266,8 @@ impl GentleEngine {
                     "{label}.min_gc_fraction ({}) must be <= {label}.max_gc_fraction ({})",
                     side.min_gc_fraction, side.max_gc_fraction
                 ),
+
+                cause_chain: vec![],
             });
         }
         if side.min_tm_c > side.max_tm_c {
@@ -3373,12 +5277,16 @@ impl GentleEngine {
                     "{label}.min_tm_c ({}) must be <= {label}.max_tm_c ({})",
                     side.min_tm_c, side.max_tm_c
                 ),
+
+                cause_chain: vec![],
             });
         }
         if side.max_anneal_hits == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("{label}.max_anneal_hits must be >= 1"),
+
+                cause_chain: vec![],
             });
         }
         let tail_5prime = side
@@ -3396,6 +5304,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("{label}.fixed_5prime must not be empty"),
+
+                    cause_chain: vec![],
                 });
             }
             if norm.len() > max_full_length {
@@ -3406,6 +5316,8 @@ impl GentleEngine {
                         norm.len(),
                         max_full_length
                     ),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -3415,6 +5327,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("{label}.fixed_3prime must not be empty"),
+
+                    cause_chain: vec![],
                 });
             }
             if norm.len() > max_full_length {
@@ -3425,6 +5339,8 @@ impl GentleEngine {
                         norm.len(),
                         max_full_length
                     ),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -3434,6 +5350,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("{label}.required_motifs contains an empty motif"),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -3443,6 +5361,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("{label}.forbidden_motifs contains an empty motif"),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -3455,6 +5375,8 @@ impl GentleEngine {
                         "{label}.locked_positions offset {} must be < max full primer length ({})",
                         lock.offset_0based, max_full_length
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let norm = Self::normalize_iupac_text(&lock.base)?;
@@ -3465,6 +5387,8 @@ impl GentleEngine {
                         "{label}.locked_positions base '{}' must be a single IUPAC letter",
                         lock.base
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             if !seen_locks.insert(lock.offset_0based) {
@@ -3474,18 +5398,22 @@ impl GentleEngine {
                         "{label}.locked_positions has duplicate offset {}",
                         lock.offset_0based
                     ),
+
+                    cause_chain: vec![],
                 });
             }
         }
-        if let (Some(start), Some(end)) = (side.start_0based, side.end_0based) {
-            if start >= end {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "{label}.start_0based ({start}) must be < {label}.end_0based ({end})"
-                    ),
-                });
-            }
+        if let (Some(start), Some(end)) = (side.start_0based, side.end_0based)
+            && start >= end
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "{label}.start_0based ({start}) must be < {label}.end_0based ({end})"
+                ),
+
+                cause_chain: vec![],
+            });
         }
         Ok(())
     }
@@ -3553,15 +5481,16 @@ impl GentleEngine {
         if let (Some(start), Some(end)) = (
             constraints.fixed_amplicon_start_0based,
             constraints.fixed_amplicon_end_0based_exclusive,
-        ) {
-            if start >= end {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "pair_constraints.fixed_amplicon_start_0based ({start}) must be < pair_constraints.fixed_amplicon_end_0based_exclusive ({end})"
-                    ),
-                });
-            }
+        ) && start >= end
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "pair_constraints.fixed_amplicon_start_0based ({start}) must be < pair_constraints.fixed_amplicon_end_0based_exclusive ({end})"
+                ),
+
+                cause_chain: vec![],
+            });
         }
         let mut required_amplicon_motifs =
             Vec::with_capacity(constraints.required_amplicon_motifs.len());
@@ -3601,15 +5530,15 @@ impl GentleEngine {
         }
         let max_start = template.len().saturating_sub(side.min_length);
         for start in 0..=max_start {
-            if let Some(location) = side.location_0based {
-                if start != location {
-                    continue;
-                }
+            if let Some(location) = side.location_0based
+                && start != location
+            {
+                continue;
             }
-            if let Some(min_start) = side.start_0based {
-                if start < min_start {
-                    continue;
-                }
+            if let Some(min_start) = side.start_0based
+                && start < min_start
+            {
+                continue;
             }
             for length in side.min_length..=side.max_length {
                 let Some(end) = start.checked_add(length) else {
@@ -3618,11 +5547,11 @@ impl GentleEngine {
                 if end > template.len() {
                     break;
                 }
-                if let Some(max_end) = side.end_0based {
-                    if end > max_end {
-                        rejections.out_of_window = rejections.out_of_window.saturating_add(1);
-                        continue;
-                    }
+                if let Some(max_end) = side.end_0based
+                    && end > max_end
+                {
+                    rejections.out_of_window = rejections.out_of_window.saturating_add(1);
+                    continue;
                 }
                 let binding_window = &template[start..end];
                 let anneal_bytes = if reverse_orientation {
@@ -3682,23 +5611,21 @@ impl GentleEngine {
         primer_sequence: &[u8],
         constraints: &NormalizedPrimerSideSequenceConstraints,
     ) -> bool {
-        if let Some(prefix) = &constraints.fixed_5prime {
-            if primer_sequence.len() < prefix.len()
-                || !Self::iupac_match_at(primer_sequence, prefix.as_bytes(), 0)
-            {
-                return false;
-            }
+        if let Some(prefix) = &constraints.fixed_5prime
+            && (primer_sequence.len() < prefix.len()
+                || !Self::iupac_match_at(primer_sequence, prefix.as_bytes(), 0))
+        {
+            return false;
         }
-        if let Some(suffix) = &constraints.fixed_3prime {
-            if primer_sequence.len() < suffix.len()
+        if let Some(suffix) = &constraints.fixed_3prime
+            && (primer_sequence.len() < suffix.len()
                 || !Self::iupac_match_at(
                     primer_sequence,
                     suffix.as_bytes(),
                     primer_sequence.len().saturating_sub(suffix.len()),
-                )
-            {
-                return false;
-            }
+                ))
+        {
+            return false;
         }
         for motif in &constraints.required_motifs {
             if !Self::contains_iupac_pattern(primer_sequence, motif.as_bytes()) {
@@ -3938,6 +5865,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Primer pair records must carry non-zero anneal lengths".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if pair.forward.start_0based >= template_len
@@ -3950,6 +5879,8 @@ impl GentleEngine {
                 message: format!(
                     "Primer pair coordinates are outside template bounds (template_len={template_len})"
                 ),
+
+                cause_chain: vec![],
             });
         }
         let forward_anneal_end = pair
@@ -3959,6 +5890,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Forward anneal geometry overflows template coordinates".to_string(),
+
+                cause_chain: vec![],
             })?;
         if forward_anneal_end > pair.reverse.start_0based {
             return Err(EngineError {
@@ -3967,6 +5900,8 @@ impl GentleEngine {
                     "Primer pair anneal geometry is inconsistent: forward_anneal_end={} exceeds reverse_start={}",
                     forward_anneal_end, pair.reverse.start_0based
                 ),
+
+                cause_chain: vec![],
             });
         }
         let interior = &template_seq[forward_anneal_end..pair.reverse.start_0based];
@@ -3991,15 +5926,15 @@ impl GentleEngine {
                 return false;
             }
         }
-        if let Some(expected_start) = constraints.fixed_amplicon_start_0based {
-            if pair.amplicon_start_0based != expected_start {
-                return false;
-            }
+        if let Some(expected_start) = constraints.fixed_amplicon_start_0based
+            && pair.amplicon_start_0based != expected_start
+        {
+            return false;
         }
-        if let Some(expected_end) = constraints.fixed_amplicon_end_0based_exclusive {
-            if pair.amplicon_end_0based_exclusive != expected_end {
-                return false;
-            }
+        if let Some(expected_end) = constraints.fixed_amplicon_end_0based_exclusive
+            && pair.amplicon_end_0based_exclusive != expected_end
+        {
+            return false;
         }
         if pair.amplicon_end_0based_exclusive > template.len()
             || pair.amplicon_start_0based >= pair.amplicon_end_0based_exclusive
@@ -4053,6 +5988,7 @@ impl GentleEngine {
         EngineError {
             code: ErrorCode::Internal,
             message: format!("Primer design cancelled during {context}"),
+            cause_chain: vec![],
         }
     }
 
@@ -4247,7 +6183,7 @@ impl GentleEngine {
                 ) else {
                     rejection_summary.amplicon_or_roi_failure =
                         rejection_summary.amplicon_or_roi_failure.saturating_add(1);
-                    if pair_evaluations % pair_progress_stride == 0 {
+                    if pair_evaluations.is_multiple_of(pair_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
                             on_progress,
@@ -4278,7 +6214,7 @@ impl GentleEngine {
                 {
                     rejection_summary.amplicon_or_roi_failure =
                         rejection_summary.amplicon_or_roi_failure.saturating_add(1);
-                    if pair_evaluations % pair_progress_stride == 0 {
+                    if pair_evaluations.is_multiple_of(pair_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
                             on_progress,
@@ -4312,7 +6248,7 @@ impl GentleEngine {
                 ) {
                     rejection_summary.pair_constraint_failure =
                         rejection_summary.pair_constraint_failure.saturating_add(1);
-                    if pair_evaluations % pair_progress_stride == 0 {
+                    if pair_evaluations.is_multiple_of(pair_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
                             on_progress,
@@ -4338,7 +6274,7 @@ impl GentleEngine {
                     continue;
                 }
                 pairs.push(pair);
-                if pair_evaluations % pair_progress_stride == 0 {
+                if pair_evaluations.is_multiple_of(pair_progress_stride) {
                     Self::emit_primer_design_progress(
                         progress_context,
                         on_progress,
@@ -4573,7 +6509,7 @@ impl GentleEngine {
                 if !probe_inside_amplicon {
                     rejection.probe_or_assay_failure =
                         rejection.probe_or_assay_failure.saturating_add(1);
-                    if assays_evaluated % assay_progress_stride == 0 {
+                    if assays_evaluated.is_multiple_of(assay_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
                             on_progress,
@@ -4602,7 +6538,7 @@ impl GentleEngine {
                 if !probe_tm_ok {
                     rejection.probe_or_assay_failure =
                         rejection.probe_or_assay_failure.saturating_add(1);
-                    if assays_evaluated % assay_progress_stride == 0 {
+                    if assays_evaluated.is_multiple_of(assay_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
                             on_progress,
@@ -4662,7 +6598,7 @@ impl GentleEngine {
                         probe_tm_delta_in_range: probe_tm_ok,
                     },
                 });
-                if assays_evaluated % assay_progress_stride == 0 {
+                if assays_evaluated.is_multiple_of(assay_progress_stride) {
                     Self::emit_primer_design_progress(
                         progress_context,
                         on_progress,
@@ -4714,6 +6650,8 @@ impl GentleEngine {
         let (left, right) = raw.split_once(',').ok_or_else(|| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Primer3 output key '{key}' is not in start,len form"),
+
+            cause_chain: vec![],
         })?;
         let start = left.trim().parse::<usize>().map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
@@ -4721,6 +6659,8 @@ impl GentleEngine {
                 "Primer3 output key '{key}' has invalid start '{}': {e}",
                 left
             ),
+
+            cause_chain: vec![],
         })?;
         let len = right.trim().parse::<usize>().map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
@@ -4728,6 +6668,8 @@ impl GentleEngine {
                 "Primer3 output key '{key}' has invalid len '{}': {e}",
                 right
             ),
+
+            cause_chain: vec![],
         })?;
         Ok((start, len))
     }
@@ -4913,11 +6855,15 @@ impl GentleEngine {
                     "Primer3 backend executable '{}' is not available: {e}",
                     primer3_executable
                 ),
+
+                cause_chain: vec![],
             })?;
         if let Some(stdin) = child.stdin.as_mut() {
             stdin.write_all(input.as_bytes()).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write Primer3 request to stdin: {e}"),
+
+                cause_chain: vec![],
             })?;
         }
         let output = child.wait_with_output().map_err(|e| EngineError {
@@ -4926,6 +6872,8 @@ impl GentleEngine {
                 "Could not read Primer3 response from '{}': {e}",
                 primer3_executable
             ),
+
+            cause_chain: vec![],
         })?;
         let stdout_text = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr_text = String::from_utf8_lossy(&output.stderr).to_string();
@@ -4936,6 +6884,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Primer3 backend rejected request: {primer_error}"),
+
+                cause_chain: vec![],
             });
         }
         if !output.status.success() {
@@ -4956,6 +6906,8 @@ impl GentleEngine {
                         .unwrap_or_else(|| "signal".to_string()),
                     detail
                 ),
+
+                cause_chain: vec![],
             });
         }
 

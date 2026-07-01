@@ -1,4 +1,6 @@
-//! Deterministic GENtle biology and workflow engine.
+//! Deterministic GENtle biology engine — first slice.
 //!
-//! This placeholder crate will eventually own operation/workflow execution and
-//! the core non-GUI biology logic currently still living in the monocrate.
+//! Currently owns the IUPAC nucleotide-code conversion and validation
+//! helpers. Further engine modules will move here in subsequent PRs.
+
+pub mod iupac_code;

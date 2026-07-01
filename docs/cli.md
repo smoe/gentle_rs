@@ -22,13 +22,97 @@ shared shell parser/executor as `gentle_cli shell`.
 
 Structured command glossary:
 
-- `docs/glossary.json` is the machine-readable command glossary used for
-  per-command help rendering (`help ...`) and catalog export
-  (`help --format json|markdown`).
+- Built-in per-command help (`help ...`) and help catalog export
+  (`help --format json|markdown`) are rendered from the shared protocol
+  `capability_registry`. Glossary command descriptors carry the
+  glossary-derived usage, interface, alias, mutation-class, adapter-surfacing,
+  and schema metadata together. During the migration, `docs/glossary.json`
+  remains the compile-time seed for those command descriptors.
+- `gentle_cli capabilities` includes the shared protocol
+  `capability_registry`, so CLI/MCP/JavaScript/Lua discovery rows use the same
+  names, descriptions, mutation classes, and adapter projections.
 - Shell-only dry-run catalog preview routes are available through the shared
   shell, for example:
   - `gentle_cli shell 'genomes preview-ensembl-specs --catalog assets/genomes.json'`
   - `gentle_cli shell 'helpers preview-ensembl-specs --catalog assets/helper_genomes.json'`
+
+Operand metavariable conventions:
+
+- Uppercase words in glossary `usage` strings are placeholders, not literal
+  values. Replace `SEQ_ID`, `GENOME_ID`, `ENTRY_ID`, `REPORT_ID`, `PANEL_ID`,
+  and similar operands with identifiers already present in the active GENtle
+  project, catalog, or command result.
+- `ID` flags such as `--id`, `--entry-id`, `--output-id`, and `--as-id` usually
+  name the local GENtle record to create or reuse. They are not external
+  database accessions unless the command explicitly says so.
+- `QUERY` is intentionally command-specific. For fetch/search routes it may be
+  a gene symbol, accession, stable database identifier, or text query depending
+  on the route. For example, `ensembl-gene fetch QUERY` accepts an Ensembl gene
+  lookup query such as a gene symbol or stable Ensembl gene identifier, while
+  `--entry-id ID` names the local GENtle metadata entry that will store the
+  fetched result.
+- `SPECIES` and `SPECIES_DIR` should use the identifier expected by the target
+  service or catalog. For Ensembl routes prefer species directory names such as
+  `homo_sapiens`; avoid informal aliases such as `HUMAN` unless a command
+  explicitly documents that alias.
+- `PATH`, `OUTPUT`, and suffix-bearing operands such as `OUTPUT.svg` are local
+  filesystem paths. GENtle can open a user-selected file or an exact path, but
+  glossary commands do not search the operating system from vague descriptions.
+- `START`, `END`, `CHR`, `STRAND`, coordinate ranges, and sequence strings keep
+  the semantics documented by the specific command family. Do not infer strand,
+  coordinate system, or biological provenance from the placeholder name alone.
+- If an operand is not clear from the command summary, usage row, or surrounding
+  manual section, ask the user for the missing identifier instead of inventing a
+  value. This rule is especially important for AI helpers and local LLMs.
+
+Session-local operation history:
+
+- `gentle_cli shell 'history status'`
+  - returns the engine-owned multi-level undo/redo summary:
+    `undo_count`, `redo_count`, `history_limit`, `operation_log_count`, and
+    optional next undo/redo transition labels.
+- `gentle_cli shell 'history undo'`
+  - restores the previous operation-level engine checkpoint.
+- `gentle_cli shell 'history redo'`
+  - reapplies the most recently undone operation-level checkpoint.
+- Undo/redo history is intentionally session-local and is not persisted into
+  `.gentle.json` project files.
+
+Shared GUI/display control routes:
+
+- `gentle_cli shell 'ui open sequence-window SEQ_ID'`
+  - records a non-mutating request to open/focus a DNA sequence viewer for an
+    already-loaded sequence record when a GUI host applies the intent.
+- `gentle_cli shell 'ui selection sequence-window SEQ_ID --range START..END'`
+  - records a non-mutating request to set the DNA-window selection in 0-based,
+    end-exclusive coordinates.
+- `gentle_cli shell 'ui selection sequence-window SEQ_ID'`
+  - records a non-mutating request to inspect the current GUI selection for
+    that sequence window.
+- `gentle_cli shell 'display show tfbs'` and
+  `gentle_cli shell 'display hide restriction-enzymes'`
+  - update shared engine display state for sequence-window feature/display
+    layers.
+
+microRNA target-site scan:
+
+- `gentle_cli mirna explain-seed hsa-miR-96-5p`
+  - resolves the mature sequence from the built-in seed catalog and reports
+    canonical target motifs such as `8mer`, `7mer-m8`, `7mer-A1`, and `6mer`.
+- `gentle_cli mirna catalog-show hsa-miR-96-5p`
+  - shows the catalog-backed identifiers (`MIMAT0000095`, NCBI Gene `407053`)
+    and source notes.
+- `gentle_cli --state PROJECT.json mirna scan-target hsa-miR-96-5p TP73 --regions 3utr,exon,intron,boundary --seed-classes 8mer,7mer-m8,7mer-A1,6mer --boundary-flank-bp 25 --format json`
+  - scans annotated transcript partitions in the loaded TP73 sequence/project,
+    returning `gentle.mirna_target_scan.v1` JSON.
+  - uses a 25 bp boundary flank by default when splice-boundary regions are
+    requested; adjust with `--boundary-flank-bp` for wider or narrower
+    junction context.
+  - reports every requested exact seed class independently, so stronger sites
+    can also appear in shorter seed-class counts.
+  - reports exact seed candidates as sequence evidence only; orthologous rat
+    Tp73 PMID 37099528 context is tagged separately from direct human
+    validation.
 
 Structured workflow examples:
 
@@ -37,7 +121,7 @@ Structured workflow examples:
 - includes GUI-first parity skeleton:
   - `docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json`
   - merged canonical tutorial:
-    `docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`
+    `docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md`
 - on-demand snippet generation (CLI/shell/JS/Lua):
   - `cargo run --bin gentle_examples_docs -- generate`
 - validation only:
@@ -107,6 +191,8 @@ Catalog path note:
   while still using the same preparation/indexing pipeline as before.
 - CUT&RUN V1/V2 now use the same discovery pattern:
   - built-in starter catalog: `assets/cutrun.json`
+  - built-in catalog shards under `assets/cutrun.d/`, including the Rostock
+    p73 `E-MTAB-15709` SRA-backed paired-end run entries
   - project/system overlays under `.gentle/catalogs/` and `/etc/gentle/catalogs/`
   - prepared-cache root defaults to `data/cutrun`
   - override cache root with `GENTLE_CUTRUN_CACHE_DIR`
@@ -124,17 +210,27 @@ Catalog path note:
     engine-owned read report for later inspection/export
   - the same `cutrun interpret` route can also resolve prepared raw reads from
     `cutrun prepare` via `--dataset DATASET_ID [--catalog PATH] [--cache-dir PATH]`
+  - catalog entries may declare raw reads with `reads_sra_accession`;
+    `cutrun prepare` runs the shared read-acquisition layer first, then writes
+    the existing prepared manifest shape for `cutrun interpret --dataset ...`
   - `cutrun export-coverage` writes TSV summaries for per-base coverage,
     cut-site density, or derived fragment spans from one saved CUT&RUN read
     report
   - `cutrun inspect-regulatory-support` aggregates prepared datasets and/or
     saved ROI read reports into one promoter/ROI support report with:
     - merged `strong`/`moderate`/`weak` support windows
-    - theoretical TFBS rows split into `confirmed` vs `unconfirmed`
+    - theoretical TFBS rows split into legacy `confirmed` vs `unconfirmed`
+      vectors, with additive per-row `support_status` values:
+      `confirmed`, `nearby`, `absent`, or `motif_poor`
     - motif-absent strong windows classified as
       `context_supported_by_other_motifs` or `motif_poor_supported`
     - recurring motif-context summaries across many motif-absent supported
       windows
+  - `cutrun gene-set-regulatory-support` scores prepared datasets and saved
+    read reports across a gene-set promoter cohort and reports evaluated versus
+    unevaluated members separately; optional `--relationship` records a
+    declared expectation and emits non-blocking CUT&RUN occupancy relationship
+    flags over evaluated members only.
 
 ## ClawBio/OpenClaw skill scaffold
 
@@ -189,6 +285,7 @@ export GENTLE_CLI_CMD=/home/clawbio/ClawBio/skills/gentle-cloning/gentle_local_c
 
 cd /home/clawbio/ClawBio
 python clawbio.py run gentle-cloning --demo
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_intents_runtime.json --output /tmp/gentle_intents_runtime
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_runtime_version.json --output /tmp/gentle_runtime_version
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_list_human.json --output /tmp/gentle_list_human
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_list_gst.json --output /tmp/gentle_list_helpers
@@ -245,6 +342,11 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 
 Notes:
 
+- `request_intents_runtime.json` returns the installed wrapper's
+  `gentle.clawbio_skill_intents_runtime.v1` payload, including the
+  `INTENTS.json` descriptor hash and route/request-mode summary; ClawBio should
+  use it for explicit descriptor refresh or drift checks rather than as a
+  startup dependency.
 - examples carrying `state_path: ".gentle_state.json"` expect a project state
   file in the working directory
 - `request_render_svg_pgex_fasta_circular.json` is a common follow-on graphics
@@ -303,16 +405,17 @@ Notes:
   rendered expert SVG into the output bundle
 - graphics contract for ClawBio/OpenClaw:
   - graphics requests still declare SVG engine outputs in `expected_artifacts[]`
-  - the wrapper now rasterizes those SVGs into deterministic PNG bundle
-    artifacts at fixed scale `2.0`
+  - the wrapper rasterizes the best-first SVG into one deterministic PNG bundle
+    artifact at fixed scale `2.0`
   - `result.json.preferred_artifacts[]` now points at the PNG bundle paths for
     figures, including `generated/clawbio_storyboard.png` when one run yields
     multiple related graphics
   - `result.json.artifact_summary` summarizes the best-first artifact,
     displayable/collected artifact counts, and continuation actions for
     one-image-per-reply chat gateways
-  - the source SVGs may still remain in the bundle as provenance/supporting
-    artifacts
+  - remaining SVG figures stay in the bundle as provenance/supporting artifacts
+    and are exposed through request-first `continue_artifact` actions rather
+    than immediate extra PNG files
   - browser/OpenClaw inline image rendering remains a later ClawBio-side
     attachment/UI task
 - capabilities/interaction contract for ClawBio/OpenClaw:
@@ -528,7 +631,7 @@ CLI resolution order:
 
 Resource update capability status:
 
-- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources inspect-jaspar`)
+- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources import-gene-list-cache`, `resources import-ontology-assignment-cache`, `resources import-co-regulated-cache`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `gene-groups list/show/resolve/doctor/draft`, `gene-sets resolve/produce direct-list/produce ontology-assignment/produce co-regulated/promoter-cohort`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources list-publication-datasets`, `resources status-publication-dataset`, `resources prepare-publication-dataset`, `resources inspect-jaspar`)
 - `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
 - `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
 
@@ -540,16 +643,32 @@ Reference genome capability status:
 
 Construct-reasoning inspection capability status:
 
-- `gentle_cli`: supported via shared shell/direct commands (`construct-reasoning list-graphs`, `construct-reasoning show-graph`, `construct-reasoning set-annotation-status`, `construct-reasoning write-annotation`, `construct-reasoning export-graph`)
-- `gentle_js`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `set_construct_reasoning_annotation_status`, `write_back_construct_reasoning_annotation`)
-- `gentle_lua`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `set_construct_reasoning_annotation_status`, `write_back_construct_reasoning_annotation`)
-- `gentle_mcp`: supported via thin tool wrappers over the same shared shell contracts (`construct_reasoning_graphs`, `construct_reasoning_graph`, `construct_reasoning_set_annotation_status`, `construct_reasoning_write_annotation`)
+- `gentle_cli`: supported via shared shell/direct commands (`construct-reasoning list-graphs`, `construct-reasoning show-graph`, `construct-reasoning list-inspection-actions`, `construct-reasoning run-inspection-action`, `construct-reasoning set-annotation-status`, `construct-reasoning write-annotation`, `construct-reasoning export-graph`)
+- `gentle_js`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `list_construct_reasoning_inspection_actions`, `run_construct_reasoning_inspection_action`, `set_construct_reasoning_annotation_status`, `write_back_construct_reasoning_annotation`)
+- `gentle_lua`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `list_construct_reasoning_inspection_actions`, `run_construct_reasoning_inspection_action`, `set_construct_reasoning_annotation_status`, `write_back_construct_reasoning_annotation`)
+- `gentle_mcp`: supported via thin tool wrappers over the same shared shell contracts (`construct_reasoning_graphs`, `construct_reasoning_graph`, `construct_reasoning_inspection_actions`, `construct_reasoning_run_inspection_action`, `construct_reasoning_set_annotation_status`, `construct_reasoning_write_annotation`)
 
 Agent-assistant capability status:
 
-- `gentle_cli`: supported via shared-shell command family (`agents list`, `agents ask`) and direct forwarding (`gentle_cli agents ...`)
-- `gentle_js`: supported via helper wrappers (`list_agent_systems`, `ask_agent_system`) over shared shell execution
-- `gentle_lua`: supported via helper wrappers (`list_agent_systems`, `ask_agent_system`) over shared shell execution
+- `gentle_cli`: supported via shared-shell command family (`agents list`,
+  `agents ask`, `agents plan`, `agents execute-plan`) and direct forwarding
+  (`gentle_cli agents ...`)
+- GENtle-local slash aliases are available through the shared shell parser for
+  agent convenience, not as OpenClaw/OS commands. They include `/help`, `/list`,
+  GUI file-picker intents (`/open`, `/import`), exact file import
+  (`/open file PATH [--id ID]`, `/import file PATH [--id ID]`), non-mutating
+  viewer control (`/open sequence-window SEQ_ID`,
+  `/close sequence-window SEQ_ID`), pasted sequence creation
+  (`/paste sequence --sequence-text DNA [--id ID]`), and
+  explicit external fetch aliases (`/fetch genbank|ncbi|uniprot|ensembl*|dbsnp
+  ...`). Unknown slash commands return a typed
+  `gentle.shell_alias_rejection.v1` diagnostic with supported alternatives.
+- `gentle_js`: supported via helper wrappers (`list_agent_systems`,
+  `ask_agent_system`, `plan_agent_system`, `execute_agent_plan`) over shared
+  shell execution
+- `gentle_lua`: supported via helper wrappers (`list_agent_systems`,
+  `ask_agent_system`, `plan_agent_system`, `execute_agent_plan`) over shared
+  shell execution
 - GUI: supported via standalone `Agent Assistant` viewport using the same bridge and command executor
 
 Candidate-set capability status:
@@ -567,6 +686,10 @@ Guide-design capability status:
 Primer-design report capability status:
 
 - `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs`, `DesignQpcrAssays`, `BuildTranscriptQpcrPanel`, `AssessPrimerPairSpecificity`, and the post-design cloning handoff operation `PrepareRestrictionCloningPcrHandoff`, plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`), a local BLAST specificity confirmation route (`primers specificity`), a non-mutating restriction-cloning handoff request seeder (`primers seed-restriction-cloning-handoff`), vector suggestion helpers (`primers restriction-cloning-vector-suggestions`), and persisted report inspect/export helpers for primer, qPCR, and restriction-cloning handoff reports. `--progress` now also streams `progress primers ...` lines for shared-shell primer/qPCR design commands, not only raw `op` / `workflow` JSON execution.
+- Saved primer/qPCR reports and materialized primer/probe sequences are
+  in-silico design instantiations: they satisfy a PCR/qPCR design constraint,
+  but they do not mean the physical oligo has been ordered, received, or found
+  in local inventory.
 - `gentle-cloning` ClawBio skill: exposes typed request modes over the same
   shared PCR/qPCR/TaqMan surface, including Primer3/backend preflight, PCR and
   qPCR seed helpers, `DesignPrimerPairs`/`DesignQpcrAssays` payload execution,
@@ -606,6 +729,31 @@ Dotplot/flexibility capability status:
     - additive synthetic local `CDS` + translated-protein qualifiers when the
       admitted transcript has resolvable CDS context and translation-table
       metadata
+  - exon-skipped isoform creation is a two-phase shared-shell route:
+    - `transcripts exon-skip-plan SEQ_ID --feature-id N [--skip exon_2|START..END ...] [--overlap START..END ...] [--length-mod3 0|1|2] [--coding-mod3 0|1|2] [--coding-context utr-only|cds-only|mixed-utr-cds] [--phase-entry codon-boundary|split-codon|split-codon-1|split-codon-2|unavailable] [--feature-query-json JSON] [--plan-id ID]`
+      where exon-skip `START..END` intervals are 1-based inclusive genomic
+      coordinates
+    - `transcripts exon-skip-materialize PLAN_ID [--candidate-id ID ...] [--output-prefix PREFIX] [--return genbank|cdna_fasta|amino_acid_sequence|amino_acid_fasta ...]`
+    - phase 1 stores `gentle.exon_skip_selection_plan.v1`; phase 2 consumes the
+      stored plan and creates both a genomic annotation product and retained
+      exon cDNA/mRNA sequence
+    - introspection exposes stored plans as `exon_skip_plan.exists(PLAN_ID)`;
+      materialization readiness requires that fact, while planning can verify it
+      after a deterministic `--plan-id` is supplied
+    - phase-1 candidate rows include exon position (`ordinal`,
+      `transcript_exon_count`, `transcript_position`), support frequency
+      (`support_transcript_count`, `support_transcript_total`,
+      `support_fraction`), full-exon frame hints (`length_bp`, `length_mod3`,
+      `frame_neutral_length`), coding-only frame hints (`coding_skip_bp`,
+      `coding_skip_mod3`, `frame_neutral_coding_skip`, `coding_context`),
+      flanking intron lengths, optional `left_cds_phase` / `right_cds_phase`,
+      stable `cds_phase_entry_kind`, and any `cds_phase_warning` /
+      `coding_frame_note`; `--length-mod3`, `--coding-mod3`,
+      `--coding-context`, and `--phase-entry` select by those engine-owned
+      attributes
+    - `--return` lets automation callers request a compact handoff payload in
+      the materialization report, such as the adjusted GenBank entry or just
+      the amino-acid sequence
   - `transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END]`
     maps transcript-native protein residue(s) back to 1-based genomic codon
     nucleotide positions; `--transcript ID` narrows the query to a transcript
@@ -628,9 +776,11 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads interpret`
   - `rna-reads batch-map`
   - `rna-reads align-report`
+  - `rna-reads preflight-isoforms`
   - `rna-reads list-reports`
   - `rna-reads show-report`
   - `rna-reads show-alignment`
+  - `rna-reads show-alignments`
   - `rna-reads summarize-gene-support`
   - `rna-reads inspect-gene-support`
   - `rna-reads inspect-alignments`
@@ -645,22 +795,42 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads export-abundance-tsv`
   - `rna-reads export-score-density-svg`
   - `rna-reads export-alignments-tsv`
+  - `rna-reads export-isoform-triage-tsv`
   - `rna-reads export-alignment-dotplot-svg`
   backed by `InterpretRnaReads`, `AlignRnaReadReport`,
-  `RunRnaReadBatchMap`,
+  `RunRnaReadBatchMap`, `PreflightRnaReadIsoforms`,
   `ListRnaReadReports`, `ShowRnaReadReport`,
   `SummarizeRnaReadGeneSupport`, `InspectRnaReadGeneSupport`,
   `MaterializeRnaReadHitSequences`, `ExportRnaReadReport`,
   `ExportRnaReadHitsFasta`, `ExportRnaReadSampleSheet`,
   `ExportRnaReadTargetQuality`,
   `ExportRnaReadExonPathsTsv`, `ExportRnaReadExonAbundanceTsv`, `ExportRnaReadScoreDensitySvg`,
-  `ExportRnaReadAlignmentsTsv`, and `ExportRnaReadAlignmentDotplotSvg`, plus
+  `ExportRnaReadAlignmentsTsv`, `ExportRnaReadIsoformTriageTsv`, and
+  `ExportRnaReadAlignmentDotplotSvg`, plus
   the shared engine alignment-display helper used by the GUI `Show alignment`
   pane.
   Input supports FASTA plus gzipped FASTA (`.fa/.fasta` and `.fa.gz/.fasta.gz`).
   Concatenated gzip members are accepted for gzipped FASTA input as well.
-  Progress output includes periodic `progress rna-reads ...` lines during
-  `apply_with_progress` runs.
+  Long runs can opt into live progress with the global `--progress-stderr`
+  option before the `rna-reads` command; this keeps the final JSON payload on
+  stdout while periodic `progress rna-reads ...` lines are written to stderr.
+  A complete headless TP73 pancreatic cancer cDNA benchmark recipe, including
+  SRA retrieval and TP53/TP63 preflight controls, is maintained in
+  `docs/tp73_pancreas_benchmark_runbook.md`.
+  The fixed-parameter multi-accession cohort variant for comparing TP73
+  abundance across pancreatic cancer runs is maintained in
+  `docs/tp73_pancreas_cohort_batch_runbook.md`.
+  Shared SRA-backed setup is now available through `reads acquire ...` and uses
+  the external SRA Toolkit (`prefetch`, `vdb-validate`, `fasterq-dump`) behind
+  one GENtle-owned manifest/status/log contract. RNA and CUT&RUN consume the
+  prepared FASTA/FASTQ paths from that shared layer instead of each workflow
+  inventing its own downloader.
+  `reads acquire prepare` is explicit setup work, emits live
+  `progress read-acquisition ...` lines when the global `--progress-stderr`
+  option is enabled, records the cooperative cancel-marker path in its activity
+  JSON, and re-checks `--min-free-gb` while external SRA Toolkit phases are
+  running. Use `reads acquire cancel RUN_ACCESSION ...` to request cancellation
+  of an active run from another shell/session.
   Phase split:
   - `interpret`: seed-filter pass (Nanopore phase-1)
   - `batch-map`: manifest-driven wrapper over the same per-sample
@@ -669,11 +839,22 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
       `sra_accession`.
     - FASTA rows produce persisted RNA-read reports plus
       `batch_report.json`, `batch_summary.tsv`, `sample_sheet.tsv`,
-      `isoform_support.tsv`, `concatemer_partner_summary.tsv`, and per-sample
-      gene-support/concatemer JSON artifacts under `--out-dir`.
-    - SRA-only rows are planned, not fetched: they are marked
+      `gene_screen_summary.tsv`, `isoform_support.tsv`,
+      `concatemer_partner_summary.tsv`, and per-sample gene-support/concatemer
+      JSON artifacts under `--out-dir`.
+    - `gene_screen_summary.tsv` uses schema
+      `gentle.rna_read_gene_screen_summary.v1` and is the preferred
+      figure/statistics substrate for cross-gene family plots because it
+      records the conservative seed-passed count, all-read q90/q95/q99 length
+      quantiles, seed-passed read-length summaries, accepted-target fallback
+      fields, and source provenance in one consistent table.
+    - by default, SRA-only rows are planned, not fetched: they are marked
       `needs_preparation` and written to `sra_preparation_plan.tsv` plus
       `sra_preparation_commands.sh`.
+    - with `--prepare-sra --read-cache-dir DIR --read-work-dir DIR`,
+      `batch-map` runs the shared read-acquisition prepare first and maps from
+      the prepared FASTA path; `--drop-intermediate-fastq` may remove only the
+      conversion FASTQ when the final analysis input is FASTA.
     - default batch settings are `report_mode=full`, `align-selection=all`,
       `complete-rule=near`, `max-secondary-mappings=5`, and
       `continue-on-error=true`.
@@ -681,6 +862,17 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
     fields, MSA-eligibility counters, exon-transition rows, and exon/junction
     abundance frequencies in the persisted report; retained hits are re-ranked
     by alignment-aware retention rank after alignment.
+  - `preflight-isoforms`: non-mutating seed-filter preflight for target
+    transcript representation against repeatable positive and negative
+    control transcript FASTAs;
+    with `--optimize-parameters`, candidate filters must preserve target
+    support, pass every `--positive-transcript-fasta` /
+    `--must-pass-transcript-fasta` record, and keep each negative control
+    group at or below
+    `--max-control-match-probability`. The JSON payload includes
+    `threshold_recommendation.seed_filter_cli_fragment` and
+    `threshold_recommendation.interpret_command_fragment` so control-derived
+    thresholds can be pasted into `rna-reads interpret` runs.
     - supports explicit row filtering via
       `--record-indices i,j,k` (0-based stored `record_index` values);
       when provided, this overrides `--selection`.
@@ -721,6 +913,10 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `show-alignment`: non-mutating exact phase-2 pairwise alignment detail for
     one saved `record_index`, returning the same machine-readable
     `RnaReadAlignmentDisplay` contract used by the GUI detail pane.
+  - `show-alignments`: non-mutating batch wrapper over the same display builder
+    for explicit record indices or all rows in one gene-support cohort; records
+    without `best_mapping` are reported as skipped instead of aborting the
+    whole batch.
   - `inspect-concatemers`: non-mutating fragment/concatemer suspicion audit
     over persisted report hits, with optional structured subset controls:
     `--effect-filter`, `--sort`, `--search`, and `--record-indices`.
@@ -742,6 +938,9 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
       `*_compare.svg` instead of overwriting it.
   - `export-alignments-tsv`: non-mutating ranked alignment-row TSV export for
     downstream table-based triage.
+  - `export-isoform-triage-tsv`: non-mutating conservative read-level
+    classification into known-isoform, ambiguous, gene-supported, and
+    off-target/bad-seed bins; it does not call novel isoforms.
   - `export-alignment-dotplot-svg`: non-mutating dotplot-like scatter export
     (coverage vs identity, score-colored points) for aligned report hits.
 - `gentle_js`: baseline support via `apply_operation` for the same operation
@@ -861,6 +1060,9 @@ UniProt mapping capability status:
 
 - shared shell (`gentle_cli shell`, GUI shell): supported via `uniprot ...` commands
   - `uniprot fetch QUERY [--entry-id ID]`
+    - `QUERY` is a UniProtKB/Swiss-Prot accession or entry name, for example
+      `P04637` or `P53_HUMAN`; `--entry-id` names the stored GENtle metadata
+      entry and is not the UniProt accession unless you deliberately reuse it.
   - `uniprot import-swissprot PATH [--entry-id ID]`
   - `uniprot list` / `uniprot show ENTRY_ID`
   - `uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]`
@@ -908,8 +1110,13 @@ UniProt mapping capability status:
     protein rail so dense labels stay readable
 - shared shell (`gentle_cli shell`, GUI shell): GenBank accession import
   - `genbank fetch ACCESSION [--as-id ID]`
+    - `ACCESSION` is an NCBI GenBank nucleotide accession; `--as-id` names the
+      local GENtle sequence id created from the fetched record.
 - shared shell (`gentle_cli shell`, GUI shell): dbSNP-guided annotated region extraction
   - `dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]`
+    - `RS_ID` is a dbSNP identifier such as `rs9923231`; `GENOME_ID` is a
+      prepared GENtle genome catalog id, and `--output-id` names the local
+      sequence extracted around that variant.
 - engine operations behind those commands:
   - `FetchUniprotSwissProt`, `ImportUniprotSwissProt`, `ProjectUniprotToGenome`,
     `FetchGenBankAccession`, `FetchDbSnpRegion`
@@ -926,6 +1133,8 @@ UniProt mapping capability status:
   - `construct-reasoning build-protein-dna-handoff SEQ_ID PROTEIN_SEQ_ID [--transcript TRANSCRIPT_ID] [--projection-id ID] [--ensembl-entry ID] [--feature-query TEXT] [--ranking-goal balanced_provenance|native_fidelity|expression_optimized] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N] [--objective-id ID] [--graph-id ID]`
   - `construct-reasoning list-graphs [SEQ_ID]`
   - `construct-reasoning show-graph GRAPH_ID`
+  - `construct-reasoning list-inspection-actions GRAPH_ID [--fact-id ID] [--annotation-id ID] [--candidate-id ID] [--evidence-id ID] [--seq-id ID] [--action-kind KIND] [--summary-id ID]`
+  - `construct-reasoning run-inspection-action GRAPH_ID ACTION_ID [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID] [--render-svg OUTPUT.svg]`
   - `construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID draft|accepted|rejected|locked`
   - `construct-reasoning write-annotation GRAPH_ID ANNOTATION_ID`
   - `construct-reasoning export-graph GRAPH_ID OUTPUT.json`
@@ -936,9 +1145,35 @@ UniProt mapping capability status:
     - `summary_lines`
     - `warning_lines`
     - `fact_summaries`
+    - graph-level `inspection_actions[]` entries for deterministic
+      repeat/similarity dotplot handoffs, including `action_id`,
+      `rationale`, `driving_evidence_ids[]`, source fact/annotation/summary
+      ids, mode, focus range, and optional RepeatMasker/UCSC `rmsk`-backed
+      repeat-family provenance
     - current fact summaries now include adapter-capture review plus the new
       similarity-derived predictor rows for PCR/amplification,
       nanopore/direct-sequencing, repeat-driven mapping, and cloning stability
+    - repeat/similarity fact summaries expose `task_severities[]` rows with
+      task (`pcr`, `nanopore_sequencing`, `read_mapping`,
+      `cloning_stability`, `construct_maintenance`), severity, numeric
+      rule-derived score when available, rationale, and supporting evidence
+      ids, plus compact `task_severity: ...` detail lines
+    - repeat/mobile-element facts summarize overlapping materialized
+      RepeatMasker/UCSC `rmsk`-style annotations as
+      `curated_repeat_support[]` rows with repeat name/class/family and
+      supporting evidence ids, while non-overlapping rmsk rows do not upgrade
+      unrelated internal predictions
+  - `construct-reasoning list-inspection-actions` returns the same graph-level
+    `inspection_actions[]` objects, filtered by source fact/annotation/summary
+    ids, candidate ids, driving evidence ids, sequence id, or action kind when
+    requested, so CLI/agent/ClawBio layers do not rediscover GUI dotplot
+    affordances from labels.
+  - `construct-reasoning run-inspection-action` resolves one `action_id`,
+    feeds its mode and focus range to the shared `ComputeDotplot` operation,
+    stores the resulting dotplot payload, and optionally invokes
+    `RenderDotplotSvg` for an evidence artifact. The structured response also
+    includes the resolved `compute_parameters` block used for the shared
+    operation.
   - `construct-reasoning set-annotation-status` updates one persisted
     annotation candidate in place and returns:
     - the updated portable graph
@@ -1140,6 +1375,12 @@ Exit methods:
     - `seq_id` is optional and limits rows to one active sequence.
 19. `show_construct_reasoning_graph(state, graph_id)`
     - Returns one stored construct-reasoning graph plus the same compact summary block exposed by `construct-reasoning show-graph`.
+20. `list_construct_reasoning_inspection_actions(state, graph_id, options)`
+    - Lists portable recommended inspection actions for a construct-reasoning graph through `construct-reasoning list-inspection-actions`.
+    - `options.fact_id`, `options.annotation_id`, and `options.summary_id` are optional filters.
+20. `run_construct_reasoning_inspection_action(state, graph_id, action_id, options)`
+    - Runs a portable recommended inspection action through `construct-reasoning run-inspection-action` and returns the updated state plus shared-shell mutation output.
+    - Dotplot options include `word_size`, `step_bp`, `max_mismatches`, `tile_bp`, `dotplot_id`, and `render_svg_path`.
 20. `set_construct_reasoning_annotation_status(state, graph_id, annotation_id, status)`
     - Updates one stored annotation-candidate review status and returns the updated state plus shared-shell mutation output.
 21. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
@@ -1174,7 +1415,17 @@ Exit methods:
       - `allow_auto_exec` / `execute_all`
       - `execute_indices` (1-based)
       - `include_state_summary` (default `true`)
-25. `render_dotplot_svg(state, seq_id, dotplot_id, output_svg, options)`
+31. `plan_agent_system(state, system_id, prompt, options)`
+    - Compiles prose into a typed `gentle.agent_plan_result.v1` plan through
+      the shared `agents plan` route.
+    - `state` may be `null`; options support `catalog_path`,
+      `include_state_summary`, `max_candidates`, and
+      `allow_mutating_candidates`.
+32. `execute_agent_plan(state, plan, candidate_id, options)`
+    - Executes one stored plan candidate through shared `agents execute-plan`.
+    - `plan` may be a JSON string or JS object.
+    - Returns `{ state, state_changed, output }`; options support `confirm`.
+33. `render_dotplot_svg(state, seq_id, dotplot_id, output_svg, options)`
     - Convenience wrapper around engine `RenderDotplotSvg`.
     - `options` supports:
       - `flex_track_id` (or `flexTrackId`)
@@ -1204,6 +1455,11 @@ Current tools:
 
 - `capabilities`
 - `state_summary`
+- `restriction_site_detail` (shared restriction-site expert detail record,
+  including `tooltip_lines[]`)
+- `exon_skip_plan` (shared `transcripts exon-skip-plan` contract)
+- `exon_skip_materialize` (shared `transcripts exon-skip-materialize`
+  contract; requires `confirm=true` and accepts requested return payloads)
 - `op` (apply one operation; requires `confirm=true`)
 - `workflow` (apply one workflow; requires `confirm=true`)
 - `help`
@@ -1217,7 +1473,7 @@ Current tools:
 - `ensembl_installable_genomes` (shared Ensembl discovery report for currently installable candidates)
 - `helper_interpretation` (direct helper-construct interpretation lookup by id or alias)
 - `ui_intents` (discover deterministic UI-intent contracts)
-- `ui_intent` (run deterministic `ui open|focus` intent resolution path)
+- `ui_intent` (run deterministic `ui open|focus|close` intent resolution path)
 - `ui_prepared_genomes` (run deterministic prepared-genome query path)
 - `ui_latest_prepared` (resolve latest prepared genome for one species)
 - `blast_async_start` (start async BLAST job through shared shell route)
@@ -1297,8 +1553,10 @@ Minimum MCP JSON-RPC flow:
 `ui_intent` arguments:
 
 - required:
-  - `action`: `open|focus`
+  - `action`: `open|focus|close`
   - `target`: one of:
+    - `sequence-window` (requires `seq_id`; controls a loaded DNA sequence
+      viewer without mutating the sequence record)
     - `prepared-references`
     - `prepare-reference-genome`
     - `retrieve-genome-sequence`
@@ -1312,6 +1570,7 @@ Minimum MCP JSON-RPC flow:
     - `blast-helper-sequence`
 - optional:
   - `state_path`
+  - `seq_id`
   - `genome_id`
   - `helpers`
   - `catalog_path`
@@ -1354,6 +1613,14 @@ Minimum MCP JSON-RPC flow:
 
 - required: `helper_id` (catalog id or alias)
 - optional: `catalog_path`
+
+`restriction_site_detail` arguments:
+
+- required: `seq_id`, `cut_pos_1based`
+- optional: `state_path`, `enzyme`, `recognition_start_1based`,
+  `recognition_end_1based`
+- returns the same `kind = "restriction_site"` payload as
+  `inspect-feature-expert`, including `data.tooltip_lines[]`
 
 `blast_async_start` arguments:
 
@@ -1473,6 +1740,10 @@ Exit methods:
     - Lists stored construct-reasoning graphs plus compact shared-shell summary rows.
 19. `show_construct_reasoning_graph(project, graph_id)`
     - Returns one stored construct-reasoning graph plus the same compact summary block exposed by `construct-reasoning show-graph`.
+20. `list_construct_reasoning_inspection_actions(project, graph_id, [fact_id], [annotation_id], [summary_id])`
+    - Lists portable recommended inspection actions for a construct-reasoning graph through `construct-reasoning list-inspection-actions`.
+20. `run_construct_reasoning_inspection_action(project, graph_id, action_id, [word_size], [step_bp], [max_mismatches], [tile_bp], [dotplot_id], [render_svg_path])`
+    - Runs a portable recommended inspection action through `construct-reasoning run-inspection-action` and returns the updated project state plus shared-shell mutation output.
 20. `set_construct_reasoning_annotation_status(project, graph_id, annotation_id, status)`
     - Updates one stored annotation-candidate review status and returns the updated project state plus shared-shell mutation output.
 21. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
@@ -1502,7 +1773,13 @@ Exit methods:
     - Invokes one configured agent system through shared shell execution.
     - Returns table with `state`, `state_changed`, and `output`.
     - `project` may be `nil` to use an empty/default project state.
-25. `render_dotplot_svg(project, seq_id, dotplot_id, output_svg, [flex_track_id], [display_density_threshold], [display_intensity_gain])`
+31. `plan_agent_system(project, system_id, prompt, [catalog_path], [include_state_summary], [max_candidates], [allow_mutating_candidates])`
+    - Compiles prose into a typed `gentle.agent_plan_result.v1` plan through
+      the shared `agents plan` route.
+32. `execute_agent_plan(project, plan_json_or_table, candidate_id, [confirm])`
+    - Executes one stored plan candidate through shared `agents execute-plan`
+      and returns table with `state`, `state_changed`, and `output`.
+33. `render_dotplot_svg(project, seq_id, dotplot_id, output_svg, [flex_track_id], [display_density_threshold], [display_intensity_gain])`
     - Convenience wrapper around engine `RenderDotplotSvg`.
 
 ### Lua example
@@ -1631,6 +1908,7 @@ cargo run --bin gentle_cli -- resources status
 cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
 cargo run --bin gentle_cli -- resources sync-jaspar JASPAR2026_CORE_non-redundant_pfms_jaspar.txt data/resources/jaspar.motifs.json
 cargo run --bin gentle_cli -- resources sync-ucsc-rmsk rmsk.txt.gz data/resources/ucsc.rmsk.hg38.json --assembly hg38
+cargo run --bin gentle_cli -- resources install-ucsc-rmsk --assembly hg38
 cargo run --bin gentle_cli -- resources prepare-ucsc-rmsk-index data/resources/ucsc.rmsk.hg38.json data/resources/ucsc.rmsk.hg38.interval-index.json
 cargo run --bin gentle_cli -- resources suggest-ucsc-rmsk-index --assembly hg38 --output rmsk.indexing.json
 cargo run --bin gentle_cli -- resources sync-jaspar-remote-metadata --filter TP --limit 50 data/resources/jaspar.remote_metadata.json
@@ -1646,6 +1924,8 @@ cargo run --bin gentle_cli -- agents list --catalog assets/agent_systems.json
 cargo run --bin gentle_cli -- agents ask builtin_echo --prompt "summarize current project state"
 cargo run --bin gentle_cli -- agents ask builtin_echo --prompt "ask: Which sequence should I use?" --execute-index 1
 cargo run --bin gentle_cli -- agents ask local_llama_compat --prompt "summarize project context" --base-url http://localhost:11964 --model deepseek-r1:8b
+cargo run --bin gentle_cli -- agents discover-models msty_mlx_local_compat_template
+cargo run --bin gentle_cli -- agents ask msty_mlx_local_compat_template --prompt "summarize project context" --model mlx-community/granite-3.3-2b-instruct-4bit
 cargo run --bin gentle_cli -- op '{"PrepareGenome":{"genome_id":"ToyGenome","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeRegion":{"genome_id":"ToyGenome","chromosome":"chr1","start_1based":1001,"end_1based":1600,"output_id":"toy_chr1_1001_1600","annotation_scope":"core","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeGene":{"genome_id":"ToyGenome","gene_query":"MYGENE","occurrence":1,"output_id":"toy_mygene","catalog_path":"catalog.json"}}'
@@ -1667,6 +1947,13 @@ cargo run --bin gentle_cli -- helpers vocabulary doctor --routine-catalog assets
 cargo run --bin gentle_cli -- tracks import-bed grch38_tp53 data/chipseq/peaks.bed.gz --name H3K27ac --min-score 10 --clear-existing
 cargo run --bin gentle_cli -- tracks import-bigwig grch38_tp53 data/chipseq/signal.bw --name ATAC --min-score 0.2 --clear-existing
 cargo run --bin gentle_cli -- tracks import-vcf grch38_tp53 data/variants/sample.vcf.gz --name Variants --min-score 20 --clear-existing
+cargo run --bin gentle_cli -- arrays inspect-microarray-track data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json
+cargo run --bin gentle_cli -- arrays inspect-microarray-track test_files/fixtures/microarray_tracks/clariomd.tp73_vendor_subset.manifest.json
+cargo run --bin gentle_cli -- arrays project-microarray-track grch38_tp73 data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json --contrasts AdTAp73alpha-AdGFP,AdTAp73beta-AdGFP --level probeset --max-features 5000 --clear-existing
+cargo run --bin gentle_cli -- arrays probe-regions --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --gene TP73 --platform Clariom_D_Human --annotation-library path/to/NetAffx_or_APT_library --condition-column condition --sample-column file --normalization rma --plot --output analysis/probe_regions --dry-run
+cargo run --bin gentle_cli -- arrays probe-regions --dataset E-MTAB-14704 --gene PATZ1 --gene FUS --gene MDM2 --paired-by-replicate-suffix --platform Clariom_D_Human --plot --dry-run
+cargo run --bin gentle_cli -- arrays probe-regions --dataset E-MTAB-14704 --gene TP73 --platform Clariom_D_Human --dry-run
+cargo run --bin gentle_cli -- arrays inspect-probe-region-output analysis/probe_regions
 cargo run --bin gentle_cli -- cutrun list --catalog assets/cutrun.json --filter CTCF
 cargo run --bin gentle_cli -- cutrun status toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun
 cargo run --bin gentle_cli -- cutrun prepare toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun
@@ -1679,6 +1966,7 @@ cargo run --bin gentle_cli -- cutrun export-coverage tp53_cutrun_reads exports/t
 cargo run --bin gentle_cli -- cutrun export-coverage tp53_cutrun_reads exports/tp53_cutrun.cuts.tsv --kind cut_sites
 cargo run --bin gentle_cli -- cutrun export-coverage tp53_cutrun_reads exports/tp53_cutrun.fragments.tsv --kind fragments
 cargo run --bin gentle_cli -- cutrun inspect-regulatory-support grch38_tp53 --dataset toy_ctcf --read-report tp53_cutrun_reads --neighbor-window-bp 150 --species-filter human --path exports/tp53_cutrun.regulatory_support.json
+cargo run --bin gentle_cli -- cutrun gene-set-regulatory-support "Human GRCh38 Ensembl 116" --group regulation_of_alternative_splicing --relationship co-regulated --dataset toy_ctcf --path exports/splicing_genes.cutrun_support.json
 cargo run --bin gentle_cli -- helpers list
 cargo run --bin gentle_cli -- helpers validate-catalog
 cargo run --bin gentle_cli -- helpers update-ensembl-specs --catalog assets/helper_genomes.json --output-catalog exports/helper_genomes.updated.json
@@ -1722,6 +2010,7 @@ cargo run --bin gentle_cli -- shell 'set-param preferred_restriction_enzymes ["E
 cargo run --bin gentle_cli -- shell 'panels import-isoform grch38_tp53 assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'
 cargo run --bin gentle_cli -- shell 'panels inspect-isoform grch38_tp53 tp53_isoforms_v1'
 cargo run --bin gentle_cli -- shell 'panels render-isoform-svg grch38_tp53 tp53_isoforms_v1 exports/tp53_isoform_architecture.svg'
+cargo run --bin gentle_cli -- shell 'panels render-isoform-svg grch38_tp53 tp53_isoforms_v1 exports/tp53_isoform_expression.svg --expression-tsv expression.tsv'
 cargo run --bin gentle_cli -- shell 'panels validate-isoform assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'
 cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp53 isoform tp53_isoforms_v1
 cargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp53 isoform tp53_isoforms_v1 exports/tp53_isoform_architecture.svg
@@ -1755,6 +2044,8 @@ Global CLI options:
 - `--progress-stdout`: print live progress events to `stdout`
 - `--allow-screenshots`: currently rejected (screenshot bridge disabled by security policy)
 
+Place global progress options before the command name, for example
+`gentle_cli --state "$STATE" --progress-stderr rna-reads interpret ...`.
 Current progress events include TFBS annotation updates, genome-prepare
 updates (download/index phases), genome-track import updates, RNA-read
 interpretation/alignment updates, and primer/qPCR design updates.
@@ -1784,12 +2075,539 @@ Shared shell command:
     - `help`
     - `capabilities`
     - `state-summary`
+    - `facts graph [--evidence SCAN.json ...]`
+    - `facts eval FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json ...]`
+      - evaluates `gentle.fact_expression.v1`-style preconditions against the
+        deterministic `gentle.project_fact_graph.v1`; persisted
+        reverse-translation, protein-derivation, primer/qPCR design,
+        restriction-cloning handoff, sequencing-confirmation, CUT&RUN read,
+        and RNA-read interpretation reports are projected as `report.exists`;
+        imported sequencing traces are projected as `sequencing_trace.exists`;
+        and restriction-site absence requires explicit scan evidence rather
+        than missing hits in state
+    - `introspect facts [--domain project|view|host|config] [--seq-id SEQ_ID] [--evidence SCAN.json ...] [--ui-host true|false]`
+      - returns `gentle.introspection.v1` fact read-back grouped by domain
+      - `--seq-id` filters facts to one concrete loaded sequence subject
+      - headless CLI contexts project `ui.host_available=false` unless
+        `--ui-host true` is supplied by a GUI-attached caller/test harness
+    - `introspect capabilities [--kind operation|view_intent|host_config]`
+      - returns the shared capability registry plus fact-annotated descriptors
+        for the validated introspection slice; registry-only rows remain
+        discoverable but do not invent preconditions
+      - the top-level `introspect facts`, `introspect capabilities`,
+        `introspect readiness`, `introspect verify-effects`, and
+        `introspect all` shell routes are themselves fact-annotated as
+        read-only self-description/status routes with no project-state
+        preconditions
+    - `introspect readiness [CAPABILITY_ID] [--arg NAME=VALUE ...] [--seq-id SEQ_ID] [--readiness ready|blocked|unknown] [--evidence SCAN.json ...] [--ui-host true|false]`
+      - evaluates bound or unbound capability readiness through the shared fact
+        evaluator; unbound templated args report `unknown`
+      - fact-annotated descriptors are evaluated through their full
+        `precondition_expr`, including `any` branches, not only flat `all`
+        atom lists
+      - `--seq-id` binds `SEQ_ID`, and `--readiness` filters evaluated rows
+      - persisted-report inspection commands such as `primers show-report`,
+        `primers show-qpcr-report`, and
+        `primers show-restriction-cloning-handoff`, plus
+        `seq-confirm show-report`, `cutrun show-read-report`, and
+        `rna-reads show-report`, become ready when the matching `report.exists`
+        fact is projected
+      - raw persisted-report show operation rows
+        `ShowSequencingConfirmationReport`, `ShowCutRunReadReport`, and
+        `ShowRnaReadReport` mirror their shell `show-*` routes: they require
+        the matching `report.exists` fact and declare no side effects
+      - sequencing-trace commands project `sequencing_trace.exists(TRACE_ID)`;
+        `seq-trace list` / `ListSequencingTraces` are catalog-ready,
+        `seq-trace show` / `ShowSequencingTrace` require the trace fact, and
+        `seq-trace import` / `ImportSequencingTrace` can verify the same fact
+        when the caller supplied an explicit `TRACE_ID`
+      - sequencing-confirmation run rows `seq-confirm run` and
+        `ConfirmConstructReads` require the expected construct sequence
+        (`sequence.exists(EXPECTED_SEQ_ID)`) and can verify
+        `report.exists(REPORT_ID) == sequencing_confirmation` when the caller
+        supplied a deterministic report id. Optional repeated read sequences
+        and trace ids are declared as readable evidence inputs; callers should
+        repeat readiness checks for each concrete id until list-valued
+        introspection binding is promoted.
+      - sequencing-primer overlay rows `seq-primer suggest` and
+        `SuggestSequencingPrimers` require the expected construct sequence.
+        Optional primer sequence ids and sequencing-confirmation reports are
+        declared as readable inputs so bound clients can check them explicitly.
+      - agent dispatch rows `agents ask`, `ask_agent_system`, `agents plan`,
+        and `agent_plan` require
+        `host.tool_available(SYSTEM_ID) == true`, matching the same host fact
+        used by `agents preflight`. `agents execute-plan` and
+        `agent_execute_plan` are payload-ready without project facts because
+        their real precondition is a valid supplied agent-plan payload and
+        candidate id; command-dependent project effects are advertised only as
+        `may_on_success`.
+      - read-acquisition routes `reads acquire status`, `reads acquire prepare`,
+        `reads acquire inspect`, `reads acquire cancel`, and raw
+        `ReadAcquire*` rows are payload/path-ready without project facts.
+        Prepare and cancel rows model the external work/cache updates as
+        `artifact.written(WORK_DIR)` external handoffs; readiness does not
+        assert that the manifest, SRA accession, SRA Toolkit, or paths are
+        valid until execution.
+      - persisted-report export commands such as
+        `reverse-translate export-report`, `primers export-report`, and
+        `primers export-qpcr-report`, and
+        `primers export-restriction-cloning-handoff`, plus
+        `seq-confirm export-report`, `seq-confirm export-support-tsv`,
+        `cutrun export-coverage`, `rna-reads export-report`, and specialized
+        RNA-read artifact exports such as `rna-reads export-hits-fasta`,
+        `rna-reads export-target-quality`, `rna-reads export-paths-tsv`,
+        `rna-reads export-abundance-tsv`,
+        `rna-reads export-score-density-svg`,
+        `rna-reads export-alignments-tsv`,
+        `rna-reads export-isoform-triage-tsv`, and
+        `rna-reads export-alignment-dotplot-svg`, use the same `report.exists`
+        readiness and model output files as `artifact.written` external
+        handoffs. The raw engine operation rows
+        `ExportPrimerDesignReport`,
+        `ExportSequencingConfirmationReport`,
+        `ExportSequencingConfirmationSupportTsv`,
+        `ExportCutRunReadCoverage`, `ExportRnaReadReport`,
+        `ExportRnaReadHitsFasta`, `ExportRnaReadTargetQuality`,
+        `ExportRnaReadExonPathsTsv`, `ExportRnaReadExonAbundanceTsv`,
+        `ExportRnaReadScoreDensitySvg`, `ExportRnaReadAlignmentsTsv`,
+        `ExportRnaReadIsoformTriageTsv`, and
+        `ExportRnaReadAlignmentDotplotSvg` expose the same model for
+        registry-driven adapters. Raw RNA-read gene-support analysis rows
+        `SummarizeRnaReadGeneSupport` and `InspectRnaReadGeneSupport`
+        also require `report.exists(REPORT_ID) == rna_read` and model their
+        optional JSON `path` as an `artifact.written` external handoff.
+      - RNA-read processing commands `rna-reads align-report` /
+        `AlignRnaReadReport` require `report.exists(REPORT_ID) == rna_read`
+        and verify that the report remains present after the mutating alignment
+        update. `rna-reads materialize-hits` /
+        `MaterializeRnaReadHitSequences` use the same report readiness but do
+        not yet declare a hard sequence-creation effect because created ids are
+        selection-dependent. `rna-reads preflight-isoforms` /
+        `PreflightRnaReadIsoforms` require `sequence.exists(SEQ_ID)` and have
+        no project-state effect.
+      - primer helper readbacks are fact-annotated where the readiness can be
+        expressed with existing facts: `primers preflight` is ready without
+        project state, `primers seed-from-feature`,
+        `primers seed-from-splicing`, and
+        `primers restriction-cloning-vector-suggestions` require
+        `sequence.exists(SEQ_ID)`, and
+        `primers seed-restriction-cloning-handoff` requires both
+        `report.exists(PRIMER_REPORT_ID) == primer_design` and
+        `sequence.exists(DESTINATION_VECTOR_SEQ_ID)`. cDNA assay test routes
+        remain registry-only until their conditional product-materialization
+        effects are modeled.
+      - no-project local catalog/report operations such as
+        `SummarizeJasparEntries`, `BenchmarkJasparRegistry`,
+        `ListJasparCatalog`, `ResolveTfQueries`, `ListReporterCatalog`, and
+        `RecommendReporters` are ready in catalog mode and model optional JSON
+        `path` outputs as `artifact.written` external handoffs
+      - reporter shell routes `reporters list` and `reporters recommend`
+        mirror the raw reporter catalog operations as catalog-ready optional
+        JSON artifact handoffs; `reporters export-corpus` and raw
+        `ExportReporterCorpus` are also catalog-ready and model their required
+        JSON/JSONL output path as an `artifact.written` external handoff
+      - service status/provider catalog routes `services status`,
+        `services providers list`, `services providers doctor`,
+        `services delivery-route`, `services project-preflight`,
+        `services project-quote`, `services handoff`, and `services guide` are
+        fact-annotated as ready without project state. Doctor, quote, and
+        handoff output paths are modeled as `artifact.written` external
+        handoffs. These routes prepare local classification, validation, guide,
+        or handoff records only; they do not submit vendor orders.
+        `services route-project-source` remains separate because its
+        preconditions depend on the selected project object kind.
+      - planning read-only routes `planning consult cloning`,
+        `planning protein-expression-handoff`, `planning profile show`,
+        `planning objective show`, `planning suggestions list`, and
+        `planning sync status` are fact-annotated as ready without project
+        state and declare no side effects. Planning profile/objective
+        set/clear, suggestion accept/reject, and sync pull/push are also ready
+        without project facts, but declare only a non-verifiable
+        `may_on_success` planning-state effect because profile/objective/
+        suggestion facts are not projected yet.
+      - shell-level resource/catalog inspection routes such as
+        `resources summarize-jaspar`, `resources status`,
+        `resources sync-rebase`, `resources sync-jaspar`,
+        `resources sync-ucsc-rmsk`,
+        `resources import-gene-list-cache`,
+        `resources import-ontology-assignment-cache`,
+        `resources import-co-regulated-cache`,
+        `resources install-ucsc-rmsk`,
+        `resources prepare-ucsc-rmsk-index`,
+        `resources sync-jaspar-remote-metadata`,
+        `resources benchmark-jaspar`,
+        `resources suggest-ucsc-rmsk-index`, `resources list-jaspar`,
+        `resources inspect-jaspar`, `resources resolve-tf-query`,
+        `resources list-publication-datasets`,
+        `resources status-publication-dataset`, `genomes validate-catalog`,
+        `helpers validate-catalog`, `helpers vocabulary list`, and
+        `helpers vocabulary doctor` are also fact-annotated as ready without
+        project state. Optional JSON output paths are modeled as
+        `artifact.written` external handoffs; catalog, motif, dataset, and file
+        path validation remains part of execution.
+      - local cache/resource mutation routes `cache clear` and
+        `resources prepare-publication-dataset` are ready without project
+        facts, but declare only a non-verifiable `may_on_success` effect
+        because their concrete filesystem/cache changes depend on supplied
+        paths, download choices, and execution-time validation.
+      - host/helper/protease/microRNA catalog helper routes such as
+        `hosts list`, `list_host_profile_catalog_entries`,
+        `host_profile_catalog_entries`, `list_helper_catalog_entries`,
+        `helper_catalog_entries`, `helper_semantics_vocabulary`,
+        `helper_interpretation`, `proteases list`, `proteases show`,
+        `mirna explain-seed`, and `mirna catalog-show` are fact-annotated as
+        ready without project state. Protease list/show JSON output paths are
+        modeled as optional `artifact.written` handoffs; catalog lookup
+        validation remains part of execution.
+      - reference/helper genome cache inspection routes (`genomes status`,
+        `helpers status`, `genomes genes`, `helpers genes`) and JS/Lua helper
+        adapters (`list_reference_genomes`, `list_reference_catalog_entries`,
+        `is_reference_genome_prepared`, `list_reference_genome_genes`) are
+        fact-annotated as ready without project state. This means the command
+        can be evaluated from the current project-fact graph; concrete genome
+        ids, prepared caches, catalog paths, regex filters, and biotype filters
+        are still validated by the command when it runs.
+      - reference/helper genome extraction routes (`genomes|helpers
+        extract-region`, `extract-gene`, and `extract-promoter`) plus raw
+        `ExtractGenome*` operation rows and JS/Lua helper aliases are
+        fact-annotated as project-sequence creation routes. The prepared cache
+        is still validated during execution; introspection can verify the
+        resulting `sequence.exists(OUTPUT_ID)` fact when the caller supplied a
+        deterministic output id. Anchor extension/verification routes require
+        the source `sequence.exists(SEQ_ID)` fact.
+      - Ensembl discovery/catalog-maintenance routes
+        (`genomes ensembl-available`, `helpers ensembl-available`,
+        `ensembl_installable_genomes`, `list_ensembl_installable_genomes`,
+        `genomes preview-ensembl-specs`, `helpers preview-ensembl-specs`,
+        `genomes update-ensembl-specs`, and
+        `helpers update-ensembl-specs`) are fact-annotated as ready without
+        project state. Update rows model the external catalog output as
+        `artifact.written(OUTPUT_CATALOG_PATH)`; concrete catalog paths and
+        Ensembl/network availability remain execution-time concerns.
+      - async BLAST status/list routes (`genomes blast-status`,
+        `helpers blast-status`, `genomes blast-list`, `helpers blast-list`,
+        `blast_async_status`, `blast_async_list`) are fact-annotated with no
+        project-state preconditions. They may refresh persisted async-job
+        metadata while polling/listing, but declare no hard biological project
+        effects; job ids and optional terminal reports remain execution-time
+        validation concerns. Async start/cancel and synchronous BLAST routes
+        remain registry-only in this slice.
+      - built-in ladder catalog routes such as `ladders list`,
+        `inspect_dna_ladders`, `inspect_rna_ladders`, `list_dna_ladders`, and
+        `list_rna_ladders` are ready without project state; ladder export
+        routes `ladders export`, `export_dna_ladders`, `export_rna_ladders`,
+        `ExportDnaLadders`, and `ExportRnaLadders` additionally model the JSON
+        output path as an `artifact.written` external handoff
+      - agent-system catalog routes `agents list`, `agent_systems`, and
+        `list_agent_systems` are ready without project state because they only
+        enumerate configured systems
+      - `agents preflight`, `agents discover-models`, `agent_preflight`, and
+        `agent_models` are fact-annotated host-config routes that require
+        `host.tool_available(SYSTEM_ID) == true`. Preflight may emit an
+        external-handoff report; model discovery declares no project effects.
+        Asking, planning, and plan execution remain separate adapter/transport
+        operations.
+      - adapter parity aliases `state_summary`, `reference_catalog_entries`,
+        `ui_intents`, `ui_prepared_genomes`, and `ui_latest_prepared`, plus
+        shell routes `ui prepared-genomes` and `ui latest-prepared`, are
+        fact-annotated with the same no-project readiness as their shared
+        contracts (`state-summary`, reference catalog listing, and deterministic
+        UI catalog/prepared-genome query routes).
+      - generic GUI intent requests (`ui open`, `ui focus`, `ui close`, and
+        `ui_intent`) are fact-annotated as view intents that require
+        `ui.host_available == true`. In headless command-line use they can
+        still resolve to a structured intent payload, but readiness reports that
+        the intent cannot be applied until a GUI host is attached.
+      - protocol-cartoon catalog/render/template routes are ready without
+        project state; render/export rows model SVG or JSON outputs as
+        `artifact.written` external handoffs, while template input path
+        validation remains part of execution rather than a project fact
+      - prepared-cache inspection, CUT&RUN dataset catalog/status inspection,
+        and array helper inspection routes are ready without project state;
+        external file/directory/catalog validation remains part of execution,
+        and `arrays render-probe-region-output-svg` models its SVG output as an
+        `artifact.written` external handoff
+      - genome-track import and array projection routes (`tracks import-bed`,
+        `tracks import-bigwig`, `tracks import-vcf`, their raw/MCP operation
+        rows, `genomes|helpers blast-track`,
+        `arrays project-microarray-track`, `ProjectMicroarrayTrack`, and
+        `arrays project-probe-region-output`) require the loaded target
+        sequence fact. They currently remain readiness-only because feature
+        freshness/track-update facts are not projected yet
+      - tracked genome signal-file subscription routes
+        (`tracks tracked list|add|remove|clear|apply`) have no project-fact
+        preconditions. List is read-only; add/remove/clear/apply declare only a
+        non-verifiable `may_on_success` project-state effect because imported
+        features depend on current anchors and external file validation
+      - sequence-scan reporting/rendering rows (`FindRestrictionSites`,
+        `features tfbs-score-tracks-svg`, `RenderTfbsScoreTracksSvg`,
+        `SummarizeTfbsScoreTracks`, `features tfbs-track-similarity`, and
+        `SummarizeTfbsTrackSimilarity`) require
+        `sequence.exists(SEQ_ID)` when the scan target is a loaded project
+        sequence. Inline sequence text and motif/enzyme validation remain
+        execution-time checks; JSON/SVG output paths are modeled as
+        `artifact.written` external handoffs where present
+      - catalog/list routes for candidate sets, guide sets, workflow macros,
+        candidate macro templates, and routine catalogs are ready without
+        project state; routes that inspect a named persisted set/template still
+        remain registry-only until those object-existence facts are projected
+      - construct-reasoning graph list routes
+        `construct-reasoning list-graphs` and `construct_reasoning_graphs` are
+        ready without project state; their optional `SEQ_ID` is treated as a
+        filter. Named graph inspection/action routes require
+        `construct_reasoning_graph.exists(GRAPH_ID)`; status/writeback actions
+        verify that the graph remains present, and graph export models the JSON
+        output as an `artifact.written` external handoff
+      - persisted analysis-payload list routes `dotplot list` and `flex list`
+        are ready without project state; optional `SEQ_ID` is treated as a
+        filter, while show/render-by-id routes remain registry-only until
+        dotplot/flex-track existence facts are projected
+      - local metadata/catalog routes `genomes list`, `helpers list`,
+        `ensembl-gene list`, `ensembl-protein list`, and
+        `gene-groups list|show|resolve|doctor` are ready without project
+        state; catalog/group/token validation remains part of execution, and
+        gene-group JSON outputs are modeled as optional `artifact.written`
+        external handoffs
+      - report-list commands such as `primers list-reports`,
+        `primers list-qpcr-reports`,
+        `primers list-restriction-cloning-handoffs`, and
+        `reverse-translate list-reports`, plus `cutrun list-read-reports` and
+        `rna-reads list-reports`, have no project preconditions and are ready
+        in catalog mode. The raw engine operation rows
+        `ListSequencingConfirmationReports`, `ListCutRunReadReports`, and
+        `ListRnaReadReports` follow the same catalog-ready convention.
+      - RNA-read report inspection routes (`rna-reads show-alignment`,
+        `rna-reads show-alignments`, `rna-reads summarize-gene-support`,
+        `rna-reads inspect-gene-support`, `rna-reads inspect-alignments`, and
+        `rna-reads inspect-concatemers`) require a persisted `rna_read`
+        `report.exists(REPORT_ID)`. Routes with an optional `--output` path
+        model it as an `artifact.written` external handoff.
+      - self-description/status commands such as `help`, `capabilities`,
+        `state-summary`, and `history status` also have no project
+        preconditions and are ready in catalog mode
+      - fact-layer commands `facts graph` and `facts eval` are also
+        fact-annotated, no-mutation routes; `facts eval` validates its supplied
+        expression at execution time rather than as a project-state
+        precondition
+      - engine-owned configuration parameters are projected as closed-world
+        `config.param` facts under `introspect facts --domain config`; the
+        subject id is the parameter name and the value is the current JSON
+        value
+      - `set-param` and the lower-case adapter alias `set_parameter` are
+        fact-annotated `host_config` capabilities with no project preconditions
+        and a `must_on_success` effect that verifies
+        `config.param(PARAM_NAME) == PARAM_VALUE`; the raw `SetParameter`
+        operation row exposes the same effect for registry-driven adapters
+      - view/display commands such as `display show|hide|visibility` and the
+        raw `SetDisplayVisibility` operation row have no project preconditions
+        and declare a `view.visible_tracks` `view_session` effect;
+        `introspect facts --domain view` projects the current display-layer
+        booleans as closed-world read-back state
+      - direct sequence-derivation engine operations such as `Reverse`,
+        `Complement`, `ReverseComplement`, `Branch`, and `ExtractRegion` are
+        fact-annotated through their raw operation rows: they require
+        `sequence.exists(INPUT_SEQ_ID)` and verify
+        `sequence.exists(OUTPUT_ID)` when a deterministic output id is supplied
+      - `MaterializeVariantAllele` mirrors `variant materialize-allele`:
+        it requires `sequence.exists(INPUT_SEQ_ID)` and verifies
+        `sequence.exists(OUTPUT_ID)` for deterministic allele materialization
+      - `AlignSequences` mirrors `align compute`: it requires both
+        `sequence.exists(QUERY_SEQ_ID)` and `sequence.exists(TARGET_SEQ_ID)`;
+        it declares no project-state effects because the alignment result is
+        returned directly
+      - raw primer/qPCR design operation rows `DesignPrimerPairs`,
+        `DesignInsertionPrimerPairs`, and `DesignQpcrAssays` mirror their shell
+        design routes: they require `sequence.exists(TEMPLATE_SEQ_ID)` and
+        verify the requested `report.exists(REPORT_ID)` kind when a
+        deterministic report id is supplied
+      - dotplot and flexibility routes project stored payload facts:
+        `dotplot.exists(DOTPLOT_ID)` and
+        `flexibility_track.exists(TRACK_ID)`. `dotplot compute`,
+        `ComputeDotplot`, `dotplot overlay-compute`,
+        `ComputeDotplotOverlay`, `flex compute`, and
+        `ComputeFlexibilityTrack` require loaded sequence inputs and can verify
+        those payload facts when deterministic ids are supplied. `dotplot show`,
+        `flex show`, and `RenderDotplotSvg` become ready only once the stored
+        payload fact exists; `RenderDotplotSvg` models the SVG path as an
+        `artifact.written` external handoff
+      - candidate-window optimization routes project
+        `candidate_set.exists(SET_NAME)`. Candidate generation requires a
+        loaded source sequence and verifies the named set when deterministic
+        `SET_NAME` is supplied. Candidate show/metrics/score/delete routes
+        require the existing set; filter/top-k/pareto/set-op routes require
+        input set facts and verify the named output set. Deletion currently has
+        no positive hard effect because the fact language does not yet model
+        absence effects
+      - guide-design routes project `guide_set.exists(GUIDE_SET_ID)`,
+        `guide_filter_report.exists(GUIDE_SET_ID)`, and
+        `guide_oligo_set.exists(OLIGO_SET_ID)`. Guide-set upsert and oligo
+        generation can verify deterministic output ids; practical filtering
+        verifies the filter report and, when supplied, the filtered output guide
+        set. Guide exports require the guide set and model CSV/FASTA/protocol
+        files as `artifact.written` external handoffs
+      - container/rack authoring routes project
+        `container.exists(CONTAINER_ID)`, `arrangement.exists(ARRANGEMENT_ID)`,
+        and `rack.exists(RACK_ID)`. Container exclusivity updates require the
+        container fact. Serial arrangement and rack creation can verify supplied
+        deterministic ids. Rack move/profile/template/block commands require
+        and preserve `rack.exists`; rack SVG/OpenSCAD/simulation exports require
+        the rack and model files as `artifact.written` external handoffs.
+        Single-container transform operations (`DigestContainer`,
+        `LigationContainer`, and `FilterContainerByMolecularWeight`) require
+        `container.exists(CONTAINER_ID)` and declare `may_on_success` product
+        effects because concrete product ids are derived during execution
+      - macro-template routes project
+        `workflow_macro_template.exists(TEMPLATE_NAME)`,
+        `candidate_macro_template.exists(TEMPLATE_NAME)`, and
+        `macro_instance.exists(MACRO_INSTANCE_ID)`. Template upsert can verify
+        deterministic template names. Template show/delete/run require the
+        matching template fact; delete routes do not yet declare absence
+        effects. `macros instance-show` requires a recorded macro-instance fact
+      - project/session utility routes are fact-annotated without existing
+        project facts: `history undo`, `history redo`, `load-project`, and
+        `load_project` declare `may_on_success` effects because the concrete
+        state changes depend on the undo/redo stack or loaded project file.
+        `save-project` and `save_project` model their external project-state
+        output as `artifact.written(OUTPUT_PATH)`. `load_dna` mirrors
+        `LoadFile` for JS/Lua adapters and can verify
+        `sequence.exists(OUTPUT_ID)` only when the adapter supplies a stable
+        output id.
+      - external sequence creation routes are fact-annotated for both shell and
+        raw operation callers: `LoadFile`, `load_dna`, `genbank fetch`,
+        `FetchGenBankAccession`, `ensembl-region fetch`,
+        `FetchEnsemblRegion`, `dbsnp fetch`, `FetchDbSnpRegion`,
+        and `FetchUniprotLinkedGenBank`. These fetch/import routes have no
+        existing-project preconditions; `introspect verify-effects` can verify
+        `sequence.exists(OUTPUT_ID)` only when the caller supplied the explicit
+        `--as-id`, `as_id`, `--output-id`, or `output_id` that execution created
+      - protein/gene metadata routes project
+        `uniprot_entry.exists(ENTRY_ID)`,
+        `ensembl_gene_entry.exists(ENTRY_ID)`, and
+        `ensembl_protein_entry.exists(ENTRY_ID)`. UniProt and Ensembl
+        fetch/import routes can verify explicit entry ids; show routes and
+        metadata-backed sequence imports require the matching stored metadata
+        fact. `ImportUniprotEntrySequence`, `ensembl-gene import-sequence`,
+        `ImportEnsemblGeneSequence`, `ensembl-protein import-sequence`, and
+        `ImportEnsemblProteinSequence` can also verify
+        `sequence.exists(OUTPUT_ID)` when a deterministic output id was supplied
+      - UniProt projection routes project closed-world
+        `uniprot_projection.exists(PROJECTION_ID)` facts. `uniprot map` and
+        `ProjectUniprotToGenome` require the stored UniProt-entry fact plus the
+        target `sequence.exists(SEQ_ID)` fact and can verify a supplied
+        deterministic `PROJECTION_ID`. Projection-show, feature-coding,
+        Ensembl-link resolution, transcript accounting, Ensembl comparison, and
+        audit-generation routes require the projection fact. UniProt projection
+        audit and audit-parity reports still project as
+        `report.exists(REPORT_ID)` facts, so their show/export routes can be
+        readiness-checked.
+      - raw core sequence operation rows are fact-annotated where the state
+        contract is deterministic: `SaveFile` requires `sequence.exists(SEQ_ID)`
+        and declares an `artifact.written(OUTPUT_PATH)` external handoff;
+        `Digest` and the glossary `digest` alias require
+        `sequence.exists(INPUT_SEQ_ID)` but are readiness-only because fragment
+        ids are prefix/index-derived; `ExtractAnchoredRegion` requires the same
+        input sequence fact and is readiness-only because candidate ids are
+        output-prefix/rank-derived; `SelectCandidate` also requires
+        `sequence.exists(INPUT_SEQ_ID)` and can verify
+        `sequence.exists(OUTPUT_ID)` when a deterministic selected-candidate id
+        was supplied; `Pcr`, `PcrAdvanced`, and `PcrMutagenesis` require
+        `sequence.exists(TEMPLATE_SEQ_ID)` and can verify
+        `sequence.exists(OUTPUT_ID)` for deterministic product ids; and
+        `PcrOverlapExtensionMutagenesis` requires the template sequence but is
+        readiness-only until generated candidate ids are projected as facts
+      - `render-dotplot-svg` is fact-annotated with the same readiness contract
+        as `RenderDotplotSvg`: it requires `sequence.exists(SEQ_ID)` and
+        `dotplot.exists(DOTPLOT_ID)`, then models the SVG path as an
+        `artifact.written(OUTPUT_PATH)` external handoff
+      - raw cDNA assay-test rows `TestCdnaPcr` and `TestCdnaQpcr` are
+        fact-annotated over `sequence.exists(SEQ_ID)` and advertise only
+        conservative optional-output effects. The shell routes
+        `primers test-cdna-pcr` and `primers test-cdna-qpcr` expose the same
+        readiness. `TestCdnaQpcrFasta`, `primers test-cdna-qpcr-fasta`, and
+        `ProjectGenomeInterval` have no project-state preconditions because
+        their FASTA/projection-map paths are external files validated during
+        execution
+      - `ReverseTranslateProteinSequence` mirrors `reverse-translate run`:
+        the input sequence must exist and have `sequence.kind == protein`, and
+        a deterministic `OUTPUT_ID` can be verified as the generated coding-DNA
+        sequence
+      - raw transcript/protein/splicing derivation rows
+        `DeriveTranscriptSequences`, `DeriveProteinSequences`, and
+        `DeriveSplicingReferences` require `sequence.exists(SEQ_ID)` and
+        declare conservative `may_on_success` sequence-creation effects because
+        output ids depend on feature ids, prefixes, and uniqueness rules.
+        `DeriveProteinSequences` can additionally verify
+        `report.exists(REPORT_ID) == protein_derivation` when a deterministic
+        report id was supplied.
+      - protease catalog and digest routes are fact-annotated:
+        `proteases list` and `proteases show` are no-precondition catalog
+        reads; `proteases digest`, `ProteaseDigestProteinSequence`, and
+        `proteases digest-gel-svg` require an existing protein-kind sequence.
+        Digest materialization advertises only a `may_on_success` sequence
+        effect because peptide ids are prefix/index-derived. Protein gel SVG
+        routes require `report.exists(REPORT_ID) == protein_derivation`, while
+        `RenderProteaseDigestGelSvg` can also be ready from an explicit
+        protein sequence. SVG outputs are modeled as `artifact.written`
+        external handoffs.
+      - `SetTopology` is fact-annotated through its raw operation row: it
+        requires `sequence.exists(SEQ_ID)` and verifies
+        `sequence.circular(SEQ_ID) == CIRCULAR`
+      - `RecomputeFeatures` is fact-annotated through its raw operation row as
+        readiness-only: it requires `sequence.exists(SEQ_ID)`, but it does not
+        yet declare a hard fact effect because computed-feature freshness is
+        not projected as a fact
+      - `SetLinearViewport` is fact-annotated through its raw operation row:
+        it has no project preconditions and verifies
+        `view.viewport(linear_sequence) == {"start_bp": START_BP, "span_bp": SPAN_BP}`
+      - `ui intents` is a no-precondition catalog route for discovering GUI
+        intent targets and commands
+      - external-render commands such as `render-svg`, `render-rna-svg`, and
+        `render-lineage-svg` model output files as `artifact.written` external
+        handoffs rather than saved project state; sequence renderers become
+        ready when their input `sequence.exists` fact is projected. The raw
+        engine operation rows `RenderSequenceSvg`, `RenderRnaStructureSvg`,
+        `RenderFeatureExpertSvg`, `RenderTfbsScoreTrackCorrelationSvg`, and
+        `RenderLineageSvg` expose the same readiness and external-handoff model
+        for registry-driven adapters.
+      - read-only sequence inspectors such as `rna-info`, `features query`, and
+        `features tfbs-summary` become ready when the inspected
+        `sequence.exists` fact is projected. The raw `SummarizeTfbsRegion`
+        and `QueryProteinResidueGenomicCoordinates` operation rows expose the
+        same sequence-readiness model. Variant promoter/reporter inspectors
+        (`variant promoter-context`, `variant reporter-fragments`, and their
+        raw operation rows) use the same sequence-readiness model and treat
+        optional JSON paths as `artifact.written` external handoffs, not
+        persistent project reports. `variant annotate-promoters`,
+        `AnnotatePromoterWindows`, and `AnnotateTfbs` are sequence-gated
+        mutating annotations without a hard fact effect until feature
+        freshness/count facts exist;
+        `inspect-feature-expert` uses the same sequence-level readiness until
+        target-specific facts exist
+      - external feature exports such as `features export-bed` use the same
+        sequence readiness and model the BED path as an `artifact.written`
+        external handoff. The raw `ExportFeaturesBed` operation row exposes
+        the same sequence-readiness and BED-handoff model; `render-feature-expert-svg`
+        does the same for its SVG path
+      - raw sequence-context operations `InspectSequenceContextView` and
+        `ExportSequenceContextBundle` use the same sequence readiness; bundle
+        export models its output directory as an `artifact.written` external
+        handoff
+    - `introspect verify-effects CAPABILITY_ID [--arg NAME=VALUE ...] [--seq-id SEQ_ID] [--evidence SCAN.json ...] [--ui-host true|false]`
+      - verifies `effect_kind: "must_on_success"` rows for a fact-annotated
+        capability against current project facts and supplied evidence
+    - `introspect all [--evidence SCAN.json ...] [--ui-host true|false]`
+      - returns facts, registry-backed capabilities, and catalog-mode readiness
+        in one payload
     - `containers set-exclusive CONTAINER_ID true|false`
     - `load-project PATH`
     - `save-project PATH`
+    - `sequence create --sequence-text DNA [--output-id ID] [--name TEXT] [--topology linear|circular]`
+      - creates a persistent project sequence from inline bases so an
+        Agent Assistant or external agent can promote a paper/vendor/database
+        sequence into the same state used by GUI, GUI Shell, and later commands
     - `render-svg SEQ_ID linear|circular OUTPUT.svg`
-    - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]`
-    - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]`
+    - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]`
+    - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]`
     - `dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
     - `render-rna-svg SEQ_ID OUTPUT.svg`
     - `rna-info SEQ_ID`
@@ -1804,36 +2622,62 @@ Shared shell command:
     - `render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
     - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
     - `arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]`
-    - `racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]`
+    - `racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_6|plate_96|plate_384]`
     - `racks place-arrangement ARR_ID --rack RACK_ID`
     - `racks move RACK_ID --from A1 --to B1 [--block]`
     - `racks move-blocks RACK_ID --arrangement ARR_ID [--arrangement ARR_ID ...] --to B1`
     - `racks show RACK_ID`
     - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
-    - `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
-    - `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
-    - `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
-    - `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
+    - `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
+    - `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
+    - `racks hero-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
+    - `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
+    - `racks set-profile RACK_ID small_tube_4x6|plate_6|plate_96|plate_384`
     - `racks set-custom-profile RACK_ID ROWS COLUMNS`
     - `ladders list [--molecule dna|rna] [--filter TEXT]`
     - `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
     - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
     - `export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]`
+    - `export-lab-instructions OUTPUT.{md|odt|docx} [--format markdown|odt|docx] [--run-id RUN_ID] [--title TEXT] [--audience TEXT]`
     - `import-pool INPUT.pool.gentle.json [PREFIX]`
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
     - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
+    - `resources import-gene-list-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--organism NAME|--taxon-id N|--namespace NAMESPACE]`
+    - `resources import-ontology-assignment-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--ontology-namespace GO] [--organism NAME|--taxon-id N|--symbol-namespace NAMESPACE]`
+    - `resources import-co-regulated-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--dataset DATASET_ID] [--contrast LABEL] [--score METHOD] [--organism NAME|--taxon-id N|--namespace NAMESPACE]`
+    - `resources install-ucsc-rmsk [--assembly DB] [--input PATH_OR_URL] [--resource-output PATH] [--index-output PATH]`
     - `resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT.interval-index.json]`
     - `resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]`
     - `resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]`
     - `resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources resolve-tf-query QUERY [QUERY ...] [--output OUTPUT.json]`
+    - `gene-groups list [--catalog PATH] [--filter TEXT] [--output OUTPUT.json]`
+    - `gene-groups show GROUP_ID [--catalog PATH] [--output OUTPUT.json]`
+    - `gene-groups resolve TOKEN [--catalog PATH] [--output OUTPUT.json]`
+    - `gene-groups doctor [--catalog PATH] [--output OUTPUT.json]`
+    - `gene-groups draft --description TEXT [--member SYMBOL] [--candidate SYMBOL=EVIDENCE] [--go GO:NNNNNNN] [--output GROUP.json]`
+    - `gene-sets resolve [GROUP_ID|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--genome GENOME_ID] [--output OUTPUT.json]`
+    - `gene-sets produce direct-list --cache CACHE.json_or_tsv [--query LIST_ID] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--output OUTPUT.json]`
+    - `gene-sets produce ontology-assignment --cache CACHE.json_or_tsv --term GO:NNNNNNN [--ontology-namespace GO] [--evidence-code CODE] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--output OUTPUT.json]`
+    - `gene-sets produce co-regulated --cache CACHE.json_or_tsv --dataset DATASET_ID --contrast LABEL --score METHOD --threshold RULE --direction both|positive|negative [--relationship co-regulated|anti-co-regulated|manual] [--genome GENOME_ID] [--output OUTPUT.json]`
+    - `gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN] [--relationship manual|co-regulated|anti-co-regulated] [--output OUTPUT.json]`
     - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
     - `resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]`
     - `agents list [--catalog PATH]`
     - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
-    - `genomes list [--catalog PATH]`
+    - `facts graph [--evidence SCAN.json ...]`
+    - `facts eval FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json ...]`
+    - `ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`
+    - `ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`
+    - `ui open sequence-window SEQ_ID`
+    - `ui focus sequence-window SEQ_ID`
+    - `ui close TARGET`
+    - `ui close sequence-window SEQ_ID`
+    - `ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`
+    - `ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes list [--catalog PATH] [--filter TEXT]`
     - `genomes ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
     - `genomes install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]`
     - `genomes validate-catalog [--catalog PATH]`
@@ -1845,9 +2689,11 @@ Shared shell command:
     - `genomes blast-status JOB_ID [--with-report]`
     - `genomes blast-cancel JOB_ID`
     - `genomes blast-list`
-    - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
-    - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
-    - `helpers list [--catalog PATH]`
+    - `genomes blast-track GENOME_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes extract-promoter GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers list [--catalog PATH] [--filter TEXT]`
     - `helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
     - `helpers install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]`
     - `helpers validate-catalog [--catalog PATH]`
@@ -1860,8 +2706,10 @@ Shared shell command:
     - `helpers blast-status JOB_ID [--with-report]`
     - `helpers blast-cancel JOB_ID`
     - `helpers blast-list`
-    - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
-    - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers blast-track HELPER_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
     - `proteases list [--filter TEXT] [--output PATH]`
     - `proteases show QUERY [--output PATH]`
     - `proteases digest SEQ_ID PROTEASE[,PROTEASE...] [--output-prefix PREFIX] [--min-length-aa N] [--predict-only]`
@@ -1869,6 +2717,21 @@ Shared shell command:
     - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
+    - `tracks tracked list`
+    - `tracks tracked add PATH [--source auto|bed|bigwig|vcf] [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
+    - `tracks tracked remove INDEX`
+    - `tracks tracked clear`
+    - `tracks tracked apply [--index N] [--only-new-anchors]`
+    - `arrays inspect-microarray-track MANIFEST`
+    - `arrays project-microarray-track SEQ_ID MANIFEST [--contrasts CSV] [--level probeset] [--min-abs-logfc N] [--max-adj-p N] [--max-features N] [--clear-existing]`
+    - `arrays inspect-probe-region-output OUTPUT_DIR`
+    - `arrays import-apt-probe-region-output SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--metadata PATH] [--condition-column NAME] [--sample-column NAME] [--probe-intensity PATH] [--probe-id-column NAME] [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]`
+    - `arrays run-probe-region-backend PLAN.json [--backend NAME] --allow-external-execution`
+    - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg`
+    - `arrays render-probe-region-evidence-svg REPORT.json OUTPUT.svg`
+    - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR [--contrasts CSV] [--level probe_region|pm_probe] [--min-abs-logfc N] [--max-features N] [--clear-existing]`
+    - `arrays interpret-probe-region-evidence SEQ_ID [--gene LABEL] [--level all|probe_region|pm_probe] [--min-abs-logfc N] [--path FILE]`
+    - `arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]`
     - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
     - `macros instance-list`
     - `macros instance-show MACRO_INSTANCE_ID`
@@ -1911,6 +2774,7 @@ Shared shell command:
     - `guides oligos-show OLIGO_SET_ID`
     - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]`
     - `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
+    - `features formula SEQ_ID EXPR`
     - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
@@ -1920,6 +2784,10 @@ Shared shell command:
     - `features repeat-cohort GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--geometry repeat_midpoint|transcript_5utr_start|pol2_promoter_upstream|cds_stop_context] [--upstream-bp N] [--downstream-bp N] [--limit N] [--catalog PATH] [--cache DIR] [--path FILE.json]`
     - `features window-cohort-tfbs COHORT_JSON --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache DIR] [--path FILE.json]`
     - `features promoter-evidence-matrix SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--no-feature-overlaps] [--path FILE.json]`
+    - `features promoter-isoform-comparison SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--no-feature-overlaps] [--path FILE.json]`
+    - `features promoter-expression-evidence SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--expression-json JSON] [--source-label LABEL] [--path FILE.json]`
+    - `features promoter-artifact-manifest SEQ_ID --artifact-json JSON --path FILE.json [--gene-label LABEL]`
+    - `genomes promoter-cohort-comparison GENOME_ID --cohort-label LABEL --cohort-kind manual|co_regulated|anti_co_regulated --gene QUERY [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--source-seq-id SEQ_ID ...] [--upstream-bp N] [--downstream-bp N] [--score-kind KIND] [--allow-negative] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset ID ...] [--cutrun-read-report ID ...] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]`
     - `features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]`
     - `features tfbs-score-tracks-svg --sequence-text DNA --output OUTPUT.svg [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]`
     - `features tfbs-track-similarity SEQ_ID --anchor-motif TOKEN [--candidate-motif TOKEN ...|--candidate-motifs CSV|--candidate-motif ALL] [--range START..END|--start N --end N] [--ranking-metric raw_pearson|smoothed_pearson|raw_spearman|smoothed_spearman] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--species TEXT] [--include-remote-metadata] [--limit N] [--path FILE.json]`
@@ -1966,6 +2834,16 @@ Shared shell command:
     - `variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]`
     - `variant promoter-context SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--tfbs-focus-half-window-bp N] [--path FILE.json]`
     - `variant reporter-fragments SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--retain-downstream-from-tss-bp N] [--retain-upstream-beyond-variant-bp N] [--max-candidates N] [--path FILE.json]`
+    - `reporters list [--catalog PATH] [--filter TEXT] [--limit N] [--output FILE.json]`
+    - `reporters recommend [--catalog PATH] [--assay NAME] [--chassis HOST] [--live true|false] [--color COLOR] [--class CLASS] [--excitation-nm NM] [--emission-nm NM] [--fusion MODE] [--max-length-bp N] [--forbid-motif IUPAC] [--substrate-allowed true|false] [--limit N] [--output FILE.json]`
+      - recommendation JSON includes `biological_intent` so agent-facing
+        synthetic-biology flows can route promoter, luciferase, fusion, live,
+        and endpoint reporter requests without guessing from prose
+    - `reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--catalog PATH] [--format json|jsonl]`
+    - `reporters plan-handoff CANDIDATE_SET.json [--candidate-id ID] [--catalog PATH] [--backbone-seq-id ID] [--backbone-path PATH] [--reference-fragment-seq-id ID] [--alternate-fragment-seq-id ID] [--output-prefix PREFIX] [--output FILE.json]`
+      - handoff JSON includes `biological_intent =
+        allele_paired_promoter_luciferase_reporter_handoff` for the V1
+        promoter-luciferase bridge
     - `variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
@@ -1993,6 +2871,30 @@ Shared shell command:
       - persisted qPCR report output now includes `best_assay_summary` plus
         machine-readable `best_assay_probe_placement`
     - `primers export-qpcr-report REPORT_ID OUTPUT.json`
+    - `primers oligo-order create REQUEST_JSON_OR_@FILE`
+      - creates and persists a first-class `gentle.oligo_order_form.v1` from
+        supplied line items; duplicate line items are kept and reported
+    - `primers oligo-order from-primer-report REPORT_ID --pair-rank N[,N...] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]`
+      - expands each selected primer pair into forward/reverse order lines with
+        report-rank provenance
+    - `primers oligo-order from-qpcr-report REPORT_ID --assay-rank N[,N...] [--include-probe true|false] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]`
+      - expands each selected qPCR assay into forward/reverse/probe order lines
+        by default
+    - `primers oligo-order list`
+    - `primers oligo-order show FORM_ID`
+    - `primers oligo-order export FORM_ID OUTPUT.json`
+    - `primers oligo-order route FORM_ID`
+      - classifies the stored form through the existing
+        `services delivery-route` logic using `source_target.kind =
+        oligo_order_form`
+    - `primers oligo-order quote FORM_ID [--provider metabion|geneart] [--service-kind KIND] [--output-dir DIR]`
+      - prepares the existing external-service quote handoff bundle from a
+        duplicate-reviewed order form; omitted provider/service kind values use
+        the route recommendation, and `--output-dir` writes the normalized
+        JSON/CSV/Markdown bundle files
+    - `primers oligo-order review-dedup FORM_ID [--reviewer NAME] [--duplicate-action keep-separate] [--note TEXT]`
+      - records review of exact procurement duplicates without merging or
+        removing lines
     - `dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
     - `dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
     - `dotplot list [SEQ_ID]`
@@ -2004,17 +2906,23 @@ Shared shell command:
     - `flex list [SEQ_ID]`
     - `flex show TRACK_ID`
     - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
-    - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
+    - `align compute QUERY_SEQ_ID TARGET_SEQ_ID or --query-sequence-text DNA --target-sequence-text DNA [--query-id-hint TEXT] [--target-id-hint TEXT] [--query-range START..END|--query-start N --query-end N] [--target-range START..END|--target-start N --target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
+    - `reads acquire status MANIFEST.tsv --cache-dir DIR --work-dir DIR`
+    - `reads acquire prepare MANIFEST.tsv --cache-dir DIR --work-dir DIR [--analysis-format fasta|fastq] [--read-layout single_end|paired_end|split_spot] [--threads N] [--max-size SIZE] [--min-free-gb N] [--drop-intermediate-fastq] [--continue-on-error]`
+    - `reads acquire inspect RUN_ACCESSION --cache-dir DIR --work-dir DIR`
+    - `reads acquire cancel RUN_ACCESSION --cache-dir DIR --work-dir DIR`
     - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
-    - `rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--transcript-fasta PATH]... [--transcript-index PATH]...`
+    - `rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--prepare-sra] [--read-cache-dir DIR] [--read-work-dir DIR] [--drop-intermediate-fastq] [--transcript-fasta PATH]... [--transcript-index PATH]...`
     - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+    - `rna-reads preflight-isoforms SEQ_ID FEATURE_ID [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--positive-transcript-fasta PATH ...] [--must-pass-transcript-fasta PATH ...] [--control-transcript-fasta PATH ...] [--optimize-parameters] [--max-control-match-probability F] [seed filter options]`
     - `rna-reads list-reports [SEQ_ID]`
     - `rna-reads show-report REPORT_ID`
     - `rna-reads show-alignment REPORT_ID RECORD_INDEX`
+    - `rna-reads show-alignments REPORT_ID [--gene GENE_ID ... --cohort all|accepted|fragment|complete|rejected --complete-rule near|strict|exact | --record-indices i,j,k] [--limit N] [--output PATH]`
     - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
     - `rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]`
     - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
-    - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]...`
+    - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]...`
     - `rna-reads build-transcript-index OUTPUT.json [--kmer-len N] --transcript-fasta PATH [--transcript-fasta PATH ...]`
     - `rna-reads materialize-hits REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
@@ -2025,7 +2933,13 @@ Shared shell command:
     - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]`
     - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT]`
+    - `rna-reads export-isoform-triage-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT] [--min-identity F] [--min-query-coverage F] [--min-confirmed-transition-fraction F] [--max-secondary-mappings N]`
     - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
+    - `rna-reads show-alignments` returns
+      `gentle.rna_read_alignment_display_batch.v1` with final
+      `selected_record_indices`, per-read `entries[]` containing the same
+      display records as `show-alignment`, and `skipped_records[]` for reads
+      without `best_mapping`.
     - `rna-reads align-report` re-ranks retained hits by alignment-aware
       retention rank after mapping refresh.
     - `rna-reads inspect-alignments` returns ranked aligned rows suitable for
@@ -2086,6 +3000,16 @@ Shared shell command:
           `rna-reads inspect-concatemers REPORT_ID --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna.all.fa.gz`
         - coding + noncoding transcripts in one run:
           `rna-reads inspect-concatemers REPORT_ID --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna.all.fa.gz --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.ncrna.fa.gz`
+        - TP73 DeltaN ENA alpha/beta/gamma supplement for focused isoform
+          review:
+          `rna-reads inspect-concatemers REPORT_ID --selection aligned --record-indices i,j,k --transcript-fasta data/resources/tp73_dn_ena_transcripts.fasta`
+          The companion curation/evaluation resource is
+          `assets/panels/tp73_dn_isoforms_v1.json`.
+        - TP73 D_{Ex2,3}Np73 alpha/beta RefSeq-derived supplement for
+          focused exon-skip review:
+          `rna-reads inspect-concatemers REPORT_ID --selection aligned --record-indices i,j,k --transcript-fasta data/resources/tp73_delta_ex2_3_refseq_derived_transcripts.fasta`
+          The companion curation/evaluation resource is
+          `assets/panels/tp73_delta_ex2_3_isoforms_v1.json`.
       - practical TP73-style two-pass cohort review:
           1. run a cheap local suspicion pass first:
              `rna-reads inspect-concatemers REPORT_ID --selection aligned --limit 200 --fragment-max-parts 0`
@@ -2163,6 +3087,10 @@ Shared shell command:
     - `rna-reads export-paths-tsv` and `rna-reads export-abundance-tsv` now
       accept the same `--record-indices` exact-subset override plus optional
       `--subset-spec` provenance.
+    - `rna-reads export-isoform-triage-tsv` writes a conservative read-level
+      TSV with bins `known_isoform_confirmed`, `known_isoform_ambiguous`,
+      `gene_supported_no_isoform_call`, and `off_target_or_bad_seed`; recurrent
+      unresolved patterns are left for a later aggregate novelty workflow.
     - `rna-reads export-alignment-dotplot-svg` emits a dotplot-style alignment
       scatter (coverage vs identity) with score-based point coloring.
     - `rna-reads export-hits-fasta` headers include seed metrics and exon-path
@@ -2202,26 +3130,28 @@ Shared shell command:
       - `--roi-seed-capture` remains planned and is surfaced as a deterministic
         warning until implemented
     - `rna-reads list-reports` rows expose sparse-origin request provenance:
-      `origin_mode`, `target_gene_count`, and `roi_seed_capture_enabled`
+      `origin_mode`, `input_orientation_mode`, `input_orientation_label`,
+      `target_gene_count`, and `roi_seed_capture_enabled`
       - shell/CLI JSON output also includes `summary_rows[]` for quick
-        human-readable triage (`mode`, `origin`, target count, ROI-capture
-        flag, and read counters)
+        human-readable triage (`mode`, cDNA/direct-RNA orientation, `origin`,
+        target count, ROI-capture flag, and read counters)
     - `rna-reads show-report` output includes a `summary` field with the same
-      compact provenance framing, plus aligned/full-length percentages and
-      compact read-length histogram summaries for:
+      compact provenance framing and top-level `input_orientation_mode` /
+      `input_orientation_label` JSON markers, plus aligned/full-length
+      percentages and compact read-length histogram summaries for:
       - all reads
       - seed-passed reads
       - aligned reads
       - full-length exact / near / strict subsets
     - tutorial reference (TP53 basis + multi-gene sparse mapping):
-      `docs/tutorial/generated/chapters/12_tp53_multi_gene_sparse_mapping_online.md`
+      `docs/tutorial/generated/chapters/07-02_tp53_multi_gene_sparse_mapping_online.md`
     - batch target-gene cohort tutorial:
-      `docs/tutorial/rna_read_batch_gene_support_cli.md`
+      `docs/tutorial/07-01_rna_read_batch_gene_support_cli.md`
     - `rna-reads export-sample-sheet` includes sparse-origin provenance columns
-      (`report_mode`, `origin_mode`, `target_gene_count`,
-      `target_gene_ids_json`, `roi_seed_capture_enabled`),
-      `mean_read_length_bp`, and `origin_class_counts_json` alongside
-      exon/junction frequency JSON fields
+      (`report_mode`, `input_orientation_mode`, `input_orientation_label`,
+      `origin_mode`, `target_gene_count`, `target_gene_ids_json`,
+      `roi_seed_capture_enabled`), `mean_read_length_bp`, and
+      `origin_class_counts_json` alongside exon/junction frequency JSON fields
     - when `rna-reads export-sample-sheet` is given one or more `--gene`
       arguments, each report row also carries target-gene cohort metrics:
       - accepted-target counts/fractions
@@ -2385,10 +3315,19 @@ Shared shell command:
         non-mutating by default; add `--materialize-products` to turn detected
         products into deterministic linear sequence entries and one
         singleton/pool container
+      - materialization is idempotent: repeating the same assay with the same
+        prefix reuses matching product sequences/container and reports created
+        vs reused ids in the structured result instead of duplicating product
+        vials
       - `--product-gel-svg OUTPUT.svg` implies product materialization and
         renders the product container through the existing pool-gel renderer,
         so non-specific cDNA PCR/qPCR products appear as multiple bands in one
-        lane; repeat `--product-gel-ladder NAME` to add ladder lanes
+        lane; repeat `--product-gel-ladder NAME` to add ladder lanes. The same
+        result includes `gel_band_rows[]` and `gel_summary_lines[]` for
+        terminal/Telegram displays that should not rely on SVG text rendering
+        alone.
+      - report, transcript-map SVG, and product-gel SVG paths create parent
+        directories automatically when needed
       - when no products are detected, the assay still succeeds with
         `not_detected`, writes no product vial/gel, and reports that outcome in
         the materialization summary
@@ -2441,6 +3380,15 @@ Shared shell command:
       - `primers list-restriction-cloning-handoffs`
       - `primers show-restriction-cloning-handoff REPORT_ID`
       - `primers export-restriction-cloning-handoff REPORT_ID OUTPUT.json`
+    - Feature formula helper notes (`features formula`):
+      - non-mutating structured result schema:
+        `gentle.feature_coordinate_formula_resolution.v1`
+      - resolves the same coordinate/range formulas used by GUI selection and
+        primer/qPCR ROI fields, including `KIND.tss` and strand-aware
+        `KIND.upstream(N)`
+      - range expressions return normalized `start_0based` /
+        `end_0based_exclusive` intervals, so reverse-strand upstream/TSS
+        formulas are directly usable by agents
     - Feature query helper notes (`features query`):
       - non-mutating structured result schema:
         `gentle.sequence_feature_query_result.v1`
@@ -2492,11 +3440,23 @@ Shared shell command:
         `SINE/Alu`, and `LTR/ERV`
       - `repeat-overlaps` uses a prepared interval index plus the selected
         sequence's genome anchor provenance to return clipped local repeat
-        spans with strand flipped correctly on reverse anchors
+        spans with strand flipped correctly on reverse anchors; the prepared
+        index resolves common chromosome aliases such as `1` versus `chr1`
+      - repeat-overlap reports also include neutral summary metrics:
+        query length, total repeat-overlap bp, union-covered query bp, coverage
+        fraction, nearest-repeat distance, and class/family/alias summaries
       - `materialize-repeats` writes those overlaps back as regular
         `repeat_region` features with UCSC `rmsk_*` and
-        `repName`/`repClass`/`repFamily` qualifiers; omit `--append` to replace
-        prior generated UCSC-rmsk features for the sequence
+        `repName`/`repClass`/`repFamily` qualifiers plus score/divergence
+        fields; omit `--append` to replace prior generated UCSC-rmsk features
+        for the sequence
+      - `genomes extract-region|extract-gene|extract-promoter` and matching
+        `helpers ...` commands can immediately materialize repeats on the new
+        anchored sequence with `--rmsk-index PATH`; `--max-repeat-features N`
+        caps the generated annotations and `--append-repeat-features` keeps
+        existing generated rmsk features
+      - materialized repeat features can be exported as BED with
+        `features export-bed SEQ_ID out.bed --kind repeat_region --coordinate-mode genomic --include-qualifiers`
       - `repeat-cohort` builds one repeat-locus row per selected annotation and
         stores all available geometry frames while marking missing transcript,
         UTR, or CDS-stop context explicitly
@@ -2547,6 +3507,9 @@ Shared shell command:
         - `gentle_cli shell 'features tfbs-track-similarity tp73_context --anchor-motif TP73 --candidate-motif ALL --range 15564..16764 --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --species "Homo sapiens" --include-remote-metadata --limit 25 --path /tmp/tp73_tfbs_similarity.json'`
       - promoter evidence ledger for later GUI/ClawBio interpretation:
         - `gentle_cli shell 'features promoter-evidence-matrix tp73_context --gene-label TP73 --promoter-upstream-bp 1000 --promoter-downstream-bp 200 --path /tmp/tp73_promoter_evidence.json'`
+      - isoform-aware promoter comparison and expression evidence assignment:
+        - `gentle_cli shell 'features promoter-isoform-comparison tp73_context --gene-label TP73 --promoter-upstream-bp 1000 --promoter-downstream-bp 200 --path /tmp/tp73_isoform_promoters.json'`
+        - `gentle_cli shell 'features promoter-expression-evidence tp73_context --gene-label TP73 --expression-json {"transcript_id":"ENST...","sample_id":"case_1","condition":"case","value":12.4,"unit":"TPM"} --source-label rna_seq_table_1 --path /tmp/tp73_promoter_expression.json'`
       - dynamic promoter workflow example:
         - `gentle_cli shell 'resources resolve-tf-query "Yamanaka factors" OCT4 "KLF family" --output /tmp/tf_queries.json'`
         - `gentle_cli genomes extract-promoter "Human GRCh38 Ensembl 116" TERT --output-id grch38_tert_promoter --upstream-bp 1000 --downstream-bp 200`
@@ -2555,6 +3518,7 @@ Shared shell command:
         - `gentle_cli shell 'features tfbs-track-similarity grch38_tert_promoter --anchor-motif SP1 --candidate-motif "Yamanaka factors" --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --species "Homo sapiens" --include-remote-metadata --limit 25 --path /tmp/tert_sp1_yamanaka_similarity.json'`
       - multi-gene promoter comparison through the same reference shell family:
         - `gentle_cli shell 'genomes promoter-tfbs-summary "Human GRCh38 Ensembl 116" --gene TERT --gene TP73 --motif "Yamanaka factors" --motif SP1 --upstream-bp 1000 --downstream-bp 200 --score-kind llr_background_tail_log10 --path /tmp/tert_tp73_promoter_tfbs.summary.json'`
+        - `gentle_cli shell 'genomes promoter-cohort-comparison "Human GRCh38 Ensembl 116" --cohort-label tert_tp73_review --cohort-kind manual --gene TERT --gene TP73 --motif "Yamanaka factors" --motif SP1 --expression-json {"gene_label":"TP73","sample_id":"case_1","condition":"case","value":12.4,"unit":"TPM"} --expression-source-label reviewed_table --path /tmp/tert_tp73_promoter_cohort.json'`
         - `gentle_cli shell 'genomes promoter-tfbs-svg "Human GRCh38 Ensembl 116" --gene TERT --gene TP73 --motif "Yamanaka factors" --motif SP1 --upstream-bp 1000 --downstream-bp 200 --score-kind llr_background_tail_log10 /tmp/tert_tp73_promoter_tfbs.svg'`
       - `--score-kind` now lets you inspect raw bit scores, in-window
         quantiles, random-background percentiles, or `-log10(background tail)`
@@ -2569,12 +3533,14 @@ Shared shell command:
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
     - `screenshot-window OUTPUT.png` (currently disabled by security policy)
-    - `help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua|mcp]`
+    - `help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp]`
   - Use single quotes around JSON payloads to preserve whitespace:
     - `gentle_cli shell 'workflow {"run_id":"r1","ops":[]}'`
   - Structured help export for automation:
     - `gentle_cli help --format json`
     - `gentle_cli help --format markdown`
+    - JSON output includes a `capability` object for glossary commands that are
+      present in the shared protocol capability registry.
 
 Screenshot bridge:
 
@@ -2592,11 +3558,19 @@ Isoform architecture panel workflow:
 - shared shell route:
   - `panels import-isoform ...`
   - `panels inspect-isoform ...`
-  - `panels render-isoform-svg ...`
+  - `panels render-isoform-svg ... [--expression-tsv PATH]`
   - `panels validate-isoform ...`
+- optional expression overlay:
+  - TSV header: `isoform_id	sample_label	value`
+  - rows with unknown `isoform_id` are ignored with SVG warnings
+  - duplicate cells or non-finite/negative values fail deterministically
 - direct expert route:
   - `inspect-feature-expert SEQ_ID isoform PANEL_ID`
   - `render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg`
+  - same command family for restriction-site details:
+    - `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]`
+    - JSON output includes `tooltip_lines[]` with the same concise
+      caret-marked cut-site summary used by GUI hover tooltips
   - same command family for splicing:
     - `inspect-feature-expert SEQ_ID splicing FEATURE_ID`
     - `render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg`
@@ -2626,14 +3600,42 @@ Isoform architecture panel workflow:
       derivation as the authoritative product model
   - direct Ensembl gene metadata routes:
     - `ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]`
+      - `QUERY` is an HGNC-approved human gene symbol such as `FUS` or `TP53`
+        when `--species homo_sapiens` is used, or a stable Ensembl gene id such
+        as `ENSG00000089280`; `--entry-id` names the stored GENtle metadata
+        entry.
+      - An HGNC ID such as `HGNC:11998` identifies an HGNC nomenclature record,
+        not a GenBank, UniProt, or Ensembl accession. Resolve it to an approved
+        symbol or linked database id before choosing a database-specific fetch.
     - `ensembl-gene list`
     - `ensembl-gene show ENTRY_ID`
     - `ensembl-gene import-sequence ENTRY_ID [--output-id ID]`
     - these are useful for one-off live Ensembl gene retrieval without whole
       reference preparation; prepared `genomes extract-gene|region|promoter`
       remains the preferred route for reproducible locus-context work
+    - `scripts/fetch_ensembl_cdna_fixtures.sh` wraps this route for RNA-read
+      preflight controls: it fetches the Ensembl gene entry, imports the locus,
+      derives all transcript cDNAs with `transcripts derive`, exports them to
+      `ensembl_<species>_<gene-token>_all.fasta`, and records sidecar provenance
+      suitable for `--must-pass-transcript-fasta` /
+      `--control-transcript-fasta`
+    - `scripts/pancreas_gene_rna_screen.sh run` can call the same fixture
+      helper when `--auto-fetch-fixtures` is provided; `--must-pass-gene`,
+      `--positive-gene`, and `--control-gene` then resolve to Ensembl cDNA
+
+      FASTA fixtures automatically before the RNA-read preflight
+    - `scripts/list_ensembl_paralogs.py` queries Ensembl homology records for
+      same-species paralogues and prints one target Ensembl gene id per line by
+      default; `scripts/pancreas_gene_rna_screen.sh run --control-human-paralogs`
+      uses that helper before BLAST/near-neighbor exploration, fetches the
+      resulting cDNA fixtures, and adds available paralog fixtures as explicit
+      preflight controls
   - direct Ensembl region/ROI route:
     - `ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]`
+      - `SPECIES` is an Ensembl species name such as `homo_sapiens`; `CHR`,
+        `START`, and `END` are assembly coordinates for that Ensembl species
+        and coordinate-system version; `--output-id` names the local GENtle
+        sequence created from the fetched interval.
     - compact coordinates are accepted as
       `ensembl-region fetch SPECIES CHR:START..END[:STRAND]`
     - this imports the live REST sequence slice immediately as an anchored DNA
@@ -2657,6 +3659,15 @@ Isoform architecture panel workflow:
     - `uniprot audit-list|show|export ...`
     - `uniprot audit-parity-list|show|export ...`
 
+Introspection models imported isoform panels as sequence-bound project facts:
+
+- `isoform_panel.exists(PANEL_ID)` proves that a panel id is present.
+- `isoform_panel.seq_id(PANEL_ID) == SEQ_ID` proves that the panel was imported
+  for the sequence currently being inspected or rendered.
+- `panels inspect-isoform`, `panels render-isoform-svg`, and
+  `RenderIsoformArchitectureSvg` require both facts; `panels validate-isoform`
+  validates an external file without mutating project state.
+
 Pool exchange commands:
 
 - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
@@ -2678,6 +3689,27 @@ Pool exchange commands:
     - selected operation log records
     - output summaries (created/changed ids, exported artifact paths)
   - Omitting `--run-id` exports all operation-log rows.
+- `export-lab-instructions OUTPUT.{md|odt|docx} [--format markdown|odt|docx] [--run-id RUN_ID] [--title TEXT] [--audience TEXT]`
+  - Calls engine operation `ExportLabAssistantInstructions`.
+  - Writes a bench handoff (`gentle.lab_assistant_instructions.v2`) for
+    non-IT lab assistants from recorded design operations and current
+    sequence/container state. The output format is inferred from the extension
+    unless `--format` is supplied.
+  - `odt` and `docx` reports embed a lineage overview graphic when SVG
+    rasterization succeeds; `md` stays a lightweight text fallback.
+  - Includes material IDs, designed outputs, container/arrangement/rack/gel
+    references where available, design-derived bench steps, checkpoints, safety
+    scope, and record-keeping notes.
+  - Omitting `--run-id` summarizes all operation-log rows; with an empty or
+    unrelated state, GENtle writes a scaffold and warns that no recorded design
+    operations were available.
+  - GENtle does not invent reagent volumes, incubation temperatures, or
+    kit-specific timings; local SOPs and supervisor-approved conditions remain
+    authoritative.
+  - Offline demo:
+    `workflow @docs/examples/workflows/gibson_arrangements_baseline.json`
+    now designs the pGEX/insert Gibson example and writes
+    `artifacts/gibson_lab_assistant_handoff.md` for ClawBio/Telegram previews.
 
 Rendering export commands:
 
@@ -2694,6 +3726,11 @@ Rendering export commands:
     `GENTLE_SVG_FONT_DIR` to readable TTF/OTF assets. Optional
     `GENTLE_SVG_MONOSPACE_FAMILY`, `GENTLE_SVG_SANS_SERIF_FAMILY`, and
     `GENTLE_SVG_SERIF_FAMILY` override generic family selection.
+- `svg-pdf INPUT.svg OUTPUT.pdf [--scale N] [--drop-dotplot-metadata]`
+  - Uses the same deterministic `resvg` path as `svg-png`, then embeds the
+    rendered RGB image into a one-page PDF.
+  - Intended for documentation and bench-facing handoff bundles that need a
+    PDF copy of an existing SVG export without adding new drawing semantics.
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
   - Calls engine operation `RenderSequenceSvg`.
   - Linear exports honor the current stored linear viewport when one is set,
@@ -2885,7 +3922,7 @@ Rendering export commands:
   - `true` restores a clean-vial / declared-only interpretation.
   - `false` marks the listed members as a known/measured subset of a more
     complex sample.
-- `racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]`
+- `racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_6|plate_96|plate_384]`
   - Calls engine operation `CreateRackFromArrangement`.
   - Creates one deterministic physical rack draft from one stored arrangement.
   - If `--profile` is omitted, engine chooses the smallest built-in profile
@@ -2922,22 +3959,30 @@ Rendering export commands:
     - `compact_cards` (current compact two-column cards)
     - `print_a4` (denser print-oriented A4 sheet)
     - `wide_cards` (single-column wider cards)
-- `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+- `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Calls engine operation `ExportRackFabricationSvg`.
   - Writes one top-view fabrication/planning SVG for the full saved rack.
   - Current built-in physical templates:
     - `storage_pcr_tube_rack`
     - `pipetting_pcr_tube_rack`
-- `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+    - `cell_culture_plate`
+- `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Calls engine operation `ExportRackIsometricSvg`.
   - Writes one pseudo-3D/isometric SVG for the full saved rack.
   - Intended for presentation-ready rack review and README/documentation
     figures while still using the same saved rack/template state as the other
     physical exports.
-- `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+- `racks hero-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
+  - Calls engine operation `ExportRackHeroSvg`.
+  - Writes one README-facing top-down rack/plate SVG with a clipped upper-left
+    orientation corner, row/column labels, empty circular slots, and
+    saved-arrangement labels/rings when slots are occupied.
+  - Uses the same saved rack/template state as the technical isometric,
+    fabrication, simulation, and OpenSCAD exports.
+- `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Calls engine operation `ExportRackOpenScad`.
   - Writes one parameterized OpenSCAD source file for the full saved rack.
-- `racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack] [--preset front_strip_and_cards|front_strip_only|module_cards_only]`
+- `racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate] [--preset front_strip_and_cards|front_strip_only|module_cards_only]`
   - Calls engine operation `ExportRackCarrierLabelsSvg`.
   - Writes one carrier-matched front-strip plus module-label SVG sheet for the
     full rack or one selected arrangement block on that rack.
@@ -2945,11 +3990,11 @@ Rendering export commands:
     - `front_strip_and_cards`
     - `front_strip_only`
     - `module_cards_only`
-- `racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+- `racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Calls engine operation `ExportRackSimulationJson`.
   - Writes one machine-readable rack geometry/placement JSON export for
     downstream simulation adapters.
-- `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
+- `racks set-profile RACK_ID small_tube_4x6|plate_6|plate_96|plate_384`
   - Calls engine operation `SetRackProfile`.
   - Reflows occupied positions onto another built-in rack/plate profile while
     preserving arrangement order.
@@ -2999,7 +4044,7 @@ DNA ladder catalog commands:
   - Calls engine operation `ExportDnaLadders` or `ExportRnaLadders`.
   - Writes structured ladder catalog JSON to disk.
 
-Resource sync commands:
+Service and resource commands:
 
 - `services status`
   - Reports one combined service-readiness snapshot for common GENtle-backed
@@ -3007,6 +4052,10 @@ Resource sync commands:
   - Covers canonical reference genomes (currently `Human GRCh38 Ensembl 116`),
     helper backbones (currently `Plasmid pUC19 (online)`), and active external
     resource snapshots in one record.
+  - Also embeds the external-service provider catalog under
+    `external_providers`; provider behavior is loaded from the overlay
+    catalog rooted at `assets/external_service_providers.json` and matching
+    system/user/project override directories.
   - Reference/helper rows now expose canonical lifecycle fields:
     - `resource_key`
     - `display_name`
@@ -3025,6 +4074,87 @@ Resource sync commands:
   - Includes compact `summary_lines` that chat/report layers such as
     ClawBio/OpenClaw can surface directly before deciding whether they should
     fetch, prepare, or render.
+- `services providers list`
+  - Returns `gentle.external_service_provider_catalog.v1`.
+  - V1 catalogs `provider = geneart` plus configured overlay providers such as
+    `provider = metabion`.
+  - GeneArt rows include DNA fragments, cloned genes, plasmid reorder,
+    mutagenesis, and protein-expression capabilities.
+  - Metabion rows initially include DNA single-tube oligos and m-block DNA
+    fragments/libraries as WOP/email+Excel handoff routes.
+  - Direct API/order/portal submission is not enabled by this command.
+- `services providers doctor [--catalog PATH] [--output PATH]`
+  - Returns `gentle.external_service_provider_config_doctor.v1`.
+  - Validates the external-service provider config catalog discovery chain, or
+    one explicit catalog file via `--catalog`.
+  - Reports source scope/path, provider counts, SHA1 checksums, and
+    deterministic schema/required-field errors.
+  - With `--output`, also writes the JSON doctor report to disk.
+- `services delivery-route REQUEST_JSON_OR_@FILE`
+  - Parses `gentle.external_service_delivery_route_request.v1` and returns
+    `gentle.external_service_delivery_route.v1`.
+  - This is the generic "deliver this sequence" classifier before any vendor
+    preflight or quote handoff. It uses source kind, sequence alphabet, line
+    items, length hints, and vector/construct context to recommend a
+    provider/service-kind candidate.
+  - Current deterministic routing rules are intentionally conservative:
+    short DNA oligos/primers/probes route to Metabion
+    `dna_oligo_single_tube`; medium DNA fragments route to Metabion
+    `dna_fragment` m-block handoff; vector-backed/cloned-gene DNA routes to
+    GeneArt `cloned_gene`; long synthetic DNA without vector context routes to
+    GeneArt `dna_fragment`; protein/amino-acid products route to GeneArt
+    `protein_expression`.
+  - RNA, missing sequence context, or unclear molecule type returns
+    `needs_clarification` instead of guessing.
+  - Returned candidate requests are ordinary
+    `gentle.external_service_request.v1` objects suitable for human-reviewed
+    `services project-preflight` or `services project-quote`.
+- `services route-project-source --kind sequence|oligo-form|primer-report-rows ...`
+  - Builds a delivery-route request from a real project object and immediately
+    classifies it with the same logic as `services delivery-route`.
+  - Sequence source:
+    `services route-project-source --kind sequence --seq-id ID [--range START..END] [--as sequence|construct-output]`.
+    Ranges are 0-based, end-exclusive. `--as construct-output` keeps the
+    selected sequence as the source text but marks `source_target.kind =
+    construct_output`, so construct-aware routing can recommend cloned-gene
+    handoff.
+  - Oligo form source:
+    `services route-project-source --kind oligo-form --form-id FORM_ID`.
+    The route request reuses the persisted oligo order form line items,
+    duplicate groups, sequence-reuse groups, and duplicate-review status.
+  - Primer report rows:
+    `services route-project-source --kind primer-report-rows --report-id REPORT_ID --pair-rank N[,N...] [--form-id FORM_ID]`.
+    GENtle first persists those pair ranks as an oligo order form, then routes
+    the form. This preserves duplicate-review semantics; no transient order
+    forms are used in v1.
+  - Classification is allowed before review, but `services project-preflight`
+    and `services project-quote` block requests whose
+    `source_target.duplicate_review.status` is `review_required`.
+- `services project-preflight REQUEST_JSON_OR_@FILE`
+  - Parses `gentle.external_service_request.v1` and returns
+    `gentle.external_service_preflight.v1`.
+  - The check is deterministic and local: it validates provider/service
+    support, required source-target fields, quote-handoff availability, and
+    whether direct submission is currently available from GENtle.
+  - Use `@request.json` for realistic requests, especially when
+    `source_target`, `vector_spec`, `delivery_options`, or `return_spec`
+    contain nested JSON.
+- `services project-quote REQUEST_JSON_OR_@FILE [--output-dir DIR]`
+  - Builds `gentle.external_service_quote.v1` with dashboard/form links and an
+    inline service-ready handoff bundle.
+  - No vendor order, cart submission, API upload, credential lookup, or
+    purchase/shipping action is performed in this slice.
+  - Configured providers add deterministic handoff payloads. For Metabion,
+    quote output includes normalized line-item JSON/CSV, an email-draft
+    markdown payload, and a guided WOP checklist; missing local vendor
+    templates are warnings, not hard failures.
+  - With `--output-dir DIR`, the same inline payloads are written as local
+    bundle files and the returned quote report records them in
+    `service_ready_bundle.local_files[]` alongside `quote_report.json`.
+  - `return_spec.requested_payloads[]` lets ClawBio/MCP callers state whether
+    they want GenBank/FASTA/protein payloads, quote metadata, vendor ids, or a
+    full artifact bundle as later implementations grow.
+
 - `services guide --channel telegram [--section overview|readiness|gene-context|tfbs|inline-dna|cloning|isoforms|follow-up] [--gene SYMBOL]`
   - Builds a Telegram-compatible bench-user guide with schema
     `gentle.telegram_guide.v1`.
@@ -3065,6 +4195,12 @@ Resource sync commands:
   - When `--output` is provided, the same JSON payload is written to disk and
     listed as the best-first `preferred_artifacts[]` entry so ClawBio can bundle
     it as an auditable installation report.
+
+Tutorial companion:
+
+- `docs/tutorial/09-01_metabion_external_service_handoff_gui_cli.md` walks through
+  provider doctor, capability listing, preflight, quote-handoff generation, and
+  GUI parity using bundled synthetic Metabion oligo and m-block request JSON.
 - `resources status`
   - Reports which integrated external resource snapshots are active right now.
   - Covers built-in/runtime status for `REBASE` and `JASPAR`, including item
@@ -3094,6 +4230,19 @@ Resource sync commands:
     default normalized snapshot path `data/resources/ucsc.rmsk.hg38.json`,
     whether that snapshot exists and validates, and the embedded index
     recommendations used by `resources suggest-ucsc-rmsk-index`.
+  - Publication-associated datasets are tracked through
+    `assets/publication_resources.json` and default prepared manifests under
+    `data/publication_resources`:
+    - Rostock p73 Clariom D transcriptome data: `E-MTAB-14704`
+    - Rostock p73 CUT&RUN sequencing data: `E-MTAB-15709` / `PRJEB100610`
+      with ENA paired FASTQ URLs declared as `raw_cutrun_fastq`
+    - Rostock p73 Co-IP/MS proteomics data: `PXD058816`
+    - `resources prepare-publication-dataset` writes `manifest.json`,
+      `download_manifest.tsv`, and `download.sh`; declared sizes and optional
+      archive MD5 checksums are preserved, and large file download happens only
+      with `--download-files`.
+    - The built-in Rostock p73 entries already ship with those no-byte-download
+      manifests and scripts prepared.
   - RNA secondary-structure executable resources are reported as first-class
     readiness entries:
     - `vienna_rna`: resolves `GENTLE_RNAFOLD_BIN` or `RNAfold` and probes
@@ -3143,6 +4292,126 @@ Resource sync commands:
   - Default output: `data/resources/jaspar.motifs.json`.
   - `ExtractAnchoredRegion` can resolve TF motifs by ID/name from this local registry.
   - GENtle ships with built-in motifs in `assets/jaspar.motifs.json` (currently generated from JASPAR 2026 CORE non-redundant); this command provides local updates/extensions.
+  - When a compact built-in entry lacks PFM rows, GENtle supplements it from
+    the bundled full-PFM table where an unambiguous ID/name match exists. This
+    keeps score tracks and sequence logos probabilistic instead of collapsing
+    ambiguous positions into a fake consensus.
+- `resources list-publication-datasets [--filter TEXT] [--catalog PATH] [--output OUTPUT.json]`
+  - Lists literature-associated external datasets from
+    `assets/publication_resources.json` or an override catalog.
+  - The built-in catalog currently describes the Rostock p73 multimodal paper
+    datasets and records which accessions have concrete downloadable file URLs.
+- `resources status-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH]`
+  - Inspects the local prepared-manifest/cache state for one publication
+    dataset id or accession.
+  - Reports concrete file URLs, local paths, size checks when known, and
+    warnings for accessions whose public archive file list still needs
+    refreshing. The Rostock CUT&RUN entry now reports the ENA FASTQ files but
+    does not download them unless asked.
+- `resources prepare-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH] [--download-files] [--max-files N] [--category NAME|--categories CSV]`
+  - Writes a deterministic `manifest.json`, `download_manifest.tsv`, and
+    executable `download.sh` under `data/publication_resources/DATASET_ID`.
+    `download_manifest.tsv` includes declared file sizes plus optional
+    `checksum_md5` values when the source archive reports them.
+  - Without `--download-files`, no raw bytes are fetched; this is the safe
+    default for multi-GB PRIDE and sequencing datasets.
+  - With `--download-files`, GENtle downloads the declared file URLs directly
+    into the prepared dataset directory. `--max-files N` limits both manifests
+    and downloads for smoke checks.
+  - `--category`/`--categories` restrict the planned files before download;
+    for the Rostock Clariom D data, `raw_microarray` selects just the CEL
+    payloads and `metadata` selects the MAGE-TAB files. For the Rostock
+    CUT&RUN data, `raw_cutrun_fastq` selects the public paired ENA FASTQs.
+- `Rscript scripts/analyze_p73_clariomd_probe_level.R [DATASET_DIR] [OUTPUT_DIR]`
+  - External-analysis helper for the Rostock `E-MTAB-14704` Clariom D CEL
+    resource.
+  - Requires R/Bioconductor packages `oligo`, `limma`, and
+    `pd.clariom.d.human`.
+  - Reads the prepared SDRF/CEL files, exports sample metadata,
+    transcript-cluster RMA matrices, probeset-level RMA matrices when
+    supported by the platform design package, limma contrasts, and first-pass
+    probeset heterogeneity tables for splice-variant triage.
+- `Rscript scripts/probe_regions_oligo.R --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --platform-package pd.clariom.d.human --coordinate-system hg38 --genome-build GRCh38 --output analysis/probe_regions`
+  - Generic external R/oligo backend helper for the `arrays probe-regions`
+    preflight contract.
+  - Currently supports `--normalization rma`; other normalization modes remain
+    plan-only until a matching backend is added.
+  - Requires explicit CEL paths and at least one selector unless
+    `--allow-all-features` is used intentionally.
+  - Requires R/Bioconductor packages `oligo`, `limma`, `Biobase`, `DBI`,
+    `RSQLite`, and the platform design package such as `pd.clariom.d.human`.
+  - Writes `region_intensity_chrom_order.csv`, expression/feature TSVs,
+    limma contrast TSVs when metadata defines conditions, a normalized matrix
+    manifest, provenance JSON, and `sessionInfo.txt`. Supplying
+    `--coordinate-system` and `--genome-build` records the coordinate basis
+    needed before any later genome-anchored projection can be accepted.
+- `arrays inspect-probe-region-output analysis/probe_regions`
+  - Read-only GENtle inspection of a completed `probe_regions_oligo.R` output
+    directory.
+  - Emits `gentle.probe_region_output_inspection.v1` JSON summarizing the
+    region table, optional `sample_table.tsv`, normalized matrix manifest,
+    provenance JSON, sample/condition/logFC columns, chromosomes, gene symbols,
+    bounded preview rows, row counts, feature counts, coordinate/build
+    declarations, declared coordinate projection maps, projection-readiness
+    blockers, and required-column problems.
+- `arrays import-apt-probe-region-output apt.summary.tsv annotation.csv analysis/probe_regions --metadata samples.csv --condition-column condition --sample-column file --probe-intensity probe_intensity.tsv --probe-id-column probe_id --platform Clariom_D_Human --normalization rma-sketch --coordinate-system hg38 --genome-build GRCh38`
+  - Converts explicit APT summary output plus an explicit annotation/NetAffx
+    coordinate table into GENtle's helper-output directory contract. The
+    annotation table must provide probeset/region id, chromosome, start, and
+    stop columns, with optional strand, transcript-cluster, probe-count, and
+    gene-symbol columns. When optional metadata is supplied, matching sample
+    rows add `mean_log2_*`, `sd_log2_*`, and default `log2FC_*` columns to the
+    imported region table. If annotation rows also include `probe_id` and
+    PM probe `probe_start`/`probe_stop` coordinates, GENtle writes
+    `probe_intensity_chrom_order.csv`. With `--probe-intensity`, that table
+    uses rows from the supplied probe-level matrix and marks them
+    `probe_level_input`; without it, GENtle preserves the compatibility
+    fallback by using parent-probeset summary intensities marked as
+    `parent_probeset_summary`. GENtle writes
+    `region_intensity_chrom_order.csv`,
+    `normalized_feature_matrix_manifest.json`, and `provenance.json`; it does
+    not run APT.
+- `arrays render-probe-region-output-svg analysis/probe_regions analysis/probe_regions/probe_region_plot.svg`
+  - Read-only deterministic SVG export for inspected helper output. The SVG
+    plots `mean_log2_*` condition tracks in the upper panel and `log2FC_*`
+    tracks in the lower panel, using the existing chromosome-ordered helper
+    table and reporting projection blockers without running R/APT.
+- `arrays run-probe-region-backend analysis/probe_regions/plan.json --allow-external-execution`
+  - Explicit local execution of a persisted `gentle.probe_region_plan.v1`.
+    GENtle refuses to run without `--allow-external-execution`, refuses plans
+    whose preflight/backend readiness failed, captures stdout/stderr/exit
+    status, validates the resulting four-file helper-output contract, and
+    writes hardened `gentle.probe_region_backend_provenance.v1` provenance. It
+    does not download or install CEL files, vendor resources, R packages, or
+    APT.
+- `arrays render-probe-region-evidence-svg analysis/probe_regions/tp73_interpretation.json analysis/probe_regions/tp73_probe_geometry.svg`
+  - Read-only deterministic SVG export for
+    `gentle.probe_region_evidence_interpretation.v2`. The SVG draws
+    transcript lanes, only the exon ranges and junction spans present in the
+    report, parent probeset spans, and PM probe intervals. It is a review-only
+    transcript/exon-geometry constraint visualization; it does not infer
+    isoform support, probe sequence specificity, multi-hit status, or full gene
+    models.
+- `arrays project-probe-region-output grch38_tp73 analysis/probe_regions --contrasts TAp73-AdGFP --level pm_probe --min-abs-logfc 0.5`
+  - Projects direct-coordinate-compatible or explicitly mapped `log2FC_*`
+    helper-output rows into genome-anchored array features on the target
+    sequence. Default `--level probe_region` projects
+    `region_intensity_chrom_order.csv`; `--level pm_probe` projects only true
+    PM probe rows from `probe_intensity_chrom_order.csv` marked as
+    `probe_level_input`. The route refuses projection unless the helper output
+    declares `coordinate_system`/`genome_build` compatible with the target
+    sequence anchor, or a `coordinate_projections[]`/`projection_maps[]`
+    interval map whose source and target builds match the helper output and
+    anchor.
+- `arrays interpret-probe-region-evidence grch38_tp73 --gene TP73 --level pm_probe --min-abs-logfc 0.5 --path analysis/probe_regions/tp73_interpretation.json`
+  - Compares projected probe/probeset-region array features with the
+    sequence's transcript/exon annotations and writes
+    `gentle.probe_region_evidence_interpretation.v2`. The report preserves
+    shared-transcript overlaps, parent probeset context, structured
+    exon/junction/transcript mappings, conservative geometry scores,
+    score-basis guardrails, transcript-level review labels, probe sequence
+    multi-hit-not-assessed status, and coordinate-projection ambiguity rather
+    than converting array intervals directly into isoform support calls.
 - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
   - Normalizes the UCSC RepeatMasker `rmsk` table into
     `gentle.ucsc_rmsk_resource.v1`.
@@ -3155,6 +4424,39 @@ Resource sync commands:
     `repClass`, `repFamily`, etc.).
   - `--limit N` is intended for fixtures/smoke checks; a limited output is
     marked `truncated=true` and should not be used as a full assembly resource.
+- `resources import-gene-list-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--cache-id ID] [--cache-version VERSION] [--list-id ID] [--list-label LABEL]`
+  - Normalizes local TSV/CSV rows with `symbol` or `gene_id` columns into
+    `gentle.gene_set_direct_list_cache.v1`.
+  - Optional `list_id`/`list_label` columns group rows into named lists; CLI
+    `--list-id` and `--list-label` provide defaults when the input omits them.
+  - The route is local and offline-only. It does not resolve genes by itself;
+    feed the emitted cache to `gene-sets produce direct-list` for a resolved
+    `gentle.gene_set_resolution.v1` artifact.
+- `resources import-ontology-assignment-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--ontology-namespace GO] [--organism NAME|--taxon-id N|--symbol-namespace NAMESPACE] [--cache-id ID] [--cache-version VERSION]`
+  - Normalizes local TSV/CSV ontology assignment rows into
+    `gentle.gene_set_ontology_assignment_cache.v1`.
+  - Input rows should include a term column such as `term`, `term_id`, or
+    `go_id` plus `symbol` or `gene_id`; optional evidence columns such as
+    `evidence_code` and `assigned_by` are preserved for later filters.
+  - The route is local and offline-only. It does not download GO annotations;
+    feed the emitted cache to `gene-sets produce ontology-assignment`.
+- `resources import-co-regulated-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--dataset DATASET_ID] [--contrast LABEL] [--condition LABEL] [--normalization METHOD] [--score METHOD] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--cache-id ID] [--cache-version VERSION]`
+  - Normalizes local scored gene rows into
+    `gentle.gene_set_co_regulated_cache.v1`.
+  - Input rows should include `symbol` or `gene_id` plus the score column named
+    by `--score` or a generic `score`/`value`/`logfc`/`statistic` column.
+  - The route records dataset/contrast/condition metadata for later
+    thresholding but does not claim the genes are regulated. Feed the emitted
+    cache to `gene-sets produce co-regulated`.
+- `resources install-ucsc-rmsk [--assembly DB] [--input PATH_OR_URL] [--resource-output PATH] [--index-output PATH]`
+  - One-step installer that normalizes the UCSC `rmsk` table and builds the
+    matching interval index sidecar.
+  - With no `--input`, GENtle downloads the UCSC default
+    `goldenPath/<assembly>/database/rmsk.txt.gz` source.
+  - Default hg38 outputs are `data/resources/ucsc.rmsk.hg38.json` and
+    `data/resources/ucsc.rmsk.hg38.interval-index.json`.
+  - Limited installs are rejected for runtime use so fixture snapshots cannot be
+    mistaken for full assembly resources.
 - `resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT.interval-index.json]`
   - Builds `gentle.ucsc_rmsk_interval_index.v1` from a complete normalized
     resource snapshot.
@@ -3162,7 +4464,8 @@ Resource sync commands:
     `data/resources/ucsc.rmsk.hg38.interval-index.json`.
   - The sidecar groups records by chromosome, stores intervals sorted by
     `(start,end,row_offset)`, and carries class/family and repeat-name lookup
-    dictionaries for deterministic overlap and display filtering.
+    dictionaries plus chromosome-alias mappings for deterministic overlap and
+    display filtering.
   - Truncated snapshots are rejected so smoke-test resources cannot be used as
     full assembly indexes by accident.
 - `resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]`
@@ -3183,7 +4486,7 @@ Resource sync commands:
   - `TOKEN` accepts:
     - exact motif ids or TF names,
     - common aliases such as `OCT4`,
-    - built-in functional groups such as `Yamanaka factors` / `stemness`,
+    - catalog-backed functional groups such as `Yamanaka factors` / `stemness`,
     - and family-like queries such as `KLF family`.
   - Default background length: `10000 bp`.
   - Default seed: one built-in deterministic seed so agent/CLI runs remain reproducible.
@@ -3193,10 +4496,151 @@ Resource sync commands:
   - This is the lightweight inspection route for:
     - exact ids/names,
     - aliases such as `OCT4`,
-    - functional groups such as `Yamanaka factors` / `stemness`,
+    - catalog-backed functional groups such as `Yamanaka factors` / `stemness`,
     - and family-like queries such as `KLF family`.
   - Output includes per-query resolution rows plus the expanded motif ids so
     ClawBio/CLI users can audit what a natural-language TF query mapped to.
+- `gene-groups list [--catalog PATH] [--filter TEXT] [--output OUTPUT.json]`
+  - Lists deterministic local gene-group catalog entries.
+  - Default discovery uses built-in, system, user, and project overlays.
+  - The built-in catalog declares Gene Ontology as an external resource
+    namespace (`GO`) and seeds groups such as `yamanaka_factors`.
+  - The built-in catalog also seeds `regulation_of_alternative_splicing`,
+    anchored to `GO:0000381` while remaining local reviewable GENtle knowledge.
+  - `resources status` reports `gene_ontology` as a declared external mapping
+    namespace; GO download/indexing is not implemented in this slice.
+- `gene-groups show GROUP_ID [--catalog PATH] [--output OUTPUT.json]`
+  - Shows one group with aliases, members, curation status, external mappings,
+    and source provenance.
+  - Release/runbook helpers such as
+    `scripts/pancreas_gene_rna_screen.sh group-plan GROUP` consume this same
+    shared output to write reviewable per-member RNA-screen command plans
+    without hard-coding TP73, Gene Ontology, or any other single resource as the
+    authoritative group definition.
+- `gene-groups resolve TOKEN [--catalog PATH] [--output OUTPUT.json]`
+  - Resolves a user token against group ids, labels, and aliases.
+- `gene-groups doctor [--catalog PATH] [--output OUTPUT.json]`
+  - Validates catalog overlays and reports duplicate ids, alias collisions,
+    malformed memberships, malformed GO ids, mapping/resource issues, and
+    source digests.
+- `gene-groups draft --description TEXT [--id ID] [--label LABEL] [--short-description TEXT] [--organism NAME] [--taxon-id N] [--namespace NAMESPACE] [--alias TEXT] [--tag TEXT] [--usage TEXT] [--member SYMBOL] [--members A,B,C] [--candidate SYMBOL=EVIDENCE] [--unresolved-candidate TEXT] [--go GO:NNNNNNN] [--agent-provider NAME] [--agent-model NAME] [--agent-generated-at UTC] [--provenance TEXT] [--output GROUP.json]`
+  - Creates a review-gated catalog fragment from an explicit long description
+    and optional candidate members/mappings.
+  - `--member` marks user-supplied candidates; `--candidate SYMBOL=EVIDENCE`
+    marks agent/literature-suggested candidates and preserves the evidence
+    note in the member row.
+  - Output is `gentle.gene_group_draft.v1` with `review_required=true`, the
+    description hash, agent provenance when supplied, member counts,
+    candidate-member rows, unresolved candidates, the proposed group record,
+    warnings, and the output path when a fragment was written.
+  - The command never promotes the group into a trusted catalog by itself; add
+    the generated fragment to a user/project catalog only after review.
+- `gene-sets resolve [GROUP_ID|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--genome GENOME_ID] [--catalog PATH] [--genome-catalog PATH] [--allow-draft] [--allow-deprecated] [--output OUTPUT.json]`
+  - Resolves an analysis-ready gene-set operand from catalog groups, explicit
+    members, local external mappings, same-chromosome neighbors, or
+    deterministic random sampling.
+  - `gene-groups resolve` identifies a catalog entry; `gene-sets resolve`
+    expands genes, applies curation/member gating, deduplicates resolved
+    identities, and records provenance/warnings.
+- `gene-sets produce direct-list --cache CACHE.json_or_tsv [--query LIST_ID] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]`
+  - Reads a local direct gene-list cache and emits a
+    `gentle.gene_set_resolution.v1` report with
+    `producer.producer_kind="direct_gene_list"`.
+  - JSON caches can use schema `gentle.gene_set_direct_list_cache.v1` with
+    top-level `members[]` or `lists[]` entries selected by `--query`.
+    TSV/CSV caches use `symbol` or `gene_id` columns and may include
+    `list_id`/`list_label` for query selection.
+  - Candidate members are resolved through the existing `explicit_members`
+    resolver, so genome-coordinate resolution, duplicate collapse, and
+    unresolved-member reporting match `gene-sets resolve --members`.
+  - The route is offline-only. It requires provider provenance plus
+    provider/cache version metadata and at least one interpretation context
+    field (`organism`, `taxon_id`, or `symbol_namespace`) from the cache or
+    CLI flags.
+- `gene-sets produce ontology-assignment --cache CACHE.json_or_tsv --term GO:NNNNNNN [--ontology-namespace GO] [--evidence-code CODE] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]`
+  - Reads a local ontology-assignment cache and emits a
+    `gentle.gene_set_resolution.v1` report with
+    `producer.producer_kind="ontology_assignment"`.
+  - JSON caches can use schema
+    `gentle.gene_set_ontology_assignment_cache.v1` with assignment arrays
+    named `assignments`, `terms`, `ontology_terms`, `entries`, or `rows`.
+    TSV/CSV caches use term columns such as `term`, `term_id`, or `go_id` plus
+    `symbol` or `gene_id`.
+  - `--evidence-code CODE` is recorded as a structured
+    `evidence_code=CODE` filter and filters assignment rows before member
+    resolution. Additional `--filter FIELD=VALUE` constraints are also stored
+    and applied to assignment rows.
+  - This route is distinct from `gene-sets resolve --go GO:NNNNNNN`, which
+    resolves local GENtle catalog groups that cite the GO term. Ontology
+    assignment retrieval resolves provider/cache membership rows through
+    `explicit_members`.
+  - The route is offline-only. A term with no matching assignment rows returns
+    an unresolved term row plus a warning rather than silently returning an
+    empty success.
+- `gene-sets produce co-regulated --cache CACHE.json_or_tsv --dataset DATASET_ID --contrast LABEL --score METHOD --threshold RULE --direction both|positive|negative [--relationship co-regulated|anti-co-regulated|manual] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]`
+  - Reads a local expression/regulatory cohort cache and emits a
+    `gentle.gene_set_resolution.v1` report with
+    `producer.producer_kind="co_regulated_cohort"` and
+    `co_regulated_metadata`.
+  - JSON caches can use schema `gentle.gene_set_co_regulated_cache.v1` with
+    row arrays named `rows`, `records`, `members`, or `entries`. TSV/CSV
+    caches use `dataset_id`, `contrast`, `symbol`/`gene_id`, and a numeric
+    score column such as `score`, `value`, `logfc`, or the method named by
+    `--score`.
+  - `--threshold` accepts `score>=N`, `score>N`, `score<=N`, `score<N`,
+    `abs>=N`, or `abs>N`. `--direction` accepts `both`, `positive`, or
+    `negative`.
+  - The default relationship is `co-regulated` for this route, but callers can
+    record `manual` or `anti-co-regulated`. The relationship is preserved as an
+    expectation in metadata; it is not a computed regulatory verdict.
+  - The route is offline-only and does not run expression quantification or
+    regulatory inference. It materializes candidate members from an existing
+    local cache.
+  - Produced gene-set reports are persisted as logical lineage artifacts.
+    `render-lineage-svg` renders them as `GeneSet` nodes linked to their
+    producer operation and downstream promoter/CUT&RUN analysis reports, not as
+    sequence or pool nodes.
+- `gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]`
+  - `--relationship` records a user-declared expectation for downstream
+    evidence inspection; it does not claim the genes are co-regulated or
+    anti-co-regulated.
+  - Builds promoter windows for the resolved set using the shared promoter/TSS
+    resolver and the default 1000 upstream / 200 downstream geometry.
+  - `--relationship` records a declared cohort expectation. CUT&RUN gene-set
+    regulatory-support reports can derive non-blocking occupancy consistency
+    flags from that declaration; promoter cohorts simply carry the declaration
+    forward.
+  - V1 stays offline-first: GO resolves only from local `external_mappings`,
+    and live Ensembl ortholog/paralog retrieval is not implemented.
+  - Draft members are included with explicit warnings; recipes that used
+    `.status // "included"` may miss those warnings.
+- `orthologs resolve-promoter-cohort --anchor-species SPECIES --anchor-genome GENOME_ID --anchor-gene QUERY --target-species SPECIES [--target-species SPECIES ...] [--target-genome SPECIES=GENOME_ID] [--transcript SPECIES=TRANSCRIPT_ID] --orthologs ORTHOLOG_RESOURCE.json [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--ambiguity-policy reject|first] [--catalog GENOMES.json] [--cache-dir PATH] [--path OUTPUT.json]`
+  - Runs engine `ResolveOrthologPromoterCohort`.
+  - Uses a local `gentle.ortholog_resource.v1` mapping table only; no live
+    Ensembl or orthology API call is made.
+  - Resolves the anchor promoter and target ortholog promoters with the shared
+    prepared-genome promoter/TSS resolver. Species aliases in the resource are
+    honored for matching.
+  - Ambiguous target mappings are unresolved by default. `--ambiguity-policy
+    first` chooses the stable first candidate and records a warning.
+  - Optional `--relationship` records an expected cross-species association
+    without deriving evidence flags until a comparison is run.
+  - Returns portable schema `gentle.ortholog_promoter_cohort.v1`.
+- `orthologs promoter-comparison --cohort COHORT.json --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--score-kind KIND] [--allow-negative] [--relationship manual|co-regulated|anti-co-regulated] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset-id ID] [--cutrun-read-report-id ID] [--path OUTPUT.json]`
+  - Runs engine `SummarizeOrthologPromoterComparison`.
+  - Compares a resolved ortholog promoter cohort across separate evidence
+    channels: promoter-sequence identity, TFBS score-track similarity, motif
+    peak presence, optional expression rows, and CUT&RUN/occupancy
+    comparability states.
+  - CUT&RUN source ids can assign species/genome-matched occupancy support
+    (`confirmed`, `nearby`, `motif_only`, `occupancy_only`, or `no_data`).
+    Rows without matching provenance are `not_comparable`; raw cross-species
+    peak intensity is not compared unless future normalized/provenanced
+    evidence is supplied.
+  - Optional `--relationship` emits non-blocking expectation flags:
+    co-regulated flags unexpected TFBS/CUT&RUN divergence, while
+    anti-co-regulated flags unexpected concordance.
+  - Returns portable schema `gentle.ortholog_promoter_comparison.v1`.
 - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
   - Benchmarks the full active local JASPAR registry through one deterministic
     shared background and writes an export-ready drift snapshot.
@@ -3281,7 +4725,7 @@ Agent bridge commands:
 
 Conceptual/tutorial companion:
 
-- `docs/agent_interfaces_tutorial.md` (role map + interface comparison:
+- `docs/tutorial/01-01_agent_interfaces.md` (role map + interface comparison:
   CLI/shared shell vs MCP vs Agent Assistant vs external coding agents).
 
 - `agents list [--catalog PATH]`
@@ -3296,7 +4740,8 @@ Conceptual/tutorial companion:
     chat/planning request.
   - By default this is config-only and does not contact the provider.
   - `--live` adds `live_probe` to `gentle.agent_preflight.v1` for
-    `native_openai` and `native_openai_compat`.
+    `native_openai`, `native_anthropic`, `native_mistral`, and
+    `native_openai_compat`.
   - The live probe only uses model-discovery endpoints (`GET /models`, with
     `/v1/models` fallback for OpenAI-compatible roots). It does not make a
     chat/completion/responses request and does not intentionally generate
@@ -3307,8 +4752,9 @@ Conceptual/tutorial companion:
   - Quota/billing is reported only when the provider returns that error during
     the model-list probe.
 - `agents discover-models SYSTEM_ID [--catalog PATH] [--base-url URL]`
-  - Discovers model ids for one `native_openai` or `native_openai_compat`
-    system using its effective endpoint configuration.
+  - Discovers model ids for one `native_openai`, `native_anthropic`,
+    `native_mistral`, or `native_openai_compat` system using its effective
+    endpoint configuration.
 - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system and returns message/questions/suggested shell commands.
   - `--base-url` sets a per-request runtime endpoint override (maps to
@@ -3334,7 +4780,8 @@ Conceptual/tutorial companion:
   - Suggested commands are executed only when explicitly selected
     (`--execute-all`, `--execute-index`) or when `--allow-auto-exec` is enabled
     and the suggestion intent is `auto`.
-  - Recursive `agents ask` execution from suggested commands is blocked by design.
+  - Recursive `agents ask`, `agents plan`, and `agents execute-plan` execution
+    from suggested commands is blocked by design.
   - Failures use deterministic error prefixes for scripting, e.g.
     `AGENT_ADAPTER_UNAVAILABLE`, `AGENT_ADAPTER_TRANSIENT`,
     `AGENT_RESPONSE_PARSE`, `AGENT_RESPONSE_VALIDATION`.
@@ -3342,10 +4789,18 @@ Conceptual/tutorial companion:
     - `builtin_echo` (offline/demo)
     - `external_json_stdio` (local bridge executable)
     - `native_openai` (built-in OpenAI HTTP adapter, requires `OPENAI_API_KEY`)
+    - `native_anthropic` (built-in Anthropic Claude HTTP adapter, requires
+      `ANTHROPIC_API_KEY`)
+    - `native_mistral` (built-in Mistral HTTP adapter, requires
+      `MISTRAL_API_KEY`)
     - `native_openai_compat` (built-in local OpenAI-compatible adapter for
       Jan/Msty/Ollama-style `/chat/completions` endpoints; key optional)
       - endpoint host/port come from catalog `base_url` (or `--base-url` if set);
         GENtle does not silently switch to a different host/port
+      - `msty_mlx_local_compat_template` targets Msty/MLX Knife servers at
+        `http://localhost:11973/v1`; use it when the Msty gateway on
+        `http://localhost:11964/v1/models` is reachable but returns no model
+        ids
 - `agents plan SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--max-candidates N] [--no-state-summary] [--no-mutating-candidates]`
   - Accepts prose like `agents ask`, but returns typed `gentle.agent_plan_result.v1`
     candidates instead of chat-oriented suggestion rows.
@@ -3390,6 +4845,9 @@ chat-only | ask-before-run | allow-auto-exec
 ```
 
 - For local models without cloning background, preload:
+  - `docs/glossary.json`
+  - `docs/cli.md` (especially Operand metavariable conventions)
+  - `docs/protocol.md`
   - `docs/ai_cloning_primer.md`
   - `docs/ai_task_playbooks.md`
   - `docs/ai_prompt_contract.md`
@@ -3436,6 +4894,9 @@ Genome convenience commands:
     also includes a ready-to-run `prepare_command` hint.
   - When lifecycle is `running` or `ready`, `prepare_command` is suppressed so
     callers do not accidentally trigger redundant parallel prepares.
+  - On Unix, a `running` activity whose `owner_pid` no longer exists is treated
+    as `stale` immediately, even if the heartbeat is younger than the regular
+    stale timeout.
   - Also reports resolved source details: `sequence_source_type`,
     `annotation_source_type`, `sequence_source`, `annotation_source`.
   - Also reports optional mass metadata:
@@ -3449,6 +4910,11 @@ Genome convenience commands:
   - Output now includes `binary_preflight` (`gentle.blast_external_binary_preflight.v1`)
     with `makeblastdb`/`blastn` found/missing/version/path diagnostics captured
     before prepare work starts.
+  - If an active prepare is reused, the human message reports the effective
+    prepared-install/activity-status path when available, not only the raw
+    `--cache-dir` argument. This matters for relative cache directories because
+    they resolve relative to the catalog file or fragment that supplied the
+    entry.
 - `genomes remove-prepared GENOME_ID [--catalog PATH] [--cache-dir PATH]`
   - Deletes only the prepared install directory for one genome from the selected cache.
   - Catalog JSON is left unchanged.
@@ -3475,7 +4941,7 @@ Genome convenience commands:
   - Requests cooperative cancellation for one async BLAST job.
 - `genomes blast-list`
   - Lists known async genome-BLAST jobs in the current process.
-- `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeRegion`.
   - `--annotation-scope` selects projection policy (`none`, `core`, `full`).
   - Default scope is `core` when neither scope nor legacy flags are set.
@@ -3483,23 +4949,40 @@ Genome convenience commands:
     (`0` disables the cap for explicit unrestricted transfer).
   - legacy `--include-genomic-annotation` maps to `--annotation-scope core`.
   - legacy `--no-include-genomic-annotation` maps to `--annotation-scope none`.
+  - `--rmsk-index PATH` materializes overlapping UCSC rmsk repeats on the
+    extracted anchored sequence; `--max-repeat-features N` caps the generated
+    repeat annotations, and `--append-repeat-features` keeps any pre-existing
+    generated rmsk annotations.
   - Result payload includes `genome_annotation_projection` telemetry.
-- `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeGene`.
-- `genomes extract-promoter GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `genomes extract-promoter GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomePromoterSlice`.
   - Derives one unclipped promoter slice directly from transcript TSS geometry.
   - When `--transcript-id` is omitted, GENtle deterministically uses the
     outermost 5' transcript among the matched gene’s transcript records and
     warns when multiple transcript candidates existed.
   - Defaults are `--upstream-bp 1000` and `--downstream-bp 200`.
-- `genomes promoter-tfbs-summary GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]`
+- `genomes promoter-tfbs-summary GENOME_ID [--gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] ...|--gene-json JSON|--gene-set GROUP_OR_GO|--gene-set-resolution RESOLUTION.json] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--gene-group-catalog PATH] [--cache-dir PATH] [--path FILE.json]`
   - Runs engine `SummarizeMultiGenePromoterTfbs`.
   - Resolves repeated `--gene` tokens into promoter-aligned windows over one
     prepared reference, then scores the requested motif set over every gene.
   - Minus-strand promoters are reverse-complemented before scoring so all gene
     panels share the same transcription-oriented x-axis.
   - Returns portable schema `gentle.multi_gene_promoter_tfbs.v1`.
+- `genomes promoter-cohort-comparison GENOME_ID --cohort-label LABEL --cohort-kind manual|co_regulated|anti_co_regulated --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--source-seq-id SEQ_ID ...] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset ID ...] [--cutrun-read-report ID ...] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]`
+  - Runs engine `SummarizePromoterCohortComparison`.
+  - First slice supports only manual, co-regulated, and anti-co-regulated
+    same-genome cohorts. Use `orthologs resolve-promoter-cohort` and
+    `orthologs promoter-comparison` for offline cross-species promoter
+    reasoning.
+  - Resolves each gene/transcript into a strand-aware promoter window, reuses
+    multi-gene TFBS score summaries and TFBS similarity ranking, and emits
+    pairwise similarity, shared/common peaks, cohort-specific/outlier peaks,
+    optional expression associations, expectation-based `relationship_flags[]`
+    for co-/anti-co-regulated review cues, and unresolved-gene warnings.
+    Relationship flags are evidence-triage hints, not biological verdicts.
+  - Returns portable schema `gentle.promoter_cohort_comparison.v1`.
 - `genomes promoter-tfbs-svg GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] OUTPUT.svg`
   - Runs engine `RenderMultiGenePromoterTfbsSvg`.
   - Exports one small-multiples SVG with one promoter-aligned score-track panel
@@ -3523,6 +5006,10 @@ Helper convenience commands:
   - Helper `entries[]` rows now also include an optional normalized
     `interpretation` record so ClawBio/agents/planners can consume one shared
     helper-meaning layer instead of reparsing raw catalog prose.
+  - Metadata-only vector candidates may expose `sequence_availability`,
+    `redistribution_status`, `biological_safety_note`, and
+    `usable_as_empty_backbone` alongside procurement, markers, origins, host
+    compatibility, and semantic component records.
 - `helpers vocabulary list [--vocabulary PATH] [--filter TEXT]`
   - Lists the resolved helper semantics vocabulary terms that normalize helper
     catalog semantics.
@@ -3547,6 +5034,18 @@ Helper convenience commands:
   - Same quick-install contract as `genomes install-ensembl`, but targeting the helper-catalog/cache defaults.
 - `helpers validate-catalog [--catalog PATH]`
   - Same behavior as `genomes validate-catalog`, with helper-catalog default.
+- `helpers doctor-catalog [--catalog PATH]`
+  - Returns `gentle.helper_vector_catalog_doctor.v1` with deterministic
+    helper/vector metadata issues such as missing host system, missing sequence
+    availability, missing redistribution status, missing biosafety note,
+    missing empty-backbone flag, helper phage marked as an empty backbone, and
+    vector records without structured semantic components.
+- `helpers show-card [--catalog PATH] [--filter TEXT|--name TEXT]`
+  - Returns `gentle.helper_vector_card.v1` cards as a pure projection of
+    structured catalog fields: identifiers, aliases, helper kind, host system,
+    sequence/redistribution/biosafety fields, empty-backbone status,
+    metadata-only status, procurement, affordances, constraints, components,
+    and relationships.
 - `helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]`
   - Same behavior as `genomes update-ensembl-specs`, with helper-catalog default.
 - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
@@ -3567,10 +5066,12 @@ Host convenience commands:
   - `--timeout-secs N`: optional prepare-job timebox.
 - `helpers remove-prepared HELPER_ID [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes remove-prepared`, with helper-catalog default.
-- `helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-promoter`, with helper-catalog default.
 - `helpers promoter-tfbs-summary HELPER_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]`
   - Same behavior as `genomes promoter-tfbs-summary`, with helper-catalog default.
+- `helpers promoter-cohort-comparison HELPER_ID --cohort-label LABEL --cohort-kind manual|co_regulated|anti_co_regulated --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--source-seq-id SEQ_ID ...] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset ID ...] [--cutrun-read-report ID ...] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]`
+  - Same behavior as `genomes promoter-cohort-comparison`, with helper-catalog default.
 - `helpers promoter-tfbs-svg HELPER_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] OUTPUT.svg`
   - Same behavior as `genomes promoter-tfbs-svg`, with helper-catalog default.
 - `cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]`
@@ -3588,7 +5089,7 @@ Host convenience commands:
     reindex-from-cached-files remains possible.
   - Catalog JSON, `.gentle_state.json`, MCP/runtime files, backdrop/runtime
     caches, and `target/` are not treated as cache.
-- `racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]`
+- `racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_6|plate_96|plate_384]`
   - Same shared rack-draft creation path used by GUI `Open Rack`.
 - `racks place-arrangement ARR_ID --rack RACK_ID`
   - Same shared rack-append path used by GUI `Place on Existing Rack...`.
@@ -3607,16 +5108,19 @@ Host convenience commands:
 - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
   - Exports deterministic rack or arrangement-scoped label SVG through the
     same engine path as GUI `Labels SVG`.
-- `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+- `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Exports one deterministic top-view fabrication/planning SVG through the
     same engine path as GUI `Fabrication SVG...`.
-- `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+- `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Exports one deterministic pseudo-3D/isometric rack SVG through the same
     engine path as GUI `Isometric SVG...`.
-- `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+- `racks hero-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
+  - Exports one README-facing top-down rack/plate SVG with labeled
+    empty slots, saved-arrangement rings, and an upper-left orientation cut.
+- `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Exports one deterministic parameterized OpenSCAD file through the same
     engine path as GUI `OpenSCAD...`.
-- `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
+- `racks set-profile RACK_ID small_tube_4x6|plate_6|plate_96|plate_384`
   - Reflows one saved rack onto another built-in profile.
 - `racks set-custom-profile RACK_ID ROWS COLUMNS`
   - Reflows one saved rack onto a custom A1-style geometry while preserving
@@ -3633,14 +5137,14 @@ Host convenience commands:
   - Same behavior as `genomes blast-cancel`, scoped to helper jobs.
 - `helpers blast-list`
   - Same behavior as `genomes blast-list`, scoped to helper jobs.
-- `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-region`, with helper-catalog default.
   - For helper IDs containing `pUC18`/`pUC19`, GENtle auto-attaches a
     canonical MCS `misc_feature` when no MCS annotation is present in source
     annotation and exactly one canonical MCS motif is found.
   - MCS features expose `mcs_expected_sites` with REBASE-normalized enzyme names
     when recognizable from source/fallback annotation text.
-- `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-gene`, with helper-catalog default.
   - pUC18/pUC19 helper extractions apply the same automatic MCS fallback
     annotation behavior when applicable (non-unique motif matches are warned and
@@ -3743,11 +5247,61 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
   - `gentle.planning_estimate.v1`
   - `gentle.planning_suggestion.v1`
   - `gentle.planning_sync_status.v1`
+  - `gentle.planning_cloning_consultation.v1`
+  - `gentle.protein_expression_handoff.v1`
 - Effective profile merge precedence:
   - `global_profile -> confirmed_agent_overlay -> project_override`
 - Schema compatibility:
   - payloads declaring a non-matching planning schema id are rejected
     (not auto-upgraded silently).
+- `planning consult cloning [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
+  - Returns a read-only cloning strategy/vector consultation from the effective
+    profile, current or supplied objective, host/helper catalogs, and existing
+    routine estimate logic.
+  - `PlanningObjective.biological_intent` may be set to
+    `protein_expression_max_yield`; phrase-like values such as "give me the
+    maximal amount of protein" are normalized to the same intent.
+  - For `protein_expression_max_yield`, the consultation adds explicit
+    missing questions for total/soluble/active/purified/secreted yield,
+    expression chassis, folding/cofactor requirements, toxicity/induction, and
+    scale/purification endpoint before any construct route is accepted.
+  - `strategy_candidates[]` are one best routine per the 11 catalogued routine
+    families; reporter handoffs are not treated as peer strategy families.
+  - `vector_candidates[]` use structured helper/vector catalog fields only;
+    marker, promoter/expression, host-target, and MCS/site constraints remain
+    explicit `missing_questions[]` until structured profile fields exist.
+  - `--seq-id` is traceability-only in v1 and is not consumed as a
+    construct-candidate graph input.
+- `planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
+  - Returns a read-only protein-expression planning handoff for underspecified
+    requests such as "give me the maximal amount of protein."
+  - Emits `product_definition`, `product_readiness`, `sequence_context`,
+    `cds_assessment`, `tag_assessment`, ranked `host_chassis_candidates[]`,
+    ranked `vector_route_candidates[]`, explicit `missing_questions[]`, a
+    GeneArt protein-expression `service_handoff_candidates[]` preflight
+    scaffold, and readiness-driven `suggested_next_actions[]`.
+  - If `--seq-id` is supplied, the route now performs read-only product-context
+    analysis: annotated CDS features are summarized first, whole-sequence CDS
+    sanity is used only as an explicit fallback, and the report records
+    nucleotide/protein length, GC percent/range, ambiguous bases,
+    translation possibility, start/stop sanity, internal stops, and annotated
+    tag/signal context.
+  - If no usable CDS/protein context is found, `missing_questions[]` asks for
+    coding sequence, ORF, CDS annotation, or target-protein boundaries. If a
+    product is inferable, the questions shift toward total vs soluble/active/
+    purified/secreted yield, purification endpoint, tag preference,
+    host/chassis, toxicity/induction, PTMs/cofactors, localization/secretion,
+    scale, and delivery endpoint.
+  - `product_definition.readiness.status` drives the next actions:
+    `whole_sequence_cds_candidate` and `annotated_cds_review_required` point to
+    GeneArt preflight, cloning consultation, and review-gated quote-packet
+    preparation; `protein_sequence_review_required` points to reverse
+    translation or provider protein-target handoff review; `needs_cds_boundary`
+    points to CDS/ORF boundary inspection.
+  - The route never designs, optimizes, orders, mutates constructs, queries
+    live providers, or promises wet-lab yield. GUI exposure for this richer
+    handoff remains a future Synthetic Biology inspector slice rather than a
+    new dashboard in the CLI contract.
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - Shows one profile scope or merged effective profile.
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`
@@ -3927,6 +5481,12 @@ Load a file:
 {"LoadFile":{"path":"test_files/pGEX-3X.gb","as_id":"pgex"}}
 ```
 
+Create a persistent project sequence from inline bases:
+
+```json
+{"CreateSequenceFromText":{"sequence_text":"ATGGAATTCGGGCCCTAA","output_id":"paper_candidate","name":"Candidate from publication","circular":false}}
+```
+
 Digest:
 
 ```json
@@ -3997,6 +5557,18 @@ Pairwise sequence alignment (global/local) with structured result payload:
 
 ```json
 {"AlignSequences":{"query_seq_id":"tp73_refs_mrna_NM_001204186","target_seq_id":"tp73_refs_exon_reference","mode":"local","match_score":2,"mismatch_score":-3,"gap_open":-5,"gap_extend":-1}}
+```
+
+The same operation can run statelessly over inline ASCII operands:
+
+```json
+{"AlignSequences":{"query":{"kind":"inline_sequence","sequence_text":"TTTACGTAA","id_hint":"inline_query","span_start_0based":3,"span_end_0based_exclusive":7},"target":{"kind":"inline_sequence","sequence_text":"GGGACGTCCC","id_hint":"inline_target","span_start_0based":3,"span_end_0based_exclusive":7},"mode":"global"}}
+```
+
+Shared shell:
+
+```bash
+gentle_cli shell 'align compute --query-sequence-text TTTACGTAA --query-id-hint inline_query --query-range 3..7 --target-sequence-text GGGACGTCCC --target-id-hint inline_target --target-range 3..7 --mode global'
 ```
 
 Extract anchored region with flexible 5' boundary and fixed anchor side:
@@ -4436,6 +6008,10 @@ Render pool gel SVG with automatic ladder selection:
 {"RenderPoolGelSvg":{"inputs":["frag_1","frag_2","frag_3"],"path":"digest.auto.gel.svg","ladders":null}}
 ```
 
+The shared-shell route `render-pool-gel-svg` returns the SVG result plus
+`gel_band_rows[]` and `gel_summary_lines[]`, giving CLI/Telegram/ClawBio callers
+a text-first lane/band description even when they do not display the SVG.
+
 Persist a ladder pair on an existing arrangement:
 
 ```json
@@ -4500,6 +6076,18 @@ Import VCF variants (`.vcf` / `.vcf.gz`) onto a genome-anchored sequence:
 {"ImportGenomeVcfTrack":{"seq_id":"grch38_tp53","path":"data/variants/sample.vcf.gz","track_name":"Variants","min_score":20.0,"max_score":null,"clear_existing":false}}
 ```
 
+Project prepared microarray contrast tracks onto a genome-anchored sequence:
+
+```json
+{"ProjectMicroarrayTrack":{"seq_id":"grch38_tp73","manifest_path":"data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json","contrasts":["AdTAp73alpha-AdGFP","AdTAp73beta-AdGFP"],"level":"probeset","min_abs_logfc":0.5,"max_adj_p":0.05,"max_features":5000,"clear_existing":true}}
+```
+
+Project one interval through an explicit build-to-build interval map:
+
+```json
+{"ProjectGenomeInterval":{"source_genome_id":"hg19","target_genome_id":"hg38","projection_path":"data/projections/hg19-to-hg38.interval-map.tsv","chrom":"chr1","start_1based":1010,"end_1based":1020,"strand":"+"}}
+```
+
 Notes:
 
 - `PrepareGenome` is intended as a one-time setup step per genome and cache
@@ -4553,6 +6141,86 @@ Notes:
   (genome-anchored provenance).
 - `ImportGenomeBigWigTrack` expects the same genome-anchored `seq_id`.
 - `ImportGenomeVcfTrack` expects the same genome-anchored `seq_id`.
+- `ProjectMicroarrayTrack` expects the same genome-anchored `seq_id` and a
+  `gentle.microarray_track_manifest.v1` manifest. Projection is refused unless
+  the manifest `coordinate_system` / `supported_genome_ids` match the sequence
+  anchor `genome_id` or the manifest declares an explicit
+  `coordinate_projections[]` map into that anchor build; GENtle does not guess
+  array coordinate builds.
+- `arrays probe-regions` is currently a plan/preflight command for arbitrary
+  Affymetrix CEL inspection. It emits `gentle.probe_region_plan.v1` JSON with
+  CEL file size/mtime cache keys, parsed TSV/CSV/SDRF-style metadata previews,
+  default condition contrasts, explicit output/cache path status, annotation
+  source checks, resource-registry platform hints such as
+  `Clariom_D_Human -> pd.clariom.d.human`, backend-candidate readiness for
+  `r_oligo`, Affymetrix Power Tools, and legacy 3' IVT/CDF `r_affy_cdf`
+  candidates, an advisory
+  `scripts/probe_regions_oligo.R` command for explicit RMA/CEL requests, an
+  advisory `apt-probeset-summarize -a rma-sketch` command when user-supplied
+  PGF/CLF and optional MPS files are detected, and local `Rscript` / APT /
+  R-package dependency status; it does not run CEL summarization itself and
+  never downloads or installs missing files/packages. Platform recognition now
+  comes from `data/resources/affymetrix/platform_registry.json`
+  (`gentle.affymetrix_platform_registry.v1`): verified entries may report
+  concrete local support-file expectations, while provisional historical chips
+  identify their family/backend/CDF needs without claiming local validation.
+  With `--output DIR`, the preflight also writes `DIR/plan.json`, a pretty
+  versioned copy of the same `gentle.probe_region_plan.v1` report returned on
+  stdout.
+  With `--dataset E-MTAB-14704`, the preflight resolves the publication
+  resource's declared local CEL paths and any locally present SDRF metadata, then
+  reports missing raw files as ordinary file-status errors.
+  For registry entries such as `Clariom_D_Human`, the same preflight reports
+  the expected local Thermo Fisher na36 hg38 support ZIPs under
+  `annotation_source.vendor_support_files[]`; place them manually in
+  `data/resources/affymetrix/clariom_d_human_na36_hg38/` when probe/probeset
+  coordinate development needs vendor CSV annotations. The preflight accepts
+  both the concise canonical ZIP names documented in that directory and the
+  browser-preserved `TFS-Assets_LSG_Support-Files_...` download names.
+  Legacy 3' IVT arrays such as HG-U133 / Mouse 430 / Rat 230 families are
+  recognized as provisional CDF-backed platforms; their `r_affy_cdf` candidate
+  renders an explicit `scripts/probe_regions_affy.R` command when CEL inputs
+  are present, while readiness still depends on local R/`affy`, `limma`, CDF,
+  and annotation resources.
+- `arrays run-probe-region-backend PLAN.json --allow-external-execution`
+  (or `arrays run-probe-region-backend --plan PLAN.json --allow-external-execution`)
+  reads a persisted `gentle.probe_region_plan.v1`, checks the recorded
+  preflight/backend readiness, and only then runs the rendered R/oligo or APT
+  command. The `--allow-external-execution` gate is required; without it GENtle
+  refuses external R/APT execution. The command captures stdout/stderr/exit
+  status, validates the resulting four-file helper-output contract, and writes
+  hardened `gentle.probe_region_backend_provenance.v1` provenance. It never
+  downloads or installs CEL files, vendor resources, R packages, or APT.
+- `arrays inspect-probe-region-output OUTPUT_DIR` validates the explicit helper
+  outputs after the user has run R themselves. It does not project features;
+  it prepares a shared GUI/CLI-readable summary for projection triage.
+- `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg` draws the
+  inspected helper output natively as a deterministic SVG plot, without running
+  R/APT or changing project state.
+- `arrays render-probe-region-evidence-svg REPORT.json OUTPUT.svg` draws an
+  already-exported probe-region evidence interpretation report as a
+  deterministic SVG. It visualizes transcript lanes, report-provided exon
+  overlaps, report-provided junction spans, parent probeset spans, and PM probe
+  intervals. It draws only geometry present in the report and remains a
+  review-only constraint view, not an isoform-support call.
+- `arrays project-probe-region-output SEQ_ID OUTPUT_DIR` projects selected or
+  all `log2FC_*` helper-output rows into genome-anchored array features when
+  the helper output's declared `coordinate_system` or `genome_build` directly
+  matches the sequence anchor genome id, or when a declared
+  `coordinate_projections[]`/`projection_maps[]` interval map bridges the
+  helper-output build to the anchor build.
+- `arrays interpret-probe-region-evidence SEQ_ID` reads those projected
+  features back from the sequence and summarizes transcript/exon geometry
+  compatibility as a read-only report, including structured exon ordinals,
+  exon ranges, junction spans, overlap base counts, conservative geometry
+  scores, score-basis guardrails, and review-only transcript labels for each
+  evidence-to-transcript mapping. It does not run R/APT and does not claim
+  isoform support until probe/probeset-to-transcript ambiguity has been
+  audited.
+- The built-in genome catalog includes both `Human GRCh38 Ensembl 116` and
+  `Human GRCh37 Ensembl 87` (`hg19`/`GRCh37.p13` aliases), so direct native
+  extraction can use either build when the corresponding cache has been
+  prepared.
 - BED import accepts local `.bed` and `.bed.gz` files.
 - Concatenated gzip members are accepted for `.bed.gz` track input.
 - BigWig import accepts local `.bw` and `.bigWig` files and uses

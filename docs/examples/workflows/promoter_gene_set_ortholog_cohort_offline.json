@@ -1,0 +1,141 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "promoter_gene_set_ortholog_cohort_offline",
+  "title": "Gene-set and ortholog promoter cohort relationships (offline synthetic)",
+  "summary": "Prepares synthetic local genomes, builds a co-regulated gene-set promoter cohort, compares motif score tracks to surface an unexpected-divergence flag, then resolves and compares TP73 ortholog promoters from a local gentle.ortholog_resource.v1 fixture.",
+  "test_mode": "always",
+  "required_files": [
+    "docs/examples/assets/promoter_cohort_ortholog_demo/README.md",
+    "docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json",
+    "docs/examples/assets/promoter_cohort_ortholog_demo/human_toy.fa",
+    "docs/examples/assets/promoter_cohort_ortholog_demo/human_toy.gtf",
+    "docs/examples/assets/promoter_cohort_ortholog_demo/mouse_toy.fa",
+    "docs/examples/assets/promoter_cohort_ortholog_demo/mouse_toy.gtf",
+    "docs/examples/assets/promoter_cohort_ortholog_demo/rat_toy.fa",
+    "docs/examples/assets/promoter_cohort_ortholog_demo/rat_toy.gtf",
+    "docs/examples/assets/promoter_cohort_ortholog_demo/ortholog_resource.json"
+  ],
+  "tags": [
+    "tutorial",
+    "offline",
+    "promoter",
+    "gene-set",
+    "ortholog",
+    "tp73",
+    "relationship",
+    "tfbs"
+  ],
+  "workflow": {
+    "run_id": "example_promoter_gene_set_ortholog_cohort_offline",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "HumanPromoterToy",
+          "catalog_path": "docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json",
+          "cache_dir": "artifacts/promoter_cohort_ortholog_demo/genome_cache"
+        }
+      },
+      {
+        "PrepareGenome": {
+          "genome_id": "MousePromoterToy",
+          "catalog_path": "docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json",
+          "cache_dir": "artifacts/promoter_cohort_ortholog_demo/genome_cache"
+        }
+      },
+      {
+        "PrepareGenome": {
+          "genome_id": "RatPromoterToy",
+          "catalog_path": "docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json",
+          "cache_dir": "artifacts/promoter_cohort_ortholog_demo/genome_cache"
+        }
+      },
+      {
+        "BuildGeneSetPromoterCohort": {
+          "genome_id": "HumanPromoterToy",
+          "source": {
+            "source_kind": "explicit_members",
+            "members": [
+              "TP73",
+              "E2F1",
+              "PATZ1"
+            ]
+          },
+          "relationship": "co_regulated",
+          "upstream_bp": 40,
+          "downstream_bp": 10,
+          "genome_catalog_path": "docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json",
+          "cache_dir": "artifacts/promoter_cohort_ortholog_demo/genome_cache",
+          "path": "artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort.json"
+        }
+      },
+      {
+        "SummarizePromoterCohortComparison": {
+          "genome_id": "HumanPromoterToy",
+          "cohort_label": "synthetic_tp73_e2f1_patz1_co_regulated_review",
+          "cohort_kind": "co_regulated",
+          "genes": [
+            {
+              "gene_query": "TP73"
+            },
+            {
+              "gene_query": "E2F1"
+            },
+            {
+              "gene_query": "PATZ1"
+            }
+          ],
+          "motifs": [
+            "SP1"
+          ],
+          "upstream_bp": 40,
+          "downstream_bp": 10,
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": true,
+          "catalog_path": "docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json",
+          "cache_dir": "artifacts/promoter_cohort_ortholog_demo/genome_cache",
+          "path": "artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort_comparison.json"
+        }
+      },
+      {
+        "ResolveOrthologPromoterCohort": {
+          "anchor_species": "Homo sapiens",
+          "anchor_genome_id": "HumanPromoterToy",
+          "anchor_gene_query": "TP73",
+          "target_species": [
+            "Mus musculus",
+            "Rattus norvegicus"
+          ],
+          "target_genome_ids": {
+            "Mus musculus": "MousePromoterToy",
+            "Rattus norvegicus": "RatPromoterToy"
+          },
+          "transcript_ids": {
+            "Homo sapiens": "TX_TP73_HUMAN",
+            "Mus musculus": "TX_TRP73_MOUSE",
+            "Rattus norvegicus": "TX_TP73_RAT"
+          },
+          "ortholog_resource_path": "docs/examples/assets/promoter_cohort_ortholog_demo/ortholog_resource.json",
+          "upstream_bp": 40,
+          "downstream_bp": 10,
+          "relationship": "co_regulated",
+          "genome_catalog_path": "docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json",
+          "cache_dir": "artifacts/promoter_cohort_ortholog_demo/genome_cache",
+          "path": "artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_cohort.json"
+        }
+      },
+      {
+        "SummarizeOrthologPromoterComparison": {
+          "cohort_path": "artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_cohort.json",
+          "motifs": [
+            "SP1"
+          ],
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": true,
+          "relationship": "co_regulated",
+          "path": "artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_comparison.json"
+        }
+      }
+    ]
+  }
+}
+

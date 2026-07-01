@@ -14,6 +14,34 @@ def _skill_script() -> Path:
     return Path(__file__).resolve().parents[1] / "gentle_cloning.py"
 
 
+def _skill_module():
+    module_name = "gentle_cloning_skill"
+    spec = importlib.util.spec_from_file_location(
+        module_name,
+        _skill_script(),
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _with_skill_alias(actions: list[dict]) -> list[dict]:
+    return [dict(action, skill_alias="gentle-cloning") for action in actions]
+
+
+def _with_blocked_action_skill_alias(actions: list[dict]) -> list[dict]:
+    stamped = []
+    for blocked_action in actions:
+        action = dict(blocked_action)
+        nested_action = action.get("action")
+        if isinstance(nested_action, dict):
+            action["action"] = dict(nested_action, skill_alias="gentle-cloning")
+        stamped.append(action)
+    return stamped
+
+
 def _apptainer_script() -> Path:
     return Path(__file__).resolve().parents[1] / "gentle_apptainer_cli.sh"
 
@@ -24,6 +52,98 @@ def _local_checkout_script() -> Path:
 
 def _examples_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "examples"
+
+
+# These examples are intentionally not direct top-level intent routes. They are
+# bootstrap, follow-on, direct-mode, or documentation/development examples that
+# remain callable by path but should not widen ClawBio's chat intent surface.
+INTENT_EXAMPLE_ALLOWLIST = {
+    "request_cdna_pcr_products_gel_demo_direct.json",
+    "request_cdna_qpcr_taqman_products_gel_demo_direct.json",
+    "request_construct_reasoning_list_inspections.json",
+    "request_construct_reasoning_run_inspection_dotplot.json",
+    "request_dbsnp_fetch_rs9923231.json",
+    "request_ensembl_gene_fetch_tp53_human.json",
+    "request_ensembl_gene_import_sequence_tp53.json",
+    "request_ensembl_region_fetch_tp53_locus.json",
+    "request_exon_skip_materialize_return_aa.json",
+    "request_exon_skip_plan_example.json",
+    "request_export_bed_grch38_tp53_gene_models.json",
+    "request_export_bed_pgex_fasta_tfbs_restriction.json",
+    "request_export_bed_rs9923231_vkorc1_context_features.json",
+    "request_export_sequence_context_bundle_rs9923231_vkorc1.json",
+    "request_find_restriction_sites_inline_sequence_ecori_smai.json",
+    "request_genbank_fetch_pbr322.json",
+    "request_genomes_blast_grch38_short.json",
+    "request_genomes_ensembl_available_human.json",
+    "request_genomes_extract_gene_tp53.json",
+    "request_genomes_extract_gene_tp53_auto_prepare.json",
+    "request_genomes_extract_promoter_tert_auto_prepare.json",
+    "request_genomes_install_ensembl_mouse.json",
+    "request_genomes_list_human.json",
+    "request_genomes_prepare_grch38.json",
+    "request_genomes_status_grch38.json",
+    "request_helpers_blast_puc19_short.json",
+    "request_helpers_list_gst.json",
+    "request_helpers_prepare_puc19.json",
+    "request_helpers_status_puc19.json",
+    "request_hosts_list_deor.json",
+    "request_inspect_feature_expert_pgex_fasta_restriction_ecori.json",
+    "request_inspect_feature_expert_pgex_fasta_tfbs.json",
+    "request_inspect_feature_expert_tp53_isoform.json",
+    "request_inspect_feature_expert_tp53_splicing.json",
+    "request_inspect_sequence_context_rs9923231_vkorc1.json",
+    "request_planning_consult_cloning.json",
+    "request_protein_residue_genomic_coordinates_tp73.json",
+    "request_protocol_cartoon_gibson_svg.json",
+    "request_protocol_cartoon_pcr_oe_substitution_svg.json",
+    "request_protocol_cartoon_pcr_pair_svg.json",
+    "request_protocol_cartoon_pcr_tailed_svg.json",
+    "request_protocol_cartoon_qpcr_svg.json",
+    "request_render_feature_expert_pgex_fasta_restriction_ecori_svg.json",
+    "request_render_feature_expert_pgex_fasta_tfbs_svg.json",
+    "request_render_feature_expert_tp53_isoform_svg.json",
+    "request_render_svg_grch38_tert_promoter_stemness_sp1.json",
+    "request_render_svg_grch38_tert_tp73_promoters_stemness_sp1.json",
+    "request_render_svg_pgex_fasta_circular.json",
+    "request_render_svg_pgex_fasta_linear_restriction.json",
+    "request_render_svg_pgex_fasta_linear_tfbs.json",
+    "request_render_svg_rs9923231_vkorc1_linear.json",
+    "request_resources_resolve_tf_query_stemness_oct4_klf.json",
+    "request_resources_summarize_jaspar_sp1_rest.json",
+    "request_resources_summarize_jaspar_stemness_sp1.json",
+    "request_scan_tfbs_hits_grch38_tert_promoter_stemness_sp1.json",
+    "request_scan_tfbs_hits_inline_sequence_sp1_tp73.json",
+    "request_seed_primers_tp53_feature.json",
+    "request_seed_primers_tp53_splicing.json",
+    "request_seed_qpcr_tp53_feature.json",
+    "request_seed_qpcr_tp53_splicing.json",
+    "request_seed_qpcr_tp53_splicing_specific_junction.json",
+    "request_services_sequence_delivery_route_cloned_gene.json",
+    "request_services_sequence_delivery_route_fragment.json",
+    "request_services_sequence_delivery_route_protein.json",
+    "request_services_sequence_delivery_route_short_oligo.json",
+    "request_services_handoff.json",
+    "request_services_telegram_guide_isoforms_bach2.json",
+    "request_shell_state_summary.json",
+    "request_summarize_grch38_tert_tp73_promoters_stemness_sp1.json",
+    "request_tfbs_summary_pgex_fasta.json",
+    "request_tfbs_track_similarity_grch38_tert_promoter_sp1_stemness.json",
+    "request_version_installed.json",
+    "request_workflow_file.json",
+    "request_workflow_inline_sequence_inspection_stateless.json",
+    "request_workflow_p53_family_query_anchor_dotplot.json",
+    "request_workflow_tfbs_track_similarity_stateless.json",
+    "request_workflow_tp53_isoform_architecture_online.json",
+    "request_workflow_tp53_splicing_expert_svg.json",
+    "request_workflow_tp73_isoform_protein_2d_gel.json",
+    "request_workflow_tp73_isoform_protein_gel.json",
+    "request_workflow_tp73_tfbs_score_tracks_summary.json",
+    "request_workflow_tp73_tfbs_score_tracks_svg.json",
+    "request_workflow_tp73_variant1_trypsin_digest_gel.json",
+    "request_workflow_vkorc1_context_svg_auto_prepare.json",
+    "request_workflow_vkorc1_planning.json",
+}
 
 
 def _fake_cli_with_svg_png(main_body: str) -> str:
@@ -45,6 +165,39 @@ def _fake_cli_with_svg_png(main_body: str) -> str:
     )
 
 
+def test_action_envelope_stamp_adds_skill_alias_and_confirm_invariant() -> None:
+    module = _skill_module()
+    actions = [
+        {
+            "action_id": "show_report",
+            "label": "Show report",
+            "kind": "show",
+            "requires_confirmation": False,
+        },
+        {
+            "action_id": "materialize_products",
+            "label": "Materialize products",
+            "kind": "materialize",
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "op",
+                "confirm": True,
+            },
+            "requires_confirmation": False,
+        },
+    ]
+
+    stamped = module._stamp_action_envelope(actions)
+
+    assert stamped is actions
+    assert [action["skill_alias"] for action in stamped] == [
+        "gentle-cloning",
+        "gentle-cloning",
+    ]
+    assert stamped[0]["requires_confirmation"] is False
+    assert stamped[1]["requires_confirmation"] is True
+
+
 def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
     output_dir = tmp_path / "demo_out"
     cmd = [
@@ -63,13 +216,17 @@ def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
     assert payload["schema"] == "gentle.clawbio_skill_result.v1"
     assert payload["status"] in ("ok", "degraded_demo")
     assert payload["stdout_json"] is None
-    assert payload["chat_summary_lines"] is None
+    assert payload["chat_summary_lines"] == [
+        "Generated a deterministic GENtle protocol cartoon for a two-fragment Gibson assembly.",
+        "The ClawBio demo now starts with a graphical export so the first reply can show an actual figure instead of only listing commands.",
+        "Best-first preview artifact: generated/artifacts/gibson.two_fragment.protocol.png",
+    ]
     assert payload["request"]["mode"] == "shell"
     assert (
         payload["request"]["shell_line"]
         == "protocol-cartoon render-svg gibson.two_fragment artifacts/gibson.two_fragment.protocol.svg"
     )
-    assert payload["suggested_actions"] == [
+    assert payload["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "learn_gentle_capabilities",
             "label": "Learn GENtle capabilities",
@@ -85,12 +242,46 @@ def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
             "rationale": "The demo intentionally starts with one graphical export. Run `capabilities` next to inspect the broader deterministic GENtle CLI and engine surface.",
             "requires_confirmation": False,
         }
-    ]
+    ])
     assert (output_dir / "report.md").exists()
     assert (output_dir / "result.json").exists()
     assert (output_dir / "reproducibility" / "commands.sh").exists()
     assert (output_dir / "reproducibility" / "environment.yml").exists()
     assert (output_dir / "reproducibility" / "checksums.sha256").exists()
+
+
+def test_demo_followup_action_is_routeable_by_skill_alias(tmp_path: Path) -> None:
+    output_dir = tmp_path / "demo_out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--demo",
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            "true",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    action = next(
+        action
+        for action in result["suggested_actions"]
+        if action["action_id"] == "learn_gentle_capabilities"
+    )
+    assert action["skill_alias"] == "gentle-cloning"
+    assert action["requires_confirmation"] is False
+    assert action["request"] == {
+        "schema": "gentle.clawbio_skill_request.v1",
+        "mode": "shell",
+        "shell_line": "capabilities",
+        "timeout_secs": 180,
+    }
 
 
 def test_demo_promotes_graphical_artifact_and_capabilities_followup(
@@ -237,12 +428,15 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         "result_schema": "gentle.clawbio_skill_result.v1",
         "supported_request_modes": [
             "skill-info",
+            "intents",
             "version",
             "capabilities",
             "state-summary",
             "shell",
             "op",
             "workflow",
+            "construct-reasoning-list-inspections",
+            "construct-reasoning-run-inspection",
             "primer-preflight",
             "primer-seed-from-feature",
             "primer-seed-from-splicing",
@@ -268,10 +462,14 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
             "restriction-cloning-handoff-export",
             "pcr-protocol-cartoon",
             "gene-protein-2d-gel",
+            "exon-skip-plan",
+            "exon-skip-materialize",
             "agent-plan",
             "agent-execute-plan",
             "raw",
         ],
+        "intents_runtime_schema": "gentle.clawbio_skill_intents_runtime.v1",
+        "intents_runtime_request_mode": "intents",
         "has_demo": True,
         "demo_command": "python clawbio.py run gentle-cloning --demo",
         "catalog_entry_path": str(
@@ -314,6 +512,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         "gentle-cloning skill version 0.1.0 (mvp).",
         "Request schema: gentle.clawbio_skill_request.v1; result schema: gentle.clawbio_skill_result.v1.",
         "Use request mode `version` when you need the installed local GENtle rewrite runtime version.",
+        "Use request mode `intents` to compare the installed wrapper's live intent descriptor with ClawBio's on-disk snapshot.",
         "Use `resources status` or `services status` to check RNAfold/ViennaRNA and rnapkin executable-resource readiness.",
         "This skill reports the locally installed ClawBio GENtle rewrite runtime, not the classical GENtle desktop release line.",
     ]
@@ -357,6 +556,62 @@ def test_skill_info_request_mode_reports_catalog_version(
     assert payload["stdout_json"]["version"] == "0.1.0"
     assert payload["resolver"] is None
     assert payload["command"] is None
+
+
+def test_intents_request_mode_reports_runtime_descriptor_without_gentle_cli(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps({"schema": "gentle.clawbio_skill_request.v1", "mode": "intents"})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    output_dir = tmp_path / "intents_request"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            "/definitely/missing/gentle_cli",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    payload = json.loads(run.stdout)
+    stdout_json = payload["stdout_json"]
+    assert payload["status"] == "ok"
+    assert payload["request"]["mode"] == "intents"
+    assert payload["resolver"] is None
+    assert payload["command"] is None
+    assert stdout_json["schema"] == "gentle.clawbio_skill_intents_runtime.v1"
+    assert stdout_json["skill"] == "gentle-cloning"
+    assert stdout_json["intents_schema"] == "clawbio.skill_intents.v1"
+    assert stdout_json["route_count"] == len(stdout_json["routes"])
+    assert "intents" in stdout_json["supported_request_modes"]
+    routes = {route["intent_id"]: route for route in stdout_json["routes"]}
+    assert routes["runtime_version"]["request_modes"] == ["version"]
+    assert routes["runtime_version"]["example_filenames"] == [
+        "request_runtime_version.json"
+    ]
+    assert routes["ensembl_gene_protein_2d_gel"]["request_modes"] == [
+        "gene-protein-2d-gel"
+    ]
+    assert routes["ensembl_gene_protein_2d_gel"]["requires_slots"] is True
+    assert payload["chat_summary_lines"] == [
+        "GENtle intent descriptor runtime schema: gentle.clawbio_skill_intents_runtime.v1.",
+        f"Descriptor SHA-256: {stdout_json['descriptor_sha256']}.",
+        f"Routes available: {stdout_json['route_count']}.",
+        "ClawBio can compare this hash with its local INTENTS.json snapshot before refreshing route metadata.",
+    ]
 
 
 def test_capabilities_mode_surfaces_ui_intent_catalog_and_handoff_actions(
@@ -421,6 +676,10 @@ def test_capabilities_mode_surfaces_ui_intent_catalog_and_handoff_actions(
     assert [action["shell_line"] for action in result["suggested_actions"]] == [
         "ui open prepared-references",
         "ui open pcr-design",
+    ]
+    assert [action["skill_alias"] for action in result["suggested_actions"]] == [
+        "gentle-cloning",
+        "gentle-cloning",
     ]
     prepared_action = result["suggested_actions"][0]
     assert prepared_action["kind"] == "ui_intent"
@@ -635,6 +894,132 @@ def test_clawbio_style_input_path_resolves_from_skill_cwd(tmp_path: Path) -> Non
     ]
 
 
+def test_construct_reasoning_inspection_modes_build_shared_shell_commands(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "if [ \"${1:-}\" = \"--state\" ]; then\n"
+        "  shift 2\n"
+        "fi\n"
+        "if [ \"${1:-}\" != \"shell\" ]; then\n"
+        "  echo 'expected shell command' >&2\n"
+        "  exit 2\n"
+        "fi\n"
+        "case \"${2:-}\" in\n"
+        "  'construct-reasoning list-inspection-actions'*)\n"
+        "    printf '{\"schema\":\"gentle.construct_reasoning_inspection_action_list.v1\",\"graph_id\":\"graph_1\",\"action_count\":1,\"actions\":[{\"action_id\":\"inspection_1\",\"kind\":\"dotplot\",\"seq_id\":\"seq_a\",\"driving_evidence_ids\":[\"evidence_1\"]}]}\\n'\n"
+        "    ;;\n"
+        "  'construct-reasoning run-inspection-action'*)\n"
+        "    printf '{\"schema\":\"gentle.construct_reasoning_inspection_action_dotplot_run.v1\",\"graph_id\":\"graph_1\",\"action\":{\"action_id\":\"inspection_1\"},\"compute_parameters\":{\"seq_id\":\"seq_a\",\"mode\":\"self_forward\"}}\\n'\n"
+        "    ;;\n"
+        "  *)\n"
+        "    echo \"unexpected shell line: ${2:-}\" >&2\n"
+        "    exit 2\n"
+        "    ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    list_request_path = tmp_path / "list_request.json"
+    list_request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "construct-reasoning-list-inspections",
+                "state_path": ".gentle_state.json",
+                "graph_id": "graph_1",
+                "fact_id": "fact_1",
+                "evidence_id": "evidence_1",
+                "seq_id": "seq_a",
+                "action_kind": "dotplot",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    list_run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(list_request_path),
+            "--output",
+            str(tmp_path / "list_out"),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert list_run.returncode == 0, list_run.stderr
+    list_payload = json.loads(list_run.stdout)
+    assert list_payload["command"] == [
+        str(fake_cli),
+        "--state",
+        ".gentle_state.json",
+        "shell",
+        "construct-reasoning list-inspection-actions graph_1 --fact-id fact_1 --evidence-id evidence_1 --seq-id seq_a --action-kind dotplot",
+    ]
+    assert (
+        list_payload["stdout_json"]["schema"]
+        == "gentle.construct_reasoning_inspection_action_list.v1"
+    )
+
+    run_request_path = tmp_path / "run_request.json"
+    run_request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "construct-reasoning-run-inspection",
+                "state_path": ".gentle_state.json",
+                "graph_id": "graph_1",
+                "action_id": "inspection_1",
+                "word_size": 4,
+                "step_bp": 1,
+                "max_mismatches": 0,
+                "tile_bp": 128,
+                "dotplot_id": "recommended_plot",
+                "render_svg_path": "artifacts/recommended_plot.svg",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    run_run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(run_request_path),
+            "--output",
+            str(tmp_path / "run_out"),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run_run.returncode == 0, run_run.stderr
+    run_payload = json.loads(run_run.stdout)
+    assert run_payload["command"] == [
+        str(fake_cli),
+        "--state",
+        ".gentle_state.json",
+        "shell",
+        "construct-reasoning run-inspection-action graph_1 inspection_1 --word-size 4 --step 1 --max-mismatches 0 --tile-bp 128 --id recommended_plot --render-svg artifacts/recommended_plot.svg",
+    ]
+    assert (
+        run_payload["stdout_json"]["schema"]
+        == "gentle.construct_reasoning_inspection_action_dotplot_run.v1"
+    )
+
+
 def test_agent_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> None:
     request_path = tmp_path / "request.json"
     request_path.write_text(
@@ -683,6 +1068,159 @@ def test_agent_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> None:
     assert argv[0] == "shell"
     assert "agents plan builtin_echo" in argv[1]
     assert "--no-state-summary" in argv[1]
+
+
+def test_exon_skip_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "exon-skip-plan",
+                "seq_id": "tp53_locus",
+                "transcript_feature_id": 2,
+                "skip_candidate_ids": ["exon_7"],
+                "overlap_intervals_1based": [
+                    {"start_1based": 100, "end_1based": 150}
+                ],
+                "length_mod3_values": [2, 0],
+                "coding_mod3_values": [0],
+                "coding_contexts": ["mixed-utr-cds"],
+                "cds_phase_entry_kinds": ["codon-boundary", "split-codon"],
+                "plan_id": "skip_tp53_exon7",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "python3 - \"$@\" <<'PY'\n"
+        "import json, sys\n"
+        "print(json.dumps({\"argv\": sys.argv[1:]}))\n"
+        "PY\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+    payload = json.loads(run.stdout)
+    argv = payload["stdout_json"]["argv"]
+    assert argv[0] == "shell"
+    assert "transcripts exon-skip-plan tp53_locus --feature-id 2" in argv[1]
+    assert "--skip exon_7" in argv[1]
+    assert "--overlap 100..150" in argv[1]
+    assert "--length-mod3 0 --length-mod3 2" in argv[1]
+    assert "--coding-mod3 0" in argv[1]
+    assert "--coding-context mixed-utr-cds" in argv[1]
+    assert "--phase-entry codon-boundary --phase-entry split-codon" in argv[1]
+    assert "--plan-id skip_tp53_exon7" in argv[1]
+
+
+def test_exon_skip_materialize_mode_requires_confirm_and_builds_requested_returns(
+    tmp_path: Path,
+) -> None:
+    bad_request = tmp_path / "bad_request.json"
+    bad_request.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "exon-skip-materialize",
+                "plan_id": "skip_tp53_exon7",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    bad_out = tmp_path / "bad_out"
+    bad = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(bad_request),
+            "--output",
+            str(bad_out),
+            "--gentle-cli",
+            "true",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert bad.returncode != 0
+    bad_result = json.loads((bad_out / "result.json").read_text(encoding="utf-8"))
+    assert "confirm=true" in bad_result["error"]
+
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "exon-skip-materialize",
+                "plan_id": "skip_tp53_exon7",
+                "candidate_ids": ["exon_7"],
+                "output_prefix": "tp53_skip7",
+                "return_items": ["genbank", "amino_acid_sequence"],
+                "confirm": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "python3 - \"$@\" <<'PY'\n"
+        "import json, sys\n"
+        "print(json.dumps({\"argv\": sys.argv[1:]}))\n"
+        "PY\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+    payload = json.loads(run.stdout)
+    argv = payload["stdout_json"]["argv"]
+    assert argv[0] == "shell"
+    assert "transcripts exon-skip-materialize skip_tp53_exon7" in argv[1]
+    assert "--candidate-id exon_7" in argv[1]
+    assert "--output-prefix tp53_skip7" in argv[1]
+    assert "--return genbank" in argv[1]
+    assert "--return amino_acid_sequence" in argv[1]
 
 
 def test_rejects_invalid_request_schema(tmp_path: Path) -> None:
@@ -1042,7 +1580,10 @@ def test_result_payload_promotes_cdna_product_materialization_summary(
         '"transcript_count":2,"product_count":2},'
         '"materialization":{"schema":"gentle.cdna_assay_product_materialization.v1",'
         '"product_count":2,"product_seq_ids":["p1","p2"],'
+        '"created_product_seq_ids":["p1"],"reused_product_seq_ids":["p2"],'
         '"container_id":"container-7",'
+        '"gel_summary_lines":["Product gel lane \\"cDNA PCR products (GENE1)\\" has 2 band(s).",'
+        '"Band 1: apparent 41 bp, actual 41 bp: p1 (41 bp)."],'
         '"product_gel_svg_path":"artifacts/products.gel.svg"},'
         '"preferred_artifacts":[{"artifact_kind":"cdna_assay_product_gel",'
         '"path":"artifacts/products.gel.svg","is_best_first_artifact":true}]}\n'
@@ -1073,7 +1614,9 @@ def test_result_payload_promotes_cdna_product_materialization_summary(
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["chat_summary_lines"] == [
         "pcr test finished with status 'multiple_products' across 2 transcript template(s) and 2 detected product(s).",
-        "Materialized 2 cDNA assay product sequence(s) into product container 'container-7'.",
+        "Materialized 1 new and reused 1 existing cDNA assay product sequence(s) into product container 'container-7'.",
+        'Product gel lane "cDNA PCR products (GENE1)" has 2 band(s).',
+        "Band 1: apparent 41 bp, actual 41 bp: p1 (41 bp).",
         "Product gel SVG: artifacts/products.gel.svg",
     ]
     assert result["preferred_artifacts"][0]["artifact_kind"] == "cdna_assay_product_gel"
@@ -1342,7 +1885,7 @@ def test_services_status_promotes_prepare_and_sync_suggested_actions(
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["status"] == "ok"
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "prepare_human_grch38_ensembl_116",
             "label": "Prepare Human GRCh38 Ensembl 116",
@@ -1388,7 +1931,7 @@ def test_services_status_promotes_prepare_and_sync_suggested_actions(
             "rationale": "ATtRACT is known to GENtle, but no valid runtime snapshot is active yet.",
             "requires_confirmation": True,
         },
-    ]
+    ])
     report = (output_dir / "report.md").read_text(encoding="utf-8")
     assert "## Suggested Actions" in report
     assert 'Prepare Human GRCh38 Ensembl 116' in report
@@ -1445,7 +1988,7 @@ def test_services_status_running_suppresses_prepare_and_suggests_refresh(
     assert run.returncode == 0, run.stderr
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "re_check_services_status",
             "label": "Re-check services status",
@@ -1461,7 +2004,7 @@ def test_services_status_running_suppresses_prepare_and_suggests_refresh(
             "rationale": "A shared prepare action is already running, so refresh the combined readiness view instead of starting a duplicate long-running task.",
             "requires_confirmation": False,
         }
-    ]
+    ])
 
 
 def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
@@ -1534,7 +2077,7 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
         "artifacts/service_handoff.json"
     )
     assert result["artifact_summary"]["preferred_artifact_count"] == 1
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "prepare_human_grch38_ensembl_116",
             "label": "Prepare Human GRCh38 Ensembl 116",
@@ -1552,8 +2095,8 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
             "resource_key": "reference_genome:Human GRCh38 Ensembl 116",
             "lifecycle_status": "missing",
         }
-    ]
-    assert result["preferred_demo_actions"] == [
+    ])
+    assert result["preferred_demo_actions"] == _with_skill_alias([
         {
             "action_id": "render_gibson_protocol_cartoon",
             "label": "Render Gibson protocol cartoon",
@@ -1571,8 +2114,8 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
             "requires_confirmation": False,
             "expected_artifacts": ["artifacts/gibson.two_fragment.protocol.svg"],
         }
-    ]
-    assert result["blocked_actions"] == [
+    ])
+    assert result["blocked_actions"] == _with_blocked_action_skill_alias([
         {
             "blocked_reason": "requires_local_archive_path",
             "unblock_hint": "Download ATtRACT.zip first.",
@@ -1598,7 +2141,7 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
             "download_url": "https://attract.cnic.es/attract/static/ATtRACT.zip",
             "local_path_hint": "/path/to/ATtRACT.zip",
         }
-    ]
+    ])
 
 
 def test_services_telegram_guide_promotes_section_actions(tmp_path: Path) -> None:
@@ -1656,7 +2199,7 @@ def test_services_telegram_guide_promotes_section_actions(tmp_path: Path) -> Non
         "GENtle can guide reproducible work from Telegram.",
         "If you have a gene of interest, tell me its symbol.",
     ]
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "promoter_and_tfbs",
             "label": "Promoter and TFBS",
@@ -1672,7 +2215,7 @@ def test_services_telegram_guide_promotes_section_actions(tmp_path: Path) -> Non
             "rationale": "Open the TFBS guide section.",
             "requires_confirmation": False,
         }
-    ]
+    ])
     report = (output_dir / "report.md").read_text(encoding="utf-8")
     assert "## Suggested Next Step" in report
     assert "services guide --channel telegram --section tfbs" in report
@@ -1723,7 +2266,7 @@ def test_genomes_status_promotes_prepare_command_as_suggested_action(tmp_path: P
     assert run.returncode == 0, run.stderr
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "prepare_human_grch38_ensembl_116",
             "label": "Prepare Human GRCh38 Ensembl 116",
@@ -1739,7 +2282,7 @@ def test_genomes_status_promotes_prepare_command_as_suggested_action(tmp_path: P
             "rationale": "Status inspection for 'Human GRCh38 Ensembl 116' already provided a ready-to-run prepare command.",
             "requires_confirmation": True,
         }
-    ]
+    ])
 
 
 def test_genomes_status_running_suggests_refresh_instead_of_prepare(tmp_path: Path) -> None:
@@ -1787,7 +2330,7 @@ def test_genomes_status_running_suggests_refresh_instead_of_prepare(tmp_path: Pa
     assert run.returncode == 0, run.stderr
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "re_check_human_grch38_ensembl_116_status",
             "label": "Re-check Human GRCh38 Ensembl 116 status",
@@ -1803,7 +2346,7 @@ def test_genomes_status_running_suggests_refresh_instead_of_prepare(tmp_path: Pa
             "rationale": "'Human GRCh38 Ensembl 116' is already being prepared, so the next useful step is to refresh its status rather than launch another prepare.",
             "requires_confirmation": False,
         }
-    ]
+    ])
 
 
 def test_cutrun_status_promotes_prepare_for_missing_dataset(tmp_path: Path) -> None:
@@ -1851,7 +2394,7 @@ def test_cutrun_status_promotes_prepare_for_missing_dataset(tmp_path: Path) -> N
     assert run.returncode == 0, run.stderr
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "prepare_cut_run_dataset_toy_ctcf",
             "label": "Prepare CUT&RUN dataset toy_ctcf",
@@ -1867,7 +2410,7 @@ def test_cutrun_status_promotes_prepare_for_missing_dataset(tmp_path: Path) -> N
             "rationale": "CUT&RUN dataset 'toy_ctcf' is not prepared locally and must be materialized before dataset-backed projection or read interpretation can reuse it.",
             "requires_confirmation": True,
         }
-    ]
+    ])
 
 
 def test_cutrun_status_running_suggests_refresh_instead_of_prepare(tmp_path: Path) -> None:
@@ -1915,7 +2458,7 @@ def test_cutrun_status_running_suggests_refresh_instead_of_prepare(tmp_path: Pat
     assert run.returncode == 0, run.stderr
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "re_check_cut_run_dataset_toy_ctcf_status",
             "label": "Re-check CUT&RUN dataset toy_ctcf status",
@@ -1931,7 +2474,7 @@ def test_cutrun_status_running_suggests_refresh_instead_of_prepare(tmp_path: Pat
             "rationale": "CUT&RUN dataset 'toy_ctcf' is already being prepared, so refresh its status instead of starting another parallel prepare.",
             "requires_confirmation": False,
         }
-    ]
+    ])
 
 
 def test_prepare_request_suggests_rechecking_services_status(tmp_path: Path) -> None:
@@ -1979,7 +2522,7 @@ def test_prepare_request_suggests_rechecking_services_status(tmp_path: Path) -> 
     assert run.returncode == 0, run.stderr
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "re_check_services_status",
             "label": "Re-check services status",
@@ -1995,7 +2538,7 @@ def test_prepare_request_suggests_rechecking_services_status(tmp_path: Path) -> 
             "rationale": "After a prepare or resource-sync step, refresh the combined readiness view to confirm the installation state.",
             "requires_confirmation": False,
         }
-    ]
+    ])
 
 
 def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -> None:
@@ -2083,6 +2626,7 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
         "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg",
     ]:
         assert expected_svg in collected_declared
+        assert expected_svg.replace(".svg", ".png") not in collected_declared
 
     preferred = result["preferred_artifacts"]
     assert preferred[0]["artifact_id"] == "clawbio_storyboard_png"
@@ -2104,7 +2648,12 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
         "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg",
     ]
     assert continue_actions[0]["label"] == "Continue: show next figure"
+    assert continue_actions[0]["skill_alias"] == "gentle-cloning"
     assert continue_actions[0]["requires_confirmation"] is False
+    assert "shell_line" not in continue_actions[0]
+    assert continue_actions[0]["source_shell_line"] == (
+        "workflow @variant_luciferase_storyboard_demo.json"
+    )
     assert continue_actions[0]["request"]["mode"] == "workflow"
     assert continue_actions[0]["request"]["expected_artifacts"] == [
         "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg"
@@ -2115,7 +2664,7 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
     assert result["artifact_summary"]["best_first_artifact"]["path"] == (
         "generated/clawbio_storyboard.png"
     )
-    assert result["artifact_summary"]["displayable_artifact_count"] == 8
+    assert result["artifact_summary"]["displayable_artifact_count"] == 5
     assert result["artifact_summary"]["continuation_action_count"] == len(
         continue_actions
     )
@@ -2127,6 +2676,15 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
     storyboard_path = output_dir / "generated" / "clawbio_storyboard.svg"
     assert storyboard_path.exists()
     assert (output_dir / "generated" / "clawbio_storyboard.png").exists()
+    assert not (
+        output_dir
+        / "generated"
+        / "docs"
+        / "tutorial"
+        / "reproducibility"
+        / "vkorc1_rs9923231_promoter_reporter"
+        / "vkorc1_rs9923231_promoter_context.png"
+    ).exists()
     storyboard = storyboard_path.read_text(encoding="utf-8")
     assert "Variant-to-Synthetic-Biology assay storyboard" in storyboard
     assert "Genomic context" in storyboard
@@ -2134,6 +2692,8 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
     assert "Alternate allele reporter" in storyboard
     report = (output_dir / "report.md").read_text(encoding="utf-8")
     assert "generated/clawbio_storyboard.png" in report
+    assert "use nested request payload for docs/tutorial/reproducibility" in report
+    assert "`Continue: show next figure`: `(unknown)`" not in report
     assert "## Artifact Bundle Summary" in report
 
 
@@ -3310,6 +3870,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "state-summary",
             180,
         ),
+        "request_construct_reasoning_list_inspections.json": (
+            "construct-reasoning-list-inspections",
+            None,
+            180,
+        ),
+        "request_construct_reasoning_run_inspection_dotplot.json": (
+            "construct-reasoning-run-inspection",
+            None,
+            180,
+        ),
         "request_genomes_status_grch38.json": (
             "shell",
             'genomes status "Human GRCh38 Ensembl 116"',
@@ -3516,6 +4086,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             1800,
         ),
         "request_workflow_tp73_tfbs_score_tracks_summary.json": (
+            "workflow",
+            None,
+            300,
+        ),
+        "request_workflow_clariom_pm_probe_interpretation.json": (
             "workflow",
             None,
             300,
@@ -3932,6 +4507,15 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             assert payload["expected_artifacts"] == [
                 "artifacts/tp73_upstream_tfbs_score_tracks.summary.json"
             ]
+        if name == "request_workflow_clariom_pm_probe_interpretation.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert (
+                payload["workflow_path"]
+                == "integrations/clawbio/skills/gentle-cloning/examples/workflows/clariom_pm_probe_interpretation.workflow.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "artifacts/clariom_pm_probe_interpretation.json"
+            ]
         if name == "request_workflow_tp73_tfbs_score_tracks_svg.json":
             assert payload["state_path"] == ".gentle_state.json"
             assert (
@@ -3970,6 +4554,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             assert payload["expected_artifacts"] == [
                 "artifacts/simple_pcr_demo_primers.protocol.svg",
                 "artifacts/simple_pcr_demo_primers.report.json"
+            ]
+            assert payload["timeout_secs"] == 300
+        if name == "request_workflow_gibson_lab_assistant_handoff_demo.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert (
+                payload["workflow_path"]
+                == "docs/examples/workflows/gibson_arrangements_baseline.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "artifacts/gibson_lab_assistant_handoff.md"
             ]
             assert payload["timeout_secs"] == 300
         if name == "request_primers_preflight_auto.json":
@@ -4223,6 +4817,51 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         "artifacts/tp73_upstream_tfbs_score_tracks.summary.json"
     ]
     assert tfbs_score_track_summary_payload["timeout_secs"] == 300
+
+    clariom_pm_probe_payload = json.loads(
+        (examples_dir / "request_workflow_clariom_pm_probe_interpretation.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert clariom_pm_probe_payload["schema"] == "gentle.clawbio_skill_request.v1"
+    assert clariom_pm_probe_payload["mode"] == "workflow"
+    assert clariom_pm_probe_payload["state_path"] == ".gentle_state.json"
+    assert (
+        clariom_pm_probe_payload["workflow_path"]
+        == "integrations/clawbio/skills/gentle-cloning/examples/workflows/clariom_pm_probe_interpretation.workflow.json"
+    )
+    assert clariom_pm_probe_payload["expected_artifacts"] == [
+        "artifacts/clariom_pm_probe_interpretation.json"
+    ]
+    assert clariom_pm_probe_payload["timeout_secs"] == 300
+
+    clariom_pm_probe_workflow = json.loads(
+        (
+            examples_dir
+            / "workflows"
+            / "clariom_pm_probe_interpretation.workflow.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert clariom_pm_probe_workflow["run_id"] == (
+        "clawbio_clariom_pm_probe_interpretation"
+    )
+    clariom_ops = clariom_pm_probe_workflow["ops"]
+    assert clariom_ops[0]["LoadFile"] == {
+        "path": "test_files/tp73.ncbi.gb",
+        "as_id": "tp73_clariom_pm_probe_context",
+    }
+    assert "ArraysImportAptProbeRegionOutput" not in json.dumps(clariom_ops)
+    assert clariom_ops[1]["ProjectProbeRegionOutput"]["level"] == "pm_probe"
+    assert clariom_ops[1]["ProjectProbeRegionOutput"]["output_dir"] == (
+        "test_files/fixtures/probe_region_outputs/clariom_pm_probe_interpretation"
+    )
+    assert clariom_ops[-1]["InterpretProbeRegionEvidence"] == {
+        "seq_id": "tp73_clariom_pm_probe_context",
+        "gene_label": "TP73",
+        "level": "pm_probe",
+        "min_abs_logfc": 0.5,
+        "path": "artifacts/clariom_pm_probe_interpretation.json",
+    }
 
     tfbs_score_track_svg_payload = json.loads(
         (examples_dir / "request_workflow_tp73_tfbs_score_tracks_svg.json").read_text(
@@ -4608,6 +5247,14 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "pcr protocol cartoon" in trigger_keywords
     assert "taqman protocol cartoon" in trigger_keywords
     assert "restriction cloning pcr handoff" in trigger_keywords
+    assert "lab assistant handoff" in trigger_keywords
+    assert "lab assistant instructions" in trigger_keywords
+    assert "lab assistant demo" in trigger_keywords
+    assert "cloning handoff demo" in trigger_keywords
+    assert "protein expression handoff" in trigger_keywords
+    assert "maximal amount of protein" in trigger_keywords
+    assert "high yield protein expression" in trigger_keywords
+    assert "geneart protein expression preflight" in trigger_keywords
     assert "database status" in trigger_keywords
     assert "installed databases" in trigger_keywords
     assert "resources status" in trigger_keywords
@@ -4638,6 +5285,58 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "characteristic qpcr primers" in trigger_keywords
 
 
+def _route_input_paths(intents: dict) -> list[str]:
+    paths: list[str] = []
+    for route in intents["routes"]:
+        for step in route.get("plan", []):
+            input_path = step.get("input") if isinstance(step, dict) else None
+            if isinstance(input_path, str):
+                paths.append(input_path)
+    return paths
+
+
+def test_gentle_cloning_intents_route_inputs_exist() -> None:
+    skill_root = Path(__file__).resolve().parents[1]
+    intents = json.loads((skill_root / "INTENTS.json").read_text(encoding="utf-8"))
+
+    missing = [
+        input_path
+        for input_path in _route_input_paths(intents)
+        if not (skill_root / input_path).exists()
+    ]
+
+    assert missing == []
+
+
+def test_gentle_cloning_examples_are_routed_or_allowlisted() -> None:
+    skill_root = Path(__file__).resolve().parents[1]
+    intents = json.loads((skill_root / "INTENTS.json").read_text(encoding="utf-8"))
+    referenced = {
+        Path(input_path).name
+        for input_path in _route_input_paths(intents)
+    }
+    examples = {path.name for path in (skill_root / "examples").glob("*.json")}
+
+    unclassified = sorted(examples - referenced - INTENT_EXAMPLE_ALLOWLIST)
+
+    assert unclassified == []
+
+
+def test_gentle_cloning_skill_trigger_keywords_match_generator() -> None:
+    repo_root = Path(__file__).resolve().parents[5]
+    script = repo_root / "scripts" / "generate_clawbio_trigger_keywords.py"
+
+    run = subprocess.run(
+        [sys.executable, str(script), "--check"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 0, run.stderr
+
+
 def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -> None:
     skill_root = Path(__file__).resolve().parents[1]
     intents = json.loads((skill_root / "INTENTS.json").read_text(encoding="utf-8"))
@@ -4654,7 +5353,10 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     routes = {route["intent_id"]: route for route in intents["routes"]}
     assert set(routes) == {
         "telegram_guide_isoforms_gene",
+        "lab_assistant_handoff_export",
+        "demo_lab_assistant_handoff",
         "skill_info",
+        "intents_runtime",
         "telegram_guide_overview",
         "telegram_guide_readiness",
         "telegram_guide_gene_context",
@@ -4664,9 +5366,21 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "telegram_guide_isoforms",
         "telegram_guide_follow_up",
         "capabilities",
+        "clariom_pm_probe_interpretation",
         "runtime_version",
         "services_status",
+        "sequence_delivery_route",
+        "external_service_provider_catalog",
+        "external_service_provider_doctor",
+        "metabion_oligo_preflight",
+        "metabion_oligo_quote_handoff",
+        "metabion_mblock_quote_handoff",
+        "geneart_cloned_gene_preflight",
+        "geneart_cloned_gene_quote_handoff",
+        "geneart_protein_expression_preflight",
+        "geneart_protein_expression_quote_handoff",
         "resources_status",
+        "protein_expression_handoff",
         "protein_residue_genomic_coordinates",
         "transcript_qpcr_panel",
         "ensembl_gene_protein_2d_gel",
@@ -4694,10 +5408,13 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "ensembl_gene_panel_protein_gel",
         "demo_ensembl_gene_protein_2d_gel",
         "demo_trypsin_digest_gel",
+        "construct_reasoning_recommended_inspections",
+        "construct_reasoning_run_recommended_inspection",
         "explicit_demo",
     }
     expected_inputs = {
         "skill_info": "examples/request_skill_info.json",
+        "intents_runtime": "examples/request_intents_runtime.json",
         "telegram_guide_overview": "examples/request_services_telegram_guide.json",
         "telegram_guide_readiness": (
             "examples/request_services_telegram_guide_readiness.json"
@@ -4719,12 +5436,49 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
             "examples/request_services_telegram_guide_follow_up.json"
         ),
         "capabilities": "examples/request_capabilities.json",
+        "clariom_pm_probe_interpretation": (
+            "examples/request_workflow_clariom_pm_probe_interpretation.json"
+        ),
         "runtime_version": "examples/request_runtime_version.json",
         "services_status": "examples/request_services_status.json",
+        "sequence_delivery_route": None,
+        "external_service_provider_catalog": (
+            "examples/request_services_providers_list.json"
+        ),
+        "external_service_provider_doctor": (
+            "examples/request_services_providers_doctor.json"
+        ),
+        "metabion_oligo_preflight": (
+            "examples/request_services_metabion_oligo_preflight.json"
+        ),
+        "metabion_oligo_quote_handoff": (
+            "examples/request_services_metabion_oligo_quote.json"
+        ),
+        "metabion_mblock_quote_handoff": (
+            "examples/request_services_metabion_mblock_quote.json"
+        ),
+        "geneart_cloned_gene_preflight": (
+            "examples/request_services_geneart_cloned_gene_preflight.json"
+        ),
+        "geneart_cloned_gene_quote_handoff": (
+            "examples/request_services_geneart_cloned_gene_quote.json"
+        ),
+        "geneart_protein_expression_preflight": (
+            "examples/request_services_geneart_protein_expression_preflight.json"
+        ),
+        "geneart_protein_expression_quote_handoff": (
+            "examples/request_services_geneart_protein_expression_quote.json"
+        ),
         "resources_status": "examples/request_resources_status.json",
+        "protein_expression_handoff": (
+            "examples/request_planning_protein_expression_handoff.json"
+        ),
         "protein_residue_genomic_coordinates": None,
         "transcript_qpcr_panel": None,
         "telegram_guide_isoforms_gene": None,
+        "demo_lab_assistant_handoff": (
+            "examples/request_workflow_gibson_lab_assistant_handoff_demo.json"
+        ),
         "ensembl_gene_protein_2d_gel": None,
         "demo_isoform_protein_gel": "examples/request_workflow_isoform_protein_gel_demo.json",
         "demo_isoform_protein_2d_gel": (
@@ -4768,6 +5522,8 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
             "examples/request_gene_protein_2d_gel_ensembl_demo.json"
         ),
         "demo_trypsin_digest_gel": "examples/request_workflow_trypsin_digest_gel_demo.json",
+        "construct_reasoning_recommended_inspections": None,
+        "construct_reasoning_run_recommended_inspection": None,
     }
 
     for intent_id, expected_input in expected_inputs.items():
@@ -4790,6 +5546,12 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
                     "services guide --channel telegram --section isoforms --gene {gene_symbol}"
                 )
                 assert step["slots"]["gene_symbol"]["required"] is True
+            elif intent_id == "sequence_delivery_route":
+                assert step["input_template"]["mode"] == "shell"
+                assert step["input_template"]["shell_line"] == (
+                    "services delivery-route {delivery_route_request_json}"
+                )
+                assert step["slots"]["delivery_route_request_json"]["required"] is True
             elif intent_id == "ensembl_gene_protein_2d_gel":
                 assert step["input_template"]["mode"] == "gene-protein-2d-gel"
                 assert step["input_template"]["gene_symbol"] == "{gene_symbol}"
@@ -4872,6 +5634,25 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
                 assert step["input_template"]["expected_artifacts"] == ["{output_path}"]
                 assert step["slots"]["protocol_id"]["required"] is True
                 assert step["slots"]["output_path"]["required"] is True
+            elif intent_id == "construct_reasoning_recommended_inspections":
+                assert (
+                    step["input_template"]["mode"]
+                    == "construct-reasoning-list-inspections"
+                )
+                assert step["input_template"]["graph_id"] == "{graph_id}"
+                assert step["input_template"]["action_kind"] == "{action_kind}"
+                assert step["slots"]["graph_id"]["required"] is True
+                assert step["slots"]["action_kind"]["required"] is False
+                assert step["slots"]["action_kind"]["default"] == "dotplot"
+            elif intent_id == "construct_reasoning_run_recommended_inspection":
+                assert (
+                    step["input_template"]["mode"]
+                    == "construct-reasoning-run-inspection"
+                )
+                assert step["input_template"]["graph_id"] == "{graph_id}"
+                assert step["input_template"]["action_id"] == "{action_id}"
+                assert step["slots"]["graph_id"]["required"] is True
+                assert step["slots"]["action_id"]["required"] is True
             else:
                 assert intent_id == "telegram_guide_isoforms_gene"
                 assert step["input_template"]["mode"] == "shell"
@@ -4906,14 +5687,59 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert "continue cloning" in routes["telegram_guide_cloning"]["trigger_terms"]
     assert "continue isoforms" in routes["telegram_guide_isoforms"]["trigger_terms"]
     assert "isoforms guide" in routes["telegram_guide_isoforms"]["trigger_terms"]
+    assert "show me the gentle isoforms guide" in routes["telegram_guide_isoforms"][
+        "trigger_terms"
+    ]
+    assert "show me the gentle isoforms guide" not in routes[
+        "telegram_guide_isoforms_gene"
+    ]["trigger_terms"]
     assert "gentle isoforms guide for" in routes["telegram_guide_isoforms_gene"][
         "trigger_terms"
     ]
     assert "local resources" in routes["services_status"]["trigger_terms"]
     assert "rnafold resource" in routes["services_status"]["trigger_terms"]
+    assert "i want that sequence delivered" in routes["sequence_delivery_route"][
+        "trigger_terms"
+    ]
+    assert "deliver this protein sequence" in routes["sequence_delivery_route"][
+        "trigger_terms"
+    ]
+    assert "external service providers" in routes[
+        "external_service_provider_catalog"
+    ]["trigger_terms"]
+    assert "services providers doctor" in routes[
+        "external_service_provider_doctor"
+    ]["trigger_terms"]
+    assert "metabion oligo preflight" in routes["metabion_oligo_preflight"][
+        "trigger_terms"
+    ]
+    assert "metabion primer handoff" in routes[
+        "metabion_oligo_quote_handoff"
+    ]["trigger_terms"]
+    assert "metabion m-block quote" in routes[
+        "metabion_mblock_quote_handoff"
+    ]["trigger_terms"]
+    assert "geneart gene synthesis preflight" in routes[
+        "geneart_cloned_gene_preflight"
+    ]["trigger_terms"]
+    assert "geneart long synthetic sequence" in routes[
+        "geneart_cloned_gene_quote_handoff"
+    ]["trigger_terms"]
+    assert "geneart protein expression preflight" in routes[
+        "geneart_protein_expression_preflight"
+    ]["trigger_terms"]
+    assert "geneart protein expression quote" in routes[
+        "geneart_protein_expression_quote_handoff"
+    ]["trigger_terms"]
     assert "installed databases" in routes["resources_status"]["trigger_terms"]
     assert "rnapkin" in routes["resources_status"]["trigger_terms"]
     assert "viennarna" in routes["resources_status"]["trigger_terms"]
+    assert "maximal amount of protein" in routes["protein_expression_handoff"][
+        "trigger_terms"
+    ]
+    assert "protein expression handoff" in routes["protein_expression_handoff"][
+        "trigger_terms"
+    ]
     assert "genomic codon" in routes["protein_residue_genomic_coordinates"][
         "trigger_terms"
     ]
@@ -5038,6 +5864,7 @@ def test_experimental_followup_request_catalog_covers_core_intents_and_paths() -
         "differential_expression_followup",
         "splice_variant_characterization",
         "overexpression_planning",
+        "protein_expression_max_yield",
         "knockdown_planning",
         "genomic_perturbation_planning",
         "routine_cost_comparison",
@@ -5066,6 +5893,36 @@ def test_experimental_followup_request_catalog_covers_core_intents_and_paths() -
         "adenoviral_expression",
         "lentiviral_expression",
     } <= set(intents["overexpression_planning"]["followup_families"])
+    protein_handoff_requests = {
+        request["path"]
+        for request in intents["protein_expression_max_yield"]["gentle_requests"]
+    }
+    assert (
+        "skills/gentle-cloning/examples/request_planning_protein_expression_handoff.json"
+        in protein_handoff_requests
+    )
+    assert (
+        "skills/gentle-cloning/examples/request_services_geneart_protein_expression_quote.json"
+        in protein_handoff_requests
+    )
+    protein_handoff_commands = {
+        command["shell_line"]
+        for command in intents["protein_expression_max_yield"]["gentle_shell_commands"]
+    }
+    assert any(
+        command.startswith("planning protein-expression-handoff ")
+        for command in protein_handoff_commands
+    )
+    assert {
+        "high_yield_protein_expression",
+        "outsourced_gene_synthesis_or_expression",
+        "purification_handoff",
+    } <= set(intents["protein_expression_max_yield"]["followup_families"])
+    assert {
+        "product_identity_review",
+        "host_route_selection",
+        "outsourcing_or_vendor_review",
+    } <= set(intents["protein_expression_max_yield"]["confirmation_gates"])
     assert {
         "antisense_knockdown",
         "siRNA_knockdown",

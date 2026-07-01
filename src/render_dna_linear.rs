@@ -9,8 +9,9 @@ use crate::{
     engine::{
         ConstructRole, EvidenceClass, LinearSequenceLetterLayoutMode, RestrictionEnzymeDisplayMode,
     },
+    exon_frame::ExonLengthFrameCue,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
-    gc_contents::GcContents,
+    gc_contents::{DEFAULT_SECTION_SIZE_BP, GcContents},
     iupac_code::IupacCode,
     linear_base_routing::{
         AUTO_HELICAL_MAX_DENSITY, AUTO_STANDARD_MAX_DENSITY, LinearBaseRoutingDecision,
@@ -18,13 +19,13 @@ use crate::{
     },
     open_reading_frame::OpenReadingFrame,
     render_dna::RenderDna,
-    render_dna::RestrictionEnzymePosition,
+    render_dna::{HoveredExonFrameCue, RestrictionEnzymePosition},
 };
 use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Stroke, StrokeKind, Vec2,
 };
 use gb_io::seq::Feature;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::sync::{Arc, RwLock};
 
 const BASELINE_STROKE: f32 = 2.0;
@@ -113,18 +114,41 @@ struct FeaturePosition {
     kind_upper: String,
     color: Color32,
     is_regulatory: bool,
+    is_array_track: bool,
+    array_stroke: Option<Stroke>,
     is_mcs: bool,
     is_variation: bool,
     is_pointy: bool,
     is_reverse: bool,
     rect: Rect,
     exon_rects: Vec<Rect>,
+    exon_length_mod3_cues: Vec<Option<u8>>,
     intron_connectors: Vec<[Pos2; 3]>,
 }
 
 impl FeaturePosition {
     fn contains(&self, pos: Pos2) -> bool {
         self.exon_rects.iter().any(|rect| rect.contains(pos))
+    }
+
+    fn exon_frame_cue_at(&self, pos: Pos2) -> Option<HoveredExonFrameCue> {
+        for (idx, (rect, cue)) in self
+            .exon_rects
+            .iter()
+            .zip(self.exon_length_mod3_cues.iter())
+            .enumerate()
+        {
+            if !rect.contains(pos) {
+                continue;
+            }
+            let length_mod3 = (*cue)? as usize;
+            return Some(HoveredExonFrameCue {
+                exon_number: idx + 1,
+                length_mod3: length_mod3 as u8,
+                skip_frame_hint: ExonLengthFrameCue::from_length(length_mod3).skip_frame_hint(true),
+            });
+        }
+        None
     }
 }
 
@@ -226,6 +250,7 @@ pub struct RenderDnaLinear {
     selected_enzyme: Option<RestrictionEnzymePosition>,
     selected_reasoning_evidence_id: Option<String>,
     hovered_feature_number: Option<usize>,
+    hovered_exon_frame_cue: Option<HoveredExonFrameCue>,
     hover_enzyme: Option<RestrictionEnzymePosition>,
     hovered_reasoning_evidence_id: Option<String>,
     external_labeled_feature_numbers: BTreeSet<usize>,
@@ -313,6 +338,7 @@ impl RenderDnaLinear {
             selected_enzyme: None,
             selected_reasoning_evidence_id: None,
             hovered_feature_number: None,
+            hovered_exon_frame_cue: None,
             hover_enzyme: None,
             hovered_reasoning_evidence_id: None,
             external_labeled_feature_numbers: BTreeSet::new(),
@@ -597,11 +623,11 @@ impl RenderDnaLinear {
         evidence_class: EvidenceClass,
         editable_status: crate::engine::EditableStatus,
     ) -> Stroke {
-        let width = match evidence_class {
-            EvidenceClass::HardFact | EvidenceClass::UserOverride => 1.2,
-            EvidenceClass::ReliableAnnotation => 1.0,
-            EvidenceClass::ContextEvidence => 0.9,
-            EvidenceClass::SoftHypothesis => 0.8,
+        let width: f32 = match evidence_class {
+            EvidenceClass::HardFact | EvidenceClass::UserOverride => 1.2_f32,
+            EvidenceClass::ReliableAnnotation => 1.0_f32,
+            EvidenceClass::ContextEvidence => 0.9_f32,
+            EvidenceClass::SoftHypothesis => 0.8_f32,
         };
         match editable_status {
             crate::engine::EditableStatus::Draft => Stroke::new(
@@ -609,13 +635,13 @@ impl RenderDnaLinear {
                 Self::construct_reasoning_role_color(role).gamma_multiply(0.75),
             ),
             crate::engine::EditableStatus::Accepted => {
-                Stroke::new(width.max(1.4), Color32::from_rgb(22, 163, 74))
+                Stroke::new(width.max(1.4_f32), Color32::from_rgb(22, 163, 74))
             }
             crate::engine::EditableStatus::Rejected => {
-                Stroke::new(width.max(1.0), Color32::from_gray(116))
+                Stroke::new(width.max(1.0_f32), Color32::from_gray(116))
             }
             crate::engine::EditableStatus::Locked => {
-                Stroke::new(width.max(1.2), Color32::from_rgb(14, 116, 144))
+                Stroke::new(width.max(1.2_f32), Color32::from_rgb(14, 116, 144))
             }
         }
     }
@@ -719,9 +745,9 @@ impl RenderDnaLinear {
             let hovered =
                 self.hovered_reasoning_evidence_id.as_deref() == Some(span.evidence_id.as_str());
             let stroke = if selected {
-                Stroke::new(2.0, Color32::YELLOW)
+                Stroke::new(2.0_f32, Color32::YELLOW)
             } else if hovered {
-                Stroke::new(1.6, Color32::WHITE)
+                Stroke::new(1.6_f32, Color32::WHITE)
             } else {
                 Self::construct_reasoning_overlay_stroke(
                     span.role,
@@ -767,7 +793,7 @@ impl RenderDnaLinear {
     }
 
     fn mcs_badge_stroke(fill: Color32) -> Stroke {
-        Stroke::new(1.4, fill.gamma_multiply(0.85))
+        Stroke::new(1.4_f32, fill.gamma_multiply(0.85))
     }
 
     fn mcs_inline_badge_rect(label_rect: Rect, text_size: Vec2) -> Rect {
@@ -792,6 +818,7 @@ impl RenderDnaLinear {
         show_gene_features: bool,
         show_mrna_features: bool,
         show_repeat_features: bool,
+        show_array_features: bool,
         show_contextual_transcript_features: bool,
         show_tfbs: bool,
         tfbs_display_criteria: TfbsDisplayCriteria,
@@ -820,6 +847,9 @@ impl RenderDnaLinear {
             return false;
         }
         if !show_repeat_features && RenderDna::is_repeat_feature(feature) {
+            return false;
+        }
+        if !show_array_features && RenderDna::is_array_track_feature(feature) {
             return false;
         }
         if RenderDna::is_tfbs_feature(feature) {
@@ -969,6 +999,7 @@ impl RenderDnaLinear {
             from: usize,
             to: usize,
             exon_segments: Vec<(f32, f32)>,
+            exon_length_mod3_cues: Vec<Option<u8>>,
             connector_segments: Vec<(f32, f32)>,
             x1: f32,
             x2: f32,
@@ -978,6 +1009,8 @@ impl RenderDnaLinear {
             is_pointy: bool,
             is_reverse: bool,
             is_regulatory: bool,
+            is_array_track: bool,
+            array_stroke: Option<Stroke>,
             is_mcs: bool,
             is_variation: bool,
         }
@@ -1003,6 +1036,7 @@ impl RenderDnaLinear {
             show_gene_features,
             show_mrna_features,
             show_repeat_features,
+            show_array_features,
             show_contextual_transcript_features,
             show_tfbs,
             tfbs_display_criteria,
@@ -1019,6 +1053,7 @@ impl RenderDnaLinear {
                     display.show_gene_features(),
                     display.show_mrna_features(),
                     display.show_repeat_features(),
+                    display.show_array_features(),
                     display.show_contextual_transcript_features(),
                     display.show_tfbs(),
                     display.tfbs_display_criteria(),
@@ -1029,6 +1064,7 @@ impl RenderDnaLinear {
                 )
             })
             .unwrap_or((
+                true,
                 true,
                 true,
                 true,
@@ -1053,6 +1089,7 @@ impl RenderDnaLinear {
                 show_gene_features,
                 show_mrna_features,
                 show_repeat_features,
+                show_array_features,
                 show_contextual_transcript_features,
                 show_tfbs,
                 tfbs_display_criteria,
@@ -1095,6 +1132,7 @@ impl RenderDnaLinear {
             let label = RenderDna::feature_name(feature);
             let is_mcs = RenderDna::is_mcs_feature(feature);
             let is_variation = RenderDna::is_variation_feature(feature);
+            let show_exon_length_cues = RenderDna::is_exon_length_frame_cue_feature(feature);
             let mut exon_ranges: Vec<(usize, usize)> = vec![];
             collect_location_ranges_usize(&feature.location, &mut exon_ranges);
             if exon_ranges.is_empty() {
@@ -1103,6 +1141,7 @@ impl RenderDnaLinear {
             exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 
             let mut exon_segments: Vec<(f32, f32)> = Vec::new();
+            let mut exon_length_mod3_cues: Vec<Option<u8>> = Vec::new();
             let mut exon_visibility: Vec<Option<(f32, f32)>> =
                 Vec::with_capacity(exon_ranges.len());
             for (exon_start, exon_end_exclusive) in exon_ranges.iter().copied() {
@@ -1130,9 +1169,24 @@ impl RenderDnaLinear {
                     .max(seg_x1 + 1.0)
                     .min(self.area.right());
                 exon_segments.push((seg_x1, seg_x2));
+                exon_length_mod3_cues.push(show_exon_length_cues.then(|| {
+                    RenderDna::exon_length_mod3_for_range(exon_start, exon_end_exclusive)
+                }));
                 exon_visibility.push(Some((seg_x1, seg_x2)));
             }
-            exon_segments.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+            let mut exon_segments_with_cues: Vec<((f32, f32), Option<u8>)> = exon_segments
+                .into_iter()
+                .zip(exon_length_mod3_cues)
+                .collect();
+            exon_segments_with_cues.sort_by(|left, right| {
+                let ((left_x1, left_x2), _) = left;
+                let ((right_x1, right_x2), _) = right;
+                left_x1
+                    .total_cmp(right_x1)
+                    .then(left_x2.total_cmp(right_x2))
+            });
+            let (mut exon_segments, exon_length_mod3_cues): (Vec<_>, Vec<_>) =
+                exon_segments_with_cues.into_iter().unzip();
 
             let mut connector_segments: Vec<(f32, f32)> = Vec::new();
             for exon_idx in 0..exon_ranges.len().saturating_sub(1) {
@@ -1191,8 +1245,11 @@ impl RenderDnaLinear {
                 x2 = expanded_right.max(expanded_left + 1.0);
             }
             let kind = feature.kind.to_string().to_ascii_uppercase();
-            let is_high_priority_feature =
-                is_mcs || is_variation || matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
+            let is_array_track = RenderDna::is_array_track_feature(feature);
+            let is_high_priority_feature = is_mcs
+                || is_variation
+                || is_array_track
+                || matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
             if !is_high_priority_feature && (x2 - x1) < low_value_feature_min_width_px {
                 continue;
             }
@@ -1202,6 +1259,7 @@ impl RenderDnaLinear {
                 from,
                 to,
                 exon_segments,
+                exon_length_mod3_cues,
                 connector_segments,
                 x1,
                 x2,
@@ -1210,7 +1268,9 @@ impl RenderDnaLinear {
                 color: RenderDna::feature_color(feature),
                 is_pointy: RenderDna::is_feature_pointy(feature),
                 is_reverse: feature_is_reverse(feature),
-                is_regulatory: RenderDna::is_regulatory_feature(feature),
+                is_regulatory: RenderDna::is_regulatory_feature(feature) || is_array_track,
+                is_array_track,
+                array_stroke: RenderDna::array_feature_confidence_stroke(feature),
                 is_mcs,
                 is_variation,
             });
@@ -1450,7 +1510,8 @@ impl RenderDnaLinear {
                 LaneSide::RegulatoryNearBaseline => self.baseline_y() - side_style.margin,
             };
             let lane_is_bottom_side = matches!(item.lane_side, LaneSide::Bottom);
-            let suppress_introns = matches!(item.lane_side, LaneSide::RegulatoryNearBaseline);
+            let suppress_introns =
+                seed.is_array_track || matches!(item.lane_side, LaneSide::RegulatoryNearBaseline);
             let exon_rects: Vec<Rect> = seed
                 .exon_segments
                 .iter()
@@ -1461,6 +1522,7 @@ impl RenderDnaLinear {
                     )
                 })
                 .collect();
+            let exon_length_mod3_cues = seed.exon_length_mod3_cues.clone();
             let rect = if exon_rects.is_empty() {
                 let (min_x, max_x) = seed.connector_segments.iter().fold(
                     (f32::INFINITY, f32::NEG_INFINITY),
@@ -1509,12 +1571,15 @@ impl RenderDnaLinear {
                 kind_upper: seed.kind_upper,
                 color: seed.color,
                 is_regulatory: seed.is_regulatory,
+                is_array_track: seed.is_array_track,
+                array_stroke: seed.array_stroke,
                 is_mcs: seed.is_mcs,
                 is_variation: seed.is_variation,
                 is_pointy: seed.is_pointy && !seed.is_regulatory,
                 is_reverse: seed.is_reverse,
                 rect,
                 exon_rects,
+                exon_length_mod3_cues,
                 intron_connectors,
             });
         }
@@ -1550,8 +1615,16 @@ impl RenderDnaLinear {
         self.hovered_feature_number
     }
 
+    pub fn hovered_exon_frame_cue(&self) -> Option<HoveredExonFrameCue> {
+        self.hovered_exon_frame_cue.clone()
+    }
+
     pub fn selected_restriction_enzyme(&self) -> Option<RestrictionEnzymePosition> {
         self.selected_enzyme.clone()
+    }
+
+    pub fn hovered_restriction_enzyme(&self) -> Option<RestrictionEnzymePosition> {
+        self.hover_enzyme.clone()
     }
 
     pub fn selected_reasoning_evidence_id(&self) -> Option<String> {
@@ -1616,7 +1689,14 @@ impl RenderDnaLinear {
             }
             self.last_hover_probe_pos = Some(pos);
             self.last_hover_probe_viewport = Some(viewport);
-            self.hovered_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
+            let (hovered_feature_number, hovered_exon_frame_cue) =
+                if let Some(feature) = self.get_clicked_feature(pos) {
+                    (Some(feature.feature_number), feature.exon_frame_cue_at(pos))
+                } else {
+                    (None, None)
+                };
+            self.hovered_feature_number = hovered_feature_number;
+            self.hovered_exon_frame_cue = hovered_exon_frame_cue;
             self.hovered_reasoning_evidence_id = if self.hovered_feature_number.is_none() {
                 self.get_clicked_construct_reasoning_overlay(pos)
                     .map(|overlay| overlay.evidence_id)
@@ -1630,6 +1710,11 @@ impl RenderDnaLinear {
             } else {
                 None
             };
+        } else {
+            self.hovered_feature_number = None;
+            self.hovered_exon_frame_cue = None;
+            self.hovered_reasoning_evidence_id = None;
+            self.hover_enzyme = None;
         }
     }
 
@@ -1744,7 +1829,7 @@ impl RenderDnaLinear {
             if draw_tick_marks {
                 painter.line_segment(
                     [Pos2::new(x, y - 4.0), Pos2::new(x, y + 4.0)],
-                    Stroke::new(1.0, Color32::DARK_GRAY),
+                    Stroke::new(1.0_f32, Color32::DARK_GRAY),
                 );
             }
             if !show_sequence_bases {
@@ -1774,15 +1859,34 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_rotated_base_char(
+    fn sequence_base_galley_index(base: u8) -> usize {
+        match base.to_ascii_uppercase() {
+            b'A' => 0,
+            b'C' => 1,
+            b'G' => 2,
+            b'T' | b'U' => 3,
+            _ => 4,
+        }
+    }
+
+    fn draw_base_galley_center_top(
         painter: &egui::Painter,
         x_center: f32,
         y_top: f32,
-        base: char,
-        font: &FontId,
+        galley: Arc<egui::Galley>,
         color: Color32,
     ) {
-        let galley = painter.layout_no_wrap(base.to_string(), font.clone(), color);
+        let size = galley.size();
+        painter.galley(Pos2::new(x_center - size.x * 0.5, y_top), galley, color);
+    }
+
+    fn draw_rotated_base_galley(
+        painter: &egui::Painter,
+        x_center: f32,
+        y_top: f32,
+        galley: Arc<egui::Galley>,
+        color: Color32,
+    ) {
         let size = galley.size();
         // Rotate the full glyph box (not symbol substitution) to preserve font fidelity.
         let pivot = Pos2::new(x_center + size.x * 0.5, y_top + size.y);
@@ -1801,33 +1905,27 @@ impl RenderDnaLinear {
         }) else {
             return;
         };
-        let selection = self
-            .display
-            .read()
-            .ok()
-            .and_then(|display| display.selection());
         let (
+            selection,
             show_double_strand,
             helical_parallel_strands,
             reverse_strand_opacity,
             reverse_strand_upside_down,
+            helical_phase_offset_bp,
         ) = self
             .display
             .read()
             .map(|display| {
                 (
+                    display.selection(),
                     display.linear_show_double_strand_bases(),
                     display.linear_helical_parallel_strands(),
                     display.reverse_strand_visual_opacity(),
                     display.linear_reverse_strand_use_upside_down_letters(),
+                    display.linear_sequence_helical_phase_offset_bp(),
                 )
             })
-            .unwrap_or((true, true, 0.55, true));
-        let helical_phase_offset_bp = self
-            .display
-            .read()
-            .map(|display| display.linear_sequence_helical_phase_offset_bp())
-            .unwrap_or(0);
+            .unwrap_or((None, true, true, 0.55, true, 0));
         let use_condensed_helical =
             render_status.active_mode == SequenceBaseRenderMode::Condensed10Row;
         let helical_t = render_status.helical_projection_progress_from_density();
@@ -1846,6 +1944,13 @@ impl RenderDnaLinear {
             size: font_size,
             family: FontFamily::Monospace,
         };
+        let base_galleys = [
+            painter.layout_no_wrap("A".to_owned(), font.clone(), Color32::PLACEHOLDER),
+            painter.layout_no_wrap("C".to_owned(), font.clone(), Color32::PLACEHOLDER),
+            painter.layout_no_wrap("G".to_owned(), font.clone(), Color32::PLACEHOLDER),
+            painter.layout_no_wrap("T".to_owned(), font.clone(), Color32::PLACEHOLDER),
+            painter.layout_no_wrap("N".to_owned(), font.clone(), Color32::PLACEHOLDER),
+        ];
         let baseline = self.baseline_y();
         let strand_half_gap = if show_double_strand {
             CONDENSED_HELICAL_STRAND_GAP * 0.5
@@ -1932,48 +2037,49 @@ impl RenderDnaLinear {
             } else {
                 forward_y_bp + font_size + 1.0
             };
-            if let Some(selection) = &selection {
-                if selection.contains(bp) {
-                    let left = x1_projected.min(x2_projected);
-                    let right = x1_projected.max(x2_projected).max(left + 1.0);
-                    painter.rect_filled(
-                        Rect::from_min_max(
-                            Pos2::new(left, selection_min_y),
-                            Pos2::new(right, selection_max_y),
-                        ),
-                        0.0,
-                        Color32::from_gray(230),
-                    );
-                }
+            if let Some(selection) = &selection
+                && selection.contains(bp)
+            {
+                let left = x1_projected.min(x2_projected);
+                let right = x1_projected.max(x2_projected).max(left + 1.0);
+                painter.rect_filled(
+                    Rect::from_min_max(
+                        Pos2::new(left, selection_min_y),
+                        Pos2::new(right, selection_max_y),
+                    ),
+                    0.0,
+                    Color32::from_gray(230),
+                );
             }
-            let forward_char = (*base as char).to_ascii_uppercase();
-            painter.text(
-                Pos2::new(x_center, forward_y_bp),
-                Align2::CENTER_TOP,
-                forward_char,
-                font.clone(),
-                Self::sequence_base_color(*base),
+            let forward_color = Self::sequence_base_color(*base);
+            let forward_galley = base_galleys[Self::sequence_base_galley_index(*base)].clone();
+            Self::draw_base_galley_center_top(
+                painter,
+                x_center,
+                forward_y_bp,
+                forward_galley,
+                forward_color,
             );
             if show_double_strand {
                 let complemented_byte = IupacCode::letter_complement(*base).to_ascii_uppercase();
-                let complemented = complemented_byte as char;
                 let reverse_color = Self::sequence_base_color(complemented_byte)
                     .gamma_multiply(reverse_strand_opacity.clamp(0.2, 1.0));
+                let reverse_galley =
+                    base_galleys[Self::sequence_base_galley_index(complemented_byte)].clone();
                 if reverse_strand_upside_down {
-                    Self::draw_rotated_base_char(
+                    Self::draw_rotated_base_galley(
                         painter,
                         x_center,
                         reverse_y_bp,
-                        complemented,
-                        &font,
+                        reverse_galley,
                         reverse_color,
                     );
                 } else {
-                    painter.text(
-                        Pos2::new(x_center, reverse_y_bp),
-                        Align2::CENTER_TOP,
-                        complemented,
-                        font.clone(),
+                    Self::draw_base_galley_center_top(
+                        painter,
+                        x_center,
+                        reverse_y_bp,
+                        reverse_galley,
                         reverse_color,
                     );
                 }
@@ -2131,7 +2237,7 @@ impl RenderDnaLinear {
         let sine_amp = font_size * phase_scale.max(HELICAL_MIN_Y_PHASE_SCALE);
         let sine_component = phase_angle.sin() * sine_amp;
         let two_row_amp = font_size * (0.55 + 0.45 * helical_t.clamp(0.0, 1.0));
-        let two_row_component = if phase_index % 2 == 0 {
+        let two_row_component = if phase_index.is_multiple_of(2) {
             -two_row_amp
         } else {
             two_row_amp
@@ -2264,15 +2370,16 @@ impl RenderDnaLinear {
         }
     }
 
-    fn orf_colors() -> HashMap<i32, Color32> {
-        let mut colors = HashMap::new();
-        colors.insert(-1, Color32::LIGHT_RED);
-        colors.insert(-2, Color32::LIGHT_GREEN);
-        colors.insert(-3, Color32::LIGHT_BLUE);
-        colors.insert(1, Color32::DARK_RED);
-        colors.insert(2, Color32::DARK_GREEN);
-        colors.insert(3, Color32::DARK_BLUE);
-        colors
+    fn orf_color(frame: i32) -> Option<Color32> {
+        match frame {
+            -1 => Some(Color32::LIGHT_RED),
+            -2 => Some(Color32::LIGHT_GREEN),
+            -3 => Some(Color32::LIGHT_BLUE),
+            1 => Some(Color32::DARK_RED),
+            2 => Some(Color32::DARK_GREEN),
+            3 => Some(Color32::DARK_BLUE),
+            _ => None,
+        }
     }
 
     fn draw_orf(
@@ -2361,15 +2468,12 @@ impl RenderDnaLinear {
         if !show_orfs {
             return;
         }
-        let colors = Self::orf_colors();
-        let orfs = self
-            .dna
-            .read()
-            .map(|dna| dna.open_reading_frames().clone())
-            .unwrap_or_default();
-        for orf in &orfs {
-            if let Some(color) = colors.get(&orf.frame()) {
-                self.draw_orf(painter, orf, *color, viewport);
+        let Ok(dna) = self.dna.read() else {
+            return;
+        };
+        for orf in dna.open_reading_frames() {
+            if let Some(color) = Self::orf_color(orf.frame()) {
+                self.draw_orf(painter, orf, color, viewport);
             }
         }
     }
@@ -2385,17 +2489,25 @@ impl RenderDnaLinear {
         }
         let y1 = self.baseline_y() - 4.0;
         let y2 = y1 + GC_STRIP_HEIGHT;
-        let gc_contents = self
-            .dna
-            .read()
-            .map(|dna| {
-                GcContents::new_from_sequence_with_bin_size(
-                    dna.forward_bytes(),
-                    gc_content_bin_size_bp,
-                )
-            })
-            .unwrap_or_default();
-        for region in gc_contents.regions() {
+        let Ok(dna) = self.dna.read() else {
+            return;
+        };
+        let computed_gc_contents;
+        let cached_gc_regions = dna.gc_content().regions();
+        let gc_regions = if Self::can_reuse_cached_gc_contents(
+            gc_content_bin_size_bp,
+            cached_gc_regions.is_empty(),
+            dna.is_empty(),
+        ) {
+            cached_gc_regions
+        } else {
+            computed_gc_contents = GcContents::new_from_sequence_with_bin_size(
+                dna.forward_bytes(),
+                gc_content_bin_size_bp,
+            );
+            computed_gc_contents.regions()
+        };
+        for region in gc_regions {
             let region_end_exclusive = region.to().saturating_add(1).min(self.sequence_length);
             let Some((draw_start, draw_end)) = Self::range_overlap(
                 region.from(),
@@ -2418,6 +2530,15 @@ impl RenderDnaLinear {
                 color,
             );
         }
+    }
+
+    fn can_reuse_cached_gc_contents(
+        gc_content_bin_size_bp: usize,
+        cached_regions_empty: bool,
+        sequence_empty: bool,
+    ) -> bool {
+        gc_content_bin_size_bp == DEFAULT_SECTION_SIZE_BP
+            && (!cached_regions_empty || sequence_empty)
     }
 
     fn draw_methylation_sites(
@@ -2450,7 +2571,7 @@ impl RenderDnaLinear {
             let x = self.bp_to_x(*site, viewport);
             painter.line_segment(
                 [Pos2::new(x, y - METHYLATION_TICK), Pos2::new(x, y - 1.0)],
-                Stroke::new(1.0, Color32::DARK_RED),
+                Stroke::new(1.0_f32, Color32::DARK_RED),
             );
         }
     }
@@ -2509,6 +2630,41 @@ impl RenderDnaLinear {
 
             for exon_rect in &feature.exon_rects {
                 painter.rect_filled(*exon_rect, 1.5, feature.color);
+                if let Some(stroke) = feature.array_stroke.filter(|_| feature.is_array_track) {
+                    painter.rect_stroke(*exon_rect, 1.5, stroke, StrokeKind::Inside);
+                }
+            }
+            if !feature.is_array_track {
+                for (exon_rect, mod3) in feature
+                    .exon_rects
+                    .iter()
+                    .zip(feature.exon_length_mod3_cues.iter())
+                {
+                    let Some(mod3) = mod3 else {
+                        continue;
+                    };
+                    let stripe_h = (exon_rect.height() * 0.22).clamp(1.5, 3.0);
+                    let stripe = Rect::from_min_max(
+                        exon_rect.left_top(),
+                        Pos2::new(exon_rect.right(), exon_rect.top() + stripe_h),
+                    );
+                    let cue_color = RenderDna::exon_length_mod3_color(*mod3);
+                    painter.rect_filled(stripe, 0.0, cue_color);
+                    if *mod3 != 0 && exon_rect.width() >= 8.0 {
+                        let slash_x = if *mod3 == 1 {
+                            exon_rect.left() + exon_rect.width() * 0.5
+                        } else {
+                            exon_rect.right() - exon_rect.width().min(12.0) * 0.5
+                        };
+                        painter.line_segment(
+                            [
+                                Pos2::new(slash_x - 2.5, exon_rect.bottom() - 1.0),
+                                Pos2::new(slash_x + 2.5, exon_rect.top() + 1.0),
+                            ],
+                            Stroke::new(1.0_f32, cue_color),
+                        );
+                    }
+                }
             }
             if feature.is_mcs && !selected && !hovered {
                 let halo_fill = Color32::from_rgba_unmultiplied(
@@ -2520,7 +2676,7 @@ impl RenderDnaLinear {
                 for exon_rect in &feature.exon_rects {
                     painter.rect_filled(exon_rect.expand(2.0), 3.0, halo_fill);
                 }
-                let stroke = Stroke::new(1.1, feature.color.gamma_multiply(0.75));
+                let stroke = Stroke::new(1.1_f32, feature.color.gamma_multiply(0.75));
                 for exon_rect in &feature.exon_rects {
                     painter.rect_stroke(exon_rect.expand(0.5), 2.0, stroke, StrokeKind::Inside);
                 }
@@ -2562,25 +2718,25 @@ impl RenderDnaLinear {
                 painter.circle_stroke(
                     Pos2::new(x, feature.rect.center().y),
                     2.5,
-                    Stroke::new(1.5, feature.color),
+                    Stroke::new(1.5_f32, feature.color),
                 );
             }
             for connector in &feature.intron_connectors {
                 painter.line_segment(
                     [connector[0], connector[1]],
-                    Stroke::new(1.0, Color32::DARK_GRAY),
+                    Stroke::new(1.0_f32, Color32::DARK_GRAY),
                 );
                 painter.line_segment(
                     [connector[1], connector[2]],
-                    Stroke::new(1.0, Color32::DARK_GRAY),
+                    Stroke::new(1.0_f32, Color32::DARK_GRAY),
                 );
             }
 
             if selected || hovered {
                 let stroke = if selected {
-                    Stroke::new(2.0, Color32::YELLOW)
+                    Stroke::new(2.0_f32, Color32::YELLOW)
                 } else {
-                    Stroke::new(1.5, Color32::WHITE)
+                    Stroke::new(1.5_f32, Color32::WHITE)
                 };
                 for exon_rect in &feature.exon_rects {
                     painter.rect_stroke(exon_rect.expand(1.0), 2.0, stroke, StrokeKind::Inside);
@@ -2588,6 +2744,9 @@ impl RenderDnaLinear {
             }
 
             let is_gene_feature = feature.kind_upper.as_str() == "GENE";
+            if feature.is_array_track {
+                continue;
+            }
             if !Self::should_render_feature_label(detail, &feature.kind_upper, feature.is_mcs) {
                 continue;
             }
@@ -2745,7 +2904,7 @@ impl RenderDnaLinear {
             painter.line_segment(
                 [connector_from, connector_to],
                 Stroke::new(
-                    if feature.is_mcs { 1.1 } else { 0.8 },
+                    if feature.is_mcs { 1.1_f32 } else { 0.8_f32 },
                     feature.color.gamma_multiply(0.75),
                 ),
             );
@@ -2764,7 +2923,7 @@ impl RenderDnaLinear {
                 if feature.is_mcs {
                     Self::mcs_badge_stroke(feature.color)
                 } else {
-                    Stroke::new(1.0, feature.color.gamma_multiply(0.75))
+                    Stroke::new(1.0_f32, feature.color.gamma_multiply(0.75))
                 },
                 StrokeKind::Inside,
             );
@@ -2815,11 +2974,6 @@ impl RenderDnaLinear {
             return;
         }
 
-        let groups = self
-            .dna
-            .read()
-            .map(|dna| dna.restriction_enzyme_groups().clone())
-            .unwrap_or_default();
         let (display_mode, preferred_restriction_enzymes) = self
             .display
             .read()
@@ -2831,29 +2985,26 @@ impl RenderDnaLinear {
             })
             .unwrap_or((RestrictionEnzymeDisplayMode::default(), vec![]));
 
-        let mut keys: Vec<_> = groups.keys().cloned().collect();
-        keys.sort();
         let mut visible_groups: Vec<_> = Vec::new();
         let mut total_groups_in_view = 0usize;
-        for key in keys {
-            let names = match groups.get(&key) {
-                Some(names) => names,
-                None => continue,
-            };
-            let pos = self.normalize_pos(key.pos());
-            if pos < viewport.start || pos >= viewport.end {
-                continue;
-            }
-            total_groups_in_view = total_groups_in_view.saturating_add(1);
-            if DnaDisplay::restriction_group_matches_mode(
-                display_mode,
-                &preferred_restriction_enzymes,
-                &key,
-                names,
-            ) {
-                visible_groups.push((key, names.clone()));
+        if let Ok(dna) = self.dna.read() {
+            for (key, names) in dna.restriction_enzyme_groups() {
+                let pos = self.normalize_pos(key.pos());
+                if pos < viewport.start || pos >= viewport.end {
+                    continue;
+                }
+                total_groups_in_view = total_groups_in_view.saturating_add(1);
+                if DnaDisplay::restriction_group_matches_mode(
+                    display_mode,
+                    &preferred_restriction_enzymes,
+                    key,
+                    names,
+                ) {
+                    visible_groups.push((key.clone(), names.clone()));
+                }
             }
         }
+        visible_groups.sort_by(|(left, _), (right, _)| left.cmp(right));
         if visible_groups.is_empty() {
             let empty_text = if total_groups_in_view == 0
                 || matches!(display_mode, RestrictionEnzymeDisplayMode::AllInView)
@@ -2904,7 +3055,7 @@ impl RenderDnaLinear {
             } else {
                 DnaDisplay::restriction_enzyme_geometry_color(key.cut_geometry())
             };
-            let stroke_width = if selected_here { 2.0 } else { 1.0 };
+            let stroke_width = if selected_here { 2.0_f32 } else { 1.0_f32 };
 
             if (top_x - bottom_x).abs() < 0.5 {
                 painter.line_segment(
@@ -2926,10 +3077,10 @@ impl RenderDnaLinear {
                 );
             }
 
-            if let Some(hovered) = &self.hover_enzyme {
-                if hovered.key == *key {
-                    painter.rect_filled(hovered.area, 1.0, Color32::LIGHT_YELLOW);
-                }
+            if let Some(hovered) = &self.hover_enzyme
+                && hovered.key == *key
+            {
+                painter.rect_filled(hovered.area, 1.0, Color32::LIGHT_YELLOW);
             }
             let tick_rect = Rect::from_min_max(
                 Pos2::new(top_x.min(bottom_x) - 3.0, y - 9.0),
@@ -3065,6 +3216,44 @@ mod tests {
         let mut renderer = RenderDnaLinear::new(dna, display);
         renderer.area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1200.0, 600.0));
         renderer
+    }
+
+    #[test]
+    fn orf_color_uses_static_palette_without_allocation() {
+        assert_eq!(RenderDnaLinear::orf_color(-1), Some(Color32::LIGHT_RED));
+        assert_eq!(RenderDnaLinear::orf_color(-2), Some(Color32::LIGHT_GREEN));
+        assert_eq!(RenderDnaLinear::orf_color(-3), Some(Color32::LIGHT_BLUE));
+        assert_eq!(RenderDnaLinear::orf_color(1), Some(Color32::DARK_RED));
+        assert_eq!(RenderDnaLinear::orf_color(2), Some(Color32::DARK_GREEN));
+        assert_eq!(RenderDnaLinear::orf_color(3), Some(Color32::DARK_BLUE));
+        assert_eq!(RenderDnaLinear::orf_color(0), None);
+    }
+
+    #[test]
+    fn default_gc_bin_can_reuse_precomputed_sequence_gc_content() {
+        let mut dna = DNAsequence::from_sequence("AAAAGGGGTTTTCCCC").expect("valid DNA");
+        dna.update_computed_features();
+        let expected = GcContents::new_from_sequence_with_bin_size(
+            dna.forward_bytes(),
+            DEFAULT_SECTION_SIZE_BP,
+        );
+
+        assert_eq!(dna.gc_content().regions(), expected.regions());
+        assert!(RenderDnaLinear::can_reuse_cached_gc_contents(
+            DEFAULT_SECTION_SIZE_BP,
+            dna.gc_content().regions().is_empty(),
+            dna.is_empty(),
+        ));
+        assert!(!RenderDnaLinear::can_reuse_cached_gc_contents(
+            DEFAULT_SECTION_SIZE_BP + 1,
+            dna.gc_content().regions().is_empty(),
+            dna.is_empty(),
+        ));
+        assert!(!RenderDnaLinear::can_reuse_cached_gc_contents(
+            DEFAULT_SECTION_SIZE_BP,
+            true,
+            false,
+        ));
     }
 
     #[test]
@@ -3393,6 +3582,51 @@ mod tests {
     }
 
     #[test]
+    fn coding_exon_length_mod3_cues_follow_visible_exon_segments() {
+        let feature = make_test_feature(Location::Join(vec![
+            Location::simple_range(100, 160),
+            Location::simple_range(220, 281),
+            Location::simple_range(360, 422),
+        ]));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        });
+
+        let fp = &renderer.features[0];
+        assert_eq!(fp.exon_rects.len(), 3);
+        assert_eq!(fp.exon_length_mod3_cues, vec![Some(0), Some(1), Some(2)]);
+        let cue = fp
+            .exon_frame_cue_at(fp.exon_rects[1].center())
+            .expect("hover cue");
+        assert_eq!(cue.exon_number, 2);
+        assert_eq!(cue.length_mod3, 1);
+        assert!(cue.skip_frame_hint.contains("changes coding-frame length"));
+    }
+
+    #[test]
+    fn non_exon_feature_segments_do_not_get_length_mod3_cues() {
+        let feature = make_test_feature_with_kind(
+            "gene",
+            Location::Join(vec![
+                Location::simple_range(100, 160),
+                Location::simple_range(220, 281),
+            ]),
+        );
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        });
+
+        let fp = &renderer.features[0];
+        assert_eq!(fp.exon_length_mod3_cues, vec![None, None]);
+    }
+
+    #[test]
     fn complementary_multipart_feature_is_positioned_on_reverse_lane() {
         let feature = make_test_feature(Location::Complement(Box::new(Location::Join(vec![
             Location::simple_range(120, 180),
@@ -3699,9 +3933,13 @@ mod tests {
         let mut renderer = restriction_ready_renderer("AAAAAGAATTCTTTTTTTTTTTTT");
         let ctx = egui::Context::default();
         ctx.begin_pass(egui::RawInput::default());
-        crate::egui_compat::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
-            renderer.render(ui, renderer.area);
-        });
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                renderer.render(ui, renderer.area);
+            },
+        );
         let _ = ctx.end_pass();
 
         let site = renderer

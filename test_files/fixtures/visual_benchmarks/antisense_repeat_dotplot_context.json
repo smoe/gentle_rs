@@ -1,0 +1,67 @@
+{
+  "schema": "gentle.visual_benchmark_fixture.v1",
+  "fixture_id": "antisense_repeat_dotplot_context",
+  "sequences": [
+    {
+      "id": "benchmark_ref",
+      "name": "synthetic genomic context benchmark",
+      "topology": "linear",
+      "sequence_segments": [
+        { "label": "pre", "repeat": "ACGT", "count": 4 },
+        { "label": "sense_exon_1", "literal": "ATGCGGATCCAA" },
+        { "label": "intron_1", "repeat": "TTAA", "count": 5 },
+        { "label": "antisense_exon_1", "literal": "CCGGAATTCCGG" },
+        { "label": "gap", "repeat": "GATA", "count": 4 },
+        { "label": "sense_exon_2", "literal": "GGGTTTAAACCC" },
+        { "label": "rmsk_repeat", "repeat": "AGCT", "count": 5 },
+        { "label": "antisense_exon_2", "literal": "TTAACCGGTACC" },
+        { "label": "tail", "repeat": "CGTA", "count": 3 }
+      ],
+      "features": [
+        {
+          "kind": "exon",
+          "label": "SENSEA",
+          "strand": "+",
+          "ranges": [[16, 28], [76, 88]],
+          "qualifiers": {
+            "gene": "SENSEA",
+            "transcript_id": "SENSEA-201"
+          }
+        },
+        {
+          "kind": "exon",
+          "label": "ANTISENSEB",
+          "strand": "-",
+          "ranges": [[48, 60], [108, 120]],
+          "qualifiers": {
+            "gene": "ANTISENSEB",
+            "transcript_id": "ANTISENSEB-201"
+          }
+        },
+        {
+          "kind": "repeat_region",
+          "label": "AluY",
+          "strand": "-",
+          "ranges": [[88, 108]],
+          "qualifiers": {
+            "gentle_generated": "ucsc_rmsk",
+            "repName": "AluY",
+            "repClass": "SINE",
+            "repFamily": "Alu",
+            "rmsk_genomic_strand": "-"
+          }
+        }
+      ]
+    },
+    {
+      "id": "benchmark_query",
+      "name": "synthetic exon query benchmark",
+      "topology": "linear",
+      "sequence_segments": [
+        { "label": "query_exon_1", "literal": "ATGCGGATCCAA" },
+        { "label": "query_exon_2", "literal": "GGGTTTAAACCC" }
+      ],
+      "features": []
+    }
+  ]
+}

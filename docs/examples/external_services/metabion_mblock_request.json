@@ -1,0 +1,33 @@
+{
+  "schema": "gentle.external_service_request.v1",
+  "provider": "metabion",
+  "service_kind": "dna_fragment",
+  "source_target": {
+    "kind": "inline_dna",
+    "name": "DEMO_DO_NOT_ORDER_synthetic_mblock_fragment",
+    "sequence": "ATGGCTAGCGGTACTGATCGTACCTGACGATCGGTTACGATGCTAGCTAACTGACCGTACGATCGTACGATGCTAA",
+    "note": "Synthetic tutorial fragment. Confirm product scope, biosafety policy, and sequence content before any real order."
+  },
+  "delivery_options": {
+    "delivery_form": "dry",
+    "qc": "vendor default",
+    "biosafety": "review_required"
+  },
+  "return_spec": {
+    "requested_payloads": [
+      "quote_metadata",
+      "handoff_bundle"
+    ],
+    "inline_max_bytes": 20000,
+    "redact_commercial_fields": true,
+    "prefer_artifact_bundle": true
+  },
+  "request_metadata": {
+    "tutorial": true,
+    "human_review_only": true,
+    "notes": [
+      "Synthetic tutorial request.",
+      "m-block requests may require biosafety follow-up depending on vendor and local policy."
+    ]
+  }
+}

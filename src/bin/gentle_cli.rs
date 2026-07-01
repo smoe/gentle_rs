@@ -1,15 +1,38 @@
 //! CLI binary entry point exposing direct commands and shared shell routing.
 
+#[path = "gentle_cli/args.rs"]
+mod gentle_cli_args;
+#[path = "gentle_cli/candidates.rs"]
+mod gentle_cli_candidates;
+#[path = "gentle_cli/doctor.rs"]
+mod gentle_cli_doctor;
+#[path = "gentle_cli/hosts.rs"]
+mod gentle_cli_hosts;
+#[path = "gentle_cli/pools.rs"]
+mod gentle_cli_pools;
+#[path = "gentle_cli/protocol_cartoon.rs"]
+mod gentle_cli_protocol_cartoon;
+#[path = "gentle_cli/reference.rs"]
+mod gentle_cli_reference;
+#[path = "gentle_cli/rendering.rs"]
+mod gentle_cli_rendering;
+#[path = "gentle_cli/reporters.rs"]
+mod gentle_cli_reporters;
+#[path = "gentle_cli/resources.rs"]
+mod gentle_cli_resources;
+#[path = "gentle_cli/services.rs"]
+mod gentle_cli_services;
+
 use gentle::{
     about,
+    cli_support::load_state_or_default,
     engine::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
-        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP, DbSnpFetchProgress,
-        DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, Engine, EngineStateSummary,
-        GelBufferModel, GelRunConditions, GelTopologyForm, GenomeAnnotationScope,
-        GenomeGeneExtractMode, GenomeTrackImportProgress, GentleEngine, Operation,
-        OperationProgress, PrimerDesignProgress, ProjectState, RenderSvgMode,
-        RnaReadInterpretProgress, TfbsProgress,
+        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP, DbSnpFetchProgress, Engine,
+        EngineStateSummary, GenomeAnnotationScope, GenomeGeneExtractMode,
+        GenomeTrackImportProgress, GentleEngine, Operation, OperationProgress,
+        PrimerDesignProgress, ProjectState, ReporterConstraints, ReporterCorpusExportFormat,
+        RnaReadInterpretProgress, SharedAssetActivityStatus, TfbsProgress,
     },
     engine_shell::{
         DEFAULT_CLONING_ROUTINE_CATALOG_PATH, ShellCommand, ShellExecutionOptions,
@@ -21,11 +44,10 @@ use gentle::{
         GenomeGeneRecord, PrepareGenomeProgress, default_catalog_discovery_label,
         default_catalog_discovery_token, default_helper_semantics_vocabulary_discovery_label,
     },
-    protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
     resource_status::resource_catalog_status,
     service_readiness::service_readiness_status,
-    svg_png::{SvgPngRenderOptions, render_svg_file_to_png},
 };
+use gentle_protocol::{EngineError, ErrorCode};
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -83,66 +105,6 @@ fn operation_catalog_arg(catalog_path: &Option<String>, helper_mode: bool) -> Op
     explicit_catalog_arg(catalog_path)
         .map(|value| value.to_string())
         .or_else(|| helper_mode.then(|| default_catalog_discovery_token(true).to_string()))
-}
-
-fn apply_pool_member_topology_hint(
-    member_topology: &str,
-    dna: &mut gentle::dna_sequence::DNAsequence,
-) -> Result<(), String> {
-    let Some(form) = GelTopologyForm::from_hint(member_topology) else {
-        return Ok(());
-    };
-    if form.is_circular() {
-        dna.set_circular(true);
-    }
-    if !matches!(form, GelTopologyForm::Linear | GelTopologyForm::Circular) {
-        let mut value = serde_json::to_value(&*dna)
-            .map_err(|e| format!("Could not serialize sequence for topology hint: {e}"))?;
-        if let Some(obj) = value.as_object_mut() {
-            if let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut()) {
-                let comments = seq_obj
-                    .entry("comments".to_string())
-                    .or_insert_with(|| json!([]));
-                if let Some(arr) = comments.as_array_mut() {
-                    arr.push(json!(format!("gel_topology={}", form.as_str())));
-                }
-            }
-        }
-        *dna = serde_json::from_value(value)
-            .map_err(|e| format!("Could not apply topology hint to sequence: {e}"))?;
-    }
-    Ok(())
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PoolEnd {
-    end_type: String,
-    forward_5: String,
-    forward_3: String,
-    reverse_5: String,
-    reverse_3: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PoolMember {
-    seq_id: String,
-    #[serde(default)]
-    human_id: String,
-    name: Option<String>,
-    sequence: String,
-    length_bp: usize,
-    topology: String,
-    ends: PoolEnd,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PoolExport {
-    schema: String,
-    pool_id: String,
-    #[serde(default)]
-    human_id: String,
-    member_count: usize,
-    members: Vec<PoolMember>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -325,14 +287,14 @@ fn parse_rebase_withrefm(text: &str, commercial_only: bool) -> Vec<RebaseEnzymeR
             last_tag = None;
             continue;
         }
-        if let Some(rest) = line.strip_prefix('<') {
-            if let Some(pos) = rest.find('>') {
-                let tag = rest[..pos].trim().to_string();
-                let value = rest[pos + 1..].trim().to_string();
-                fields.insert(tag.clone(), value);
-                last_tag = Some(tag);
-                continue;
-            }
+        if let Some(rest) = line.strip_prefix('<')
+            && let Some(pos) = rest.find('>')
+        {
+            let tag = rest[..pos].trim().to_string();
+            let value = rest[pos + 1..].trim().to_string();
+            fields.insert(tag.clone(), value);
+            last_tag = Some(tag);
+            continue;
         }
         if let Some(tag) = &last_tag {
             let extra = line.trim();
@@ -510,14 +472,15 @@ fn ensure_parent_dir(path: &str) -> Result<(), String> {
         .map_err(|e| format!("Could not create output directory for '{path}': {e}"))
 }
 
-fn usage() {
-    eprintln!(
+fn usage_text() -> String {
+    format!(
         "Usage:\n  \
   gentle_cli --help\n  \
   gentle_cli --version\n  \
-  gentle_cli help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua|mcp]\n  \
+  gentle_cli help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp]\n  \
   gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] COMMAND ...\n\n  \
   gentle_cli [--state PATH|--project PATH] capabilities\n  \
+  gentle_cli [--state PATH|--project PATH] doctor --agent\n  \
   gentle_cli [--state PATH|--project PATH] op '<operation-json>'|JSON_FILE\n  \
   gentle_cli [--state PATH|--project PATH] workflow '<workflow-json>'|JSON_FILE\n  \
   gentle_cli [--state PATH|--project PATH] state-summary\n  \
@@ -525,249 +488,20 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] import-state PATH\n  \
   gentle_cli [--state PATH|--project PATH] save-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] load-project PATH\n  \
-  gentle_cli svg-png INPUT.svg OUTPUT.png [--scale N] [--drop-dotplot-metadata]\n  \
-  gentle_cli [--state PATH|--project PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]\n  \
-  gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID tfbs FEATURE_ID\n  \
-  gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]\n  \
-  gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID splicing FEATURE_ID\n  \
-  gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID isoform PANEL_ID\n  \
-  gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]\n  \
-  gentle_cli [--state PATH|--project PATH] panels inspect-isoform SEQ_ID PANEL_ID\n  \
-  gentle_cli [--state PATH|--project PATH] panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] panels validate-isoform PANEL_PATH [--panel-id ID]\n  \
-  gentle_cli [--state PATH|--project PATH] render-rna-svg SEQ_ID OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] rna-info SEQ_ID\n  \
-  gentle_cli [--state PATH|--project PATH] render-lineage-svg OUTPUT.svg\n\n  \
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon list\n  \
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon template-validate TEMPLATE.json\n  \
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon template-export PROTOCOL_ID OUTPUT.json\n\n  \
-  gentle_cli [--state PATH|--project PATH] gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] gibson apply PLAN_JSON_OR_@FILE\n\n  \
-  gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
-  gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
-  gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]\n  \
-  gentle_cli [--state PATH|--project PATH] arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]\n  \
-  gentle_cli [--state PATH|--project PATH] racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]\n  \
-  gentle_cli [--state PATH|--project PATH] racks place-arrangement ARR_ID --rack RACK_ID\n  \
-  gentle_cli [--state PATH|--project PATH] racks move RACK_ID --from A1 --to B1 [--block]\n  \
-  gentle_cli [--state PATH|--project PATH] racks show RACK_ID\n  \
-  gentle_cli [--state PATH|--project PATH] racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]\n  \
-  gentle_cli [--state PATH|--project PATH] racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]\n  \
-  gentle_cli [--state PATH|--project PATH] racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]\n  \
-  gentle_cli [--state PATH|--project PATH] racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]\n  \
-  gentle_cli [--state PATH|--project PATH] racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack] [--preset front_strip_and_cards|front_strip_only|module_cards_only]\n  \
-  gentle_cli [--state PATH|--project PATH] racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]\n  \
-  gentle_cli [--state PATH|--project PATH] racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384\n  \
-  gentle_cli [--state PATH|--project PATH] racks apply-template RACK_ID bench_rows|plate_columns|plate_edge_avoidance\n  \
-  gentle_cli [--state PATH|--project PATH] racks set-fill-direction RACK_ID row_major|column_major\n  \
-  gentle_cli [--state PATH|--project PATH] racks set-custom-profile RACK_ID ROWS COLUMNS\n\n  \
-  gentle_cli [--state PATH|--project PATH] racks set-blocked RACK_ID COORD[,COORD...]...|--clear\n\n  \
-  gentle_cli [--state PATH|--project PATH] screenshot-window OUTPUT.png (disabled by security policy)\n\n  \
-  gentle_cli [--state PATH|--project PATH] ladders list [--molecule dna|rna] [--filter TEXT]\n  \
-  gentle_cli [--state PATH|--project PATH] ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]\n\n  \
-  gentle_cli [--state PATH|--project PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] import-pool INPUT.pool.gentle.json [PREFIX]\n\n  \
-  gentle_cli genomes list [--catalog PATH] [--filter TEXT]\n  \
-  gentle_cli genomes validate-catalog [--catalog PATH]\n  \
-  gentle_cli genomes update-ensembl-specs [--catalog PATH] [--output-catalog PATH]\n  \
-  gentle_cli genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
-  gentle_cli [--state PATH|--project PATH] genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]\n  \
-  gentle_cli genomes remove-prepared GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli genomes remove-catalog-entry GENOME_ID [--catalog PATH] [--output-catalog PATH]\n  \
-  gentle_cli genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
-  gentle_cli [--state PATH|--project PATH] genomes extract-promoter GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
-  gentle_cli [--state PATH|--project PATH] genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
-  gentle_cli helpers list [--catalog PATH] [--filter TEXT]\n  \
-  gentle_cli helpers vocabulary list [--vocabulary PATH] [--filter TEXT]\n  \
-  gentle_cli helpers vocabulary doctor [--vocabulary PATH] [--routine-catalog PATH]\n  \
-  gentle_cli helpers validate-catalog [--catalog PATH]\n  \
-  gentle_cli helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]\n  \
-  gentle_cli helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
-  gentle_cli [--state PATH|--project PATH] helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]\n  \
-  gentle_cli helpers remove-prepared HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli helpers remove-catalog-entry HELPER_ID [--catalog PATH] [--output-catalog PATH]\n  \
-  gentle_cli helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
-  gentle_cli [--state PATH|--project PATH] helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
-  gentle_cli [--state PATH|--project PATH] helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
-  gentle_cli hosts list [--catalog PATH] [--filter TEXT]\n\n  \
-  gentle_cli genomes ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]\n  \
-  gentle_cli genomes install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]\n  \
-  gentle_cli helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]\n\n  \
-  gentle_cli helpers install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]\n\n  \
-  gentle_cli [--state PATH|--project PATH] tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
-  gentle_cli [--state PATH|--project PATH] tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
-  gentle_cli [--state PATH|--project PATH] tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
-  gentle_cli agents list [--catalog PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]\n\n  \
-  gentle_cli ui intents\n  \
-  gentle_cli ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]\n  \
-  gentle_cli ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]\n  \
-  gentle_cli ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]\n  \
-  gentle_cli ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]\n\n  \
-  gentle_cli [--state PATH|--project PATH] macros run SCRIPT_OR_@FILE [--transactional]\n  \
-  gentle_cli [--state PATH|--project PATH] macros instance-list\n  \
-  gentle_cli [--state PATH|--project PATH] macros instance-show MACRO_INSTANCE_ID\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-list\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-show TEMPLATE_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...] [--input-port PORT_ID:KIND[:one|many][:required|optional][:description]] [--output-port PORT_ID:KIND[:one|many][:required|optional][:description]]\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-delete TEMPLATE_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-import PATH\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional] [--validate-only]\n\n  \
-  gentle_cli [--state PATH|--project PATH] candidates list\n  \
-  gentle_cli [--state PATH|--project PATH] candidates delete SET_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates generate-between-anchors SET_NAME SEQ_ID --length N (--anchor-a-pos N|--anchor-a-json JSON) (--anchor-b-pos N|--anchor-b-json JSON) [--step N] [--limit N]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates show SET_NAME [--limit N] [--offset N]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates metrics SET_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] candidates score SET_NAME METRIC_NAME EXPRESSION\n  \
-  gentle_cli [--state PATH|--project PATH] candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates score-weighted SET_NAME METRIC_NAME --term METRIC:WEIGHT[:max|min] [--term ...] [--normalize|--no-normalize]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates top-k INPUT_SET OUTPUT_SET --metric METRIC_NAME --k N [--direction max|min] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates pareto INPUT_SET OUTPUT_SET --objective METRIC[:max|min] [--objective ...] [--max-candidates N] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET\n  \
-  gentle_cli [--state PATH|--project PATH] candidates macro SCRIPT_OR_@FILE\n  \
-  gentle_cli [--state PATH|--project PATH] candidates template-list\n  \
-  gentle_cli [--state PATH|--project PATH] candidates template-show TEMPLATE_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates template-delete TEMPLATE_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]\n\n  \
-  gentle_cli [--state PATH|--project PATH] guides list\n  \
-  gentle_cli [--state PATH|--project PATH] guides show GUIDE_SET_ID [--limit N] [--offset N]\n  \
-  gentle_cli [--state PATH|--project PATH] guides put GUIDE_SET_ID (--json JSON|@FILE|--file PATH)\n  \
-  gentle_cli [--state PATH|--project PATH] guides delete GUIDE_SET_ID\n  \
-  gentle_cli [--state PATH|--project PATH] guides filter GUIDE_SET_ID [--config JSON|@FILE] [--config-file PATH] [--output-set GUIDE_SET_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] guides filter-show GUIDE_SET_ID\n  \
-  gentle_cli [--state PATH|--project PATH] guides oligos-generate GUIDE_SET_ID TEMPLATE_ID [--apply-5prime-g-extension] [--output-oligo-set ID] [--passed-only]\n  \
-  gentle_cli [--state PATH|--project PATH] guides oligos-list [--guide-set GUIDE_SET_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] guides oligos-show OLIGO_SET_ID\n  \
-  gentle_cli [--state PATH|--project PATH] guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]\n  \
-  gentle_cli [--state PATH|--project PATH] guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]\n\n  \
-  gentle_cli [--state PATH|--project PATH] features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]\n  \
-  gentle_cli [--state PATH|--project PATH] features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]\n  \
-  gentle_cli [--state PATH|--project PATH] features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]\n\n  \
-  gentle_cli [--state PATH|--project PATH] features repeat-query GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--chromosome CHR] [--range START..END] [--limit N] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] features repeat-overlaps SEQ_ID --index RMSK_INTERVAL_INDEX.json [--range START..END] [--limit N] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] features materialize-repeats SEQ_ID --index RMSK_INTERVAL_INDEX.json [--max-features N] [--append] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] features repeat-cohort GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--geometry repeat_midpoint|transcript_5utr_start|pol2_promoter_upstream|cds_stop_context] [--upstream-bp N] [--downstream-bp N] [--limit N] [--catalog PATH] [--cache DIR] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] features window-cohort-tfbs COHORT_JSON --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache DIR] [--path FILE.json]\n\n  \
-  gentle_cli [--state PATH|--project PATH] features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]\n\n  \
-  gentle_cli [--state PATH|--project PATH] features tfbs-score-tracks-svg --sequence-text DNA --output OUTPUT.svg [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]\n\n  \
-  gentle_cli [--state PATH|--project PATH] shell 'features tfbs-track-similarity SEQ_ID --anchor-motif TOKEN [--candidate-motif TOKEN ...|--candidate-motifs CSV|--candidate-motif ALL] [--range START..END|--start N --end N] [--ranking-metric raw_pearson|smoothed_pearson|raw_spearman|smoothed_spearman] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--species TEXT] [--include-remote-metadata] [--limit N] [--path FILE.json]'\n\n  \
-  gentle_cli [--state PATH|--project PATH] features tfbs-score-track-correlation-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--correlation-metric pearson|spearman] [--allow-negative]\n\n  \
-  gentle_cli [--state PATH|--project PATH] features tfbs-scan SEQ_ID --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] features tfbs-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]\n\n  \
-  gentle_cli [--state PATH|--project PATH] features restriction-scan SEQ_ID [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] features restriction-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]\n\n  \
-  gentle_cli [--state PATH|--project PATH] variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]\n  \
-  gentle_cli [--state PATH|--project PATH] variant promoter-context SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--tfbs-focus-half-window-bp N] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] variant reporter-fragments SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--retain-downstream-from-tss-bp N] [--retain-upstream-beyond-variant-bp N] [--max-candidates N] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]\n\n  \
-  gentle_cli [--state PATH|--project PATH] primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--max-target-amplicon-bp N] [--max-hits-per-primer N] [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N] [--max-hits-per-primer N] [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE\n  \
-  gentle_cli [--state PATH|--project PATH] primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]\n  \
-  gentle_cli [--state PATH|--project PATH] primers restriction-cloning-vector-suggestions SEQ_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers list-restriction-cloning-handoffs\n  \
-  gentle_cli [--state PATH|--project PATH] primers show-restriction-cloning-handoff REPORT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers export-restriction-cloning-handoff REPORT_ID OUTPUT.json\n  \
-  gentle_cli [--state PATH|--project PATH] primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] primers seed-from-feature SEQ_ID FEATURE_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers seed-from-splicing SEQ_ID FEATURE_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers seed-qpcr-from-feature SEQ_ID FEATURE_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID] [--specificity-evidence junction_only|unique_exon_or_chain|either_prefer_junction]\n  \
-  gentle_cli [--state PATH|--project PATH] primers list-reports\n  \
-  gentle_cli [--state PATH|--project PATH] primers show-report REPORT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers export-report REPORT_ID OUTPUT.json\n  \
-  gentle_cli [--state PATH|--project PATH] primers list-qpcr-reports\n  \
-  gentle_cli [--state PATH|--project PATH] primers show-qpcr-report REPORT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers export-qpcr-report REPORT_ID OUTPUT.json\n\n  \
-  gentle_cli [--state PATH|--project PATH] dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] dotplot list [SEQ_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] dotplot show DOTPLOT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
-  gentle_cli [--state PATH|--project PATH] transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END] [--transcript ID]\n  \
-  gentle_cli [--state PATH|--project PATH] flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] flex list [SEQ_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] flex show TRACK_ID\n\n  \
-  gentle_cli [--state PATH|--project PATH] splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
-  gentle_cli [--state PATH|--project PATH] align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]\n\n  \
-  gentle_cli [--state PATH|--project PATH] reverse-translate run PROTEIN_SEQ_ID [--output-id ID] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N]\n  \
-  gentle_cli [--state PATH|--project PATH] reverse-translate list-reports [PROTEIN_SEQ_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] reverse-translate show-report REPORT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] reverse-translate export-report REPORT_ID OUTPUT.json\n\n  \
-  gentle_cli cutrun list [--catalog PATH] [--filter TEXT]\n  \
-  gentle_cli cutrun status DATASET_ID [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli cutrun prepare DATASET_ID [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun project SEQ_ID DATASET_ID [--no-peaks] [--no-signal] [--clear-existing] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun interpret SEQ_ID INPUT_R1 [INPUT_R2] [--dataset DATASET_ID] [--catalog PATH] [--cache-dir PATH] [--format fasta|fastq] [--layout single_end|paired_end] [--flank-bp N] [--report-id ID] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--seed-kmer-len N] [--min-seed-matches N] [--max-mismatches N] [--min-identity F] [--max-fragment-span-bp N] [--deduplicate-fragments|--no-deduplicate-fragments]\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun list-read-reports [SEQ_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun show-read-report REPORT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun export-coverage REPORT_ID OUTPUT.tsv [--kind coverage|cut_sites|fragments]\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun inspect-regulatory-support SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path OUTPUT.json]\n\n  \
-  gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT] [--seq-id SEQ_ID]\n  \
-  gentle_cli routines explain ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]\n  \
-  gentle_cli routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]\n\n  \
-  gentle_cli planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]\n  \
-  gentle_cli planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]\n  \
-  gentle_cli planning profile clear [--scope global|project_override|confirmed_agent_overlay]\n  \
-  gentle_cli planning objective show\n  \
-  gentle_cli planning objective set JSON_OR_@FILE\n  \
-  gentle_cli planning objective clear\n  \
-  gentle_cli planning suggestions list [--status pending|accepted|rejected]\n  \
-  gentle_cli planning suggestions accept SUGGESTION_ID\n  \
-  gentle_cli planning suggestions reject SUGGESTION_ID [--reason TEXT]\n  \
-  gentle_cli planning sync status\n  \
-  gentle_cli planning sync pull JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]\n  \
-  gentle_cli planning sync push JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]\n\n  \
-  gentle_cli resources status\n  \
-  gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
-  gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
-  gentle_cli resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]\n  \
-  gentle_cli resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT.interval-index.json]\n  \
-  gentle_cli resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]\n\n  \
-  gentle_cli resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]\n\n  \
-  gentle_cli resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]\n\n  \
-  gentle_cli shell 'resources resolve-tf-query QUERY [QUERY ...] [--output OUTPUT.json]'\n\n  \
-  gentle_cli resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]\n\n  \
-  gentle_cli resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]\n\n  \
-  gentle_cli resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]\n\n  \
-  gentle_cli services status\n\n  \
-  gentle_cli services guide --channel telegram [--section overview|readiness|gene-context|tfbs|inline-dna|cloning|isoforms|follow-up] [--gene SYMBOL]\n\n  \
-  gentle_cli cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]\n  \
-  gentle_cli cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]\n\n  \
+  gentle_cli [--state PATH|--project PATH] shell 'COMMAND ...'\n\n  \
+  gentle_cli reporters list [--filter TEXT] [--limit N] [--output PATH]\n  \
+  gentle_cli reporters recommend [--assay NAME] [--chassis HOST] [--color COLOR] [--class CLASS] [--max-length-bp N]\n  \
+  gentle_cli reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--format json|jsonl]\n\n  \
+  gentle_cli reporters plan-handoff CANDIDATE_SET.json [--candidate-id ID] [--catalog PATH] [--backbone-seq-id ID] [--backbone-path PATH] [--reference-fragment-seq-id ID] [--alternate-fragment-seq-id ID] [--output-prefix PREFIX] [--output FILE.json]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
   --project is an alias of --state for project.gentle.json files\n\n  \
-  Shell help:\n  \
+  Shared command reference (generated from docs/glossary.json):\n  \
   {shell_help}",
         shell_help = shell_help_text()
-    );
+    )
+}
+fn usage() {
+    println!("{}", usage_text());
 }
 
 const SHELL_FORWARDED_COMMANDS: &[&str] = &[
@@ -779,17 +513,21 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "agents",
     "ui",
     "routines",
+    "gene-groups",
+    "gene-sets",
     "planning",
     "gibson",
     "panels",
     "macros",
     "resources",
+    "services",
     "import-pool",
     "ladders",
     "proteases",
     "racks",
     "guides",
     "features",
+    "mirna",
     "primers",
     "dotplot",
     "transcripts",
@@ -800,6 +538,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "rna-reads",
     "cutrun",
     "tracks",
+    "arrays",
     "genbank",
     "dbsnp",
     "variant",
@@ -830,20 +569,6 @@ fn parse_forwarded_shell_command(
     let tokens = args[cmd_idx..].to_vec();
     let shell_command = parse_shell_tokens(&tokens)?;
     Ok(Some(shell_command))
-}
-
-fn parse_dotplot_overlay_x_axis_mode_arg(raw: &str) -> Result<DotplotOverlayXAxisMode, String> {
-    match raw.trim() {
-        "percent_length" => Ok(DotplotOverlayXAxisMode::PercentLength),
-        "left_aligned_bp" => Ok(DotplotOverlayXAxisMode::LeftAlignedBp),
-        "right_aligned_bp" => Ok(DotplotOverlayXAxisMode::RightAlignedBp),
-        "shared_exon_anchor" => Ok(DotplotOverlayXAxisMode::SharedExonAnchor),
-        "query_anchor_bp" => Ok(DotplotOverlayXAxisMode::QueryAnchorBp),
-        other => Err(format!(
-            "Invalid --overlay-x-axis '{}': expected percent_length, left_aligned_bp, right_aligned_bp, shared_exon_anchor, or query_anchor_bp",
-            other
-        )),
-    }
 }
 
 fn load_json_arg(value: &str) -> Result<String, String> {
@@ -883,38 +608,39 @@ fn load_json_arg(value: &str) -> Result<String, String> {
     Ok(value.to_string())
 }
 
+fn is_text_input_url(path_or_url: &str) -> bool {
+    path_or_url.starts_with("http://") || path_or_url.starts_with("https://")
+}
+
+fn read_text_url(url: &str) -> Result<String, String> {
+    let response = std::panic::catch_unwind(|| reqwest::blocking::get(url))
+        .map_err(|_| format!("Could not fetch URL '{url}': networking backend panicked"))?
+        .map_err(|e| format!("Could not fetch URL '{url}': {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Could not fetch URL '{url}': HTTP {}",
+            response.status()
+        ));
+    }
+    response
+        .text()
+        .map_err(|e| format!("Could not read URL response '{url}': {e}"))
+}
+
+fn read_text_file(path: &str) -> Result<String, String> {
+    fs::read_to_string(path).map_err(|e| format!("Could not read file '{path}': {e}"))
+}
+
 fn read_text_input(path_or_url: &str) -> Result<String, String> {
-    if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
-        let response = std::panic::catch_unwind(|| reqwest::blocking::get(path_or_url))
-            .map_err(|_| {
-                format!("Could not fetch URL '{path_or_url}': networking backend panicked")
-            })?
-            .map_err(|e| format!("Could not fetch URL '{path_or_url}': {e}"))?;
-        if !response.status().is_success() {
-            return Err(format!(
-                "Could not fetch URL '{path_or_url}': HTTP {}",
-                response.status()
-            ));
-        }
-        response
-            .text()
-            .map_err(|e| format!("Could not read URL response '{path_or_url}': {e}"))
+    if is_text_input_url(path_or_url) {
+        read_text_url(path_or_url)
     } else {
-        fs::read_to_string(path_or_url)
-            .map_err(|e| format!("Could not read file '{path_or_url}': {e}"))
+        read_text_file(path_or_url)
     }
 }
 
 fn load_state(path: &str) -> Result<ProjectState, String> {
-    if !std::path::Path::new(path).exists() {
-        return Ok(ProjectState::default());
-    }
-    let raw =
-        fs::read_to_string(path).map_err(|e| format!("Could not read state file '{path}': {e}"))?;
-    if raw.trim().is_empty() {
-        return Ok(ProjectState::default());
-    }
-    ProjectState::load_from_path(path).map_err(|e| e.to_string())
+    load_state_or_default(path)
 }
 
 fn print_json<T: Serialize>(value: &T) -> Result<(), String> {
@@ -1089,7 +815,7 @@ impl ProgressPrinter {
     }
 
     fn on_genome_track_import_progress(&mut self, p: GenomeTrackImportProgress) {
-        if p.done || p.parsed_records % 1_000 == 0 {
+        if p.done || p.parsed_records.is_multiple_of(1_000) {
             self.print_line(&format!(
                 "progress track-import seq={} source={} parsed={} imported={} skipped={} done={} path={}",
                 p.seq_id,
@@ -1105,7 +831,7 @@ impl ProgressPrinter {
 
     fn on_rna_read_interpret_progress(&mut self, p: RnaReadInterpretProgress) {
         let stride = p.update_every_reads.max(1);
-        if p.done || p.reads_processed % stride == 0 {
+        if p.done || p.reads_processed.is_multiple_of(stride) {
             let percent = if p.reads_total == 0 {
                 100.0
             } else {
@@ -1183,6 +909,31 @@ impl ProgressPrinter {
         self.print_line(&parts.join(" "));
     }
 
+    fn on_read_acquisition_progress(&mut self, p: SharedAssetActivityStatus) {
+        let mut parts = vec![
+            "progress read-acquisition".to_string(),
+            format!("resource={}", p.resource_key),
+            format!("status={}", p.lifecycle_status),
+        ];
+        if let Some(phase) = p.phase {
+            parts.push(format!("phase={phase}"));
+        }
+        if let Some(item) = p.item {
+            parts.push(format!("item={item}"));
+        }
+        parts.push(format!("bytes_done={}", p.bytes_done));
+        if let Some(free) = p.monitored_free_bytes {
+            parts.push(format!("monitored_free_bytes={free}"));
+        }
+        if let Some(minimum) = p.minimum_free_bytes {
+            parts.push(format!("minimum_free_bytes={minimum}"));
+        }
+        if let Some(cancel_path) = p.cancel_path {
+            parts.push(format!("cancel_path={cancel_path}"));
+        }
+        self.print_line(&parts.join(" "));
+    }
+
     fn on_progress(&mut self, progress: OperationProgress) {
         match progress {
             OperationProgress::Tfbs(p) => self.on_tfbs_progress(p),
@@ -1190,6 +941,7 @@ impl ProgressPrinter {
             OperationProgress::GenomeTrackImport(p) => self.on_genome_track_import_progress(p),
             OperationProgress::DbSnpFetch(p) => self.on_dbsnp_fetch_progress(p),
             OperationProgress::PrimerDesign(p) => self.on_primer_design_progress(p),
+            OperationProgress::ReadAcquisition(p) => self.on_read_acquisition_progress(p),
             OperationProgress::RnaReadInterpret(p) => self.on_rna_read_interpret_progress(p),
         }
     }
@@ -1274,51 +1026,32 @@ fn genome_gene_matches_filter(
         .unwrap_or(false)
 }
 
-fn unique_id(
-    existing: &std::collections::HashMap<String, gentle::dna_sequence::DNAsequence>,
-    base: &str,
-) -> String {
-    if !existing.contains_key(base) {
-        return base.to_string();
-    }
-    let mut i = 2usize;
-    loop {
-        let candidate = format!("{base}_{i}");
-        if !existing.contains_key(&candidate) {
-            return candidate;
-        }
-        i += 1;
-    }
-}
-
-fn apply_member_overhang(
-    member: &PoolMember,
-    dna: &mut gentle::dna_sequence::DNAsequence,
-) -> Result<(), String> {
-    let mut value =
-        serde_json::to_value(&*dna).map_err(|e| format!("Could not serialize sequence: {e}"))?;
-    let obj = value
-        .as_object_mut()
-        .ok_or_else(|| "Internal serialization shape error".to_string())?;
-    obj.insert(
-        "overhang".to_string(),
-        json!({
-            "forward_3": member.ends.forward_3.as_bytes(),
-            "forward_5": member.ends.forward_5.as_bytes(),
-            "reverse_3": member.ends.reverse_3.as_bytes(),
-            "reverse_5": member.ends.reverse_5.as_bytes(),
-        }),
-    );
-    let patched: gentle::dna_sequence::DNAsequence =
-        serde_json::from_value(value).map_err(|e| format!("Could not restore overhang: {e}"))?;
-    *dna = patched;
-    Ok(())
-}
-
 fn main() {
     if let Err(e) = run() {
-        eprintln!("{e}");
+        eprintln!("{}", cli_error_payload(&e));
         std::process::exit(1);
+    }
+}
+
+fn cli_error_payload(message: &str) -> String {
+    let error = EngineError::new(classify_cli_error(message), "CLI adapter command failed")
+        .with_cause(message);
+    serde_json::to_string(&error.portable_payload(vec![])).unwrap_or_else(|_| message.to_string())
+}
+
+fn classify_cli_error(message: &str) -> ErrorCode {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("not found") || lower.contains("missing file") {
+        ErrorCode::NotFound
+    } else if lower.contains("could not read")
+        || lower.contains("could not write")
+        || lower.contains("permission denied")
+    {
+        ErrorCode::Io
+    } else if lower.contains("unsupported") {
+        ErrorCode::Unsupported
+    } else {
+        ErrorCode::InvalidInput
     }
 }
 
@@ -1377,1846 +1110,17 @@ fn run() -> Result<(), String> {
                 execute_shell_command_with_options(&mut engine, &shell_command, &shell_options)?;
             print_help_output(&run.output)
         }
-        "genomes" | "helpers" => {
-            let helper_mode = command == "helpers";
-            let label = if helper_mode { "helpers" } else { "genomes" };
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err(format!("{label} requires a subcommand"));
-            }
-            match args[cmd_idx + 1].as_str() {
-                "vocabulary" if helper_mode => {
-                    if args.len() <= cmd_idx + 2 {
-                        return Err(
-                            "helpers vocabulary requires a subcommand (expected list or doctor)"
-                                .to_string(),
-                        );
-                    }
-                    match args[cmd_idx + 2].as_str() {
-                        "list" => {
-                            let mut vocabulary_path: Option<String> = None;
-                            let mut filter: Option<String> = None;
-                            let mut idx = cmd_idx + 3;
-                            while idx < args.len() {
-                                match args[idx].as_str() {
-                                    "--vocabulary" => {
-                                        if idx + 1 >= args.len() {
-                                            return Err(
-                                                "Missing PATH after --vocabulary for helpers vocabulary list"
-                                                    .to_string(),
-                                            );
-                                        }
-                                        vocabulary_path = Some(args[idx + 1].clone());
-                                        idx += 2;
-                                    }
-                                    "--filter" => {
-                                        if idx + 1 >= args.len() {
-                                            return Err(
-                                                "Missing TEXT after --filter for helpers vocabulary list"
-                                                    .to_string(),
-                                            );
-                                        }
-                                        filter = Some(args[idx + 1].clone());
-                                        idx += 2;
-                                    }
-                                    other => {
-                                        return Err(format!(
-                                            "Unknown option '{}' for helpers vocabulary list",
-                                            other
-                                        ));
-                                    }
-                                }
-                            }
-                            let terms = GentleEngine::list_helper_semantics_vocabulary_terms(
-                                vocabulary_path.as_deref(),
-                                filter.as_deref(),
-                            )
-                            .map_err(|e| e.to_string())?;
-                            print_json(&json!({
-                                "vocabulary_path": vocabulary_path
-                                    .clone()
-                                    .unwrap_or_else(|| default_helper_semantics_vocabulary_discovery_label().to_string()),
-                                "filter": filter,
-                                "term_count": terms.len(),
-                                "terms": terms,
-                            }))
-                        }
-                        "doctor" | "validate" => {
-                            let mut vocabulary_path: Option<String> = None;
-                            let mut routine_catalog_path: Option<String> = None;
-                            let mut idx = cmd_idx + 3;
-                            while idx < args.len() {
-                                match args[idx].as_str() {
-                                    "--vocabulary" => {
-                                        if idx + 1 >= args.len() {
-                                            return Err(
-                                                "Missing PATH after --vocabulary for helpers vocabulary doctor"
-                                                    .to_string(),
-                                            );
-                                        }
-                                        vocabulary_path = Some(args[idx + 1].clone());
-                                        idx += 2;
-                                    }
-                                    "--routine-catalog" => {
-                                        if idx + 1 >= args.len() {
-                                            return Err(
-                                                "Missing PATH after --routine-catalog for helpers vocabulary doctor"
-                                                    .to_string(),
-                                            );
-                                        }
-                                        routine_catalog_path = Some(args[idx + 1].clone());
-                                        idx += 2;
-                                    }
-                                    other => {
-                                        return Err(format!(
-                                            "Unknown option '{}' for helpers vocabulary doctor",
-                                            other
-                                        ));
-                                    }
-                                }
-                            }
-                            let known_routine_families = cloning_routine_families_from_catalog(
-                                routine_catalog_path.as_deref(),
-                            )?;
-                            let report = GentleEngine::doctor_helper_semantics_vocabulary(
-                                vocabulary_path.as_deref(),
-                                &known_routine_families,
-                            )
-                            .map_err(|e| e.to_string())?;
-                            print_json(&json!({
-                                "vocabulary_path": vocabulary_path
-                                    .clone()
-                                    .unwrap_or_else(|| default_helper_semantics_vocabulary_discovery_label().to_string()),
-                                "routine_catalog_path": routine_catalog_path
-                                    .clone()
-                                    .unwrap_or_else(|| DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string()),
-                                "report": report,
-                            }))
-                        }
-                        other => Err(format!(
-                            "Unknown helpers vocabulary subcommand '{}' (expected list or doctor)",
-                            other
-                        )),
-                    }
-                }
-                "ensembl-available" => {
-                    let mut collection: Option<String> = None;
-                    let mut filter: Option<String> = None;
-                    let mut idx = cmd_idx + 2;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--collection" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing VALUE after --collection for {label} ensembl-available"
-                                    ));
-                                }
-                                collection = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--filter" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing TEXT after --filter for {label} ensembl-available"
-                                    ));
-                                }
-                                filter = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for {label} ensembl-available",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    let report = GentleEngine::discover_ensembl_installable_genomes(
-                        collection.as_deref(),
-                        filter.as_deref(),
-                    )
-                    .map_err(|e| e.to_string())?;
-                    print_json(&json!({
-                        "scope": label,
-                        "report": report,
-                    }))
-                }
-                "list" => {
-                    let mut catalog_path: Option<String> = None;
-                    let mut filter: Option<String> = None;
-                    let mut idx = cmd_idx + 2;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --catalog for {label} list"
-                                    ));
-                                }
-                                catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--filter" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing TEXT after --filter for {label} list"
-                                    ));
-                                }
-                                filter = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!("Unknown option '{}' for {label} list", other));
-                            }
-                        }
-                    }
-                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
-                    let entries = if helper_mode {
-                        GentleEngine::list_helper_catalog_entries(
-                            resolved_catalog,
-                            filter.as_deref(),
-                        )
-                    } else {
-                        GentleEngine::list_reference_catalog_entries(
-                            resolved_catalog,
-                            filter.as_deref(),
-                        )
-                    }
-                    .map_err(|e| e.to_string())?;
-                    let genomes = entries
-                        .iter()
-                        .map(|entry| entry.genome_id.clone())
-                        .collect::<Vec<_>>();
-                    let effective_catalog = effective_catalog_label(&catalog_path, helper_mode);
-                    print_json(&json!({
-                        "catalog_path": effective_catalog,
-                        "filter": filter,
-                        "genome_count": genomes.len(),
-                        "genomes": genomes,
-                        "entries": entries,
-                    }))
-                }
-                "validate-catalog" => {
-                    let mut catalog_path: Option<String> = None;
-                    let mut idx = cmd_idx + 2;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --catalog for {label} validate-catalog"
-                                    ));
-                                }
-                                catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for {label} validate-catalog",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
-                    let genomes = if helper_mode {
-                        GentleEngine::list_helper_genomes(resolved_catalog)
-                    } else {
-                        GentleEngine::list_reference_genomes(resolved_catalog)
-                    }
-                    .map_err(|e| e.to_string())?;
-                    print_json(&json!({
-                        "catalog_path": effective_catalog_label(&catalog_path, helper_mode),
-                        "valid": true,
-                        "genome_count": genomes.len(),
-                    }))
-                }
-                "update-ensembl-specs" => {
-                    let mut catalog_path: Option<String> = None;
-                    let mut output_catalog_path: Option<String> = None;
-                    let mut idx = cmd_idx + 2;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --catalog for {label} update-ensembl-specs"
-                                    ));
-                                }
-                                catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--output-catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --output-catalog for {label} update-ensembl-specs"
-                                    ));
-                                }
-                                output_catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for {label} update-ensembl-specs",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
-                    let report = if helper_mode {
-                        GentleEngine::apply_helper_genome_ensembl_catalog_updates(
-                            resolved_catalog,
-                            output_catalog_path.as_deref(),
-                        )
-                    } else {
-                        GentleEngine::apply_reference_genome_ensembl_catalog_updates(
-                            resolved_catalog,
-                            output_catalog_path.as_deref(),
-                        )
-                    }
-                    .map_err(|e| e.to_string())?;
-                    print_json(&report)
-                }
-                "status" => {
-                    if args.len() <= cmd_idx + 2 {
-                        usage();
-                        return Err(format!(
-                            "{label} status requires GENOME_ID [--catalog PATH] [--cache-dir PATH]"
-                        ));
-                    }
-                    let genome_id = args[cmd_idx + 2].clone();
-                    let mut catalog_path: Option<String> = None;
-                    let mut cache_dir: Option<String> = None;
-                    let mut idx = cmd_idx + 3;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --catalog for {label} status"
-                                    ));
-                                }
-                                catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--cache-dir" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --cache-dir for {label} status"
-                                    ));
-                                }
-                                cache_dir = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for {label} status",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
-                    let prepared = if helper_mode {
-                        GentleEngine::is_helper_genome_prepared(
-                            &genome_id,
-                            resolved_catalog,
-                            cache_dir.as_deref(),
-                        )
-                    } else {
-                        GentleEngine::is_reference_genome_prepared(
-                            resolved_catalog,
-                            &genome_id,
-                            cache_dir.as_deref(),
-                        )
-                    }
-                    .map_err(|e| e.to_string())?;
-                    let source_plan = if helper_mode {
-                        GentleEngine::describe_helper_genome_sources(
-                            &genome_id,
-                            resolved_catalog,
-                            cache_dir.as_deref(),
-                        )
-                    } else {
-                        GentleEngine::describe_reference_genome_sources(
-                            resolved_catalog,
-                            &genome_id,
-                            cache_dir.as_deref(),
-                        )
-                    }
-                    .map_err(|e| e.to_string())?;
-                    let interpretation = if helper_mode {
-                        GentleEngine::interpret_helper_genome(&genome_id, resolved_catalog)
-                            .map_err(|e| e.to_string())?
-                    } else {
-                        None
-                    };
-                    let effective_catalog = effective_catalog_label(&catalog_path, helper_mode);
-                    print_json(&json!({
-                        "genome_id": genome_id,
-                        "catalog_path": effective_catalog,
-                        "cache_dir": cache_dir,
-                        "prepared": prepared,
-                        "sequence_source_type": source_plan.sequence_source_type,
-                        "annotation_source_type": source_plan.annotation_source_type,
-                        "sequence_source": source_plan.sequence_source,
-                        "annotation_source": source_plan.annotation_source,
-                        "nucleotide_length_bp": source_plan.nucleotide_length_bp,
-                        "molecular_mass_da": source_plan.molecular_mass_da,
-                        "molecular_mass_source": source_plan.molecular_mass_source,
-                        "interpretation": interpretation,
-                    }))
-                }
-                "genes" => {
-                    if args.len() <= cmd_idx + 2 {
-                        usage();
-                        return Err(format!(
-                            "{label} genes requires GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]"
-                        ));
-                    }
-                    let genome_id = args[cmd_idx + 2].clone();
-                    let mut catalog_path: Option<String> = None;
-                    let mut cache_dir: Option<String> = None;
-                    let mut filter = String::new();
-                    let mut biotype_filters: Vec<String> = vec![];
-                    let mut limit: usize = 200;
-                    let mut offset: usize = 0;
-                    let mut idx = cmd_idx + 3;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --catalog for {label} genes"
-                                    ));
-                                }
-                                catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--cache-dir" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --cache-dir for {label} genes"
-                                    ));
-                                }
-                                cache_dir = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--filter" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing TEXT after --filter for {label} genes"
-                                    ));
-                                }
-                                filter = args[idx + 1].clone();
-                                idx += 2;
-                            }
-                            "--biotype" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing NAME after --biotype for {label} genes"
-                                    ));
-                                }
-                                biotype_filters.push(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--limit" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing N after --limit for {label} genes"
-                                    ));
-                                }
-                                limit = args[idx + 1].parse::<usize>().map_err(|e| {
-                                    format!("Invalid --limit value '{}': {}", args[idx + 1], e)
-                                })?;
-                                if limit == 0 {
-                                    return Err("--limit must be >= 1".to_string());
-                                }
-                                idx += 2;
-                            }
-                            "--offset" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing N after --offset for {label} genes"
-                                    ));
-                                }
-                                offset = args[idx + 1].parse::<usize>().map_err(|e| {
-                                    format!("Invalid --offset value '{}': {}", args[idx + 1], e)
-                                })?;
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for {label} genes",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-
-                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
-                    let genes = if helper_mode {
-                        GentleEngine::list_helper_genome_features(
-                            &genome_id,
-                            resolved_catalog,
-                            cache_dir.as_deref(),
-                        )
-                    } else {
-                        GentleEngine::list_reference_genome_genes(
-                            resolved_catalog,
-                            &genome_id,
-                            cache_dir.as_deref(),
-                        )
-                    }
-                    .map_err(|e| e.to_string())?;
-                    let filter_regex = compile_gene_filter_regex(&filter)?;
-                    let available_biotypes = collect_biotypes(&genes);
-                    let allowed_biotypes_lower: Vec<String> = biotype_filters
-                        .iter()
-                        .map(|v| v.trim().to_ascii_lowercase())
-                        .filter(|v| !v.is_empty())
-                        .collect();
-                    let filtered: Vec<GenomeGeneRecord> = genes
-                        .into_iter()
-                        .filter(|g| {
-                            genome_gene_matches_filter(
-                                g,
-                                filter_regex.as_ref(),
-                                &allowed_biotypes_lower,
-                            )
-                        })
-                        .collect();
-                    let total = filtered.len();
-                    let offset = offset.min(total);
-                    let returned: Vec<GenomeGeneRecord> =
-                        filtered.into_iter().skip(offset).take(limit).collect();
-                    let effective_catalog = effective_catalog_label(&catalog_path, helper_mode);
-                    print_json(&json!({
-                        "genome_id": genome_id,
-                        "catalog_path": effective_catalog,
-                        "cache_dir": cache_dir,
-                        "filter": filter,
-                        "biotype_filter": biotype_filters,
-                        "available_biotypes": available_biotypes,
-                        "offset": offset,
-                        "limit": limit,
-                        "total_matches": total,
-                        "returned": returned.len(),
-                        "genes": returned,
-                    }))
-                }
-                "prepare" => {
-                    if args.len() <= cmd_idx + 2 {
-                        usage();
-                        return Err(format!(
-                            "{label} prepare requires GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]"
-                        ));
-                    }
-                    let genome_id = args[cmd_idx + 2].clone();
-                    let mut catalog_path: Option<String> = None;
-                    let mut cache_dir: Option<String> = None;
-                    let mut timeout_seconds: Option<u64> = None;
-                    let mut idx = cmd_idx + 3;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --catalog for {label} prepare"
-                                    ));
-                                }
-                                catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--cache-dir" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --cache-dir for {label} prepare"
-                                    ));
-                                }
-                                cache_dir = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--timeout-secs" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing N after --timeout-secs for {label} prepare"
-                                    ));
-                                }
-                                let raw = args[idx + 1].trim().to_string();
-                                let parsed = raw.parse::<u64>().map_err(|e| {
-                                    format!(
-                                        "Invalid --timeout-secs value '{}' for {label} prepare: {}",
-                                        raw, e
-                                    )
-                                })?;
-                                if parsed == 0 {
-                                    timeout_seconds = None;
-                                } else {
-                                    timeout_seconds = Some(parsed);
-                                }
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for {label} prepare",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    let op_catalog_path = operation_catalog_arg(&catalog_path, helper_mode);
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let op = Operation::PrepareGenome {
-                        genome_id,
-                        catalog_path: op_catalog_path,
-                        cache_dir,
-                        timeout_seconds,
-                    };
-                    let result = if let Some(sink) = global.progress_sink {
-                        let mut printer = ProgressPrinter::new(sink);
-                        engine
-                            .apply_with_progress(op, |p| {
-                                printer.on_progress(p);
-                                true
-                            })
-                            .map_err(|e| e.to_string())?
-                    } else {
-                        engine.apply(op).map_err(|e| e.to_string())?
-                    };
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    print_json(&result)
-                }
-                "remove-prepared" => {
-                    if args.len() <= cmd_idx + 2 {
-                        usage();
-                        return Err(format!(
-                            "{label} remove-prepared requires GENOME_ID [--catalog PATH] [--cache-dir PATH]"
-                        ));
-                    }
-                    let genome_id = args[cmd_idx + 2].clone();
-                    let mut catalog_path: Option<String> = None;
-                    let mut cache_dir: Option<String> = None;
-                    let mut idx = cmd_idx + 3;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --catalog for {label} remove-prepared"
-                                    ));
-                                }
-                                catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--cache-dir" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --cache-dir for {label} remove-prepared"
-                                    ));
-                                }
-                                cache_dir = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for {label} remove-prepared",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
-                    let report = if helper_mode {
-                        GentleEngine::remove_prepared_helper_genome(
-                            resolved_catalog,
-                            &genome_id,
-                            cache_dir.as_deref(),
-                        )
-                    } else {
-                        GentleEngine::remove_prepared_reference_genome(
-                            resolved_catalog,
-                            &genome_id,
-                            cache_dir.as_deref(),
-                        )
-                    }
-                    .map_err(|e| e.to_string())?;
-                    print_json(&report)
-                }
-                "remove-catalog-entry" => {
-                    if args.len() <= cmd_idx + 2 {
-                        usage();
-                        return Err(format!(
-                            "{label} remove-catalog-entry requires GENOME_ID [--catalog PATH] [--output-catalog PATH]"
-                        ));
-                    }
-                    let genome_id = args[cmd_idx + 2].clone();
-                    let mut catalog_path: Option<String> = None;
-                    let mut output_catalog_path: Option<String> = None;
-                    let mut idx = cmd_idx + 3;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --catalog for {label} remove-catalog-entry"
-                                    ));
-                                }
-                                catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--output-catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --output-catalog for {label} remove-catalog-entry"
-                                    ));
-                                }
-                                output_catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for {label} remove-catalog-entry",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
-                    let report = if helper_mode {
-                        GentleEngine::remove_helper_genome_catalog_entry(
-                            resolved_catalog,
-                            &genome_id,
-                            output_catalog_path.as_deref(),
-                        )
-                    } else {
-                        GentleEngine::remove_reference_genome_catalog_entry(
-                            resolved_catalog,
-                            &genome_id,
-                            output_catalog_path.as_deref(),
-                        )
-                    }
-                    .map_err(|e| e.to_string())?;
-                    print_json(&report)
-                }
-                "extract-region" => {
-                    if args.len() <= cmd_idx + 6 {
-                        usage();
-                        return Err(format!(
-                            "{label} extract-region requires GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
-                        ));
-                    }
-                    let genome_id = args[cmd_idx + 2].clone();
-                    let chromosome = args[cmd_idx + 3].clone();
-                    let start_1based = args[cmd_idx + 4].parse::<usize>().map_err(|e| {
-                        format!("Invalid START coordinate '{}': {}", args[cmd_idx + 4], e)
-                    })?;
-                    let end_1based = args[cmd_idx + 5].parse::<usize>().map_err(|e| {
-                        format!("Invalid END coordinate '{}': {}", args[cmd_idx + 5], e)
-                    })?;
-                    let mut output_id: Option<String> = None;
-                    let mut annotation_scope: Option<GenomeAnnotationScope> = None;
-                    let mut max_annotation_features: Option<usize> = None;
-                    let mut include_genomic_annotation: Option<bool> = None;
-                    let mut catalog_path: Option<String> = None;
-                    let mut cache_dir: Option<String> = None;
-                    let mut idx = cmd_idx + 6;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--output-id" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing ID after --output-id for {label} extract-region"
-                                    ));
-                                }
-                                output_id = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --catalog for {label} extract-region"
-                                    ));
-                                }
-                                catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--cache-dir" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --cache-dir for {label} extract-region"
-                                    ));
-                                }
-                                cache_dir = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--annotation-scope" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing VALUE after --annotation-scope for {label} extract-region"
-                                    ));
-                                }
-                                let value = args[idx + 1].trim().to_ascii_lowercase();
-                                let parsed = match value.as_str() {
-                                    "none" => GenomeAnnotationScope::None,
-                                    "core" => GenomeAnnotationScope::Core,
-                                    "full" => GenomeAnnotationScope::Full,
-                                    other => {
-                                        return Err(format!(
-                                            "Invalid --annotation-scope value '{}' for {label} extract-region (expected none|core|full)",
-                                            other
-                                        ));
-                                    }
-                                };
-                                annotation_scope = Some(parsed);
-                                idx += 2;
-                            }
-                            "--max-annotation-features" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing N after --max-annotation-features for {label} extract-region"
-                                    ));
-                                }
-                                let raw = args[idx + 1].trim().to_string();
-                                let parsed = raw.parse::<usize>().map_err(|e| {
-                                    format!(
-                                        "Invalid --max-annotation-features value '{}' for {label} extract-region: {}",
-                                        raw, e
-                                    )
-                                })?;
-                                max_annotation_features = Some(parsed);
-                                idx += 2;
-                            }
-                            "--include-genomic-annotation" => {
-                                include_genomic_annotation = Some(true);
-                                idx += 1;
-                            }
-                            "--no-include-genomic-annotation" => {
-                                include_genomic_annotation = Some(false);
-                                idx += 1;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for {label} extract-region",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    if let Some(include) = include_genomic_annotation {
-                        let mapped_scope = if include {
-                            GenomeAnnotationScope::Core
-                        } else {
-                            GenomeAnnotationScope::None
-                        };
-                        if let Some(explicit_scope) = annotation_scope {
-                            if explicit_scope != mapped_scope {
-                                return Err(format!(
-                                    "Conflicting annotation options for {label} extract-region: --annotation-scope={} with legacy include/no-include flag",
-                                    match explicit_scope {
-                                        GenomeAnnotationScope::None => "none",
-                                        GenomeAnnotationScope::Core => "core",
-                                        GenomeAnnotationScope::Full => "full",
-                                    }
-                                ));
-                            }
-                        } else {
-                            annotation_scope = Some(mapped_scope);
-                        }
-                    }
-                    let op_catalog_path = operation_catalog_arg(&catalog_path, helper_mode);
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let result = engine
-                        .apply(Operation::ExtractGenomeRegion {
-                            genome_id,
-                            chromosome,
-                            start_1based,
-                            end_1based,
-                            output_id,
-                            annotation_scope,
-                            max_annotation_features,
-                            include_genomic_annotation,
-                            catalog_path: op_catalog_path,
-                            cache_dir,
-                        })
-                        .map_err(|e| e.to_string())?;
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    print_json(&result)
-                }
-                "extract-gene" => {
-                    if args.len() <= cmd_idx + 3 {
-                        usage();
-                        return Err(format!(
-                            "{label} extract-gene requires GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
-                        ));
-                    }
-                    let genome_id = args[cmd_idx + 2].clone();
-                    let gene_query = args[cmd_idx + 3].clone();
-                    let mut occurrence: Option<usize> = None;
-                    let mut output_id: Option<String> = None;
-                    let mut extract_mode: Option<GenomeGeneExtractMode> = None;
-                    let mut promoter_upstream_bp: Option<usize> = None;
-                    let mut annotation_scope: Option<GenomeAnnotationScope> = None;
-                    let mut max_annotation_features: Option<usize> = None;
-                    let mut include_genomic_annotation: Option<bool> = None;
-                    let mut catalog_path: Option<String> = None;
-                    let mut cache_dir: Option<String> = None;
-                    let mut idx = cmd_idx + 4;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--occurrence" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing N after --occurrence for {label} extract-gene"
-                                    ));
-                                }
-                                let occ = args[idx + 1].parse::<usize>().map_err(|e| {
-                                    format!("Invalid --occurrence value '{}': {}", args[idx + 1], e)
-                                })?;
-                                if occ == 0 {
-                                    return Err("--occurrence must be >= 1".to_string());
-                                }
-                                occurrence = Some(occ);
-                                idx += 2;
-                            }
-                            "--output-id" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing ID after --output-id for {label} extract-gene"
-                                    ));
-                                }
-                                output_id = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--extract-mode" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing VALUE after --extract-mode for {label} extract-gene"
-                                    ));
-                                }
-                                let parsed = match args[idx + 1]
-                                    .trim()
-                                    .to_ascii_lowercase()
-                                    .as_str()
-                                {
-                                    "gene" => GenomeGeneExtractMode::Gene,
-                                    "coding_with_promoter" => {
-                                        GenomeGeneExtractMode::CodingWithPromoter
-                                    }
-                                    other => {
-                                        return Err(format!(
-                                            "Invalid --extract-mode value '{}' for {label} extract-gene (expected gene|coding_with_promoter)",
-                                            other
-                                        ));
-                                    }
-                                };
-                                extract_mode = Some(parsed);
-                                idx += 2;
-                            }
-                            "--promoter-upstream-bp" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing N after --promoter-upstream-bp for {label} extract-gene"
-                                    ));
-                                }
-                                let parsed = args[idx + 1].parse::<usize>().map_err(|e| {
-                                    format!(
-                                        "Invalid --promoter-upstream-bp value '{}' for {label} extract-gene: {}",
-                                        args[idx + 1],
-                                        e
-                                    )
-                                })?;
-                                promoter_upstream_bp = Some(parsed);
-                                idx += 2;
-                            }
-                            "--annotation-scope" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing VALUE after --annotation-scope for {label} extract-gene"
-                                    ));
-                                }
-                                let parsed = match args[idx + 1]
-                                    .trim()
-                                    .to_ascii_lowercase()
-                                    .as_str()
-                                {
-                                    "none" => GenomeAnnotationScope::None,
-                                    "core" => GenomeAnnotationScope::Core,
-                                    "full" => GenomeAnnotationScope::Full,
-                                    other => {
-                                        return Err(format!(
-                                            "Invalid --annotation-scope value '{}' for {label} extract-gene (expected none|core|full)",
-                                            other
-                                        ));
-                                    }
-                                };
-                                annotation_scope = Some(parsed);
-                                idx += 2;
-                            }
-                            "--max-annotation-features" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing N after --max-annotation-features for {label} extract-gene"
-                                    ));
-                                }
-                                let parsed = args[idx + 1].parse::<usize>().map_err(|e| {
-                                    format!(
-                                        "Invalid --max-annotation-features value '{}' for {label} extract-gene: {}",
-                                        args[idx + 1],
-                                        e
-                                    )
-                                })?;
-                                max_annotation_features = Some(parsed);
-                                idx += 2;
-                            }
-                            "--include-genomic-annotation" => {
-                                include_genomic_annotation = Some(true);
-                                idx += 1;
-                            }
-                            "--no-include-genomic-annotation" => {
-                                include_genomic_annotation = Some(false);
-                                idx += 1;
-                            }
-                            "--catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --catalog for {label} extract-gene"
-                                    ));
-                                }
-                                catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--cache-dir" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --cache-dir for {label} extract-gene"
-                                    ));
-                                }
-                                cache_dir = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for {label} extract-gene",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    if let Some(include) = include_genomic_annotation {
-                        let mapped_scope = if include {
-                            GenomeAnnotationScope::Core
-                        } else {
-                            GenomeAnnotationScope::None
-                        };
-                        if let Some(explicit_scope) = annotation_scope {
-                            if explicit_scope != mapped_scope {
-                                return Err(format!(
-                                    "Conflicting annotation options for {label} extract-gene: --annotation-scope={} with legacy include/no-include flag",
-                                    explicit_scope.as_str()
-                                ));
-                            }
-                        } else {
-                            annotation_scope = Some(mapped_scope);
-                        }
-                    }
-                    if promoter_upstream_bp.is_some() && extract_mode.is_none() {
-                        extract_mode = Some(GenomeGeneExtractMode::CodingWithPromoter);
-                    }
-                    if matches!(extract_mode, Some(GenomeGeneExtractMode::Gene))
-                        && promoter_upstream_bp.unwrap_or(0) > 0
-                    {
-                        return Err(format!(
-                            "--promoter-upstream-bp requires --extract-mode coding_with_promoter for {label} extract-gene"
-                        ));
-                    }
-                    let op_catalog_path = operation_catalog_arg(&catalog_path, helper_mode);
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let result = engine
-                        .apply(Operation::ExtractGenomeGene {
-                            genome_id,
-                            gene_query,
-                            occurrence,
-                            output_id,
-                            extract_mode,
-                            promoter_upstream_bp,
-                            annotation_scope,
-                            max_annotation_features,
-                            include_genomic_annotation,
-                            catalog_path: op_catalog_path,
-                            cache_dir,
-                        })
-                        .map_err(|e| e.to_string())?;
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    print_json(&result)
-                }
-                "extract-promoter" => {
-                    if args.len() <= cmd_idx + 3 {
-                        usage();
-                        return Err(format!(
-                            "{label} extract-promoter requires GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
-                        ));
-                    }
-                    let genome_id = args[cmd_idx + 2].clone();
-                    let gene_query = args[cmd_idx + 3].clone();
-                    let mut occurrence: Option<usize> = None;
-                    let mut transcript_id: Option<String> = None;
-                    let mut output_id: Option<String> = None;
-                    let mut upstream_bp: Option<usize> = None;
-                    let mut downstream_bp: Option<usize> = None;
-                    let mut annotation_scope: Option<GenomeAnnotationScope> = None;
-                    let mut max_annotation_features: Option<usize> = None;
-                    let mut include_genomic_annotation: Option<bool> = None;
-                    let mut catalog_path: Option<String> = None;
-                    let mut cache_dir: Option<String> = None;
-                    let mut idx = cmd_idx + 4;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--occurrence" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing N after --occurrence for {label} extract-promoter"
-                                    ));
-                                }
-                                let occ = args[idx + 1].parse::<usize>().map_err(|e| {
-                                    format!("Invalid --occurrence value '{}': {}", args[idx + 1], e)
-                                })?;
-                                if occ == 0 {
-                                    return Err("--occurrence must be >= 1".to_string());
-                                }
-                                occurrence = Some(occ);
-                                idx += 2;
-                            }
-                            "--transcript-id" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing ID after --transcript-id for {label} extract-promoter"
-                                    ));
-                                }
-                                transcript_id = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--output-id" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing ID after --output-id for {label} extract-promoter"
-                                    ));
-                                }
-                                output_id = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--upstream-bp" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing N after --upstream-bp for {label} extract-promoter"
-                                    ));
-                                }
-                                let parsed = args[idx + 1].parse::<usize>().map_err(|e| {
-                                    format!(
-                                        "Invalid --upstream-bp value '{}' for {label} extract-promoter: {}",
-                                        args[idx + 1],
-                                        e
-                                    )
-                                })?;
-                                upstream_bp = Some(parsed);
-                                idx += 2;
-                            }
-                            "--downstream-bp" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing N after --downstream-bp for {label} extract-promoter"
-                                    ));
-                                }
-                                let parsed = args[idx + 1].parse::<usize>().map_err(|e| {
-                                    format!(
-                                        "Invalid --downstream-bp value '{}' for {label} extract-promoter: {}",
-                                        args[idx + 1],
-                                        e
-                                    )
-                                })?;
-                                downstream_bp = Some(parsed);
-                                idx += 2;
-                            }
-                            "--annotation-scope" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing VALUE after --annotation-scope for {label} extract-promoter"
-                                    ));
-                                }
-                                let parsed = match args[idx + 1]
-                                    .trim()
-                                    .to_ascii_lowercase()
-                                    .as_str()
-                                {
-                                    "none" => GenomeAnnotationScope::None,
-                                    "core" => GenomeAnnotationScope::Core,
-                                    "full" => GenomeAnnotationScope::Full,
-                                    other => {
-                                        return Err(format!(
-                                            "Invalid --annotation-scope value '{}' for {label} extract-promoter (expected none|core|full)",
-                                            other
-                                        ));
-                                    }
-                                };
-                                annotation_scope = Some(parsed);
-                                idx += 2;
-                            }
-                            "--max-annotation-features" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing N after --max-annotation-features for {label} extract-promoter"
-                                    ));
-                                }
-                                let parsed = args[idx + 1].parse::<usize>().map_err(|e| {
-                                    format!(
-                                        "Invalid --max-annotation-features value '{}' for {label} extract-promoter: {}",
-                                        args[idx + 1],
-                                        e
-                                    )
-                                })?;
-                                max_annotation_features = Some(parsed);
-                                idx += 2;
-                            }
-                            "--include-genomic-annotation" => {
-                                include_genomic_annotation = Some(true);
-                                idx += 1;
-                            }
-                            "--no-include-genomic-annotation" => {
-                                include_genomic_annotation = Some(false);
-                                idx += 1;
-                            }
-                            "--catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --catalog for {label} extract-promoter"
-                                    ));
-                                }
-                                catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--cache-dir" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(format!(
-                                        "Missing PATH after --cache-dir for {label} extract-promoter"
-                                    ));
-                                }
-                                cache_dir = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for {label} extract-promoter",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    if let Some(include) = include_genomic_annotation {
-                        let mapped_scope = if include {
-                            GenomeAnnotationScope::Core
-                        } else {
-                            GenomeAnnotationScope::None
-                        };
-                        if let Some(explicit_scope) = annotation_scope {
-                            if explicit_scope != mapped_scope {
-                                return Err(format!(
-                                    "Conflicting annotation options for {label} extract-promoter: --annotation-scope={} with legacy include/no-include flag",
-                                    explicit_scope.as_str()
-                                ));
-                            }
-                        } else {
-                            annotation_scope = Some(mapped_scope);
-                        }
-                    }
-                    let op_catalog_path = operation_catalog_arg(&catalog_path, helper_mode);
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let result = engine
-                        .apply(Operation::ExtractGenomePromoterSlice {
-                            genome_id,
-                            gene_query,
-                            occurrence,
-                            transcript_id,
-                            output_id,
-                            upstream_bp: upstream_bp
-                                .unwrap_or(DEFAULT_PROMOTER_EXTRACT_UPSTREAM_BP),
-                            downstream_bp: downstream_bp
-                                .unwrap_or(DEFAULT_PROMOTER_EXTRACT_DOWNSTREAM_BP),
-                            annotation_scope,
-                            max_annotation_features,
-                            include_genomic_annotation,
-                            catalog_path: op_catalog_path,
-                            cache_dir,
-                        })
-                        .map_err(|e| e.to_string())?;
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    print_json(&result)
-                }
-                other => Err(format!(
-                    "Unknown {label} subcommand '{}' (expected ensembl-available, list, validate-catalog, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, extract-region, extract-gene, extract-promoter)",
-                    other
-                )),
-            }
-        }
-        "hosts" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err("hosts requires a subcommand".to_string());
-            }
-            match args[cmd_idx + 1].as_str() {
-                "list" => {
-                    let mut catalog_path: Option<String> = None;
-                    let mut filter: Option<String> = None;
-                    let mut idx = cmd_idx + 2;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(
-                                        "Missing PATH after --catalog for hosts list".to_string()
-                                    );
-                                }
-                                catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--filter" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(
-                                        "Missing TEXT after --filter for hosts list".to_string()
-                                    );
-                                }
-                                filter = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!("Unknown option '{}' for hosts list", other));
-                            }
-                        }
-                    }
-                    let entries = GentleEngine::list_host_profile_catalog_entries(
-                        explicit_catalog_arg(&catalog_path),
-                        filter.as_deref(),
-                    )
-                    .map_err(|e| e.to_string())?;
-                    let profile_ids = entries
-                        .iter()
-                        .map(|entry| entry.profile_id.clone())
-                        .collect::<Vec<_>>();
-                    print_json(&json!({
-                        "catalog_path": explicit_catalog_arg(&catalog_path)
-                            .unwrap_or(DEFAULT_HOST_PROFILE_CATALOG_PATH),
-                        "filter": filter,
-                        "profile_count": profile_ids.len(),
-                        "profile_ids": profile_ids,
-                        "entries": entries,
-                    }))
-                }
-                other => Err(format!("Unknown hosts subcommand '{}'", other)),
-            }
-        }
-        "resources" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err(
-                    "resources requires a subcommand: status, sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar or inspect-jaspar"
-                        .to_string(),
-                );
-            }
-            match args[cmd_idx + 1].as_str() {
-                "status" => print_json(&resource_catalog_status()),
-                "sync-rebase" => {
-                    if args.len() <= cmd_idx + 2 {
-                        usage();
-                        return Err(
-                            "resources sync-rebase requires INPUT.withrefm path".to_string()
-                        );
-                    }
-                    let input = &args[cmd_idx + 2];
-                    let mut output = DEFAULT_REBASE_RESOURCE_PATH.to_string();
-                    let mut commercial_only = false;
-                    for arg in args.iter().skip(cmd_idx + 3) {
-                        if arg == "--commercial-only" {
-                            commercial_only = true;
-                        } else if !arg.starts_with("--") {
-                            output = arg.clone();
-                        }
-                    }
-                    let text = read_text_input(input)?;
-                    let enzymes = parse_rebase_withrefm(&text, commercial_only);
-                    if enzymes.is_empty() {
-                        return Err(format!(
-                            "No REBASE enzymes were parsed from '{input}'{}",
-                            if commercial_only {
-                                " (commercial-only filter active)"
-                            } else {
-                                ""
-                            }
-                        ));
-                    }
-                    ensure_parent_dir(&output)?;
-                    let json = serde_json::to_string_pretty(&enzymes).map_err(|e| {
-                        format!("Could not serialize REBASE resource snapshot: {e}")
-                    })?;
-                    fs::write(&output, json)
-                        .map_err(|e| format!("Could not write REBASE output '{output}': {e}"))?;
-                    println!(
-                        "Synced {} REBASE enzymes to '{}'{}",
-                        enzymes.len(),
-                        output,
-                        if commercial_only {
-                            " (commercial-only)"
-                        } else {
-                            ""
-                        }
-                    );
-                    Ok(())
-                }
-                "sync-jaspar" => {
-                    if args.len() <= cmd_idx + 2 {
-                        usage();
-                        return Err(
-                            "resources sync-jaspar requires INPUT.jaspar.txt path".to_string()
-                        );
-                    }
-                    let input = &args[cmd_idx + 2];
-                    let output = args
-                        .get(cmd_idx + 3)
-                        .filter(|s| !s.starts_with("--"))
-                        .cloned()
-                        .unwrap_or_else(|| DEFAULT_JASPAR_RESOURCE_PATH.to_string());
-                    let text = read_text_input(input)?;
-                    let motifs = parse_jaspar_motifs(&text)?;
-                    if motifs.is_empty() {
-                        return Err(format!("No JASPAR motifs were parsed from '{input}'"));
-                    }
-                    let snapshot = JasparMotifSnapshot {
-                        schema: "gentle.tf_motifs.v2".to_string(),
-                        source: input.clone(),
-                        fetched_at_unix_ms: now_unix_ms(),
-                        motif_count: motifs.len(),
-                        motifs,
-                    };
-                    ensure_parent_dir(&output)?;
-                    let json = serde_json::to_string_pretty(&snapshot).map_err(|e| {
-                        format!("Could not serialize JASPAR resource snapshot: {e}")
-                    })?;
-                    fs::write(&output, json)
-                        .map_err(|e| format!("Could not write JASPAR output '{output}': {e}"))?;
-                    println!(
-                        "Synced {} JASPAR motifs to '{}'",
-                        snapshot.motif_count, output
-                    );
-                    Ok(())
-                }
-                "sync-jaspar-remote-metadata" => {
-                    let mut motifs: Vec<String> = vec![];
-                    let mut use_all = false;
-                    let mut filter: Option<String> = None;
-                    let mut limit: Option<usize> = None;
-                    let mut output: Option<String> = None;
-                    let mut idx = cmd_idx + 2;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--motif" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(
-                                        "Missing TOKEN after --motif for resources sync-jaspar-remote-metadata"
-                                            .to_string(),
-                                    );
-                                }
-                                motifs.push(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--motifs" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(
-                                        "Missing CSV after --motifs for resources sync-jaspar-remote-metadata"
-                                            .to_string(),
-                                    );
-                                }
-                                motifs.extend(
-                                    args[idx + 1]
-                                        .split(',')
-                                        .map(str::trim)
-                                        .filter(|value| !value.is_empty())
-                                        .map(str::to_string),
-                                );
-                                idx += 2;
-                            }
-                            "--all" => {
-                                use_all = true;
-                                idx += 1;
-                            }
-                            "--filter" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing TOKEN after --filter".to_string());
-                                }
-                                filter = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--limit" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing N after --limit".to_string());
-                                }
-                                limit = Some(args[idx + 1].parse().map_err(|e| {
-                                    format!(
-                                        "Invalid --limit '{}' for resources sync-jaspar-remote-metadata: {e}",
-                                        args[idx + 1]
-                                    )
-                                })?);
-                                idx += 2;
-                            }
-                            "--output" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing PATH after --output".to_string());
-                                }
-                                output = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for resources sync-jaspar-remote-metadata",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    if use_all && !motifs.is_empty() {
-                        return Err(
-                            "resources sync-jaspar-remote-metadata cannot combine --all with --motif/--motifs"
-                                .to_string(),
-                        );
-                    }
-                    if use_all {
-                        motifs.clear();
-                    }
-                    let mut engine = GentleEngine::new();
-                    let op_result = engine
-                        .apply(Operation::SyncJasparRemoteMetadata {
-                            motifs,
-                            filter,
-                            limit,
-                            path: output
-                                .or_else(|| Some(DEFAULT_JASPAR_REMOTE_METADATA_PATH.to_string())),
-                        })
-                        .map_err(|e| e.to_string())?;
-                    print_json(&json!({ "result": op_result }))
-                }
-                "summarize-jaspar" => {
-                    let mut motifs: Vec<String> = vec![];
-                    let mut use_all = false;
-                    let mut random_sequence_length_bp =
-                        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP;
-                    let mut random_seed = DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED;
-                    let mut output: Option<String> = None;
-                    let mut idx = cmd_idx + 2;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--motif" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(
-                                        "Missing TOKEN after --motif for resources summarize-jaspar"
-                                            .to_string(),
-                                    );
-                                }
-                                motifs.push(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--motifs" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(
-                                        "Missing CSV after --motifs for resources summarize-jaspar"
-                                            .to_string(),
-                                    );
-                                }
-                                motifs.extend(
-                                    args[idx + 1]
-                                        .split(',')
-                                        .map(str::trim)
-                                        .filter(|value| !value.is_empty())
-                                        .map(str::to_string),
-                                );
-                                idx += 2;
-                            }
-                            "--all" => {
-                                use_all = true;
-                                idx += 1;
-                            }
-                            "--random-length" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing N after --random-length".to_string());
-                                }
-                                random_sequence_length_bp = args[idx + 1].parse().map_err(|e| {
-                                    format!(
-                                        "Invalid --random-length '{}' for resources summarize-jaspar: {e}",
-                                        args[idx + 1]
-                                    )
-                                })?;
-                                idx += 2;
-                            }
-                            "--seed" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing N after --seed".to_string());
-                                }
-                                random_seed = args[idx + 1].parse().map_err(|e| {
-                                    format!(
-                                        "Invalid --seed '{}' for resources summarize-jaspar: {e}",
-                                        args[idx + 1]
-                                    )
-                                })?;
-                                idx += 2;
-                            }
-                            "--output" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing PATH after --output".to_string());
-                                }
-                                output = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for resources summarize-jaspar",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    if use_all && !motifs.is_empty() {
-                        return Err(
-                            "resources summarize-jaspar cannot combine --all with --motif/--motifs"
-                                .to_string(),
-                        );
-                    }
-                    if use_all {
-                        motifs.clear();
-                    }
-                    let mut engine = GentleEngine::new();
-                    let op_result = engine
-                        .apply(Operation::SummarizeJasparEntries {
-                            motifs,
-                            random_sequence_length_bp,
-                            random_seed,
-                            path: output,
-                        })
-                        .map_err(|e| e.to_string())?;
-                    print_json(&json!({ "result": op_result }))
-                }
-                "benchmark-jaspar" => {
-                    let mut random_sequence_length_bp =
-                        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP;
-                    let mut random_seed = DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED;
-                    let mut output: Option<String> = None;
-                    let mut idx = cmd_idx + 2;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--random-length" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing N after --random-length".to_string());
-                                }
-                                random_sequence_length_bp = args[idx + 1].parse().map_err(|e| {
-                                    format!(
-                                        "Invalid --random-length '{}' for resources benchmark-jaspar: {e}",
-                                        args[idx + 1]
-                                    )
-                                })?;
-                                idx += 2;
-                            }
-                            "--seed" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing N after --seed".to_string());
-                                }
-                                random_seed = args[idx + 1].parse().map_err(|e| {
-                                    format!(
-                                        "Invalid --seed '{}' for resources benchmark-jaspar: {e}",
-                                        args[idx + 1]
-                                    )
-                                })?;
-                                idx += 2;
-                            }
-                            "--output" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing PATH after --output".to_string());
-                                }
-                                output = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for resources benchmark-jaspar",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    let mut engine = GentleEngine::new();
-                    let op_result = engine
-                        .apply(Operation::BenchmarkJasparRegistry {
-                            random_sequence_length_bp,
-                            random_seed,
-                            path: output
-                                .or_else(|| Some(DEFAULT_JASPAR_BENCHMARK_PATH.to_string())),
-                        })
-                        .map_err(|e| e.to_string())?;
-                    print_json(&json!({ "result": op_result }))
-                }
-                "list-jaspar" => {
-                    let mut filter: Option<String> = None;
-                    let mut limit: Option<usize> = None;
-                    let mut fetch_remote = false;
-                    let mut output: Option<String> = None;
-                    let mut idx = cmd_idx + 2;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--filter" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing TOKEN after --filter".to_string());
-                                }
-                                filter = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--limit" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing N after --limit".to_string());
-                                }
-                                limit = Some(args[idx + 1].parse().map_err(|e| {
-                                    format!(
-                                        "Invalid --limit '{}' for resources list-jaspar: {e}",
-                                        args[idx + 1]
-                                    )
-                                })?);
-                                idx += 2;
-                            }
-                            "--fetch-remote" => {
-                                fetch_remote = true;
-                                idx += 1;
-                            }
-                            "--output" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing PATH after --output".to_string());
-                                }
-                                output = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for resources list-jaspar",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    let mut engine = GentleEngine::new();
-                    let op_result = engine
-                        .apply(Operation::ListJasparCatalog {
-                            filter,
-                            limit,
-                            include_remote_metadata: fetch_remote,
-                            refresh_remote_metadata: fetch_remote,
-                            path: output,
-                        })
-                        .map_err(|e| e.to_string())?;
-                    print_json(&json!({ "result": op_result }))
-                }
-                "inspect-jaspar" => {
-                    if args.len() <= cmd_idx + 2 {
-                        return Err(
-                            "resources inspect-jaspar requires MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]".to_string(),
-                        );
-                    }
-                    let motif = args[cmd_idx + 2].clone();
-                    let mut random_sequence_length_bp =
-                        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP;
-                    let mut random_seed = DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED;
-                    let mut fetch_remote = false;
-                    let mut output: Option<String> = None;
-                    let mut idx = cmd_idx + 3;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--random-length" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing N after --random-length".to_string());
-                                }
-                                random_sequence_length_bp = args[idx + 1].parse().map_err(|e| {
-                                    format!(
-                                        "Invalid --random-length '{}' for resources inspect-jaspar: {e}",
-                                        args[idx + 1]
-                                    )
-                                })?;
-                                idx += 2;
-                            }
-                            "--seed" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing N after --seed".to_string());
-                                }
-                                random_seed = args[idx + 1].parse().map_err(|e| {
-                                    format!(
-                                        "Invalid --seed '{}' for resources inspect-jaspar: {e}",
-                                        args[idx + 1]
-                                    )
-                                })?;
-                                idx += 2;
-                            }
-                            "--fetch-remote" => {
-                                fetch_remote = true;
-                                idx += 1;
-                            }
-                            "--output" => {
-                                if idx + 1 >= args.len() {
-                                    return Err("Missing PATH after --output".to_string());
-                                }
-                                output = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for resources inspect-jaspar",
-                                    other
-                                ));
-                            }
-                        }
-                    }
-                    let mut engine = GentleEngine::new();
-                    let op_result = engine
-                        .apply(Operation::InspectJasparEntry {
-                            motif,
-                            random_sequence_length_bp,
-                            random_seed,
-                            include_remote_metadata: fetch_remote,
-                            refresh_remote_metadata: fetch_remote,
-                            path: output,
-                        })
-                        .map_err(|e| e.to_string())?;
-                    print_json(&json!({ "result": op_result }))
-                }
-                other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar or inspect-jaspar)"
-                )),
-            }
-        }
-        "services" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err("services requires a subcommand: status".to_string());
-            }
-            match args[cmd_idx + 1].as_str() {
-                "status" => print_json(&service_readiness_status()?),
-                other => Err(format!(
-                    "Unknown services subcommand '{other}' (expected status)"
-                )),
-            }
-        }
+        "genomes" | "helpers" => gentle_cli_reference::handle_reference_family(
+            &args,
+            cmd_idx,
+            command,
+            &state_path,
+            &global,
+        ),
+        "hosts" => gentle_cli_hosts::handle_hosts_family(&args, cmd_idx),
+        "resources" => gentle_cli_resources::handle_resources_family(&args, cmd_idx),
+        "services" => gentle_cli_services::handle_services_family(&args, cmd_idx),
+        "reporters" => gentle_cli_reporters::handle_reporters_family(&args, cmd_idx),
         "shell" => {
             if args.len() <= cmd_idx + 1 {
                 usage();
@@ -3236,52 +1140,22 @@ fn run() -> Result<(), String> {
             }
             print_json(&run.output)
         }
-        "candidates" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err("candidates requires a subcommand".to_string());
-            }
-            let tokens = args[cmd_idx..].to_vec();
-            let shell_command = parse_shell_tokens(&tokens)?;
-            let is_candidates_command = matches!(
-                shell_command,
-                ShellCommand::CandidatesList
-                    | ShellCommand::CandidatesDelete { .. }
-                    | ShellCommand::CandidatesGenerate { .. }
-                    | ShellCommand::CandidatesGenerateBetweenAnchors { .. }
-                    | ShellCommand::CandidatesShow { .. }
-                    | ShellCommand::CandidatesMetrics { .. }
-                    | ShellCommand::CandidatesScoreExpression { .. }
-                    | ShellCommand::CandidatesScoreDistance { .. }
-                    | ShellCommand::CandidatesScoreWeightedObjective { .. }
-                    | ShellCommand::CandidatesTopK { .. }
-                    | ShellCommand::CandidatesParetoFrontier { .. }
-                    | ShellCommand::CandidatesFilter { .. }
-                    | ShellCommand::CandidatesSetOp { .. }
-                    | ShellCommand::CandidatesMacro { .. }
-                    | ShellCommand::CandidatesTemplateList
-                    | ShellCommand::CandidatesTemplateShow { .. }
-                    | ShellCommand::CandidatesTemplateUpsert { .. }
-                    | ShellCommand::CandidatesTemplateDelete { .. }
-                    | ShellCommand::CandidatesTemplateRun { .. }
-            );
-            if !is_candidates_command {
-                return Err("Expected a candidates subcommand".to_string());
-            }
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let run =
-                execute_shell_command_with_options(&mut engine, &shell_command, &shell_options)?;
-            if run.state_changed {
-                engine
-                    .state()
-                    .save_to_path(&state_path)
-                    .map_err(|e| e.to_string())?;
-            }
-            print_json(&run.output)
-        }
+        "candidates" => gentle_cli_candidates::handle_candidates_family(
+            &args,
+            cmd_idx,
+            &state_path,
+            &shell_options,
+        ),
         "capabilities" => {
             print_json(&GentleEngine::capabilities())?;
             Ok(())
+        }
+        "doctor" => {
+            if args.len() != cmd_idx + 2 || args[cmd_idx + 1] != "--agent" {
+                usage();
+                return Err("doctor requires --agent".to_string());
+            }
+            gentle_cli_doctor::run_agent_doctor(&state_path)
         }
         "import-state" | "load-project" => {
             if args.len() <= cmd_idx + 1 {
@@ -3310,845 +1184,14 @@ fn run() -> Result<(), String> {
             let engine = GentleEngine::from_state(state);
             print_json(&summarize_state(&engine))
         }
-        "svg-png" => {
-            if args.len() <= cmd_idx + 2 {
-                usage();
-                return Err(
-                    "svg-png requires: INPUT.svg OUTPUT.png [--scale N] [--drop-dotplot-metadata]"
-                        .to_string(),
-                );
-            }
-            let input = &args[cmd_idx + 1];
-            let output = &args[cmd_idx + 2];
-            let mut scale = 1.0f32;
-            let mut drop_dotplot_metadata = false;
-            let mut idx = cmd_idx + 3;
-            while idx < args.len() {
-                match args[idx].as_str() {
-                    "--scale" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing N after --scale".to_string());
-                        }
-                        scale = args[idx + 1].parse::<f32>().map_err(|e| {
-                            format!("Could not parse --scale '{}': {e}", args[idx + 1])
-                        })?;
-                        idx += 2;
-                    }
-                    "--drop-dotplot-metadata" => {
-                        drop_dotplot_metadata = true;
-                        idx += 1;
-                    }
-                    other => {
-                        return Err(format!("Unknown option '{}' for svg-png", other));
-                    }
-                }
-            }
-            ensure_parent_dir(output)?;
-            let summary = render_svg_file_to_png(
-                Path::new(input),
-                Path::new(output),
-                SvgPngRenderOptions {
-                    scale,
-                    drop_dotplot_metadata,
-                },
-            )?;
-            print_json(&json!({
-                "status": "ok",
-                "mode": "svg-png",
-                "input_path": summary.input_path,
-                "output_path": summary.output_path,
-                "scale": summary.scale,
-                "drop_dotplot_metadata": summary.drop_dotplot_metadata,
-                "width": summary.width,
-                "height": summary.height,
-                "font_face_count": summary.font_face_count,
-            }))
-        }
-        "render-svg" => {
-            if args.len() <= cmd_idx + 3 {
-                usage();
-                return Err("render-svg requires: SEQ_ID linear|circular OUTPUT.svg".to_string());
-            }
-            let seq_id = &args[cmd_idx + 1];
-            let mode = &args[cmd_idx + 2];
-            let output = &args[cmd_idx + 3];
-            let mode = match mode.as_str() {
-                "linear" => RenderSvgMode::Linear,
-                "circular" => RenderSvgMode::Circular,
-                _ => {
-                    return Err(format!(
-                        "Unknown render mode '{mode}', expected 'linear' or 'circular'"
-                    ));
-                }
-            };
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::RenderSequenceSvg {
-                    seq_id: seq_id.to_string(),
-                    mode,
-                    path: output.to_string(),
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            if let Some(msg) = result.messages.first() {
-                println!("{msg}");
-            }
-            Ok(())
-        }
-        "render-dotplot-svg" => {
-            if args.len() <= cmd_idx + 3 {
-                usage();
-                return Err(
-                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]".to_string(),
-                );
-            }
-            let seq_id = args[cmd_idx + 1].trim();
-            let dotplot_id = args[cmd_idx + 2].trim();
-            if seq_id.is_empty() {
-                return Err("render-dotplot-svg requires non-empty SEQ_ID".to_string());
-            }
-            if dotplot_id.is_empty() {
-                return Err("render-dotplot-svg requires non-empty DOTPLOT_ID".to_string());
-            }
-            let output = &args[cmd_idx + 3];
-            let mut flex_track_id: Option<String> = None;
-            let mut display_density_threshold: Option<f32> = None;
-            let mut display_intensity_gain: Option<f32> = None;
-            let mut overlay_x_axis_mode = DotplotOverlayXAxisMode::PercentLength;
-            let mut overlay_anchor_exon: Option<DotplotOverlayAnchorExonRef> = None;
-            let mut idx = cmd_idx + 4;
-            while idx < args.len() {
-                match args[idx].as_str() {
-                    "--flex-track" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --flex-track".to_string());
-                        }
-                        let value = args[idx + 1].trim();
-                        if !value.is_empty() {
-                            flex_track_id = Some(value.to_string());
-                        }
-                        idx += 2;
-                    }
-                    "--display-threshold" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --display-threshold".to_string());
-                        }
-                        let raw = args[idx + 1].trim();
-                        let parsed = raw.parse::<f32>().map_err(|_| {
-                            format!(
-                                "Invalid --display-threshold '{}': expected decimal number",
-                                raw
-                            )
-                        })?;
-                        display_density_threshold = Some(parsed);
-                        idx += 2;
-                    }
-                    "--intensity-gain" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --intensity-gain".to_string());
-                        }
-                        let raw = args[idx + 1].trim();
-                        let parsed = raw.parse::<f32>().map_err(|_| {
-                            format!(
-                                "Invalid --intensity-gain '{}': expected decimal number",
-                                raw
-                            )
-                        })?;
-                        display_intensity_gain = Some(parsed);
-                        idx += 2;
-                    }
-                    "--overlay-x-axis" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --overlay-x-axis".to_string());
-                        }
-                        overlay_x_axis_mode =
-                            parse_dotplot_overlay_x_axis_mode_arg(&args[idx + 1])?;
-                        idx += 2;
-                    }
-                    "--overlay-anchor-exon" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --overlay-anchor-exon".to_string());
-                        }
-                        overlay_anchor_exon =
-                            Some(DotplotOverlayAnchorExonRef::parse(&args[idx + 1])?);
-                        idx += 2;
-                    }
-                    other => {
-                        return Err(format!(
-                            "Unknown argument '{other}' for render-dotplot-svg (expected --flex-track/--display-threshold/--intensity-gain/--overlay-x-axis/--overlay-anchor-exon)"
-                        ));
-                    }
-                }
-            }
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::RenderDotplotSvg {
-                    seq_id: seq_id.to_string(),
-                    dotplot_id: dotplot_id.to_string(),
-                    path: output.to_string(),
-                    flex_track_id,
-                    display_density_threshold,
-                    display_intensity_gain,
-                    overlay_x_axis_mode,
-                    overlay_anchor_exon,
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            if let Some(msg) = result.messages.first() {
-                println!("{msg}");
-            }
-            Ok(())
-        }
-        "render-rna-svg" => {
-            if args.len() <= cmd_idx + 2 {
-                usage();
-                return Err("render-rna-svg requires: SEQ_ID OUTPUT.svg".to_string());
-            }
-            let seq_id = &args[cmd_idx + 1];
-            let output = &args[cmd_idx + 2];
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::RenderRnaStructureSvg {
-                    seq_id: seq_id.to_string(),
-                    path: output.to_string(),
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            if let Some(msg) = result.messages.first() {
-                println!("{msg}");
-            }
-            Ok(())
-        }
-        "rna-info" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err("rna-info requires: SEQ_ID".to_string());
-            }
-            let seq_id = &args[cmd_idx + 1];
-            let engine = GentleEngine::from_state(load_state(&state_path)?);
-            let report = engine
-                .inspect_rna_structure(seq_id)
-                .map_err(|e| e.to_string())?;
-            print_json(&report)
-        }
-        "render-lineage-svg" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err("render-lineage-svg requires: OUTPUT.svg".to_string());
-            }
-            let output = &args[cmd_idx + 1];
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::RenderLineageSvg {
-                    path: output.to_string(),
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            if let Some(msg) = result.messages.first() {
-                println!("{msg}");
-            }
-            Ok(())
+        cmd if gentle_cli_rendering::is_rendering_command(cmd) => {
+            gentle_cli_rendering::handle_rendering_family(cmd, &args, cmd_idx, &state_path)
         }
         "protocol-cartoon" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err(
-                    "protocol-cartoon requires a subcommand: list, render-svg, render-template-svg, template-validate, render-with-bindings, template-export"
-                        .to_string(),
-                );
-            }
-            match args[cmd_idx + 1].as_str() {
-                "list" => {
-                    if args.len() != cmd_idx + 2 {
-                        return Err(
-                            "protocol-cartoon list takes no additional arguments".to_string()
-                        );
-                    }
-                    print_json(&protocol_cartoon_catalog_rows())
-                }
-                "render-svg" => {
-                    if args.len() != cmd_idx + 4 {
-                        return Err(
-                            "protocol-cartoon render-svg requires: PROTOCOL_ID OUTPUT.svg"
-                                .to_string(),
-                        );
-                    }
-                    let protocol_id = args[cmd_idx + 2].trim();
-                    if protocol_id.is_empty() {
-                        return Err("protocol-cartoon render-svg requires non-empty PROTOCOL_ID"
-                            .to_string());
-                    }
-                    let output = &args[cmd_idx + 3];
-                    let protocol = ProtocolCartoonKind::parse_id(protocol_id).ok_or_else(|| {
-                        format!(
-                            "Unknown protocol cartoon '{protocol_id}' (run: protocol-cartoon list)"
-                        )
-                    })?;
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let result = engine
-                        .apply(Operation::RenderProtocolCartoonSvg {
-                            protocol,
-                            path: output.to_string(),
-                        })
-                        .map_err(|e| e.to_string())?;
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    if let Some(msg) = result.messages.first() {
-                        println!("{msg}");
-                    }
-                    Ok(())
-                }
-                "render-template-svg" => {
-                    if args.len() != cmd_idx + 4 {
-                        return Err(
-                            "protocol-cartoon render-template-svg requires: TEMPLATE.json OUTPUT.svg"
-                                .to_string(),
-                        );
-                    }
-                    let template_path = args[cmd_idx + 2].trim();
-                    if template_path.is_empty() {
-                        return Err(
-                            "protocol-cartoon render-template-svg requires non-empty TEMPLATE.json"
-                                .to_string(),
-                        );
-                    }
-                    let output = &args[cmd_idx + 3];
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let result = engine
-                        .apply(Operation::RenderProtocolCartoonTemplateSvg {
-                            template_path: args[cmd_idx + 2].clone(),
-                            path: output.to_string(),
-                        })
-                        .map_err(|e| e.to_string())?;
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    if let Some(msg) = result.messages.first() {
-                        println!("{msg}");
-                    }
-                    Ok(())
-                }
-                "template-validate" => {
-                    if args.len() != cmd_idx + 3 {
-                        return Err("protocol-cartoon template-validate requires: TEMPLATE.json"
-                            .to_string());
-                    }
-                    let template_path = args[cmd_idx + 2].trim();
-                    if template_path.is_empty() {
-                        return Err(
-                            "protocol-cartoon template-validate requires non-empty TEMPLATE.json"
-                                .to_string(),
-                        );
-                    }
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let result = engine
-                        .apply(Operation::ValidateProtocolCartoonTemplate {
-                            template_path: args[cmd_idx + 2].clone(),
-                        })
-                        .map_err(|e| e.to_string())?;
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    if let Some(msg) = result.messages.first() {
-                        println!("{msg}");
-                    }
-                    Ok(())
-                }
-                "render-with-bindings" => {
-                    if args.len() != cmd_idx + 5 {
-                        return Err(
-                            "protocol-cartoon render-with-bindings requires: TEMPLATE.json BINDINGS.json OUTPUT.svg"
-                                .to_string(),
-                        );
-                    }
-                    let template_path = args[cmd_idx + 2].trim();
-                    if template_path.is_empty() {
-                        return Err(
-                            "protocol-cartoon render-with-bindings requires non-empty TEMPLATE.json"
-                                .to_string(),
-                        );
-                    }
-                    let bindings_path = args[cmd_idx + 3].trim();
-                    if bindings_path.is_empty() {
-                        return Err(
-                            "protocol-cartoon render-with-bindings requires non-empty BINDINGS.json"
-                                .to_string(),
-                        );
-                    }
-                    let output = &args[cmd_idx + 4];
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let result = engine
-                        .apply(Operation::RenderProtocolCartoonTemplateWithBindingsSvg {
-                            template_path: args[cmd_idx + 2].clone(),
-                            bindings_path: args[cmd_idx + 3].clone(),
-                            path: output.to_string(),
-                        })
-                        .map_err(|e| e.to_string())?;
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    if let Some(msg) = result.messages.first() {
-                        println!("{msg}");
-                    }
-                    Ok(())
-                }
-                "template-export" => {
-                    if args.len() != cmd_idx + 4 {
-                        return Err(
-                            "protocol-cartoon template-export requires: PROTOCOL_ID OUTPUT.json"
-                                .to_string(),
-                        );
-                    }
-                    let protocol_id = args[cmd_idx + 2].trim();
-                    if protocol_id.is_empty() {
-                        return Err(
-                            "protocol-cartoon template-export requires non-empty PROTOCOL_ID"
-                                .to_string(),
-                        );
-                    }
-                    let protocol = ProtocolCartoonKind::parse_id(protocol_id).ok_or_else(|| {
-                        format!(
-                            "Unknown protocol cartoon '{protocol_id}' (run: protocol-cartoon list)"
-                        )
-                    })?;
-                    let output = &args[cmd_idx + 3];
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let result = engine
-                        .apply(Operation::ExportProtocolCartoonTemplateJson {
-                            protocol,
-                            path: output.to_string(),
-                        })
-                        .map_err(|e| e.to_string())?;
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    if let Some(msg) = result.messages.first() {
-                        println!("{msg}");
-                    }
-                    Ok(())
-                }
-                other => Err(format!(
-                    "Unknown protocol-cartoon subcommand '{other}' (expected list, render-svg, render-template-svg, template-validate, render-with-bindings, template-export)"
-                )),
-            }
+            gentle_cli_protocol_cartoon::handle_protocol_cartoon_family(&args, cmd_idx, &state_path)
         }
-        "render-pool-gel-svg" | "render-gel-svg" => {
-            let cmd_name = args[cmd_idx].as_str();
-            if args.len() <= cmd_idx + 2 {
-                usage();
-                return Err(format!(
-                    "{cmd_name} requires: IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--agarose-pct FLOAT] [--buffer tae|tbe] [--topology-aware true|false]"
-                ));
-            }
-            let ids = match args[cmd_idx + 1].trim() {
-                "-" | "_" => vec![],
-                raw => raw
-                    .split(',')
-                    .map(|s| s.trim())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>(),
-            };
-            let output = &args[cmd_idx + 2];
-            let mut ladders: Option<Vec<String>> = None;
-            let mut container_ids: Option<Vec<String>> = None;
-            let mut arrangement_id: Option<String> = None;
-            let mut conditions = GelRunConditions::default();
-            let mut idx = cmd_idx + 3;
-            while idx < args.len() {
-                match args[idx].as_str() {
-                    "--ladders" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --ladders".to_string());
-                        }
-                        let parsed = args[idx + 1]
-                            .split(',')
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>();
-                        if !parsed.is_empty() {
-                            ladders = Some(parsed);
-                        }
-                        idx += 2;
-                    }
-                    "--containers" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --containers".to_string());
-                        }
-                        let parsed = args[idx + 1]
-                            .split(',')
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>();
-                        if !parsed.is_empty() {
-                            container_ids = Some(parsed);
-                        }
-                        idx += 2;
-                    }
-                    "--arrangement" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --arrangement".to_string());
-                        }
-                        let value = args[idx + 1].trim();
-                        if !value.is_empty() {
-                            arrangement_id = Some(value.to_string());
-                        }
-                        idx += 2;
-                    }
-                    "--agarose-pct" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --agarose-pct".to_string());
-                        }
-                        conditions.agarose_percent =
-                            args[idx + 1].trim().parse::<f32>().map_err(|e| {
-                                format!("Invalid agarose percent '{}': {e}", args[idx + 1])
-                            })?;
-                        idx += 2;
-                    }
-                    "--buffer" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --buffer".to_string());
-                        }
-                        conditions.buffer_model =
-                            match args[idx + 1].trim().to_ascii_lowercase().as_str() {
-                                "tae" => GelBufferModel::Tae,
-                                "tbe" => GelBufferModel::Tbe,
-                                other => {
-                                    return Err(format!(
-                                        "Unknown buffer '{other}' for {cmd_name} (expected tae|tbe)"
-                                    ));
-                                }
-                            };
-                        idx += 2;
-                    }
-                    "--topology-aware" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --topology-aware".to_string());
-                        }
-                        conditions.topology_aware =
-                            parse_bool_flag(&args[idx + 1]).ok_or_else(|| {
-                                format!(
-                                    "Boolean value '{}' is invalid (expected true|false|1|0|yes|no|on|off)",
-                                    args[idx + 1]
-                                )
-                            })?;
-                        idx += 2;
-                    }
-                    other => {
-                        return Err(format!(
-                            "Unknown argument '{other}' for {cmd_name} (expected --ladders/--containers/--arrangement/--agarose-pct/--buffer/--topology-aware)"
-                        ));
-                    }
-                }
-            }
-            if ids.is_empty()
-                && container_ids.as_ref().map_or(true, |v| v.is_empty())
-                && arrangement_id.is_none()
-            {
-                return Err(format!(
-                    "{cmd_name} requires sequence ids, --containers, or --arrangement"
-                ));
-            }
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::RenderPoolGelSvg {
-                    inputs: ids,
-                    path: output.to_string(),
-                    ladders,
-                    container_ids,
-                    arrangement_id,
-                    conditions: Some(conditions.normalized()),
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            if let Some(msg) = result.messages.first() {
-                println!("{msg}");
-            }
-            Ok(())
-        }
-        "arrange-serial" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err(
-                    "arrange-serial requires: CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]"
-                        .to_string(),
-                );
-            }
-            let container_ids = args[cmd_idx + 1]
-                .split(',')
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>();
-            if container_ids.is_empty() {
-                return Err("arrange-serial requires at least one container id".to_string());
-            }
-            let mut arrangement_id: Option<String> = None;
-            let mut name: Option<String> = None;
-            let mut ladders: Option<Vec<String>> = None;
-            let mut idx = cmd_idx + 2;
-            while idx < args.len() {
-                match args[idx].as_str() {
-                    "--id" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --id".to_string());
-                        }
-                        let value = args[idx + 1].trim();
-                        if !value.is_empty() {
-                            arrangement_id = Some(value.to_string());
-                        }
-                        idx += 2;
-                    }
-                    "--name" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --name".to_string());
-                        }
-                        let value = args[idx + 1].trim();
-                        if !value.is_empty() {
-                            name = Some(value.to_string());
-                        }
-                        idx += 2;
-                    }
-                    "--ladders" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --ladders".to_string());
-                        }
-                        let parsed = args[idx + 1]
-                            .split(',')
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>();
-                        if !parsed.is_empty() {
-                            ladders = Some(parsed);
-                        }
-                        idx += 2;
-                    }
-                    other => {
-                        return Err(format!(
-                            "Unknown argument '{other}' for arrange-serial (expected --id/--name/--ladders)"
-                        ));
-                    }
-                }
-            }
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::CreateArrangementSerial {
-                    container_ids,
-                    arrangement_id,
-                    name,
-                    ladders,
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            if let Some(msg) = result.messages.first() {
-                println!("{msg}");
-            }
-            Ok(())
-        }
-        "arrange-set-ladders" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err(
-                    "arrange-set-ladders requires: ARR_ID [--ladders NAME[,NAME]]".to_string(),
-                );
-            }
-            let arrangement_id = args[cmd_idx + 1].trim().to_string();
-            if arrangement_id.is_empty() {
-                return Err("arrange-set-ladders requires a non-empty ARR_ID".to_string());
-            }
-            let mut ladders: Option<Vec<String>> = None;
-            let mut idx = cmd_idx + 2;
-            while idx < args.len() {
-                match args[idx].as_str() {
-                    "--ladders" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --ladders".to_string());
-                        }
-                        ladders = Some(
-                            args[idx + 1]
-                                .split(',')
-                                .map(|s| s.trim())
-                                .filter(|s| !s.is_empty())
-                                .map(|s| s.to_string())
-                                .collect::<Vec<_>>(),
-                        );
-                        idx += 2;
-                    }
-                    other => {
-                        return Err(format!(
-                            "Unknown argument '{other}' for arrange-set-ladders (expected --ladders)"
-                        ));
-                    }
-                }
-            }
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::SetArrangementLadders {
-                    arrangement_id,
-                    ladders: ladders.filter(|values| !values.is_empty()),
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            if let Some(msg) = result.messages.first() {
-                println!("{msg}");
-            }
-            Ok(())
-        }
-        "export-pool" => {
-            if args.len() <= cmd_idx + 2 {
-                usage();
-                return Err(
-                    "export-pool requires: IDS OUTPUT.pool.gentle.json [HUMAN_ID]".to_string(),
-                );
-            }
-            let ids = args[cmd_idx + 1]
-                .split(',')
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>();
-            if ids.is_empty() {
-                return Err("export-pool requires at least one sequence id".to_string());
-            }
-            let output = &args[cmd_idx + 2];
-            let human_id = args.get(cmd_idx + 3).cloned();
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::ExportPool {
-                    inputs: ids,
-                    path: output.to_string(),
-                    pool_id: Some("pool_export".to_string()),
-                    human_id,
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            print_json(&result)
-        }
-        "export-run-bundle" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err(
-                    "export-run-bundle requires: OUTPUT.run_bundle.json [--run-id RUN_ID]"
-                        .to_string(),
-                );
-            }
-            let output = args[cmd_idx + 1].clone();
-            let mut run_id: Option<String> = None;
-            let mut idx = cmd_idx + 2;
-            while idx < args.len() {
-                match args[idx].as_str() {
-                    "--run-id" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --run-id".to_string());
-                        }
-                        let value = args[idx + 1].trim();
-                        if !value.is_empty() {
-                            run_id = Some(value.to_string());
-                        }
-                        idx += 2;
-                    }
-                    other => {
-                        return Err(format!(
-                            "Unknown argument '{other}' for export-run-bundle (expected --run-id)"
-                        ));
-                    }
-                }
-            }
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::ExportProcessRunBundle {
-                    path: output,
-                    run_id,
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            print_json(&result)
-        }
-        "import-pool" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err("import-pool requires: INPUT.pool.gentle.json [PREFIX]".to_string());
-            }
-            let input = &args[cmd_idx + 1];
-            let prefix = args
-                .get(cmd_idx + 2)
-                .cloned()
-                .unwrap_or_else(|| "pool".to_string());
-            let text = fs::read_to_string(input)
-                .map_err(|e| format!("Could not read pool file '{input}': {e}"))?;
-            let pool: PoolExport = serde_json::from_str(&text)
-                .map_err(|e| format!("Invalid pool JSON '{input}': {e}"))?;
-            if pool.schema != "gentle.pool.v1" {
-                return Err(format!(
-                    "Unsupported pool schema '{}', expected 'gentle.pool.v1'",
-                    pool.schema
-                ));
-            }
-
-            let mut state = load_state(&state_path)?;
-            for (idx, member) in pool.members.iter().enumerate() {
-                let mut dna = gentle::dna_sequence::DNAsequence::from_sequence(&member.sequence)
-                    .map_err(|e| format!("Invalid DNA in pool member '{}': {e}", member.seq_id))?;
-                if let Some(name) = &member.name {
-                    let mut value = serde_json::to_value(&dna)
-                        .map_err(|e| format!("Could not serialize sequence: {e}"))?;
-                    if let Some(obj) = value.as_object_mut() {
-                        if let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut()) {
-                            seq_obj.insert("name".to_string(), json!(name));
-                        }
-                    }
-                    dna = serde_json::from_value(value)
-                        .map_err(|e| format!("Could not set sequence name: {e}"))?;
-                }
-                apply_pool_member_topology_hint(&member.topology, &mut dna)?;
-                apply_member_overhang(member, &mut dna)?;
-                dna.update_computed_features();
-                let base = format!("{prefix}_{}", idx + 1);
-                let id = unique_id(&state.sequences, &base);
-                state.sequences.insert(id, dna);
-            }
-            state.save_to_path(&state_path).map_err(|e| e.to_string())?;
-            println!(
-                "Imported pool '{}' ({} members) into '{}'",
-                pool.pool_id, pool.member_count, state_path
-            );
-            Ok(())
+        cmd if gentle_cli_pools::is_pool_command(cmd) => {
+            gentle_cli_pools::handle_pool_family(cmd, &args, cmd_idx, &state_path)
         }
         "op" => {
             if args.len() <= cmd_idx + 1 {
@@ -4411,6 +1454,32 @@ mod tests {
     }
 
     #[test]
+    fn test_read_text_input_reads_local_file() {
+        let td = tempdir().expect("tempdir");
+        let path = td.path().join("input.txt");
+        fs::write(&path, "hello from file").expect("write input");
+        let text = read_text_input(&path.to_string_lossy()).expect("read text input");
+        assert_eq!(text, "hello from file");
+    }
+
+    #[test]
+    fn test_read_text_input_reports_missing_local_file() {
+        let td = tempdir().expect("tempdir");
+        let path = td.path().join("missing.txt");
+        let err = read_text_input(&path.to_string_lossy()).expect_err("missing file should fail");
+        assert!(err.starts_with("Could not read file '"));
+        assert!(err.contains("missing.txt"));
+    }
+
+    #[test]
+    fn test_is_text_input_url_classifies_http_and_https_only() {
+        assert!(is_text_input_url("http://example.invalid/data.txt"));
+        assert!(is_text_input_url("https://example.invalid/data.txt"));
+        assert!(!is_text_input_url("ftp://example.invalid/data.txt"));
+        assert!(!is_text_input_url("/tmp/http://literal.txt"));
+    }
+
+    #[test]
     fn test_load_state_returns_default_for_empty_or_whitespace_file() {
         let td = tempdir().expect("tempdir");
         let empty_path = td.path().join("empty_state.json");
@@ -4457,14 +1526,9 @@ mod tests {
             .get("commands")
             .and_then(|value| value.as_array())
             .expect("glossary commands array");
-        let declared_count = glossary
-            .get("command_count")
-            .and_then(|value| value.as_u64())
-            .expect("glossary command_count") as usize;
-        assert_eq!(
-            declared_count,
-            commands.len(),
-            "docs/glossary.json command_count does not match commands length"
+        assert!(
+            glossary.get("command_count").is_none(),
+            "docs/glossary.json should not carry a hand-maintained command_count; derive it from commands.len() when needed"
         );
         let paths: Vec<&str> = commands
             .iter()
@@ -4477,6 +1541,65 @@ mod tests {
                     .iter()
                     .any(|path| *path == *command || path.starts_with(&expected_prefix)),
                 "shell-forwarded command '{command}' is missing from docs/glossary.json"
+            );
+        }
+    }
+
+    #[test]
+    fn test_usage_text_includes_cli_glossary_paths() {
+        let glossary: serde_json::Value =
+            serde_json::from_str(include_str!("../../docs/glossary.json"))
+                .expect("parse docs/glossary.json");
+        let commands = glossary
+            .get("commands")
+            .and_then(|value| value.as_array())
+            .expect("glossary commands array");
+        let help = usage_text();
+        let mut missing = Vec::new();
+        for command in commands {
+            let interfaces = command
+                .get("interfaces")
+                .and_then(|value| value.as_array())
+                .expect("glossary command interfaces");
+            let is_cli = interfaces.iter().any(|interface| {
+                matches!(interface.as_str(), Some("cli-direct") | Some("cli-shell"))
+            });
+            if !is_cli {
+                continue;
+            }
+            let path = command
+                .get("path")
+                .and_then(|value| value.as_str())
+                .expect("glossary command path");
+            if !help.contains(path) {
+                missing.push(path.to_string());
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "gentle_cli --help must mention every CLI glossary command path:\n{}",
+            missing.join("\n")
+        );
+    }
+
+    #[test]
+    fn test_usage_text_keeps_release_sensitive_options_current() {
+        let help = usage_text();
+        for token in [
+            "--seed-stride-bp",
+            "--record-indices i,j,k",
+            "--svg OUTPUT.svg",
+            "--materialize-products",
+            "--product-output-prefix PREFIX",
+            "--product-gel-svg OUTPUT.svg",
+            "--product-gel-ladder NAME",
+        ] {
+            assert!(help.contains(token), "missing current help token {token}");
+        }
+        for stale in ["--short-max-bp", "--long-window-bp", "--long-window-count"] {
+            assert!(
+                !help.contains(stale),
+                "gentle_cli --help still mentions stale RNA-read option {stale}"
             );
         }
     }
@@ -4993,6 +2116,40 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_forwarded_shell_command_routes_services_through_shared_parser() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "providers".to_string(),
+            "list".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(parsed, Some(ShellCommand::ServicesProvidersList)));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_hosts_through_shared_parser() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "hosts".to_string(),
+            "list".to_string(),
+            "--catalog".to_string(),
+            "assets/host_profiles.json".to_string(),
+            "--filter".to_string(),
+            "deoR".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(
+            parsed,
+            Some(ShellCommand::HostsList {
+                catalog_path,
+                filter,
+            }) if catalog_path.as_deref() == Some("assets/host_profiles.json")
+                && filter.as_deref() == Some("deoR")
+        ));
+    }
+
+    #[test]
     fn test_parse_forwarded_shell_command_routes_import_pool_through_shared_parser() {
         let args = vec![
             "gentle_cli".to_string(),
@@ -5039,6 +2196,81 @@ mod tests {
             Some(ShellCommand::UniprotFetch { query, entry_id }) => {
                 assert_eq!(query, "P04637");
                 assert_eq!(entry_id.as_deref(), Some("tp53_human"));
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_mirna_scan_target() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "mirna".to_string(),
+            "scan-target".to_string(),
+            "hsa-miR-96-5p".to_string(),
+            "TP73".to_string(),
+            "--regions".to_string(),
+            "3utr,exon,intron,boundary".to_string(),
+            "--seed-classes".to_string(),
+            "8mer,7mer-m8,7mer-A1,6mer".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed.expect("mirna should be shell-forwarded") {
+            ShellCommand::MirnaScanTarget {
+                mirna,
+                target,
+                regions,
+                seed_classes,
+                ..
+            } => {
+                assert_eq!(mirna, "hsa-miR-96-5p");
+                assert_eq!(target, "TP73");
+                assert!(regions.len() >= 6);
+                assert_eq!(seed_classes.len(), 4);
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_mirna_explain_seed() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "mirna".to_string(),
+            "explain-seed".to_string(),
+            "hsa-miR-96-5p".to_string(),
+            "--mature-sequence".to_string(),
+            "UUUGGCACUAGCACAUUUUUGCU".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed.expect("mirna should be shell-forwarded") {
+            ShellCommand::MirnaExplainSeed {
+                mirna,
+                mature_sequence,
+            } => {
+                assert_eq!(mirna, "hsa-miR-96-5p");
+                assert_eq!(mature_sequence.as_deref(), Some("UUUGGCACUAGCACAUUUUUGCU"));
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_mirna_catalog_show() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "mirna".to_string(),
+            "catalog-show".to_string(),
+            "hsa-miR-96-5p".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed.expect("mirna should be shell-forwarded") {
+            ShellCommand::MirnaCatalogShow { mirna } => {
+                assert_eq!(mirna, "hsa-miR-96-5p");
             }
             other => panic!("unexpected parsed shell command: {other:?}"),
         }
@@ -5811,6 +3043,231 @@ mod tests {
         );
     }
 
+    fn assert_forwarded_services_dispatch_matches_shared_shell_execution(
+        forwarded_args: Vec<String>,
+    ) {
+        fn normalize_macos_dyld_pid(text: &str) -> Option<String> {
+            let mut rest = text;
+            let mut normalized = String::new();
+            let mut changed = false;
+            while let Some(start) = rest.find("dyld[") {
+                let after_prefix = &rest[start + "dyld[".len()..];
+                let Some(end) = after_prefix.find(']') else {
+                    break;
+                };
+                let pid = &after_prefix[..end];
+                if pid.is_empty() || !pid.chars().all(|ch| ch.is_ascii_digit()) {
+                    normalized.push_str(&rest[..start + "dyld[".len() + end + 1]);
+                    rest = &after_prefix[end + 1..];
+                    continue;
+                }
+                normalized.push_str(&rest[..start]);
+                normalized.push_str("dyld[pid]");
+                rest = &after_prefix[end + 1..];
+                changed = true;
+            }
+            if !changed {
+                return None;
+            }
+            normalized.push_str(rest);
+            Some(normalized)
+        }
+
+        fn strip_nondeterministic_service_fields(value: &mut serde_json::Value) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    map.remove("generated_at_unix_ms");
+                    map.remove("source");
+                    map.remove("sequence_source");
+                    map.remove("annotation_source");
+                    for value in map.values_mut() {
+                        strip_nondeterministic_service_fields(value);
+                    }
+                }
+                serde_json::Value::Array(values) => {
+                    for value in values {
+                        strip_nondeterministic_service_fields(value);
+                    }
+                }
+                serde_json::Value::String(text) => {
+                    if let Some(normalized) = normalize_macos_dyld_pid(text) {
+                        *text = normalized;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+        let mut forwarded_output_stable = forwarded_output;
+        let mut shared_output_stable = shared_output;
+        strip_nondeterministic_service_fields(&mut forwarded_output_stable);
+        strip_nondeterministic_service_fields(&mut shared_output_stable);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output_stable, shared_output_stable);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_forwarded_services_status_dispatch_matches_shared_shell_execution() {
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "status".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn test_forwarded_services_providers_list_dispatch_matches_shared_shell_execution() {
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "providers".to_string(),
+            "list".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn test_forwarded_services_providers_doctor_dispatch_matches_shared_shell_execution() {
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "providers".to_string(),
+            "doctor".to_string(),
+            "--catalog".to_string(),
+            "assets/external_service_providers.json".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn test_forwarded_services_project_preflight_dispatch_matches_shared_shell_execution() {
+        let request = serde_json::json!({
+            "schema": "gentle.external_service_request.v1",
+            "provider": "geneart",
+            "service_kind": "cloned_gene",
+            "source_target": {
+                "kind": "inline_dna",
+                "sequence": "ATGGCTTAA"
+            },
+            "vector_spec": {
+                "helper_profile_id": "Plasmid pUC19 (online)"
+            },
+            "return_spec": {
+                "requested_payloads": ["genbank", "quote_metadata"]
+            }
+        })
+        .to_string();
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "project-preflight".to_string(),
+            request,
+        ]);
+    }
+
+    #[test]
+    fn test_forwarded_services_project_quote_dispatch_matches_shared_shell_execution() {
+        let request = serde_json::json!({
+            "schema": "gentle.external_service_request.v1",
+            "provider": "geneart",
+            "service_kind": "cloned_gene",
+            "source_target": {
+                "kind": "inline_dna",
+                "sequence": "ATGGCTTAA"
+            },
+            "vector_spec": {
+                "helper_profile_id": "Plasmid pUC19 (online)"
+            },
+            "return_spec": {
+                "requested_payloads": ["genbank", "quote_metadata"]
+            }
+        })
+        .to_string();
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "project-quote".to_string(),
+            request,
+        ]);
+    }
+
+    #[test]
+    fn test_forwarded_services_handoff_dispatch_matches_shared_shell_execution() {
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "handoff".to_string(),
+            "--scope".to_string(),
+            "telegram".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn test_forwarded_services_guide_dispatch_matches_shared_shell_execution() {
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "guide".to_string(),
+            "--channel".to_string(),
+            "telegram".to_string(),
+            "--section".to_string(),
+            "tfbs".to_string(),
+            "--gene".to_string(),
+            "TERT".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn test_forwarded_hosts_list_dispatch_matches_shared_shell_execution() {
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "hosts".to_string(),
+            "list".to_string(),
+            "--catalog".to_string(),
+            "assets/host_profiles.json".to_string(),
+            "--filter".to_string(),
+            "deoR".to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
     #[test]
     fn test_forwarded_genbank_fetch_dispatch_matches_shared_shell_execution() {
         let _env_lock = TEST_ENV_LOCK.lock().expect("env lock");
@@ -6493,24 +3950,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_dotplot_overlay_x_axis_mode_arg_accepts_shared_exon_anchor() {
-        assert_eq!(
-            parse_dotplot_overlay_x_axis_mode_arg("shared_exon_anchor")
-                .expect("parse shared exon anchor"),
-            DotplotOverlayXAxisMode::SharedExonAnchor
-        );
-    }
-
-    #[test]
-    fn test_parse_dotplot_overlay_x_axis_mode_arg_accepts_query_anchor_bp() {
-        assert_eq!(
-            parse_dotplot_overlay_x_axis_mode_arg("query_anchor_bp")
-                .expect("parse query anchor mode"),
-            DotplotOverlayXAxisMode::QueryAnchorBp
-        );
-    }
-
-    #[test]
     fn test_parse_forwarded_shell_command_routes_cache_clear() {
         let args = vec![
             "gentle_cli".to_string(),
@@ -6588,6 +4027,17 @@ mod tests {
     #[test]
     fn test_parse_forwarded_shell_command_non_forwarded_returns_none() {
         let args = vec!["gentle_cli".to_string(), "state-summary".to_string()];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_doctor_is_direct() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "doctor".to_string(),
+            "--agent".to_string(),
+        ];
         let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
         assert!(parsed.is_none());
     }

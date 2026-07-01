@@ -1,0 +1,33 @@
+{
+  "run_id": "clawbio_clariom_pm_probe_interpretation",
+  "ops": [
+    {
+      "LoadFile": {
+        "path": "test_files/tp73.ncbi.gb",
+        "as_id": "tp73_clariom_pm_probe_context"
+      }
+    },
+    {
+      "ProjectProbeRegionOutput": {
+        "seq_id": "tp73_clariom_pm_probe_context",
+        "output_dir": "test_files/fixtures/probe_region_outputs/clariom_pm_probe_interpretation",
+        "contrasts": [
+          "AdTAp73alpha-AdGFP"
+        ],
+        "level": "pm_probe",
+        "min_abs_logfc": 0.5,
+        "max_features": 10,
+        "clear_existing": true
+      }
+    },
+    {
+      "InterpretProbeRegionEvidence": {
+        "seq_id": "tp73_clariom_pm_probe_context",
+        "gene_label": "TP73",
+        "level": "pm_probe",
+        "min_abs_logfc": 0.5,
+        "path": "artifacts/clariom_pm_probe_interpretation.json"
+      }
+    }
+  ]
+}

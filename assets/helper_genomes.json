@@ -18,6 +18,631 @@
     "cache_dir": "data/helper_genomes"
   },
 
+  "Plasmid pCOMB3XSS (Luebeck candidate)": {
+    "description": "Phagemid backbone candidate for scFv library cloning and M13 display.",
+    "summary": "Luebeck S1 paperwork identifies pCOMB3XSS as an empty phagemid/vector resource; sequence redistribution remains to be reviewed before bundling sequence data.",
+    "cache_dir": "data/helper_genomes",
+    "aliases": ["pCOMB3XSS", "pCOMB3-XSS", "pCOMB3X"],
+    "tags": [
+      "luebeck_s1",
+      "resource_candidate",
+      "phagemid",
+      "antibody_phage_display",
+      "scfv",
+      "ampicillin",
+      "f1_origin",
+      "usable_empty_backbone"
+    ],
+    "search_terms": [
+      "Addgene 63890",
+      "SfiI cloning",
+      "M13 phage display",
+      "gene III fusion",
+      "OmpA secretion signal",
+      "AmpR"
+    ],
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli",
+    "sequence_availability": "public catalog candidate; sequence acquisition and redistribution review required",
+    "redistribution_status": "review required before bundling sequence data; keep metadata-only until Addgene/source terms are checked",
+    "biological_safety_note": "Administrative S1 helper/resource candidate from Luebeck paperwork; verify local institutional classification before experimental use.",
+    "usable_as_empty_backbone": true,
+    "procurement": {
+      "vendor_name": "Addgene",
+      "catalog_number": "63890",
+      "order_url": "https://www.addgene.org/63890/",
+      "reference_url": "http://n2t.net/addgene:63890",
+      "notes": "Document cites the Addgene resolver for pCOMB3XSS; review exact plasmid file provenance before importing a sequence into the built-in catalog."
+    },
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": [
+        "bacterial_propagation",
+        "insert_cloning",
+        "phagemid_display",
+        "ampicillin_selection",
+        "usable_as_empty_backbone"
+      ],
+      "constraints": [
+        "metadata_only_until_sequence_terms_reviewed",
+        "biosafety_classification_must_be_confirmed_locally"
+      ],
+      "components": [
+        {
+          "id": "pbr322_origin",
+          "kind": "origin",
+          "label": "pBR322-family origin",
+          "tags": ["bacterial_propagation"]
+        },
+        {
+          "id": "f1_origin",
+          "kind": "origin",
+          "label": "f1 origin",
+          "tags": ["phagemid"]
+        },
+        {
+          "id": "bla",
+          "kind": "selectable_marker",
+          "label": "AmpR",
+          "tags": ["selection"],
+          "attributes": {
+            "agent": "ampicillin"
+          }
+        },
+        {
+          "id": "sfiI_cloning_site",
+          "kind": "cloning_site",
+          "label": "SfiI cloning context",
+          "tags": ["insert_cloning", "scfv"]
+        },
+        {
+          "id": "ompA_signal",
+          "kind": "signal_peptide",
+          "label": "OmpA secretion signal",
+          "tags": ["periplasmic_display"]
+        },
+        {
+          "id": "geneIII_display_context",
+          "kind": "fusion_context",
+          "label": "M13 gene III display context",
+          "tags": ["phage_display"]
+        }
+      ],
+      "relationships": [
+        {
+          "subject": "sfiI_cloning_site",
+          "predicate": "feeds",
+          "object": "geneIII_display_context",
+          "note": "The candidate is tracked as a phagemid display backbone rather than a bundled sequence."
+        }
+      ]
+    }
+  },
+  "Helper phage M13KO7 (Luebeck candidate)": {
+    "description": "M13 helper phage/vector candidate used with phagemid display systems.",
+    "summary": "Luebeck S1 paperwork treats M13KO7 as a helper phage resource for packaging phagemids; it is tracked as a metadata-only candidate.",
+    "cache_dir": "data/helper_genomes",
+    "aliases": ["M13KO7", "M13K07", "M13 KO7"],
+    "tags": [
+      "luebeck_s1",
+      "resource_candidate",
+      "helper_phage",
+      "m13",
+      "phagemid_display",
+      "kanamycin"
+    ],
+    "search_terms": [
+      "M13 helper phage",
+      "phagemid rescue",
+      "KanR",
+      "weakened packaging signal"
+    ],
+    "helper_kind": "helper_phage",
+    "host_system": "Escherichia coli",
+    "sequence_availability": "commercial or public reference candidate; sequence acquisition and redistribution review required",
+    "redistribution_status": "review required before bundling sequence data",
+    "biological_safety_note": "Administrative S1 helper/resource candidate from Luebeck paperwork; verify local institutional classification before experimental use.",
+    "usable_as_empty_backbone": false,
+    "procurement": {
+      "notes": "Resolve current procurement/source URL before ordering or importing a sequence; this entry is intentionally metadata-only."
+    },
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": [
+        "phagemid_packaging_support",
+        "kanamycin_selection"
+      ],
+      "constraints": [
+        "not_an_empty_plasmid_backbone",
+        "metadata_only_until_sequence_terms_reviewed",
+        "biosafety_classification_must_be_confirmed_locally"
+      ],
+      "components": [
+        {
+          "id": "m13_helper_genome",
+          "kind": "helper_phage_genome",
+          "label": "M13 helper phage genome",
+          "tags": ["m13", "phagemid_display"]
+        },
+        {
+          "id": "kanamycin_marker",
+          "kind": "selectable_marker",
+          "label": "KanR",
+          "tags": ["selection"],
+          "attributes": {
+            "agent": "kanamycin"
+          }
+        },
+        {
+          "id": "packaging_signal",
+          "kind": "packaging_element",
+          "label": "Packaging signal",
+          "tags": ["phagemid_rescue"],
+          "attributes": {
+            "status": "weakened_in_helper_phage_context"
+          }
+        }
+      ],
+      "relationships": []
+    }
+  },
+  "Plasmid pLEADER (Luebeck candidate)": {
+    "description": "pUC18-derived secretion-leader cloning vector candidate.",
+    "summary": "Luebeck S1 paperwork describes pLEADER as a pUC18-derived vector with a secretion leader in the cloning context; exact sequence/source provenance is still unresolved.",
+    "cache_dir": "data/helper_genomes",
+    "aliases": ["pLEADER", "pLeader"],
+    "tags": [
+      "luebeck_s1",
+      "resource_candidate",
+      "cloning_vector",
+      "puc18_derived",
+      "secretion_leader",
+      "ampicillin",
+      "usable_empty_backbone"
+    ],
+    "search_terms": ["pUC18 derivative", "secretion leader", "MCS", "AmpR"],
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli",
+    "sequence_availability": "local or literature sequence needed; no bundled sequence",
+    "redistribution_status": "unknown local-variant status; review required before bundling sequence data",
+    "biological_safety_note": "Administrative S1 helper/resource candidate from Luebeck paperwork; verify local institutional classification before experimental use.",
+    "usable_as_empty_backbone": true,
+    "procurement": {
+      "notes": "Resolve laboratory source, deposited reference, or publication before importing a sequence."
+    },
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": [
+        "bacterial_propagation",
+        "insert_cloning",
+        "ampicillin_selection",
+        "usable_as_empty_backbone"
+      ],
+      "constraints": [
+        "metadata_only_until_sequence_terms_reviewed",
+        "local_variant_provenance_required"
+      ],
+      "components": [
+        {
+          "id": "puc18_backbone",
+          "kind": "backbone",
+          "label": "pUC18-derived backbone",
+          "tags": ["puc", "high_copy"]
+        },
+        {
+          "id": "bla",
+          "kind": "selectable_marker",
+          "label": "AmpR",
+          "tags": ["selection"],
+          "attributes": {
+            "agent": "ampicillin"
+          }
+        },
+        {
+          "id": "secretion_leader",
+          "kind": "signal_peptide",
+          "label": "Secretion leader",
+          "tags": ["secretion"]
+        },
+        {
+          "id": "mcs",
+          "kind": "cloning_site",
+          "label": "Cloning site",
+          "tags": ["insert_cloning"]
+        }
+      ],
+      "relationships": []
+    }
+  },
+  "Plasmid pNUT expression vector family (Luebeck candidate)": {
+    "description": "pNUT mammalian expression vector family candidate for antibody constant-region constructs.",
+    "summary": "Luebeck S1 paperwork lists pNUT-derived antibody expression constructs; this metadata entry tracks the empty-backbone family separately from insert-bearing constant-region derivatives.",
+    "cache_dir": "data/helper_genomes",
+    "aliases": [
+      "pNUT",
+      "pNUT-Ckappa",
+      "pNUT-Cgamma1",
+      "pNUT-Cgamma2",
+      "pNUT-Cgamma3",
+      "pNUT-Cgamma4",
+      "pNUT-Calpha1",
+      "pNUT-Calpha2",
+      "pNUT-Cmu",
+      "pNUT-Cepsilon"
+    ],
+    "tags": [
+      "luebeck_s1",
+      "resource_candidate",
+      "mammalian_expression",
+      "antibody_expression",
+      "constant_region_family",
+      "dhfr",
+      "sv40",
+      "usable_empty_backbone"
+    ],
+    "search_terms": [
+      "pNUT-Ckappa",
+      "pNUT-Cgamma",
+      "pNUT-Calpha",
+      "pNUT-Cmu",
+      "pNUT-Cepsilon",
+      "dihydrofolate reductase",
+      "metallothionein promoter"
+    ],
+    "helper_kind": "expression_vector_family",
+    "host_system": "Escherichia coli; mammalian cells",
+    "sequence_availability": "source sequence needed; pNUT derivative-specific sequences not bundled",
+    "redistribution_status": "review required before bundling vector or derivative sequence data",
+    "biological_safety_note": "Administrative S1 helper/resource candidate from Luebeck paperwork; verify local institutional classification before experimental use.",
+    "usable_as_empty_backbone": true,
+    "procurement": {
+      "notes": "Resolve original vector source and derivative provenance before importing sequences; constant-region derivatives should remain distinct from the empty backbone."
+    },
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": [
+        "bacterial_propagation",
+        "mammalian_expression",
+        "dhfr_selection",
+        "usable_as_empty_backbone"
+      ],
+      "constraints": [
+        "constant_region_derivatives_are_not_empty_backbones",
+        "metadata_only_until_sequence_terms_reviewed"
+      ],
+      "components": [
+        {
+          "id": "pbr322_origin",
+          "kind": "origin",
+          "label": "pBR322-family origin",
+          "tags": ["bacterial_propagation"]
+        },
+        {
+          "id": "bacterial_selection_marker",
+          "kind": "selectable_marker",
+          "label": "Bacterial selection marker",
+          "tags": ["selection"],
+          "attributes": {
+            "status": "confirm_per_source_sequence"
+          }
+        },
+        {
+          "id": "dhfr_marker",
+          "kind": "selectable_marker",
+          "label": "DHFR",
+          "tags": ["mammalian_selection"],
+          "attributes": {
+            "agent": "methotrexate_amplification_context"
+          }
+        },
+        {
+          "id": "sv40_origin",
+          "kind": "origin",
+          "label": "SV40 origin",
+          "tags": ["mammalian_expression"]
+        },
+        {
+          "id": "metallothionein_promoter",
+          "kind": "promoter",
+          "label": "Metallothionein promoter",
+          "tags": ["mammalian_expression"]
+        }
+      ],
+      "relationships": []
+    }
+  },
+  "Plasmid pEE6.4 (Luebeck candidate)": {
+    "description": "Lonza pEE6.4 mammalian expression vector candidate.",
+    "summary": "Luebeck S1 paperwork lists pEE6.4 as an expression-vector resource; it is tracked as an empty-backbone candidate pending commercial redistribution review.",
+    "cache_dir": "data/helper_genomes",
+    "aliases": ["pEE6.4", "pEE 6.4"],
+    "tags": [
+      "luebeck_s1",
+      "resource_candidate",
+      "mammalian_expression",
+      "lonza",
+      "usable_empty_backbone"
+    ],
+    "search_terms": ["Lonza pEE6.4", "mammalian expression", "heavy chain expression"],
+    "helper_kind": "expression_vector",
+    "host_system": "Escherichia coli; mammalian cells",
+    "sequence_availability": "commercial vector sequence; no bundled sequence",
+    "redistribution_status": "likely restricted commercial vector; review required before bundling sequence data",
+    "biological_safety_note": "Administrative S1 helper/resource candidate from Luebeck paperwork; verify local institutional classification before experimental use.",
+    "usable_as_empty_backbone": true,
+    "procurement": {
+      "vendor_name": "Lonza",
+      "notes": "Resolve current Lonza procurement/reference URL and licensing before importing sequence data."
+    },
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": [
+        "bacterial_propagation",
+        "mammalian_expression",
+        "usable_as_empty_backbone"
+      ],
+      "constraints": [
+        "metadata_only_until_sequence_terms_reviewed",
+        "commercial_redistribution_review_required"
+      ],
+      "components": [
+        {
+          "id": "mammalian_expression_cassette",
+          "kind": "expression_cassette",
+          "label": "Mammalian expression cassette",
+          "tags": ["mammalian_expression"]
+        },
+        {
+          "id": "bacterial_origin",
+          "kind": "origin",
+          "label": "Bacterial origin",
+          "tags": ["bacterial_propagation"],
+          "attributes": {
+            "status": "confirm_per_source_sequence"
+          }
+        },
+        {
+          "id": "bacterial_selection_marker",
+          "kind": "selectable_marker",
+          "label": "Bacterial selection marker",
+          "tags": ["selection"],
+          "attributes": {
+            "status": "confirm_per_source_sequence"
+          }
+        }
+      ],
+      "relationships": []
+    }
+  },
+  "Plasmid pEE14.4 (Luebeck candidate)": {
+    "description": "Lonza pEE14.4 mammalian expression vector candidate with GS-selection context.",
+    "summary": "Luebeck S1 paperwork lists pEE14.4 as an expression-vector resource; it is tracked as an empty-backbone candidate pending commercial redistribution review.",
+    "cache_dir": "data/helper_genomes",
+    "aliases": ["pEE14.4", "pEE 14.4"],
+    "tags": [
+      "luebeck_s1",
+      "resource_candidate",
+      "mammalian_expression",
+      "lonza",
+      "gs_selection",
+      "usable_empty_backbone"
+    ],
+    "search_terms": [
+      "Lonza pEE14.4",
+      "glutamine synthetase",
+      "GS selection",
+      "light chain expression"
+    ],
+    "helper_kind": "expression_vector",
+    "host_system": "Escherichia coli; mammalian cells",
+    "sequence_availability": "commercial vector sequence; no bundled sequence",
+    "redistribution_status": "likely restricted commercial vector; review required before bundling sequence data",
+    "biological_safety_note": "Administrative S1 helper/resource candidate from Luebeck paperwork; verify local institutional classification before experimental use.",
+    "usable_as_empty_backbone": true,
+    "procurement": {
+      "vendor_name": "Lonza",
+      "notes": "Resolve current Lonza procurement/reference URL and licensing before importing sequence data."
+    },
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": [
+        "bacterial_propagation",
+        "mammalian_expression",
+        "glutamine_synthetase_selection",
+        "usable_as_empty_backbone"
+      ],
+      "constraints": [
+        "metadata_only_until_sequence_terms_reviewed",
+        "commercial_redistribution_review_required"
+      ],
+      "components": [
+        {
+          "id": "mammalian_expression_cassette",
+          "kind": "expression_cassette",
+          "label": "Mammalian expression cassette",
+          "tags": ["mammalian_expression"]
+        },
+        {
+          "id": "gs_marker",
+          "kind": "selectable_marker",
+          "label": "Glutamine synthetase",
+          "tags": ["mammalian_selection"]
+        },
+        {
+          "id": "bacterial_origin",
+          "kind": "origin",
+          "label": "Bacterial origin",
+          "tags": ["bacterial_propagation"],
+          "attributes": {
+            "status": "confirm_per_source_sequence"
+          }
+        },
+        {
+          "id": "bacterial_selection_marker",
+          "kind": "selectable_marker",
+          "label": "Bacterial selection marker",
+          "tags": ["selection"],
+          "attributes": {
+            "status": "confirm_per_source_sequence"
+          }
+        }
+      ],
+      "relationships": []
+    }
+  },
+  "Plasmid pcDNA3.1-Hygro(+) (Luebeck candidate)": {
+    "description": "pcDNA3.1-Hygro(+) mammalian expression vector candidate.",
+    "summary": "Luebeck S1 paperwork lists pcDNA3.1-Hygro(+) and pcDNA3.1-Hygro/lacZ as vector resources; this entry keeps them metadata-only pending source and redistribution review.",
+    "cache_dir": "data/helper_genomes",
+    "aliases": [
+      "pcDNA3.1-Hygro(+)",
+      "pcDNA3.1-Hygro/lacZ",
+      "pcDNA3.1 Hygro(+)",
+      "pcDNA3.1 Hygro lacZ"
+    ],
+    "tags": [
+      "luebeck_s1",
+      "resource_candidate",
+      "mammalian_expression",
+      "hygromycin",
+      "cmv",
+      "usable_empty_backbone"
+    ],
+    "search_terms": [
+      "Invitrogen pcDNA3.1-Hygro(+)",
+      "Thermo Fisher pcDNA3.1 Hygro",
+      "HygroR",
+      "lacZ control",
+      "CMV promoter"
+    ],
+    "helper_kind": "expression_vector",
+    "host_system": "Escherichia coli; mammalian cells",
+    "sequence_availability": "commercial vector sequence; no bundled sequence",
+    "redistribution_status": "likely restricted commercial vector; review required before bundling sequence data",
+    "biological_safety_note": "Administrative S1 helper/resource candidate from Luebeck paperwork; verify local institutional classification before experimental use.",
+    "usable_as_empty_backbone": true,
+    "procurement": {
+      "vendor_name": "Thermo Fisher Scientific / Invitrogen",
+      "notes": "Resolve current procurement/reference URL and licensing before importing sequence data."
+    },
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": [
+        "bacterial_propagation",
+        "mammalian_expression",
+        "hygromycin_selection",
+        "usable_as_empty_backbone"
+      ],
+      "constraints": [
+        "metadata_only_until_sequence_terms_reviewed",
+        "commercial_redistribution_review_required",
+        "lacz_control_derivative_is_not_empty_backbone"
+      ],
+      "components": [
+        {
+          "id": "cmv_promoter",
+          "kind": "promoter",
+          "label": "CMV promoter",
+          "tags": ["mammalian_expression"]
+        },
+        {
+          "id": "hygromycin_marker",
+          "kind": "selectable_marker",
+          "label": "HygroR",
+          "tags": ["mammalian_selection"],
+          "attributes": {
+            "agent": "hygromycin"
+          }
+        },
+        {
+          "id": "bacterial_origin",
+          "kind": "origin",
+          "label": "Bacterial origin",
+          "tags": ["bacterial_propagation"],
+          "attributes": {
+            "status": "confirm_per_source_sequence"
+          }
+        },
+        {
+          "id": "bacterial_selection_marker",
+          "kind": "selectable_marker",
+          "label": "Bacterial selection marker",
+          "tags": ["selection"],
+          "attributes": {
+            "status": "confirm_per_source_sequence"
+          }
+        }
+      ],
+      "relationships": []
+    }
+  },
+  "Plasmid pAdvantage (Luebeck candidate)": {
+    "description": "pAdvantage cotransfection/helper plasmid candidate.",
+    "summary": "Luebeck S1 paperwork lists pAdvantage as a helper vector used in expression workflows; it is tracked as metadata-only pending source and redistribution review.",
+    "cache_dir": "data/helper_genomes",
+    "aliases": ["pAdvantage", "pAdvantage vector"],
+    "tags": [
+      "luebeck_s1",
+      "resource_candidate",
+      "mammalian_expression_helper",
+      "cotransfection",
+      "usable_empty_backbone"
+    ],
+    "search_terms": [
+      "pAdvantage cotransfection",
+      "expression helper vector",
+      "VA RNA"
+    ],
+    "helper_kind": "expression_helper_vector",
+    "host_system": "Escherichia coli; mammalian cells",
+    "sequence_availability": "commercial or source sequence needed; no bundled sequence",
+    "redistribution_status": "review required before bundling sequence data",
+    "biological_safety_note": "Administrative S1 helper/resource candidate from Luebeck paperwork; verify local institutional classification before experimental use.",
+    "usable_as_empty_backbone": true,
+    "procurement": {
+      "notes": "Resolve current procurement/source URL and licensing before importing sequence data."
+    },
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": [
+        "cotransfection_support",
+        "mammalian_expression_support",
+        "usable_as_empty_backbone"
+      ],
+      "constraints": [
+        "metadata_only_until_sequence_terms_reviewed",
+        "biosafety_classification_must_be_confirmed_locally"
+      ],
+      "components": [
+        {
+          "id": "expression_helper_unit",
+          "kind": "expression_helper_unit",
+          "label": "Expression helper unit",
+          "tags": ["cotransfection"]
+        },
+        {
+          "id": "bacterial_origin",
+          "kind": "origin",
+          "label": "Bacterial origin",
+          "tags": ["bacterial_propagation"],
+          "attributes": {
+            "status": "confirm_per_source_sequence"
+          }
+        },
+        {
+          "id": "bacterial_selection_marker",
+          "kind": "selectable_marker",
+          "label": "Bacterial selection marker",
+          "tags": ["selection"],
+          "attributes": {
+            "status": "confirm_per_source_sequence"
+          }
+        }
+      ],
+      "relationships": []
+    }
+  },
+
   "Plasmid pUC19 (online)": {
     "description": "High-copy E. coli cloning backbone (AmpR, MCS)",
     "summary": "High-copy E. coli cloning vector for small insert cloning and blue/white screening.",

@@ -1,6 +1,6 @@
 # Workspace / Crate Split Plan
 
-Last updated: 2026-04-22
+Last updated: 2026-05-16
 
 Purpose: describe the intended multi-crate end state for GENtle and the order
 in which the current monocrate should be split without breaking the
@@ -20,7 +20,10 @@ workspace settings by default.
 
 Current status:
 
-- the Cargo workspace scaffold and empty member crates now exist;
+- Phase 2 has begun: `crates/gentle-engine` is re-introduced as a real
+  workspace member with `iupac_code` as its first execution-side module, while
+  the root crate keeps a compatibility shim for the old `gentle::iupac_code`
+  import path;
 - production code still mostly lives in the root crate;
 - Phase 1 has now started by extracting the first stable id aliases, shared
   enums, and `EngineError`/`ErrorCode` into `crates/gentle-protocol`;
@@ -42,6 +45,14 @@ Current status:
   `SequenceOrigin`, lineage-node/edge and macro-instance records,
   `Container` / `Arrangement` / `Rack` state, and the built-in rack-profile /
   label-sheet / fill-direction / physical-template enums and helpers;
+- shell-first protocol extraction has now also moved several root-independent
+  `ShellCommand` field contracts into `gentle-protocol`, including render
+  mode, prepared-reference extraction policy enums, genome-track
+  subscriptions, primer backend selection, qPCR/cDNA transcript-targeting
+  enums, restriction-cloning handoff mode, sequence anchors,
+  prepared-cache cleanup request/mode, protocol-cartoon identifiers,
+  primer-specificity policy, per-TF threshold overrides, and candidate
+  feature/objective/template-parameter vocabulary;
 - the root engine surface currently re-exports those extracted types so
   downstream callers do not need to change all at once.
 - `crates/gentle-render` is no longer only a placeholder:
@@ -51,9 +62,13 @@ Current status:
   now lives there as well, with root-crate shims preserving the old import
   paths.
 - `crates/gentle-shell` is no longer only a placeholder either:
-  the glossary-driven shell help rendering layer now lives there, again with
-  root-crate shims preserving the old import paths while parser/executor
-  extraction is still staged.
+  the glossary-driven shell help rendering layer, shared shell tokenization,
+  UI-intent discoverability vocabulary, shell run-result envelope, and several
+  parser-local shell enums now live there; it also owns the prepared-cache
+  scope vocabulary used by cache shell commands and depends directly on
+  `gentle-protocol` for shared shell/engine command vocabulary such as
+  candidate set operators. Root-crate shims preserve the old import paths while
+  the full typed `ShellCommand` parser/executor extraction remains staged.
 - `crates/gentle-gui` is no longer only a placeholder either:
   the window-backdrop configuration/rendering helper and embedded icon/resource
   helper now live there, with root-crate shims preserving the old import paths
@@ -291,6 +306,11 @@ Success criterion:
 
 Move deterministic execution next, keeping tests close.
 
+Pre-Phase-2 seam already available: sequence file loading is rooted in the
+shared DNA sequence module, and the app-level file-loader method remains only as
+a compatibility shim. Engine load operations should not import the GUI top-level
+type for file parsing.
+
 Success criterion:
 
 - direct engine tests still run without egui/eframe,
@@ -307,7 +327,11 @@ Success criterion:
 
 ### Phase 4: extract `gentle-shell`
 
-Move shell parsing/execution after protocol and engine are stable.
+Move shell parsing/execution after protocol and engine are stable. A
+shell-first façade slice is already allowed before full `gentle-engine`
+extraction: root-independent shell contracts, tokenization, and
+discoverability catalogs may move to `gentle-shell` while root execution stays
+as the compatibility layer.
 
 Success criterion:
 
@@ -316,6 +340,36 @@ Success criterion:
 ### Phase 5: extract `gentle-gui`
 
 Move egui/eframe application code last.
+
+Before that crate move, large GUI files may continue to shed cohesive
+in-root submodules without changing crate boundaries. The current app-side
+helpers include `app/help_docs.rs`, `app/window_registry.rs`,
+`app/history_ui.rs`, `app/configuration_ui.rs`,
+`app/external_services_ui.rs`, `app/agent_assistant_config.rs`,
+`app/routine_and_agent_assistant_ui.rs`,
+`app/sequence_ingress_dialogs_ui.rs`, `app/genome_catalog_ui.rs`, and
+`app/main_lineage_ui.rs`, and `app/rack_workspace_ui.rs`;
+the routine/agent assistant module owns the intertwined assistant dialog,
+rendering, trace, preflight, request, and polling helpers that used to live in
+`app.rs`. The sequence ingress dialog module owns the GenBank, dbSNP,
+UniProt, Ensembl protein, reverse-translation, protease digest, and
+protein-to-DNA handoff dialog helpers that used to live in `app.rs`. The
+genome catalog module owns the reference-genome prepare, retrieve, BLAST,
+inspector, cache-cleanup, helper-panel, and genome-track UI rendering helpers
+that used to live in `app.rs`. The main lineage module owns the project
+overview strip, lineage graph/table workspace, analysis-open payload helpers,
+and lineage modal rendering helpers that used to live in `app.rs`. The rack
+workspace module owns the rack, arrangement-gel preview, rack-label preview,
+and placement-dialog blocks that used to live in `app.rs`. `app/gibson_ui.rs`
+owns the Gibson specialist, preview/apply/export handlers, and its small UI
+state records. Existing
+sequence-window peers under
+`main_area_dna/` own auxiliary workspaces, CUT&RUN support, feature actions,
+formula controls, primer/qPCR designer state and rendering, sequencing
+confirmation state/review rendering, RNA-read support/cache helpers, RNA-read
+mapping workspace UI, and variant follow-up UI. Future move-only passes may
+continue with any newly identified tightly bounded GUI blocks before the final
+`gentle-gui` crate extraction.
 
 Success criterion:
 
@@ -404,6 +458,7 @@ Modules that are primarily deterministic biology/state logic:
 - `src/engine/`
 - `src/genomes.rs`
 - `src/dna_sequence.rs`
+- `src/gc_contents.rs`
 - `src/feature_location.rs`
 - `src/gibson_planning.rs`
 - `src/resource_sync.rs`
@@ -513,7 +568,7 @@ They are important, but they should not distort the first extraction waves.
 
 The first milestone I would actually implement is:
 
-1. create a workspace with empty `gentle-protocol` and `gentle-engine` crates
+1. create a workspace with an initial `gentle-protocol` crate
 2. move only obviously stable protocol records first
 3. make the current root crate temporarily depend on those extracted crates
 4. keep GUI/shell code in place until protocol + engine boundaries prove

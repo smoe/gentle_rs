@@ -1,0 +1,482 @@
+{
+  "schema": "gentle.promoter_evidence_matrix.v1",
+  "seq_id": "tp73_promoter_artifact_demo",
+  "sequence_length_bp": 249,
+  "generated_at_unix_ms": 0,
+  "op_id": "op-4",
+  "run_id": "example_promoter_design_artifact_slice_offline",
+  "gene_label_filter": "TP73",
+  "promoter_upstream_bp": 40,
+  "promoter_downstream_bp": 15,
+  "transcript_window_count": 3,
+  "promoter_candidate_count": 2,
+  "evidence_item_count": 13,
+  "evidence_kinds_observed": [
+    "cutrun_peak_overlap",
+    "promoter_annotation",
+    "promoter_geometry",
+    "repeat_context",
+    "tfbs_annotation",
+    "transcript_support",
+    "variant_overlap"
+  ],
+  "ranking_mode": "deterministic_display_order",
+  "ranking_basis": "transcript_count desc, evidence_count desc, local coordinate asc, label asc",
+  "rows": [
+    {
+      "row_id": "promoter_tp73promoterwindow2tx_61_116",
+      "display_rank": 1,
+      "label": "TP73 promoter window (2 tx)",
+      "gene_label": "TP73",
+      "representative_transcript_id": "ENSTTP73DEMO1",
+      "representative_transcript_label": "TP73-demo-201",
+      "representative_transcript_feature_id": 2,
+      "transcript_count": 2,
+      "transcript_ids": [
+        "ENSTTP73DEMO1",
+        "ENSTTP73DEMO2"
+      ],
+      "transcript_labels": [
+        "TP73-demo-201",
+        "TP73-demo-202"
+      ],
+      "strand": "+",
+      "representative_tss_local_0based": 100,
+      "start_0based": 60,
+      "end_0based_exclusive": 116,
+      "upstream_bp": 40,
+      "downstream_bp": 15,
+      "source": "transcript_tss_exact_collapse+annotation_promoter",
+      "evidence_count": 7,
+      "evidence_kind_counts": {
+        "promoter_annotation": 2,
+        "promoter_geometry": 1,
+        "repeat_context": 1,
+        "tfbs_annotation": 1,
+        "transcript_support": 1,
+        "variant_overlap": 1
+      },
+      "evidence": [
+        {
+          "evidence_id": "promoter_tp73promoterwindow2tx_61_116_geometry",
+          "kind": "promoter_geometry",
+          "source": "transcript_tss_exact_collapse",
+          "summary": "Strand-aware promoter window 60..116 around TSS 101 (40 bp upstream / 15 bp downstream)",
+          "confidence": 0.7,
+          "start_0based": 60,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "metrics": {
+            "downstream_bp": 15.0,
+            "length_bp": 56.0,
+            "upstream_bp": 40.0
+          },
+          "attributes": {
+            "seq_id": "tp73_promoter_artifact_demo",
+            "tss_local_1based": "101"
+          },
+          "provenance_refs": [
+            "ENSTTP73DEMO1",
+            "ENSTTP73DEMO2"
+          ],
+          "interpretation_tags": [
+            "promoter",
+            "geometry",
+            "transcript_tss"
+          ]
+        },
+        {
+          "evidence_id": "promoter_tp73promoterwindow2tx_61_116_transcript_support",
+          "kind": "transcript_support",
+          "source": "transcript_annotation",
+          "summary": "2 transcript interpretation(s) share this exact promoter span",
+          "confidence": 0.8,
+          "start_0based": 60,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "metrics": {
+            "transcript_count": 2.0
+          },
+          "attributes": {},
+          "provenance_refs": [
+            "ENSTTP73DEMO1",
+            "ENSTTP73DEMO2"
+          ],
+          "interpretation_tags": [
+            "transcript_support",
+            "collapsed_exact_span"
+          ]
+        },
+        {
+          "evidence_id": "promoter_annotation_feature_6_60_116",
+          "kind": "promoter_annotation",
+          "source": "annotation",
+          "summary": "Promoter annotation 'TP73 shared promoter annotation' overlaps this promoter candidate",
+          "confidence": 0.8,
+          "start_0based": 60,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "overlap_bp": 56,
+          "metrics": {
+            "length_bp": 56.0
+          },
+          "attributes": {
+            "feature_id_1based": "6",
+            "feature_kind": "promoter",
+            "feature_label": "TP73 shared promoter annotation",
+            "gene": "TP73"
+          },
+          "provenance_refs": [
+            "feature:6"
+          ],
+          "interpretation_tags": [
+            "promoter",
+            "annotation",
+            "dna_level_span"
+          ]
+        },
+        {
+          "evidence_id": "promoter_annotation_feature_12_60_116",
+          "kind": "promoter_annotation",
+          "source": "annotate_promoter_windows",
+          "summary": "Promoter annotation 'TP73 promoter window (2 tx)' overlaps this promoter candidate",
+          "confidence": 0.8,
+          "start_0based": 60,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "overlap_bp": 56,
+          "metrics": {
+            "length_bp": 56.0
+          },
+          "attributes": {
+            "feature_id_1based": "12",
+            "feature_kind": "promoter",
+            "feature_label": "TP73 promoter window (2 tx)",
+            "gene": "TP73",
+            "generated_by": "AnnotatePromoterWindows",
+            "gentle_generated": "annotate_promoter_windows",
+            "promoter_source": "transcript_tss_exact_collapse",
+            "regulatory_class": "promoter",
+            "transcript_count": "2",
+            "transcript_id": "ENSTTP73DEMO1",
+            "transcript_ids": "ENSTTP73DEMO1,ENSTTP73DEMO2"
+          },
+          "provenance_refs": [
+            "feature:12"
+          ],
+          "interpretation_tags": [
+            "promoter",
+            "annotation",
+            "dna_level_span"
+          ]
+        },
+        {
+          "evidence_id": "tfbs_annotation_feature_7_80_89",
+          "kind": "tfbs_annotation",
+          "source": "annotation",
+          "summary": "SP1 synthetic site overlaps promoter candidate by 9 bp",
+          "start_0based": 80,
+          "end_0based_exclusive": 89,
+          "strand": "+",
+          "overlap_bp": 9,
+          "metrics": {
+            "feature_length_bp": 9.0,
+            "overlap_bp": 9.0
+          },
+          "attributes": {
+            "feature_id_1based": "7",
+            "feature_kind": "TFBS",
+            "feature_label": "SP1 synthetic site",
+            "gene": "TP73"
+          },
+          "provenance_refs": [
+            "feature:7"
+          ],
+          "interpretation_tags": [
+            "tfbs_annotation",
+            "tfbs"
+          ]
+        },
+        {
+          "evidence_id": "variant_overlap_feature_8_94_95",
+          "kind": "variant_overlap",
+          "source": "annotation",
+          "summary": "rsSyntheticPromoter overlaps promoter candidate by 1 bp",
+          "start_0based": 94,
+          "end_0based_exclusive": 95,
+          "strand": "+",
+          "overlap_bp": 1,
+          "metrics": {
+            "feature_length_bp": 1.0,
+            "overlap_bp": 1.0
+          },
+          "attributes": {
+            "feature_id_1based": "8",
+            "feature_kind": "variation",
+            "feature_label": "rsSyntheticPromoter",
+            "gene": "TP73"
+          },
+          "provenance_refs": [
+            "feature:8"
+          ],
+          "interpretation_tags": [
+            "variant_overlap",
+            "variant"
+          ]
+        },
+        {
+          "evidence_id": "repeat_context_feature_9_104_116",
+          "kind": "repeat_context",
+          "source": "annotation",
+          "summary": "L1-demo overlaps promoter candidate by 12 bp",
+          "start_0based": 104,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "overlap_bp": 12,
+          "metrics": {
+            "feature_length_bp": 12.0,
+            "overlap_bp": 12.0
+          },
+          "attributes": {
+            "feature_id_1based": "9",
+            "feature_kind": "repeat_region",
+            "feature_label": "L1-demo",
+            "gene": "TP73",
+            "rmsk_rep_class": "LINE",
+            "rmsk_rep_family": "L1",
+            "rmsk_rep_name": "L1PA-demo"
+          },
+          "provenance_refs": [
+            "feature:9"
+          ],
+          "interpretation_tags": [
+            "repeat_context",
+            "repeat_region"
+          ]
+        }
+      ],
+      "interpretation_tags": [
+        "promoter_annotation",
+        "promoter_candidate",
+        "promoter_geometry",
+        "repeat_context",
+        "tfbs_annotation",
+        "transcript_support",
+        "transcript_tss",
+        "variant_overlap"
+      ]
+    },
+    {
+      "row_id": "promoter_tp73promoterwindow_101_156",
+      "display_rank": 2,
+      "label": "TP73 promoter window",
+      "gene_label": "TP73",
+      "representative_transcript_id": "ENSTTP73DEMO3",
+      "representative_transcript_label": "TP73-demo-203-altTSS",
+      "representative_transcript_feature_id": 4,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENSTTP73DEMO3"
+      ],
+      "transcript_labels": [
+        "TP73-demo-203-altTSS"
+      ],
+      "strand": "+",
+      "representative_tss_local_0based": 140,
+      "start_0based": 100,
+      "end_0based_exclusive": 156,
+      "upstream_bp": 40,
+      "downstream_bp": 15,
+      "source": "transcript_tss_exact_collapse+annotation_promoter",
+      "evidence_count": 6,
+      "evidence_kind_counts": {
+        "cutrun_peak_overlap": 1,
+        "promoter_annotation": 1,
+        "promoter_geometry": 1,
+        "repeat_context": 1,
+        "tfbs_annotation": 1,
+        "transcript_support": 1
+      },
+      "evidence": [
+        {
+          "evidence_id": "promoter_tp73promoterwindow_101_156_geometry",
+          "kind": "promoter_geometry",
+          "source": "transcript_tss_exact_collapse",
+          "summary": "Strand-aware promoter window 100..156 around TSS 141 (40 bp upstream / 15 bp downstream)",
+          "confidence": 0.7,
+          "start_0based": 100,
+          "end_0based_exclusive": 156,
+          "strand": "+",
+          "metrics": {
+            "downstream_bp": 15.0,
+            "length_bp": 56.0,
+            "upstream_bp": 40.0
+          },
+          "attributes": {
+            "seq_id": "tp73_promoter_artifact_demo",
+            "tss_local_1based": "141"
+          },
+          "provenance_refs": [
+            "ENSTTP73DEMO3"
+          ],
+          "interpretation_tags": [
+            "promoter",
+            "geometry",
+            "transcript_tss"
+          ]
+        },
+        {
+          "evidence_id": "promoter_tp73promoterwindow_101_156_transcript_support",
+          "kind": "transcript_support",
+          "source": "transcript_annotation",
+          "summary": "1 transcript interpretation(s) share this exact promoter span",
+          "confidence": 0.8,
+          "start_0based": 100,
+          "end_0based_exclusive": 156,
+          "strand": "+",
+          "metrics": {
+            "transcript_count": 1.0
+          },
+          "attributes": {},
+          "provenance_refs": [
+            "ENSTTP73DEMO3"
+          ],
+          "interpretation_tags": [
+            "transcript_support",
+            "collapsed_exact_span"
+          ]
+        },
+        {
+          "evidence_id": "promoter_annotation_feature_13_100_156",
+          "kind": "promoter_annotation",
+          "source": "annotate_promoter_windows",
+          "summary": "Promoter annotation 'TP73 promoter window' overlaps this promoter candidate",
+          "confidence": 0.8,
+          "start_0based": 100,
+          "end_0based_exclusive": 156,
+          "strand": "+",
+          "overlap_bp": 56,
+          "metrics": {
+            "length_bp": 56.0
+          },
+          "attributes": {
+            "feature_id_1based": "13",
+            "feature_kind": "promoter",
+            "feature_label": "TP73 promoter window",
+            "gene": "TP73",
+            "generated_by": "AnnotatePromoterWindows",
+            "gentle_generated": "annotate_promoter_windows",
+            "promoter_source": "transcript_tss_exact_collapse",
+            "regulatory_class": "promoter",
+            "transcript_count": "1",
+            "transcript_id": "ENSTTP73DEMO3",
+            "transcript_ids": "ENSTTP73DEMO3"
+          },
+          "provenance_refs": [
+            "feature:13"
+          ],
+          "interpretation_tags": [
+            "promoter",
+            "annotation",
+            "dna_level_span"
+          ]
+        },
+        {
+          "evidence_id": "repeat_context_feature_9_104_116",
+          "kind": "repeat_context",
+          "source": "annotation",
+          "summary": "L1-demo overlaps promoter candidate by 12 bp",
+          "start_0based": 104,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "overlap_bp": 12,
+          "metrics": {
+            "feature_length_bp": 12.0,
+            "overlap_bp": 12.0
+          },
+          "attributes": {
+            "feature_id_1based": "9",
+            "feature_kind": "repeat_region",
+            "feature_label": "L1-demo",
+            "gene": "TP73",
+            "rmsk_rep_class": "LINE",
+            "rmsk_rep_family": "L1",
+            "rmsk_rep_name": "L1PA-demo"
+          },
+          "provenance_refs": [
+            "feature:9"
+          ],
+          "interpretation_tags": [
+            "repeat_context",
+            "repeat_region"
+          ]
+        },
+        {
+          "evidence_id": "tfbs_annotation_feature_10_149_158",
+          "kind": "tfbs_annotation",
+          "source": "annotation",
+          "summary": "TP73-like synthetic site overlaps promoter candidate by 7 bp",
+          "start_0based": 149,
+          "end_0based_exclusive": 158,
+          "strand": "+",
+          "overlap_bp": 7,
+          "metrics": {
+            "feature_length_bp": 9.0,
+            "overlap_bp": 7.0
+          },
+          "attributes": {
+            "feature_id_1based": "10",
+            "feature_kind": "TFBS",
+            "feature_label": "TP73-like synthetic site",
+            "gene": "TP73"
+          },
+          "provenance_refs": [
+            "feature:10"
+          ],
+          "interpretation_tags": [
+            "tfbs_annotation",
+            "tfbs"
+          ]
+        },
+        {
+          "evidence_id": "cutrun_peak_overlap_feature_11_129_152",
+          "kind": "cutrun_peak_overlap",
+          "source": "annotation",
+          "summary": "CUT&RUN TP73 promoter-side peak overlaps promoter candidate by 23 bp",
+          "start_0based": 129,
+          "end_0based_exclusive": 152,
+          "strand": "+",
+          "overlap_bp": 23,
+          "metrics": {
+            "feature_length_bp": 23.0,
+            "overlap_bp": 23.0
+          },
+          "attributes": {
+            "feature_id_1based": "11",
+            "feature_kind": "track",
+            "feature_label": "CUT&RUN TP73 promoter-side peak",
+            "gene": "TP73",
+            "gentle_track_name": "synthetic CUT&RUN demo"
+          },
+          "provenance_refs": [
+            "feature:11"
+          ],
+          "interpretation_tags": [
+            "cutrun_peak_overlap"
+          ]
+        }
+      ],
+      "interpretation_tags": [
+        "cutrun_peak_overlap",
+        "promoter_annotation",
+        "promoter_candidate",
+        "promoter_geometry",
+        "repeat_context",
+        "tfbs_annotation",
+        "transcript_support",
+        "transcript_tss"
+      ]
+    }
+  ],
+  "warnings": []
+}

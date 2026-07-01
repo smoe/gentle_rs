@@ -12,6 +12,7 @@ use super::*;
 use crate::attract_motifs::{
     ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
 };
+use crate::engine_shell::{ShellCommand, execute_shell_command};
 use crate::ensembl_gene::{
     EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
     EnsemblGeneTranslationSummary,
@@ -23,7 +24,7 @@ use crate::genomes::BlastHit;
 use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
 use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -74,8 +75,7 @@ fn attract_test_lock() -> &'static Mutex<()> {
 }
 
 fn jaspar_test_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+    crate::tf_motifs::test_registry_lock()
 }
 
 fn internet_access_available() -> bool {
@@ -98,6 +98,2366 @@ fn internet_access_available() -> bool {
 
 fn seq(s: &str) -> DNAsequence {
     DNAsequence::from_sequence(s).unwrap()
+}
+
+fn microarray_track_fixture_manifest() -> String {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test_files/fixtures/microarray_tracks/clariomd.synthetic.manifest.json")
+        .to_string_lossy()
+        .to_string()
+}
+
+fn microarray_projected_track_fixture_manifest() -> String {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(
+            "test_files/fixtures/microarray_tracks/clariomd.synthetic.hg19_projected.manifest.json",
+        )
+        .to_string_lossy()
+        .to_string()
+}
+
+fn microarray_tp73_vendor_subset_manifest() -> String {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test_files/fixtures/microarray_tracks/clariomd.tp73_vendor_subset.manifest.json")
+        .to_string_lossy()
+        .to_string()
+}
+
+fn microarray_projection_fixture_map() -> String {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test_files/fixtures/microarray_tracks/clariomd.synthetic.hg19-to-hg38.tsv")
+        .to_string_lossy()
+        .to_string()
+}
+
+fn microarray_anchored_engine(genome_id: &str, anchor_strand: &str) -> GentleEngine {
+    microarray_anchored_engine_at(genome_id, "chr1", 1001, 1100, anchor_strand)
+}
+
+fn microarray_anchored_engine_at(
+    genome_id: &str,
+    chromosome: &str,
+    start_1based: usize,
+    end_1based: usize,
+    anchor_strand: &str,
+) -> GentleEngine {
+    let mut engine = GentleEngine::default();
+    engine.state_mut().sequences.insert(
+        "array_slice".to_string(),
+        DNAsequence::from_sequence(&"A".repeat(100)).expect("valid anchored sequence"),
+    );
+    engine.state_mut().metadata.insert(
+        PROVENANCE_METADATA_KEY.to_string(),
+        serde_json::json!({
+            "genome_extractions": [
+                {
+                    "seq_id": "array_slice",
+                    "genome_id": genome_id,
+                    "chromosome": chromosome,
+                    "start_1based": start_1based,
+                    "end_1based": end_1based,
+                    "anchor_strand": anchor_strand,
+                    "anchor_verified": true,
+                    "recorded_at_unix_ms": 123
+                }
+            ]
+        }),
+    );
+    engine
+}
+
+fn probe_region_tp73_validation_fixture_dir() -> String {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test_files/fixtures/probe_region_outputs/clariom_e_mtab_14704_tp73_validation")
+        .to_string_lossy()
+        .to_string()
+}
+
+fn probe_region_tp73_glen_adapter_input() -> PathBuf {
+    PathBuf::from(
+        "test_files/fixtures/probe_region_adapter_inputs/clariom_e_mtab_14704_tp73_glen_style.csv",
+    )
+}
+
+fn add_tp73_validation_transcripts(dna: &mut DNAsequence) {
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(4, 43),
+            gb_io::seq::Location::simple_range(54, 80),
+            gb_io::seq::Location::simple_range(104, 135),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("TP73".to_string())),
+            ("transcript_id".into(), Some("TP73-201".to_string())),
+            ("label".into(), Some("TP73-201".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(4, 43),
+            gb_io::seq::Location::simple_range(74, 100),
+            gb_io::seq::Location::simple_range(144, 175),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("TP73".to_string())),
+            ("transcript_id".into(), Some("TP73-202".to_string())),
+            ("label".into(), Some("TP73-202".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+}
+
+fn tp73_validation_anchored_engine() -> GentleEngine {
+    let mut engine = microarray_anchored_engine_at("hg38", "chr1", 3652516, 3736201, "+");
+    let dna = engine
+        .state_mut()
+        .sequences
+        .get_mut("array_slice")
+        .expect("array slice");
+    *dna = DNAsequence::from_sequence(&"A".repeat(256)).expect("valid TP73 validation slice");
+    add_tp73_validation_transcripts(dna);
+    engine
+}
+
+fn tp73_validation_pm_probe_evidence_report() -> ProbeRegionEvidenceInterpretationReport {
+    let fixture_dir = probe_region_tp73_validation_fixture_dir();
+    let mut engine = tp73_validation_anchored_engine();
+    engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: fixture_dir,
+            contrasts: vec!["AdTAp73alpha-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(20),
+            clear_existing: Some(true),
+        })
+        .expect("project committed PM probe validation fixture");
+    engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("TP73".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            path: None,
+        })
+        .expect("interpret committed PM probe validation fixture")
+        .probe_region_evidence_interpretation
+        .expect("interpretation report")
+}
+
+fn write_probe_region_projection_fixture(out: &Path) {
+    fs::create_dir(out).expect("probe-region fixture dir");
+    fs::write(
+        out.join("region_intensity_chrom_order.csv"),
+        concat!(
+            "chromosome,start,stop,strand,probeset_or_region_id,transcript_cluster_id,number_of_probes,gene_symbol,mean_log2_AdGFP,mean_log2_TAp73,log2FC_TAp73-AdGFP\n",
+            "chr1,1010,1030,+,PSR1,TC1,4,PATZ1,8.1,9.2,1.1\n",
+            "chr1,1060,1080,+,PSR2,TC1,4,PATZ1,7.8,7.9,0.1\n",
+            "chr2,1010,1030,+,PSR3,TC2,4,OTHER,6.0,6.7,0.7\n"
+        ),
+    )
+    .expect("probe-region table");
+    fs::write(
+        out.join("probe_intensity_chrom_order.csv"),
+        concat!(
+            "chromosome,start,stop,strand,probe_id,x,y,parent_probeset_or_region_id,transcript_cluster_id,gene_symbol,intensity_source,mean_log2_AdGFP,mean_log2_TAp73,log2FC_TAp73-AdGFP\n",
+            "chr1,1011,1028,+,probe_1,10,20,PSR1,TC1,PATZ1,probe_level_input,5.0,6.0,1.0\n",
+            "chr1,1012,1029,+,probe_2,11,20,PSR1,TC1,PATZ1,parent_probeset_summary,8.1,9.2,1.1\n",
+            "chr1,1061,1078,+,probe_3,12,21,PSR2,TC1,PATZ1,probe_level_input,3.0,3.2,0.2\n"
+        ),
+    )
+    .expect("probe-intensity table");
+    fs::write(
+        out.join("normalized_feature_matrix_manifest.json"),
+        r#"{
+  "schema": "gentle.probe_region_normalized_matrix_manifest.v1",
+  "platform": "Clariom_D_Human",
+  "platform_package": "pd.clariom.d.human",
+  "coordinate_system": "hg38",
+  "genome_build": "GRCh38",
+  "normalization": "rma",
+  "targets": ["probeset", "pm_probe"],
+  "artifacts": []
+}"#,
+    )
+    .expect("probe-region manifest");
+    fs::write(
+        out.join("provenance.json"),
+        r#"{
+  "schema": "gentle.probe_region_backend_provenance.v1",
+  "backend": "r_oligo",
+  "coordinate_system": "hg38",
+  "genome_build": "GRCh38",
+  "normalization": "rma",
+  "artifacts": []
+}"#,
+    )
+    .expect("probe-region provenance");
+}
+
+fn write_probe_region_projected_fixture(out: &Path) {
+    fs::create_dir(out).expect("probe-region projected fixture dir");
+    fs::write(
+        out.join("region_intensity_chrom_order.csv"),
+        concat!(
+            "chromosome,start,stop,strand,probeset_or_region_id,transcript_cluster_id,number_of_probes,gene_symbol,mean_log2_AdGFP,mean_log2_TAp73,log2FC_TAp73-AdGFP\n",
+            "chr1,1010,1030,+,PSR1,TC1,4,PATZ1,8.1,9.2,1.1\n",
+            "chr1,1060,1080,+,PSR2,TC1,4,PATZ1,7.8,7.9,0.1\n",
+            "chr2,1010,1030,+,PSR3,TC2,4,OTHER,6.0,6.7,0.7\n"
+        ),
+    )
+    .expect("probe-region projected table");
+    fs::write(
+        out.join("normalized_feature_matrix_manifest.json"),
+        r#"{
+  "schema": "gentle.probe_region_normalized_matrix_manifest.v1",
+  "platform": "Clariom_D_Human",
+  "platform_package": "pd.clariom.d.human",
+  "coordinate_system": "hg19",
+  "genome_build": "GRCh37",
+  "normalization": "rma",
+  "targets": ["probeset"],
+  "coordinate_projections": [
+    {
+      "source_genome_id": "hg19",
+      "target_genome_id": "hg38",
+      "method": "synthetic_interval_map",
+      "path": "hg19-to-hg38.tsv"
+    }
+  ],
+  "artifacts": []
+}"#,
+    )
+    .expect("probe-region projected manifest");
+    fs::write(
+        out.join("provenance.json"),
+        r#"{
+  "schema": "gentle.probe_region_backend_provenance.v1",
+  "backend": "r_oligo",
+  "coordinate_system": "hg19",
+  "genome_build": "GRCh37",
+  "normalization": "rma",
+  "artifacts": []
+}"#,
+    )
+    .expect("probe-region projected provenance");
+    fs::write(
+        out.join("hg19-to-hg38.tsv"),
+        concat!(
+            "source_genome_id\ttarget_genome_id\tsource_chrom\tsource_start_1based\tsource_end_1based\tsource_strand\ttarget_chrom\ttarget_start_1based\ttarget_end_1based\ttarget_strand\tmethod\n",
+            "hg19\thg38\tchr1\t1001\t1100\t+\tchr1\t2001\t2100\t+\tsynthetic_interval_map\n"
+        ),
+    )
+    .expect("probe-region projection map");
+}
+
+fn first_qualifier(feature: &gb_io::seq::Feature, key: &str) -> Option<String> {
+    feature
+        .qualifier_values(key)
+        .next()
+        .map(|value| value.to_string())
+}
+
+#[test]
+fn microarray_track_manifest_parses_contrast_order() {
+    let manifest_path = microarray_track_fixture_manifest();
+    let manifest =
+        GentleEngine::load_microarray_track_manifest(&manifest_path).expect("parse manifest");
+    assert_eq!(manifest.schema, MICROARRAY_TRACK_MANIFEST_SCHEMA);
+    assert_eq!(manifest.dataset, "E-MTAB-14704");
+    assert_eq!(manifest.platform, "Clariom D human");
+    assert_eq!(
+        manifest.contrast_order,
+        vec![
+            "AdTAp73alpha-AdGFP".to_string(),
+            "AdTAp73beta-AdGFP".to_string()
+        ]
+    );
+    assert_eq!(manifest.contrasts.len(), 2);
+    assert_eq!(manifest.contrasts[0].level, "probeset");
+}
+
+#[test]
+fn project_microarray_track_rejects_coordinate_mismatch() {
+    let mut engine = microarray_anchored_engine("mm10", "+");
+    let err = engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "array_slice".to_string(),
+            manifest_path: microarray_track_fixture_manifest(),
+            contrasts: vec![],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: None,
+            max_adj_p: None,
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect_err("mismatched coordinate system must be rejected");
+    assert_eq!(err.code, ErrorCode::InvalidInput);
+    assert!(err.message.contains("coordinate system"));
+    assert!(err.message.contains("mm10"));
+}
+
+#[test]
+fn project_microarray_track_clear_existing_waits_until_rows_are_read() {
+    let mut engine = microarray_anchored_engine("hg38", "+");
+    engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "array_slice".to_string(),
+            manifest_path: microarray_track_fixture_manifest(),
+            contrasts: vec![],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: None,
+            max_adj_p: None,
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("initial projection");
+
+    let original_feature_count = engine
+        .state()
+        .sequences
+        .get("array_slice")
+        .unwrap()
+        .features()
+        .len();
+    assert_eq!(original_feature_count, 4);
+
+    let temp = tempdir().expect("tempdir");
+    let bad_manifest_path = temp.path().join("missing-track.manifest.json");
+    fs::write(
+        &bad_manifest_path,
+        r#"{
+  "schema": "gentle.microarray_track_manifest.v1",
+  "dataset": "E-MTAB-14704",
+  "platform": "Clariom D human",
+  "normalization": "RMA",
+  "coordinate_system": "hg38",
+  "supported_genome_ids": ["hg38"],
+  "contrast_order": ["missing"],
+  "contrasts": [
+    {"contrast": "missing", "level": "probeset", "path": "missing.tsv", "row_count": 1}
+  ],
+  "warnings": []
+}"#,
+    )
+    .expect("write bad manifest");
+
+    let err = engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "array_slice".to_string(),
+            manifest_path: bad_manifest_path.to_string_lossy().to_string(),
+            contrasts: vec![],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: None,
+            max_adj_p: None,
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect_err("missing TSV should fail");
+    assert_eq!(err.code, ErrorCode::Io);
+    assert_eq!(
+        engine
+            .state()
+            .sequences
+            .get("array_slice")
+            .unwrap()
+            .features()
+            .len(),
+        original_feature_count
+    );
+}
+
+#[test]
+fn project_microarray_track_forward_anchor_materializes_array_features() {
+    let mut engine = microarray_anchored_engine("hg38", "+");
+    let result = engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "array_slice".to_string(),
+            manifest_path: microarray_track_fixture_manifest(),
+            contrasts: vec![],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: None,
+            max_adj_p: None,
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project microarray track");
+    let report = result.microarray_projection.expect("projection report");
+    assert_eq!(report.schema, MICROARRAY_PROJECTION_REPORT_SCHEMA);
+    assert_eq!(
+        report.projected_contrasts,
+        vec![
+            "AdTAp73alpha-AdGFP".to_string(),
+            "AdTAp73beta-AdGFP".to_string()
+        ]
+    );
+    assert_eq!(report.parsed_rows, 6);
+    assert_eq!(report.imported_features, 4);
+    assert_eq!(report.skipped_non_overlap, 1);
+    assert_eq!(report.skipped_wrong_chromosome, 1);
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    assert_eq!(dna.features().len(), 4);
+    let feature = dna
+        .features()
+        .iter()
+        .find(|feature| {
+            first_qualifier(feature, "feature_id").as_deref() == Some("PSR0001")
+                && first_qualifier(feature, "gentle_array_contrast").as_deref()
+                    == Some("AdTAp73alpha-AdGFP")
+        })
+        .expect("PSR0001 alpha feature");
+    assert_eq!(
+        first_qualifier(feature, "gentle_track_source").as_deref(),
+        Some("Array")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_dataset").as_deref(),
+        Some("E-MTAB-14704")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_coordinate_system").as_deref(),
+        Some("hg38")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_anchor_genome_id").as_deref(),
+        Some("hg38")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_assembly_check").as_deref(),
+        Some("coordinate_system_matches_anchor")
+    );
+    assert_eq!(
+        first_qualifier(feature, "transcript_cluster_id").as_deref(),
+        Some("TC0001")
+    );
+    assert_eq!(
+        first_qualifier(feature, "exon_id").as_deref(),
+        Some("EX0001")
+    );
+    assert_eq!(
+        first_qualifier(feature, "logFC").as_deref(),
+        Some("1.500000")
+    );
+    assert_eq!(
+        first_qualifier(feature, "adj_P_Val").as_deref(),
+        Some("0.020000")
+    );
+    assert!(
+        first_qualifier(feature, "gentle_array_value_summary")
+            .unwrap()
+            .contains("AdTAp73beta-AdGFP logFC=-0.750000")
+    );
+    assert_eq!(feature.location.find_bounds().unwrap(), (9, 20));
+}
+
+#[test]
+fn project_probe_region_output_direct_anchor_materializes_array_features() {
+    let temp = tempdir().expect("tempdir");
+    let output_dir = temp.path().join("probe_regions");
+    write_probe_region_projection_fixture(&output_dir);
+    let mut engine = microarray_anchored_engine("hg38", "+");
+
+    let result = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec!["TAp73-AdGFP".to_string()],
+            level: None,
+            min_abs_logfc: Some(0.5),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project probe-region helper output");
+    let report = result.microarray_projection.expect("projection report");
+    assert_eq!(report.schema, MICROARRAY_PROJECTION_REPORT_SCHEMA);
+    assert_eq!(report.manifest_path, output_dir.to_string_lossy());
+    assert_eq!(report.dataset, "probe_region_output");
+    assert_eq!(report.platform, "Clariom_D_Human");
+    assert_eq!(report.coordinate_system, "hg38");
+    assert_eq!(report.projected_contrasts, vec!["TAp73-AdGFP".to_string()]);
+    assert_eq!(report.parsed_rows, 3);
+    assert_eq!(report.imported_features, 1);
+    assert_eq!(report.skipped_filter, 1);
+    assert_eq!(report.skipped_wrong_chromosome, 1);
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    let array_features = dna
+        .features()
+        .iter()
+        .filter(|feature| {
+            first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(array_features.len(), 1);
+    let feature = array_features[0];
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_dataset").as_deref(),
+        Some("probe_region_output")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_level").as_deref(),
+        Some("probe_region")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_assembly_check").as_deref(),
+        Some("helper_output_coordinate_system_matches_anchor")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_projection_status").as_deref(),
+        Some("direct_helper_output_coordinate_match")
+    );
+    assert_eq!(first_qualifier(feature, "logFC").as_deref(), Some("1.100"));
+    assert!(
+        first_qualifier(feature, "gentle_array_value_summary")
+            .unwrap()
+            .contains("TAp73-AdGFP logFC=1.100")
+    );
+    assert_eq!(feature.location.find_bounds().unwrap(), (9, 30));
+}
+
+#[test]
+fn project_probe_region_output_pm_probe_level_materializes_true_probe_features() {
+    let temp = tempdir().expect("tempdir");
+    let output_dir = temp.path().join("probe_regions");
+    write_probe_region_projection_fixture(&output_dir);
+    let mut engine = microarray_anchored_engine("hg38", "+");
+
+    let result = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec!["TAp73-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project PM probe helper output");
+    let report = result.microarray_projection.expect("projection report");
+    assert_eq!(report.level, "pm_probe");
+    assert_eq!(report.parsed_rows, 2);
+    assert_eq!(report.imported_features, 1);
+    assert_eq!(report.skipped_filter, 1);
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("intensity_source was not probe_level_input"))
+    );
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    let array_features = dna
+        .features()
+        .iter()
+        .filter(|feature| {
+            first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(array_features.len(), 1);
+    let feature = array_features[0];
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_level").as_deref(),
+        Some("pm_probe")
+    );
+    assert_eq!(
+        first_qualifier(feature, "feature_id").as_deref(),
+        Some("probe_1")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_parent_feature_id").as_deref(),
+        Some("PSR1")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_intensity_source").as_deref(),
+        Some("probe_level_input")
+    );
+    assert_eq!(first_qualifier(feature, "logFC").as_deref(), Some("1.000"));
+    assert_eq!(feature.location.find_bounds().unwrap(), (10, 28));
+}
+
+#[test]
+fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
+    let temp = tempdir().expect("tempdir");
+    let output_dir = temp.path().join("probe_regions");
+    write_probe_region_projection_fixture(&output_dir);
+    let mut engine = microarray_anchored_engine("hg38", "+");
+
+    engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec!["TAp73-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project PM probe helper output");
+
+    let dna = engine
+        .state_mut()
+        .sequences
+        .get_mut("array_slice")
+        .expect("array slice");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 28),
+            gb_io::seq::Location::simple_range(60, 80),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("PATZ1".to_string())),
+            ("transcript_id".into(), Some("PATZ1-201".to_string())),
+            ("label".into(), Some("PATZ1-201".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 28),
+            gb_io::seq::Location::simple_range(70, 90),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("PATZ1".to_string())),
+            ("transcript_id".into(), Some("PATZ1-202".to_string())),
+            ("label".into(), Some("PATZ1-202".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+
+    let report_path = temp.path().join("probe_region_interpretation.json");
+    let result = engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("PATZ1".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            path: Some(report_path.to_string_lossy().to_string()),
+        })
+        .expect("interpret projected probe-region evidence");
+    assert!(report_path.exists());
+    let report = result
+        .probe_region_evidence_interpretation
+        .expect("interpretation report");
+    assert_eq!(report.schema, PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA);
+    assert_eq!(report.level, "pm_probe");
+    assert_eq!(report.coordinate_frame, "genomic_1based");
+    assert_eq!(report.coordinate_system.as_deref(), Some("hg38"));
+    assert_eq!(report.coordinate_chromosome.as_deref(), Some("chr1"));
+    assert_eq!(report.array_feature_count, 1);
+    assert_eq!(report.transcript_count, 2);
+    assert_eq!(report.evidence_rows.len(), 1);
+    let row = &report.evidence_rows[0];
+    assert_eq!(row.feature_id, "probe_1");
+    assert_eq!(row.parent_feature_id.as_deref(), Some("PSR1"));
+    assert_eq!(row.mapping_status, "shared_exon_overlap");
+    assert_eq!(row.relationship, "compatible_with_exon_geometry");
+    assert_eq!(
+        row.overlapping_transcript_ids,
+        vec!["PATZ1-201".to_string(), "PATZ1-202".to_string()]
+    );
+    assert_eq!(row.transcript_mappings.len(), 2);
+    assert!(row.transcript_mappings.iter().all(|mapping| {
+        mapping.mapping_kind == "exon_overlap"
+            && mapping.geometry_score == 0.5
+            && mapping.geometry_score_class == "exon_geometry"
+            && mapping
+                .score_basis
+                .iter()
+                .any(|basis| basis == "isoform_support_not_inferred")
+            && mapping.coordinate_frame == "genomic_1based"
+            && mapping.exon_ordinals == vec![1]
+            && mapping.exon_ranges_1based == vec!["1011..1028".to_string()]
+            && mapping.local_exon_ranges_1based == vec!["11..28".to_string()]
+            && mapping.junction_spans.is_empty()
+            && mapping.overlap_bp == 18
+    }));
+    assert!(
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "shared_transcript_overlap")
+    );
+    assert!(
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "multi_hit_not_assessed")
+    );
+    assert!(
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "isoform_support_not_inferred")
+    );
+    assert!(report.transcript_rows.iter().all(|tx| {
+        tx.shared_evidence_count == 1
+            && tx.unique_evidence_count == 0
+            && tx.compatible_geometry_score == 0.5
+            && tx.shared_geometry_score == 0.5
+            && tx.unique_geometry_score == 0.0
+            && tx.constraining_geometry_score == 0.0
+            && tx.review_status == "shared_geometry_for_review"
+            && tx.relationship_summary == "only_shared_compatible_evidence"
+    }));
+}
+
+#[test]
+fn interpret_probe_region_evidence_reports_junction_spanning_geometry() {
+    let mut engine = microarray_anchored_engine("hg38", "+");
+    let dna = engine
+        .state_mut()
+        .sequences
+        .get_mut("array_slice")
+        .expect("array slice");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "track".into(),
+        location: gb_io::seq::Location::simple_range(20, 70),
+        qualifiers: vec![
+            ("gentle_track_source".into(), Some("Array".to_string())),
+            (
+                "gentle_array_dataset".into(),
+                Some("probe_region_output".to_string()),
+            ),
+            ("gentle_array_level".into(), Some("pm_probe".to_string())),
+            (
+                "gentle_array_feature_id".into(),
+                Some("probe_junction".to_string()),
+            ),
+            (
+                "gentle_array_parent_feature_id".into(),
+                Some("PSR_J".to_string()),
+            ),
+            (
+                "gentle_array_intensity_source".into(),
+                Some("probe_level_input".to_string()),
+            ),
+            (
+                "gentle_array_contrast".into(),
+                Some("TAp73-AdGFP".to_string()),
+            ),
+            ("logFC".into(), Some("1.200".to_string())),
+            ("chromosome".into(), Some("chr1".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 28),
+            gb_io::seq::Location::simple_range(60, 80),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("PATZ1".to_string())),
+            ("transcript_id".into(), Some("PATZ1-201".to_string())),
+            ("label".into(), Some("PATZ1-201".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+
+    let result = engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("PATZ1".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            path: None,
+        })
+        .expect("interpret projected junction-spanning evidence");
+    let report = result
+        .probe_region_evidence_interpretation
+        .expect("interpretation report");
+    assert_eq!(report.array_feature_count, 1);
+    assert_eq!(report.transcript_count, 1);
+    let row = &report.evidence_rows[0];
+    assert_eq!(row.feature_id, "probe_junction");
+    assert_eq!(row.mapping_status, "unique_multi_exon_overlap");
+    assert_eq!(row.transcript_mappings.len(), 1);
+    let mapping = &row.transcript_mappings[0];
+    assert_eq!(mapping.transcript_id, "PATZ1-201");
+    assert_eq!(mapping.coordinate_frame, "sequence_local_1based");
+    assert_eq!(mapping.mapping_kind, "junction_spanning_exon_overlap");
+    assert_eq!(mapping.geometry_score, 0.75);
+    assert_eq!(mapping.geometry_score_class, "junction_spanning_geometry");
+    assert!(
+        mapping
+            .score_basis
+            .iter()
+            .any(|basis| basis == "junction_spans=1")
+    );
+    assert!(
+        mapping
+            .score_basis
+            .iter()
+            .any(|basis| basis == "probe_sequence_alignment_not_assessed")
+    );
+    assert_eq!(mapping.exon_ordinals, vec![1, 2]);
+    assert_eq!(
+        mapping.exon_ranges_1based,
+        vec!["11..28".to_string(), "61..80".to_string()]
+    );
+    assert_eq!(
+        mapping.local_exon_ranges_1based,
+        vec!["11..28".to_string(), "61..80".to_string()]
+    );
+    assert_eq!(mapping.overlap_bp, 18);
+    assert_eq!(mapping.junction_spans.len(), 1);
+    let junction = &mapping.junction_spans[0];
+    assert_eq!(junction.from_exon_ordinal, 1);
+    assert_eq!(junction.to_exon_ordinal, 2);
+    assert_eq!(junction.genomic_start_1based, 29);
+    assert_eq!(junction.genomic_end_1based, 60);
+    assert_eq!(junction.local_start_1based, Some(29));
+    assert_eq!(junction.local_end_1based, Some(60));
+    let tx = &report.transcript_rows[0];
+    assert_eq!(tx.compatible_geometry_score, 0.75);
+    assert_eq!(tx.unique_geometry_score, 0.75);
+    assert_eq!(tx.shared_geometry_score, 0.0);
+    assert_eq!(tx.constraining_geometry_score, 0.0);
+    assert_eq!(tx.review_status, "unique_geometry_for_review");
+}
+
+#[test]
+fn project_probe_region_output_uses_declared_coordinate_projection_map() {
+    let temp = tempdir().expect("tempdir");
+    let output_dir = temp.path().join("probe_regions_projected");
+    write_probe_region_projected_fixture(&output_dir);
+    let mut engine = microarray_anchored_engine_at("hg38", "chr1", 2001, 2100, "+");
+
+    let inspection = engine
+        .inspect_probe_region_output(&output_dir.to_string_lossy())
+        .expect("inspect projected probe-region helper output");
+    assert_eq!(inspection.coordinate_projections.len(), 1);
+    assert!(inspection.projection_ready);
+
+    let result = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec!["TAp73-AdGFP".to_string()],
+            level: None,
+            min_abs_logfc: Some(0.5),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project probe-region helper output through coordinate map");
+    let report = result.microarray_projection.expect("projection report");
+    assert!(report.coordinate_projection_used);
+    assert_eq!(
+        report.coordinate_projection_method.as_deref(),
+        Some("synthetic_interval_map")
+    );
+    assert_eq!(report.coordinate_system, "hg19");
+    assert_eq!(report.anchor_genome_id, "hg38");
+    assert_eq!(report.imported_features, 1);
+    assert_eq!(report.skipped_filter, 1);
+    assert_eq!(report.skipped_projection_unmapped, 1);
+    assert_eq!(report.skipped_wrong_chromosome, 0);
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    let feature = dna
+        .features()
+        .iter()
+        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("PSR1"))
+        .expect("projected PSR1 feature");
+    assert_eq!(feature.location.find_bounds().unwrap(), (9, 30));
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_assembly_check").as_deref(),
+        Some("projected_from_native_coordinate_system")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_projection_method").as_deref(),
+        Some("synthetic_interval_map")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_projection_status").as_deref(),
+        Some("mapped_unique_interval_block")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_native_start_1based").as_deref(),
+        Some("1010")
+    );
+    assert_eq!(
+        first_qualifier(feature, "genomic_start_1based").as_deref(),
+        Some("2010")
+    );
+}
+
+#[test]
+fn project_probe_region_output_rejects_anchor_coordinate_mismatch() {
+    let temp = tempdir().expect("tempdir");
+    let output_dir = temp.path().join("probe_regions");
+    write_probe_region_projection_fixture(&output_dir);
+    let mut engine = microarray_anchored_engine("mm39", "+");
+
+    let err = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec![],
+            level: None,
+            min_abs_logfc: None,
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect_err("mismatched helper output should fail");
+    assert_eq!(err.code, ErrorCode::InvalidInput);
+    assert!(err.message.contains("is not compatible"));
+    assert_eq!(
+        engine
+            .state()
+            .sequences
+            .get("array_slice")
+            .unwrap()
+            .features()
+            .len(),
+        0
+    );
+}
+
+#[test]
+fn probe_region_plan_builds_apt_suggested_command_for_library_directory() {
+    let temp = tempdir().expect("tempdir");
+    let library_dir = temp.path().join("apt_library");
+    fs::create_dir(&library_dir).expect("apt library dir");
+    let pgf = library_dir.join("Clariom_D_Human.pgf");
+    let clf = library_dir.join("Clariom_D_Human.clf");
+    let mps = library_dir.join("Clariom_D_Human.mps");
+    fs::write(&pgf, "# synthetic pgf placeholder\n").expect("pgf");
+    fs::write(&clf, "# synthetic clf placeholder\n").expect("clf");
+    fs::write(&mps, "# synthetic mps placeholder\n").expect("mps");
+    let cel_a = temp.path().join("sample_a.CEL");
+    let cel_b = temp.path().join("sample_b.CEL");
+    fs::write(&cel_a, "synthetic CEL placeholder\n").expect("cel a");
+    fs::write(&cel_b, "synthetic CEL placeholder\n").expect("cel b");
+
+    let plan = GentleEngine::default().plan_probe_regions(ProbeRegionRequest {
+        cel_paths: vec![
+            cel_a.to_string_lossy().to_string(),
+            cel_b.to_string_lossy().to_string(),
+        ],
+        genes: vec!["PATZ1".to_string()],
+        platform: Some("Clariom_D_Human".to_string()),
+        annotation_library_path: Some(library_dir.to_string_lossy().to_string()),
+        normalization: "rma".to_string(),
+        output_dir: Some(temp.path().join("apt_out").to_string_lossy().to_string()),
+        dry_run: true,
+        ..Default::default()
+    });
+    let apt = plan
+        .backend_candidates
+        .iter()
+        .find(|candidate| candidate.backend == "affymetrix_power_tools")
+        .expect("APT backend candidate");
+    assert!(
+        !apt.missing
+            .iter()
+            .any(|missing| missing.contains("PGF") || missing.contains("CLF"))
+    );
+    assert!(
+        apt.detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Explicit Affymetrix Power Tools preflight")
+    );
+    let command = apt
+        .suggested_command
+        .as_deref()
+        .expect("APT suggested command");
+    assert!(command.contains("apt-probeset-summarize"));
+    assert!(command.contains("-a rma-sketch"));
+    assert!(command.contains(&pgf.to_string_lossy().to_string()));
+    assert!(command.contains(&clf.to_string_lossy().to_string()));
+    assert!(command.contains(&mps.to_string_lossy().to_string()));
+    assert!(command.contains(&cel_a.to_string_lossy().to_string()));
+    assert!(command.contains(&cel_b.to_string_lossy().to_string()));
+}
+
+#[test]
+fn probe_region_platform_registry_resolves_clariom_and_legacy_aliases() {
+    let temp = tempdir().expect("tempdir");
+    let cel = temp.path().join("sample.CEL");
+    fs::write(&cel, "synthetic CEL placeholder\n").expect("write cel");
+    let clariom_plan = GentleEngine::default().plan_probe_regions(ProbeRegionRequest {
+        cel_paths: vec![cel.to_string_lossy().to_string()],
+        genes: vec!["TP73".to_string()],
+        platform: Some("pd.clariom.d.human".to_string()),
+        normalization: "none".to_string(),
+        dry_run: true,
+        ..Default::default()
+    });
+    let clariom = clariom_plan.platform;
+    assert_eq!(clariom.normalized, "Clariom_D_Human");
+    assert_eq!(
+        clariom.registry_id.as_deref(),
+        Some("affymetrix.clariom_d_human.na36.hg38")
+    );
+    assert_eq!(clariom.family.as_deref(), Some("clariom"));
+    assert_eq!(clariom.species.as_deref(), Some("human"));
+    assert_eq!(
+        clariom.bioconductor_package.as_deref(),
+        Some("pd.clariom.d.human")
+    );
+    assert!(
+        clariom
+            .backend_kinds
+            .iter()
+            .any(|backend| backend == "r_oligo")
+    );
+    assert!(
+        clariom
+            .backend_kinds
+            .iter()
+            .any(|backend| backend == "affymetrix_power_tools")
+    );
+    assert_eq!(clariom.confidence, "verified");
+
+    let legacy_plan = GentleEngine::default().plan_probe_regions(ProbeRegionRequest {
+        cel_paths: vec![cel.to_string_lossy().to_string()],
+        genes: vec!["TP73".to_string()],
+        platform: Some("GPL570".to_string()),
+        normalization: "none".to_string(),
+        dry_run: true,
+        ..Default::default()
+    });
+    let legacy = legacy_plan.platform;
+    assert_eq!(legacy.normalized, "HG_U133_Plus_2");
+    assert_eq!(legacy.family.as_deref(), Some("legacy_3prime_ivt_cdf"));
+    assert_eq!(legacy.cdf_package.as_deref(), Some("hgu133plus2cdf"));
+    assert_eq!(legacy.annotation_package.as_deref(), Some("hgu133plus2.db"));
+    assert_eq!(legacy.backend_kinds, vec!["r_affy_cdf".to_string()]);
+    assert_eq!(legacy.confidence, "provisional");
+}
+
+#[test]
+fn probe_region_plan_uses_affy_cdf_backend_for_legacy_ivt_arrays() {
+    let temp = tempdir().expect("tempdir");
+    let cel = temp.path().join("sample.CEL");
+    fs::write(&cel, "synthetic CEL placeholder\n").expect("write cel");
+
+    let plan = GentleEngine::default().plan_probe_regions(ProbeRegionRequest {
+        cel_paths: vec![cel.to_string_lossy().to_string()],
+        genes: vec!["TP73".to_string()],
+        platform: Some("HG-U133 Plus 2.0".to_string()),
+        normalization: "rma".to_string(),
+        output_dir: Some(temp.path().join("affy_out").to_string_lossy().to_string()),
+        dry_run: true,
+        ..Default::default()
+    });
+
+    assert_eq!(plan.platform.normalized, "HG_U133_Plus_2");
+    assert_eq!(
+        plan.platform.family.as_deref(),
+        Some("legacy_3prime_ivt_cdf")
+    );
+    assert!(
+        plan.warnings
+            .iter()
+            .any(|warning| warning.contains("recognized") && warning.contains("provisional"))
+    );
+    let affy = plan
+        .backend_candidates
+        .iter()
+        .find(|candidate| candidate.backend == "r_affy_cdf")
+        .expect("legacy platform should use affy/CDF backend candidate");
+    assert_eq!(
+        affy.helper_script.as_deref(),
+        Some("scripts/probe_regions_affy.R")
+    );
+    let command = affy
+        .suggested_command
+        .as_deref()
+        .expect("affy/CDF suggested command");
+    assert!(command.contains("Rscript scripts/probe_regions_affy.R"));
+    assert!(command.contains("--cdf-package hgu133plus2cdf"));
+    assert!(command.contains("--annotation-package hgu133plus2.db"));
+    assert!(
+        affy.required_inputs
+            .iter()
+            .any(|required| required == "R package affy")
+    );
+    assert!(
+        !plan
+            .backend_candidates
+            .iter()
+            .any(|candidate| candidate.backend == "r_oligo"),
+        "legacy CDF arrays must not be offered through the whole-transcript oligo backend"
+    );
+}
+
+#[test]
+fn probe_region_plan_infers_clariom_platform_from_publication_dataset() {
+    let plan = GentleEngine::default().plan_probe_regions(ProbeRegionRequest {
+        dataset: Some("E-MTAB-14704".to_string()),
+        genes: vec!["TP73".to_string()],
+        normalization: "none".to_string(),
+        dry_run: true,
+        ..Default::default()
+    });
+
+    assert_eq!(plan.request.platform.as_deref(), Some("Clariom_D_Human"));
+    assert_eq!(plan.platform.normalized, "Clariom_D_Human");
+    assert!(
+        plan.warnings
+            .iter()
+            .any(|warning| warning.contains("inferred probe-region platform 'Clariom_D_Human'"))
+    );
+}
+
+#[test]
+fn probe_region_unknown_platform_still_honors_user_annotation_library() {
+    let temp = tempdir().expect("tempdir");
+    let cel = temp.path().join("sample.CEL");
+    let annotation_dir = temp.path().join("annotation");
+    fs::write(&cel, "synthetic CEL placeholder\n").expect("write cel");
+    fs::create_dir(&annotation_dir).expect("annotation dir");
+
+    let plan = GentleEngine::default().plan_probe_regions(ProbeRegionRequest {
+        cel_paths: vec![cel.to_string_lossy().to_string()],
+        genes: vec!["TP73".to_string()],
+        platform: Some("Local_Old_Array".to_string()),
+        annotation_library_path: Some(annotation_dir.to_string_lossy().to_string()),
+        normalization: "none".to_string(),
+        dry_run: true,
+        ..Default::default()
+    });
+
+    assert_eq!(plan.platform.confidence, "unknown");
+    assert_eq!(plan.annotation_source.usable, true);
+    assert_eq!(plan.annotation_source.source_kind, "annotation_directory");
+    assert!(
+        plan.warnings
+            .iter()
+            .any(|warning| warning.contains("not in GENtle's current Affymetrix backend map"))
+    );
+    assert!(
+        !plan
+            .errors
+            .iter()
+            .any(|error| error.contains("No --annotation-library was supplied")),
+        "user-supplied annotation library should suppress missing annotation errors"
+    );
+}
+
+#[test]
+fn import_apt_probe_region_output_writes_inspectable_helper_directory() {
+    let temp = tempdir().expect("tempdir");
+    let summary = temp.path().join("apt.summary.tsv");
+    let annotation = temp.path().join("annotation.csv");
+    let output_dir = temp.path().join("probe_regions_from_apt");
+    fs::write(
+        &summary,
+        concat!(
+            "probeset_id\tsample_a.CEL\tsample_b.CEL\n",
+            "PSR2\t7.8\t7.9\n",
+            "PSR1\t8.1\t9.2\n",
+            "MISSING\t1.0\t1.1\n"
+        ),
+    )
+    .expect("APT summary");
+    fs::write(
+        &annotation,
+        concat!(
+            "probeset_id,chromosome,start,stop,strand,transcript_cluster_id,number_of_probes,gene_symbol,probe_id,probe_start,probe_stop,x,y\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_1,1011,1028,10,20\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_2,1012,1029,11,20\n",
+            "PSR2,chr1,1060,1080,+,TC1,4,PATZ1,probe_3,1061,1078,12,21\n"
+        ),
+    )
+    .expect("annotation");
+
+    let report = GentleEngine::default()
+        .import_apt_probe_region_output(
+            &summary.to_string_lossy(),
+            &annotation.to_string_lossy(),
+            &output_dir.to_string_lossy(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("Clariom_D_Human"),
+            Some("rma-sketch"),
+            Some("hg38"),
+            Some("GRCh38"),
+        )
+        .expect("import explicit APT output");
+    assert_eq!(report.schema, PROBE_REGION_APT_IMPORT_REPORT_SCHEMA);
+    assert_eq!(report.summary_row_count, 3);
+    assert_eq!(report.annotation_row_count, 2);
+    assert_eq!(report.written_row_count, 2);
+    assert_eq!(report.missing_annotation_count, 1);
+    assert_eq!(
+        report.sample_columns,
+        vec!["sample_a.CEL".to_string(), "sample_b.CEL".to_string()]
+    );
+    assert_eq!(report.inspection.row_count, 2);
+    assert!(report.inspection.usable);
+    assert_eq!(
+        report.inspection.backend.as_deref(),
+        Some("affymetrix_power_tools")
+    );
+    assert_eq!(report.inspection.coordinate_system.as_deref(), Some("hg38"));
+
+    let region_table = fs::read_to_string(output_dir.join("region_intensity_chrom_order.csv"))
+        .expect("region table");
+    assert!(region_table.contains("chromosome,start,stop,strand,probeset_or_region_id"));
+    assert!(region_table.contains("chr1,1010,1030,+,PSR1"));
+    assert!(region_table.contains("chr1,1060,1080,+,PSR2"));
+}
+
+#[test]
+fn import_apt_probe_region_output_derives_metadata_condition_tracks() {
+    let tmp = tempdir().expect("tempdir");
+    let summary = tmp.path().join("apt.summary.tsv");
+    let annotation = tmp.path().join("annotation.csv");
+    let metadata = tmp.path().join("samples.csv");
+    let output_dir = tmp.path().join("probe_regions");
+    fs::write(
+        &summary,
+        concat!(
+            "probeset_id\tsample_a.CEL\tsample_b.CEL\n",
+            "PSR1\t8.1\t9.2\n",
+            "PSR2\t7.8\t7.9\n"
+        ),
+    )
+    .expect("APT summary");
+    fs::write(
+        &annotation,
+        concat!(
+            "probeset_id,chromosome,start,stop,strand,transcript_cluster_id,number_of_probes,gene_symbol,probe_id,probe_start,probe_stop,x,y\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_1,1011,1028,10,20\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_2,1012,1029,11,20\n",
+            "PSR2,chr1,1060,1080,+,TC1,4,PATZ1,probe_3,1061,1078,12,21\n"
+        ),
+    )
+    .expect("annotation");
+    fs::write(
+        &metadata,
+        concat!(
+            "file,condition\n",
+            "sample_a.CEL,AdGFP\n",
+            "sample_b.CEL,TAp73\n"
+        ),
+    )
+    .expect("metadata");
+
+    let report = GentleEngine::default()
+        .import_apt_probe_region_output(
+            &summary.to_string_lossy(),
+            &annotation.to_string_lossy(),
+            &output_dir.to_string_lossy(),
+            Some(&metadata.to_string_lossy()),
+            Some("condition"),
+            Some("file"),
+            None,
+            None,
+            Some("Clariom_D_Human"),
+            Some("rma-sketch"),
+            Some("hg38"),
+            Some("GRCh38"),
+        )
+        .expect("import explicit APT output with metadata");
+
+    assert_eq!(
+        report.metadata_path.as_deref(),
+        Some(metadata.to_str().unwrap())
+    );
+    assert_eq!(report.condition_column.as_deref(), Some("condition"));
+    assert_eq!(report.sample_column.as_deref(), Some("file"));
+    assert_eq!(
+        report.condition_columns,
+        vec!["AdGFP".to_string(), "TAp73".to_string()]
+    );
+    assert_eq!(report.logfc_columns, vec!["TAp73-AdGFP".to_string()]);
+    assert_eq!(report.probe_row_count, 3);
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("parent probeset-summary intensities"))
+    );
+    assert_eq!(report.inspection.probe_row_count, 3);
+    assert_eq!(report.inspection.probe_parent_feature_count, 2);
+    assert_eq!(
+        report.inspection.condition_summary_columns,
+        vec![
+            "mean_log2_AdGFP".to_string(),
+            "sd_log2_AdGFP".to_string(),
+            "mean_log2_TAp73".to_string(),
+            "sd_log2_TAp73".to_string(),
+        ]
+    );
+    assert_eq!(
+        report.inspection.logfc_columns,
+        vec!["log2FC_TAp73-AdGFP".to_string()]
+    );
+    let table =
+        fs::read_to_string(output_dir.join("region_intensity_chrom_order.csv")).expect("table");
+    assert!(table.contains("mean_log2_AdGFP"));
+    assert!(table.contains("log2FC_TAp73-AdGFP"));
+    assert!(table.contains("PSR1,"));
+    assert!(table.contains(",8.1,9.2,8.100,0.000,9.200,0.000,1.100"));
+    let probe_table =
+        fs::read_to_string(output_dir.join("probe_intensity_chrom_order.csv")).expect("probes");
+    assert!(probe_table.contains("parent_probeset_summary"));
+    assert!(probe_table.contains("probe_1"));
+    assert!(probe_table.contains("probe_3"));
+}
+
+#[test]
+fn import_apt_probe_region_output_uses_supplied_probe_intensity_table() {
+    let tmp = tempdir().expect("tempdir");
+    let summary = tmp.path().join("apt.summary.tsv");
+    let annotation = tmp.path().join("annotation.csv");
+    let metadata = tmp.path().join("samples.csv");
+    let probe_intensity = tmp.path().join("probe_intensity.tsv");
+    let output_dir = tmp.path().join("probe_regions");
+    fs::write(
+        &summary,
+        concat!(
+            "probeset_id\tsample_a.CEL\tsample_b.CEL\n",
+            "PSR1\t8.1\t9.2\n",
+            "PSR2\t7.8\t7.9\n"
+        ),
+    )
+    .expect("APT summary");
+    fs::write(
+        &annotation,
+        concat!(
+            "probeset_id,chromosome,start,stop,strand,transcript_cluster_id,number_of_probes,gene_symbol,probe_id,probe_start,probe_stop,x,y\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_1,1011,1028,10,20\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_2,1012,1029,11,20\n",
+            "PSR2,chr1,1060,1080,+,TC1,4,PATZ1,probe_3,1061,1078,12,21\n"
+        ),
+    )
+    .expect("annotation");
+    fs::write(
+        &metadata,
+        concat!(
+            "file,condition\n",
+            "sample_a.CEL,AdGFP\n",
+            "sample_b.CEL,TAp73\n"
+        ),
+    )
+    .expect("metadata");
+    fs::write(
+        &probe_intensity,
+        concat!(
+            "probe_id\tsample_a.CEL\tsample_b.CEL\n",
+            "probe_1\t5.0\t6.0\n",
+            "probe_2\t5.5\t6.2\n",
+            "probe_3\t3.0\t4.5\n"
+        ),
+    )
+    .expect("probe intensity");
+
+    let report = GentleEngine::default()
+        .import_apt_probe_region_output(
+            &summary.to_string_lossy(),
+            &annotation.to_string_lossy(),
+            &output_dir.to_string_lossy(),
+            Some(&metadata.to_string_lossy()),
+            Some("condition"),
+            Some("file"),
+            Some(&probe_intensity.to_string_lossy()),
+            Some("probe_id"),
+            Some("Clariom_D_Human"),
+            Some("rma-sketch"),
+            Some("hg38"),
+            Some("GRCh38"),
+        )
+        .expect("import explicit APT output with probe intensities");
+
+    assert_eq!(report.probe_row_count, 3);
+    assert_eq!(report.missing_probe_intensity_count, 0);
+    assert_eq!(
+        report.probe_intensity_path.as_deref(),
+        Some(probe_intensity.to_str().unwrap())
+    );
+    assert_eq!(
+        report.probe_intensity_source.as_deref(),
+        Some("probe_level_input")
+    );
+    assert_eq!(
+        report.probe_intensity_sample_columns,
+        vec!["sample_a.CEL".to_string(), "sample_b.CEL".to_string()]
+    );
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("parent probeset-summary intensities"))
+    );
+
+    let region_table =
+        fs::read_to_string(output_dir.join("region_intensity_chrom_order.csv")).expect("table");
+    assert!(region_table.contains(",8.1,9.2,8.100,0.000,9.200,0.000,1.100"));
+    let probe_table =
+        fs::read_to_string(output_dir.join("probe_intensity_chrom_order.csv")).expect("probes");
+    assert!(probe_table.contains("probe_level_input"));
+    assert!(probe_table.contains(
+        "chr1,1011,1028,+,probe_1,10,20,PSR1,TC1,PATZ1,probe_level_input,5.0,6.0,5.000,0.000,6.000,0.000,1.000"
+    ));
+    assert!(probe_table.contains(
+        "chr1,1061,1078,+,probe_3,12,21,PSR2,TC1,PATZ1,probe_level_input,3.0,4.5,3.000,0.000,4.500,0.000,1.500"
+    ));
+    let provenance = fs::read_to_string(output_dir.join("provenance.json")).expect("provenance");
+    assert!(provenance.contains("\"probe_intensity_source\": \"probe_level_input\""));
+    assert!(provenance.contains("\"probe_intensity_probe_id_column\": \"probe_id\""));
+}
+
+#[test]
+fn import_project_interpret_pm_probe_region_output_end_to_end() {
+    let tmp = tempdir().expect("tempdir");
+    let summary = tmp.path().join("apt.summary.tsv");
+    let annotation = tmp.path().join("annotation.csv");
+    let metadata = tmp.path().join("samples.csv");
+    let probe_intensity = tmp.path().join("probe_intensity.tsv");
+    let output_dir = tmp.path().join("probe_regions");
+    fs::write(
+        &summary,
+        concat!(
+            "probeset_id\tsample_a.CEL\tsample_b.CEL\n",
+            "PSR1\t8.1\t9.2\n",
+            "PSR2\t7.8\t7.9\n"
+        ),
+    )
+    .expect("APT summary");
+    fs::write(
+        &annotation,
+        concat!(
+            "probeset_id,chromosome,start,stop,strand,transcript_cluster_id,number_of_probes,gene_symbol,probe_id,probe_start,probe_stop,x,y\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_1,1011,1028,10,20\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_2,1012,1029,11,20\n",
+            "PSR2,chr1,1060,1080,+,TC1,4,PATZ1,probe_3,1061,1078,12,21\n"
+        ),
+    )
+    .expect("annotation");
+    fs::write(
+        &metadata,
+        concat!(
+            "file,condition\n",
+            "sample_a.CEL,AdGFP\n",
+            "sample_b.CEL,TAp73\n"
+        ),
+    )
+    .expect("metadata");
+    fs::write(
+        &probe_intensity,
+        concat!(
+            "probe_id\tsample_a.CEL\tsample_b.CEL\n",
+            "probe_1\t5.0\t6.0\n",
+            "probe_2\t5.5\t6.2\n",
+            "probe_3\t3.0\t3.2\n"
+        ),
+    )
+    .expect("probe intensity");
+
+    let mut engine = microarray_anchored_engine("hg38", "+");
+    let import_run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ArraysImportAptProbeRegionOutput {
+            summary: summary.to_string_lossy().to_string(),
+            annotation: annotation.to_string_lossy().to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            metadata: Some(metadata.to_string_lossy().to_string()),
+            condition_column: Some("condition".to_string()),
+            sample_column: Some("file".to_string()),
+            probe_intensity: Some(probe_intensity.to_string_lossy().to_string()),
+            probe_id_column: Some("probe_id".to_string()),
+            platform: Some("Clariom_D_Human".to_string()),
+            normalization: Some("rma-sketch".to_string()),
+            coordinate_system: Some("hg38".to_string()),
+            genome_build: Some("GRCh38".to_string()),
+        },
+    )
+    .expect("execute APT helper-output import through shell route");
+    assert!(!import_run.state_changed);
+    assert_eq!(
+        import_run.output["import"]["probe_intensity_source"].as_str(),
+        Some("probe_level_input")
+    );
+
+    let probe_table =
+        fs::read_to_string(output_dir.join("probe_intensity_chrom_order.csv")).expect("probes");
+    assert!(probe_table.contains("probe_level_input"));
+    assert!(probe_table.contains(
+        "chr1,1011,1028,+,probe_1,10,20,PSR1,TC1,PATZ1,probe_level_input,5.0,6.0,5.000,0.000,6.000,0.000,1.000"
+    ));
+
+    let result = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec!["TAp73-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project imported PM probe helper output");
+    let projection = result.microarray_projection.expect("projection report");
+    assert_eq!(projection.level, "pm_probe");
+    assert_eq!(projection.parsed_rows, 3);
+    assert_eq!(projection.imported_features, 2);
+    assert_eq!(projection.skipped_filter, 1);
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    let array_features = dna
+        .features()
+        .iter()
+        .filter(|feature| {
+            first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(array_features.len(), 2);
+    let first_probe = array_features
+        .iter()
+        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("probe_1"))
+        .expect("projected true PM probe feature");
+    assert_eq!(
+        first_qualifier(first_probe, "gentle_array_level").as_deref(),
+        Some("pm_probe")
+    );
+    assert_eq!(
+        first_qualifier(first_probe, "gentle_array_intensity_source").as_deref(),
+        Some("probe_level_input")
+    );
+
+    let dna = engine
+        .state_mut()
+        .sequences
+        .get_mut("array_slice")
+        .expect("array slice");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 28),
+            gb_io::seq::Location::simple_range(60, 80),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("PATZ1".to_string())),
+            ("transcript_id".into(), Some("PATZ1-201".to_string())),
+            ("label".into(), Some("PATZ1-201".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 28),
+            gb_io::seq::Location::simple_range(70, 90),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("PATZ1".to_string())),
+            ("transcript_id".into(), Some("PATZ1-202".to_string())),
+            ("label".into(), Some("PATZ1-202".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+
+    let report_path = tmp.path().join("probe_region_interpretation.json");
+    let result = engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("PATZ1".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            path: Some(report_path.to_string_lossy().to_string()),
+        })
+        .expect("interpret imported and projected PM probe evidence");
+    assert!(report_path.exists());
+    let report = result
+        .probe_region_evidence_interpretation
+        .expect("interpretation report");
+    assert_eq!(report.schema, PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA);
+    assert_eq!(report.level, "pm_probe");
+    assert_eq!(report.array_feature_count, 2);
+    assert_eq!(report.transcript_count, 2);
+    assert_eq!(report.evidence_rows.len(), 2);
+    let first_row = report
+        .evidence_rows
+        .iter()
+        .find(|row| row.feature_id == "probe_1")
+        .expect("probe_1 interpretation row");
+    assert_eq!(first_row.parent_feature_id.as_deref(), Some("PSR1"));
+    assert!(
+        first_row
+            .ambiguity_tags
+            .iter()
+            .any(|tag| tag == "multi_hit_not_assessed")
+    );
+    assert!(
+        first_row
+            .ambiguity_tags
+            .iter()
+            .any(|tag| tag == "isoform_support_not_inferred")
+    );
+}
+
+#[test]
+fn glen_probe_region_adapter_regenerates_committed_e_mtab_fixture() {
+    let tmp = tempdir().expect("tempdir");
+    GentleEngine::import_glen_probe_region_fixture(
+        &probe_region_tp73_glen_adapter_input(),
+        tmp.path(),
+    )
+    .expect("regenerate Glen-derived TP73 fixture");
+
+    let committed = PathBuf::from(probe_region_tp73_validation_fixture_dir());
+    for file_name in [
+        "region_intensity_chrom_order.csv",
+        "probe_intensity_chrom_order.csv",
+        "normalized_feature_matrix_manifest.json",
+        "provenance.json",
+    ] {
+        let generated = fs::read_to_string(tmp.path().join(file_name))
+            .unwrap_or_else(|error| panic!("generated {file_name}: {error}"));
+        let expected = fs::read_to_string(committed.join(file_name))
+            .unwrap_or_else(|error| panic!("committed {file_name}: {error}"));
+        assert_eq!(
+            generated, expected,
+            "{file_name} drifted from adapter output"
+        );
+    }
+}
+
+#[test]
+fn e_mtab_14704_tp73_validation_fixture_projects_and_interprets_pm_probe_evidence() {
+    let tmp = tempdir().expect("tempdir");
+    let fixture_dir = probe_region_tp73_validation_fixture_dir();
+    let mut engine = tp73_validation_anchored_engine();
+
+    let inspection = engine
+        .inspect_probe_region_output(&fixture_dir)
+        .expect("inspect committed E-MTAB-14704 TP73 validation fixture");
+    assert_eq!(inspection.row_count, 3);
+    assert_eq!(inspection.probe_row_count, 14);
+
+    let result = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: fixture_dir.clone(),
+            contrasts: vec!["AdTAp73alpha-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(20),
+            clear_existing: Some(true),
+        })
+        .expect("project committed PM probe validation fixture");
+    let projection = result.microarray_projection.expect("projection report");
+    assert_eq!(projection.schema, MICROARRAY_PROJECTION_REPORT_SCHEMA);
+    assert_eq!(projection.level, "pm_probe");
+    assert_eq!(projection.parsed_rows, 14);
+    assert_eq!(projection.imported_features, 14);
+    assert_eq!(projection.skipped_filter, 0);
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    let pm_probe = dna
+        .features()
+        .iter()
+        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("342828"))
+        .expect("projected 342828 feature");
+    assert_eq!(pm_probe.location.find_bounds().unwrap(), (60, 71));
+    assert_eq!(
+        first_qualifier(pm_probe, "gentle_array_parent_feature_id").as_deref(),
+        Some("PSR0100145780.hg.1")
+    );
+    assert_eq!(
+        first_qualifier(pm_probe, "gentle_array_intensity_source").as_deref(),
+        Some("probe_level_input")
+    );
+    assert_eq!(
+        first_qualifier(pm_probe, "genomic_start_1based").as_deref(),
+        Some("3652576")
+    );
+
+    let report_path = tmp
+        .path()
+        .join("clariom_e_mtab_14704_tp73_interpretation.json");
+    let result = engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("TP73".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            path: Some(report_path.to_string_lossy().to_string()),
+        })
+        .expect("interpret committed PM probe validation fixture");
+    assert!(report_path.exists());
+    let report = result
+        .probe_region_evidence_interpretation
+        .expect("interpretation report");
+    assert_eq!(report.schema, PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA);
+    assert_eq!(report.level, "pm_probe");
+    assert_eq!(report.coordinate_frame, "genomic_1based");
+    assert_eq!(report.coordinate_system.as_deref(), Some("hg38"));
+    assert_eq!(report.coordinate_chromosome.as_deref(), Some("chr1"));
+    assert_eq!(report.array_feature_count, 14);
+    assert_eq!(report.transcript_count, 2);
+    assert_eq!(report.evidence_rows.len(), 14);
+
+    let row = report
+        .evidence_rows
+        .iter()
+        .find(|row| row.feature_id == "342828")
+        .expect("342828 interpretation row");
+    assert_eq!(row.parent_feature_id.as_deref(), Some("PSR0100145780.hg.1"));
+    assert_eq!(row.start_1based, Some(3652576));
+    assert_eq!(row.end_1based, Some(3652586));
+    assert_eq!(row.overlapping_transcript_ids, vec!["TP73-201".to_string()]);
+    let mapping = row
+        .transcript_mappings
+        .iter()
+        .find(|mapping| mapping.transcript_id == "TP73-201")
+        .expect("342828 TP73-201 mapping");
+    assert_eq!(mapping.coordinate_frame, "genomic_1based");
+    assert!(
+        mapping
+            .exon_ranges_1based
+            .iter()
+            .any(|range| range == "3652570..3652595")
+    );
+    assert!(
+        mapping
+            .local_exon_ranges_1based
+            .iter()
+            .any(|range| range == "55..80")
+    );
+    assert!(
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "multi_hit_not_assessed")
+    );
+    assert!(
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "probe_sequence_alignment_not_assessed")
+    );
+    assert!(
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "isoform_support_not_inferred")
+    );
+
+    assert!(report.transcript_rows.iter().any(|row| {
+        row.transcript_id == "TP73-201"
+            && row.unique_evidence_count > 0
+            && row.relationship_summary != "no_compatible_evidence"
+    }));
+    assert!(report.transcript_rows.iter().any(|row| {
+        row.transcript_id == "TP73-202"
+            && row.shared_evidence_count > 0
+            && row.relationship_summary != "no_compatible_evidence"
+    }));
+}
+
+#[test]
+fn e_mtab_14704_tp73_validation_report_is_probe_location_figure_ready() {
+    let fixture_dir = probe_region_tp73_validation_fixture_dir();
+    let mut engine = tp73_validation_anchored_engine();
+    engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: fixture_dir,
+            contrasts: vec!["AdTAp73alpha-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(20),
+            clear_existing: Some(true),
+        })
+        .expect("project committed PM probe validation fixture");
+    let report = engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("TP73".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            path: None,
+        })
+        .expect("interpret committed PM probe validation fixture")
+        .probe_region_evidence_interpretation
+        .expect("interpretation report");
+
+    assert_eq!(report.schema, PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA);
+    assert_eq!(report.level, "pm_probe");
+    assert_eq!(report.coordinate_frame, "genomic_1based");
+    assert_eq!(report.array_feature_count, 14);
+    assert_eq!(report.transcript_count, 2);
+    assert!(report.transcript_rows.iter().all(|row| row.exon_count >= 3));
+
+    for row in &report.evidence_rows {
+        assert_eq!(row.level, "pm_probe");
+        assert!(
+            row.start_1based.is_some(),
+            "missing start for {}",
+            row.feature_id
+        );
+        assert!(
+            row.end_1based.is_some(),
+            "missing end for {}",
+            row.feature_id
+        );
+        assert_eq!(row.chromosome.as_deref(), Some("chr1"));
+        assert_eq!(row.strand.as_deref(), Some("+"));
+        assert!(
+            row.parent_feature_id.is_some(),
+            "missing parent probeset for {}",
+            row.feature_id
+        );
+        for tag in [
+            "probe_sequence_alignment_not_assessed",
+            "multi_hit_not_assessed",
+            "isoform_support_not_inferred",
+        ] {
+            assert!(
+                row.ambiguity_tags.iter().any(|value| value == tag),
+                "missing ambiguity tag {tag} for {}",
+                row.feature_id
+            );
+        }
+        for transcript_id in &row.overlapping_transcript_ids {
+            let mapping = row
+                .transcript_mappings
+                .iter()
+                .find(|mapping| {
+                    mapping.transcript_id == *transcript_id && !mapping.exon_ordinals.is_empty()
+                })
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing exon mapping for transcript {transcript_id} on {}",
+                        row.feature_id
+                    )
+                });
+            assert_eq!(
+                mapping.exon_ordinals.len(),
+                mapping.exon_ranges_1based.len()
+            );
+            assert_eq!(
+                mapping.coordinate_frame, report.coordinate_frame,
+                "renderer frame mismatch for {}",
+                row.feature_id
+            );
+            assert!(
+                mapping
+                    .exon_ranges_1based
+                    .iter()
+                    .all(|range| range.starts_with("365") && range.contains("..")),
+                "renderer needs genomic exon ranges for {}",
+                row.feature_id
+            );
+            assert!(
+                mapping
+                    .local_exon_ranges_1based
+                    .iter()
+                    .all(|range| range.contains("..")),
+                "audit trail needs local exon ranges for {}",
+                row.feature_id
+            );
+        }
+    }
+
+    assert!(
+        report.evidence_rows.iter().any(|row| {
+            row.transcript_mappings
+                .iter()
+                .any(|mapping| !mapping.junction_spans.is_empty())
+        }),
+        "fixture must include a junction-spanning PM probe"
+    );
+    assert!(
+        report.evidence_rows.iter().any(|row| {
+            row.transcript_mappings
+                .iter()
+                .any(|mapping| mapping.mapping_kind == "transcript_span_non_exonic")
+        }),
+        "fixture must include a non-exonic transcript-span constraint"
+    );
+    assert!(
+        report
+            .evidence_rows
+            .iter()
+            .any(|row| row.overlapping_transcript_ids.len() > 1),
+        "fixture must include shared transcript overlap"
+    );
+    assert!(
+        report
+            .evidence_rows
+            .iter()
+            .any(|row| row.overlapping_transcript_ids == vec!["TP73-201".to_string()]),
+        "fixture must include TP73-201-specific overlap"
+    );
+    assert!(
+        report
+            .evidence_rows
+            .iter()
+            .any(|row| row.overlapping_transcript_ids == vec!["TP73-202".to_string()]),
+        "fixture must include TP73-202-specific overlap"
+    );
+}
+
+#[test]
+fn render_probe_region_evidence_svg_from_tp73_validation_report() {
+    let report = tp73_validation_pm_probe_evidence_report();
+
+    let svg = GentleEngine::render_probe_region_evidence_svg_text(&report);
+    let second_svg = GentleEngine::render_probe_region_evidence_svg_text(&report);
+    assert_eq!(svg, second_svg);
+    assert!(svg.contains("gentle.probe_region_evidence_svg_export.v1"));
+    assert!(svg.contains("data-coordinate-frame=\"genomic_1based\""));
+    assert!(svg.contains("Probe-region evidence geometry constraints"));
+    assert!(svg.contains("class=\"transcript\""));
+    assert!(svg.matches("class=\"transcript\"").count() >= 2);
+    assert!(svg.contains("class=\"exon-segment\""));
+    assert!(svg.contains("class=\"parent-probeset\""));
+    assert!(svg.contains("class=\"pm-probe\""));
+    assert!(svg.contains("class=\"junction-span\""));
+    assert!(svg.contains("probe_sequence_alignment_not_assessed"));
+    assert!(svg.contains("multi_hit_not_assessed"));
+    assert!(svg.contains("isoform_support_not_inferred"));
+    assert!(svg.contains("Review-only"));
+    assert!(
+        !svg.contains("report_local_geometry_aligned_to_evidence_axis_without_full_gene_model")
+    );
+    assert!(!svg.contains("report-local"));
+    assert!(svg.contains("data-original-range=\"3652520..3652558\""));
+    assert!(svg.contains("data-transcript-id=\"TP73-201\""));
+    assert!(svg.contains("data-transcript-id=\"TP73-202\""));
+    let compact = svg.split_whitespace().collect::<String>();
+    assert!(compact.contains("<gid=\"probe-region-evidence-transcripts\""));
+    assert!(compact.contains("<gid=\"probe-region-evidence-probes\""));
+    assert!(compact.contains("<gid=\"probe-region-evidence-legend\""));
+}
+
+#[test]
+fn render_probe_region_evidence_svg_is_byte_stable_for_identical_report() {
+    let report = tp73_validation_pm_probe_evidence_report();
+
+    let first = GentleEngine::render_probe_region_evidence_svg_text(&report);
+    let second = GentleEngine::render_probe_region_evidence_svg_text(&report);
+
+    assert_eq!(first.as_bytes(), second.as_bytes());
+    assert!(first.contains("gentle.probe_region_evidence_svg_export.v1"));
+}
+
+#[test]
+fn render_probe_region_evidence_svg_is_independent_of_report_row_order() {
+    let report = tp73_validation_pm_probe_evidence_report();
+    let mut reordered = report.clone();
+    reordered.evidence_rows.reverse();
+    for row in &mut reordered.evidence_rows {
+        row.overlapping_transcript_ids.reverse();
+        row.transcript_mappings.reverse();
+        for mapping in &mut row.transcript_mappings {
+            mapping.exon_ordinals.reverse();
+            mapping.exon_ranges_1based.reverse();
+            mapping.local_exon_ranges_1based.reverse();
+            mapping.junction_spans.reverse();
+            mapping.score_basis.reverse();
+        }
+        row.ambiguity_tags.reverse();
+    }
+    reordered.transcript_rows.reverse();
+
+    let canonical = GentleEngine::render_probe_region_evidence_svg_text(&report);
+    let shuffled = GentleEngine::render_probe_region_evidence_svg_text(&reordered);
+
+    assert_eq!(canonical.as_bytes(), shuffled.as_bytes());
+}
+
+#[test]
+fn render_probe_region_output_svg_is_byte_stable_for_identical_helper_output() {
+    let fixture_dir = probe_region_tp73_validation_fixture_dir();
+    let temp = tempdir().expect("tempdir");
+    let first_path = temp.path().join("first.svg");
+    let second_path = temp.path().join("second.svg");
+    let engine = GentleEngine::default();
+
+    engine
+        .export_probe_region_output_svg(&fixture_dir, &first_path.to_string_lossy())
+        .expect("export first helper-output probe-region SVG");
+    engine
+        .export_probe_region_output_svg(&fixture_dir, &second_path.to_string_lossy())
+        .expect("export second helper-output probe-region SVG");
+    let first = fs::read(&first_path).expect("read first SVG");
+    let second = fs::read(&second_path).expect("read second SVG");
+
+    assert_eq!(first, second);
+    let first_text = String::from_utf8(first).expect("SVG should be UTF-8");
+    assert!(first_text.contains("gentle.probe_region_output_svg_export.v1"));
+    assert!(first_text.contains("Probe-region intensity evidence"));
+}
+
+#[test]
+fn render_probe_region_evidence_svg_is_stable_for_degenerate_single_coordinate_report() {
+    let report = ProbeRegionEvidenceInterpretationReport {
+        schema: PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA.to_string(),
+        seq_id: "array_slice".to_string(),
+        gene_label: Some("TP73".to_string()),
+        level: "pm_probe".to_string(),
+        array_feature_count: 1,
+        transcript_count: 1,
+        evidence_rows: vec![ProbeRegionEvidenceMappingRow {
+            evidence_id: "probe_42:contrast".to_string(),
+            level: "pm_probe".to_string(),
+            feature_id: "probe_42".to_string(),
+            parent_feature_id: Some("PSR42".to_string()),
+            intensity_source: Some("probe_level_input".to_string()),
+            chromosome: Some("chr1".to_string()),
+            start_1based: Some(42),
+            end_1based: Some(42),
+            strand: Some("+".to_string()),
+            logfc: Some(0.0),
+            overlapping_transcript_ids: vec!["TP73-201".to_string()],
+            overlapping_exon_count: 1,
+            transcript_mappings: vec![ProbeRegionEvidenceTranscriptMapping {
+                transcript_id: "TP73-201".to_string(),
+                coordinate_frame: "sequence_local_1based".to_string(),
+                mapping_kind: "exon_overlap".to_string(),
+                geometry_score: 0.5,
+                geometry_score_class: "weak_geometry_constraint".to_string(),
+                score_basis: vec!["single_coordinate_degenerate_axis".to_string()],
+                exon_ordinals: vec![1],
+                exon_ranges_1based: vec!["42..42".to_string()],
+                local_exon_ranges_1based: vec!["42..42".to_string()],
+                junction_spans: Vec::new(),
+                overlap_bp: 1,
+            }],
+            mapping_status: "compatible".to_string(),
+            ambiguity_tags: vec![
+                "probe_sequence_alignment_not_assessed".to_string(),
+                "multi_hit_not_assessed".to_string(),
+                "isoform_support_not_inferred".to_string(),
+            ],
+            relationship: "geometry_constraint_review_only".to_string(),
+        }],
+        transcript_rows: vec![ProbeRegionEvidenceTranscriptRow {
+            transcript_id: "TP73-201".to_string(),
+            gene: Some("TP73".to_string()),
+            label: Some("TP73-201".to_string()),
+            strand: Some("+".to_string()),
+            exon_count: 1,
+            compatible_evidence_count: 1,
+            constraining_evidence_count: 1,
+            shared_evidence_count: 0,
+            unique_evidence_count: 1,
+            unmapped_evidence_count: 0,
+            compatible_geometry_score: 0.5,
+            shared_geometry_score: 0.0,
+            unique_geometry_score: 0.5,
+            constraining_geometry_score: 0.5,
+            review_status: "unique_geometry_review_only".to_string(),
+            relationship_summary: "geometry_constraint_review_only".to_string(),
+        }],
+        warnings: Vec::new(),
+        ..Default::default()
+    };
+
+    let first = GentleEngine::render_probe_region_evidence_svg_text(&report);
+    let second = GentleEngine::render_probe_region_evidence_svg_text(&report);
+    assert_eq!(first, second);
+    assert!(!first.contains("NaN"));
+    assert!(!first.contains("Infinity"));
+    assert!(first.contains("class=\"pm-probe\""));
+    assert!(first.contains("data-min=\"41\""));
+    assert!(first.contains("data-max=\"43\""));
+}
+
+#[test]
+fn render_probe_region_evidence_svg_uses_report_frame_without_local_alignment_warning() {
+    let report = ProbeRegionEvidenceInterpretationReport {
+        schema: PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA.to_string(),
+        seq_id: "array_slice".to_string(),
+        gene_label: Some("TP73".to_string()),
+        level: "pm_probe".to_string(),
+        coordinate_frame: "genomic_1based".to_string(),
+        coordinate_system: Some("hg38".to_string()),
+        coordinate_chromosome: Some("chr1".to_string()),
+        array_feature_count: 1,
+        transcript_count: 1,
+        evidence_rows: vec![ProbeRegionEvidenceMappingRow {
+            evidence_id: "probe_719406:contrast".to_string(),
+            level: "pm_probe".to_string(),
+            feature_id: "719406".to_string(),
+            parent_feature_id: Some("PSR0100145779.hg.1".to_string()),
+            intensity_source: Some("probe_level_input".to_string()),
+            chromosome: Some("chr1".to_string()),
+            start_1based: Some(3_652_527),
+            end_1based: Some(3_652_538),
+            strand: Some("+".to_string()),
+            logfc: Some(0.72),
+            overlapping_transcript_ids: vec!["TP73-201".to_string()],
+            overlapping_exon_count: 2,
+            transcript_mappings: vec![ProbeRegionEvidenceTranscriptMapping {
+                transcript_id: "TP73-201".to_string(),
+                coordinate_frame: "genomic_1based".to_string(),
+                mapping_kind: "junction_spanning_exon_overlap".to_string(),
+                geometry_score: 1.0,
+                geometry_score_class: "strong_geometry_constraint".to_string(),
+                score_basis: vec!["junction_spans=1".to_string()],
+                exon_ordinals: vec![1, 2],
+                exon_ranges_1based: vec![
+                    "3652527..3652538".to_string(),
+                    "3652550..3652564".to_string(),
+                ],
+                local_exon_ranges_1based: vec!["11..28".to_string(), "61..90".to_string()],
+                junction_spans: vec![ProbeRegionEvidenceJunctionSpan {
+                    from_exon_ordinal: 1,
+                    to_exon_ordinal: 2,
+                    genomic_start_1based: 3_652_539,
+                    genomic_end_1based: 3_652_549,
+                    local_start_1based: Some(29),
+                    local_end_1based: Some(60),
+                }],
+                overlap_bp: 22,
+            }],
+            mapping_status: "compatible".to_string(),
+            ambiguity_tags: vec![
+                "probe_sequence_alignment_not_assessed".to_string(),
+                "multi_hit_not_assessed".to_string(),
+                "isoform_support_not_inferred".to_string(),
+            ],
+            relationship: "geometry_constraint_review_only".to_string(),
+        }],
+        transcript_rows: vec![ProbeRegionEvidenceTranscriptRow {
+            transcript_id: "TP73-201".to_string(),
+            gene: Some("TP73".to_string()),
+            label: Some("TP73-201".to_string()),
+            strand: Some("+".to_string()),
+            exon_count: 3,
+            compatible_evidence_count: 1,
+            constraining_evidence_count: 1,
+            shared_evidence_count: 0,
+            unique_evidence_count: 1,
+            unmapped_evidence_count: 0,
+            compatible_geometry_score: 1.0,
+            shared_geometry_score: 0.0,
+            unique_geometry_score: 1.0,
+            constraining_geometry_score: 1.0,
+            review_status: "unique_geometry_review_only".to_string(),
+            relationship_summary: "geometry_constraint_review_only".to_string(),
+        }],
+        warnings: Vec::new(),
+        ..Default::default()
+    };
+
+    let temp = tempdir().expect("tempdir");
+    let report_path = temp.path().join("same_frame_report.json");
+    let svg_path = temp.path().join("same_frame.svg");
+    fs::write(
+        &report_path,
+        serde_json::to_string_pretty(&report).expect("serialize same-frame report"),
+    )
+    .expect("write same-frame report");
+    let export = GentleEngine::default()
+        .export_probe_region_evidence_svg(
+            &report_path.to_string_lossy(),
+            &svg_path.to_string_lossy(),
+        )
+        .expect("export same-frame evidence SVG");
+    assert!(!export.warnings.iter().any(|warning| {
+        warning == "report_local_geometry_aligned_to_evidence_axis_without_full_gene_model"
+    }));
+    let svg = fs::read_to_string(&svg_path).expect("read same-frame svg");
+    assert!(svg.contains("data-coordinate-frame=\"genomic_1based\""));
+    assert!(svg.contains("data-min=\"3652527\""));
+    assert!(svg.contains("data-max=\"3652564\""));
+    assert!(svg.contains("data-original-range=\"3652527..3652538\""));
+    assert!(svg.contains("3652539..3652549"));
+    assert!(!svg.contains("report-local"));
+}
+
+#[test]
+fn project_microarray_track_uses_vendor_subset_on_tp73_genbank_anchor() {
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: "test_files/tp73.ncbi.gb".to_string(),
+            as_id: Some("tp73_clariomd_subset".to_string()),
+        })
+        .expect("load TP73 GenBank locus");
+    let result = engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "tp73_clariomd_subset".to_string(),
+            manifest_path: microarray_tp73_vendor_subset_manifest(),
+            contrasts: vec![
+                "AdTAp73alpha-AdGFP".to_string(),
+                "AdTAp73beta-AdGFP".to_string(),
+            ],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: Some(0.0),
+            max_adj_p: Some(1.0),
+            max_features: Some(20),
+            clear_existing: Some(true),
+        })
+        .expect("project vendor-derived TP73 Clariom D subset");
+    let report = result.microarray_projection.expect("projection report");
+    assert_eq!(report.coordinate_system, "hg38");
+    assert_eq!(report.anchor_genome_id, "GRCh38.p14");
+    assert_eq!(report.anchor_chromosome, "1");
+    assert_eq!(report.parsed_rows, 5);
+    assert_eq!(report.imported_features, 5);
+    assert_eq!(report.skipped_wrong_chromosome, 0);
+    assert_eq!(report.skipped_non_overlap, 0);
+
+    let dna = engine
+        .state()
+        .sequences
+        .get("tp73_clariomd_subset")
+        .expect("TP73 sequence");
+    let array_features = dna
+        .features()
+        .iter()
+        .filter(|feature| {
+            first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(array_features.len(), 5);
+    let first = array_features
+        .iter()
+        .find(|feature| {
+            first_qualifier(feature, "feature_id").as_deref() == Some("PSR0100145779.hg.1")
+                && first_qualifier(feature, "gentle_array_contrast").as_deref()
+                    == Some("AdTAp73alpha-AdGFP")
+        })
+        .expect("TP73 first Clariom probeset");
+    assert_eq!(first.location.find_bounds().unwrap(), (4, 49));
+    assert_eq!(
+        first_qualifier(first, "transcript_cluster_id").as_deref(),
+        Some("TC0100006620.hg.1")
+    );
+    assert_eq!(
+        first_qualifier(first, "exon_id").as_deref(),
+        Some("EX0100125487.hg")
+    );
+    assert_eq!(
+        first_qualifier(first, "gentle_array_assembly_check").as_deref(),
+        Some("supported_genome_id_alias_matches_anchor")
+    );
+    assert!(
+        first_qualifier(first, "gentle_array_value_summary")
+            .unwrap()
+            .contains("AdTAp73beta-AdGFP logFC=-0.510000")
+    );
+}
+
+#[test]
+fn project_microarray_track_reverse_anchor_flips_coordinates_and_strand() {
+    let mut engine = microarray_anchored_engine("GRCh38", "-");
+    engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "array_slice".to_string(),
+            manifest_path: microarray_track_fixture_manifest(),
+            contrasts: vec!["AdTAp73alpha-AdGFP".to_string()],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: Some(1.0),
+            max_adj_p: Some(0.05),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project microarray track");
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    assert_eq!(dna.features().len(), 2);
+    let psr1 = dna
+        .features()
+        .iter()
+        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("PSR0001"))
+        .expect("PSR0001 feature");
+    assert_eq!(psr1.location.find_bounds().unwrap(), (80, 91));
+    assert_eq!(first_qualifier(psr1, "strand").as_deref(), Some("-"));
+    let psr2 = dna
+        .features()
+        .iter()
+        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("PSR0002"))
+        .expect("PSR0002 feature");
+    assert_eq!(psr2.location.find_bounds().unwrap(), (40, 51));
+    assert_eq!(first_qualifier(psr2, "strand").as_deref(), Some("+"));
+}
+
+#[test]
+fn project_microarray_track_uses_declared_coordinate_projection_map() {
+    let mut engine = microarray_anchored_engine_at("hg38", "chr1", 2001, 2100, "+");
+    let result = engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "array_slice".to_string(),
+            manifest_path: microarray_projected_track_fixture_manifest(),
+            contrasts: vec!["AdTAp73alpha-AdGFP".to_string()],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: Some(1.0),
+            max_adj_p: Some(0.05),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project through coordinate map");
+    let report = result.microarray_projection.expect("projection report");
+    assert!(report.coordinate_projection_used);
+    assert_eq!(
+        report.coordinate_projection_method.as_deref(),
+        Some("synthetic_interval_map")
+    );
+    assert_eq!(report.imported_features, 2);
+    assert_eq!(report.skipped_projection_unmapped, 1);
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    let psr1 = dna
+        .features()
+        .iter()
+        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("PSR0001"))
+        .expect("PSR0001 feature");
+    assert_eq!(psr1.location.find_bounds().unwrap(), (9, 20));
+    assert_eq!(
+        first_qualifier(psr1, "gentle_array_coordinate_system").as_deref(),
+        Some("hg19")
+    );
+    assert_eq!(
+        first_qualifier(psr1, "gentle_array_anchor_genome_id").as_deref(),
+        Some("hg38")
+    );
+    assert_eq!(
+        first_qualifier(psr1, "gentle_array_assembly_check").as_deref(),
+        Some("projected_from_native_coordinate_system")
+    );
+    assert_eq!(
+        first_qualifier(psr1, "gentle_array_projection_method").as_deref(),
+        Some("synthetic_interval_map")
+    );
+    assert_eq!(
+        first_qualifier(psr1, "gentle_array_native_start_1based").as_deref(),
+        Some("1010")
+    );
+    assert_eq!(
+        first_qualifier(psr1, "genomic_start_1based").as_deref(),
+        Some("2010")
+    );
+}
+
+#[test]
+fn project_genome_interval_from_map_reports_projected_interval() {
+    let mut engine = GentleEngine::default();
+    let result = engine
+        .apply(Operation::ProjectGenomeInterval {
+            source_genome_id: "hg19".to_string(),
+            target_genome_id: "hg38".to_string(),
+            projection_path: microarray_projection_fixture_map(),
+            chrom: "chr1".to_string(),
+            start_1based: 1010,
+            end_1based: 1020,
+            strand: Some("+".to_string()),
+        })
+        .expect("project interval");
+    let report = result
+        .genome_coordinate_projection
+        .expect("coordinate projection report");
+    assert_eq!(report.schema, GENOME_COORDINATE_PROJECTION_REPORT_SCHEMA);
+    assert!(report.mapped);
+    assert_eq!(report.intervals.len(), 1);
+    assert_eq!(report.intervals[0].target_chrom, "chr1");
+    assert_eq!(report.intervals[0].target_start_1based, 2010);
+    assert_eq!(report.intervals[0].target_end_1based, 2020);
 }
 
 fn restriction_cloning_vector(sequence: &str, mcs_expected_sites: Option<&str>) -> DNAsequence {
@@ -306,6 +2666,13 @@ fn formula_test_sequence() -> DNAsequence {
         location: gb_io::seq::Location::simple_range(80, 140),
         qualifiers: vec![("label".into(), Some("TP73".to_string()))],
     });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            500, 560,
+        ))),
+        qualifiers: vec![("label".into(), Some("REVGENE".to_string()))],
+    });
     dna
 }
 
@@ -483,6 +2850,62 @@ fn feature_coordinate_formula_helper_resolves_selection_range_expression() {
             .expect("selection formula");
 
     assert_eq!((start, end_exclusive), (30, 75));
+}
+
+#[test]
+fn feature_coordinate_formula_helper_resolves_strand_aware_tss_and_upstream_aliases() {
+    let dna = formula_test_sequence();
+
+    let forward_tss = parse_required_usize_or_formula_text_on_sequence(
+        &dna,
+        "=gene[label=TP73].tss",
+        "primer_design.roi_start_0based",
+    )
+    .expect("forward tss");
+    let forward_upstream = parse_required_usize_or_formula_text_on_sequence(
+        &dna,
+        "=gene[label=TP73].upstream(5)",
+        "primer_design.roi_start_0based",
+    )
+    .expect("forward upstream");
+    let reverse_tss = parse_required_usize_or_formula_text_on_sequence(
+        &dna,
+        "=gene[label=REVGENE].tss",
+        "primer_design.roi_start_0based",
+    )
+    .expect("reverse tss");
+    let reverse_upstream = parse_required_usize_or_formula_text_on_sequence(
+        &dna,
+        "=gene[label=REVGENE].upstream(25)",
+        "primer_design.roi_end_0based",
+    )
+    .expect("reverse upstream");
+
+    assert_eq!(forward_tss, 10);
+    assert_eq!(forward_upstream, 5);
+    assert_eq!(reverse_tss, 560);
+    assert_eq!(reverse_upstream, 585);
+}
+
+#[test]
+fn feature_coordinate_formula_range_normalizes_reverse_strand_upstream_window() {
+    let dna = formula_test_sequence();
+
+    let (selection_start, selection_end) = resolve_selection_formula_range_0based_on_sequence(
+        &dna,
+        "=gene[label=REVGENE].upstream(25) .. gene[label=REVGENE].tss",
+    )
+    .expect("reverse selection formula");
+    let (roi_start, roi_end) = resolve_formula_roi_range_inputs_0based_on_sequence(
+        &dna,
+        "=gene[label=REVGENE].upstream(25) .. gene[label=REVGENE].tss",
+        "",
+        "qpcr_design",
+    )
+    .expect("reverse ROI formula");
+
+    assert_eq!((selection_start, selection_end), (560, 585));
+    assert_eq!((roi_start, roi_end), (560, 585));
 }
 
 fn splicing_test_sequence() -> DNAsequence {
@@ -786,6 +3209,20 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
     let gene1_tx_full_len = transcript_length_bp(&gene1_tx_full);
     let gene1_tx_skip_len = transcript_length_bp(&gene1_tx_skip);
     let gene2_tx_len = transcript_length_bp(&gene2_tx);
+    let dna = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present for RNA-read templates");
+    let gene1_tx_full_sequence =
+        String::from_utf8(GentleEngine::make_transcript_template(dna, &gene1_tx_full, 3).sequence)
+            .expect("GENE1 full template sequence");
+    let gene1_tx_skip_sequence =
+        String::from_utf8(GentleEngine::make_transcript_template(dna, &gene1_tx_skip, 3).sequence)
+            .expect("GENE1 skip template sequence");
+    let gene2_tx_sequence =
+        String::from_utf8(GentleEngine::make_transcript_template(dna, &gene2_tx, 3).sequence)
+            .expect("GENE2 template sequence");
     let gene1_full_start = gene1_tx_full
         .exons
         .first()
@@ -804,6 +3241,10 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
     let gene1_fragment_len = gene1_partial_end
         .saturating_sub(gene1_full_start)
         .saturating_add(1);
+    let gene1_fragment_sequence = gene1_tx_full_sequence
+        .chars()
+        .take(gene1_fragment_len)
+        .collect::<String>();
     let gene1_skip_start = gene1_tx_skip
         .exons
         .first()
@@ -889,7 +3330,7 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
                 RnaReadInterpretationHit {
                     record_index: 0,
                     header_id: "gene1_full".to_string(),
-                    sequence: "A".repeat(gene1_tx_full_len),
+                    sequence: gene1_tx_full_sequence.clone(),
                     read_length_bp: gene1_tx_full_len,
                     best_mapping: Some(RnaReadMappingHit {
                         transcript_feature_id: gene1_tx_full.transcript_feature_id,
@@ -911,7 +3352,7 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
                 RnaReadInterpretationHit {
                     record_index: 1,
                     header_id: "gene1_fragment".to_string(),
-                    sequence: "A".repeat(gene1_fragment_len),
+                    sequence: gene1_fragment_sequence.clone(),
                     read_length_bp: gene1_fragment_len,
                     best_mapping: Some(RnaReadMappingHit {
                         transcript_feature_id: gene1_tx_full.transcript_feature_id,
@@ -945,7 +3386,7 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
                 RnaReadInterpretationHit {
                     record_index: 2,
                     header_id: "gene1_skip_complete".to_string(),
-                    sequence: "A".repeat(gene1_tx_skip_len),
+                    sequence: gene1_tx_skip_sequence.clone(),
                     read_length_bp: gene1_tx_skip_len,
                     best_mapping: Some(RnaReadMappingHit {
                         transcript_feature_id: gene1_tx_skip.transcript_feature_id,
@@ -967,7 +3408,7 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
                 RnaReadInterpretationHit {
                     record_index: 3,
                     header_id: "gene2_full".to_string(),
-                    sequence: "A".repeat(gene2_tx_len),
+                    sequence: gene2_tx_sequence.clone(),
                     read_length_bp: gene2_tx_len,
                     best_mapping: Some(RnaReadMappingHit {
                         transcript_feature_id: gene2_tx.transcript_feature_id,
@@ -1311,6 +3752,2165 @@ fn prepare_cutrun_test_anchor_range(
         .expect("extract CUT&RUN test anchor");
 }
 
+fn write_gene_set_test_reference_catalog(root: &Path, genome_id: &str) -> String {
+    let fasta_gz = root.join("gene_sets_toy.fa.gz");
+    let ann_gz = root.join("gene_sets_toy.gtf.gz");
+    let chr1 = "ACGT".repeat(1400);
+    let chr2 = "TGCA".repeat(300);
+    write_gzip(&fasta_gz, &format!(">chr1\n{chr1}\n>chr2\n{chr2}\n"));
+    write_gzip(
+        &ann_gz,
+        concat!(
+            "chr1\tsrc\tgene\t1501\t1900\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\";\n",
+            "chr1\tsrc\ttranscript\t1601\t1850\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\";\n",
+            "chr1\tsrc\texon\t1601\t1700\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\"; exon_number \"1\";\n",
+            "chr1\tsrc\texon\t1751\t1850\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\"; exon_number \"2\";\n",
+            "chr1\tsrc\tgene\t2101\t2400\t.\t+\t.\tgene_id \"GENE_MID\"; gene_name \"MID1\";\n",
+            "chr1\tsrc\ttranscript\t2151\t2350\t.\t+\t.\tgene_id \"GENE_MID\"; gene_name \"MID1\"; transcript_id \"TX_MID\";\n",
+            "chr1\tsrc\texon\t2151\t2350\t.\t+\t.\tgene_id \"GENE_MID\"; gene_name \"MID1\"; transcript_id \"TX_MID\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t3001\t3600\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\";\n",
+            "chr1\tsrc\ttranscript\t3101\t3500\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\";\n",
+            "chr1\tsrc\texon\t3101\t3250\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"1\";\n",
+            "chr1\tsrc\texon\t3351\t3500\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"2\";\n",
+            "chr1\tsrc\tgene\t4501\t4700\t.\t+\t.\tgene_id \"GENE_EDGE\"; gene_name \"EDGE1\";\n",
+            "chr1\tsrc\ttranscript\t4521\t4660\t.\t+\t.\tgene_id \"GENE_EDGE\"; gene_name \"EDGE1\"; transcript_id \"TX_EDGE\";\n",
+            "chr1\tsrc\texon\t4521\t4660\t.\t+\t.\tgene_id \"GENE_EDGE\"; gene_name \"EDGE1\"; transcript_id \"TX_EDGE\"; exon_number \"1\";\n",
+            "chr2\tsrc\tgene\t101\t300\t.\t+\t.\tgene_id \"GENE_CHR2A\"; gene_name \"CHR2A\";\n",
+            "chr2\tsrc\ttranscript\t121\t260\t.\t+\t.\tgene_id \"GENE_CHR2A\"; gene_name \"CHR2A\"; transcript_id \"TX_CHR2A\";\n",
+            "chr2\tsrc\texon\t121\t260\t.\t+\t.\tgene_id \"GENE_CHR2A\"; gene_name \"CHR2A\"; transcript_id \"TX_CHR2A\"; exon_number \"1\";\n",
+            "chr2\tsrc\tgene\t401\t700\t.\t-\t.\tgene_id \"GENE_CHR2B\"; gene_name \"CHR2B\";\n",
+            "chr2\tsrc\ttranscript\t421\t680\t.\t-\t.\tgene_id \"GENE_CHR2B\"; gene_name \"CHR2B\"; transcript_id \"TX_CHR2B\";\n",
+            "chr2\tsrc\texon\t421\t680\t.\t-\t.\tgene_id \"GENE_CHR2B\"; gene_name \"CHR2B\"; transcript_id \"TX_CHR2B\"; exon_number \"1\";\n",
+        ),
+    );
+    let cache_dir = root.join("reference_cache");
+    let catalog_path = root.join("gene_sets_reference_catalog.json");
+    let catalog_json = format!(
+        r#"{{
+  "{genome_id}": {{
+    "description": "gene-set toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+        file_url(&fasta_gz),
+        file_url(&ann_gz),
+        cache_dir.display()
+    );
+    fs::write(&catalog_path, catalog_json).expect("write gene-set reference catalog");
+    catalog_path.to_string_lossy().to_string()
+}
+
+fn write_gene_set_test_group_catalog(root: &Path) -> String {
+    let path = root.join("gene_groups.json");
+    fs::write(
+        &path,
+        format!(
+            r#"{{
+  "schema": "{}",
+  "groups": [
+    {{
+      "id": "go_alpha",
+      "label": "GO alpha",
+      "curation_status": "reviewed",
+      "external_mappings": [{{"namespace": "GO", "id": "GO:0000381"}}],
+      "members": [
+        {{"symbol": "POS1", "aliases": ["POS-alpha"]}},
+        {{"symbol": "NEG1"}}
+      ]
+    }},
+    {{
+      "id": "go_beta",
+      "label": "GO beta",
+      "curation_status": "reviewed",
+      "external_mappings": [{{"namespace": "GO", "id": "GO:0000381"}}],
+      "members": [
+        {{"symbol": "pos1", "aliases": ["POS-beta"]}},
+        {{"symbol": "MID1"}}
+      ]
+    }},
+    {{
+      "id": "draft_go",
+      "label": "Draft GO",
+      "curation_status": "draft",
+      "external_mappings": [{{"namespace": "GO", "id": "GO:0000999"}}],
+      "members": [{{"symbol": "MID1"}}]
+    }},
+    {{
+      "id": "deprecated_go",
+      "label": "Deprecated GO",
+      "curation_status": "deprecated",
+      "external_mappings": [{{"namespace": "GO", "id": "GO:0000888"}}],
+      "members": [{{"symbol": "EDGE1"}}]
+    }}
+  ]
+}}"#,
+            gentle_protocol::GENE_GROUP_CATALOG_SCHEMA
+        ),
+    )
+    .expect("write gene-set test gene-group catalog");
+    path.to_string_lossy().to_string()
+}
+
+fn prepare_gene_set_test_genome(root: &Path, engine: &mut GentleEngine) -> String {
+    let catalog_path = write_gene_set_test_reference_catalog(root, "ToyGenome");
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare gene-set toy genome");
+    catalog_path
+}
+
+fn write_ortholog_test_reference_catalog(root: &Path) -> String {
+    let human_fasta = root.join("ortholog_human.fa.gz");
+    let human_gtf = root.join("ortholog_human.gtf.gz");
+    let mouse_fasta = root.join("ortholog_mouse.fa.gz");
+    let mouse_gtf = root.join("ortholog_mouse.gtf.gz");
+    let mut human_chr1 = "ACGT".repeat(1600);
+    human_chr1.replace_range(1550..1564, "GGGGCGGGGCGGGG");
+    let mouse_chr1 = "TGCA".repeat(1600);
+    write_gzip(&human_fasta, &format!(">chr1\n{human_chr1}\n"));
+    write_gzip(&mouse_fasta, &format!(">chr1\n{mouse_chr1}\n"));
+    write_gzip(
+        &human_gtf,
+        concat!(
+            "chr1\tsrc\tgene\t1501\t1900\t.\t+\t.\tgene_id \"ENSG_TP73\"; gene_name \"TP73\";\n",
+            "chr1\tsrc\ttranscript\t1601\t1850\t.\t+\t.\tgene_id \"ENSG_TP73\"; gene_name \"TP73\"; transcript_id \"TX_HUMAN_TP73\";\n",
+            "chr1\tsrc\texon\t1601\t1850\t.\t+\t.\tgene_id \"ENSG_TP73\"; gene_name \"TP73\"; transcript_id \"TX_HUMAN_TP73\"; exon_number \"1\";\n",
+        ),
+    );
+    write_gzip(
+        &mouse_gtf,
+        concat!(
+            "chr1\tsrc\tgene\t3001\t3600\t.\t-\t.\tgene_id \"ENSMUSG_TRP73\"; gene_name \"Trp73\";\n",
+            "chr1\tsrc\ttranscript\t3101\t3500\t.\t-\t.\tgene_id \"ENSMUSG_TRP73\"; gene_name \"Trp73\"; transcript_id \"TX_MOUSE_TRP73\";\n",
+            "chr1\tsrc\texon\t3101\t3500\t.\t-\t.\tgene_id \"ENSMUSG_TRP73\"; gene_name \"Trp73\"; transcript_id \"TX_MOUSE_TRP73\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t4301\t4700\t.\t+\t.\tgene_id \"ENSMUSG_TRP73B\"; gene_name \"Trp73b\";\n",
+            "chr1\tsrc\ttranscript\t4351\t4650\t.\t+\t.\tgene_id \"ENSMUSG_TRP73B\"; gene_name \"Trp73b\"; transcript_id \"TX_MOUSE_TRP73B\";\n",
+            "chr1\tsrc\texon\t4351\t4650\t.\t+\t.\tgene_id \"ENSMUSG_TRP73B\"; gene_name \"Trp73b\"; transcript_id \"TX_MOUSE_TRP73B\"; exon_number \"1\";\n",
+        ),
+    );
+    let human_cache = root.join("human_reference_cache");
+    let mouse_cache = root.join("mouse_reference_cache");
+    let catalog_path = root.join("ortholog_reference_catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "HumanToy": {{
+    "description": "ortholog human toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }},
+  "MouseToy": {{
+    "description": "ortholog mouse toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            file_url(&human_fasta),
+            file_url(&human_gtf),
+            human_cache.display(),
+            file_url(&mouse_fasta),
+            file_url(&mouse_gtf),
+            mouse_cache.display()
+        ),
+    )
+    .expect("write ortholog reference catalog");
+    catalog_path.to_string_lossy().to_string()
+}
+
+fn prepare_ortholog_test_genomes(root: &Path, engine: &mut GentleEngine) -> String {
+    let catalog_path = write_ortholog_test_reference_catalog(root);
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    for genome_id in ["HumanToy", "MouseToy"] {
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: genome_id.to_string(),
+                catalog_path: Some(catalog_path.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .expect("prepare ortholog toy genome");
+    }
+    catalog_path
+}
+
+fn write_ortholog_test_resource(root: &Path, include_ambiguous_mouse_row: bool) -> String {
+    let ambiguous_row = if include_ambiguous_mouse_row {
+        r#",
+    {
+      "source_species": "Homo sapiens",
+      "source_gene_id": "ENSG_TP73",
+      "source_gene_symbol": "TP73",
+      "target_species": "Mus musculus",
+      "target_gene_id": "ENSMUSG_TRP73B",
+      "target_gene_symbol": "Trp73b",
+      "orthology_type": "one_to_many",
+      "confidence": "medium",
+      "source": "synthetic ambiguous row",
+      "evidence": ["synthetic_one2many"]
+    }"#
+    } else {
+        ""
+    };
+    let path = root.join("ortholog_resource.json");
+    fs::write(
+        &path,
+        format!(
+            r#"{{
+  "schema": "{}",
+  "id": "tp73_synthetic_orthologs",
+  "label": "Synthetic TP73 orthologs",
+  "species_aliases": [
+    {{"species": "Homo sapiens", "aliases": ["human", "hsap"]}},
+    {{"species": "Mus musculus", "aliases": ["mouse", "mmus"]}}
+  ],
+  "rows": [
+    {{
+      "source_species": "Homo sapiens",
+      "source_gene_id": "ENSG_TP73",
+      "source_gene_symbol": "TP73",
+      "target_species": "Mus musculus",
+      "target_gene_id": "ENSMUSG_TRP73",
+      "target_gene_symbol": "Trp73",
+      "orthology_type": "one_to_one",
+      "confidence": "high",
+      "source": "synthetic curated table",
+      "evidence": ["orthology_one2one"]
+    }}{}
+  ]
+}}"#,
+            gentle_protocol::ORTHOLOG_RESOURCE_SCHEMA,
+            ambiguous_row
+        ),
+    )
+    .expect("write ortholog resource");
+    path.to_string_lossy().to_string()
+}
+
+fn gene_set_cutrun_promoter_cohort(
+    windows: Vec<GeneSetPromoterWindow>,
+) -> GeneSetPromoterCohortReport {
+    GeneSetPromoterCohortReport {
+        schema: GENE_SET_PROMOTER_COHORT_SCHEMA.to_string(),
+        genome_id: "ToyGenome".to_string(),
+        upstream_bp: 100,
+        downstream_bp: 20,
+        requested_member_count: windows.len(),
+        returned_window_count: windows.len(),
+        gene_set_resolution: GeneSetResolutionReport {
+            schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+            request: GeneSetRequest::ExplicitMembers {
+                members: windows.iter().map(|window| window.symbol.clone()).collect(),
+            },
+            resolved_member_count: windows.len(),
+            ..GeneSetResolutionReport::default()
+        },
+        windows,
+        ..GeneSetPromoterCohortReport::default()
+    }
+}
+
+fn gene_set_cutrun_member_support(
+    symbol: &str,
+    strongest_support_strength: Option<&str>,
+) -> GeneSetCutRunMemberSupport {
+    GeneSetCutRunMemberSupport {
+        member_dedup_key: format!("symbol:{}", symbol.to_ascii_lowercase()),
+        symbol: symbol.to_string(),
+        evaluation_state: GeneSetCutRunEvaluationState::Evaluated,
+        chromosome: "chr1".to_string(),
+        promoter_start_1based: 1,
+        promoter_end_1based: 100,
+        support_window_count: usize::from(strongest_support_strength.is_some()),
+        strongest_support_strength: strongest_support_strength.map(str::to_string),
+        ..GeneSetCutRunMemberSupport::default()
+    }
+}
+
+fn gene_set_cutrun_window(
+    symbol: &str,
+    start_1based: usize,
+    end_1based: usize,
+) -> GeneSetPromoterWindow {
+    GeneSetPromoterWindow {
+        member_dedup_key: format!("symbol:{}", symbol.to_ascii_lowercase()),
+        symbol: symbol.to_string(),
+        gene_query: symbol.to_string(),
+        occurrence: 1,
+        transcript_id: format!("TX_{symbol}"),
+        display_label: symbol.to_string(),
+        chromosome: "chr1".to_string(),
+        strand: "+".to_string(),
+        promoter_start_1based: start_1based,
+        promoter_end_1based: end_1based,
+        promoter_length_bp: end_1based.saturating_sub(start_1based).saturating_add(1),
+        tss_1based: start_1based,
+        sequence_orientation: "transcription_aligned".to_string(),
+        used_fuzzy_gene_match: false,
+        ..GeneSetPromoterWindow::default()
+    }
+}
+
+#[test]
+fn gene_set_cutrun_relationship_flags_co_regulated_divergence() {
+    let rows = vec![
+        gene_set_cutrun_member_support("AgreeA", Some("strong")),
+        gene_set_cutrun_member_support("AgreeB", Some("strong")),
+        gene_set_cutrun_member_support("Divergent", None),
+    ];
+    let flags = GentleEngine::gene_set_cutrun_relationship_flags(
+        GeneSetCohortRelationship::CoRegulated,
+        &rows,
+    );
+    assert_eq!(flags.len(), 1);
+    assert_eq!(flags[0].flag_kind, "unexpected_divergence");
+    assert_eq!(flags[0].member_symbols, vec!["Divergent"]);
+    assert!(flags[0].detail.contains("co_regulated"));
+}
+
+#[test]
+fn gene_set_cutrun_relationship_flags_anti_co_regulated_concordance() {
+    let rows = vec![
+        gene_set_cutrun_member_support("DivergentA", Some("strong")),
+        gene_set_cutrun_member_support("DivergentB", None),
+        gene_set_cutrun_member_support("ConcordantA", Some("moderate")),
+        gene_set_cutrun_member_support("ConcordantB", Some("moderate")),
+    ];
+    let flags = GentleEngine::gene_set_cutrun_relationship_flags(
+        GeneSetCohortRelationship::AntiCoRegulated,
+        &rows,
+    );
+    assert_eq!(flags.len(), 1);
+    assert_eq!(flags[0].flag_kind, "unexpected_concordance");
+    assert_eq!(flags[0].member_symbols, vec!["ConcordantA", "ConcordantB"]);
+    assert!(flags[0].detail.contains("anti_co_regulated"));
+}
+
+#[test]
+fn gene_set_cutrun_relationship_flags_manual_unspecified_are_empty() {
+    let rows = vec![
+        gene_set_cutrun_member_support("A", Some("strong")),
+        gene_set_cutrun_member_support("B", None),
+    ];
+    assert!(
+        GentleEngine::gene_set_cutrun_relationship_flags(GeneSetCohortRelationship::Manual, &rows,)
+            .is_empty()
+    );
+    assert!(
+        GentleEngine::gene_set_cutrun_relationship_flags(
+            GeneSetCohortRelationship::Unspecified,
+            &rows,
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn ortholog_tfbs_relationship_flags_are_expectation_specific() {
+    let rows = vec![
+        gentle_protocol::OrthologPairwiseTfbsSimilarity {
+            left_species: "Homo sapiens".to_string(),
+            right_species: "Mus musculus".to_string(),
+            left_gene_label: "TP73".to_string(),
+            right_gene_label: "Trp73".to_string(),
+            mean_smoothed_spearman: 0.10,
+            ..gentle_protocol::OrthologPairwiseTfbsSimilarity::default()
+        },
+        gentle_protocol::OrthologPairwiseTfbsSimilarity {
+            left_species: "Homo sapiens".to_string(),
+            right_species: "Rattus norvegicus".to_string(),
+            left_gene_label: "TP73".to_string(),
+            right_gene_label: "Tp73".to_string(),
+            mean_smoothed_spearman: 0.90,
+            ..gentle_protocol::OrthologPairwiseTfbsSimilarity::default()
+        },
+    ];
+
+    let co_regulated = GentleEngine::ortholog_tfbs_relationship_flags(
+        GeneSetCohortRelationship::CoRegulated,
+        &rows,
+    );
+    assert_eq!(co_regulated.len(), 1);
+    assert_eq!(co_regulated[0].flag_kind, "unexpected_divergence");
+    assert_eq!(
+        co_regulated[0].member_symbols,
+        vec![
+            "Homo sapiens: TP73".to_string(),
+            "Mus musculus: Trp73".to_string()
+        ]
+    );
+
+    let anti_co_regulated = GentleEngine::ortholog_tfbs_relationship_flags(
+        GeneSetCohortRelationship::AntiCoRegulated,
+        &rows,
+    );
+    assert_eq!(anti_co_regulated.len(), 1);
+    assert_eq!(anti_co_regulated[0].flag_kind, "unexpected_concordance");
+    assert_eq!(
+        anti_co_regulated[0].member_symbols,
+        vec![
+            "Homo sapiens: TP73".to_string(),
+            "Rattus norvegicus: Tp73".to_string()
+        ]
+    );
+
+    assert!(
+        GentleEngine::ortholog_tfbs_relationship_flags(
+            GeneSetCohortRelationship::Unspecified,
+            &rows,
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn ortholog_cutrun_relationship_flags_ignore_not_comparable_rows() {
+    let rows = vec![
+        gentle_protocol::OrthologCutRunSupportRow {
+            species: "Homo sapiens".to_string(),
+            gene_label: "TP73".to_string(),
+            status: gentle_protocol::OrthologCutRunSupportStatus::Confirmed,
+            ..gentle_protocol::OrthologCutRunSupportRow::default()
+        },
+        gentle_protocol::OrthologCutRunSupportRow {
+            species: "Mus musculus".to_string(),
+            gene_label: "Trp73".to_string(),
+            status: gentle_protocol::OrthologCutRunSupportStatus::NoData,
+            ..gentle_protocol::OrthologCutRunSupportRow::default()
+        },
+        gentle_protocol::OrthologCutRunSupportRow {
+            species: "Danio rerio".to_string(),
+            gene_label: "tp73".to_string(),
+            status: gentle_protocol::OrthologCutRunSupportStatus::NotComparable,
+            ..gentle_protocol::OrthologCutRunSupportRow::default()
+        },
+    ];
+
+    let co_regulated = GentleEngine::ortholog_cutrun_relationship_flags(
+        GeneSetCohortRelationship::CoRegulated,
+        &rows,
+    );
+    assert_eq!(co_regulated.len(), 2);
+    assert!(
+        co_regulated
+            .iter()
+            .all(|flag| flag.flag_kind == "unexpected_divergence")
+    );
+    assert!(
+        co_regulated
+            .iter()
+            .flat_map(|flag| flag.member_symbols.iter())
+            .all(|symbol| !symbol.contains("Danio rerio"))
+    );
+
+    let anti_rows = vec![
+        gentle_protocol::OrthologCutRunSupportRow {
+            species: "Homo sapiens".to_string(),
+            gene_label: "TP73".to_string(),
+            status: gentle_protocol::OrthologCutRunSupportStatus::MotifOnly,
+            ..gentle_protocol::OrthologCutRunSupportRow::default()
+        },
+        gentle_protocol::OrthologCutRunSupportRow {
+            species: "Mus musculus".to_string(),
+            gene_label: "Trp73".to_string(),
+            status: gentle_protocol::OrthologCutRunSupportStatus::MotifOnly,
+            ..gentle_protocol::OrthologCutRunSupportRow::default()
+        },
+    ];
+    let anti_co_regulated = GentleEngine::ortholog_cutrun_relationship_flags(
+        GeneSetCohortRelationship::AntiCoRegulated,
+        &anti_rows,
+    );
+    assert_eq!(anti_co_regulated.len(), 1);
+    assert_eq!(anti_co_regulated[0].flag_kind, "unexpected_concordance");
+    assert!(
+        GentleEngine::ortholog_cutrun_relationship_flags(
+            GeneSetCohortRelationship::Unspecified,
+            &anti_rows,
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn resolve_gene_set_external_mapping_unions_local_groups_and_gates_status() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let group_catalog_path = write_gene_set_test_group_catalog(root);
+
+    let resolution = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExternalMapping {
+                namespace: "GO".to_string(),
+                id: "GO:0000381".to_string(),
+            },
+            Some("ToyGenome"),
+            Some(&group_catalog_path),
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect("resolve GO union gene set");
+    assert_eq!(resolution.resolved_member_count, 3);
+    assert_eq!(
+        resolution.contributing_group_ids,
+        vec!["go_alpha".to_string(), "go_beta".to_string()]
+    );
+    assert_eq!(
+        resolution
+            .resolved_members
+            .iter()
+            .map(|member| member.symbol.as_str())
+            .collect::<Vec<_>>(),
+        vec!["POS1", "MID1", "NEG1"]
+    );
+    let pos = resolution
+        .resolved_members
+        .iter()
+        .find(|member| member.symbol == "POS1")
+        .expect("deduplicated POS1");
+    assert_eq!(
+        pos.contributing_group_ids,
+        vec!["go_alpha".to_string(), "go_beta".to_string()]
+    );
+    assert!(pos.aliases.contains(&"POS-alpha".to_string()));
+    assert!(pos.aliases.contains(&"POS-beta".to_string()));
+    assert_eq!(pos.provenance.len(), 2);
+
+    let zero = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExternalMapping {
+                namespace: "GO".to_string(),
+                id: "GO:9999999".to_string(),
+            },
+            Some("ToyGenome"),
+            Some(&group_catalog_path),
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect("zero GO mappings are reported, not fatal");
+    assert_eq!(zero.resolved_member_count, 0);
+    assert_eq!(zero.unresolved_member_count, 1);
+    assert!(
+        zero.warnings
+            .iter()
+            .any(|warning| warning.contains("No local gene groups map"))
+    );
+
+    let draft_err = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExternalMapping {
+                namespace: "GO".to_string(),
+                id: "GO:0000999".to_string(),
+            },
+            Some("ToyGenome"),
+            Some(&group_catalog_path),
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect_err("draft GO group requires allow flag");
+    assert!(draft_err.message.contains("--allow-draft"));
+    let draft = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExternalMapping {
+                namespace: "GO".to_string(),
+                id: "GO:0000999".to_string(),
+            },
+            Some("ToyGenome"),
+            Some(&group_catalog_path),
+            Some(&genome_catalog_path),
+            None,
+            true,
+            false,
+        )
+        .expect("draft GO group allowed by flag");
+    assert_eq!(draft.resolved_member_count, 1);
+    assert!(
+        draft
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Using draft gene group 'draft_go'"))
+    );
+
+    let deprecated_err = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExternalMapping {
+                namespace: "GO".to_string(),
+                id: "GO:0000888".to_string(),
+            },
+            Some("ToyGenome"),
+            Some(&group_catalog_path),
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect_err("deprecated GO group requires allow flag");
+    assert!(deprecated_err.message.contains("--allow-deprecated"));
+    let deprecated = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExternalMapping {
+                namespace: "GO".to_string(),
+                id: "GO:0000888".to_string(),
+            },
+            Some("ToyGenome"),
+            Some(&group_catalog_path),
+            Some(&genome_catalog_path),
+            None,
+            false,
+            true,
+        )
+        .expect("deprecated GO group allowed by flag");
+    assert_eq!(deprecated.resolved_member_count, 1);
+    assert!(
+        deprecated
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Using deprecated gene group 'deprecated_go'"))
+    );
+}
+
+#[test]
+fn produce_gene_set_direct_list_json_records_provenance_and_unresolved_rows() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let cache_path = root.join("direct_gene_lists.json");
+    fs::write(
+        &cache_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_DIRECT_LIST_CACHE_SCHEMA}",
+  "provider_id": "local_curator",
+  "provider_label": "Local curator cache",
+  "provider_version": "2026-06",
+  "cache_id": "direct-cache",
+  "organism": "Homo sapiens",
+  "taxon_id": "9606",
+  "symbol_namespace": "HGNC",
+  "filters": [{{"field": "source", "operator": "equals", "value": "curated"}}],
+  "lists": [
+    {{
+      "id": "splicing_panel",
+      "label": "Splicing panel",
+      "members": ["POS1", {{"symbol": "NEG1"}}, "MISSING"]
+    }}
+  ]
+}}"#
+        ),
+    )
+    .expect("write direct-list cache");
+
+    let report = engine
+        .apply(Operation::ProduceGeneSetDirectList {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            query: Some("splicing_panel".to_string()),
+            genome_id: Some("ToyGenome".to_string()),
+            gene_group_catalog_path: None,
+            genome_catalog_path: Some(genome_catalog_path),
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: Some("sha256:test".to_string()),
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: Some(GeneSetResolutionReviewStatus::Reviewed),
+            filters: vec![GeneSetProducerFilter {
+                field: "evidence".to_string(),
+                operator: "equals".to_string(),
+                value: "manual".to_string(),
+            }],
+            path: None,
+        })
+        .expect("produce direct-list gene set")
+        .gene_set_resolution
+        .expect("gene-set resolution report");
+
+    assert_eq!(
+        report.review_status,
+        GeneSetResolutionReviewStatus::Reviewed
+    );
+    assert_eq!(report.resolved_member_count, 2);
+    assert_eq!(report.unresolved_member_count, 1);
+    assert_eq!(report.organism.as_deref(), Some("Homo sapiens"));
+    assert_eq!(report.taxon_id.as_deref(), Some("9606"));
+    assert_eq!(report.symbol_namespace.as_deref(), Some("HGNC"));
+    assert!(matches!(
+        report.request,
+        GeneSetRequest::ExplicitMembers { .. }
+    ));
+    let producer = report.producer.as_ref().expect("producer metadata");
+    assert_eq!(producer.producer_kind, GeneSetProducerKind::DirectGeneList);
+    assert_eq!(producer.provider_id, "local_curator");
+    assert_eq!(producer.cache_id.as_deref(), Some("direct-cache"));
+    assert_eq!(producer.cache_version.as_deref(), Some("1"));
+    assert_eq!(producer.cache_digest.as_deref(), Some("sha256:test"));
+    let metadata = report.query_metadata.as_ref().expect("query metadata");
+    assert_eq!(metadata.query_kind, "direct_gene_list");
+    assert_eq!(metadata.query_id.as_deref(), Some("splicing_panel"));
+    assert_eq!(metadata.filters.len(), 2);
+    assert!(report.resolved_members.iter().all(|member| {
+        member
+            .provenance
+            .iter()
+            .any(|row| row.source_kind == "direct_gene_list")
+    }));
+    let unresolved = report
+        .unresolved_members
+        .iter()
+        .find(|member| member.query == "MISSING")
+        .expect("missing member retained");
+    assert_eq!(unresolved.source_kind, "direct_gene_list");
+    assert_eq!(unresolved.source_id.as_deref(), Some("splicing_panel"));
+}
+
+#[test]
+fn produce_gene_set_direct_list_tsv_selects_query_and_uses_overrides() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let cache_path = root.join("direct_lists.tsv");
+    fs::write(
+        &cache_path,
+        "list_id\tlist_label\tsymbol\nalpha\tAlpha list\tPOS1\nbeta\tBeta list\tNEG1\n",
+    )
+    .expect("write direct-list TSV cache");
+
+    let report = engine
+        .apply(Operation::ProduceGeneSetDirectList {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            query: Some("beta".to_string()),
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: Some("tsv_provider".to_string()),
+            provider_label: None,
+            provider_version: Some("2026-06".to_string()),
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: Some("Homo sapiens".to_string()),
+            taxon_id: None,
+            symbol_namespace: Some("HGNC".to_string()),
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect("produce direct-list gene set from TSV")
+        .gene_set_resolution
+        .expect("gene-set resolution report");
+
+    assert_eq!(report.resolved_member_count, 1);
+    assert_eq!(report.resolved_members[0].symbol, "NEG1");
+    let producer = report.producer.as_ref().expect("producer metadata");
+    assert_eq!(producer.provider_id, "tsv_provider");
+    assert_eq!(producer.provider_version.as_deref(), Some("2026-06"));
+    assert_eq!(producer.cache_id.as_deref(), Some("direct_lists"));
+    let metadata = report.query_metadata.as_ref().expect("query metadata");
+    assert_eq!(metadata.query_id.as_deref(), Some("beta"));
+    assert_eq!(metadata.query_label.as_deref(), Some("Beta list"));
+    assert_eq!(metadata.symbol_namespace.as_deref(), Some("HGNC"));
+}
+
+#[test]
+fn produce_gene_set_retrieval_producers_reject_unsupported_cache_major_versions() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+
+    let missing_err = engine
+        .apply(Operation::ProduceGeneSetDirectList {
+            cache_path: root
+                .join("missing_direct_cache.json")
+                .to_string_lossy()
+                .to_string(),
+            query: None,
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect_err("missing direct-list cache should fail");
+    assert_eq!(missing_err.code, ErrorCode::InvalidInput);
+    assert!(
+        missing_err
+            .message
+            .contains("Could not read direct gene-list cache")
+    );
+
+    let direct_path = root.join("direct_v2.json");
+    fs::write(
+        &direct_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_DIRECT_LIST_CACHE_SCHEMA}",
+  "provider_id": "local",
+  "provider_version": "2026-06",
+  "cache_version": "2",
+  "organism": "Homo sapiens",
+  "members": ["SRSF1"]
+}}"#
+        ),
+    )
+    .expect("write direct-list v2 cache");
+    let direct_err = engine
+        .apply(Operation::ProduceGeneSetDirectList {
+            cache_path: direct_path.to_string_lossy().to_string(),
+            query: None,
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect_err("unsupported direct-list cache version should fail");
+    assert!(
+        direct_err
+            .to_string()
+            .contains("Unsupported direct gene-list cache_version '2'")
+    );
+
+    let ontology_path = root.join("ontology_v2.json");
+    fs::write(
+        &ontology_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA}",
+  "provider_id": "goa",
+  "provider_version": "2026-06",
+  "cache_version": "2",
+  "organism": "Homo sapiens",
+  "assignments": [
+    {{"term": "GO:0000381", "members": ["SRSF1"]}}
+  ]
+}}"#
+        ),
+    )
+    .expect("write ontology v2 cache");
+    let ontology_err = engine
+        .apply(Operation::ProduceGeneSetOntologyAssignment {
+            cache_path: ontology_path.to_string_lossy().to_string(),
+            term: "GO:0000381".to_string(),
+            ontology_namespace: None,
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect_err("unsupported ontology cache version should fail");
+    assert!(
+        ontology_err
+            .to_string()
+            .contains("Unsupported ontology assignment cache_version '2'")
+    );
+
+    let co_regulated_path = root.join("co_regulated_v2.json");
+    fs::write(
+        &co_regulated_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_CO_REGULATED_CACHE_SCHEMA}",
+  "provider_id": "expr",
+  "provider_version": "2026-06",
+  "cache_version": "2",
+  "organism": "Homo sapiens",
+  "dataset_id": "expr1",
+  "contrast": "case_vs_control",
+  "rows": [
+    {{"symbol": "SRSF1", "score": 2.0}}
+  ]
+}}"#
+        ),
+    )
+    .expect("write co-regulated v2 cache");
+    let co_regulated_err = engine
+        .apply(Operation::ProduceGeneSetCoRegulatedCohort {
+            cache_path: co_regulated_path.to_string_lossy().to_string(),
+            dataset_ids: vec!["expr1".to_string()],
+            contrast_labels: vec!["case_vs_control".to_string()],
+            condition_labels: vec![],
+            normalization_method: None,
+            scoring_method: "score".to_string(),
+            threshold_rule: "score>=1".to_string(),
+            sign_direction_rule: "both".to_string(),
+            relationship: GeneSetCohortRelationship::CoRegulated,
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect_err("unsupported co-regulated cache version should fail");
+    assert!(
+        co_regulated_err
+            .to_string()
+            .contains("Unsupported co-regulated cohort cache_version '2'")
+    );
+}
+
+#[test]
+fn produce_gene_set_ontology_assignment_json_records_provenance_and_stays_distinct_from_external_mapping()
+ {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let group_catalog_path = write_gene_set_test_group_catalog(root);
+    let cache_path = root.join("go_assignments.json");
+    fs::write(
+        &cache_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA}",
+  "provider_id": "goa_cache",
+  "provider_label": "Synthetic GOA cache",
+  "provider_version": "2026-06",
+  "cache_id": "goa-cache",
+  "organism": "Homo sapiens",
+  "taxon_id": "9606",
+  "symbol_namespace": "HGNC",
+  "assignments": [
+    {{
+      "term": "GO:0000381",
+      "term_label": "regulation of alternative mRNA splicing",
+      "evidence_code": "IDA",
+      "assigned_by": "UniProt",
+      "members": ["EDGE1", "MISSING"]
+    }},
+    {{
+      "term": "GO:0000381",
+      "evidence_code": "IMP",
+      "assigned_by": "UniProt",
+      "members": ["POS1"]
+    }}
+  ]
+}}"#
+        ),
+    )
+    .expect("write ontology assignment cache");
+
+    let report = engine
+        .apply(Operation::ProduceGeneSetOntologyAssignment {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            term: "GO:0000381".to_string(),
+            ontology_namespace: None,
+            genome_id: Some("ToyGenome".to_string()),
+            gene_group_catalog_path: Some(group_catalog_path),
+            genome_catalog_path: Some(genome_catalog_path),
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: Some("sha256:goa-test".to_string()),
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: Some(GeneSetResolutionReviewStatus::Unreviewed),
+            filters: vec![
+                GeneSetProducerFilter {
+                    field: "evidence_code".to_string(),
+                    operator: "equals".to_string(),
+                    value: "IDA".to_string(),
+                },
+                GeneSetProducerFilter {
+                    field: "assigned_by".to_string(),
+                    operator: "equals".to_string(),
+                    value: "UniProt".to_string(),
+                },
+            ],
+            path: None,
+        })
+        .expect("produce ontology assignment gene set")
+        .gene_set_resolution
+        .expect("gene-set resolution report");
+
+    assert_eq!(
+        report.review_status,
+        GeneSetResolutionReviewStatus::Unreviewed
+    );
+    assert_eq!(report.resolved_member_count, 1);
+    assert_eq!(report.resolved_members[0].symbol, "EDGE1");
+    assert_eq!(report.unresolved_member_count, 1);
+    assert!(matches!(
+        report.request,
+        GeneSetRequest::ExplicitMembers { .. }
+    ));
+    assert!(
+        report.contributing_group_ids.is_empty(),
+        "ontology assignment producer must not reuse local external_mapping groups"
+    );
+    let producer = report.producer.as_ref().expect("producer metadata");
+    assert_eq!(
+        producer.producer_kind,
+        GeneSetProducerKind::OntologyAssignment
+    );
+    assert_eq!(producer.provider_id, "goa_cache");
+    assert_eq!(producer.cache_id.as_deref(), Some("goa-cache"));
+    assert_eq!(producer.cache_version.as_deref(), Some("1"));
+    assert_eq!(producer.cache_digest.as_deref(), Some("sha256:goa-test"));
+    let metadata = report.query_metadata.as_ref().expect("query metadata");
+    assert_eq!(metadata.query_kind, "ontology_assignment");
+    assert_eq!(metadata.query_id.as_deref(), Some("GO:0000381"));
+    assert_eq!(
+        metadata.query_label.as_deref(),
+        Some("regulation of alternative mRNA splicing")
+    );
+    assert_eq!(metadata.filters.len(), 2);
+    assert!(report.resolved_members.iter().all(|member| {
+        member
+            .provenance
+            .iter()
+            .any(|row| row.source_kind == "ontology_assignment")
+    }));
+    let unresolved = report
+        .unresolved_members
+        .iter()
+        .find(|member| member.query == "MISSING")
+        .expect("missing member retained");
+    assert_eq!(unresolved.source_kind, "ontology_assignment");
+    assert_eq!(unresolved.source_id.as_deref(), Some("GO:0000381"));
+}
+
+#[test]
+fn produce_gene_set_ontology_assignment_zero_rows_reports_unresolved_term() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let cache_path = root.join("go_assignments_zero.json");
+    fs::write(
+        &cache_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA}",
+  "provider_id": "goa_cache",
+  "provider_version": "2026-06",
+  "organism": "Homo sapiens",
+  "assignments": [
+    {{"term": "GO:0000001", "members": ["POS1"]}}
+  ]
+}}"#
+        ),
+    )
+    .expect("write ontology assignment cache");
+
+    let report = engine
+        .apply(Operation::ProduceGeneSetOntologyAssignment {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            term: "GO:9999999".to_string(),
+            ontology_namespace: None,
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect("zero assignment rows are a report, not a fatal error")
+        .gene_set_resolution
+        .expect("gene-set resolution report");
+
+    assert_eq!(report.resolved_member_count, 0);
+    assert_eq!(report.unresolved_member_count, 1);
+    assert_eq!(report.unresolved_members[0].query, "GO:9999999");
+    assert_eq!(
+        report.unresolved_members[0].source_kind,
+        "ontology_assignment"
+    );
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("has no rows for term 'GO:9999999'"))
+    );
+    let producer = report.producer.as_ref().expect("producer metadata");
+    assert_eq!(
+        producer.producer_kind,
+        GeneSetProducerKind::OntologyAssignment
+    );
+}
+
+#[test]
+fn produce_gene_set_co_regulated_json_filters_direction_and_preserves_anti_relationship() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let cache_path = root.join("co_regulated.json");
+    fs::write(
+        &cache_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_CO_REGULATED_CACHE_SCHEMA}",
+  "provider_id": "expr_cache",
+  "provider_version": "2026-06",
+  "cache_id": "expr-cache",
+  "organism": "Homo sapiens",
+  "symbol_namespace": "HGNC",
+  "dataset_id": "expr1",
+  "contrast": "case_vs_control",
+  "normalization_method": "vst",
+  "scoring_method": "logfc",
+  "rows": [
+    {{"symbol": "POS1", "logfc": 2.1, "padj": "0.05"}},
+    {{"symbol": "NEG1", "logfc": -2.4, "padj": "0.05"}},
+    {{"symbol": "MID1", "logfc": 0.4, "padj": "0.05"}},
+    {{"symbol": "EDGE1", "logfc": 1.8, "padj": "0.05"}}
+  ]
+}}"#
+        ),
+    )
+    .expect("write co-regulated cache");
+
+    let report = engine
+        .apply(Operation::ProduceGeneSetCoRegulatedCohort {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            dataset_ids: vec!["expr1".to_string()],
+            contrast_labels: vec!["case_vs_control".to_string()],
+            condition_labels: vec![],
+            normalization_method: None,
+            scoring_method: "logfc".to_string(),
+            threshold_rule: "abs>=1.5".to_string(),
+            sign_direction_rule: "positive".to_string(),
+            relationship: GeneSetCohortRelationship::AntiCoRegulated,
+            genome_id: Some("ToyGenome".to_string()),
+            gene_group_catalog_path: None,
+            genome_catalog_path: Some(genome_catalog_path.clone()),
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![GeneSetProducerFilter {
+                field: "padj".to_string(),
+                operator: "equals".to_string(),
+                value: "0.05".to_string(),
+            }],
+            path: None,
+        })
+        .expect("produce co-regulated gene set")
+        .gene_set_resolution
+        .expect("gene-set resolution report");
+
+    assert_eq!(report.resolved_member_count, 2);
+    assert_eq!(
+        report
+            .resolved_members
+            .iter()
+            .map(|member| member.symbol.as_str())
+            .collect::<Vec<_>>(),
+        vec!["POS1", "EDGE1"]
+    );
+    assert!(matches!(
+        report.request,
+        GeneSetRequest::ExplicitMembers { .. }
+    ));
+    let producer = report.producer.as_ref().expect("producer metadata");
+    assert_eq!(
+        producer.producer_kind,
+        GeneSetProducerKind::CoRegulatedCohort
+    );
+    assert_eq!(producer.provider_id, "expr_cache");
+    let metadata = report
+        .co_regulated_metadata
+        .as_ref()
+        .expect("co-regulated metadata");
+    assert_eq!(metadata.dataset_ids, vec!["expr1"]);
+    assert_eq!(metadata.contrast_labels, vec!["case_vs_control"]);
+    assert_eq!(metadata.normalization_method, "vst");
+    assert_eq!(metadata.scoring_method, "logfc");
+    assert_eq!(metadata.threshold_rule, "abs>=1.5");
+    assert_eq!(metadata.sign_direction_rule, "positive");
+    assert_eq!(
+        metadata.relationship,
+        GeneSetCohortRelationship::AntiCoRegulated
+    );
+    assert!(
+        metadata
+            .interpretation_note
+            .contains("does not prove regulation")
+    );
+    assert!(report.resolved_members.iter().all(|member| {
+        member
+            .provenance
+            .iter()
+            .any(|row| row.source_kind == "co_regulated_cohort")
+    }));
+
+    let cohort = engine
+        .build_gene_set_promoter_cohort(
+            "ToyGenome",
+            report,
+            GeneSetCohortRelationship::Unspecified,
+            100,
+            20,
+            Some(&genome_catalog_path),
+            None,
+        )
+        .expect("build promoter cohort");
+    assert_eq!(
+        cohort.relationship,
+        GeneSetCohortRelationship::AntiCoRegulated
+    );
+}
+
+#[test]
+fn produce_gene_set_co_regulated_tsv_negative_direction_preserves_co_relationship() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let cache_path = root.join("co_regulated.tsv");
+    fs::write(
+        &cache_path,
+        concat!(
+            "dataset_id\tcontrast\tsymbol\tlogfc\tprovider_id\tprovider_version\torganism\tsymbol_namespace\tnormalization_method\tscoring_method\n",
+            "expr1\tcase_vs_control\tPOS1\t2.2\texpr_cache\t2026-06\tHomo sapiens\tHGNC\tvst\tlogfc\n",
+            "expr1\tcase_vs_control\tNEG1\t-2.2\texpr_cache\t2026-06\tHomo sapiens\tHGNC\tvst\tlogfc\n",
+            "expr1\tcase_vs_control\tMID1\t-0.3\texpr_cache\t2026-06\tHomo sapiens\tHGNC\tvst\tlogfc\n",
+        ),
+    )
+    .expect("write co-regulated TSV cache");
+
+    let report = engine
+        .apply(Operation::ProduceGeneSetCoRegulatedCohort {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            dataset_ids: vec!["expr1".to_string()],
+            contrast_labels: vec!["case_vs_control".to_string()],
+            condition_labels: vec![],
+            normalization_method: None,
+            scoring_method: "logfc".to_string(),
+            threshold_rule: "abs>=1".to_string(),
+            sign_direction_rule: "negative".to_string(),
+            relationship: GeneSetCohortRelationship::CoRegulated,
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: Some("1".to_string()),
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect("produce co-regulated TSV gene set")
+        .gene_set_resolution
+        .expect("gene-set resolution report");
+
+    assert_eq!(report.resolved_member_count, 1);
+    assert_eq!(report.resolved_members[0].symbol, "NEG1");
+    let metadata = report
+        .co_regulated_metadata
+        .as_ref()
+        .expect("co-regulated metadata");
+    assert_eq!(
+        metadata.relationship,
+        GeneSetCohortRelationship::CoRegulated
+    );
+    assert_eq!(metadata.sign_direction_rule, "negative");
+    assert_eq!(metadata.threshold_rule, "abs>=1");
+}
+
+#[test]
+fn build_gene_set_promoter_cohort_uses_default_strand_geometry_and_keeps_unresolved() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let resolution = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExplicitMembers {
+                members: vec![
+                    "POS1".to_string(),
+                    "NEG1".to_string(),
+                    "MISSING".to_string(),
+                ],
+            },
+            Some("ToyGenome"),
+            None,
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect("resolve explicit gene set");
+    assert_eq!(resolution.resolved_member_count, 2);
+    assert_eq!(resolution.unresolved_member_count, 1);
+
+    let cohort = engine
+        .build_gene_set_promoter_cohort(
+            "ToyGenome",
+            resolution,
+            GeneSetCohortRelationship::Manual,
+            DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+            DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+            Some(&genome_catalog_path),
+            None,
+        )
+        .expect("build promoter cohort");
+    assert_eq!(cohort.relationship, GeneSetCohortRelationship::Manual);
+    assert_eq!(cohort.upstream_bp, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP);
+    assert_eq!(cohort.downstream_bp, DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP);
+    assert_eq!(cohort.returned_window_count, 2);
+    assert!(
+        cohort
+            .unresolved_members
+            .iter()
+            .any(|member| member.query == "MISSING")
+    );
+
+    let pos = cohort
+        .windows
+        .iter()
+        .find(|window| window.symbol == "POS1")
+        .expect("POS1 promoter");
+    assert_eq!(pos.strand, "+");
+    assert_eq!(pos.tss_1based, 1601);
+    assert_eq!(pos.promoter_start_1based, 601);
+    assert_eq!(pos.promoter_end_1based, 1801);
+
+    let neg = cohort
+        .windows
+        .iter()
+        .find(|window| window.symbol == "NEG1")
+        .expect("NEG1 promoter");
+    assert_eq!(neg.strand, "-");
+    assert_eq!(neg.tss_1based, 3500);
+    assert_eq!(neg.promoter_start_1based, 3300);
+    assert_eq!(neg.promoter_end_1based, 4500);
+}
+
+#[test]
+fn resolve_ortholog_promoter_cohort_uses_aliases_and_strand_geometry() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let catalog_path = prepare_ortholog_test_genomes(root, &mut engine);
+    let resource_path = write_ortholog_test_resource(root, false);
+    let mut target_genome_ids = BTreeMap::new();
+    target_genome_ids.insert("mouse".to_string(), "MouseToy".to_string());
+    let mut transcript_ids = BTreeMap::new();
+    transcript_ids.insert("human".to_string(), "TX_HUMAN_TP73".to_string());
+    transcript_ids.insert("mouse".to_string(), "TX_MOUSE_TRP73".to_string());
+
+    let cohort = engine
+        .resolve_ortholog_promoter_cohort(
+            "human",
+            "HumanToy",
+            "TP73",
+            &["mouse".to_string()],
+            &target_genome_ids,
+            &transcript_ids,
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Reject,
+            GeneSetCohortRelationship::Unspecified,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("resolve ortholog promoter cohort");
+    assert_eq!(cohort.schema, "gentle.ortholog_promoter_cohort.v1");
+    assert_eq!(cohort.resolved_promoter_count, 2);
+    assert_eq!(cohort.unresolved_count, 0);
+    assert_eq!(cohort.request.anchor_species, "Homo sapiens");
+    assert_eq!(cohort.request.target_species, vec!["Mus musculus"]);
+
+    let anchor = cohort
+        .rows
+        .iter()
+        .find(|row| row.role == OrthologPromoterRole::Anchor)
+        .expect("anchor row");
+    assert_eq!(anchor.species, "Homo sapiens");
+    assert_eq!(anchor.gene_symbol.as_deref(), Some("TP73"));
+    assert_eq!(anchor.strand, "+");
+    assert_eq!(anchor.tss_1based, 1601);
+    assert_eq!(anchor.promoter_start_1based, 1501);
+    assert_eq!(anchor.promoter_end_1based, 1621);
+    assert_eq!(anchor.tss_position_0based, 100);
+    assert!(anchor.promoter_sequence.is_some());
+
+    let mouse = cohort
+        .rows
+        .iter()
+        .find(|row| row.role == OrthologPromoterRole::Target)
+        .expect("mouse row");
+    assert_eq!(mouse.species, "Mus musculus");
+    assert_eq!(mouse.gene_symbol.as_deref(), Some("Trp73"));
+    assert_eq!(mouse.strand, "-");
+    assert_eq!(mouse.tss_1based, 3500);
+    assert_eq!(mouse.promoter_start_1based, 3480);
+    assert_eq!(mouse.promoter_end_1based, 3600);
+    assert_eq!(mouse.tss_position_0based, 100);
+    assert_eq!(mouse.orthology_type.as_deref(), Some("one_to_one"));
+    assert_eq!(mouse.confidence.as_deref(), Some("high"));
+    assert_eq!(mouse.orthology_evidence, vec!["orthology_one2one"]);
+}
+
+#[test]
+fn resolve_ortholog_promoter_cohort_reports_ambiguity_unless_policy_allows_first() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let catalog_path = prepare_ortholog_test_genomes(root, &mut engine);
+    let resource_path = write_ortholog_test_resource(root, true);
+    let mut target_genome_ids = BTreeMap::new();
+    target_genome_ids.insert("Mus musculus".to_string(), "MouseToy".to_string());
+
+    let rejected = engine
+        .resolve_ortholog_promoter_cohort(
+            "Homo sapiens",
+            "HumanToy",
+            "ENSG_TP73",
+            &["Mus musculus".to_string()],
+            &target_genome_ids,
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Reject,
+            GeneSetCohortRelationship::Unspecified,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("ambiguous mapping reports unresolved target");
+    assert_eq!(rejected.resolved_promoter_count, 1);
+    assert_eq!(rejected.unresolved_count, 1);
+    assert!(
+        rejected.unresolved_rows[0]
+            .reason
+            .contains("Ambiguous local ortholog mapping")
+    );
+    assert_eq!(rejected.unresolved_rows[0].candidates.len(), 2);
+
+    let first = engine
+        .resolve_ortholog_promoter_cohort(
+            "Homo sapiens",
+            "HumanToy",
+            "ENSG_TP73",
+            &["Mus musculus".to_string()],
+            &target_genome_ids,
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::First,
+            GeneSetCohortRelationship::Unspecified,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("first ambiguity policy resolves deterministically");
+    assert_eq!(first.resolved_promoter_count, 2);
+    assert!(
+        first
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("ambiguity_policy=first"))
+    );
+}
+
+#[test]
+fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and_cutrun_states() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let catalog_path = prepare_ortholog_test_genomes(root, &mut engine);
+    let resource_path = write_ortholog_test_resource(root, false);
+    let mut target_genome_ids = BTreeMap::new();
+    target_genome_ids.insert("Mus musculus".to_string(), "MouseToy".to_string());
+    let cohort = engine
+        .resolve_ortholog_promoter_cohort(
+            "Homo sapiens",
+            "HumanToy",
+            "TP73",
+            &["Mus musculus".to_string()],
+            &target_genome_ids,
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Reject,
+            GeneSetCohortRelationship::Unspecified,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("resolve cohort");
+
+    let comparison = engine
+        .summarize_ortholog_promoter_comparison(
+            cohort,
+            &["SP1".to_string()],
+            TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            true,
+            GeneSetCohortRelationship::Unspecified,
+            &[PromoterExpressionEvidenceInput {
+                gene_label: Some("TP73".to_string()),
+                condition: Some("case".to_string()),
+                value: 7.5,
+                unit: Some("TPM".to_string()),
+                ..PromoterExpressionEvidenceInput::default()
+            }],
+            Some("rna_demo"),
+            &[],
+            &[],
+        )
+        .expect("summarize ortholog comparison");
+    assert_eq!(comparison.schema, "gentle.ortholog_promoter_comparison.v1");
+    assert_eq!(comparison.cohort.resolved_promoter_count, 2);
+    assert_eq!(comparison.motifs_requested, vec!["SP1".to_string()]);
+    assert!(!comparison.promoter_summaries.is_empty());
+    assert_eq!(comparison.sequence_similarity.len(), 1);
+    assert!(comparison.sequence_similarity[0].identity_fraction <= 1.0);
+    assert!(!comparison.pairwise_tfbs_similarity.is_empty());
+    assert_eq!(comparison.expression_assignments.len(), 1);
+    assert_eq!(
+        comparison.expression_assignments[0].source.as_str(),
+        "rna_demo"
+    );
+    assert_eq!(comparison.cutrun_support.len(), 2);
+    assert!(
+        comparison
+            .cutrun_support
+            .iter()
+            .all(|row| row.status == OrthologCutRunSupportStatus::NoData)
+    );
+
+    let human_promoter = comparison
+        .cohort
+        .rows
+        .iter()
+        .find(|row| row.species == "Homo sapiens")
+        .expect("human promoter row");
+    let human_peak_1based = comparison
+        .promoter_summaries
+        .iter()
+        .find(|row| {
+            row.species == "Homo sapiens"
+                && row.gene_label == "TP73"
+                && row.peak_position_0based.is_some()
+        })
+        .and_then(|row| {
+            row.peak_genomic_position_1based.or_else(|| {
+                row.peak_position_0based.and_then(|position| {
+                    GentleEngine::promoter_local_position_to_genomic_1based(
+                        human_promoter.strand.chars().next(),
+                        human_promoter.promoter_start_1based,
+                        human_promoter.promoter_end_1based,
+                        human_promoter.promoter_length_bp,
+                        position,
+                    )
+                })
+            })
+        })
+        .expect("human motif peak genomic position");
+    let project_catalog_dir = root.join(".gentle").join("catalogs");
+    fs::create_dir_all(&project_catalog_dir).expect("create ortholog CUT&RUN catalog dir");
+    let peaks_path = root.join("ortholog_human_peaks.bed");
+    fs::write(
+        &peaks_path,
+        format!(
+            "chr1\t{}\t{}\tsp1_supported_peak\t42\t+\n",
+            human_peak_1based.saturating_sub(1),
+            human_peak_1based
+        ),
+    )
+    .expect("write ortholog CUT&RUN peaks");
+    let cutrun_catalog_path = project_catalog_dir.join("cutrun.json");
+    fs::write(
+        &cutrun_catalog_path,
+        format!(
+            r#"{{
+  "ortholog_human_sp1": {{
+    "summary": "Synthetic ortholog human SP1 CUT&RUN",
+    "species": "Homo sapiens",
+    "target_factor": "SP1",
+    "supported_reference_genome_ids": ["HumanToy"],
+    "peaks_local": "{}"
+  }}
+}}"#,
+            peaks_path.display()
+        ),
+    )
+    .expect("write ortholog CUT&RUN catalog");
+    let cutrun_cache_dir = root.join("ortholog_cutrun_cache");
+    let _project_root_guard =
+        EnvVarGuard::set(crate::genomes::PROJECT_ROOT_ENV, &root.to_string_lossy());
+    let _cutrun_cache_guard = EnvVarGuard::set(
+        "GENTLE_CUTRUN_CACHE_DIR",
+        &cutrun_cache_dir.to_string_lossy(),
+    );
+    let status = engine
+        .prepare_cutrun_dataset(
+            "ortholog_human_sp1",
+            Some(&cutrun_catalog_path.to_string_lossy()),
+            Some(&cutrun_cache_dir.to_string_lossy()),
+        )
+        .expect("prepare ortholog CUT&RUN dataset");
+    assert!(status.prepared);
+
+    let supported = engine
+        .summarize_ortholog_promoter_comparison(
+            comparison.cohort.clone(),
+            &["SP1".to_string()],
+            TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            true,
+            GeneSetCohortRelationship::Unspecified,
+            &[],
+            None,
+            &["ortholog_human_sp1".to_string()],
+            &[],
+        )
+        .expect("summarize ortholog comparison with CUT&RUN support");
+    let human_support = supported
+        .cutrun_support
+        .iter()
+        .find(|row| row.species == "Homo sapiens")
+        .expect("human CUT&RUN support row");
+    assert_eq!(human_support.status, OrthologCutRunSupportStatus::Confirmed);
+    assert_eq!(human_support.nearest_peak_distance_bp, Some(0));
+    assert_eq!(
+        human_support.contributing_dataset_ids,
+        vec!["ortholog_human_sp1".to_string()]
+    );
+    let mouse_support = supported
+        .cutrun_support
+        .iter()
+        .find(|row| row.species == "Mus musculus")
+        .expect("mouse CUT&RUN support row");
+    assert_eq!(
+        mouse_support.status,
+        OrthologCutRunSupportStatus::NotComparable
+    );
+}
+
+#[test]
+fn summarize_multi_gene_promoter_tfbs_expands_gene_set_and_keeps_plain_gene_path() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let gene = PromoterTfbsGeneQuery {
+        gene_query: "POS1".to_string(),
+        occurrence: None,
+        transcript_id: Some("TX_POS".to_string()),
+        display_label: None,
+    };
+
+    let plain = engine
+        .apply(Operation::SummarizeMultiGenePromoterTfbs {
+            genome_id: "ToyGenome".to_string(),
+            genes: vec![gene.clone()],
+            motifs: vec!["SP1".to_string()],
+            upstream_bp: 100,
+            downstream_bp: 20,
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            catalog_path: Some(genome_catalog_path.clone()),
+            gene_group_catalog_path: None,
+            cache_dir: None,
+            gene_set: None,
+            gene_set_resolution: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            path: None,
+        })
+        .expect("plain multi-gene promoter TFBS");
+    let plain_report = plain
+        .multi_gene_promoter_tfbs
+        .expect("plain promoter TFBS report");
+    assert_eq!(plain_report.returned_gene_count, 1);
+    assert!(plain_report.gene_set.is_none());
+    assert!(plain_report.gene_set_resolution.is_none());
+    assert!(
+        plain_report
+            .genes
+            .iter()
+            .any(|row| row.gene_query == "POS1")
+    );
+
+    let expanded = engine
+        .apply(Operation::SummarizeMultiGenePromoterTfbs {
+            genome_id: "ToyGenome".to_string(),
+            genes: vec![gene],
+            motifs: vec!["SP1".to_string()],
+            upstream_bp: 100,
+            downstream_bp: 20,
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            catalog_path: Some(genome_catalog_path),
+            gene_group_catalog_path: None,
+            cache_dir: None,
+            gene_set: Some(GeneSetRequest::ExplicitMembers {
+                members: vec!["NEG1".to_string()],
+            }),
+            gene_set_resolution: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            path: None,
+        })
+        .expect("gene-set expanded promoter TFBS");
+    let expanded_report = expanded
+        .multi_gene_promoter_tfbs
+        .expect("expanded promoter TFBS report");
+    assert_eq!(expanded_report.returned_gene_count, 2);
+    assert!(expanded_report.gene_set.is_some());
+    let resolution = expanded_report
+        .gene_set_resolution
+        .as_ref()
+        .expect("gene-set resolution provenance");
+    assert_eq!(resolution.resolved_member_count, 1);
+    assert_eq!(resolution.resolved_members[0].symbol, "NEG1");
+    assert!(
+        expanded_report
+            .genes
+            .iter()
+            .any(|row| row.display_label == "NEG1")
+    );
+}
+
+#[test]
+fn inspect_cutrun_gene_set_regulatory_support_keeps_evaluated_denominators_honest() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let project_catalog_dir = root.join(".gentle").join("catalogs");
+    fs::create_dir_all(&project_catalog_dir).expect("create project CUT&RUN catalog dir");
+    let peaks_path = root.join("gene_set_peaks.bed");
+    let signal_path = root.join("gene_set_signal.bedgraph");
+    fs::write(&peaks_path, "chr1\t119\t160\tpeak_a\t42\t+\n").expect("write peaks");
+    fs::write(&signal_path, "chr1\t299\t340\t0.0\n").expect("write zero signal");
+    let cutrun_catalog_path = project_catalog_dir.join("cutrun.json");
+    fs::write(
+        &cutrun_catalog_path,
+        format!(
+            r#"{{
+  "toy_gene_set_cutrun": {{
+    "summary": "Toy gene-set CUT&RUN",
+    "target_factor": "CTCF",
+    "supported_reference_genome_ids": ["ToyGenome"],
+    "peaks_local": "{}",
+    "signal_local": "{}"
+  }}
+}}"#,
+            peaks_path.display(),
+            signal_path.display()
+        ),
+    )
+    .expect("write project CUT&RUN catalog");
+    let cutrun_cache_dir = root.join("cutrun_cache");
+    let _project_root_guard =
+        EnvVarGuard::set(crate::genomes::PROJECT_ROOT_ENV, &root.to_string_lossy());
+    let _cutrun_cache_guard = EnvVarGuard::set(
+        "GENTLE_CUTRUN_CACHE_DIR",
+        &cutrun_cache_dir.to_string_lossy(),
+    );
+
+    let mut engine = GentleEngine::new();
+    let status = engine
+        .prepare_cutrun_dataset(
+            "toy_gene_set_cutrun",
+            Some(&cutrun_catalog_path.to_string_lossy()),
+            Some(&cutrun_cache_dir.to_string_lossy()),
+        )
+        .expect("prepare gene-set CUT&RUN dataset");
+    assert!(status.prepared);
+
+    engine
+        .upsert_cutrun_read_report(CutRunReadReport {
+            schema: "gentle.cutrun_read_report.v1".to_string(),
+            report_id: "toy_gene_set_report".to_string(),
+            seq_id: "toy_gene_set_roi".to_string(),
+            input_r1_path: "synthetic://reads.fa".to_string(),
+            input_format: CutRunInputFormat::Fasta,
+            read_layout: CutRunReadLayout::SingleEnd,
+            genome_id: "ToyGenome".to_string(),
+            chromosome: "chr1".to_string(),
+            reference_window_start_1based: 100,
+            reference_window_end_1based: 200,
+            reference_window_orientation: "+".to_string(),
+            roi_local_start_1based: 1,
+            roi_local_end_1based: 101,
+            reference_window_length_bp: 101,
+            total_units: 2,
+            mapped_units: 2,
+            fragment_count: 2,
+            support_clusters: vec![CutRunSupportCluster {
+                cluster_index: 0,
+                local_start_1based: 31,
+                local_end_1based: 51,
+                genomic_start_1based: 130,
+                genomic_end_1based: 150,
+                total_cut_sites: 4,
+                fragment_count: 2,
+                ..CutRunSupportCluster::default()
+            }],
+            ..CutRunReadReport::default()
+        })
+        .expect("store synthetic CUT&RUN read report");
+
+    let report = engine
+        .inspect_cutrun_gene_set_regulatory_support(
+            gene_set_cutrun_promoter_cohort(vec![
+                gene_set_cutrun_window("EvalSupport", 100, 200),
+                gene_set_cutrun_window("EvalZero", 300, 350),
+                gene_set_cutrun_window("Unevaluated", 800, 900),
+            ]),
+            &["toy_gene_set_cutrun".to_string()],
+            &["toy_gene_set_report".to_string()],
+            150,
+            &[],
+        )
+        .expect("inspect gene-set CUT&RUN support");
+    assert_eq!(report.relationship, GeneSetCohortRelationship::Unspecified);
+    assert!(report.relationship_flags.is_empty());
+    assert_eq!(report.aggregate.member_count, 3);
+    assert_eq!(report.aggregate.evaluated_member_count, 2);
+    assert_eq!(report.aggregate.unevaluated_member_count, 1);
+    assert_eq!(report.aggregate.members_with_support_windows, 1);
+    assert_eq!(report.aggregate.members_with_strong_support, 1);
+    assert_eq!(
+        report.aggregate.evaluated_fraction_with_support_windows,
+        0.5
+    );
+    assert_eq!(report.aggregate.evaluated_fraction_with_strong_support, 0.5);
+    assert_eq!(report.aggregate.mean_support_window_count_evaluated, 1.0);
+
+    let supported = report
+        .member_support
+        .iter()
+        .find(|row| row.symbol == "EvalSupport")
+        .expect("supported member");
+    assert_eq!(
+        supported.evaluation_state,
+        GeneSetCutRunEvaluationState::Evaluated
+    );
+    assert_eq!(supported.support_window_count, 2);
+    assert_eq!(
+        supported.strongest_support_strength.as_deref(),
+        Some("strong")
+    );
+    assert_eq!(
+        supported.contributing_dataset_ids,
+        vec!["toy_gene_set_cutrun".to_string()]
+    );
+    assert_eq!(
+        supported.contributing_read_report_ids,
+        vec!["toy_gene_set_report".to_string()]
+    );
+
+    let zero = report
+        .member_support
+        .iter()
+        .find(|row| row.symbol == "EvalZero")
+        .expect("zero-support evaluated member");
+    assert_eq!(
+        zero.evaluation_state,
+        GeneSetCutRunEvaluationState::Evaluated
+    );
+    assert_eq!(zero.support_window_count, 0);
+    assert!(zero.strongest_support_strength.is_none());
+
+    let unevaluated = report
+        .member_support
+        .iter()
+        .find(|row| row.symbol == "Unevaluated")
+        .expect("unevaluated member");
+    assert_eq!(
+        unevaluated.evaluation_state,
+        GeneSetCutRunEvaluationState::Unevaluated
+    );
+    assert!(unevaluated.unevaluated_reason.is_some());
+
+    let mut co_regulated_cohort = gene_set_cutrun_promoter_cohort(vec![
+        gene_set_cutrun_window("EvalSupport", 100, 200),
+        gene_set_cutrun_window("EvalZero", 300, 350),
+        gene_set_cutrun_window("Unevaluated", 800, 900),
+    ]);
+    co_regulated_cohort.relationship = GeneSetCohortRelationship::CoRegulated;
+    let co_regulated = engine
+        .inspect_cutrun_gene_set_regulatory_support(
+            co_regulated_cohort,
+            &["toy_gene_set_cutrun".to_string()],
+            &["toy_gene_set_report".to_string()],
+            150,
+            &[],
+        )
+        .expect("inspect co-regulated gene-set CUT&RUN support");
+    assert_eq!(
+        co_regulated.relationship,
+        GeneSetCohortRelationship::CoRegulated
+    );
+    assert!(!co_regulated.relationship_flags.is_empty());
+    let co_flag = co_regulated
+        .relationship_flags
+        .iter()
+        .find(|flag| flag.member_symbols.contains(&"EvalZero".to_string()))
+        .expect("co-regulated divergence flags unsupported evaluated member");
+    assert_eq!(co_flag.flag_kind, "unexpected_divergence");
+    assert!(co_flag.evidence_kind.starts_with("cutrun_"));
+    assert!(
+        co_flag
+            .member_dedup_keys
+            .contains(&"symbol:evalzero".to_string())
+    );
+    assert!(
+        !co_flag
+            .member_symbols
+            .iter()
+            .any(|symbol| symbol == "Unevaluated")
+    );
+
+    let mut anti_co_regulated_cohort = gene_set_cutrun_promoter_cohort(vec![
+        gene_set_cutrun_window("EvalSupport", 100, 200),
+        gene_set_cutrun_window("EvalZero", 300, 350),
+        gene_set_cutrun_window("Unevaluated", 800, 900),
+    ]);
+    anti_co_regulated_cohort.relationship = GeneSetCohortRelationship::AntiCoRegulated;
+    let anti_co_regulated = engine
+        .inspect_cutrun_gene_set_regulatory_support(
+            anti_co_regulated_cohort,
+            &["toy_gene_set_cutrun".to_string()],
+            &["toy_gene_set_report".to_string()],
+            150,
+            &[],
+        )
+        .expect("inspect anti-co-regulated gene-set CUT&RUN support");
+    assert_eq!(
+        anti_co_regulated.relationship,
+        GeneSetCohortRelationship::AntiCoRegulated
+    );
+    assert!(anti_co_regulated.relationship_flags.is_empty());
+
+    let mut anti_concordant_cohort = gene_set_cutrun_promoter_cohort(vec![
+        gene_set_cutrun_window("EvalSupportA", 100, 200),
+        gene_set_cutrun_window("EvalSupportB", 120, 160),
+    ]);
+    anti_concordant_cohort.relationship = GeneSetCohortRelationship::AntiCoRegulated;
+    let anti_concordant = engine
+        .inspect_cutrun_gene_set_regulatory_support(
+            anti_concordant_cohort,
+            &["toy_gene_set_cutrun".to_string()],
+            &["toy_gene_set_report".to_string()],
+            150,
+            &[],
+        )
+        .expect("inspect anti-co-regulated concordant CUT&RUN support");
+    assert_eq!(
+        anti_concordant.relationship_flags[0].flag_kind,
+        "unexpected_concordance"
+    );
+    assert!(
+        anti_concordant.relationship_flags[0]
+            .member_symbols
+            .contains(&"EvalSupportA".to_string())
+    );
+    assert!(
+        anti_concordant.relationship_flags[0]
+            .member_symbols
+            .contains(&"EvalSupportB".to_string())
+    );
+
+    let mut inherited_cohort = gene_set_cutrun_promoter_cohort(vec![
+        gene_set_cutrun_window("EvalSupport", 100, 200),
+        gene_set_cutrun_window("EvalZero", 300, 350),
+    ]);
+    inherited_cohort.relationship = GeneSetCohortRelationship::CoRegulated;
+    let inherited = engine
+        .apply(Operation::InspectCutRunGeneSetRegulatorySupport {
+            genome_id: "ToyGenome".to_string(),
+            source: None,
+            resolution: None,
+            promoter_cohort: Some(Box::new(inherited_cohort.clone())),
+            relationship: GeneSetCohortRelationship::Unspecified,
+            dataset_ids: vec!["toy_gene_set_cutrun".to_string()],
+            read_report_ids: vec!["toy_gene_set_report".to_string()],
+            upstream_bp: DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+            downstream_bp: DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+            neighbor_window_bp: 150,
+            species_filters: vec![],
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            path: None,
+        })
+        .expect("inspect inherited relationship through operation");
+    let inherited_report = inherited
+        .gene_set_cutrun_regulatory_support
+        .expect("inherited gene-set CUT&RUN report");
+    assert_eq!(
+        inherited_report.relationship,
+        GeneSetCohortRelationship::CoRegulated
+    );
+
+    let overridden = engine
+        .apply(Operation::InspectCutRunGeneSetRegulatorySupport {
+            genome_id: "ToyGenome".to_string(),
+            source: None,
+            resolution: None,
+            promoter_cohort: Some(Box::new(inherited_cohort)),
+            relationship: GeneSetCohortRelationship::AntiCoRegulated,
+            dataset_ids: vec!["toy_gene_set_cutrun".to_string()],
+            read_report_ids: vec!["toy_gene_set_report".to_string()],
+            upstream_bp: DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+            downstream_bp: DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+            neighbor_window_bp: 150,
+            species_filters: vec![],
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            path: None,
+        })
+        .expect("inspect overridden relationship through operation");
+    let overridden_report = overridden
+        .gene_set_cutrun_regulatory_support
+        .expect("overridden gene-set CUT&RUN report");
+    assert_eq!(
+        overridden_report.relationship,
+        GeneSetCohortRelationship::AntiCoRegulated
+    );
+
+    let all_unevaluated = engine
+        .inspect_cutrun_gene_set_regulatory_support(
+            gene_set_cutrun_promoter_cohort(vec![
+                gene_set_cutrun_window("NoOverlapA", 900, 950),
+                gene_set_cutrun_window("NoOverlapB", 1000, 1050),
+            ]),
+            &["toy_gene_set_cutrun".to_string()],
+            &[],
+            150,
+            &[],
+        )
+        .expect("inspect all-unevaluated gene-set CUT&RUN support");
+    assert_eq!(all_unevaluated.aggregate.member_count, 2);
+    assert_eq!(all_unevaluated.aggregate.evaluated_member_count, 0);
+    assert_eq!(all_unevaluated.aggregate.unevaluated_member_count, 2);
+    assert_eq!(
+        all_unevaluated
+            .aggregate
+            .evaluated_fraction_with_support_windows,
+        0.0
+    );
+    assert_eq!(
+        all_unevaluated
+            .aggregate
+            .evaluated_fraction_with_strong_support,
+        0.0
+    );
+    assert_eq!(
+        all_unevaluated
+            .aggregate
+            .mean_support_window_count_evaluated,
+        0.0
+    );
+}
+
 struct EnvVarGuard {
     key: &'static str,
     previous: Option<String>,
@@ -1465,12 +6065,15 @@ fn write_cutrun_prepare_activity(
         display_name: dataset_id.to_string(),
         status_path: status_path.display().to_string(),
         lock_path: Some(lock_path.display().to_string()),
+        cancel_path: None,
         lifecycle_status: lifecycle_status.to_string(),
         phase: Some("materializing_asset".to_string()),
         item: Some("toy_peaks.bed".to_string()),
         bytes_done: 32,
         bytes_total: Some(128),
         percent: Some(25.0),
+        monitored_free_bytes: None,
+        minimum_free_bytes: None,
         started_at_unix_ms: updated_at_unix_ms.saturating_sub(1000),
         updated_at_unix_ms,
         finished_at_unix_ms: None,
@@ -1529,6 +6132,101 @@ fn test_set_linear_viewport() {
     assert!(res.messages.iter().any(|m| m.contains("linear viewport")));
     assert_eq!(engine.state().display.linear_view_start_bp, 123);
     assert_eq!(engine.state().display.linear_view_span_bp, 456);
+}
+
+#[test]
+fn test_engine_history_summary_and_multi_step_undo_redo() {
+    let mut engine = GentleEngine::new();
+    assert_eq!(engine.history_summary().undo_count, 0);
+    assert_eq!(engine.history_summary().redo_count, 0);
+    assert_eq!(engine.history_summary().history_limit, 256);
+
+    engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::Features,
+            visible: false,
+        })
+        .unwrap();
+    engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::Tfbs,
+            visible: true,
+        })
+        .unwrap();
+
+    let summary = engine.history_summary();
+    assert_eq!(summary.undo_count, 2);
+    assert_eq!(summary.redo_count, 0);
+    assert_eq!(summary.operation_log_count, 2);
+    assert_eq!(
+        summary
+            .next_undo
+            .as_ref()
+            .map(|next| next.operation.as_str()),
+        Some("SetDisplayVisibility")
+    );
+    assert!(!engine.state().display.show_features);
+    assert!(engine.state().display.show_tfbs);
+
+    engine.undo_last_operation().unwrap();
+    assert!(!engine.state().display.show_features);
+    assert!(!engine.state().display.show_tfbs);
+    assert_eq!(engine.history_summary().undo_count, 1);
+    assert_eq!(engine.history_summary().redo_count, 1);
+
+    engine.undo_last_operation().unwrap();
+    assert!(engine.state().display.show_features);
+    assert!(!engine.state().display.show_tfbs);
+    assert_eq!(engine.history_summary().undo_count, 0);
+    assert_eq!(engine.history_summary().redo_count, 2);
+
+    engine.redo_last_operation().unwrap();
+    assert!(!engine.state().display.show_features);
+    assert!(!engine.state().display.show_tfbs);
+    assert_eq!(engine.history_summary().undo_count, 1);
+    assert_eq!(engine.history_summary().redo_count, 1);
+    assert_eq!(
+        engine
+            .history_summary()
+            .next_redo
+            .as_ref()
+            .map(|next| next.operation.as_str()),
+        Some("SetDisplayVisibility")
+    );
+}
+
+#[test]
+fn test_engine_history_redo_clears_after_new_mutation() {
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::Features,
+            visible: false,
+        })
+        .unwrap();
+    engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::Tfbs,
+            visible: true,
+        })
+        .unwrap();
+    engine.undo_last_operation().unwrap();
+    assert_eq!(engine.history_summary().redo_count, 1);
+
+    engine
+        .apply(Operation::SetLinearViewport {
+            start_bp: 10,
+            span_bp: 20,
+        })
+        .unwrap();
+
+    let summary = engine.history_summary();
+    assert_eq!(summary.redo_count, 0);
+    assert_eq!(summary.undo_count, 2);
+    assert_eq!(
+        engine.redo_last_operation().unwrap_err().message,
+        "No operation to redo"
+    );
 }
 
 #[test]
@@ -3649,7 +8347,7 @@ fn test_cdna_qpcr_operation_writes_report_json() {
 fn test_cdna_pcr_operation_can_materialize_nonspecific_products_as_pool_gel() {
     let mut engine = cdna_assay_nonspecific_test_engine();
     let td = tempdir().expect("tempdir");
-    let gel_path = td.path().join("cdna_pcr_products.gel.svg");
+    let gel_path = td.path().join("nested").join("cdna_pcr_products.gel.svg");
     let result = engine
         .apply(Operation::TestCdnaPcr {
             seq_id: "cdna_nonspecific".to_string(),
@@ -3687,10 +8385,20 @@ fn test_cdna_pcr_operation_can_materialize_nonspecific_products_as_pool_gel() {
         "gentle.cdna_assay_product_materialization.v1"
     );
     assert_eq!(materialization.product_seq_ids.len(), 2);
+    assert_eq!(materialization.created_product_seq_ids.len(), 2);
+    assert!(materialization.reused_product_seq_ids.is_empty());
+    assert_eq!(materialization.product_rows.len(), 2);
+    assert!(materialization.product_rows.iter().all(|row| row.created));
+    assert!(materialization.product_rows.iter().any(|row| {
+        row.transcript_id == "TX_SHORT"
+            && row.amplicon_length_bp == 21
+            && !row.genomic_carryover_risk.is_empty()
+    }));
     assert!(matches!(
         materialization.container_kind,
         Some(ContainerKind::Pool)
     ));
+    assert!(materialization.container_created);
     let container_id = materialization
         .container_id
         .as_ref()
@@ -3718,11 +8426,86 @@ fn test_cdna_pcr_operation_can_materialize_nonspecific_products_as_pool_gel() {
         .collect::<Vec<_>>();
     lengths.sort_unstable();
     assert_eq!(lengths, vec![21, 41]);
+    for seq_id in &materialization.product_seq_ids {
+        let dna = engine
+            .state()
+            .sequences
+            .get(seq_id)
+            .expect("materialized product metadata");
+        assert!(dna.features().iter().any(|feature| {
+            feature.kind == "cDNA_assay_product"
+                && feature.qualifiers.iter().any(|(key, value)| {
+                    key == "cdna_assay_signature"
+                        && value.as_deref().is_some_and(|raw| !raw.is_empty())
+                })
+        }));
+    }
     let svg_text = fs::read_to_string(&gel_path).expect("product gel svg");
     assert!(svg_text.contains("Serial Gel Preview"));
     assert!(svg_text.contains("cDNA PCR products"));
     assert!(svg_text.contains("nonspecific_cdna_pcr_TX_SHORT_p1_21bp"));
     assert!(svg_text.contains("nonspecific_cdna_pcr_TX_LONG_p1_41bp"));
+    assert_eq!(materialization.gel_band_rows.len(), 2);
+    assert!(
+        materialization
+            .gel_summary_lines
+            .iter()
+            .any(|line| line.contains("Product gel lane"))
+    );
+    assert!(
+        materialization
+            .gel_summary_lines
+            .iter()
+            .any(|line| line.contains("nonspecific_cdna_pcr_TX_SHORT_p1_21bp"))
+    );
+
+    let sequence_count_after_first_run = engine.state().sequences.len();
+    let container_count_after_first_run = engine.state().container_state.containers.len();
+    let repeat = engine
+        .apply(Operation::TestCdnaPcr {
+            seq_id: "cdna_nonspecific".to_string(),
+            source_feature_id: 0,
+            forward_primer: "AAACCC".to_string(),
+            reverse_primer: "CCCAAA".to_string(),
+            transcript_id: None,
+            min_amplicon_bp: Some(10),
+            max_amplicon_bp: Some(80),
+            max_mismatches: None,
+            require_3prime_exact_bases: Some(4),
+            transcript_order: None,
+            transcript_map_coordinate_mode: None,
+            path: None,
+            svg_path: None,
+            materialize_products: true,
+            product_output_prefix: Some("nonspecific_cdna_pcr".to_string()),
+            product_gel_svg_path: Some(gel_path.to_string_lossy().to_string()),
+            product_gel_ladders: None,
+        })
+        .expect("repeated materialized cDNA PCR products");
+    let repeat_materialization = repeat
+        .cdna_assay_product_materialization
+        .as_ref()
+        .expect("repeat materialization summary");
+    assert_eq!(
+        repeat_materialization.product_seq_ids,
+        materialization.product_seq_ids
+    );
+    assert_eq!(repeat_materialization.created_product_seq_ids.len(), 0);
+    assert_eq!(repeat_materialization.reused_product_seq_ids.len(), 2);
+    assert!(repeat_materialization.idempotent_reuse);
+    assert_eq!(
+        repeat_materialization.container_id,
+        materialization.container_id
+    );
+    assert!(!repeat_materialization.container_created);
+    assert_eq!(
+        engine.state().sequences.len(),
+        sequence_count_after_first_run
+    );
+    assert_eq!(
+        engine.state().container_state.containers.len(),
+        container_count_after_first_run
+    );
 }
 
 #[test]
@@ -3767,6 +8550,13 @@ fn test_cdna_qpcr_operation_materializes_probe_supported_products() {
         .as_ref()
         .expect("materialization summary");
     assert_eq!(materialization.product_seq_ids.len(), 2);
+    assert_eq!(materialization.created_product_seq_ids.len(), 2);
+    assert!(
+        materialization
+            .product_rows
+            .iter()
+            .all(|row| row.probe_supported)
+    );
     assert!(materialization.product_gel_svg_path.is_none());
 }
 
@@ -3806,6 +8596,36 @@ fn transcript_qpcr_panel_test_engine() -> GentleEngine {
     }
     let mut state = ProjectState::default();
     state.sequences.insert("panel_src".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
+fn transcript_qpcr_single_exon_fallback_engine() -> GentleEngine {
+    let tx_a = "ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAACGCTAGTCGATCGTACCGTACGATCGTACGAGGCTAACGATCCGATGCTAACG";
+    let tx_b = "CGTACGATTCGGAACCTGATCGATGCTTACGGTACCGATCTAGGCTTATCGGATCGTAGCTAACCGATGCTAGCTTACCGATGCTAGGCTACGATCG";
+    let spacer = "N".repeat(24);
+    let tx_a_start = 0usize;
+    let tx_a_end = tx_a.len();
+    let tx_b_start = tx_a_end + spacer.len();
+    let tx_b_end = tx_b_start + tx_b.len();
+    let mut dna = seq(&format!("{tx_a}{spacer}{tx_b}"));
+    for (transcript_id, start, end) in [
+        ("TX_SINGLE_A", tx_a_start, tx_a_end),
+        ("TX_SINGLE_B", tx_b_start, tx_b_end),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(start as i64, end as i64),
+            qualifiers: vec![
+                ("gene".into(), Some("SINGLEEXON1".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(format!("SINGLEEXON1 {transcript_id}"))),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("single_exon_qpcr".to_string(), dna);
     let mut engine = GentleEngine::from_state(state);
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
     engine
@@ -4197,6 +9017,83 @@ fn test_design_qpcr_assays_transcript_aware_either_prefers_junction_for_tp73_as3
         QpcrTranscriptSpecificityEvidence::EitherPreferJunction,
         "tp73_as3_nr_187362_1_either_qpcr",
     );
+}
+
+#[test]
+fn test_design_qpcr_assays_transcript_aware_either_falls_back_to_unique_exon_chain() {
+    let mut engine = transcript_qpcr_single_exon_fallback_engine();
+    let seq_len = engine
+        .state()
+        .sequences
+        .get("single_exon_qpcr")
+        .expect("single-exon qPCR source")
+        .len();
+    let side = PrimerDesignSideConstraint {
+        min_length: 18,
+        max_length: 24,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..Default::default()
+    };
+
+    engine
+        .apply(Operation::DesignQpcrAssays {
+            template: "single_exon_qpcr".to_string(),
+            roi_start_0based: 0,
+            roi_end_0based: seq_len,
+            forward: side.clone(),
+            reverse: side.clone(),
+            probe: side,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 60,
+            max_amplicon_bp: 140,
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: Some(100.0),
+            max_assays: Some(8),
+            transcript_targeting: Some(QpcrTranscriptTargeting {
+                source_feature_id: 0,
+                mode: QpcrTranscriptTargetingMode::DistinguishTranscript,
+                transcript_id: Some("TX_SINGLE_A".to_string()),
+                specificity_evidence: Some(QpcrTranscriptSpecificityEvidence::EitherPreferJunction),
+            }),
+            report_id: Some("single_exon_either_qpcr".to_string()),
+        })
+        .expect("single-exon fallback qPCR design");
+
+    let report = engine
+        .get_qpcr_design_report("single_exon_either_qpcr")
+        .expect("single-exon fallback qPCR report");
+    let targeting_result = report
+        .transcript_targeting_result
+        .as_ref()
+        .expect("transcript targeting result");
+    assert_eq!(targeting_result.transcript_count_considered, 2);
+    assert_eq!(
+        targeting_result.transcript_id.as_deref(),
+        Some("TX_SINGLE_A")
+    );
+    assert_eq!(targeting_result.selected_support_transcript_count, 1);
+    assert_eq!(
+        targeting_result.realized_specificity_evidence,
+        Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain)
+    );
+    assert!(!report.assays.is_empty());
+    assert!(report.assays.iter().all(|assay| {
+        assay.transcript_context.as_ref().is_some_and(|context| {
+            context.design_transcript_id == "TX_SINGLE_A"
+                && context.support_transcript_count == 1
+                && context.satisfies_requested_targeting
+                && context.realized_specificity_evidence
+                    == Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain)
+                && context.transcript_distinguishing_primer.is_some()
+                && !context.forward_spans_junction
+                && !context.reverse_spans_junction
+                && context.covered_junction_labels.is_empty()
+        })
+    }));
 }
 
 #[test]
@@ -7058,19 +11955,28 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
 
 #[test]
 fn test_fetch_ensembl_gene_live_tp53_skips_without_internet() {
+    let _guard = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let _ensembl_env = EnvVarGuard::set("GENTLE_ENSEMBL_REST_BASE_URL", "https://rest.ensembl.org");
     if !internet_access_available() {
         eprintln!("Skipping live Ensembl gene fetch test because internet access is unavailable.");
         return;
     }
 
     let mut engine = GentleEngine::new();
-    let result = engine
-        .apply(Operation::FetchEnsemblGene {
-            query: "TP53".to_string(),
-            species: Some("homo_sapiens".to_string()),
-            entry_id: Some("tp53_live".to_string()),
-        })
-        .expect("fetch live Ensembl TP53 gene");
+    let result = match engine.apply(Operation::FetchEnsemblGene {
+        query: "TP53".to_string(),
+        species: Some("homo_sapiens".to_string()),
+        entry_id: Some("tp53_live".to_string()),
+    }) {
+        Ok(result) => result,
+        Err(err) if err.code == ErrorCode::Io => {
+            eprintln!("Skipping live Ensembl gene fetch test after request failure: {err:?}");
+            return;
+        }
+        Err(err) => panic!("fetch live Ensembl TP53 gene: {err:?}"),
+    };
 
     assert!(
         result
@@ -10004,6 +14910,21 @@ fn test_inspect_restriction_site_expert_view() {
                 Some("https://rebase.neb.com/rebase/enz/EcoRI.html")
             );
             assert!(
+                re.tooltip_lines
+                    .iter()
+                    .any(|line| line.contains("EcoRI | 1 site | 5' overhang (4 bp)"))
+            );
+            assert!(
+                re.tooltip_lines
+                    .iter()
+                    .any(|line| line.contains("5' G^AATTC 3'"))
+            );
+            assert!(
+                re.tooltip_lines
+                    .iter()
+                    .any(|line| line.contains("3' CTTAA^G 5'"))
+            );
+            assert!(
                 re.enzyme_names
                     .iter()
                     .any(|name| name.eq_ignore_ascii_case("EcoRI"))
@@ -10365,6 +15286,429 @@ fn test_derive_transcript_sequences_reverse_strand_uses_reverse_complement() {
         .get(&result.created_seq_ids[0])
         .expect("derived");
     assert_eq!(derived.get_forward_string(), expected);
+}
+
+#[test]
+fn test_exon_skip_plan_manual_selection_and_materialization_creates_cdna_and_genomic_annotation() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".to_string(), splicing_seed_feature_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let plan_result = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::ManualExonIds {
+                candidate_ids: vec!["exon_2".to_string()],
+            }],
+            plan_id: Some("skip_middle".to_string()),
+        })
+        .expect("plan exon skip");
+    let plan = plan_result
+        .exon_skip_selection_plan
+        .expect("selection plan");
+    assert_eq!(plan.schema, EXON_SKIP_SELECTION_PLAN_SCHEMA);
+    assert_eq!(plan.selected_candidate_ids, vec!["exon_2"]);
+    assert_eq!(plan.candidate_exons.len(), 3);
+    let selected_candidate = plan
+        .candidate_exons
+        .iter()
+        .find(|candidate| candidate.candidate_id == "exon_2")
+        .expect("selected exon candidate");
+    assert_eq!(selected_candidate.length_bp, 8);
+    assert_eq!(selected_candidate.length_mod3, 2);
+    assert!(!selected_candidate.frame_neutral_length);
+    assert_eq!(selected_candidate.coding_skip_bp, 8);
+    assert_eq!(selected_candidate.coding_skip_mod3, 2);
+    assert!(!selected_candidate.frame_neutral_coding_skip);
+    assert_eq!(selected_candidate.coding_context, "cds_only");
+    assert_eq!(selected_candidate.support_transcript_count, 1);
+    assert_eq!(selected_candidate.support_transcript_total, 2);
+    assert_eq!(selected_candidate.support_fraction, 0.5);
+    assert_eq!(selected_candidate.transcript_exon_count, 3);
+    assert_eq!(selected_candidate.transcript_position, "internal");
+    assert_eq!(selected_candidate.upstream_intron_bp, Some(4));
+    assert_eq!(selected_candidate.downstream_intron_bp, Some(6));
+    assert_eq!(selected_candidate.left_cds_phase, Some(0));
+    assert_eq!(selected_candidate.right_cds_phase, Some(1));
+    assert_eq!(selected_candidate.cds_phase_entry_kind, "codon_boundary");
+    assert!(
+        selected_candidate
+            .cds_phase_warning
+            .as_deref()
+            .unwrap_or_default()
+            .contains("not divisible by 3")
+    );
+    assert!(
+        engine
+            .state()
+            .metadata
+            .contains_key(EXON_SKIP_PLANS_METADATA_KEY)
+    );
+
+    let materialized = engine
+        .apply(Operation::MaterializeExonSkippedIsoform {
+            plan_id: "skip_middle".to_string(),
+            selected_candidate_ids: vec![],
+            output_prefix: Some("skip_mid".to_string()),
+            return_kinds: vec![ExonSkipReturnKind::Genbank, ExonSkipReturnKind::CdnaFasta],
+        })
+        .expect("materialize exon skip");
+    let report = materialized
+        .exon_skip_materialization
+        .expect("materialization report");
+    assert_eq!(report.schema, EXON_SKIP_MATERIALIZATION_SCHEMA);
+    assert_eq!(report.skipped_candidate_ids, vec!["exon_2"]);
+    assert_eq!(report.retained_exon_count, 2);
+    assert_eq!(
+        report.requested_returns,
+        vec![ExonSkipReturnKind::Genbank, ExonSkipReturnKind::CdnaFasta]
+    );
+    assert_eq!(report.return_payloads.len(), 2);
+    assert!(report.return_payloads.iter().any(|payload| {
+        payload.kind == ExonSkipReturnKind::Genbank && payload.text.contains("LOCUS")
+    }));
+    assert!(report.return_payloads.iter().any(|payload| {
+        payload.kind == ExonSkipReturnKind::CdnaFasta
+            && payload.available
+            && payload.text.starts_with('>')
+    }));
+    assert_eq!(materialized.created_seq_ids.len(), 2);
+    let cdna_id = report.cdna_seq_id.expect("cdna id");
+    let genomic_id = report.genomic_seq_id.expect("genomic id");
+    let cdna = engine
+        .state()
+        .sequences
+        .get(&cdna_id)
+        .expect("derived cdna");
+    assert_eq!(cdna.len(), 14);
+    assert!(cdna.features().iter().any(|feature| {
+        feature
+            .qualifier_values("exon_skip_plan_id")
+            .any(|value| value == "skip_middle")
+    }));
+    let genomic = engine
+        .state()
+        .sequences
+        .get(&genomic_id)
+        .expect("genomic annotation");
+    assert_eq!(genomic.len(), 40);
+    assert!(genomic.features().iter().any(|feature| {
+        feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+            && feature
+                .qualifier_values("synthetic_origin")
+                .any(|value| value == "exon_skip_isoform_genomic_annotation")
+    }));
+}
+
+#[test]
+fn test_exon_skip_plan_selects_exons_by_feature_overlap() {
+    let mut dna = splicing_seed_feature_sequence();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(14, 15),
+        qualifiers: vec![("label".into(), Some("toy SNP".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let plan_result = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::FeatureOverlap {
+                query: SequenceFeatureQuery {
+                    kind_in: vec!["variation".to_string()],
+                    ..SequenceFeatureQuery::default()
+                },
+            }],
+            plan_id: Some("skip_variant_overlap".to_string()),
+        })
+        .expect("plan exon skip by feature overlap");
+    let plan = plan_result
+        .exon_skip_selection_plan
+        .expect("selection plan");
+    assert_eq!(plan.selected_candidate_ids, vec!["exon_2"]);
+    let candidate = plan
+        .candidate_exons
+        .iter()
+        .find(|candidate| candidate.candidate_id == "exon_2")
+        .expect("selected candidate");
+    assert!(
+        candidate
+            .selection_sources
+            .contains(&"feature_overlap".to_string())
+    );
+    assert!(candidate.matched_feature_ids.contains(&4));
+}
+
+#[test]
+fn test_exon_skip_plan_selects_by_frame_and_phase_attributes() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".to_string(), splicing_seed_feature_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let frame_plan = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::LengthMod3 { values: vec![0] }],
+            plan_id: Some("skip_len_mod0".to_string()),
+        })
+        .expect("plan exon skip by length modulo 3")
+        .exon_skip_selection_plan
+        .expect("frame selection plan");
+    assert_eq!(frame_plan.selected_candidate_ids, vec!["exon_1"]);
+    assert!(frame_plan.candidate_exons.iter().any(|candidate| {
+        candidate.candidate_id == "exon_1"
+            && candidate.frame_neutral_length
+            && candidate
+                .selection_sources
+                .contains(&"length_mod3".to_string())
+    }));
+
+    let phase_plan = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::CdsPhaseEntryKind {
+                kinds: vec!["split-codon".to_string()],
+            }],
+            plan_id: Some("skip_split_entry".to_string()),
+        })
+        .expect("plan exon skip by CDS entry phase")
+        .exon_skip_selection_plan
+        .expect("phase selection plan");
+    assert_eq!(phase_plan.selected_candidate_ids, vec!["exon_3"]);
+    let selected = phase_plan
+        .candidate_exons
+        .iter()
+        .find(|candidate| candidate.candidate_id == "exon_3")
+        .expect("split-codon candidate");
+    assert_eq!(selected.cds_phase_entry_kind, "split_codon_2");
+    assert!(
+        selected
+            .selection_sources
+            .contains(&"cds_phase_entry_kind".to_string())
+    );
+}
+
+#[test]
+fn test_exon_skip_plan_reports_coding_skip_context_for_mixed_utr_cds_exon() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(24)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(0, 8),
+        qualifiers: vec![
+            ("gene".into(), Some("GENE1".to_string())),
+            ("transcript_id".into(), Some("TX_MIXED".to_string())),
+            ("label".into(), Some("TX_MIXED".to_string())),
+            ("cds_ranges_1based".into(), Some("3-8".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let plan = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![
+                ExonSkipSelectionCriterion::CodingMod3 { values: vec![0] },
+                ExonSkipSelectionCriterion::CodingContext {
+                    contexts: vec!["mixed-utr-cds".to_string()],
+                },
+            ],
+            plan_id: Some("skip_mixed_coding_context".to_string()),
+        })
+        .expect("plan mixed UTR/CDS exon skip")
+        .exon_skip_selection_plan
+        .expect("mixed coding-context plan");
+    assert_eq!(plan.selected_candidate_ids, vec!["exon_1"]);
+    let candidate = &plan.candidate_exons[0];
+    assert_eq!(candidate.length_bp, 8);
+    assert_eq!(candidate.length_mod3, 2);
+    assert_eq!(candidate.coding_skip_bp, 6);
+    assert_eq!(candidate.coding_skip_mod3, 0);
+    assert!(candidate.frame_neutral_coding_skip);
+    assert_eq!(candidate.coding_context, "mixed_utr_cds");
+    assert_eq!(candidate.transcript_position, "single");
+    assert_eq!(candidate.upstream_intron_bp, None);
+    assert_eq!(candidate.downstream_intron_bp, None);
+    assert!(candidate.cds_phase_warning.is_none());
+    assert!(
+        candidate
+            .coding_frame_note
+            .as_deref()
+            .unwrap_or_default()
+            .contains("CDS-overlap skip length modulo 3 is 0")
+    );
+    assert!(
+        candidate
+            .selection_sources
+            .contains(&"coding_mod3".to_string())
+    );
+    assert!(
+        candidate
+            .selection_sources
+            .contains(&"coding_context".to_string())
+    );
+}
+
+#[test]
+fn test_exon_skip_plan_reverse_phase_filter_uses_transcript_entry_boundary() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(64)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(0, 5),
+            gb_io::seq::Location::simple_range(10, 14),
+            gb_io::seq::Location::simple_range(20, 26),
+        ]))),
+        qualifiers: vec![
+            ("gene".into(), Some("GENE1".to_string())),
+            ("transcript_id".into(), Some("TX_PHASE_MINUS".to_string())),
+            ("label".into(), Some("TX_PHASE_MINUS".to_string())),
+            (
+                "cds_ranges_1based".into(),
+                Some("1-5,11-14,21-26".to_string()),
+            ),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let plan = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::CdsPhaseEntryKind {
+                kinds: vec!["split-codon-1".to_string()],
+            }],
+            plan_id: Some("skip_reverse_split_entry".to_string()),
+        })
+        .expect("plan reverse exon skip by CDS entry phase")
+        .exon_skip_selection_plan
+        .expect("reverse phase selection plan");
+    assert_eq!(plan.strand, "-");
+    assert_eq!(plan.selected_candidate_ids, vec!["exon_3"]);
+    let selected = plan
+        .candidate_exons
+        .iter()
+        .find(|candidate| candidate.candidate_id == "exon_3")
+        .expect("reverse split-codon candidate");
+    assert_eq!(selected.left_cds_phase, Some(2));
+    assert_eq!(selected.right_cds_phase, Some(1));
+    assert_eq!(selected.cds_phase_entry_kind, "split_codon_1");
+}
+
+#[test]
+fn test_exon_skip_plan_selects_antisense_rna_and_repeat_overlaps() {
+    let mut dna = splicing_seed_feature_sequence();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "misc_RNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            3, 6,
+        ))),
+        qualifiers: vec![("label".into(), Some("antisense RNA".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "repeat_region".into(),
+        location: gb_io::seq::Location::simple_range(28, 31),
+        qualifiers: vec![("label".into(), Some("toy repeat".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let plan_result = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::FeatureOverlap {
+                query: SequenceFeatureQuery {
+                    kind_in: vec!["misc_RNA".to_string(), "repeat_region".to_string()],
+                    ..SequenceFeatureQuery::default()
+                },
+            }],
+            plan_id: Some("skip_antisense_repeat_overlap".to_string()),
+        })
+        .expect("plan exon skip by antisense/repeat overlap");
+    let plan = plan_result
+        .exon_skip_selection_plan
+        .expect("selection plan");
+    assert_eq!(plan.selected_candidate_ids, vec!["exon_1", "exon_3"]);
+}
+
+#[test]
+fn test_exon_skip_materialization_rejects_all_exons_skipped() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".to_string(), splicing_seed_feature_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::ManualExonIds {
+                candidate_ids: vec![
+                    "exon_1".to_string(),
+                    "exon_2".to_string(),
+                    "exon_3".to_string(),
+                ],
+            }],
+            plan_id: Some("skip_all".to_string()),
+        })
+        .expect("plan skip all");
+    let err = engine
+        .apply(Operation::MaterializeExonSkippedIsoform {
+            plan_id: "skip_all".to_string(),
+            selected_candidate_ids: vec![],
+            output_prefix: None,
+            return_kinds: vec![],
+        })
+        .expect_err("skip all should fail");
+    assert!(err.message.contains("all exons skipped"));
+}
+
+#[test]
+fn test_exon_skip_materialization_rejects_stale_plan() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".to_string(), splicing_seed_feature_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::ManualExonIds {
+                candidate_ids: vec!["exon_2".to_string()],
+            }],
+            plan_id: Some("stale_skip".to_string()),
+        })
+        .expect("plan exon skip");
+    let dna = engine
+        .state_mut()
+        .sequences
+        .get_mut("s")
+        .expect("source sequence");
+    dna.features_mut()[0].location = gb_io::seq::Location::Join(vec![
+        gb_io::seq::Location::simple_range(2, 8),
+        gb_io::seq::Location::simple_range(13, 20),
+        gb_io::seq::Location::simple_range(26, 34),
+    ]);
+    let err = engine
+        .apply(Operation::MaterializeExonSkippedIsoform {
+            plan_id: "stale_skip".to_string(),
+            selected_candidate_ids: vec![],
+            output_prefix: None,
+            return_kinds: vec![],
+        })
+        .expect_err("stale plan should fail");
+    assert!(err.message.contains("stale"));
 }
 
 #[test]
@@ -12006,6 +17350,9 @@ fn test_validate_tp73_isoform_panel_resource_exposes_local_curation() {
     assert_eq!(report.gene_symbol, "TP73");
     assert_eq!(report.curation_source_kind.as_deref(), Some("lab_curated"));
     assert_eq!(report.curated_isoform_count, 15);
+    assert!(report.evidence_count >= 1);
+    assert!(report.evaluation_count >= 1);
+    assert!(report.evaluation_row_count >= 1);
     assert!(report.isoforms.iter().any(|row| row.label == "Ex2-p73α"));
     assert!(report.isoforms.iter().any(|row| row.label == "Ex3-p73α"));
     let ex2 = report
@@ -12019,11 +17366,128 @@ fn test_validate_tp73_isoform_panel_resource_exposes_local_curation() {
             .iter()
             .any(|tag| tag == "lab_discovered_ex2_ex3_context")
     );
+    let ta_alpha = report
+        .isoforms
+        .iter()
+        .find(|row| row.isoform_id == "tp73_ta_alpha")
+        .expect("TA alpha row");
+    assert!(
+        ta_alpha
+            .validation_tags
+            .iter()
+            .any(|tag| tag == "local_construct_sequence_recorded")
+    );
     assert!(
         report
             .issues
             .iter()
             .any(|issue| issue.code == "missing_domains")
+    );
+}
+
+#[test]
+fn test_validate_tp73_delta_ex2_3_panel_tracks_local_plasmid_beta_cds() {
+    let report = GentleEngine::validate_isoform_panel_resource(
+        "assets/panels/tp73_delta_ex2_3_isoforms_v1.json",
+        Some("tp73_delta_ex2_3_isoforms_v1"),
+    )
+    .expect("validate TP73 delta Ex2/3 local panel");
+    assert_eq!(report.schema, "gentle.isoform_panel_validation_report.v1");
+    assert_eq!(report.panel_id, "tp73_delta_ex2_3_isoforms_v1");
+    assert_eq!(report.gene_symbol, "TP73");
+    assert_eq!(report.evidence_count, 4);
+    assert_eq!(report.evaluation_count, 2);
+    assert_eq!(report.evaluation_row_count, 3);
+    assert_eq!(report.curated_isoform_count, 1);
+    let beta = report
+        .isoforms
+        .iter()
+        .find(|row| row.isoform_id == "dex2_3np73beta")
+        .expect("DEx2/3 beta row");
+    assert_eq!(beta.expected_length_aa, Some(428));
+    assert!(
+        beta.validation_tags
+            .iter()
+            .any(|tag| tag == "local_plasmid_sequence_recorded")
+    );
+    assert!(
+        beta.validation_tags
+            .iter()
+            .any(|tag| tag == "single_synonymous_cds_difference")
+    );
+}
+
+#[test]
+fn test_validate_isoform_panel_resource_tracks_evidence_evaluations() {
+    let tmp = tempdir().expect("tempdir");
+    let panel_path = tmp.path().join("panel_evidence.json");
+    fs::write(
+        &panel_path,
+        r##"{
+  "schema": "gentle.isoform_panel_resource.v1",
+  "panel_id": "tp73_dn_demo",
+  "gene_symbol": "TP73",
+  "evidence": [
+    {
+      "evidence_id": "ena_ay040828",
+      "source_type": "ENA sequence",
+      "accession": "AY040828.1",
+      "sequence_length_bp": 2117,
+      "cds_start_1based": 235,
+      "cds_end_1based": 1587
+    }
+  ],
+  "evaluations": [
+    {
+      "evaluation_id": "ena_vs_ensembl",
+      "status": "warning",
+      "summary": "Curated comparison summary",
+      "source_evidence_ids": ["ena_ay040828"],
+      "isoform_ids": ["dnp73beta"],
+      "rows": [
+        {
+          "isoform_id": "dnp73beta",
+          "evidence_id": "ena_ay040828",
+          "compared_to": "ENST00000378285.5",
+          "status": "single_base_difference",
+          "summary": "One synonymous coding-base difference"
+        },
+        {
+          "isoform_id": "missing_isoform",
+          "evidence_id": "missing_evidence",
+          "status": "warning",
+          "summary": "Deliberate dangling references for validation"
+        }
+      ]
+    }
+  ],
+  "isoforms": [
+    {
+      "isoform_id": "dnp73beta",
+      "label": "DNp73β",
+      "transcript_ids": ["AY040828.1", "ENST00000378285.5"],
+      "domains": [{"name": "placeholder", "start_aa": 1, "end_aa": 10}]
+    }
+  ]
+}"##,
+    )
+    .expect("write panel");
+
+    let report =
+        GentleEngine::validate_isoform_panel_resource(panel_path.to_string_lossy().as_ref(), None)
+            .expect("validate panel");
+    assert_eq!(report.evidence_count, 1);
+    assert_eq!(report.evaluation_count, 1);
+    assert_eq!(report.evaluation_row_count, 2);
+    assert!(report.issues.iter().any(|issue| {
+        issue.code == "unknown_evaluation_row_isoform"
+            && issue.isoform_id.as_deref() == Some("missing_isoform")
+    }));
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "unknown_evaluation_row_evidence")
     );
 }
 
@@ -12269,6 +17733,97 @@ fn test_render_sequence_svg_operation() {
 }
 
 #[test]
+fn test_visual_benchmark_dense_plasmid_sequence_svg_operation() {
+    let state = crate::test_support::dense_plasmid_visual_benchmark_state();
+    let mut engine = GentleEngine::from_state(state);
+    let tmp = tempdir().expect("tempdir");
+    let linear_path = tmp.path().join("dense_plasmid.linear.svg");
+    let circular_path = tmp.path().join("dense_plasmid.circular.svg");
+
+    engine
+        .apply(Operation::RenderSequenceSvg {
+            seq_id: "dense_plasmid".to_string(),
+            mode: RenderSvgMode::Linear,
+            path: linear_path.display().to_string(),
+        })
+        .expect("render dense plasmid linear svg");
+    engine
+        .apply(Operation::RenderSequenceSvg {
+            seq_id: "dense_plasmid".to_string(),
+            mode: RenderSvgMode::Circular,
+            path: circular_path.display().to_string(),
+        })
+        .expect("render dense plasmid circular svg");
+
+    let linear_svg = fs::read_to_string(&linear_path).expect("read linear svg");
+    let circular_svg = fs::read_to_string(&circular_path).expect("read circular svg");
+    crate::test_support::assert_visual_svg_lint(
+        &linear_svg,
+        &[
+            ("feature-block", 4),
+            ("feature-label", 4),
+            ("restriction-label", 4),
+            ("restriction-site-tick", 4),
+        ],
+    );
+    crate::test_support::assert_visual_svg_lint(
+        &circular_svg,
+        &[
+            ("feature-block", 4),
+            ("feature-label", 4),
+            ("restriction-label", 4),
+            ("restriction-site-leader", 4),
+        ],
+    );
+    for label in ["lac promoter", "AmpR", "TetR", "MCS"] {
+        assert!(
+            linear_svg.contains(label),
+            "linear dense benchmark should preserve label {label}"
+        );
+        assert!(
+            circular_svg.contains(label),
+            "circular dense benchmark should preserve label {label}"
+        );
+    }
+    for enzyme in ["EcoRI", "HindIII", "BamHI", "PstI"] {
+        assert!(
+            linear_svg.contains(enzyme),
+            "linear dense benchmark should include restriction site {enzyme}"
+        );
+        assert!(
+            circular_svg.contains(enzyme),
+            "circular dense benchmark should include restriction site {enzyme}"
+        );
+    }
+    assert!(
+        linear_svg
+            .matches("data-gentle-role=\"feature-label\"")
+            .count()
+            >= 4
+    );
+    assert!(
+        circular_svg
+            .matches("data-gentle-role=\"feature-label\"")
+            .count()
+            >= 4
+    );
+    assert!(
+        linear_svg
+            .matches("data-gentle-role=\"restriction-label\"")
+            .count()
+            >= 4
+    );
+    assert!(
+        circular_svg
+            .matches("data-gentle-role=\"restriction-label\"")
+            .count()
+            >= 4
+    );
+    assert!(linear_svg.contains("data-gentle-feature-kind=\"restriction_site\""));
+    assert!(circular_svg.contains("data-gentle-feature-kind=\"restriction_site\""));
+}
+
+#[test]
 fn test_render_sequence_svg_operation_honors_linear_viewport() {
     let mut state = ProjectState::default();
     state
@@ -12436,6 +17991,127 @@ fn test_render_dotplot_overlay_svg_operation_includes_legend_and_annotation() {
     assert!(text.contains("Isoform B"));
     assert!(text.contains("genome context"));
     assert!(text.contains("x: transcript length (%)"));
+}
+
+#[test]
+fn test_visual_benchmark_dotplot_context_renders_antisense_and_repeat_lanes() {
+    let state = crate::test_support::antisense_repeat_dotplot_context_visual_benchmark_state();
+    let query_len = state
+        .sequences
+        .get("benchmark_query")
+        .expect("benchmark query")
+        .len();
+    let reference_len = state
+        .sequences
+        .get("benchmark_ref")
+        .expect("benchmark reference")
+        .len();
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ComputeDotplot {
+            seq_id: "benchmark_query".to_string(),
+            reference_seq_id: Some("benchmark_ref".to_string()),
+            span_start_0based: Some(0),
+            span_end_0based: Some(query_len),
+            reference_span_start_0based: Some(0),
+            reference_span_end_0based: Some(reference_len),
+            mode: DotplotMode::PairForward,
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("visual_context_dotplot".to_string()),
+        })
+        .expect("compute visual context dotplot");
+
+    let view = engine
+        .get_dotplot_view("visual_context_dotplot")
+        .expect("visual context dotplot");
+    let annotation = view
+        .reference_annotation
+        .as_ref()
+        .expect("visual context annotation");
+    assert_eq!(annotation.interval_count, 5);
+    assert_eq!(
+        annotation
+            .intervals
+            .iter()
+            .filter(|interval| interval.kind == "exon" && interval.lane == 0)
+            .count(),
+        2,
+        "sense exons should stay together on lane 0"
+    );
+    assert_eq!(
+        annotation
+            .intervals
+            .iter()
+            .filter(|interval| interval.kind == "exon" && interval.lane == 1)
+            .count(),
+        2,
+        "antisense exons should stay together on lane 1"
+    );
+    assert!(
+        annotation
+            .intervals
+            .iter()
+            .any(|interval| interval.kind == "repeat"
+                && interval.label == "repeat: AluY"
+                && interval.lane == 2),
+        "rmsk-style repeat should be projected onto the repeat lane"
+    );
+
+    let tmp = tempdir().expect("tempdir");
+    let path = tmp.path().join("visual_context.dotplot.svg");
+    engine
+        .apply(Operation::RenderDotplotSvg {
+            seq_id: "benchmark_query".to_string(),
+            dotplot_id: "visual_context_dotplot".to_string(),
+            path: path.display().to_string(),
+            flex_track_id: None,
+            display_density_threshold: Some(0.0),
+            display_intensity_gain: Some(1.0),
+            overlay_x_axis_mode: DotplotOverlayXAxisMode::PercentLength,
+            overlay_anchor_exon: None,
+        })
+        .expect("render visual context dotplot");
+    let svg = fs::read_to_string(path).expect("read visual context dotplot svg");
+    crate::test_support::assert_visual_svg_lint(
+        &svg,
+        &[
+            ("genome-context-track", 1),
+            ("genome-context-interval", 5),
+            ("genome-context-strand", 5),
+            ("genome-context-intron-guide", 2),
+        ],
+    );
+    assert!(svg.contains("dotplot-genome-context-exon"));
+    assert!(svg.contains("dotplot-genome-context-repeat"));
+    assert!(svg.contains("dotplot-annotation-intron-guide"));
+    assert!(svg.contains("data-gentle-role=\"genome-context-interval\""));
+    assert!(svg.contains("data-gentle-role=\"genome-context-strand\""));
+    assert_eq!(
+        svg.matches("data-gentle-role=\"genome-context-interval\"")
+            .count(),
+        5
+    );
+    assert_eq!(
+        svg.matches("data-gentle-feature-kind=\"exon\"").count(),
+        10,
+        "four exon intervals, four strand markers, and two intron guide lines should carry exon markers"
+    );
+    assert_eq!(
+        svg.matches("data-gentle-feature-kind=\"repeat\"").count(),
+        2,
+        "repeat interval and repeat strand marker should carry repeat markers"
+    );
+    assert!(svg.contains("data-gentle-lane=\"0\""));
+    assert!(svg.contains("data-gentle-lane=\"1\""));
+    assert!(svg.contains("data-gentle-lane=\"2\""));
+    assert!(svg.contains("SENSEA"));
+    assert!(svg.contains("ANTISENSEB"));
+    assert!(svg.contains("repeat: AluY"));
+    assert!(svg.contains("annotation_intervals=5 exons=4 repeats=1"));
 }
 
 #[test]
@@ -13120,7 +18796,7 @@ fn create_arrangement_serial_auto_creates_default_rack_small_tube() {
 }
 
 #[test]
-fn create_rack_profile_selection_picks_96_then_384() {
+fn create_rack_profile_selection_picks_smallest_culture_plate_then_384() {
     let mut state = ProjectState::default();
     for idx in 0..100usize {
         let seq_id = format!("seq_{idx}");
@@ -13142,11 +18818,11 @@ fn create_rack_profile_selection_picks_96_then_384() {
         );
     }
     state.container_state.arrangements.insert(
-        "arr-96".to_string(),
+        "arr-48".to_string(),
         Arrangement {
-            arrangement_id: "arr-96".to_string(),
+            arrangement_id: "arr-48".to_string(),
             mode: ArrangementMode::Serial,
-            name: Some("Needs 96".to_string()),
+            name: Some("Needs 48".to_string()),
             lane_container_ids: (1..=25).map(|idx| format!("container-{idx}")).collect(),
             ladders: vec![],
             lane_role_labels: (1..=25).map(|idx| format!("lane_{idx}")).collect(),
@@ -13170,30 +18846,30 @@ fn create_rack_profile_selection_picks_96_then_384() {
         },
     );
     let mut engine = GentleEngine::from_state(state);
-    let rack_96 = engine
+    let rack_48 = engine
         .apply(Operation::CreateRackFromArrangement {
-            arrangement_id: "arr-96".to_string(),
-            rack_id: Some("rack-96".to_string()),
+            arrangement_id: "arr-48".to_string(),
+            rack_id: Some("rack-48".to_string()),
             name: None,
             profile: None,
         })
-        .expect("create rack 96");
+        .expect("create rack 48");
     assert!(
-        rack_96
+        rack_48
             .messages
             .iter()
-            .any(|message| message.contains("rack-96"))
+            .any(|message| message.contains("rack-48"))
     );
     assert_eq!(
         engine
             .state()
             .container_state
             .racks
-            .get("rack-96")
-            .expect("rack 96")
+            .get("rack-48")
+            .expect("rack 48")
             .profile
             .kind,
-        RackProfileKind::Plate96
+        RackProfileKind::Plate48
     );
     engine
         .apply(Operation::CreateRackFromArrangement {
@@ -13213,6 +18889,68 @@ fn create_rack_profile_selection_picks_96_then_384() {
             .profile
             .kind,
         RackProfileKind::Plate384
+    );
+}
+
+#[test]
+fn create_rack_profile_selection_picks_six_well_for_short_plate_arrangement() {
+    let mut state = ProjectState::default();
+    for idx in 0..6usize {
+        let seq_id = format!("seq_{idx}");
+        let container_id = format!("container-{}", idx + 1);
+        state
+            .sequences
+            .insert(seq_id.clone(), seq(&"ATGC".repeat(30 + idx)));
+        state.container_state.containers.insert(
+            container_id.clone(),
+            Container {
+                container_id: container_id.clone(),
+                kind: ContainerKind::Singleton,
+                name: Some(container_id.clone()),
+                members: vec![seq_id],
+                declared_contents_exclusive: true,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    state.container_state.arrangements.insert(
+        "arr-6".to_string(),
+        Arrangement {
+            arrangement_id: "arr-6".to_string(),
+            mode: ArrangementMode::Plate,
+            name: Some("Six well layout".to_string()),
+            lane_container_ids: (1..=6).map(|idx| format!("container-{idx}")).collect(),
+            ladders: vec![],
+            lane_role_labels: (1..=6).map(|idx| format!("well_{idx}")).collect(),
+            default_rack_id: None,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateRackFromArrangement {
+            arrangement_id: "arr-6".to_string(),
+            rack_id: Some("rack-6".to_string()),
+            name: None,
+            profile: None,
+        })
+        .expect("create rack 6");
+    let rack = engine
+        .state()
+        .container_state
+        .racks
+        .get("rack-6")
+        .expect("rack 6");
+    assert_eq!(rack.profile.kind, RackProfileKind::Plate6);
+    assert_eq!(rack.profile.rows, 2);
+    assert_eq!(rack.profile.columns, 3);
+    assert_eq!(
+        rack.placements
+            .last()
+            .map(|entry| entry.coordinate.as_str()),
+        Some("B3")
     );
 }
 
@@ -14099,6 +19837,178 @@ fn export_rack_fabrication_isometric_svg_and_openscad_include_template_markers()
 }
 
 #[test]
+fn export_cell_culture_six_well_plate_uses_plate_geometry() {
+    let mut state = ProjectState::default();
+    for idx in 1..=6 {
+        let seq_id = format!("well_seq_{idx}");
+        state
+            .sequences
+            .insert(seq_id.clone(), seq(&"ACGT".repeat(8)));
+        state.container_state.containers.insert(
+            format!("container-{idx}"),
+            Container {
+                container_id: format!("container-{idx}"),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Culture condition {idx}")),
+                members: vec![seq_id],
+                declared_contents_exclusive: false,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: (1..=6).map(|idx| format!("container-{idx}")).collect(),
+            arrangement_id: Some("arr-six-well".to_string()),
+            name: Some("6-well culture layout".to_string()),
+            ladders: None,
+        })
+        .expect("create arrangement");
+    engine
+        .apply(Operation::CreateRackFromArrangement {
+            arrangement_id: "arr-six-well".to_string(),
+            rack_id: Some("rack-six-well".to_string()),
+            name: Some("Cell culture plate".to_string()),
+            profile: Some(RackProfileKind::Plate6),
+        })
+        .expect("create six-well rack");
+    let temp = tempdir().expect("tempdir");
+    let isometric_path = temp.path().join("six-well.iso.svg");
+    engine
+        .apply(Operation::ExportRackIsometricSvg {
+            rack_id: "rack-six-well".to_string(),
+            path: isometric_path.display().to_string(),
+            template: RackPhysicalTemplateKind::CellCulturePlate,
+        })
+        .expect("isometric export");
+    let svg = fs::read_to_string(&isometric_path).expect("read six-well svg");
+    assert!(svg.contains("data-rack-isometric-template=\"cell_culture_plate\""));
+    assert!(svg.contains("data-rack-cell-culture-opening=\"1\""));
+    assert!(svg.contains("data-rack-cell-culture-recess=\"1\""));
+    assert!(svg.contains("data-rack-cell-culture-well=\"1\""));
+    assert!(svg.contains("data-rack-cell-culture-medium=\"1\""));
+    assert!(!svg.contains("data-rack-tube-shell=\"1\""));
+
+    let hero_path = temp.path().join("six-well.hero.svg");
+    engine
+        .apply(Operation::ExportRackHeroSvg {
+            rack_id: "rack-six-well".to_string(),
+            path: hero_path.display().to_string(),
+            template: RackPhysicalTemplateKind::CellCulturePlate,
+        })
+        .expect("hero export");
+    let hero_svg = fs::read_to_string(&hero_path).expect("read six-well hero svg");
+    assert!(hero_svg.contains("data-rack-hero-template=\"cell_culture_plate\""));
+    assert!(hero_svg.contains("data-rack-hero-plate-outline=\"1\""));
+    assert!(hero_svg.contains("data-rack-hero-orientation-cut=\"upper_left\""));
+    assert!(hero_svg.contains("data-rack-hero-label-strip=\"1\""));
+    assert!(hero_svg.contains("data-rack-hero-column-label=\"1\""));
+    assert!(hero_svg.contains("data-rack-hero-row-label=\"1\""));
+    assert!(hero_svg.contains("data-rack-cell-culture-well-rim=\"1\""));
+    assert!(hero_svg.contains("data-rack-cell-culture-well-floor=\"1\""));
+    assert!(hero_svg.contains("data-rack-cell-culture-arrangement-ring=\"1\""));
+    assert!(hero_svg.contains("data-rack-cell-culture-arrangement-label=\"1\""));
+    assert!(hero_svg.contains("data-rack-cell-culture-coordinate-label=\"1\""));
+    assert!(!hero_svg.contains("data-rack-cell-culture-medium=\"1\""));
+    assert!(!hero_svg.contains("data-rack-tube-shell=\"1\""));
+
+    let simulation_path = temp.path().join("six-well.simulation.json");
+    engine
+        .apply(Operation::ExportRackSimulationJson {
+            rack_id: "rack-six-well".to_string(),
+            path: simulation_path.display().to_string(),
+            template: RackPhysicalTemplateKind::CellCulturePlate,
+        })
+        .expect("simulation export");
+    let simulation_text = fs::read_to_string(&simulation_path).expect("read simulation json");
+    let simulation: serde_json::Value =
+        serde_json::from_str(&simulation_text).expect("parse simulation json");
+    assert_eq!(
+        simulation["physical_template"]["kind"].as_str(),
+        Some("cell_culture_plate")
+    );
+    assert_eq!(
+        simulation["physical_template"]["family"].as_str(),
+        Some("cell_culture")
+    );
+    assert_eq!(
+        simulation["physical_template"]["container_format"].as_str(),
+        Some("cell_culture_plate_well")
+    );
+    assert_eq!(simulation["physical_template"]["rows"].as_u64(), Some(2));
+    assert_eq!(simulation["physical_template"]["columns"].as_u64(), Some(3));
+    assert!(
+        (simulation["physical_template"]["overall_width_mm"]
+            .as_f64()
+            .expect("overall width")
+            - 131.4)
+            .abs()
+            < 0.2
+    );
+}
+
+#[test]
+fn export_storage_rack_hero_svg_uses_generic_top_down_slots() {
+    let mut state = ProjectState::default();
+    for idx in 1..=2 {
+        let seq_id = format!("tube_seq_{idx}");
+        state
+            .sequences
+            .insert(seq_id.clone(), seq(&"ACGT".repeat(8)));
+        state.container_state.containers.insert(
+            format!("tube-container-{idx}"),
+            Container {
+                container_id: format!("tube-container-{idx}"),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Tube condition {idx}")),
+                members: vec![seq_id],
+                declared_contents_exclusive: false,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: (1..=2).map(|idx| format!("tube-container-{idx}")).collect(),
+            arrangement_id: Some("arr-storage".to_string()),
+            name: Some("Storage layout".to_string()),
+            ladders: None,
+        })
+        .expect("create arrangement");
+    engine
+        .apply(Operation::CreateRackFromArrangement {
+            arrangement_id: "arr-storage".to_string(),
+            rack_id: Some("rack-storage".to_string()),
+            name: Some("Storage tube rack".to_string()),
+            profile: Some(RackProfileKind::SmallTube4x6),
+        })
+        .expect("create storage rack");
+    let temp = tempdir().expect("tempdir");
+    let hero_path = temp.path().join("storage.hero.svg");
+    engine
+        .apply(Operation::ExportRackHeroSvg {
+            rack_id: "rack-storage".to_string(),
+            path: hero_path.display().to_string(),
+            template: RackPhysicalTemplateKind::StoragePcrTubeRack,
+        })
+        .expect("hero export");
+    let hero_svg = fs::read_to_string(&hero_path).expect("read storage hero svg");
+    assert!(hero_svg.contains("data-rack-hero-template=\"storage_pcr_tube_rack\""));
+    assert!(hero_svg.contains("data-rack-hero-slot=\"1\""));
+    assert!(hero_svg.contains("data-rack-tube-top=\"1\""));
+    assert!(hero_svg.contains("data-rack-tube-cap=\"1\""));
+    assert!(hero_svg.contains("data-rack-hero-arrangement-ring=\"1\""));
+    assert!(hero_svg.contains("data-rack-hero-arrangement-label=\"1\""));
+    assert!(hero_svg.contains("data-rack-hero-coordinate-label=\"1\""));
+    assert!(!hero_svg.contains("data-rack-cell-culture-well=\"1\""));
+    assert!(!hero_svg.contains("data-rack-cell-culture-arrangement-ring=\"1\""));
+}
+
+#[test]
 fn export_rack_carrier_labels_and_simulation_json_include_template_and_arrangements() {
     let mut state = ProjectState::default();
     state
@@ -14178,6 +20088,85 @@ fn export_rack_carrier_labels_and_simulation_json_include_template_and_arrangeme
             .map(|v| v > 0.0),
         Some(true)
     );
+}
+
+#[test]
+fn export_six_well_cell_culture_plate_simulation_uses_plate_geometry() {
+    let mut state = ProjectState::default();
+    for idx in 0..6usize {
+        let seq_id = format!("sample_{}", idx + 1);
+        let container_id = format!("container-{}", idx + 1);
+        state
+            .sequences
+            .insert(seq_id.clone(), seq(&"ACGT".repeat(10 + idx)));
+        state.container_state.containers.insert(
+            container_id.clone(),
+            Container {
+                container_id: container_id.clone(),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Sample {}", idx + 1)),
+                members: vec![seq_id],
+                declared_contents_exclusive: true,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    state.container_state.arrangements.insert(
+        "arr-plate".to_string(),
+        Arrangement {
+            arrangement_id: "arr-plate".to_string(),
+            mode: ArrangementMode::Plate,
+            name: Some("Six-well culture plate".to_string()),
+            lane_container_ids: (1..=6).map(|idx| format!("container-{idx}")).collect(),
+            ladders: vec![],
+            lane_role_labels: ["A1", "A2", "A3", "B1", "B2", "B3"]
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect(),
+            default_rack_id: None,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateRackFromArrangement {
+            arrangement_id: "arr-plate".to_string(),
+            rack_id: Some("rack-plate".to_string()),
+            name: Some("Six-well plate".to_string()),
+            profile: None,
+        })
+        .expect("create plate rack");
+    let temp = tempdir().expect("tempdir");
+    let simulation_path = temp.path().join("plate.simulation.json");
+    engine
+        .apply(Operation::ExportRackSimulationJson {
+            rack_id: "rack-plate".to_string(),
+            path: simulation_path.display().to_string(),
+            template: RackPhysicalTemplateKind::CellCulturePlate,
+        })
+        .expect("simulation export");
+    let simulation_text = fs::read_to_string(&simulation_path).expect("read simulation json");
+    let simulation_json: serde_json::Value =
+        serde_json::from_str(&simulation_text).expect("parse simulation json");
+    assert_eq!(
+        simulation_json["rack"]["profile"]["kind"].as_str(),
+        Some("plate_6")
+    );
+    assert_eq!(
+        simulation_json["physical_template"]["kind"].as_str(),
+        Some("cell_culture_plate")
+    );
+    assert_eq!(
+        simulation_json["physical_template"]["container_format"].as_str(),
+        Some("cell_culture_plate_well")
+    );
+    let opening_diameter = simulation_json["physical_template"]["opening_diameter_mm"]
+        .as_f64()
+        .expect("opening diameter");
+    assert!((opening_diameter - 34.8).abs() < 0.001);
+    assert_eq!(simulation_json["slots"].as_array().map(Vec::len), Some(6));
 }
 
 #[test]
@@ -15049,6 +21038,179 @@ fn test_export_process_run_bundle_run_id_not_found_fails() {
         .expect_err("missing run should fail");
     assert!(matches!(err.code, ErrorCode::NotFound));
     assert!(err.message.contains("No operation records found"));
+}
+
+#[test]
+fn test_export_lab_assistant_instructions_operation_writes_markdown_and_payload() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("x".to_string(), seq("ATGGATCCGCATGGATCCGCATGGATCCGC"));
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::Digest {
+            input: "x".to_string(),
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: Some("frag".to_string()),
+        })
+        .expect("digest");
+
+    let tmp = tempfile::NamedTempFile::new().expect("tmp");
+    let path = tmp.path().with_extension("lab_handoff.md");
+    let path_text = path.display().to_string();
+    let res = engine
+        .apply(Operation::ExportLabAssistantInstructions {
+            path: path_text.clone(),
+            run_id: Some("interactive".to_string()),
+            title: Some("BamHI cloning handoff".to_string()),
+            audience: Some("bench assistant".to_string()),
+            format: None,
+        })
+        .expect("export lab assistant instructions");
+    let export = res
+        .lab_assistant_instructions
+        .as_ref()
+        .expect("structured lab assistant instructions");
+    assert_eq!(export.schema, LAB_ASSISTANT_INSTRUCTIONS_SCHEMA);
+    assert_eq!(export.run_id_filter.as_deref(), Some("interactive"));
+    assert!(
+        export
+            .step_sections
+            .iter()
+            .flat_map(|section| section.steps.iter())
+            .any(|step| step.contains("Digest `x` with BamHI"))
+    );
+    assert!(
+        export
+            .material_rows
+            .iter()
+            .any(|row| row.material_id == "x" && row.length_bp == Some(30))
+    );
+
+    let text = std::fs::read_to_string(path_text).expect("read handoff markdown");
+    assert!(text.contains("# BamHI cloning handoff"));
+    assert!(text.contains("Use institution-approved SOPs"));
+    assert!(text.contains("Digest `x` with BamHI"));
+}
+
+#[test]
+fn test_lab_assistant_instructions_format_tokens_and_path_inference() {
+    assert_eq!(
+        LabAssistantInstructionsFormat::from_token("md"),
+        Some(LabAssistantInstructionsFormat::Markdown)
+    );
+    assert_eq!(
+        LabAssistantInstructionsFormat::from_token("odt"),
+        Some(LabAssistantInstructionsFormat::Odt)
+    );
+    assert_eq!(
+        LabAssistantInstructionsFormat::from_token("word"),
+        Some(LabAssistantInstructionsFormat::Docx)
+    );
+    assert_eq!(
+        LabAssistantInstructionsFormat::infer_from_path("handoff.docx"),
+        LabAssistantInstructionsFormat::Docx
+    );
+    assert_eq!(
+        LabAssistantInstructionsFormat::infer_from_path("handoff.unknown"),
+        LabAssistantInstructionsFormat::Markdown
+    );
+}
+
+#[test]
+fn test_export_lab_assistant_instructions_writes_odt_and_docx_reports() {
+    for (format, extension, required_member) in [
+        (LabAssistantInstructionsFormat::Odt, "odt", "content.xml"),
+        (
+            LabAssistantInstructionsFormat::Docx,
+            "docx",
+            "word/document.xml",
+        ),
+    ] {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("x".to_string(), seq("ATGGATCCGCATGGATCCGCATGGATCCGC"));
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::Digest {
+                input: "x".to_string(),
+                enzymes: vec!["BamHI".to_string()],
+                output_prefix: Some("frag".to_string()),
+            })
+            .expect("digest");
+
+        let tmp = tempfile::NamedTempFile::new().expect("tmp");
+        let path = tmp
+            .path()
+            .with_extension(format!("lab_handoff.{extension}"));
+        let path_text = path.display().to_string();
+        let res = engine
+            .apply(Operation::ExportLabAssistantInstructions {
+                path: path_text.clone(),
+                run_id: Some("interactive".to_string()),
+                title: Some("BamHI cloning handoff".to_string()),
+                audience: Some("bench assistant".to_string()),
+                format: Some(format),
+            })
+            .expect("export lab assistant report");
+        let export = res
+            .lab_assistant_instructions
+            .as_ref()
+            .expect("structured lab assistant instructions");
+        assert_eq!(export.output_format, format);
+        assert_eq!(export.output_path, path_text);
+
+        let bytes = std::fs::read(&path).expect("read report");
+        assert!(bytes.starts_with(b"PK\x03\x04"));
+        assert!(stored_zip_bytes_contain_name(&bytes, required_member));
+        assert!(stored_zip_bytes_contain_text(
+            &bytes,
+            "BamHI cloning handoff"
+        ));
+        if format == LabAssistantInstructionsFormat::Odt {
+            assert_odt_mimetype_first(&bytes);
+        } else {
+            assert!(stored_zip_bytes_contain_name(&bytes, "[Content_Types].xml"));
+        }
+        if export.embedded_visuals.is_empty() {
+            assert!(
+                export
+                    .warning_lines
+                    .iter()
+                    .any(|line| line.contains("Could not embed lineage overview graphic"))
+            );
+        } else {
+            let member = if format == LabAssistantInstructionsFormat::Odt {
+                "Pictures/lineage_overview.png"
+            } else {
+                "word/media/lineage_overview.png"
+            };
+            assert!(stored_zip_bytes_contain_name(&bytes, member));
+        }
+    }
+}
+
+fn stored_zip_bytes_contain_name(bytes: &[u8], name: &str) -> bool {
+    bytes
+        .windows(name.len())
+        .any(|window| window == name.as_bytes())
+}
+
+fn stored_zip_bytes_contain_text(bytes: &[u8], text: &str) -> bool {
+    stored_zip_bytes_contain_name(bytes, text)
+}
+
+fn assert_odt_mimetype_first(bytes: &[u8]) {
+    assert!(bytes.len() > 30);
+    let name_len = u16::from_le_bytes([bytes[26], bytes[27]]) as usize;
+    let extra_len = u16::from_le_bytes([bytes[28], bytes[29]]) as usize;
+    let name_start = 30;
+    let name_end = name_start + name_len;
+    assert_eq!(&bytes[name_start..name_end], b"mimetype");
+    let data_start = name_end + extra_len;
+    let mimetype = b"application/vnd.oasis.opendocument.text";
+    assert_eq!(&bytes[data_start..data_start + mimetype.len()], mimetype);
 }
 
 #[test]
@@ -18576,6 +24738,62 @@ fn test_list_cutrun_datasets_discovers_overlay_catalogs() {
 }
 
 #[test]
+fn test_builtin_rostock_p73_cutrun_sra_entries_are_discoverable() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let catalog_dir = repo_root.join("assets/cutrun.d");
+    let catalog_path = catalog_dir.to_string_lossy().to_string();
+
+    let report = GentleEngine::list_cutrun_datasets(Some("E-MTAB-15709"), Some(&catalog_path))
+        .expect("list Rostock p73 CUT&RUN SRA entries");
+    assert_eq!(report.dataset_count, 12);
+    let p73 = report
+        .datasets
+        .iter()
+        .find(|row| row.dataset_id == "rostock_p73_sra_err15695857_p73_tap73alpha")
+        .expect("TAp73alpha p73 antibody run entry");
+    assert!(p73.has_raw_reads);
+    assert!(!p73.has_peaks_asset);
+    assert!(!p73.has_signal_asset);
+    assert_eq!(p73.read_layout, CutRunReadLayout::PairedEnd);
+    assert_eq!(p73.source_accession.as_deref(), Some("ERR15695857"));
+    assert!(
+        p73.supported_reference_genome_ids
+            .iter()
+            .any(|id| id == "GRCh38")
+    );
+
+    let engine = GentleEngine::new();
+    let cache_dir = td.path().join("cutrun_cache");
+    let cache_path = cache_dir.to_string_lossy().to_string();
+    let status = engine
+        .show_cutrun_dataset_status(
+            "rostock_p73_sra_err15695857_p73_tap73alpha",
+            Some(&catalog_path),
+            Some(&cache_path),
+        )
+        .expect("show SRA-backed CUT&RUN status without preparing reads");
+    assert!(!status.prepared);
+    assert_eq!(status.lifecycle_status, "missing");
+    assert_eq!(status.read_layout, CutRunReadLayout::PairedEnd);
+    assert!(status.reads_r1.configured);
+    assert!(status.reads_r2.configured);
+    assert!(!status.reads_r1.prepared);
+    assert!(!status.reads_r2.prepared);
+    assert_eq!(
+        status.reads_r1.source.as_deref(),
+        Some("read_acquisition:ERR15695857")
+    );
+    assert_eq!(
+        status.reads_r2.source.as_deref(),
+        Some("read_acquisition:ERR15695857")
+    );
+}
+
+#[test]
 fn test_prepare_cutrun_dataset_respects_cache_env_and_reports_status() {
     let _serial = cutrun_test_env_lock()
         .lock()
@@ -19437,6 +25655,7 @@ fn test_inspect_cutrun_regulatory_support_classifies_supported_and_unsupported_t
     );
 
     let supported_feature_start = supported_prefix.len();
+    let motif_poor_feature_start = supported_prefix.len() + sp1_consensus.len() + 2;
     let unsupported_feature_start =
         supported_prefix.len() + sp1_consensus.len() + filler.len() + unsupported_prefix.len();
 
@@ -19459,6 +25678,11 @@ fn test_inspect_cutrun_regulatory_support_classifies_supported_and_unsupported_t
             cutrun_test_tfbs_feature(
                 supported_feature_start,
                 supported_feature_start + sp1_consensus.len(),
+                "SP1",
+            ),
+            cutrun_test_tfbs_feature(
+                motif_poor_feature_start,
+                motif_poor_feature_start + sp1_consensus.len(),
                 "SP1",
             ),
             cutrun_test_tfbs_feature(
@@ -19515,23 +25739,102 @@ fn test_inspect_cutrun_regulatory_support_classifies_supported_and_unsupported_t
         confirmed.confirmation_status,
         CutRunRegulatoryTfbsConfirmationStatus::Confirmed
     );
+    assert_eq!(
+        confirmed.support_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+    );
     assert_eq!(confirmed.local_start_0based, supported_feature_start);
     assert_eq!(
         confirmed.strongest_support_strength,
         Some(CutRunSupportStrength::Strong)
     );
 
-    let unconfirmed = report
+    let motif_poor = report
         .unconfirmed_tfbs_rows
-        .first()
-        .expect("unconfirmed TFBS row");
+        .iter()
+        .find(|row| row.local_start_0based == motif_poor_feature_start)
+        .expect("motif-poor TFBS row");
     assert_eq!(
-        unconfirmed.confirmation_status,
+        motif_poor.confirmation_status,
         CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
     );
-    assert_eq!(unconfirmed.local_start_0based, unsupported_feature_start);
-    assert!(unconfirmed.strongest_support_window_id.is_none());
-    assert!(unconfirmed.strongest_support_strength.is_none());
+    assert_eq!(
+        motif_poor.support_status,
+        CutRunRegulatoryTfbsConfirmationStatus::MotifPoor
+    );
+
+    let nearby = report
+        .unconfirmed_tfbs_rows
+        .iter()
+        .find(|row| row.local_start_0based == unsupported_feature_start)
+        .expect("nearby TFBS row");
+    assert_eq!(
+        nearby.confirmation_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
+    );
+    assert_eq!(
+        nearby.support_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Nearby
+    );
+    assert!(nearby.support_distance_bp.unwrap_or_default() > 0);
+    assert_eq!(nearby.local_start_0based, unsupported_feature_start);
+    assert!(nearby.strongest_support_window_id.is_some());
+    assert_eq!(
+        nearby.strongest_support_strength,
+        Some(CutRunSupportStrength::Strong)
+    );
+
+    let absent_report = engine
+        .inspect_cutrun_regulatory_support(
+            "toy_cutrun_roi",
+            &[],
+            std::slice::from_ref(&report_id),
+            None,
+            None,
+            1,
+            &[],
+        )
+        .expect("inspect CUT&RUN regulatory support with narrow neighbor window");
+    let absent = absent_report
+        .unconfirmed_tfbs_rows
+        .iter()
+        .find(|row| row.local_start_0based == unsupported_feature_start)
+        .expect("absent TFBS row");
+    assert_eq!(
+        absent.support_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Absent
+    );
+    assert!(absent.strongest_support_window_id.is_none());
+    assert!(absent.strongest_support_strength.is_none());
+}
+
+#[test]
+fn cutrun_tfbs_row_old_two_state_payload_deserializes_without_support_status() {
+    let row: CutRunRegulatoryTfbsRow = serde_json::from_value(serde_json::json!({
+        "feature_id": 7,
+        "feature_label": "SP1 site",
+        "motif_id": "MA0079.5",
+        "motif_label": "SP1",
+        "local_start_0based": 10,
+        "local_end_0based_exclusive": 19,
+        "genomic_start_1based": 110,
+        "genomic_end_1based": 118,
+        "strand": "+",
+        "confirmation_status": "confirmed",
+        "overlapping_peak_count": 1,
+        "supporting_fragment_count": 2,
+        "cut_site_count": 4
+    }))
+    .expect("old two-state CUT&RUN TFBS row deserializes");
+    assert_eq!(
+        row.confirmation_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+    );
+    assert_eq!(
+        row.support_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
+    );
+    assert_eq!(row.support_distance_bp, None);
 }
 
 #[test]
@@ -19914,6 +26217,17 @@ fn test_inspect_cutrun_regulatory_support_reports_motif_poor_supported_windows()
         sequence.len(),
     );
     engine
+        .state_mut()
+        .sequences
+        .get_mut("toy_cutrun_roi")
+        .expect("toy CUT&RUN ROI")
+        .features_mut()
+        .push(cutrun_test_tfbs_feature(
+            window_start,
+            window_start + motif_poor_window.len(),
+            "CTCF",
+        ));
+    engine
         .apply(Operation::PrepareCutRunDataset {
             dataset_id: "toy_ctcf_reads".to_string(),
             catalog_path: Some(cutrun_catalog_path.to_string_lossy().to_string()),
@@ -19961,6 +26275,14 @@ fn test_inspect_cutrun_regulatory_support_reports_motif_poor_supported_windows()
         .expect("inspect motif-poor CUT&RUN support");
 
     assert_eq!(report.motif_absent_supported_windows.len(), 1);
+    let motif_poor_row = report
+        .unconfirmed_tfbs_rows
+        .first()
+        .expect("motif-poor TFBS support row");
+    assert_eq!(
+        motif_poor_row.support_status,
+        CutRunRegulatoryTfbsConfirmationStatus::MotifPoor
+    );
     let motif_poor = &report.motif_absent_supported_windows[0];
     let has_context_motifs = !motif_poor.motifs_inside_window.is_empty()
         || !motif_poor.motifs_in_neighbor_window.is_empty();
@@ -20264,13 +26586,9 @@ fn test_import_genome_vcf_track_can_cancel_via_progress_callback() {
                 clear_existing: Some(true),
             },
             |progress| match progress {
-                OperationProgress::GenomeTrackImport(p) => {
-                    if !p.done && p.parsed_records >= 250 {
-                        cancelled = true;
-                        false
-                    } else {
-                        true
-                    }
+                OperationProgress::GenomeTrackImport(p) if !p.done && p.parsed_records >= 250 => {
+                    cancelled = true;
+                    false
                 }
                 _ => true,
             },
@@ -20384,7 +26702,7 @@ fn test_prepare_helper_genome_via_genbank_accession_and_extract() {
             .any(|id| id == "helper_bla")
     );
     let seq = engine.state().sequences.get("helper_bla").unwrap();
-    assert!(seq.len() > 0);
+    assert!(!seq.is_empty());
 
     let extract_region = engine
         .apply(Operation::ExtractGenomeRegion {
@@ -23349,8 +29667,18 @@ fn test_align_sequences_global_sets_structured_result() {
     let mut engine = GentleEngine::from_state(state);
     let result = engine
         .apply(Operation::AlignSequences {
-            query_seq_id: "query".to_string(),
-            target_seq_id: "target".to_string(),
+            query: Some(SequenceScanTarget::SeqId {
+                seq_id: "query".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            }),
+            target: Some(SequenceScanTarget::SeqId {
+                seq_id: "target".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            }),
+            query_seq_id: None,
+            target_seq_id: None,
             query_span_start_0based: None,
             query_span_end_0based: None,
             target_span_start_0based: None,
@@ -23396,8 +29724,10 @@ fn test_align_sequences_local_reports_partial_coverage() {
     let mut engine = GentleEngine::from_state(state);
     let result = engine
         .apply(Operation::AlignSequences {
-            query_seq_id: "query".to_string(),
-            target_seq_id: "target".to_string(),
+            query: None,
+            target: None,
+            query_seq_id: Some("query".to_string()),
+            target_seq_id: Some("target".to_string()),
             query_span_start_0based: None,
             query_span_end_0based: None,
             target_span_start_0based: None,
@@ -23418,6 +29748,53 @@ fn test_align_sequences_local_reports_partial_coverage() {
     assert!(report.aligned_columns >= 4);
     assert!(report.query_coverage_fraction < 1.0);
     assert!(report.target_coverage_fraction < 1.0);
+}
+
+#[test]
+fn test_align_sequences_accepts_inline_scan_targets() {
+    let mut engine = GentleEngine::default();
+    let result = engine
+        .apply(Operation::AlignSequences {
+            query: Some(SequenceScanTarget::InlineSequence {
+                sequence_text: "TTTACGTAA".to_string(),
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some("inline_query".to_string()),
+                span_start_0based: Some(3),
+                span_end_0based_exclusive: Some(7),
+            }),
+            target: Some(SequenceScanTarget::InlineSequence {
+                sequence_text: "GGGACGTCCC".to_string(),
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some("inline_target".to_string()),
+                span_start_0based: Some(3),
+                span_end_0based_exclusive: Some(7),
+            }),
+            query_seq_id: None,
+            target_seq_id: None,
+            query_span_start_0based: None,
+            query_span_end_0based: None,
+            target_span_start_0based: None,
+            target_span_end_0based: None,
+            mode: PairwiseAlignmentMode::Global,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+        })
+        .expect("align inline sequences");
+
+    assert!(result.created_seq_ids.is_empty());
+    let report = result
+        .sequence_alignment
+        .expect("structured inline sequence alignment report");
+    assert_eq!(report.query_seq_id, "inline_query");
+    assert_eq!(report.target_seq_id, "inline_target");
+    assert_eq!(report.query_span_start_0based, 3);
+    assert_eq!(report.query_span_end_0based, 7);
+    assert_eq!(report.target_span_start_0based, 3);
+    assert_eq!(report.target_span_end_0based, 7);
+    assert_eq!(report.matches, 4);
+    assert!(engine.state().sequences.is_empty());
 }
 
 #[test]
@@ -23657,6 +30034,130 @@ fn test_build_lineage_svg_graph_projects_sequencing_confirmation_artifact() {
     assert!(reloaded_edges.iter().any(|edge| {
         edge.to_node_id == "analysis:seq_confirm:lineage_confirm"
             && edge.label.contains("Sequencing confirmation")
+    }));
+}
+
+#[test]
+fn test_build_lineage_svg_graph_projects_gene_set_artifacts() {
+    let temp = tempdir().expect("tempdir");
+    let root = temp.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let cache_path = root.join("lineage_gene_lists.json");
+    fs::write(
+        &cache_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_DIRECT_LIST_CACHE_SCHEMA}",
+  "provider_id": "local_curator",
+  "provider_label": "Local curator cache",
+  "provider_version": "2026-06",
+  "cache_id": "lineage-direct-cache",
+  "cache_version": "1",
+  "organism": "Homo sapiens",
+  "taxon_id": "9606",
+  "symbol_namespace": "HGNC",
+  "lists": [
+    {{
+      "id": "lineage_panel",
+      "label": "Lineage panel",
+      "members": ["POS1", "NEG1", "MISSING"]
+    }}
+  ]
+}}"#
+        ),
+    )
+    .expect("write direct-list cache");
+
+    let gene_set_result = engine
+        .apply(Operation::ProduceGeneSetDirectList {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            query: Some("lineage_panel".to_string()),
+            genome_id: Some("ToyGenome".to_string()),
+            gene_group_catalog_path: None,
+            genome_catalog_path: Some(genome_catalog_path.clone()),
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: Some("sha256:lineage".to_string()),
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: Some(GeneSetResolutionReviewStatus::Reviewed),
+            filters: vec![],
+            path: None,
+        })
+        .expect("produce lineage gene set");
+    let resolution = gene_set_result
+        .gene_set_resolution
+        .clone()
+        .expect("gene-set resolution");
+
+    engine
+        .apply(Operation::BuildGeneSetPromoterCohort {
+            genome_id: "ToyGenome".to_string(),
+            source: None,
+            resolution: Some(Box::new(resolution.clone())),
+            relationship: GeneSetCohortRelationship::Manual,
+            upstream_bp: DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+            downstream_bp: DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+            gene_group_catalog_path: None,
+            genome_catalog_path: Some(genome_catalog_path),
+            cache_dir: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            path: None,
+        })
+        .expect("build lineage promoter cohort");
+
+    let (nodes, edges) = build_lineage_svg_graph(engine.state(), engine.operation_log());
+    let gene_set_node = nodes
+        .iter()
+        .find(|node| node.kind == LineageSvgNodeKind::GeneSet)
+        .expect("gene-set lineage node");
+    assert_ne!(gene_set_node.kind, LineageSvgNodeKind::Sequence);
+    assert_eq!(gene_set_node.title, "Lineage panel");
+    assert!(gene_set_node.subtitle.contains("members=2"));
+    assert!(gene_set_node.subtitle.contains("unresolved=1"));
+    assert!(gene_set_node.subtitle.contains("producer=direct_gene_list"));
+    assert!(gene_set_node.subtitle.contains("taxon=9606"));
+
+    let operation_node_id = format!("operation:{}", gene_set_result.op_id);
+    assert!(nodes.iter().any(|node| {
+        node.kind == LineageSvgNodeKind::OperationHub && node.node_id == operation_node_id
+    }));
+    assert!(edges.iter().any(|edge| {
+        edge.from_node_id == operation_node_id && edge.to_node_id == gene_set_node.node_id
+    }));
+    assert!(edges.iter().any(|edge| {
+        edge.from_node_id == gene_set_node.node_id
+            && edge.to_node_id.starts_with("analysis:gene_set_promoter:")
+    }));
+
+    let svg = export_lineage_svg(engine.state(), engine.operation_log());
+    assert!(svg.contains("Lineage panel"));
+    assert!(svg.contains("members=2 unresolved=1"));
+    assert!(svg.contains("producer=direct_gene_list"));
+
+    let state_path = root.join("lineage_gene_set.state.json");
+    engine
+        .state()
+        .save_to_path(state_path.to_string_lossy().as_ref())
+        .expect("save state");
+    let reloaded_state =
+        ProjectState::load_from_path(state_path.to_string_lossy().as_ref()).expect("reload state");
+    let (reloaded_nodes, reloaded_edges) = build_lineage_svg_graph(&reloaded_state, &[]);
+    let reloaded_gene_set_node = reloaded_nodes
+        .iter()
+        .find(|node| node.kind == LineageSvgNodeKind::GeneSet)
+        .expect("reloaded gene-set node");
+    assert_eq!(reloaded_gene_set_node.title, "Lineage panel");
+    assert!(reloaded_edges.iter().any(|edge| {
+        edge.from_node_id == reloaded_gene_set_node.node_id
+            && edge.to_node_id.starts_with("analysis:gene_set_promoter:")
     }));
 }
 
@@ -25331,6 +31832,28 @@ fn test_export_rna_read_target_quality_svg_keeps_existing_nonbundle_file() {
 }
 
 #[test]
+fn test_export_rna_read_target_quality_svg_labels_axes() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let td = tempdir().expect("tempdir");
+    let requested_path = td.path().join("target_quality.svg");
+    let export = engine
+        .export_rna_read_target_quality(
+            "rna_reads_gene_support",
+            requested_path.to_str().expect("utf-8 path"),
+            &["GENE1".to_string()],
+            RnaReadGeneSupportCompleteRule::Near,
+        )
+        .expect("svg export");
+
+    let svg = std::fs::read_to_string(&export.written_path).expect("read target-quality svg");
+    assert!(svg.contains("x-axis: read length bins (bp)"));
+    assert!(svg.contains("y-axis: relative read count"));
+    assert!(svg.contains("y-axis: target-positive share"));
+    assert!(svg.contains("x-axis: target fragment length bins (bp)"));
+    assert!(svg.contains("x-axis: target/read coverage (%)"));
+}
+
+#[test]
 fn test_inspect_rna_read_gene_support_classifies_rows_and_groups_record_indices() {
     let mut engine = build_rna_read_gene_support_test_engine();
     let result = engine
@@ -25522,6 +32045,121 @@ fn test_inspect_rna_read_gene_support_honors_selected_record_indices_before_coho
             .collect::<Vec<_>>(),
         vec![2, 3]
     );
+}
+
+#[test]
+fn test_rna_read_show_alignments_batch_matches_single_and_skips_unmapped() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let (entries, skipped_records) = engine
+        .build_rna_read_alignment_displays("rna_reads_gene_support", &[0, 1, 4])
+        .expect("build batch RNA-read alignment displays");
+
+    assert_eq!(
+        entries
+            .iter()
+            .map(|entry| entry.record_index)
+            .collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+    assert_eq!(skipped_records.len(), 1);
+    assert_eq!(skipped_records[0].record_index, 4);
+    assert_eq!(skipped_records[0].header_id, "unaligned");
+    assert_eq!(skipped_records[0].reason, "no_best_mapping");
+
+    for entry in entries {
+        let single = engine
+            .build_rna_read_alignment_display("rna_reads_gene_support", entry.record_index)
+            .expect("single alignment display");
+        assert_eq!(
+            serde_json::to_value(&entry.alignment).expect("batch alignment json"),
+            serde_json::to_value(&single).expect("single alignment json")
+        );
+    }
+}
+
+#[test]
+fn test_rna_read_show_alignments_batch_fails_on_missing_record_index() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let error = engine
+        .build_rna_read_alignment_displays("rna_reads_gene_support", &[99])
+        .expect_err("missing record index should fail batch");
+
+    assert_eq!(error.code, ErrorCode::NotFound);
+    assert!(error.message.contains("record_index 99"));
+}
+
+#[test]
+fn test_rna_read_show_alignments_batch_uses_gene_cohort_rows() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let cases = [
+        (
+            RnaReadGeneSupportAuditCohortFilter::All,
+            vec![0, 1, 2, 3, 4],
+        ),
+        (RnaReadGeneSupportAuditCohortFilter::Accepted, vec![0, 1, 2]),
+        (RnaReadGeneSupportAuditCohortFilter::Fragment, vec![1]),
+        (RnaReadGeneSupportAuditCohortFilter::Complete, vec![0, 2]),
+        (RnaReadGeneSupportAuditCohortFilter::Rejected, vec![3, 4]),
+    ];
+
+    for (cohort_filter, expected_indices) in cases {
+        let audit = engine
+            .inspect_rna_read_gene_support(
+                "rna_reads_gene_support",
+                &[String::from("GENE1")],
+                &[],
+                RnaReadGeneSupportCompleteRule::Near,
+                cohort_filter,
+            )
+            .expect("inspect gene support cohort");
+        let selected = audit
+            .rows
+            .iter()
+            .map(|row| row.record_index)
+            .collect::<Vec<_>>();
+        assert_eq!(selected, expected_indices);
+
+        let (entries, skipped_records) = engine
+            .build_rna_read_alignment_displays("rna_reads_gene_support", &selected)
+            .expect("build batch RNA-read alignment displays from cohort");
+        assert_eq!(entries.len() + skipped_records.len(), selected.len());
+        if cohort_filter == RnaReadGeneSupportAuditCohortFilter::Rejected {
+            assert_eq!(
+                entries
+                    .iter()
+                    .map(|entry| entry.record_index)
+                    .collect::<Vec<_>>(),
+                vec![3]
+            );
+            assert_eq!(
+                skipped_records
+                    .iter()
+                    .map(|record| record.record_index)
+                    .collect::<Vec<_>>(),
+                vec![4]
+            );
+        }
+    }
+
+    let empty_audit = engine
+        .inspect_rna_read_gene_support(
+            "rna_reads_gene_support",
+            &[String::from("GENE_MISSING")],
+            &[],
+            RnaReadGeneSupportCompleteRule::Near,
+            RnaReadGeneSupportAuditCohortFilter::Accepted,
+        )
+        .expect("inspect empty gene-support cohort");
+    assert_eq!(
+        empty_audit.missing_gene_ids,
+        vec!["GENE_MISSING".to_string()]
+    );
+    assert!(empty_audit.rows.is_empty());
+    let (entries, skipped_records) = engine
+        .build_rna_read_alignment_displays("rna_reads_gene_support", &[])
+        .expect("build empty batch RNA-read alignment displays");
+    assert!(entries.is_empty());
+    assert!(skipped_records.is_empty());
 }
 
 #[test]
@@ -25950,10 +32588,10 @@ fn test_transition_support_counts_only_seed_passed_reads() {
             &RnaReadAlignConfig::default(),
             Some("rna_reads_transition_gate"),
             &mut |progress| {
-                if let OperationProgress::RnaReadInterpret(p) = progress {
-                    if p.done {
-                        final_progress = Some(p.clone());
-                    }
+                if let OperationProgress::RnaReadInterpret(p) = progress
+                    && p.done
+                {
+                    final_progress = Some(p.clone());
                 }
                 true
             },
@@ -26261,6 +32899,33 @@ fn test_interpret_rna_reads_poly_t_cdna_flip_sets_rc_flag_and_sequence() {
     assert_eq!(direct_report.hits.len(), 1);
     assert!(!direct_report.hits[0].reverse_complement_applied);
     assert_eq!(direct_report.hits[0].sequence, "TTTACGTACGT");
+
+    let direct_summary = engine
+        .list_rna_read_reports(Some("seq_a"))
+        .into_iter()
+        .find(|row| row.report_id == "rna_reads_poly_t_direct")
+        .expect("direct summary row");
+    assert_eq!(direct_summary.input_orientation_mode, "direct_rna");
+    assert_eq!(direct_summary.input_orientation_label, "direct-RNA");
+    let detail_summary = GentleEngine::format_rna_read_report_detail_summary(&direct_report);
+    assert!(detail_summary.contains("input_orientation=direct_rna"));
+    assert!(detail_summary.contains("input_orientation_label=direct-RNA"));
+
+    let direct_sheet_path = td.path().join("direct_sample_sheet.tsv");
+    engine
+        .export_rna_read_sample_sheet(
+            direct_sheet_path.to_str().expect("direct sheet path"),
+            Some("seq_a"),
+            &["rna_reads_poly_t_direct".to_string()],
+            &[],
+            RnaReadGeneSupportCompleteRule::Near,
+            false,
+        )
+        .expect("export direct-RNA sample sheet");
+    let direct_sheet = fs::read_to_string(&direct_sheet_path).expect("read direct sample sheet");
+    assert!(direct_sheet.contains("input_orientation_mode"));
+    assert!(direct_sheet.contains("input_orientation_label"));
+    assert!(direct_sheet.contains("\tdirect_rna\tdirect-RNA\t"));
 }
 
 #[test]
@@ -26626,6 +33291,7 @@ fn test_list_and_show_rna_read_reports_messages_include_origin_provenance() {
         })
         .expect("list rna-read reports");
     let listed_text = listed.messages.join("\n");
+    assert!(listed_text.contains("input_orientation=cdna_oriented"));
     assert!(listed_text.contains("origin=multi_gene_sparse"));
     assert!(listed_text.contains("targets=2"));
     assert!(listed_text.contains("roi_capture=true"));
@@ -26636,6 +33302,7 @@ fn test_list_and_show_rna_read_reports_messages_include_origin_provenance() {
         })
         .expect("show rna-read report");
     let shown_text = shown.messages.join("\n");
+    assert!(shown_text.contains("input_orientation=cdna_oriented"));
     assert!(shown_text.contains("origin=multi_gene_sparse"));
     assert!(shown_text.contains("targets=2"));
     assert!(shown_text.contains("roi_capture=true"));
@@ -27682,6 +34349,10 @@ fn test_seed_filter_cross_species_and_close_family_specificity_sets() {
         "test_files/fixtures/mapping/ensembl_human_tp53_all.fasta",
         &mut bins,
     );
+    let (tp63_total, tp63_passed, tp63_best_raw, tp63_best_weighted, tp63_failed) = evaluate_set(
+        "test_files/fixtures/mapping/ensembl_human_tp63_all.fasta",
+        &mut bins,
+    );
     let (mouse_total, _mouse_passed, _mouse_best_raw, _mouse_best_weighted, _mouse_failed) =
         evaluate_set(
             "test_files/fixtures/mapping/ensembl_mouse_trp73_all.fasta",
@@ -27700,6 +34371,145 @@ fn test_seed_filter_cross_species_and_close_family_specificity_sets() {
     assert_eq!(
         tp53_passed, 0,
         "human TP53 sequences should be rejected (passed={tp53_passed}/{tp53_total}, best_raw={tp53_best_raw:.3}, best_weighted={tp53_best_weighted:.4}, failed={tp53_failed:?})"
+    );
+    assert_eq!(
+        tp63_passed, 0,
+        "human TP63 sequences should be rejected (passed={tp63_passed}/{tp63_total}, best_raw={tp63_best_raw:.3}, best_weighted={tp63_best_weighted:.4}, failed={tp63_failed:?})"
+    );
+}
+
+#[test]
+fn test_rna_read_preflight_uses_tp53_tp63_variant_controls() {
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: "test_files/tp73.ncbi.gb".to_string(),
+            as_id: Some("tp73".to_string()),
+        })
+        .expect("load tp73 fixture");
+    let feature_id = {
+        let dna = engine
+            .state()
+            .sequences
+            .get("tp73")
+            .expect("tp73 sequence present");
+        dna.features()
+            .iter()
+            .position(GentleEngine::is_mrna_feature)
+            .expect("tp73 mRNA feature")
+    };
+    let control_paths = vec![
+        "test_files/fixtures/mapping/ensembl_human_tp53_all.fasta".to_string(),
+        "test_files/fixtures/mapping/ensembl_human_tp63_all.fasta".to_string(),
+    ];
+    let positive_paths = vec![
+        "test_files/fixtures/mapping/ensembl_human_tp73_all.fasta".to_string(),
+        "test_files/fixtures/mapping/ensembl_chimp_tp73_all.fasta".to_string(),
+    ];
+
+    let result = engine
+        .apply(Operation::PreflightRnaReadIsoforms {
+            seq_id: "tp73".to_string(),
+            seed_feature_id: feature_id,
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            seed_filter: RnaReadSeedFilterConfig::default(),
+            optimize_parameters: true,
+            positive_transcript_fasta_paths: positive_paths.clone(),
+            control_transcript_fasta_paths: control_paths.clone(),
+            max_control_match_probability: 0.0,
+        })
+        .expect("run RNA-read isoform preflight");
+    let report = result
+        .rna_read_isoform_preflight
+        .expect("preflight report payload");
+
+    assert_eq!(report.schema, "gentle.rna_read_isoform_preflight.v1");
+    assert_eq!(report.positive_transcript_fasta_paths, positive_paths);
+    assert_eq!(report.control_transcript_fasta_paths, control_paths);
+    assert!(
+        report.target_transcript_count > 0,
+        "TP73 preflight should evaluate at least one target transcript"
+    );
+    assert!(
+        report.target_passed_transcript_count > 0,
+        "optimized preflight should retain TP73 target support"
+    );
+    assert!(
+        report.positive_control_transcript_count > 1,
+        "preflight should load multiple positive-control transcript variants"
+    );
+    assert_eq!(
+        report.positive_control_passed_transcript_count, report.positive_control_transcript_count,
+        "all positive-control transcript variants must pass the seed gate"
+    );
+    assert_eq!(
+        report.threshold_recommendation.basis,
+        "target_vs_control_gene_margin"
+    );
+    assert!(
+        (report.threshold_recommendation.positive_pass_probability - 1.0).abs() < f64::EPSILON,
+        "threshold recommendation should echo the must-pass positive probability"
+    );
+    assert!(
+        report
+            .threshold_recommendation
+            .seed_filter_cli_fragment
+            .contains("--min-seed-hit-fraction"),
+        "threshold recommendation should expose paste-ready seed-filter flags"
+    );
+    assert!(
+        report
+            .threshold_recommendation
+            .interpret_command_fragment
+            .contains("rna-reads interpret tp73"),
+        "threshold recommendation should expose an RNA mapping command fragment"
+    );
+
+    for control_id in ["TP53", "TP63"] {
+        let summary = report
+            .control_summaries
+            .iter()
+            .find(|summary| summary.control_id == control_id)
+            .unwrap_or_else(|| panic!("missing {control_id} control summary"));
+        assert!(
+            summary.transcript_count > 0,
+            "{control_id} control FASTA should contribute transcript variants"
+        );
+        assert!(
+            summary.best_unique_matched_kmers > 0,
+            "{control_id} control summary should carry best-match threshold evidence"
+        );
+        assert!(
+            summary.weighted_pass_probability
+                <= report.max_control_match_probability + f64::EPSILON,
+            "{control_id} control-match probability should stay below threshold: {} > {}",
+            summary.weighted_pass_probability,
+            report.max_control_match_probability
+        );
+    }
+    assert!(
+        report.recommended_command_fragment.contains(
+            "--positive-transcript-fasta test_files/fixtures/mapping/ensembl_human_tp73_all.fasta"
+        ),
+        "recommended command should preserve human TP73 positive FASTA path"
+    );
+    assert!(
+        report.recommended_command_fragment.contains(
+            "--positive-transcript-fasta test_files/fixtures/mapping/ensembl_chimp_tp73_all.fasta"
+        ),
+        "recommended command should preserve chimp TP73 positive FASTA path"
+    );
+    assert!(
+        report.recommended_command_fragment.contains(
+            "--control-transcript-fasta test_files/fixtures/mapping/ensembl_human_tp53_all.fasta"
+        ),
+        "recommended command should preserve TP53 control FASTA path"
+    );
+    assert!(
+        report.recommended_command_fragment.contains(
+            "--control-transcript-fasta test_files/fixtures/mapping/ensembl_human_tp63_all.fasta"
+        ),
+        "recommended command should preserve TP63 control FASTA path"
     );
 }
 
@@ -29729,7 +36539,7 @@ fn test_rna_read_transcript_catalog_index_roundtrip_supports_concatemer_inspecti
     .expect("write gene4 transcript fasta");
     let index_file = tempfile::NamedTempFile::new().expect("temp transcript index file");
     let index = GentleEngine::export_rna_read_transcript_catalog_index(
-        &vec![
+        &[
             transcript_file_gene3.path().display().to_string(),
             transcript_file_gene4.path().display().to_string(),
         ],
@@ -29982,7 +36792,7 @@ fn test_collect_mapped_isoform_support_rows_prefers_best_supported_mapping() {
         },
     ];
 
-    let rows = GentleEngine::collect_mapped_isoform_support_rows(&hits);
+    let rows = GentleEngine::collect_mapped_isoform_support_rows(&hits, 0.80);
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0].transcript_id, "tx_a");
     assert_eq!(rows[0].aligned_read_count, 2);
@@ -30148,6 +36958,8 @@ fn test_export_rna_read_sample_sheet_writes_frequency_columns() {
     assert!(text.contains("exon_support_frequencies_json"));
     assert!(text.contains("junction_support_frequencies_json"));
     assert!(text.contains("origin_mode"));
+    assert!(text.contains("input_orientation_mode"));
+    assert!(text.contains("input_orientation_label"));
     assert!(text.contains("target_gene_ids_json"));
     assert!(text.contains("origin_class_counts_json"));
     assert!(text.contains("rna_reads_sheet"));
@@ -30244,7 +37056,7 @@ fn test_export_rna_read_sample_sheet_includes_target_gene_support_metrics() {
     let expected_mean_assigned_length = report
         .hits
         .iter()
-        .filter(|hit| matches!(hit.record_index, 0 | 1 | 2))
+        .filter(|hit| matches!(hit.record_index, 0..=2))
         .map(|hit| hit.read_length_bp as f64)
         .sum::<f64>()
         / 3.0;
@@ -31394,7 +38206,7 @@ fn inspect_sequence_context_view_uses_display_viewport_and_visible_classes() {
         report
             .rows
             .iter()
-            .all(|row| row.kind.to_ascii_uppercase() != "MRNA"),
+            .all(|row| !row.kind.eq_ignore_ascii_case("MRNA")),
         "rows were: {:?}",
         report
             .rows
@@ -32202,6 +39014,8 @@ fn summarize_tfbs_score_tracks_uses_promoter_provenance_tss_when_features_are_ab
 
 #[test]
 fn summarize_tfbs_score_tracks_reports_raw_and_smoothed_correlations() {
+    let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+    crate::tf_motifs::reload();
     let dna = DNAsequence::from_sequence("GGGGCGGGGCACGTGGGGGCGGGGCACGTG".repeat(6).as_str())
         .expect("sequence");
     let mut state = ProjectState::default();
@@ -32316,6 +39130,8 @@ fn summarize_tfbs_score_tracks_reports_raw_and_smoothed_correlations() {
 
 #[test]
 fn summarize_tfbs_track_similarity_ranks_candidates_and_supports_species_filtering() {
+    let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+    crate::tf_motifs::reload();
     let dna = DNAsequence::from_sequence("GGGGCGGGGCACGTGGGGGCGGGGCACGTG".repeat(6).as_str())
         .expect("sequence");
     let mut state = ProjectState::default();
@@ -32690,7 +39506,12 @@ fn apply_summarize_multi_gene_promoter_tfbs_returns_transcription_aligned_report
             score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
             clip_negative: true,
             catalog_path: Some(catalog_path_str),
+            gene_group_catalog_path: None,
             cache_dir: None,
+            gene_set: None,
+            gene_set_resolution: None,
+            allow_draft: false,
+            allow_deprecated: false,
             path: None,
         })
         .expect("summarize multi-gene promoter tfbs");
@@ -32747,8 +39568,335 @@ fn apply_summarize_multi_gene_promoter_tfbs_returns_transcription_aligned_report
 }
 
 #[test]
+fn apply_summarize_promoter_cohort_comparison_returns_pairwise_payload_and_unresolved_warnings() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let fasta = root.join("toy.fa");
+    let gtf = root.join("toy.gtf");
+    let sequence: String = (0..5000)
+        .map(|idx| match ((idx * 17) + (idx / 5)) % 4 {
+            0 => 'A',
+            1 => 'C',
+            2 => 'G',
+            _ => 'T',
+        })
+        .collect();
+    fs::write(&fasta, format!(">chr1\n{sequence}\n")).expect("write fasta");
+    fs::write(
+        &gtf,
+        concat!(
+            "chr1\tsrc\tgene\t501\t950\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\";\n",
+            "chr1\tsrc\ttranscript\t601\t920\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\";\n",
+            "chr1\tsrc\texon\t601\t700\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t2001\t2600\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\";\n",
+            "chr1\tsrc\ttranscript\t2051\t2500\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\";\n",
+            "chr1\tsrc\texon\t2051\t2200\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"1\";\n",
+        ),
+    )
+    .expect("write gtf");
+    let cache_dir = root.join("cache");
+    let catalog_path = root.join("catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache_dir.display()
+        ),
+    )
+    .expect("write catalog");
+
+    let mut engine = GentleEngine::new();
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    let catalog_path_str = catalog_path.to_string_lossy().to_string();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path_str.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare genome");
+
+    let result = engine
+        .apply(Operation::SummarizePromoterCohortComparison {
+            genome_id: "ToyGenome".to_string(),
+            source_seq_ids: vec!["toy_promoter_context".to_string()],
+            cohort_label: "toy_cohort".to_string(),
+            cohort_kind: PromoterCohortKind::CoRegulated,
+            genes: vec![
+                PromoterTfbsGeneQuery {
+                    gene_query: "POS1".to_string(),
+                    transcript_id: Some("TX_POS".to_string()),
+                    ..PromoterTfbsGeneQuery::default()
+                },
+                PromoterTfbsGeneQuery {
+                    gene_query: "NEG1".to_string(),
+                    transcript_id: Some("TX_NEG".to_string()),
+                    display_label: Some("NEG1 promoter".to_string()),
+                    ..PromoterTfbsGeneQuery::default()
+                },
+                PromoterTfbsGeneQuery {
+                    gene_query: "MISSING".to_string(),
+                    ..PromoterTfbsGeneQuery::default()
+                },
+            ],
+            motifs: vec!["SP1".to_string(), "TP73".to_string()],
+            upstream_bp: 100,
+            downstream_bp: 20,
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            catalog_path: Some(catalog_path_str),
+            cache_dir: None,
+            expression_source_label: Some("rna_demo".to_string()),
+            expression_rows: vec![PromoterExpressionEvidenceInput {
+                gene_label: Some("POS1".to_string()),
+                condition: Some("case".to_string()),
+                value: 12.5,
+                unit: Some("TPM".to_string()),
+                ..PromoterExpressionEvidenceInput::default()
+            }],
+            cutrun_dataset_ids: vec!["toy_cutrun".to_string()],
+            cutrun_read_report_ids: vec![],
+            path: None,
+        })
+        .expect("summarize promoter cohort comparison");
+
+    let report = result
+        .promoter_cohort_comparison
+        .expect("promoter cohort comparison report");
+    assert_eq!(report.schema, "gentle.promoter_cohort_comparison.v1");
+    assert_eq!(report.cohort_kind, PromoterCohortKind::CoRegulated);
+    assert_eq!(report.resolved_promoter_count, 2);
+    assert_eq!(report.resolved_promoter_windows.len(), 2);
+    assert!(
+        report
+            .resolved_promoter_windows
+            .iter()
+            .all(|row| row.tss_position_0based == 100)
+    );
+    assert!(!report.tfbs_score_track_summaries.is_empty());
+    assert!(!report.pairwise_similarity.is_empty());
+    assert_eq!(report.expression_associations.len(), 1);
+    assert_eq!(report.cutrun_dataset_ids, vec!["toy_cutrun".to_string()]);
+    assert!(report.multi_gene_promoter_tfbs.is_some());
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("MISSING")),
+        "warnings: {:?}",
+        report.warnings
+    );
+}
+
+#[test]
+fn promoter_cohort_relationship_flags_are_expectation_specific() {
+    let pairwise = vec![
+        PromoterCohortPairwiseSimilarity {
+            left_gene_label: "A".to_string(),
+            right_gene_label: "B".to_string(),
+            shared_motif_count: 2,
+            mean_raw_pearson: 0.91,
+            mean_smoothed_spearman: 0.92,
+            motif_ids: vec!["SP1".to_string(), "TP73".to_string()],
+        },
+        PromoterCohortPairwiseSimilarity {
+            left_gene_label: "A".to_string(),
+            right_gene_label: "C".to_string(),
+            shared_motif_count: 2,
+            mean_raw_pearson: 0.02,
+            mean_smoothed_spearman: 0.04,
+            motif_ids: vec!["SP1".to_string(), "TP73".to_string()],
+        },
+    ];
+
+    assert!(
+        GentleEngine::summarize_promoter_cohort_relationship_flags(
+            PromoterCohortKind::Manual,
+            &pairwise,
+        )
+        .is_empty()
+    );
+
+    let co_regulated = GentleEngine::summarize_promoter_cohort_relationship_flags(
+        PromoterCohortKind::CoRegulated,
+        &pairwise,
+    );
+    assert_eq!(co_regulated.len(), 1);
+    assert_eq!(co_regulated[0].flag_kind, "unexpected_divergence");
+    assert_eq!(co_regulated[0].gene_labels, vec!["A", "C"]);
+
+    let anti_co_regulated = GentleEngine::summarize_promoter_cohort_relationship_flags(
+        PromoterCohortKind::AntiCoRegulated,
+        &pairwise,
+    );
+    assert_eq!(anti_co_regulated.len(), 1);
+    assert_eq!(anti_co_regulated[0].flag_kind, "unexpected_concordance");
+    assert_eq!(anti_co_regulated[0].gene_labels, vec!["A", "B"]);
+}
+
+#[test]
+fn promoter_cohort_comparison_flags_declared_relationship_expectations() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let fasta = root.join("toy_relationship.fa");
+    let gtf = root.join("toy_relationship.gtf");
+    let mut bases = vec!['A'; 2200];
+    let shared: String = "GGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGG"
+        .chars()
+        .take(51)
+        .collect();
+    let divergent: String = (0..51)
+        .map(|idx| if idx % 2 == 0 { 'A' } else { 'T' })
+        .collect();
+    for (start, segment) in [
+        (460usize, shared.as_str()),
+        (960, shared.as_str()),
+        (1460, divergent.as_str()),
+    ] {
+        for (idx, base) in segment.chars().enumerate() {
+            bases[start + idx] = base;
+        }
+    }
+    let sequence: String = bases.into_iter().collect();
+    fs::write(&fasta, format!(">chr1\n{sequence}\n")).expect("write fasta");
+    fs::write(
+        &gtf,
+        concat!(
+            "chr1\tsrc\tgene\t501\t650\t.\t+\t.\tgene_id \"GENE_A\"; gene_name \"GENEA\";\n",
+            "chr1\tsrc\ttranscript\t501\t650\t.\t+\t.\tgene_id \"GENE_A\"; gene_name \"GENEA\"; transcript_id \"TX_A\";\n",
+            "chr1\tsrc\texon\t501\t650\t.\t+\t.\tgene_id \"GENE_A\"; gene_name \"GENEA\"; transcript_id \"TX_A\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t1001\t1150\t.\t+\t.\tgene_id \"GENE_B\"; gene_name \"GENEB\";\n",
+            "chr1\tsrc\ttranscript\t1001\t1150\t.\t+\t.\tgene_id \"GENE_B\"; gene_name \"GENEB\"; transcript_id \"TX_B\";\n",
+            "chr1\tsrc\texon\t1001\t1150\t.\t+\t.\tgene_id \"GENE_B\"; gene_name \"GENEB\"; transcript_id \"TX_B\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t1501\t1650\t.\t+\t.\tgene_id \"GENE_C\"; gene_name \"GENEC\";\n",
+            "chr1\tsrc\ttranscript\t1501\t1650\t.\t+\t.\tgene_id \"GENE_C\"; gene_name \"GENEC\"; transcript_id \"TX_C\";\n",
+            "chr1\tsrc\texon\t1501\t1650\t.\t+\t.\tgene_id \"GENE_C\"; gene_name \"GENEC\"; transcript_id \"TX_C\"; exon_number \"1\";\n",
+        ),
+    )
+    .expect("write gtf");
+    let cache_dir = root.join("cache");
+    let catalog_path = root.join("catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache_dir.display()
+        ),
+    )
+    .expect("write catalog");
+
+    let mut engine = GentleEngine::new();
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    let catalog_path_str = catalog_path.to_string_lossy().to_string();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path_str.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare genome");
+
+    let make_request = |cohort_kind| Operation::SummarizePromoterCohortComparison {
+        genome_id: "ToyGenome".to_string(),
+        source_seq_ids: vec![],
+        cohort_label: "toy_relationship".to_string(),
+        cohort_kind,
+        genes: ["GENEA", "GENEB", "GENEC"]
+            .into_iter()
+            .map(|gene_query| PromoterTfbsGeneQuery {
+                gene_query: gene_query.to_string(),
+                ..PromoterTfbsGeneQuery::default()
+            })
+            .collect(),
+        motifs: vec!["SP1".to_string()],
+        upstream_bp: 40,
+        downstream_bp: 10,
+        score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+        clip_negative: true,
+        catalog_path: Some(catalog_path_str.clone()),
+        cache_dir: None,
+        expression_source_label: None,
+        expression_rows: vec![],
+        cutrun_dataset_ids: vec![],
+        cutrun_read_report_ids: vec![],
+        path: None,
+    };
+
+    let co_report = engine
+        .apply(make_request(PromoterCohortKind::CoRegulated))
+        .expect("co-regulated cohort")
+        .promoter_cohort_comparison
+        .expect("co-regulated report");
+    assert!(
+        co_report
+            .relationship_flags
+            .iter()
+            .any(|flag| flag.flag_kind == "unexpected_divergence"
+                && flag.gene_labels.iter().any(|label| label == "GENEC")),
+        "co-regulated flags: {:?}",
+        co_report.relationship_flags
+    );
+    assert!(
+        co_report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Declared co-regulated promoter cohort")),
+        "warnings: {:?}",
+        co_report.warnings
+    );
+
+    let anti_report = engine
+        .apply(make_request(PromoterCohortKind::AntiCoRegulated))
+        .expect("anti-co-regulated cohort")
+        .promoter_cohort_comparison
+        .expect("anti-co-regulated report");
+    assert!(
+        anti_report
+            .relationship_flags
+            .iter()
+            .any(|flag| flag.flag_kind == "unexpected_concordance"
+                && flag.gene_labels.iter().any(|label| label == "GENEA")
+                && flag.gene_labels.iter().any(|label| label == "GENEB")),
+        "anti-co-regulated flags: {:?}",
+        anti_report.relationship_flags
+    );
+
+    let manual_report = engine
+        .apply(make_request(PromoterCohortKind::Manual))
+        .expect("manual cohort")
+        .promoter_cohort_comparison
+        .expect("manual report");
+    assert!(manual_report.relationship_flags.is_empty());
+}
+
+#[test]
 fn summarize_jaspar_entries_derives_extreme_sequences_and_random_distribution() {
     let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+    crate::tf_motifs::reload();
     let engine = GentleEngine::new();
     let report = engine
         .summarize_jaspar_entries(&["SP1".to_string()], 10_000, 12345)
@@ -32763,7 +39911,7 @@ fn summarize_jaspar_entries_derives_extreme_sequences_and_random_distribution() 
     assert_eq!(row.consensus_iupac, "GGGGCGGGG");
     assert_eq!(row.motif_length_bp, 9);
     assert_eq!(row.maximizing_sequence, "GGGGCGGGG");
-    assert_eq!(row.minimizing_sequence, "AAAAAAAAA");
+    assert_eq!(row.minimizing_sequence, "AAAAGAATC");
     assert_eq!(
         row.llr_bits_distribution.sample_count,
         2 * (10_000usize - row.motif_length_bp + 1)
@@ -33687,6 +40835,134 @@ fn build_construct_reasoning_graph_collects_restriction_sites_and_feature_spans(
     );
 }
 
+fn construct_reasoning_task_severity<'a>(
+    fact: &'a DesignFact,
+    task: ConstructReasoningRiskTask,
+) -> &'a ConstructReasoningTaskSeverity {
+    fact.task_severities
+        .iter()
+        .find(|severity| severity.task == task)
+        .unwrap_or_else(|| panic!("missing {task:?} severity on {}", fact.fact_type))
+}
+
+fn construct_reasoning_fact<'a>(
+    graph: &'a ConstructReasoningGraph,
+    fact_type: &str,
+) -> &'a DesignFact {
+    graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == fact_type)
+        .unwrap_or_else(|| panic!("missing fact {fact_type}"))
+}
+
+fn construct_reasoning_severity_rank(severity: ConstructReasoningSeverity) -> u8 {
+    match severity {
+        ConstructReasoningSeverity::None => 0,
+        ConstructReasoningSeverity::Low => 1,
+        ConstructReasoningSeverity::Medium => 2,
+        ConstructReasoningSeverity::High => 3,
+    }
+}
+
+fn assert_task_severity_ids_are_fact_evidence(fact: &DesignFact) {
+    for severity in &fact.task_severities {
+        assert!(
+            !severity.supporting_evidence_ids.is_empty(),
+            "task severity should name evidence: {:?}",
+            severity
+        );
+        let score = severity
+            .score
+            .expect("engine-generated task severity should carry a score");
+        assert!(
+            (0.0..=1.0).contains(&score),
+            "task severity score should be normalized: {:?}",
+            severity
+        );
+        for evidence_id in &severity.supporting_evidence_ids {
+            assert!(
+                fact.based_on_evidence_ids
+                    .iter()
+                    .any(|id| id == evidence_id),
+                "severity evidence {evidence_id} should be part of fact evidence {:?}",
+                fact.based_on_evidence_ids
+            );
+        }
+    }
+}
+
+fn test_construct_reasoning_dotplot_action(
+    seq_id: &str,
+    mode: DotplotMode,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+) -> ConstructReasoningInspectionAction {
+    ConstructReasoningInspectionAction {
+        action_id: format!(
+            "inspection_demo_{}_{}_{}",
+            mode.as_str(),
+            start_0based,
+            end_0based_exclusive
+        ),
+        action_kind: ConstructReasoningInspectionActionKind::Dotplot,
+        seq_id: seq_id.to_string(),
+        mode,
+        focus_start_0based: start_0based,
+        focus_end_0based_exclusive: end_0based_exclusive,
+        ..ConstructReasoningInspectionAction::default()
+    }
+}
+
+#[test]
+fn construct_reasoning_action_dotplot_request_matches_gui_window_math() {
+    let action =
+        test_construct_reasoning_dotplot_action("seq-A.1", DotplotMode::SelfForward, 10, 20);
+    let request = construct_reasoning_action_dotplot_request(&action, "fallback", 137)
+        .expect("short-sequence dotplot request");
+    assert_eq!(request.seq_id, "seq-A.1");
+    assert_eq!(request.mode, DotplotMode::SelfForward);
+    assert_eq!(request.span_start_0based, 0);
+    assert_eq!(request.span_end_0based, 137);
+    assert_eq!(request.store_as, "seq_a_1_reasoning_11_20_self");
+
+    let near_start =
+        test_construct_reasoning_dotplot_action("seq-A.1", DotplotMode::SelfForward, 5, 15);
+    let near_start_request = construct_reasoning_action_dotplot_request(&near_start, "", 1000)
+        .expect("near-start dotplot request");
+    assert_eq!(near_start_request.span_start_0based, 0);
+    assert_eq!(near_start_request.span_end_0based, 199);
+
+    let near_end =
+        test_construct_reasoning_dotplot_action("seq-A.1", DotplotMode::SelfForward, 990, 1000);
+    let near_end_request = construct_reasoning_action_dotplot_request(&near_end, "", 1000)
+        .expect("near-end dotplot request");
+    assert_eq!(near_end_request.span_start_0based, 801);
+    assert_eq!(near_end_request.span_end_0based, 1000);
+}
+
+#[test]
+fn construct_reasoning_action_dotplot_request_handles_revcomp_fallback_and_empty_sequence() {
+    let action =
+        test_construct_reasoning_dotplot_action("", DotplotMode::SelfReverseComplement, 400, 430);
+    let request = construct_reasoning_action_dotplot_request(&action, "fallback.seq-1", 1000)
+        .expect("revcomp fallback dotplot request");
+    assert_eq!(request.seq_id, "fallback.seq-1");
+    assert_eq!(request.mode, DotplotMode::SelfReverseComplement);
+    assert_eq!(request.span_start_0based, 316);
+    assert_eq!(request.span_end_0based, 515);
+    assert_eq!(request.store_as, "fallback_seq_1_reasoning_401_430_revcomp");
+
+    let err = construct_reasoning_action_dotplot_request(&action, "fallback.seq-1", 0)
+        .expect_err("empty sequence should not yield a dotplot request");
+    assert_eq!(err.code, ErrorCode::InvalidInput);
+    assert!(
+        err.message.contains("empty"),
+        "unexpected empty-sequence error: {}",
+        err.message
+    );
+}
+
 #[test]
 fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational_risk_context() {
     let sequence = format!(
@@ -33764,6 +41040,18 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             .unwrap_or(0)
             >= 1
     );
+    let repeat_read_mapping =
+        construct_reasoning_task_severity(repeat_fact, ConstructReasoningRiskTask::ReadMapping);
+    let repeat_cloning = construct_reasoning_task_severity(
+        repeat_fact,
+        ConstructReasoningRiskTask::CloningStability,
+    );
+    assert!(
+        construct_reasoning_severity_rank(repeat_cloning.severity)
+            > construct_reasoning_severity_rank(repeat_read_mapping.severity),
+        "repeat architecture should be more severe for cloning stability than read mapping without curated family support"
+    );
+    assert_task_severity_ids_are_fact_evidence(repeat_fact);
 
     let risk_fact = graph
         .facts
@@ -33786,6 +41074,7 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             .unwrap_or(0)
             >= 1
     );
+    assert_task_severity_ids_are_fact_evidence(risk_fact);
     let pcr_fact = graph
         .facts
         .iter()
@@ -33799,6 +41088,13 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             .unwrap_or(0)
             >= 1
     );
+    let pcr_severity = construct_reasoning_task_severity(pcr_fact, ConstructReasoningRiskTask::Pcr);
+    assert!(
+        construct_reasoning_severity_rank(pcr_severity.severity)
+            >= construct_reasoning_severity_rank(ConstructReasoningSeverity::Medium),
+        "homopolymer/tandem repeat context should be PCR-relevant"
+    );
+    assert_task_severity_ids_are_fact_evidence(pcr_fact);
     let nanopore_fact = graph
         .facts
         .iter()
@@ -33812,6 +41108,16 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             .unwrap_or(0)
             >= 1
     );
+    let nanopore_severity = construct_reasoning_task_severity(
+        nanopore_fact,
+        ConstructReasoningRiskTask::NanoporeSequencing,
+    );
+    assert!(
+        construct_reasoning_severity_rank(nanopore_severity.severity)
+            >= construct_reasoning_severity_rank(ConstructReasoningSeverity::Medium),
+        "homopolymer/low-complexity context should be nanopore-relevant"
+    );
+    assert_task_severity_ids_are_fact_evidence(nanopore_fact);
     let mapping_fact = graph
         .facts
         .iter()
@@ -33825,6 +41131,10 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             .unwrap_or(0)
             >= 1
     );
+    let mapping_severity =
+        construct_reasoning_task_severity(mapping_fact, ConstructReasoningRiskTask::ReadMapping);
+    assert_eq!(mapping_severity.severity, ConstructReasoningSeverity::Low);
+    assert_task_severity_ids_are_fact_evidence(mapping_fact);
     let cloning_fact = graph
         .facts
         .iter()
@@ -33838,21 +41148,550 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             .unwrap_or(0)
             >= 1
     );
+    let cloning_severity = construct_reasoning_task_severity(
+        cloning_fact,
+        ConstructReasoningRiskTask::CloningStability,
+    );
+    assert_eq!(cloning_severity.severity, ConstructReasoningSeverity::High);
+    assert_task_severity_ids_are_fact_evidence(cloning_fact);
     assert!(graph.annotation_candidates.iter().any(|row| {
         row.role == ConstructRole::RepeatRegion && row.source_kind == "generated_annotation"
     }));
+
+    let repeat_actions = graph
+        .inspection_actions
+        .iter()
+        .filter(|action| {
+            action
+                .source_fact_ids
+                .iter()
+                .any(|id| id == &repeat_fact.fact_id)
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        repeat_actions
+            .iter()
+            .any(|action| action.mode == DotplotMode::SelfForward),
+        "repeat architecture should recommend a forward dotplot action"
+    );
+    let revcomp_action = repeat_actions
+        .iter()
+        .find(|action| action.mode == DotplotMode::SelfReverseComplement)
+        .expect("inverted repeat evidence should recommend revcomp dotplot");
+    assert!(revcomp_action.action_id.contains(&graph.graph_id));
+    assert!(
+        revcomp_action.driving_evidence_ids.iter().any(|id| graph
+            .evidence
+            .iter()
+            .any(|row| row.evidence_id == *id
+                && row.context_tags.iter().any(|tag| tag == "inverted_repeat"))),
+        "revcomp action should name the specific inverted-repeat evidence rows"
+    );
+    assert!(
+        revcomp_action
+            .context_tags
+            .iter()
+            .any(|tag| tag == "inverted_repeat")
+    );
+    assert!(
+        graph.inspection_actions.iter().any(|action| {
+            action.source_annotation_ids.iter().any(|id| {
+                graph.annotation_candidates.iter().any(|candidate| {
+                    candidate.annotation_id == *id && candidate.role == ConstructRole::RepeatRegion
+                })
+            })
+        }),
+        "repeat annotation candidates should be linked to protocol inspection actions"
+    );
 }
 
 #[test]
-fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() {
-    let monomer = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGACCAGCCTGGCCAACATG";
+fn construct_reasoning_task_severity_scores_follow_construct_objective() {
     let sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let build_graph = |objective: ConstructObjective| {
+        let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("objective_repeat_demo".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+        let objective = engine
+            .upsert_construct_objective(objective)
+            .expect("objective");
+        engine
+            .build_construct_reasoning_graph(
+                "objective_repeat_demo",
+                Some(&objective.objective_id),
+                None,
+            )
+            .expect("build graph")
+    };
+
+    let cloning_graph = build_graph(ConstructObjective {
+        title: "Stable plasmid cloning".to_string(),
+        goal: "Assemble and propagate a stable plasmid clone".to_string(),
+        propagation_host_profile_id: Some("ecoli_k12".to_string()),
+        host_route: vec![HostRouteStep {
+            step_id: "propagation".to_string(),
+            host_profile_id: "ecoli_k12".to_string(),
+            role: HostLifecycleRole::Propagation,
+            rationale: "recover and propagate the assembled construct".to_string(),
+            ..HostRouteStep::default()
+        }],
+        preferred_routine_families: vec!["gibson".to_string()],
+        ..ConstructObjective::default()
+    });
+    let sequencing_graph = build_graph(ConstructObjective {
+        title: "Nanopore and mapping QC".to_string(),
+        goal: "Nanopore sequencing and read mapping review for the construct".to_string(),
+        preferred_routine_families: vec!["nanopore_sequencing".to_string()],
+        notes: vec!["inspect alignment uniqueness".to_string()],
+        ..ConstructObjective::default()
+    });
+
+    let cloning_repeat = construct_reasoning_fact(&cloning_graph, "repeat_architecture_context");
+    let sequencing_repeat =
+        construct_reasoning_fact(&sequencing_graph, "repeat_architecture_context");
+    let cloning_read_mapping =
+        construct_reasoning_task_severity(cloning_repeat, ConstructReasoningRiskTask::ReadMapping);
+    let sequencing_read_mapping = construct_reasoning_task_severity(
+        sequencing_repeat,
+        ConstructReasoningRiskTask::ReadMapping,
+    );
+    let cloning_stability = construct_reasoning_task_severity(
+        cloning_repeat,
+        ConstructReasoningRiskTask::CloningStability,
+    );
+    let sequencing_cloning_stability = construct_reasoning_task_severity(
+        sequencing_repeat,
+        ConstructReasoningRiskTask::CloningStability,
+    );
+
+    assert!(
+        cloning_stability.score.unwrap() > sequencing_cloning_stability.score.unwrap(),
+        "cloning objective should make cloning-stability repeat risk score higher"
+    );
+    assert!(
+        sequencing_read_mapping.score.unwrap() > cloning_read_mapping.score.unwrap(),
+        "sequencing/mapping objective should make read-mapping repeat risk score higher"
+    );
+    assert_eq!(
+        sequencing_cloning_stability.severity,
+        ConstructReasoningSeverity::Low,
+        "unperformed cloning task should be down-weighted, not silently treated as critical"
+    );
+    assert!(
+        sequencing_cloning_stability.score.unwrap() <= 0.05,
+        "unperformed cloning task should be scored at the floor"
+    );
+    assert!(
+        sequencing_cloning_stability
+            .rationale
+            .contains("down-weighted"),
+        "objective down-weighting should be visible in rationale"
+    );
+    assert_eq!(
+        cloning_read_mapping.severity,
+        ConstructReasoningSeverity::Low,
+        "unperformed mapping task should be down-weighted"
+    );
+    assert!(cloning_read_mapping.score.unwrap() <= 0.05);
+    assert!(
+        cloning_read_mapping.rationale.contains("down-weighted"),
+        "mapping down-weighting should be visible in rationale"
+    );
+
+    let cloning_nanopore = construct_reasoning_task_severity(
+        construct_reasoning_fact(&cloning_graph, "nanopore_operational_risk_context"),
+        ConstructReasoningRiskTask::NanoporeSequencing,
+    );
+    let sequencing_nanopore = construct_reasoning_task_severity(
+        construct_reasoning_fact(&sequencing_graph, "nanopore_operational_risk_context"),
+        ConstructReasoningRiskTask::NanoporeSequencing,
+    );
+    assert!(
+        sequencing_nanopore.score.unwrap() > cloning_nanopore.score.unwrap(),
+        "nanopore objective should raise the nanopore-specific repeat score"
+    );
+    assert!(
+        cloning_nanopore.score.unwrap() <= 0.05,
+        "task absent from cloning objective should remain at the lowest score"
+    );
+    assert_eq!(
+        cloning_stability.supporting_evidence_ids,
+        sequencing_cloning_stability.supporting_evidence_ids,
+        "objective-specific scoring should preserve underlying evidence ids"
+    );
+}
+
+fn alu_like_demo_sequence_text() -> String {
+    let monomer = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGACCAGCCTGGCCAACATG";
+    format!(
         "{}{}{}{}",
         "ACGT".repeat(12),
         monomer,
         format!("AATAAAATACA{monomer}"),
         "AAAAAAAAAAAAAAAA"
+    )
+}
+
+fn synthetic_internal_repeat_evidence(
+    evidence_id: &str,
+    tags: &[&str],
+    start_0based: usize,
+    end_0based_exclusive: usize,
+) -> DesignEvidence {
+    DesignEvidence {
+        evidence_id: evidence_id.to_string(),
+        seq_id: "repeat_taxonomy_demo".to_string(),
+        start_0based,
+        end_0based_exclusive,
+        role: ConstructRole::RepeatRegion,
+        evidence_class: EvidenceClass::SoftHypothesis,
+        label: evidence_id.to_string(),
+        rationale: "synthetic internal repeat-family signal".to_string(),
+        confidence: Some(0.55),
+        context_tags: tags.iter().map(|tag| (*tag).to_string()).collect(),
+        provenance_kind: "synthetic_internal_repeat_predictor".to_string(),
+        provenance_refs: vec![evidence_id.to_string()],
+        ..DesignEvidence::default()
+    }
+}
+
+fn synthetic_curated_repeat_evidence(
+    evidence_id: &str,
+    repeat_name: Option<&str>,
+    repeat_class: Option<&str>,
+    repeat_family: Option<&str>,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+) -> DesignEvidence {
+    let source_kind = "ucsc_rmsk";
+    DesignEvidence {
+        evidence_id: evidence_id.to_string(),
+        seq_id: "repeat_taxonomy_demo".to_string(),
+        start_0based,
+        end_0based_exclusive,
+        role: ConstructRole::RepeatRegion,
+        evidence_class: EvidenceClass::ReliableAnnotation,
+        label: GentleEngine::construct_reasoning_repeat_family_display_label(
+            repeat_name,
+            repeat_class,
+            repeat_family,
+        ),
+        rationale: "synthetic curated repeat-family annotation".to_string(),
+        confidence: Some(0.9),
+        context_tags: GentleEngine::construct_reasoning_repeat_descriptor_tags(
+            source_kind,
+            repeat_name,
+            repeat_class,
+            repeat_family,
+        ),
+        provenance_kind: "sequence_feature_annotation".to_string(),
+        provenance_refs: vec![format!("repeat_family:{evidence_id}")],
+        notes: {
+            let mut notes = vec![format!("repeat_source={source_kind}")];
+            if let Some(value) = repeat_name {
+                notes.push(format!("repeat_name={value}"));
+            }
+            if let Some(value) = repeat_class {
+                notes.push(format!("repeat_class={value}"));
+            }
+            if let Some(value) = repeat_family {
+                notes.push(format!("repeat_family={value}"));
+            }
+            notes
+        },
+        ..DesignEvidence::default()
+    }
+}
+
+fn synthetic_provenance_only_repeat_evidence(
+    evidence_id: &str,
+    repeat_name: Option<&str>,
+    repeat_class: Option<&str>,
+    repeat_family: Option<&str>,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+) -> DesignEvidence {
+    let mut row = synthetic_curated_repeat_evidence(
+        evidence_id,
+        repeat_name,
+        repeat_class,
+        repeat_family,
+        start_0based,
+        end_0based_exclusive,
     );
+    row.context_tags = GentleEngine::construct_reasoning_repeat_descriptor_tags(
+        "repeat_family_annotation",
+        repeat_name,
+        repeat_class,
+        repeat_family,
+    );
+    row.notes.retain(|note| !note.starts_with("repeat_source="));
+    row.notes
+        .push("repeat_source=repeat_family_annotation".to_string());
+    row
+}
+
+fn synthetic_ucsc_rmsk_alu_feature(
+    start_0based: usize,
+    end_0based_exclusive: usize,
+    annotation_id: &str,
+) -> gb_io::seq::Feature {
+    gb_io::seq::Feature {
+        kind: "repeat_region".into(),
+        location: gb_io::seq::Location::simple_range(
+            start_0based as i64,
+            end_0based_exclusive as i64,
+        ),
+        qualifiers: vec![
+            ("gentle_generated".into(), Some("ucsc_rmsk".to_string())),
+            ("rmsk_name".into(), Some("AluY".to_string())),
+            ("rmsk_class".into(), Some("SINE".to_string())),
+            ("rmsk_family".into(), Some("Alu".to_string())),
+            ("repName".into(), Some("AluY".to_string())),
+            ("repClass".into(), Some("SINE".to_string())),
+            ("repFamily".into(), Some("Alu".to_string())),
+            ("rmsk_annotation_id".into(), Some(annotation_id.to_string())),
+        ],
+    }
+}
+
+#[test]
+fn construct_reasoning_curated_repeat_support_requires_family_or_class_agreement() {
+    let internal_satellite =
+        synthetic_internal_repeat_evidence("internal_satellite", &["satellite"], 10, 90);
+    let curated_satellite = synthetic_curated_repeat_evidence(
+        "rmsk_satellite",
+        Some("Satellite"),
+        Some("Satellite"),
+        Some("Satellite"),
+        20,
+        100,
+    );
+    let curated_alu = synthetic_curated_repeat_evidence(
+        "rmsk_alu",
+        Some("AluY"),
+        Some("SINE"),
+        Some("Alu"),
+        20,
+        100,
+    );
+    let unclassified_internal =
+        synthetic_internal_repeat_evidence("internal_direct", &["direct_repeat"], 10, 90);
+
+    assert!(
+        GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
+            &internal_satellite,
+            &curated_satellite
+        )
+    );
+    assert!(
+        !GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
+            &internal_satellite,
+            &curated_alu
+        )
+    );
+    assert!(
+        !GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
+            &unclassified_internal,
+            &curated_satellite
+        )
+    );
+
+    let support = GentleEngine::construct_reasoning_curated_repeat_support_for_rows(
+        &[&internal_satellite],
+        &[&curated_satellite],
+    );
+    assert_eq!(support.len(), 1);
+    let provenance =
+        GentleEngine::construct_reasoning_repeat_family_provenance_for_evidence_rows(&[
+            &internal_satellite,
+            &curated_satellite,
+        ])
+        .expect("satellite support should populate provenance");
+    assert_eq!(provenance.family_name.as_deref(), Some("Satellite"));
+    assert_eq!(provenance.confidence, Some(0.9));
+
+    let cross_support = GentleEngine::construct_reasoning_curated_repeat_support_for_rows(
+        &[&internal_satellite],
+        &[&curated_alu],
+    );
+    assert!(
+        cross_support.is_empty(),
+        "satellite internal evidence must not be corroborated by overlapping Alu/SINE rmsk"
+    );
+}
+
+#[test]
+fn construct_reasoning_repeat_family_taxonomy_accepts_same_class_and_rejects_cross_family() {
+    let cases = [
+        (
+            synthetic_internal_repeat_evidence("internal_alu", &["alu_like"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_alu",
+                Some("AluY"),
+                Some("SINE"),
+                Some("Alu"),
+                0,
+                100,
+            ),
+            true,
+            "Alu-like internal signal should match Alu/SINE curated evidence",
+        ),
+        (
+            synthetic_internal_repeat_evidence("internal_sine", &["sine"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_alu_for_sine",
+                Some("AluY"),
+                Some("SINE"),
+                Some("Alu"),
+                0,
+                100,
+            ),
+            true,
+            "SINE internal signal should match Alu as a SINE-family member",
+        ),
+        (
+            synthetic_internal_repeat_evidence("internal_line", &["line"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_line",
+                Some("L1PA2"),
+                Some("LINE"),
+                Some("L1"),
+                0,
+                100,
+            ),
+            true,
+            "LINE internal signal should match LINE/L1 curated evidence",
+        ),
+        (
+            synthetic_internal_repeat_evidence("internal_ltr", &["ltr"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_ltr",
+                Some("ERVK"),
+                Some("LTR"),
+                Some("ERV"),
+                0,
+                100,
+            ),
+            true,
+            "LTR internal signal should match LTR/ERV curated evidence",
+        ),
+        (
+            synthetic_internal_repeat_evidence("internal_alu_vs_line", &["alu_like"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_line_for_alu",
+                Some("L1PA2"),
+                Some("LINE"),
+                Some("L1"),
+                0,
+                100,
+            ),
+            false,
+            "Alu-like internal signal must not match LINE curated evidence",
+        ),
+        (
+            synthetic_internal_repeat_evidence("internal_line_vs_ltr", &["line"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_ltr_for_line",
+                Some("ERVK"),
+                Some("LTR"),
+                Some("ERV"),
+                0,
+                100,
+            ),
+            false,
+            "LINE internal signal must not match LTR curated evidence",
+        ),
+        (
+            synthetic_internal_repeat_evidence("internal_ltr_vs_sine", &["ltr"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_alu_for_ltr",
+                Some("AluY"),
+                Some("SINE"),
+                Some("Alu"),
+                0,
+                100,
+            ),
+            false,
+            "LTR internal signal must not match Alu/SINE curated evidence",
+        ),
+    ];
+
+    for (internal, curated, expected, message) in cases {
+        assert_eq!(
+            GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
+                &internal, &curated
+            ),
+            expected,
+            "{message}"
+        );
+    }
+}
+
+#[test]
+fn construct_reasoning_repeat_family_provenance_confidence_tracks_corroboration() {
+    let internal_alu =
+        synthetic_internal_repeat_evidence("internal_alu_confidence", &["alu_like"], 0, 120);
+    let curated_alu = synthetic_curated_repeat_evidence(
+        "curated_alu_confidence",
+        Some("AluY"),
+        Some("SINE"),
+        Some("Alu"),
+        0,
+        120,
+    );
+    let provenance_only = synthetic_provenance_only_repeat_evidence(
+        "provenance_only_alu",
+        Some("AluY"),
+        Some("SINE"),
+        Some("Alu"),
+        0,
+        120,
+    );
+
+    let corroborated =
+        GentleEngine::construct_reasoning_repeat_family_provenance_for_evidence_rows(&[
+            &internal_alu,
+            &curated_alu,
+        ])
+        .expect("corroborated provenance");
+    let curated_only =
+        GentleEngine::construct_reasoning_repeat_family_provenance_for_evidence_rows(&[
+            &curated_alu,
+        ])
+        .expect("curated-only provenance");
+    let provenance_only =
+        GentleEngine::construct_reasoning_repeat_family_provenance_for_evidence_rows(&[
+            &provenance_only,
+        ])
+        .expect("provenance-only repeat-family attachment");
+
+    assert_eq!(corroborated.confidence, Some(0.95));
+    assert_eq!(curated_only.confidence, Some(0.8));
+    assert_eq!(provenance_only.confidence, Some(0.65));
+    assert!(
+        corroborated.confidence.unwrap() > curated_only.confidence.unwrap(),
+        "family-agreeing internal+rmsk pair should score higher than curated-only evidence"
+    );
+    assert!(
+        curated_only.confidence.unwrap() > provenance_only.confidence.unwrap(),
+        "curated rmsk evidence should score higher than provenance-only attachments"
+    );
+}
+
+#[test]
+fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() {
+    let sequence = alu_like_demo_sequence_text();
     let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
     let mut state = ProjectState::default();
     state.sequences.insert("alu_like_demo".to_string(), dna);
@@ -33862,11 +41701,27 @@ fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() 
         .build_construct_reasoning_graph("alu_like_demo", None, None)
         .expect("build graph");
 
-    assert!(graph.evidence.iter().any(|row| {
-        row.role == ConstructRole::MobileElement
-            && row.label == "Alu-like SINE candidate"
-            && row.evidence_class == EvidenceClass::SoftHypothesis
-    }));
+    let alu_evidence = graph
+        .evidence
+        .iter()
+        .find(|row| {
+            row.role == ConstructRole::MobileElement
+                && row.label == "Alu-like SINE candidate"
+                && row.evidence_class == EvidenceClass::SoftHypothesis
+        })
+        .expect("soft Alu-like evidence");
+    assert!(
+        alu_evidence
+            .rationale
+            .contains(CONSTRUCT_REASONING_ALU_LIKE_SOFT_CATALOG_CAVEAT),
+        "rmsk-absent Alu-like evidence should retain the curated-catalog caveat"
+    );
+    assert!(
+        alu_evidence
+            .notes
+            .iter()
+            .any(|note| note == "family_assignment=soft_heuristic")
+    );
     let mobile_fact = graph
         .facts
         .iter()
@@ -33887,6 +41742,20 @@ fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() 
             .unwrap_or(0)
             >= 1
     );
+    assert_eq!(
+        mobile_fact
+            .value_json
+            .get("curated_repeat_support_count")
+            .and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    let soft_mapping_severity =
+        construct_reasoning_task_severity(mobile_fact, ConstructReasoningRiskTask::ReadMapping);
+    assert_eq!(
+        soft_mapping_severity.severity,
+        ConstructReasoningSeverity::Medium
+    );
+    assert_task_severity_ids_are_fact_evidence(mobile_fact);
     let mapping_fact = graph
         .facts
         .iter()
@@ -33903,6 +41772,286 @@ fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() 
     assert!(graph.annotation_candidates.iter().any(|row| {
         row.role == ConstructRole::MobileElement && row.source_kind == "generated_annotation"
     }));
+    let mobile_action = graph
+        .inspection_actions
+        .iter()
+        .find(|action| {
+            action.mode == DotplotMode::SelfForward
+                && action
+                    .source_fact_ids
+                    .iter()
+                    .any(|id| id == &mobile_fact.fact_id)
+        })
+        .expect("mobile-element fact should recommend a forward dotplot action");
+    assert!(
+        mobile_action
+            .driving_evidence_ids
+            .iter()
+            .any(|id| graph.evidence.iter().any(|row| {
+                row.evidence_id == *id
+                    && row.role == ConstructRole::MobileElement
+                    && row.context_tags.iter().any(|tag| tag == "alu_like")
+            })),
+        "mobile-element action should carry the specific Alu-like evidence rows"
+    );
+    assert!(
+        mobile_action.repeat_family_provenance.is_none(),
+        "soft Alu-like heuristics should not claim curated repeat-family provenance yet"
+    );
+}
+
+#[test]
+fn build_construct_reasoning_graph_upgrades_alu_like_with_overlapping_rmsk_family_support() {
+    let sequence = alu_like_demo_sequence_text();
+    let mut dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+    dna.features_mut().push(synthetic_ucsc_rmsk_alu_feature(
+        0,
+        sequence.len(),
+        "rmsk_alu_1",
+    ));
+    dna.features_mut().push(synthetic_ucsc_rmsk_alu_feature(
+        0,
+        sequence.len(),
+        "rmsk_alu_2",
+    ));
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("alu_like_rmsk_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("alu_like_rmsk_demo", None, None)
+        .expect("build graph");
+
+    let alu_evidence = graph
+        .evidence
+        .iter()
+        .find(|row| row.label == "Alu-like SINE candidate")
+        .expect("Alu-like evidence");
+    assert!(
+        !alu_evidence
+            .rationale
+            .contains(CONSTRUCT_REASONING_ALU_LIKE_SOFT_CATALOG_CAVEAT),
+        "family-backed Alu-like evidence should not retain the curated-catalog caveat"
+    );
+    assert!(
+        alu_evidence.rationale.contains(
+            "overlapping curated repeat-family annotation supports the family assignment"
+        )
+    );
+    assert!(
+        alu_evidence
+            .notes
+            .iter()
+            .any(|note| note == "family_assignment=curated_repeat_family_supported")
+    );
+    assert!(
+        alu_evidence
+            .notes
+            .iter()
+            .any(|note| note == "curated_repeat_support=AluY (SINE/Alu)")
+    );
+    assert!(
+        !alu_evidence
+            .notes
+            .iter()
+            .any(|note| note == "family_assignment=soft_heuristic")
+    );
+    let curated_rows = graph
+        .evidence
+        .iter()
+        .filter(|row| row.context_tags.iter().any(|tag| tag == "ucsc_rmsk"))
+        .collect::<Vec<_>>();
+    assert_eq!(curated_rows.len(), 2);
+    assert!(curated_rows.iter().all(|row| {
+        row.evidence_class == EvidenceClass::ReliableAnnotation
+            && row.notes.iter().any(|note| note == "repeat_family=Alu")
+            && row
+                .context_tags
+                .iter()
+                .any(|tag| tag == "repeat_class_sine")
+            && row
+                .context_tags
+                .iter()
+                .any(|tag| tag == "repeat_family_alu")
+    }));
+
+    let mobile_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "mobile_element_context")
+        .expect("mobile element fact");
+    assert_eq!(
+        mobile_fact
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("curated_alu_sine_supported")
+    );
+    assert_eq!(
+        mobile_fact
+            .value_json
+            .get("curated_repeat_support_count")
+            .and_then(serde_json::Value::as_u64),
+        Some(1)
+    );
+    let support = mobile_fact
+        .value_json
+        .get("curated_repeat_support")
+        .and_then(serde_json::Value::as_array)
+        .expect("curated support array");
+    assert_eq!(support.len(), 1);
+    assert_eq!(
+        support[0].get("label").and_then(serde_json::Value::as_str),
+        Some("AluY (SINE/Alu)")
+    );
+    assert_eq!(
+        support[0]
+            .get("evidence_ids")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len),
+        Some(2),
+        "duplicate overlapping rmsk annotations should be summarized into one support row"
+    );
+    assert!(
+        mobile_fact
+            .rationale
+            .contains("overlapping curated repeat-family annotation")
+    );
+    let curated_mapping_severity =
+        construct_reasoning_task_severity(mobile_fact, ConstructReasoningRiskTask::ReadMapping);
+    assert_eq!(
+        curated_mapping_severity.severity,
+        ConstructReasoningSeverity::High
+    );
+    assert!(
+        curated_mapping_severity
+            .supporting_evidence_ids
+            .iter()
+            .any(|id| id == &alu_evidence.evidence_id)
+    );
+    assert!(curated_rows.iter().all(|row| {
+        curated_mapping_severity
+            .supporting_evidence_ids
+            .iter()
+            .any(|id| id == &row.evidence_id)
+    }));
+    assert_task_severity_ids_are_fact_evidence(mobile_fact);
+
+    let mobile_action = graph
+        .inspection_actions
+        .iter()
+        .find(|action| {
+            action.mode == DotplotMode::SelfForward
+                && action
+                    .source_fact_ids
+                    .iter()
+                    .any(|id| id == &mobile_fact.fact_id)
+        })
+        .expect("mobile-element fact should recommend a forward dotplot action");
+    assert_eq!(mobile_action.focus_start_0based, alu_evidence.start_0based);
+    assert!(mobile_action.driving_evidence_ids.iter().all(|id| {
+        graph
+            .evidence
+            .iter()
+            .find(|row| row.evidence_id == *id)
+            .map(|row| {
+                !row.context_tags.iter().any(|tag| tag == "alu_like")
+                    || !row
+                        .rationale
+                        .contains(CONSTRUCT_REASONING_ALU_LIKE_SOFT_CATALOG_CAVEAT)
+            })
+            .unwrap_or(true)
+    }));
+    let provenance = mobile_action
+        .repeat_family_provenance
+        .as_ref()
+        .expect("curated support should populate action repeat-family provenance");
+    assert_eq!(provenance.source_kind, "ucsc_rmsk");
+    assert_eq!(provenance.family_name.as_deref(), Some("Alu"));
+    assert_eq!(provenance.evidence_ids.len(), 2);
+    assert_eq!(provenance.confidence, Some(0.95));
+}
+
+#[test]
+fn build_construct_reasoning_graph_does_not_upgrade_alu_like_for_non_overlapping_rmsk() {
+    let sequence = format!("{}{}", alu_like_demo_sequence_text(), "CGTA".repeat(16));
+    let mut dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+    let suffix_start = sequence.len().saturating_sub(40);
+    dna.features_mut().push(synthetic_ucsc_rmsk_alu_feature(
+        suffix_start,
+        sequence.len(),
+        "rmsk_alu_suffix",
+    ));
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("alu_like_rmsk_nonoverlap".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("alu_like_rmsk_nonoverlap", None, None)
+        .expect("build graph");
+
+    let alu_evidence = graph
+        .evidence
+        .iter()
+        .find(|row| row.label == "Alu-like SINE candidate")
+        .expect("Alu-like evidence");
+    assert!(
+        alu_evidence
+            .rationale
+            .contains(CONSTRUCT_REASONING_ALU_LIKE_SOFT_CATALOG_CAVEAT),
+        "non-overlapping rmsk rows should leave the Alu-like call as a soft catalog-unconfirmed hypothesis"
+    );
+    assert!(
+        graph
+            .evidence
+            .iter()
+            .any(|row| row.context_tags.iter().any(|tag| tag == "ucsc_rmsk"))
+    );
+    let mobile_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "mobile_element_context")
+        .expect("mobile element fact");
+    assert_eq!(
+        mobile_fact
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("alu_like_candidates_detected")
+    );
+    assert_eq!(
+        mobile_fact
+            .value_json
+            .get("curated_repeat_support_count")
+            .and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    let nonoverlap_mapping_severity =
+        construct_reasoning_task_severity(mobile_fact, ConstructReasoningRiskTask::ReadMapping);
+    assert!(
+        construct_reasoning_severity_rank(nonoverlap_mapping_severity.severity)
+            < construct_reasoning_severity_rank(ConstructReasoningSeverity::High),
+        "non-overlapping rmsk rows should not upgrade soft internal mobile-element severity"
+    );
+    let mobile_action = graph
+        .inspection_actions
+        .iter()
+        .find(|action| {
+            action.mode == DotplotMode::SelfForward
+                && action
+                    .source_fact_ids
+                    .iter()
+                    .any(|id| id == &mobile_fact.fact_id)
+        })
+        .expect("mobile-element fact should still recommend a forward dotplot action");
+    assert!(
+        mobile_action.repeat_family_provenance.is_none(),
+        "non-overlapping rmsk rows should not back the Alu-like dotplot action"
+    );
 }
 
 #[test]
@@ -34394,6 +42543,208 @@ fn summarize_promoter_evidence_matrix_collapses_promoters_and_collects_evidence(
             row.evidence_kind_counts
         );
     }
+}
+
+#[test]
+fn summarize_isoform_promoter_comparison_reports_common_and_differential_evidence() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(3000)).expect("sequence");
+    for (transcript_id, transcript_label, start) in [
+        ("ENSTTP73A", "TP73-201", 1200_i64),
+        ("ENSTTP73B", "TP73-202", 1200_i64),
+        ("ENSTTP73C", "TP73-203-altTSS", 1500_i64),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(start, start + 600),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_label.to_string())),
+            ],
+        });
+    }
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(1030, 1040),
+        qualifiers: vec![("label".into(), Some("SP1".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "track".into(),
+        location: gb_io::seq::Location::simple_range(1320, 1335),
+        qualifiers: vec![
+            ("label".into(), Some("CUT&RUN alt promoter".to_string())),
+            ("gentle_track_name".into(), Some("CUT&RUN demo".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_isoform_promoters".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .summarize_isoform_promoter_comparison(
+            "tp73_isoform_promoters",
+            Some("TP73"),
+            None,
+            200,
+            50,
+            true,
+        )
+        .expect("isoform promoter comparison");
+
+    assert_eq!(report.schema, ISOFORM_PROMOTER_COMPARISON_SCHEMA);
+    assert_eq!(report.transcript_window_count, 3);
+    assert_eq!(report.promoter_group_count, 2);
+    assert_eq!(report.groups[0].transcript_count, 2);
+    assert!(
+        report
+            .comparison_evidence_kinds_observed
+            .iter()
+            .any(|kind| kind == "tfbs_annotation")
+    );
+    assert!(
+        report
+            .differential_evidence
+            .iter()
+            .any(|row| row.signature.label == "SP1"),
+        "differential evidence was: {:?}",
+        report.differential_evidence
+    );
+}
+
+#[test]
+fn summarize_promoter_expression_evidence_assigns_transcript_rows_to_promoter_groups() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(3000)).expect("sequence");
+    for (transcript_id, transcript_label, start) in [
+        ("ENSTTP73A", "TP73-201", 1200_i64),
+        ("ENSTTP73B", "TP73-202", 1200_i64),
+        ("ENSTTP73C", "TP73-203-altTSS", 1500_i64),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(start, start + 600),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_label.to_string())),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_expression_promoters".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+    let expression_rows = vec![
+        PromoterExpressionEvidenceInput {
+            transcript_id: Some("ENSTTP73A".to_string()),
+            sample_id: Some("case_1".to_string()),
+            condition: Some("case".to_string()),
+            value: 10.0,
+            unit: Some("TPM".to_string()),
+            source: Some("synthetic RNA-seq".to_string()),
+            ..PromoterExpressionEvidenceInput::default()
+        },
+        PromoterExpressionEvidenceInput {
+            transcript_id: Some("ENSTTP73B".to_string()),
+            sample_id: Some("case_1".to_string()),
+            condition: Some("case".to_string()),
+            value: 6.0,
+            unit: Some("TPM".to_string()),
+            source: Some("synthetic RNA-seq".to_string()),
+            ..PromoterExpressionEvidenceInput::default()
+        },
+        PromoterExpressionEvidenceInput {
+            transcript_id: Some("ENSTTP73C".to_string()),
+            sample_id: Some("case_1".to_string()),
+            condition: Some("case".to_string()),
+            value: 24.0,
+            unit: Some("TPM".to_string()),
+            source: Some("synthetic RNA-seq".to_string()),
+            ..PromoterExpressionEvidenceInput::default()
+        },
+        PromoterExpressionEvidenceInput {
+            transcript_id: Some("ENSTUNRELATED".to_string()),
+            value: 99.0,
+            unit: Some("TPM".to_string()),
+            ..PromoterExpressionEvidenceInput::default()
+        },
+    ];
+
+    let report = engine
+        .summarize_promoter_expression_evidence(
+            "tp73_expression_promoters",
+            Some("TP73"),
+            None,
+            200,
+            50,
+            &expression_rows,
+            Some("synthetic expression table"),
+        )
+        .expect("promoter expression evidence");
+
+    assert_eq!(report.schema, PROMOTER_EXPRESSION_EVIDENCE_SCHEMA);
+    assert_eq!(report.promoter_group_count, 2);
+    assert_eq!(report.supplied_expression_record_count, 4);
+    assert_eq!(report.assigned_expression_record_count, 3);
+    assert_eq!(report.unassigned_expression_records.len(), 1);
+    let shared = report
+        .rows
+        .iter()
+        .find(|row| row.transcript_ids.iter().any(|id| id == "ENSTTP73A"))
+        .expect("shared promoter expression row");
+    assert_eq!(shared.expression_record_count, 2);
+    assert_eq!(shared.mean_value, Some(8.0));
+}
+
+#[test]
+fn export_promoter_artifact_manifest_marks_present_and_missing_required_artifacts() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_artifact_manifest".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+    let dir = tempdir().expect("tempdir");
+    let present_path = dir.path().join("present.json");
+    fs::write(&present_path, "{}").expect("write present artifact");
+    let missing_path = dir.path().join("missing.json");
+
+    let report = engine
+        .export_promoter_artifact_manifest(
+            "tp73_artifact_manifest",
+            Some("TP73"),
+            &[
+                PromoterArtifactManifestEntry {
+                    artifact_id: "present".to_string(),
+                    artifact_kind: "promoter_evidence_matrix".to_string(),
+                    path: present_path.to_string_lossy().to_string(),
+                    required: true,
+                    ..PromoterArtifactManifestEntry::default()
+                },
+                PromoterArtifactManifestEntry {
+                    artifact_id: "missing".to_string(),
+                    artifact_kind: "promoter_expression_evidence".to_string(),
+                    path: missing_path.to_string_lossy().to_string(),
+                    required: true,
+                    ..PromoterArtifactManifestEntry::default()
+                },
+            ],
+            None,
+        )
+        .expect("promoter artifact manifest");
+
+    assert_eq!(report.schema, PROMOTER_ARTIFACT_MANIFEST_SCHEMA);
+    assert_eq!(report.artifact_count, 2);
+    assert_eq!(report.present_artifact_count, 1);
+    assert_eq!(report.missing_required_artifact_count, 1);
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("missing"))
+    );
 }
 
 #[test]
@@ -36168,6 +44519,243 @@ fn test_find_restriction_sites_operation_supports_inline_sequence_targets() {
 }
 
 #[test]
+fn project_fact_graph_projects_loaded_sequence_facts() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "demo_seq".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+    );
+    let mut rna = DNAsequence::from_sequence("AUGU").expect("rna sequence");
+    rna.set_molecule_type("RNA");
+    state.sequences.insert("rna_seq".to_string(), rna);
+    let mut protein = DNAsequence::from_sequence("MEEPQ").expect("protein sequence");
+    protein.set_molecule_type("protein");
+    state.sequences.insert("protein_seq".to_string(), protein);
+    let engine = GentleEngine::from_state(state);
+
+    let graph = engine.project_fact_graph();
+
+    assert_eq!(graph.schema, "gentle.project_fact_graph.v1");
+    assert!(graph.facts.windows(2).all(|pair| {
+        serde_json::to_string(&pair[0]).expect("left")
+            <= serde_json::to_string(&pair[1]).expect("right")
+    }));
+    assert!(graph.facts.iter().any(|fact| {
+        fact.fact == "sequence.exists"
+            && fact.subject.kind == FactSubjectKind::Sequence
+            && fact.subject.id == "demo_seq"
+    }));
+    assert!(graph.facts.iter().any(|fact| {
+        fact.fact == "sequence.kind"
+            && fact.subject.id == "demo_seq"
+            && fact.value == Some(serde_json::json!("dna"))
+    }));
+    assert!(graph.facts.iter().any(|fact| {
+        fact.fact == "sequence.kind"
+            && fact.subject.id == "rna_seq"
+            && fact.value == Some(serde_json::json!("rna"))
+    }));
+    assert!(graph.facts.iter().any(|fact| {
+        fact.fact == "sequence.kind"
+            && fact.subject.id == "protein_seq"
+            && fact.value == Some(serde_json::json!("protein"))
+    }));
+    assert!(graph.facts.iter().any(|fact| {
+        fact.fact == "sequence.length"
+            && fact.subject.id == "demo_seq"
+            && fact.value == Some(serde_json::json!(8))
+    }));
+}
+
+#[test]
+fn project_fact_eval_requires_proof_for_absent_restriction_site() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "clean_seq".to_string(),
+        DNAsequence::from_sequence("AAGGCCCCAAGGCCCC").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let expression: FactExpression = serde_json::from_value(serde_json::json!({
+        "fact": "restriction_site.absent",
+        "subject": {"kind": "sequence", "id": "clean_seq"},
+        "enzyme": "EcoRI",
+        "range": {"kind": "whole_sequence"}
+    }))
+    .expect("fact expression");
+
+    let without_evidence = engine.evaluate_fact_expression(&expression, &[]);
+    assert_eq!(without_evidence.truth, FactTruth::Unknown);
+    assert_eq!(without_evidence.unknown_atoms.len(), 1);
+
+    let report = engine
+        .apply(Operation::FindRestrictionSites {
+            target: SequenceScanTarget::SeqId {
+                seq_id: "clean_seq".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            enzymes: vec!["EcoRI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect("restriction scan")
+        .restriction_site_scan
+        .expect("restriction report");
+    assert!(report.report_id.starts_with("rsr_"));
+    assert!(report.rows.is_empty());
+
+    let with_evidence = engine.evaluate_fact_expression(&expression, std::slice::from_ref(&report));
+    assert_eq!(with_evidence.truth, FactTruth::Satisfied);
+    assert!(with_evidence.unknown_atoms.is_empty());
+    assert!(with_evidence.unmet_atoms.is_empty());
+}
+
+#[test]
+fn project_fact_eval_refutes_absence_when_restriction_site_is_present() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "cut_seq".to_string(),
+        DNAsequence::from_sequence("AAGAATTCCCGG").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let report = engine
+        .apply(Operation::FindRestrictionSites {
+            target: SequenceScanTarget::SeqId {
+                seq_id: "cut_seq".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            enzymes: vec!["EcoRI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect("restriction scan")
+        .restriction_site_scan
+        .expect("restriction report");
+    assert_eq!(report.matched_site_count, 1);
+
+    let present: FactExpression = serde_json::from_value(serde_json::json!({
+        "fact": "restriction_site.present",
+        "subject": {"kind": "sequence", "id": "cut_seq"},
+        "enzyme": "EcoRI",
+        "range": {"kind": "whole_sequence"}
+    }))
+    .expect("present expression");
+    let absent: FactExpression = serde_json::from_value(serde_json::json!({
+        "fact": "restriction_site.absent",
+        "subject": {"kind": "sequence", "id": "cut_seq"},
+        "enzyme": "EcoRI",
+        "range": {"kind": "whole_sequence"}
+    }))
+    .expect("absent expression");
+    let not_present: FactExpression = serde_json::from_value(serde_json::json!({
+        "not": {
+            "fact": "restriction_site.present",
+            "subject": {"kind": "sequence", "id": "cut_seq"},
+            "enzyme": "EcoRI",
+            "range": {"kind": "whole_sequence"}
+        }
+    }))
+    .expect("not expression");
+
+    assert_eq!(
+        engine
+            .evaluate_fact_expression(&present, std::slice::from_ref(&report))
+            .truth,
+        FactTruth::Satisfied
+    );
+    assert_eq!(
+        engine
+            .evaluate_fact_expression(&absent, std::slice::from_ref(&report))
+            .truth,
+        FactTruth::Unsatisfied
+    );
+    assert_eq!(
+        engine.evaluate_fact_expression(&not_present, &[]).truth,
+        FactTruth::Unknown
+    );
+}
+
+#[test]
+fn project_fact_eval_does_not_overgeneralize_restriction_absence_evidence() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "clean_seq".to_string(),
+        DNAsequence::from_sequence("AAGGCCCCAAGGCCCC").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let partial_report = engine
+        .apply(Operation::FindRestrictionSites {
+            target: SequenceScanTarget::SeqId {
+                seq_id: "clean_seq".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(8),
+            },
+            enzymes: vec!["EcoRI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect("partial restriction scan")
+        .restriction_site_scan
+        .expect("restriction report");
+    assert!(partial_report.rows.is_empty());
+
+    let whole_absent: FactExpression = serde_json::from_value(serde_json::json!({
+        "fact": "restriction_site.absent",
+        "subject": {"kind": "sequence", "id": "clean_seq"},
+        "enzyme": "EcoRI",
+        "range": {"kind": "whole_sequence"}
+    }))
+    .expect("whole absence expression");
+    let scanned_span_absent: FactExpression = serde_json::from_value(serde_json::json!({
+        "fact": "restriction_site.absent",
+        "subject": {"kind": "sequence", "id": "clean_seq"},
+        "enzyme": "EcoRI",
+        "range": {"kind": "span", "start_0based": 0, "end_0based_exclusive": 8}
+    }))
+    .expect("span absence expression");
+    let wrong_enzyme_absent: FactExpression = serde_json::from_value(serde_json::json!({
+        "fact": "restriction_site.absent",
+        "subject": {"kind": "sequence", "id": "clean_seq"},
+        "enzyme": "BamHI",
+        "range": {"kind": "span", "start_0based": 0, "end_0based_exclusive": 8}
+    }))
+    .expect("wrong enzyme expression");
+
+    assert_eq!(
+        engine
+            .evaluate_fact_expression(&whole_absent, std::slice::from_ref(&partial_report))
+            .truth,
+        FactTruth::Unknown
+    );
+    assert_eq!(
+        engine
+            .evaluate_fact_expression(&scanned_span_absent, std::slice::from_ref(&partial_report))
+            .truth,
+        FactTruth::Satisfied
+    );
+    assert_eq!(
+        engine
+            .evaluate_fact_expression(&wrong_enzyme_absent, std::slice::from_ref(&partial_report))
+            .truth,
+        FactTruth::Unknown
+    );
+
+    let first_graph = serde_json::to_string(
+        &engine.project_fact_graph_with_restriction_evidence(std::slice::from_ref(&partial_report)),
+    )
+    .expect("first graph json");
+    let second_graph = serde_json::to_string(
+        &engine.project_fact_graph_with_restriction_evidence(std::slice::from_ref(&partial_report)),
+    )
+    .expect("second graph json");
+    assert_eq!(first_graph, second_graph);
+}
+
+#[test]
 fn test_scan_tfbs_hits_matches_inline_and_stored_sequence_targets() {
     let sequence_text = "TTTTATAAAGGGTATAAATTT";
     let mut state = ProjectState::default();
@@ -36489,6 +45077,25 @@ fn set_display_visibility_controls_repeat_features() {
             .messages
             .iter()
             .any(|message| message.contains("repeat_features"))
+    );
+}
+
+#[test]
+fn set_display_visibility_controls_array_features() {
+    let mut engine = GentleEngine::default();
+    assert!(engine.state().display.show_array_features);
+    let result = engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::ArrayFeatures,
+            visible: false,
+        })
+        .expect("set array display visibility");
+    assert!(!engine.state().display.show_array_features);
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("array_features"))
     );
 }
 

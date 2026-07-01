@@ -45,6 +45,42 @@ struct CutRunRegulatoryEvidenceCandidate {
 }
 
 #[derive(Clone, Debug)]
+struct GeneSetCutRunPreparedInterval {
+    chromosome: String,
+    start_1based: usize,
+    end_1based: usize,
+    evaluated: bool,
+    overlapping_peak_count: usize,
+    max_signal_value: Option<f64>,
+    supporting_fragment_count: usize,
+    cut_site_count: u32,
+    dataset_id: Option<String>,
+    read_report_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct GeneSetCutRunMemberAccumulator {
+    evaluated: bool,
+    support_window_count: usize,
+    strongest_support_strength: Option<CutRunSupportStrength>,
+    overlapping_peak_count: usize,
+    max_signal_value: Option<f64>,
+    supporting_fragment_count: usize,
+    cut_site_count: u32,
+    contributing_dataset_ids: BTreeSet<String>,
+    contributing_read_report_ids: BTreeSet<String>,
+}
+
+#[derive(Clone, Debug)]
+struct OrthologCutRunDatasetEvidence {
+    dataset_id: String,
+    species: Option<String>,
+    supported_reference_genome_ids: Vec<String>,
+    has_processed_evidence: bool,
+    intervals: Vec<GeneSetCutRunPreparedInterval>,
+}
+
+#[derive(Clone, Debug)]
 struct CutRunCatalogSourceCandidate {
     scope: &'static str,
     path: PathBuf,
@@ -280,7 +316,11 @@ impl CutRunCatalog {
                             entry.reads_r2_local.as_deref(),
                             entry.reads_r2_remote.as_deref(),
                         )
-                        .is_some(),
+                        .is_some()
+                        || entry
+                            .reads_sra_accession
+                            .as_deref()
+                            .is_some_and(|value| !value.trim().is_empty()),
                     read_layout: entry.read_layout,
                 })
             })
@@ -321,10 +361,11 @@ impl CutRunCatalog {
             entry.provider.as_ref(),
             entry.source_accession.as_ref(),
             entry.reference_url.as_ref(),
-        ] {
-            if let Some(value) = value {
-                values.push(value.clone());
-            }
+        ]
+        .into_iter()
+        .flatten()
+        {
+            values.push(value.clone());
         }
         values.extend(entry.supported_reference_genome_ids.clone());
         values
@@ -775,10 +816,9 @@ impl CutRunPrepareActivityTracker {
         let lock_path = cutrun_prepare_activity_lock_path(install_dir);
         if let Some(existing) =
             inspect_cutrun_prepare_activity_status_paths(&status_path, &lock_path)?
+            && existing.lifecycle_status == "running"
         {
-            if existing.lifecycle_status == "running" {
-                return Ok(CutRunPrepareActivityStart::Running);
-            }
+            return Ok(CutRunPrepareActivityStart::Running);
         }
         let now = cutrun_now_unix_ms();
         let tracker = Self {
@@ -793,11 +833,14 @@ impl CutRunPrepareActivityTracker {
                 bytes_done: 0,
                 bytes_total: None,
                 percent: Some(0.0),
+                monitored_free_bytes: None,
+                minimum_free_bytes: None,
                 started_at_unix_ms: now,
                 updated_at_unix_ms: now,
                 finished_at_unix_ms: None,
                 last_error: None,
                 owner_pid: Some(std::process::id()),
+                cancel_path: None,
             },
             status_path,
             lock_path,
@@ -806,10 +849,9 @@ impl CutRunPrepareActivityTracker {
             if let Some(existing) = inspect_cutrun_prepare_activity_status_paths(
                 &tracker.status_path,
                 &tracker.lock_path,
-            )? {
-                if existing.lifecycle_status == "running" {
-                    return Ok(CutRunPrepareActivityStart::Running);
-                }
+            )? && existing.lifecycle_status == "running"
+            {
+                return Ok(CutRunPrepareActivityStart::Running);
             }
             return Err(format!(
                 "Could not acquire a fresh CUT&RUN prepare-activity lock for '{}'",
@@ -918,6 +960,8 @@ fn file_size_bytes(path: &Path) -> Result<u64, EngineError> {
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not inspect '{}': {e}", path.display()),
+
+            cause_chain: vec![],
         })
 }
 
@@ -928,6 +972,8 @@ fn checksum_sha1(path: &Path) -> Result<String, EngineError> {
             "Could not open '{}' to compute checksum: {e}",
             path.display()
         ),
+
+        cause_chain: vec![],
     })?;
     let mut hasher = Sha1::new();
     let mut buffer = [0u8; 16 * 1024];
@@ -938,6 +984,8 @@ fn checksum_sha1(path: &Path) -> Result<String, EngineError> {
                 "Could not read '{}' while computing checksum: {e}",
                 path.display()
             ),
+
+            cause_chain: vec![],
         })?;
         if read == 0 {
             break;
@@ -959,6 +1007,8 @@ impl GentleEngine {
         .map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: e,
+
+            cause_chain: vec![],
         })?;
         Ok(catalog)
     }
@@ -1003,6 +1053,8 @@ impl GentleEngine {
             catalog.resolve_entry(dataset_id).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: e,
+
+                cause_chain: vec![],
             })?;
         let effective_cache_dir = catalog.cache_dir_for_entry(entry, cache_dir);
         let install_dir = effective_cache_dir.join(sanitize_for_path(&resolved_dataset_id));
@@ -1012,12 +1064,16 @@ impl GentleEngine {
                 "Could not create CUT&RUN install directory '{}': {e}",
                 install_dir.display()
             ),
+
+            cause_chain: vec![],
         })?;
         let mut activity_tracker =
             match CutRunPrepareActivityTracker::start(&install_dir, &resolved_dataset_id).map_err(
                 |message| EngineError {
                     code: ErrorCode::Io,
                     message,
+
+                    cause_chain: vec![],
                 },
             )? {
                 CutRunPrepareActivityStart::Acquired(tracker) => tracker,
@@ -1054,10 +1110,16 @@ impl GentleEngine {
             entry.reads_r2_local.as_deref(),
             entry.reads_r2_remote.as_deref(),
         );
+        let reads_sra_accession = entry
+            .reads_sra_accession
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         if peaks_source.is_none()
             && signal_source.is_none()
             && reads_r1_source.is_none()
             && reads_r2_source.is_none()
+            && reads_sra_accession.is_none()
         {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -1065,6 +1127,8 @@ impl GentleEngine {
                     "CUT&RUN dataset '{}' does not declare any prepared peaks, signal, or raw-read assets",
                     resolved_dataset_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let prepared_status = (|| -> Result<CutRunDatasetStatus, EngineError> {
@@ -1116,6 +1180,36 @@ impl GentleEngine {
                     )
                 })
                 .transpose()?;
+            let (reads_r1, reads_r2) = if reads_r1.is_none() && reads_sra_accession.is_some() {
+                activity_tracker.update_progress("prepare_sra_reads", None, 0, None);
+                let acquisition = self.read_acquisition_prepare_single_accession(
+                    &resolved_dataset_id,
+                    reads_sra_accession.unwrap(),
+                    &effective_cache_dir.join("sra"),
+                    &install_dir.join("read_acquisition"),
+                    ReadAcquisitionAnalysisFormat::Fastq,
+                    match entry.read_layout {
+                        CutRunReadLayout::PairedEnd => ReadAcquisitionReadLayout::PairedEnd,
+                        CutRunReadLayout::SingleEnd => ReadAcquisitionReadLayout::SingleEnd,
+                    },
+                    false,
+                )?;
+                let r1 = acquisition.output_paths.first().map(|output| {
+                    Self::cutrun_prepared_asset_from_read_output(
+                        output,
+                        &format!("read_acquisition:{}", acquisition.sra_accession),
+                    )
+                });
+                let r2 = acquisition.output_paths.get(1).map(|output| {
+                    Self::cutrun_prepared_asset_from_read_output(
+                        output,
+                        &format!("read_acquisition:{}", acquisition.sra_accession),
+                    )
+                });
+                (r1, r2)
+            } else {
+                (reads_r1, reads_r2)
+            };
 
             activity_tracker.update_progress("write_manifest", None, 0, None);
             let manifest = CutRunPreparedManifest {
@@ -1163,6 +1257,8 @@ impl GentleEngine {
                 message:
                     "ProjectCutRunDataset requires at least one of include_peaks/include_signal"
                         .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let catalog = Self::open_cutrun_catalog(catalog_path)?;
@@ -1170,6 +1266,8 @@ impl GentleEngine {
             catalog.resolve_entry(dataset_id).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: e,
+
+                cause_chain: vec![],
             })?;
         let status =
             self.cutrun_dataset_status_from_catalog(&catalog, &resolved_dataset_id, cache_dir)?;
@@ -1189,6 +1287,8 @@ impl GentleEngine {
                     seq_id,
                     anchor.genome_id
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -1218,6 +1318,8 @@ impl GentleEngine {
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::NotFound,
                     message: format!("Sequence '{}' was not found", seq_id),
+
+                    cause_chain: vec![],
                 })?;
 
             if include_peaks {
@@ -1276,6 +1378,8 @@ impl GentleEngine {
                     "No prepared CUT&RUN peaks/signal assets were available to project for '{}'",
                     resolved_dataset_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(report)
@@ -1291,6 +1395,8 @@ impl GentleEngine {
             catalog.resolve_entry(dataset_id).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: e,
+
+                cause_chain: vec![],
             })?;
         let effective_cache_dir = catalog.cache_dir_for_entry(entry, cache_dir);
         let install_dir = effective_cache_dir.join(sanitize_for_path(&resolved_dataset_id));
@@ -1302,6 +1408,8 @@ impl GentleEngine {
         .map_err(|message| EngineError {
             code: ErrorCode::Io,
             message,
+
+            cause_chain: vec![],
         })?;
         let manifest = if manifest_path.exists() {
             Some(self.read_cutrun_prepared_manifest(&manifest_path)?)
@@ -1322,6 +1430,20 @@ impl GentleEngine {
             entry.reads_r2_local.as_deref(),
             entry.reads_r2_remote.as_deref(),
         );
+        let reads_sra_source = entry
+            .reads_sra_accession
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("read_acquisition:{value}"));
+        let reads_r1_source = reads_r1_source.or_else(|| reads_sra_source.clone());
+        let reads_r2_source = reads_r2_source.or_else(|| {
+            if matches!(entry.read_layout, CutRunReadLayout::PairedEnd) {
+                reads_sra_source.clone()
+            } else {
+                None
+            }
+        });
         let peaks_status = Self::cutrun_asset_status_from_manifest(
             "peaks",
             peaks_source,
@@ -1434,6 +1556,8 @@ impl GentleEngine {
                 "Could not serialize CUT&RUN prepared manifest '{}': {e}",
                 path.display()
             ),
+
+            cause_chain: vec![],
         })?;
         fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -1441,6 +1565,8 @@ impl GentleEngine {
                 "Could not write CUT&RUN prepared manifest '{}': {e}",
                 path.display()
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1454,6 +1580,8 @@ impl GentleEngine {
                 "Could not read CUT&RUN prepared manifest '{}': {e}",
                 path.display()
             ),
+
+            cause_chain: vec![],
         })?;
         let manifest =
             serde_json::from_str::<CutRunPreparedManifest>(&text).map_err(|e| EngineError {
@@ -1462,6 +1590,8 @@ impl GentleEngine {
                     "Could not parse CUT&RUN prepared manifest '{}': {e}",
                     path.display()
                 ),
+
+                cause_chain: vec![],
             })?;
         if manifest.schema != CUTRUN_PREPARED_MANIFEST_SCHEMA {
             return Err(EngineError {
@@ -1471,9 +1601,29 @@ impl GentleEngine {
                     manifest.schema,
                     path.display()
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(manifest)
+    }
+
+    fn cutrun_prepared_asset_from_read_output(
+        output: &ReadAcquisitionOutputPath,
+        source: &str,
+    ) -> CutRunPreparedAssetManifest {
+        let local_path = PathBuf::from(&output.path);
+        CutRunPreparedAssetManifest {
+            source: source.to_string(),
+            local_path: output.path.clone(),
+            file_name: local_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("reads.fastq")
+                .to_string(),
+            file_size_bytes: output.file_size_bytes,
+            checksum_sha1: output.checksum_sha1.clone(),
+        }
     }
 
     fn materialize_cutrun_asset(
@@ -1491,10 +1641,14 @@ impl GentleEngine {
             let client = Client::builder().build().map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not build HTTP client for CUT&RUN prepare: {e}"),
+
+                cause_chain: vec![],
             })?;
             let mut response = client.get(source).send().map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not download CUT&RUN asset '{}': {e}", source),
+
+                cause_chain: vec![],
             })?;
             if !response.status().is_success() {
                 return Err(EngineError {
@@ -1504,6 +1658,8 @@ impl GentleEngine {
                         source,
                         response.status()
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let total = response.content_length();
@@ -1516,6 +1672,8 @@ impl GentleEngine {
                     "Could not create CUT&RUN asset destination '{}': {e}",
                     destination.display()
                 ),
+
+                cause_chain: vec![],
             })?;
             let mut buffer = [0u8; 64 * 1024];
             let mut bytes_done = 0u64;
@@ -1523,6 +1681,8 @@ impl GentleEngine {
                 let read = response.read(&mut buffer).map_err(|e| EngineError {
                     code: ErrorCode::Io,
                     message: format!("Could not read downloaded CUT&RUN asset '{}': {e}", source),
+
+                    cause_chain: vec![],
                 })?;
                 if read == 0 {
                     break;
@@ -1534,6 +1694,8 @@ impl GentleEngine {
                         source,
                         destination.display()
                     ),
+
+                    cause_chain: vec![],
                 })?;
                 bytes_done = bytes_done.saturating_add(read as u64);
                 if let Some(tracker) = activity_tracker.as_deref_mut() {
@@ -1552,6 +1714,8 @@ impl GentleEngine {
                     source,
                     destination.display()
                 ),
+
+                cause_chain: vec![],
             })?;
         } else {
             let resolved_source = resolved_local_source_path(entry_base_dir, source);
@@ -1562,6 +1726,8 @@ impl GentleEngine {
                         "CUT&RUN asset source '{}' does not exist as a file",
                         resolved_source.display()
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let total = resolved_source.metadata().ok().map(|meta| meta.len());
@@ -1574,6 +1740,8 @@ impl GentleEngine {
                     "Could not open CUT&RUN asset source '{}': {e}",
                     resolved_source.display()
                 ),
+
+                cause_chain: vec![],
             })?;
             let mut output = File::create(&destination).map_err(|e| EngineError {
                 code: ErrorCode::Io,
@@ -1581,6 +1749,8 @@ impl GentleEngine {
                     "Could not create CUT&RUN asset destination '{}': {e}",
                     destination.display()
                 ),
+
+                cause_chain: vec![],
             })?;
             let mut buffer = [0u8; 64 * 1024];
             let mut bytes_done = 0u64;
@@ -1591,6 +1761,8 @@ impl GentleEngine {
                         "Could not read CUT&RUN asset source '{}': {e}",
                         resolved_source.display()
                     ),
+
+                    cause_chain: vec![],
                 })?;
                 if read == 0 {
                     break;
@@ -1602,6 +1774,8 @@ impl GentleEngine {
                         resolved_source.display(),
                         destination.display()
                     ),
+
+                    cause_chain: vec![],
                 })?;
                 bytes_done = bytes_done.saturating_add(read as u64);
                 if let Some(tracker) = activity_tracker.as_deref_mut() {
@@ -1620,6 +1794,8 @@ impl GentleEngine {
                     resolved_source.display(),
                     destination.display()
                 ),
+
+                cause_chain: vec![],
             })?;
         }
         Ok(CutRunPreparedAssetManifest {
@@ -1667,6 +1843,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "CUT&RUN report_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut out = String::with_capacity(trimmed.len());
@@ -1682,7 +1860,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "CUT&RUN report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
                     .to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
         Ok(out)
     }
@@ -1719,6 +1898,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize CUT&RUN read-report metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -1786,6 +1967,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("CUT&RUN read report '{}' not found", report_id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -1819,10 +2002,9 @@ impl GentleEngine {
         if let Some(stripped) = first
             .strip_suffix("/1")
             .or_else(|| first.strip_suffix("/2"))
+            && !stripped.is_empty()
         {
-            if !stripped.is_empty() {
-                return stripped.to_string();
-            }
+            return stripped.to_string();
         }
         if first.is_empty() {
             "unnamed_read".to_string()
@@ -1835,6 +2017,8 @@ impl GentleEngine {
         let file = File::open(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not open CUT&RUN FASTQ input '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         let lower = path.to_ascii_lowercase();
         let mut reader: Box<dyn BufRead> = if lower.ends_with(".gz") {
@@ -1852,6 +2036,8 @@ impl GentleEngine {
             if reader.read_line(&mut header).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read CUT&RUN FASTQ input '{}': {e}", path),
+
+                cause_chain: vec![],
             })? == 0
             {
                 break;
@@ -1862,6 +2048,8 @@ impl GentleEngine {
             if reader.read_line(&mut sequence).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read CUT&RUN FASTQ sequence line '{}': {e}", path),
+
+                cause_chain: vec![],
             })? == 0
                 || reader.read_line(&mut plus).map_err(|e| EngineError {
                     code: ErrorCode::Io,
@@ -1869,15 +2057,21 @@ impl GentleEngine {
                         "Could not read CUT&RUN FASTQ separator line '{}': {e}",
                         path
                     ),
+
+                    cause_chain: vec![],
                 })? == 0
                 || reader.read_line(&mut qualities).map_err(|e| EngineError {
                     code: ErrorCode::Io,
                     message: format!("Could not read CUT&RUN FASTQ quality line '{}': {e}", path),
+
+                    cause_chain: vec![],
                 })? == 0
             {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("CUT&RUN FASTQ input '{}' ended mid-record", path),
+
+                    cause_chain: vec![],
                 });
             }
             if !header.starts_with('@') {
@@ -1887,6 +2081,8 @@ impl GentleEngine {
                         "CUT&RUN FASTQ input '{}' has a record without '@' header",
                         path
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             if !plus.starts_with('+') {
@@ -1896,6 +2092,8 @@ impl GentleEngine {
                         "CUT&RUN FASTQ input '{}' has a record without '+' separator",
                         path
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let record_index = out.len();
@@ -1912,6 +2110,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("No FASTQ records found in '{}'", path),
+
+                cause_chain: vec![],
             });
         }
         Ok(out)
@@ -1961,6 +2161,8 @@ impl GentleEngine {
                 "Could not infer CUT&RUN input format from '{}' (expected .fa/.fasta/.fq/.fastq with optional .gz)",
                 path
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1996,6 +2198,8 @@ impl GentleEngine {
                 message:
                     "CUT&RUN interpret accepts either explicit input paths or dataset_id, not both"
                         .to_string(),
+
+                cause_chain: vec![],
             });
         }
         if let Some(dataset_id) = trimmed_dataset {
@@ -2006,7 +2210,8 @@ impl GentleEngine {
                     "CUT&RUN dataset '{}' has not been prepared yet; run prepare before dataset-backed interpret",
                     status.dataset_id
                 ),
-            })?;
+            
+                cause_chain: vec![],})?;
             let r1 = manifest
                 .reads_r1
                 .as_ref()
@@ -2017,6 +2222,8 @@ impl GentleEngine {
                         "Prepared CUT&RUN dataset '{}' does not contain reads_r1",
                         status.dataset_id
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let resolved_layout = status.read_layout;
             let r2 = match resolved_layout {
@@ -2032,7 +2239,8 @@ impl GentleEngine {
                                 "Prepared CUT&RUN dataset '{}' is paired-end but does not contain reads_r2",
                                 status.dataset_id
                             ),
-                        })?,
+                        
+                            cause_chain: vec![],})?,
                 ),
             };
             let resolved_format = Self::infer_cutrun_input_format_from_path(&r1)?;
@@ -2045,6 +2253,8 @@ impl GentleEngine {
                             "Prepared CUT&RUN dataset '{}' uses mismatched raw-read formats between R1 and R2",
                             status.dataset_id
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
             }
@@ -2062,6 +2272,8 @@ impl GentleEngine {
         let r1 = trimmed_r1.ok_or_else(|| EngineError {
             code: ErrorCode::InvalidInput,
             message: "CUT&RUN interpret requires INPUT_R1 or --dataset".to_string(),
+
+            cause_chain: vec![],
         })?;
         Ok((
             r1.to_string(),
@@ -2150,7 +2362,8 @@ impl GentleEngine {
                     "Could not list chromosome lengths for genome '{}' while preparing CUT&RUN ROI window: {}",
                     genome_id, e
                 ),
-            })?;
+            
+                cause_chain: vec![],})?;
         let normalized = Self::normalize_chromosome_alias(chromosome);
         records
             .into_iter()
@@ -2165,6 +2378,8 @@ impl GentleEngine {
                     "Chromosome '{}' is not available in prepared genome '{}'",
                     chromosome, genome_id
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -2181,6 +2396,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?;
         let roi_sequence = Self::normalize_cutrun_input_sequence(dna.forward_bytes());
         let (catalog, _) = Self::open_reference_genome_catalog(anchor.catalog_path.as_deref())?;
@@ -2206,6 +2423,8 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Could not load CUT&RUN ROI window for '{}': {}", seq_id, e),
+
+                cause_chain: vec![],
             })?;
         let forward_window_bytes = Self::normalize_cutrun_input_sequence(forward_window.as_bytes());
         let anchor_offset_start = anchor.start_1based.saturating_sub(window_start_1based);
@@ -2217,6 +2436,8 @@ impl GentleEngine {
                     "CUT&RUN ROI window for '{}' does not cover the anchored sequence span",
                     seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let forward_anchor = &forward_window_bytes[anchor_offset_start..anchor_offset_end];
@@ -2405,7 +2626,7 @@ impl GentleEngine {
                     identity_fraction,
                     seed_matches,
                 };
-                let replace = best.as_ref().map_or(true, |current| {
+                let replace = best.as_ref().is_none_or(|current| {
                     placement
                         .identity_fraction
                         .partial_cmp(&current.identity_fraction)
@@ -2678,10 +2899,14 @@ impl GentleEngine {
                 "Could not serialize CUT&RUN report snapshot '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?;
         fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write CUT&RUN report snapshot '{}': {e}", path),
+
+            cause_chain: vec![],
         })
     }
 
@@ -2732,6 +2957,8 @@ impl GentleEngine {
                         code: ErrorCode::InvalidInput,
                         message: "CUT&RUN single-end interpretation does not accept input_r2_path"
                             .to_string(),
+
+                        cause_chain: vec![],
                     });
                 }
             }
@@ -2746,6 +2973,8 @@ impl GentleEngine {
                         code: ErrorCode::InvalidInput,
                         message: "CUT&RUN paired-end interpretation requires input_r2_path"
                             .to_string(),
+
+                        cause_chain: vec![],
                     });
                 }
             }
@@ -2754,12 +2983,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "CUT&RUN seed_filter.kmer_len must be >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&align_config.min_identity_fraction) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "CUT&RUN min_identity_fraction must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let report_id = match report_id {
@@ -2959,40 +3192,39 @@ impl GentleEngine {
             if let Some(path) = checkpoint_path
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
+                && rows.len().is_multiple_of(checkpoint_every_reads)
             {
-                if rows.len() % checkpoint_every_reads == 0 {
-                    let snapshot = Self::build_cutrun_report_from_units(
-                        &report_id,
-                        seq_id,
-                        &resolved_input_r1_path,
-                        resolved_input_r2_path.clone(),
-                        source_dataset_status
-                            .as_ref()
-                            .map(|status| status.dataset_id.clone()),
-                        source_dataset_status
-                            .as_ref()
-                            .and_then(|status| status.target_factor.clone()),
-                        source_dataset_status
-                            .as_ref()
-                            .and_then(|status| status.species.clone()),
-                        resolved_input_format,
-                        resolved_read_layout,
-                        roi_flank_bp,
-                        deduplicate_fragments,
-                        seed_filter.clone(),
-                        align_config.clone(),
-                        &window,
-                        &rows,
-                        mean_read_length_bp,
-                        if mapped_read_count == 0 {
-                            0.0
-                        } else {
-                            mapped_read_bases as f64 / mapped_read_count as f64
-                        },
-                        &warnings,
-                    );
-                    Self::write_cutrun_report_snapshot(&snapshot, path)?;
-                }
+                let snapshot = Self::build_cutrun_report_from_units(
+                    &report_id,
+                    seq_id,
+                    &resolved_input_r1_path,
+                    resolved_input_r2_path.clone(),
+                    source_dataset_status
+                        .as_ref()
+                        .map(|status| status.dataset_id.clone()),
+                    source_dataset_status
+                        .as_ref()
+                        .and_then(|status| status.target_factor.clone()),
+                    source_dataset_status
+                        .as_ref()
+                        .and_then(|status| status.species.clone()),
+                    resolved_input_format,
+                    resolved_read_layout,
+                    roi_flank_bp,
+                    deduplicate_fragments,
+                    seed_filter.clone(),
+                    align_config.clone(),
+                    &window,
+                    &rows,
+                    mean_read_length_bp,
+                    if mapped_read_count == 0 {
+                        0.0
+                    } else {
+                        mapped_read_bases as f64 / mapped_read_count as f64
+                    },
+                    &warnings,
+                );
+                Self::write_cutrun_report_snapshot(&snapshot, path)?;
             }
         }
         let mean_mapped_read_length_bp = if mapped_read_count == 0 {
@@ -3300,6 +3532,8 @@ impl GentleEngine {
             reader.read_line(&mut line).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read CUT&RUN peaks '{}': {e}", path),
+
+                cause_chain: vec![],
             })? > 0
         } {
             line_no += 1;
@@ -3398,6 +3632,8 @@ impl GentleEngine {
             reader.read_line(&mut line).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read CUT&RUN signal '{}': {e}", path),
+
+                cause_chain: vec![],
             })? > 0
         } {
             line_no += 1;
@@ -3522,6 +3758,8 @@ impl GentleEngine {
                     "CUT&RUN read report '{}' belongs to '{}' rather than '{}'",
                     report.report_id, report.seq_id, seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         if !Self::chromosomes_match(&report.chromosome, &anchor.chromosome) {
@@ -3702,6 +3940,8 @@ impl GentleEngine {
                     "Could not extract CUT&RUN support window {}..{}",
                     window_start_0based, window_end_0based_exclusive
                 ),
+
+                cause_chain: vec![],
             })?;
         let inside_hits = self.scan_tfbs_hits(
             SequenceScanTarget::InlineSequence {
@@ -3736,6 +3976,8 @@ impl GentleEngine {
                         "Could not extract CUT&RUN neighbor window {}..{}",
                         neighbor_start_0based, neighbor_end_0based_exclusive
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let neighbor_hits = self.scan_tfbs_hits(
                 SequenceScanTarget::InlineSequence {
@@ -3834,6 +4076,8 @@ impl GentleEngine {
                 "Could not serialize CUT&RUN regulatory-support report '{}' for '{}': {e}",
                 report.seq_id, path
             ),
+
+            cause_chain: vec![],
         })?;
         fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -3841,6 +4085,879 @@ impl GentleEngine {
                 "Could not write CUT&RUN regulatory-support report to '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
+        })
+    }
+
+    fn gene_set_cutrun_intervals_overlap(
+        left_start_1based: usize,
+        left_end_1based: usize,
+        right_start_1based: usize,
+        right_end_1based: usize,
+    ) -> bool {
+        left_start_1based <= right_end_1based && right_start_1based <= left_end_1based
+    }
+
+    fn gene_set_cutrun_strength_label(strength: CutRunSupportStrength) -> &'static str {
+        match strength {
+            CutRunSupportStrength::Weak => "weak",
+            CutRunSupportStrength::Moderate => "moderate",
+            CutRunSupportStrength::Strong => "strong",
+        }
+    }
+
+    fn gene_set_cutrun_apply_interval(
+        accumulator: &mut GeneSetCutRunMemberAccumulator,
+        interval: &GeneSetCutRunPreparedInterval,
+    ) {
+        if interval.evaluated {
+            accumulator.evaluated = true;
+        }
+        let strength = Self::cutrun_support_strength(
+            interval.overlapping_peak_count,
+            interval.max_signal_value,
+            interval.supporting_fragment_count,
+            interval.cut_site_count,
+        );
+        let has_support = interval.overlapping_peak_count > 0
+            || interval.max_signal_value.is_some_and(|value| value > 0.0)
+            || interval.supporting_fragment_count > 0
+            || interval.cut_site_count > 0;
+        if has_support {
+            accumulator.support_window_count = accumulator.support_window_count.saturating_add(1);
+            accumulator.strongest_support_strength = match accumulator.strongest_support_strength {
+                Some(existing) => {
+                    let existing_rank = match existing {
+                        CutRunSupportStrength::Weak => 1usize,
+                        CutRunSupportStrength::Moderate => 2usize,
+                        CutRunSupportStrength::Strong => 3usize,
+                    };
+                    let candidate_rank = match strength {
+                        CutRunSupportStrength::Weak => 1usize,
+                        CutRunSupportStrength::Moderate => 2usize,
+                        CutRunSupportStrength::Strong => 3usize,
+                    };
+                    Some(if candidate_rank > existing_rank {
+                        strength
+                    } else {
+                        existing
+                    })
+                }
+                None => Some(strength),
+            };
+        }
+        accumulator.overlapping_peak_count = accumulator
+            .overlapping_peak_count
+            .saturating_add(interval.overlapping_peak_count);
+        accumulator.max_signal_value =
+            match (accumulator.max_signal_value, interval.max_signal_value) {
+                (Some(left), Some(right)) => Some(left.max(right)),
+                (Some(left), None) => Some(left),
+                (None, Some(right)) => Some(right),
+                (None, None) => None,
+            };
+        accumulator.supporting_fragment_count = accumulator
+            .supporting_fragment_count
+            .saturating_add(interval.supporting_fragment_count);
+        accumulator.cut_site_count = accumulator
+            .cut_site_count
+            .saturating_add(interval.cut_site_count);
+        if let Some(dataset_id) = interval
+            .dataset_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            accumulator
+                .contributing_dataset_ids
+                .insert(dataset_id.to_string());
+        }
+        if let Some(report_id) = interval
+            .read_report_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            accumulator
+                .contributing_read_report_ids
+                .insert(report_id.to_string());
+        }
+    }
+
+    fn gene_set_cutrun_collect_dataset_intervals(
+        &self,
+        status: &CutRunDatasetStatus,
+        warnings: &mut Vec<String>,
+    ) -> Result<Vec<GeneSetCutRunPreparedInterval>, EngineError> {
+        let mut intervals = Vec::<GeneSetCutRunPreparedInterval>::new();
+        if !status.prepared {
+            warnings.push(format!(
+                "CUT&RUN dataset '{}' is not prepared; gene-set regulatory support skipped it",
+                status.dataset_id
+            ));
+            return Ok(intervals);
+        }
+
+        if let Some(path) = status
+            .manifest
+            .as_ref()
+            .and_then(|manifest| manifest.peaks.as_ref())
+            .map(|asset| asset.local_path.clone())
+        {
+            let mut reader = Self::open_text_reader(&path)?;
+            let mut line = String::new();
+            let mut line_no = 0usize;
+            while {
+                line.clear();
+                reader.read_line(&mut line).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not read CUT&RUN peaks '{}': {e}", path),
+                    cause_chain: vec![],
+                })? > 0
+            } {
+                line_no += 1;
+                let trimmed = line.trim();
+                if trimmed.is_empty()
+                    || trimmed.starts_with('#')
+                    || trimmed.to_ascii_lowercase().starts_with("track ")
+                    || trimmed.to_ascii_lowercase().starts_with("browser ")
+                {
+                    continue;
+                }
+                let record = match Self::parse_bed_record(trimmed) {
+                    Ok(record) => record,
+                    Err(err) => {
+                        if warnings.len() < 20 {
+                            warnings.push(format!(
+                                "CUT&RUN peaks line {} skipped for '{}': {}",
+                                line_no, status.dataset_id, err
+                            ));
+                        }
+                        continue;
+                    }
+                };
+                intervals.push(GeneSetCutRunPreparedInterval {
+                    chromosome: record.chromosome,
+                    start_1based: record.start_0based.saturating_add(1),
+                    end_1based: record.end_0based,
+                    evaluated: true,
+                    overlapping_peak_count: 1,
+                    max_signal_value: None,
+                    supporting_fragment_count: 0,
+                    cut_site_count: 0,
+                    dataset_id: Some(status.dataset_id.clone()),
+                    read_report_id: None,
+                });
+            }
+        }
+
+        if let Some(path) = status
+            .manifest
+            .as_ref()
+            .and_then(|manifest| manifest.signal.as_ref())
+            .map(|asset| asset.local_path.clone())
+        {
+            let signal_path_lower = path.to_ascii_lowercase();
+            let converted =
+                if signal_path_lower.ends_with(".bw") || signal_path_lower.ends_with(".bigwig") {
+                    Some(Self::convert_bigwig_to_bedgraph(&path)?)
+                } else {
+                    None
+                };
+            let reader_path = converted
+                .as_ref()
+                .map(|file| file.path().to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone());
+            let mut reader = Self::open_text_reader(&reader_path)?;
+            let mut line = String::new();
+            let mut line_no = 0usize;
+            while {
+                line.clear();
+                reader.read_line(&mut line).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not read CUT&RUN signal '{}': {e}", path),
+                    cause_chain: vec![],
+                })? > 0
+            } {
+                line_no += 1;
+                let trimmed = line.trim();
+                if trimmed.is_empty()
+                    || trimmed.starts_with('#')
+                    || trimmed.to_ascii_lowercase().starts_with("track ")
+                    || trimmed.to_ascii_lowercase().starts_with("browser ")
+                {
+                    continue;
+                }
+                let record = Self::parse_bedgraph_record(trimmed)
+                    .or_else(|_| Self::parse_bed_record(trimmed));
+                let record = match record {
+                    Ok(record) => record,
+                    Err(err) => {
+                        if warnings.len() < 20 {
+                            warnings.push(format!(
+                                "CUT&RUN signal line {} skipped for '{}': {}",
+                                line_no, status.dataset_id, err
+                            ));
+                        }
+                        continue;
+                    }
+                };
+                let positive_score = record
+                    .score
+                    .filter(|value| value.is_finite() && *value > 0.0);
+                intervals.push(GeneSetCutRunPreparedInterval {
+                    chromosome: record.chromosome,
+                    start_1based: record.start_0based.saturating_add(1),
+                    end_1based: record.end_0based,
+                    evaluated: true,
+                    overlapping_peak_count: 0,
+                    max_signal_value: positive_score,
+                    supporting_fragment_count: 0,
+                    cut_site_count: 0,
+                    dataset_id: Some(status.dataset_id.clone()),
+                    read_report_id: None,
+                });
+            }
+        }
+        Ok(intervals)
+    }
+
+    fn ortholog_cutrun_species_key(raw: &str) -> String {
+        raw.chars()
+            .filter(|ch| ch.is_ascii_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
+    }
+
+    fn ortholog_cutrun_species_matches(source_species: Option<&str>, row_species: &str) -> bool {
+        let Some(source_species) = source_species
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return true;
+        };
+        Self::ortholog_cutrun_species_key(source_species)
+            == Self::ortholog_cutrun_species_key(row_species)
+    }
+
+    fn ortholog_cutrun_point_interval_distance_bp(
+        point_1based: usize,
+        start_1based: usize,
+        end_1based: usize,
+    ) -> i64 {
+        if point_1based < start_1based {
+            start_1based.saturating_sub(point_1based) as i64
+        } else if point_1based > end_1based {
+            point_1based.saturating_sub(end_1based) as i64
+        } else {
+            0
+        }
+    }
+
+    fn ortholog_cutrun_motif_peak_positions(
+        row: &OrthologPromoterRow,
+        promoter_summaries: &[OrthologTfbsSummaryRow],
+    ) -> Vec<usize> {
+        let strand = row.strand.chars().next();
+        let mut peaks = promoter_summaries
+            .iter()
+            .filter(|summary| {
+                summary.species == row.species && summary.gene_label == row.display_label
+            })
+            .filter(|summary| summary.max_score > 0.0 || summary.positive_fraction > 0.0)
+            .filter_map(|summary| {
+                summary.peak_genomic_position_1based.or_else(|| {
+                    summary.peak_position_0based.and_then(|position| {
+                        Self::promoter_local_position_to_genomic_1based(
+                            strand,
+                            row.promoter_start_1based,
+                            row.promoter_end_1based,
+                            row.promoter_length_bp,
+                            position,
+                        )
+                    })
+                })
+            })
+            .collect::<Vec<_>>();
+        peaks.sort_unstable();
+        peaks.dedup();
+        peaks
+    }
+
+    fn ortholog_cutrun_nearest_motif_distance(
+        motif_peak_positions: &[usize],
+        support_intervals: &[(usize, usize)],
+    ) -> Option<i64> {
+        motif_peak_positions
+            .iter()
+            .flat_map(|peak| {
+                support_intervals.iter().map(|(start, end)| {
+                    Self::ortholog_cutrun_point_interval_distance_bp(*peak, *start, *end)
+                })
+            })
+            .min()
+    }
+
+    pub(crate) fn inspect_ortholog_cutrun_support(
+        &self,
+        cohort: &OrthologPromoterCohortReport,
+        promoter_summaries: &[OrthologTfbsSummaryRow],
+        dataset_ids: &[String],
+        read_report_ids: &[String],
+        warnings: &mut Vec<String>,
+    ) -> Result<Vec<OrthologCutRunSupportRow>, EngineError> {
+        if dataset_ids.is_empty() && read_report_ids.is_empty() {
+            return Ok(cohort
+                .rows
+                .iter()
+                .map(|row| OrthologCutRunSupportRow {
+                    species: row.species.clone(),
+                    gene_label: row.display_label.clone(),
+                    status: OrthologCutRunSupportStatus::NoData,
+                    detail: "No CUT&RUN/occupancy source was supplied for this species promoter."
+                        .to_string(),
+                    ..OrthologCutRunSupportRow::default()
+                })
+                .collect());
+        }
+
+        let mut datasets = Vec::<OrthologCutRunDatasetEvidence>::new();
+        for dataset_query in dataset_ids {
+            let dataset_query = dataset_query.trim();
+            if dataset_query.is_empty() {
+                continue;
+            }
+            let status = self.show_cutrun_dataset_status(dataset_query, None, None)?;
+            warnings.extend(status.warnings.clone());
+            let has_processed_evidence = status.peaks.prepared || status.signal.prepared;
+            if !has_processed_evidence {
+                warnings.push(format!(
+                    "CUT&RUN dataset '{}' has no prepared peaks or signal; ortholog promoter comparison cannot assign occupancy from it",
+                    status.dataset_id
+                ));
+            }
+            let intervals = self.gene_set_cutrun_collect_dataset_intervals(&status, warnings)?;
+            datasets.push(OrthologCutRunDatasetEvidence {
+                dataset_id: status.dataset_id,
+                species: status.species,
+                supported_reference_genome_ids: status.supported_reference_genome_ids,
+                has_processed_evidence,
+                intervals,
+            });
+        }
+
+        let mut read_reports = Vec::<CutRunReadReport>::new();
+        for report_id in read_report_ids {
+            let report_id = report_id.trim();
+            if report_id.is_empty() {
+                continue;
+            }
+            let report = self.get_cutrun_read_report(report_id)?;
+            warnings.extend(report.warnings.clone());
+            read_reports.push(report);
+        }
+
+        let mut rows = Vec::<OrthologCutRunSupportRow>::new();
+        for promoter in &cohort.rows {
+            let motif_peak_positions =
+                Self::ortholog_cutrun_motif_peak_positions(promoter, promoter_summaries);
+            let motif_present = !motif_peak_positions.is_empty();
+            let mut evaluated = false;
+            let mut support_intervals = Vec::<(usize, usize)>::new();
+            let mut contributing_dataset_ids = BTreeSet::<String>::new();
+            let mut contributing_read_report_ids = BTreeSet::<String>::new();
+
+            for dataset in &datasets {
+                if !dataset.has_processed_evidence {
+                    continue;
+                }
+                if !dataset.supported_reference_genome_ids.is_empty()
+                    && !dataset
+                        .supported_reference_genome_ids
+                        .iter()
+                        .any(|genome_id| genome_id == &promoter.genome_id)
+                {
+                    continue;
+                }
+                if !Self::ortholog_cutrun_species_matches(
+                    dataset.species.as_deref(),
+                    &promoter.species,
+                ) {
+                    continue;
+                }
+                if dataset.supported_reference_genome_ids.is_empty() && dataset.species.is_none() {
+                    continue;
+                }
+                evaluated = true;
+                contributing_dataset_ids.insert(dataset.dataset_id.clone());
+                for interval in &dataset.intervals {
+                    if !Self::chromosomes_match(&interval.chromosome, &promoter.chromosome)
+                        || !Self::gene_set_cutrun_intervals_overlap(
+                            interval.start_1based,
+                            interval.end_1based,
+                            promoter.promoter_start_1based,
+                            promoter.promoter_end_1based,
+                        )
+                    {
+                        continue;
+                    }
+                    let has_support = interval.overlapping_peak_count > 0
+                        || interval.max_signal_value.is_some_and(|value| value > 0.0)
+                        || interval.supporting_fragment_count > 0
+                        || interval.cut_site_count > 0;
+                    if has_support {
+                        support_intervals.push((interval.start_1based, interval.end_1based));
+                    }
+                }
+            }
+
+            for report in &read_reports {
+                if report.genome_id != promoter.genome_id
+                    || !Self::ortholog_cutrun_species_matches(
+                        report.species.as_deref(),
+                        &promoter.species,
+                    )
+                    || !Self::chromosomes_match(&report.chromosome, &promoter.chromosome)
+                    || !Self::gene_set_cutrun_intervals_overlap(
+                        report.reference_window_start_1based,
+                        report.reference_window_end_1based,
+                        promoter.promoter_start_1based,
+                        promoter.promoter_end_1based,
+                    )
+                {
+                    continue;
+                }
+                evaluated = true;
+                contributing_read_report_ids.insert(report.report_id.clone());
+                if let Some(dataset_id) = report
+                    .dataset_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    contributing_dataset_ids.insert(dataset_id.to_string());
+                }
+                for cluster in &report.support_clusters {
+                    if !Self::gene_set_cutrun_intervals_overlap(
+                        cluster.genomic_start_1based,
+                        cluster.genomic_end_1based,
+                        promoter.promoter_start_1based,
+                        promoter.promoter_end_1based,
+                    ) {
+                        continue;
+                    }
+                    if cluster.fragment_count > 0
+                        || cluster.total_cut_sites > 0
+                        || cluster.peak_coverage > 0
+                    {
+                        support_intervals
+                            .push((cluster.genomic_start_1based, cluster.genomic_end_1based));
+                    }
+                }
+            }
+
+            support_intervals.sort_unstable();
+            support_intervals.dedup();
+            let nearest_peak_distance_bp = Self::ortholog_cutrun_nearest_motif_distance(
+                &motif_peak_positions,
+                &support_intervals,
+            );
+            let has_occupancy = !support_intervals.is_empty();
+            let status = if !evaluated {
+                OrthologCutRunSupportStatus::NotComparable
+            } else if has_occupancy && motif_present {
+                match nearest_peak_distance_bp {
+                    Some(distance) if distance == 0 => OrthologCutRunSupportStatus::Confirmed,
+                    Some(distance) if distance <= CUTRUN_REGULATORY_SUPPORT_MERGE_GAP_BP as i64 => {
+                        OrthologCutRunSupportStatus::Nearby
+                    }
+                    _ => OrthologCutRunSupportStatus::OccupancyOnly,
+                }
+            } else if has_occupancy {
+                OrthologCutRunSupportStatus::OccupancyOnly
+            } else if motif_present {
+                OrthologCutRunSupportStatus::MotifOnly
+            } else {
+                OrthologCutRunSupportStatus::NoData
+            };
+            let detail = match status {
+                OrthologCutRunSupportStatus::Confirmed => {
+                    "Motif peak overlaps species-matched CUT&RUN occupancy evidence.".to_string()
+                }
+                OrthologCutRunSupportStatus::Nearby => format!(
+                    "Nearest species-matched CUT&RUN occupancy evidence is {} bp from a motif peak.",
+                    nearest_peak_distance_bp.unwrap_or_default()
+                ),
+                OrthologCutRunSupportStatus::MotifOnly => {
+                    "A motif peak was scored in this promoter, but no species-matched CUT&RUN occupancy overlapped the promoter."
+                        .to_string()
+                }
+                OrthologCutRunSupportStatus::OccupancyOnly => {
+                    "Species-matched CUT&RUN occupancy overlapped the promoter, but it did not support a scored motif peak."
+                        .to_string()
+                }
+                OrthologCutRunSupportStatus::NoData => {
+                    "Comparable CUT&RUN sources were evaluated, but neither motif nor occupancy evidence was available for this promoter."
+                        .to_string()
+                }
+                OrthologCutRunSupportStatus::NotComparable => {
+                    "No selected CUT&RUN source with matching species/genome provenance covered this promoter; no cross-species occupancy coercion was applied."
+                        .to_string()
+                }
+            };
+            rows.push(OrthologCutRunSupportRow {
+                species: promoter.species.clone(),
+                gene_label: promoter.display_label.clone(),
+                status,
+                nearest_peak_distance_bp,
+                contributing_dataset_ids: contributing_dataset_ids.into_iter().collect(),
+                contributing_read_report_ids: contributing_read_report_ids.into_iter().collect(),
+                detail,
+            });
+        }
+        Ok(rows)
+    }
+
+    fn gene_set_cutrun_relationship_evidence_class(
+        row: &GeneSetCutRunMemberSupport,
+    ) -> Option<&'static str> {
+        if row.evaluation_state != GeneSetCutRunEvaluationState::Evaluated {
+            return None;
+        }
+        match row.strongest_support_strength.as_deref() {
+            Some("strong") => Some("strong_support"),
+            Some(_) => Some("support_detected"),
+            None if row.support_window_count > 0 => Some("support_detected"),
+            None => Some("no_support_detected"),
+        }
+    }
+
+    pub(crate) fn gene_set_cutrun_relationship_flags(
+        relationship: GeneSetCohortRelationship,
+        member_support: &[GeneSetCutRunMemberSupport],
+    ) -> Vec<GeneSetCohortRelationshipFlag> {
+        if matches!(
+            relationship,
+            GeneSetCohortRelationship::Unspecified | GeneSetCohortRelationship::Manual
+        ) {
+            return vec![];
+        }
+
+        let mut groups = Vec::<(&'static str, Vec<&GeneSetCutRunMemberSupport>)>::new();
+        for row in member_support {
+            let Some(class) = Self::gene_set_cutrun_relationship_evidence_class(row) else {
+                continue;
+            };
+            if let Some((_, rows)) = groups.iter_mut().find(|(candidate, _)| *candidate == class) {
+                rows.push(row);
+            } else {
+                groups.push((class, vec![row]));
+            }
+        }
+        if groups.is_empty() {
+            return vec![];
+        }
+
+        fn relationship_flag(
+            flag_kind: &str,
+            evidence_class: &str,
+            rows: &[&GeneSetCutRunMemberSupport],
+            detail: String,
+        ) -> GeneSetCohortRelationshipFlag {
+            GeneSetCohortRelationshipFlag {
+                flag_kind: flag_kind.to_string(),
+                evidence_kind: format!("cutrun_{evidence_class}"),
+                member_symbols: rows.iter().map(|row| row.symbol.clone()).collect(),
+                member_dedup_keys: rows
+                    .iter()
+                    .map(|row| row.member_dedup_key.clone())
+                    .collect(),
+                detail,
+            }
+        }
+
+        match relationship {
+            GeneSetCohortRelationship::CoRegulated => {
+                if groups.len() < 2 {
+                    return vec![];
+                }
+                let max_group_size = groups
+                    .iter()
+                    .map(|(_, rows)| rows.len())
+                    .max()
+                    .unwrap_or_default();
+                let max_group_count = groups
+                    .iter()
+                    .filter(|(_, rows)| rows.len() == max_group_size)
+                    .count();
+                groups
+                    .into_iter()
+                    .filter(|(_, rows)| max_group_count > 1 || rows.len() < max_group_size)
+                    .map(|(class, rows)| {
+                        let symbols = rows
+                            .iter()
+                            .map(|row| row.symbol.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        relationship_flag(
+                            "unexpected_divergence",
+                            class,
+                            &rows,
+                            format!(
+                                "Declared co_regulated expectation found divergent CUT&RUN support class '{class}' for: {symbols}"
+                            ),
+                        )
+                    })
+                    .collect()
+            }
+            GeneSetCohortRelationship::AntiCoRegulated => groups
+                .into_iter()
+                .filter(|(_, rows)| rows.len() > 1)
+                .map(|(class, rows)| {
+                    let symbols = rows
+                        .iter()
+                        .map(|row| row.symbol.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    relationship_flag(
+                        "unexpected_concordance",
+                        class,
+                        &rows,
+                        format!(
+                            "Declared anti_co_regulated expectation found concordant CUT&RUN support class '{class}' for: {symbols}"
+                        ),
+                    )
+                })
+                .collect(),
+            GeneSetCohortRelationship::Unspecified | GeneSetCohortRelationship::Manual => vec![],
+        }
+    }
+
+    pub fn inspect_cutrun_gene_set_regulatory_support(
+        &self,
+        promoter_cohort: GeneSetPromoterCohortReport,
+        dataset_ids: &[String],
+        read_report_ids: &[String],
+        _neighbor_window_bp: usize,
+        species_filters: &[String],
+    ) -> Result<GeneSetCutRunRegulatorySupportReport, EngineError> {
+        if dataset_ids.is_empty() && read_report_ids.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "InspectCutRunGeneSetRegulatorySupport requires at least one prepared dataset or saved read-report source"
+                        .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let mut warnings = promoter_cohort.warnings.clone();
+        if !species_filters.is_empty() {
+            warnings.push(
+                "CUT&RUN gene-set regulatory support records species filters for future motif-context parity but v1 scoring uses only prepared evidence overlap"
+                    .to_string(),
+            );
+        }
+
+        let mut dataset_intervals = Vec::<GeneSetCutRunPreparedInterval>::new();
+        let mut resolved_dataset_ids = Vec::<String>::new();
+        for dataset_query in dataset_ids {
+            let dataset_query = dataset_query.trim();
+            if dataset_query.is_empty() {
+                continue;
+            }
+            let status = self.show_cutrun_dataset_status(dataset_query, None, None)?;
+            if !status.supported_reference_genome_ids.is_empty()
+                && !status
+                    .supported_reference_genome_ids
+                    .iter()
+                    .any(|id| id == &promoter_cohort.genome_id)
+            {
+                warnings.push(format!(
+                    "CUT&RUN dataset '{}' does not list genome '{}' as supported; gene-set regulatory support skipped it",
+                    status.dataset_id, promoter_cohort.genome_id
+                ));
+                continue;
+            }
+            resolved_dataset_ids.push(status.dataset_id.clone());
+            warnings.extend(status.warnings.clone());
+            dataset_intervals
+                .extend(self.gene_set_cutrun_collect_dataset_intervals(&status, &mut warnings)?);
+        }
+
+        let mut read_reports = Vec::<CutRunReadReport>::new();
+        let mut resolved_read_report_ids = Vec::<String>::new();
+        for report_id in read_report_ids {
+            let report_id = report_id.trim();
+            if report_id.is_empty() {
+                continue;
+            }
+            let report = self.get_cutrun_read_report(report_id)?;
+            if report.genome_id != promoter_cohort.genome_id {
+                warnings.push(format!(
+                    "CUT&RUN read report '{}' belongs to genome '{}' rather than '{}'; gene-set regulatory support skipped it",
+                    report.report_id, report.genome_id, promoter_cohort.genome_id
+                ));
+                continue;
+            }
+            resolved_read_report_ids.push(report.report_id.clone());
+            warnings.extend(report.warnings.clone());
+            read_reports.push(report);
+        }
+
+        let mut member_support = Vec::<GeneSetCutRunMemberSupport>::new();
+        for window in &promoter_cohort.windows {
+            let mut accumulator = GeneSetCutRunMemberAccumulator::default();
+            for interval in &dataset_intervals {
+                if !Self::chromosomes_match(&interval.chromosome, &window.chromosome) {
+                    continue;
+                }
+                if !Self::gene_set_cutrun_intervals_overlap(
+                    interval.start_1based,
+                    interval.end_1based,
+                    window.promoter_start_1based,
+                    window.promoter_end_1based,
+                ) {
+                    continue;
+                }
+                Self::gene_set_cutrun_apply_interval(&mut accumulator, interval);
+            }
+            for report in &read_reports {
+                if !Self::chromosomes_match(&report.chromosome, &window.chromosome) {
+                    continue;
+                }
+                if !Self::gene_set_cutrun_intervals_overlap(
+                    report.reference_window_start_1based,
+                    report.reference_window_end_1based,
+                    window.promoter_start_1based,
+                    window.promoter_end_1based,
+                ) {
+                    continue;
+                }
+                accumulator.evaluated = true;
+                for cluster in &report.support_clusters {
+                    if !Self::gene_set_cutrun_intervals_overlap(
+                        cluster.genomic_start_1based,
+                        cluster.genomic_end_1based,
+                        window.promoter_start_1based,
+                        window.promoter_end_1based,
+                    ) {
+                        continue;
+                    }
+                    let interval = GeneSetCutRunPreparedInterval {
+                        chromosome: report.chromosome.clone(),
+                        start_1based: cluster.genomic_start_1based,
+                        end_1based: cluster.genomic_end_1based,
+                        evaluated: true,
+                        overlapping_peak_count: 0,
+                        max_signal_value: None,
+                        supporting_fragment_count: cluster.fragment_count,
+                        cut_site_count: cluster.total_cut_sites,
+                        dataset_id: report.dataset_id.clone(),
+                        read_report_id: Some(report.report_id.clone()),
+                    };
+                    Self::gene_set_cutrun_apply_interval(&mut accumulator, &interval);
+                }
+            }
+            let evaluation_state = if accumulator.evaluated {
+                GeneSetCutRunEvaluationState::Evaluated
+            } else {
+                GeneSetCutRunEvaluationState::Unevaluated
+            };
+            member_support.push(GeneSetCutRunMemberSupport {
+                member_dedup_key: window.member_dedup_key.clone(),
+                symbol: window.symbol.clone(),
+                gene_id: window.gene_id.clone(),
+                evaluation_state,
+                unevaluated_reason: (evaluation_state == GeneSetCutRunEvaluationState::Unevaluated)
+                    .then(|| {
+                        "no selected prepared dataset or saved read report overlapped this promoter"
+                            .to_string()
+                    }),
+                promoter_start_1based: window.promoter_start_1based,
+                promoter_end_1based: window.promoter_end_1based,
+                chromosome: window.chromosome.clone(),
+                support_window_count: accumulator.support_window_count,
+                strongest_support_strength: accumulator
+                    .strongest_support_strength
+                    .map(Self::gene_set_cutrun_strength_label)
+                    .map(str::to_string),
+                overlapping_peak_count: accumulator.overlapping_peak_count,
+                supporting_fragment_count: accumulator.supporting_fragment_count,
+                cut_site_count: accumulator.cut_site_count,
+                contributing_dataset_ids: accumulator
+                    .contributing_dataset_ids
+                    .into_iter()
+                    .collect(),
+                contributing_read_report_ids: accumulator
+                    .contributing_read_report_ids
+                    .into_iter()
+                    .collect(),
+            });
+        }
+
+        let member_count = member_support.len();
+        let evaluated_member_count = member_support
+            .iter()
+            .filter(|row| row.evaluation_state == GeneSetCutRunEvaluationState::Evaluated)
+            .count();
+        let unevaluated_member_count = member_count.saturating_sub(evaluated_member_count);
+        let members_with_support_windows = member_support
+            .iter()
+            .filter(|row| {
+                row.evaluation_state == GeneSetCutRunEvaluationState::Evaluated
+                    && row.support_window_count > 0
+            })
+            .count();
+        let members_with_strong_support = member_support
+            .iter()
+            .filter(|row| {
+                row.evaluation_state == GeneSetCutRunEvaluationState::Evaluated
+                    && row.strongest_support_strength.as_deref() == Some("strong")
+            })
+            .count();
+        let evaluated_denominator = evaluated_member_count.max(1) as f64;
+        let support_window_sum = member_support
+            .iter()
+            .filter(|row| row.evaluation_state == GeneSetCutRunEvaluationState::Evaluated)
+            .map(|row| row.support_window_count)
+            .sum::<usize>();
+        let relationship = promoter_cohort.relationship;
+        let mut relationship_flags = promoter_cohort.relationship_flags.clone();
+        let cutrun_relationship_flags =
+            Self::gene_set_cutrun_relationship_flags(relationship, &member_support);
+        warnings.extend(
+            cutrun_relationship_flags
+                .iter()
+                .map(|flag| flag.detail.clone()),
+        );
+        relationship_flags.extend(cutrun_relationship_flags);
+        Ok(GeneSetCutRunRegulatorySupportReport {
+            schema: GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            genome_id: promoter_cohort.genome_id.clone(),
+            promoter_cohort,
+            relationship,
+            dataset_ids: resolved_dataset_ids,
+            read_report_ids: resolved_read_report_ids,
+            aggregate: GeneSetCutRunSupportAggregate {
+                member_count,
+                evaluated_member_count,
+                unevaluated_member_count,
+                members_with_support_windows,
+                members_with_strong_support,
+                evaluated_fraction_with_support_windows: members_with_support_windows as f64
+                    / evaluated_denominator,
+                evaluated_fraction_with_strong_support: members_with_strong_support as f64
+                    / evaluated_denominator,
+                mean_support_window_count_evaluated: support_window_sum as f64
+                    / evaluated_denominator,
+            },
+            member_support,
+            relationship_flags,
+            warnings,
         })
     }
 
@@ -3859,6 +4976,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "InspectCutRunRegulatorySupport requires non-empty seq_id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if dataset_ids.is_empty() && read_report_ids.is_empty() {
@@ -3867,7 +4986,8 @@ impl GentleEngine {
                 message:
                     "InspectCutRunRegulatorySupport requires at least one dataset or read-report source"
                         .to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
 
         let dna = self
@@ -3877,6 +4997,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?;
         let anchor = self.latest_genome_anchor_for_seq(seq_id)?;
         let (span_start_0based, span_end_0based_exclusive) = Self::validate_sequence_scan_span(
@@ -4045,13 +5167,26 @@ impl GentleEngine {
                 local_start_1based,
                 local_end_1based,
             );
+            let support_span_distance_bp = |window: &CutRunSupportWindowRecord| -> usize {
+                if window.local_end_0based_exclusive > clipped_start_0based
+                    && window.local_start_0based < clipped_end_0based_exclusive
+                {
+                    0
+                } else if window.local_end_0based_exclusive <= clipped_start_0based {
+                    clipped_start_0based.saturating_sub(window.local_end_0based_exclusive)
+                } else {
+                    window
+                        .local_start_0based
+                        .saturating_sub(clipped_end_0based_exclusive)
+                }
+            };
             let strongest_support_window = support_windows
                 .iter()
-                .filter(|window| {
-                    window.local_end_0based_exclusive > clipped_start_0based
-                        && window.local_start_0based < clipped_end_0based_exclusive
+                .filter_map(|window| {
+                    let distance_bp = support_span_distance_bp(window);
+                    (distance_bp <= neighbor_window_bp).then_some((window, distance_bp))
                 })
-                .max_by(|left, right| {
+                .max_by(|(left, left_distance_bp), (right, right_distance_bp)| {
                     let left_key = (
                         match left.support_strength {
                             CutRunSupportStrength::Strong => 3usize,
@@ -4072,7 +5207,9 @@ impl GentleEngine {
                         right.cut_site_count,
                         right.overlapping_peak_count,
                     );
-                    left_key.cmp(&right_key)
+                    left_key
+                        .cmp(&right_key)
+                        .then_with(|| right_distance_bp.cmp(left_distance_bp))
                 });
 
             let motif_token = Self::feature_qualifier_text(feature, "tf_id").or_else(|| {
@@ -4105,9 +5242,31 @@ impl GentleEngine {
             } else {
                 (None, None, false)
             };
-            let confirmed = strongest_support_window
-                .is_some_and(|window| window.support_strength == CutRunSupportStrength::Strong)
-                && motif_present;
+            let support_overlaps_tfbs = strongest_support_window.is_some_and(|(window, _)| {
+                window.local_end_0based_exclusive > clipped_start_0based
+                    && window.local_start_0based < clipped_end_0based_exclusive
+            });
+            let support_status = match strongest_support_window {
+                Some((_window, _distance_bp)) if !motif_present => {
+                    CutRunRegulatoryTfbsConfirmationStatus::MotifPoor
+                }
+                Some((window, _distance_bp))
+                    if window.support_strength != CutRunSupportStrength::Strong =>
+                {
+                    CutRunRegulatoryTfbsConfirmationStatus::MotifPoor
+                }
+                Some((_window, _distance_bp)) if support_overlaps_tfbs => {
+                    CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+                }
+                Some((_window, _distance_bp)) => CutRunRegulatoryTfbsConfirmationStatus::Nearby,
+                None => CutRunRegulatoryTfbsConfirmationStatus::Absent,
+            };
+            let confirmation_status =
+                if support_status == CutRunRegulatoryTfbsConfirmationStatus::Confirmed {
+                    CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+                } else {
+                    CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
+                };
             let row = CutRunRegulatoryTfbsRow {
                 feature_id,
                 feature_label: Self::feature_display_label(feature, feature_id),
@@ -4122,30 +5281,29 @@ impl GentleEngine {
                 } else {
                     "+".to_string()
                 },
-                confirmation_status: if confirmed {
-                    CutRunRegulatoryTfbsConfirmationStatus::Confirmed
-                } else {
-                    CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
-                },
+                confirmation_status,
+                support_status,
                 strongest_support_window_id: strongest_support_window
-                    .map(|window| window.window_id.clone()),
+                    .map(|(window, _distance_bp)| window.window_id.clone()),
                 strongest_support_strength: strongest_support_window
-                    .map(|window| window.support_strength),
+                    .map(|(window, _distance_bp)| window.support_strength),
+                support_distance_bp: strongest_support_window
+                    .map(|(_window, distance_bp)| distance_bp),
                 overlapping_peak_count: strongest_support_window
-                    .map(|window| window.overlapping_peak_count)
+                    .map(|(window, _distance_bp)| window.overlapping_peak_count)
                     .unwrap_or(0),
                 max_signal_value: strongest_support_window
-                    .and_then(|window| window.max_signal_value),
+                    .and_then(|(window, _distance_bp)| window.max_signal_value),
                 mean_signal_value: strongest_support_window
-                    .and_then(|window| window.mean_signal_value),
+                    .and_then(|(window, _distance_bp)| window.mean_signal_value),
                 supporting_fragment_count: strongest_support_window
-                    .map(|window| window.supporting_fragment_count)
+                    .map(|(window, _distance_bp)| window.supporting_fragment_count)
                     .unwrap_or(0),
                 cut_site_count: strongest_support_window
-                    .map(|window| window.cut_site_count)
+                    .map(|(window, _distance_bp)| window.cut_site_count)
                     .unwrap_or(0),
             };
-            if confirmed {
+            if confirmation_status == CutRunRegulatoryTfbsConfirmationStatus::Confirmed {
                 confirmed_tfbs_rows.push(row);
             } else {
                 unconfirmed_tfbs_rows.push(row);
@@ -4171,6 +5329,8 @@ impl GentleEngine {
                             "Could not extract CUT&RUN support window '{}' from '{}'",
                             support_window.window_id, seq_id
                         ),
+
+                        cause_chain: vec![],
                     })?
                     .get_forward_string();
                 resolved_target_motif_consensus
@@ -4327,6 +5487,8 @@ impl GentleEngine {
         fs::write(path, lines.join("\n")).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write CUT&RUN coverage export to '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(CutRunReadCoverageExport {
             schema: CUTRUN_READ_COVERAGE_EXPORT_SCHEMA.to_string(),

@@ -1,0 +1,62 @@
+{
+  "schema": "gentle.alternative_promoter_comparison.v1",
+  "seq_id": "tp73_promoter_artifact_demo",
+  "sequence_length_bp": 249,
+  "generated_at_unix_ms": 0,
+  "op_id": "op-3",
+  "run_id": "example_promoter_design_artifact_slice_offline",
+  "gene_label_filter": "TP73",
+  "promoter_upstream_bp": 40,
+  "promoter_downstream_bp": 15,
+  "transcript_window_count": 3,
+  "collapsed_window_count": 2,
+  "rows": [
+    {
+      "label": "TP73 promoter window (2 tx)",
+      "gene_label": "TP73",
+      "representative_transcript_id": "ENSTTP73DEMO1",
+      "representative_transcript_label": "TP73-demo-201",
+      "representative_transcript_feature_id": 2,
+      "transcript_count": 2,
+      "transcript_ids": [
+        "ENSTTP73DEMO1",
+        "ENSTTP73DEMO2"
+      ],
+      "transcript_labels": [
+        "TP73-demo-201",
+        "TP73-demo-202"
+      ],
+      "strand": "+",
+      "representative_tss_local_0based": 100,
+      "start_0based": 60,
+      "end_0based_exclusive": 116,
+      "upstream_bp": 40,
+      "downstream_bp": 15,
+      "source": "transcript_tss_exact_collapse"
+    },
+    {
+      "label": "TP73 promoter window",
+      "gene_label": "TP73",
+      "representative_transcript_id": "ENSTTP73DEMO3",
+      "representative_transcript_label": "TP73-demo-203-altTSS",
+      "representative_transcript_feature_id": 4,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENSTTP73DEMO3"
+      ],
+      "transcript_labels": [
+        "TP73-demo-203-altTSS"
+      ],
+      "strand": "+",
+      "representative_tss_local_0based": 140,
+      "start_0based": 100,
+      "end_0based_exclusive": 156,
+      "upstream_bp": 40,
+      "downstream_bp": 15,
+      "source": "transcript_tss_exact_collapse"
+    }
+  ],
+  "warnings": [
+    "Collapsed 3 transcript-level promoter interpretation(s) into 2 distinct DNA-level promoter window(s) by exact genomic span."
+  ]
+}

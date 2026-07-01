@@ -1,0 +1,84 @@
+{
+  "schema": "gentle.ortholog_promoter_cohort.v1",
+  "generated_at_unix_ms": 0,
+  "op_id": "op-5",
+  "run_id": "example_gene_set_ortholog_promoter_cohorts_offline",
+  "request": {
+    "anchor_species": "Homo sapiens",
+    "anchor_genome_id": "TutorialHumanPromoterToy",
+    "anchor_gene_query": "TP73",
+    "target_species": [
+      "Mus musculus"
+    ],
+    "target_genome_ids": {
+      "mouse": "TutorialMousePromoterToy"
+    },
+    "transcript_ids": {
+      "human": "TX_HUMAN_TP73",
+      "mouse": "TX_MOUSE_TRP73"
+    },
+    "ortholog_resource_path": "./docs/examples/assets/promoter_cohort_tutorial_orthologs.json",
+    "upstream_bp": 40,
+    "downstream_bp": 10,
+    "ambiguity_policy": "reject",
+    "relationship": "co_regulated"
+  },
+  "ortholog_resource_label": "Tutorial TP73 orthologs",
+  "resolved_promoter_count": 2,
+  "unresolved_count": 0,
+  "rows": [
+    {
+      "species": "Homo sapiens",
+      "genome_id": "TutorialHumanPromoterToy",
+      "role": "anchor",
+      "gene_query": "TP73",
+      "gene_symbol": "TP73",
+      "gene_id": "ENSG_TUTORIAL_TP73",
+      "transcript_id_requested": "TX_HUMAN_TP73",
+      "transcript_id": "TX_HUMAN_TP73",
+      "display_label": "TP73",
+      "chromosome": "chr1",
+      "strand": "+",
+      "promoter_start_1based": 111,
+      "promoter_end_1based": 161,
+      "promoter_length_bp": 51,
+      "tss_1based": 151,
+      "tss_position_0based": 40,
+      "sequence_orientation": "transcription_aligned",
+      "promoter_sequence": "AAAAAAAAAAAGGGGCGGGGCGGGGAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "orthology_evidence": [],
+      "warnings": []
+    },
+    {
+      "species": "Mus musculus",
+      "genome_id": "TutorialMousePromoterToy",
+      "role": "target",
+      "gene_query": "ENSMUSG_TUTORIAL_TRP73",
+      "gene_symbol": "Trp73",
+      "gene_id": "ENSMUSG_TUTORIAL_TRP73",
+      "transcript_id_requested": "TX_MOUSE_TRP73",
+      "transcript_id": "TX_MOUSE_TRP73",
+      "display_label": "Trp73",
+      "chromosome": "chr1",
+      "strand": "+",
+      "promoter_start_1based": 111,
+      "promoter_end_1based": 161,
+      "promoter_length_bp": 51,
+      "tss_1based": 151,
+      "tss_position_0based": 40,
+      "sequence_orientation": "transcription_aligned",
+      "promoter_sequence": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+      "orthology_type": "one_to_one",
+      "confidence": "synthetic_high",
+      "orthology_source": "hand-crafted offline tutorial fixture",
+      "orthology_evidence": [
+        "synthetic_one_to_one_mapping"
+      ],
+      "warnings": []
+    }
+  ],
+  "unresolved_rows": [],
+  "relationship": "co_regulated",
+  "relationship_flags": [],
+  "warnings": []
+}

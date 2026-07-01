@@ -18,10 +18,34 @@ Today, that already means GENtle can:
   lineage-visible outputs, and ordered multi-insert previews
 - execute PCR, advanced PCR, PCR mutagenesis, primer-pair design, and qPCR
   assay design through one shared engine family
-- render factual protocol cartoons and lineage graphs from the same project
-  state instead of relying on hand-drawn figures
+- bring prepared genomes, basic read-only SnapGene `.dna`/GenBank/EMBL
+  records, UniProt/Ensembl
+  protein evidence, and RNA-read context into the same project state used for
+  cloning decisions
+- render factual protocol cartoons, lineage graphs, dotplots, TFBS tracks,
+  isoform architecture panels, and protein gels from the same project state
+  instead of relying on hand-drawn figures
+- expose structured automation routes, including ClawBio/OpenClaw handoff
+  bundles for deterministic workflow execution and artifact collection
 - keep GUI, CLI, and automation routes aligned on the same deterministic
   contracts
+
+## Fastest First Look
+
+If you are opening GENtle for the first time and want the shortest useful
+tour:
+
+1. Start with [`INSTALL.md`](INSTALL.md) if you need a local setup path.
+2. Launch the desktop app with `cargo run --bin gentle`.
+3. Use `File -> Open Tutorial Project...` for executable walkthroughs or open
+   the Help window for GUI-first tutorials.
+4. If you only have a few minutes, look at the Gibson lineage/cartoon section,
+   the TP53/TP73 interpretation figures, and the VKORC1 ClawBio handoff below.
+
+Agents working directly in a checkout should use the short in-tree loop in
+[`docs/agent_dev_loop.md`](docs/agent_dev_loop.md).
+For Claude-specific internal and external agent scenarios, see
+[`docs/quickstart_claude.md`](docs/quickstart_claude.md).
 
 ## What To Trust Today
 
@@ -36,6 +60,14 @@ menu item is equally mature.
   and want deterministic execution plus an inspectable report trail.
 - Prepared-genome region/gene extraction and the linked visualization/export
   paths once the reference has been prepared locally.
+- Basic read-only SnapGene `.dna` plus GenBank/EMBL import when you need to
+  interpret existing plasmid or sequence records inside the same deterministic
+  state as newer GENtle-native workflows.
+- RNA-read Mapping, dotplot, TFBS track, and isoform/protein interpretation
+  routes when the question is about transcript or regulatory context rather
+  than only construct assembly.
+- ClawBio/OpenClaw wrapper requests that need structured GENtle execution plus
+  reproducibility bundles, especially the current VKORC1 follow-up story.
 - Explanation/export surfaces such as lineage SVG, protocol cartoons, dotplot
   SVG, and isoform-architecture figures.
 
@@ -261,15 +293,17 @@ between overlapping alias names.
 
 ### Rack Placement, Gel Readout, and 3D Print Path
 
-| Linked physical carrier | README gel readout |
-| --- | --- |
-| ![GENtle Gibson rack hero](docs/figures/gibson_single_insert_rack_hero.svg) | ![GENtle Gibson arrangement gel](docs/figures/gibson_single_insert_arrangement_gel_hero.svg) |
+| Linked physical carrier | Top-down inspection | README gel readout |
+| --- | --- | --- |
+| ![GENtle Gibson rack hero](docs/figures/gibson_single_insert_rack_hero.svg) | ![GENtle Gibson top-down rack](docs/figures/gibson_single_insert_storage_rack_topdown.svg) | ![GENtle Gibson arrangement gel](docs/figures/gibson_single_insert_arrangement_gel_hero.svg) |
 
 The same single-insert Gibson state can now also be projected into one linked
 physical carrier and one linked analytical readout. The rack hero is not a
 screenshot: it is a README-focused SVG derived from the deterministic isometric
-rack export that the saved rack draft produces automatically. Its restored
-legend keeps the link back to the cloning experiment visible again:
+rack export that the saved rack draft produces automatically. The top-down
+companion is emitted directly from the same arrangement as a cleaner inspection
+view with coordinate axes, occupied-slot rings, and lane-role labels. Its
+restored legend keeps the link back to the cloning experiment visible again:
 `Gibson arrangement` plus `DNA ladder`.
 
 The gel companion is generated from the same saved Gibson state, but the README
@@ -284,7 +318,12 @@ much clearer why the rack placement and gel readout belong together even though
 the wet-lab carrier and analytical lane order are not the same thing.
 
 The same shared physical template and arrangement state also drive fabrication
-SVG, carrier-label, and OpenSCAD export.
+SVG, carrier-label, and OpenSCAD export. The committed model sources are
+[`gibson_single_insert_storage_rack.scad`](docs/figures/gibson_single_insert_storage_rack.scad)
+for the compact inspection rack and
+[`gibson_single_insert_pipetting_rack.scad`](docs/figures/gibson_single_insert_pipetting_rack.scad)
+for the larger pipetting carrier; they are OpenSCAD sources rather than STL
+meshes so the geometry remains deterministic and editable.
 
 Regenerate them with:
 
@@ -306,6 +345,34 @@ python3 docs/figures/render_rack_isometric_hero.py \
 
 cargo run --quiet --bin gentle_cli -- \
   --state /tmp/gibson_rack_hero.state.json \
+  racks hero-svg \
+  rack-1 \
+  docs/figures/gibson_single_insert_storage_rack_topdown.svg \
+  --template storage_pcr_tube_rack
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  racks hero-svg \
+  rack-1 \
+  docs/figures/gibson_single_insert_rack_topdown.svg \
+  --template pipetting_pcr_tube_rack
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  racks openscad \
+  rack-1 \
+  docs/figures/gibson_single_insert_storage_rack.scad \
+  --template storage_pcr_tube_rack
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  racks openscad \
+  rack-1 \
+  docs/figures/gibson_single_insert_pipetting_rack.scad \
+  --template pipetting_pcr_tube_rack
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
   render-pool-gel-svg \
   - \
   docs/figures/gibson_single_insert_arrangement_gel.svg \
@@ -319,7 +386,50 @@ python3 docs/figures/render_serial_gel_hero.py \
 ```
 
 The corresponding GUI/CLI tutorial for this export lives in
-[`docs/tutorial/gibson_physical_rack_gui.md`](docs/tutorial/gibson_physical_rack_gui.md).
+[`docs/tutorial/03-08_gibson_physical_rack_gui.md`](docs/tutorial/03-08_gibson_physical_rack_gui.md).
+
+The same `racks hero-svg` route supports storage racks, pipetting racks, and
+six-well cell-culture plates. For plates, the wells render as culture wells
+rather than PCR tubes, so the export can be used for plate-level treatment
+layouts and README/protocol figures without changing the underlying arrangement
+semantics. The README hero uses an empty top-down plate with the upper-left
+orientation corner clipped, matching common six-well plate drawings, while the
+well labels come from the saved arrangement itself.
+
+![GENtle 6-well cell-culture plate arrangement](docs/figures/cell_culture_plate_hero.svg)
+
+The matching OpenSCAD source is
+[`cell_culture_plate.scad`](docs/figures/cell_culture_plate.scad). It keeps the
+same clipped orientation corner and well geometry as the visual exports, but is
+intended as a technical model source rather than a README hero render.
+
+Regenerate the SVG and PDF copies with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gentle_cell_culture_plate.state.json \
+  workflow @docs/examples/workflows/cell_culture_plate.json
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gentle_cell_culture_plate.state.json \
+  racks hero-svg \
+  cell-culture-6well \
+  docs/figures/cell_culture_plate_hero.svg \
+  --template cell_culture_plate
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gentle_cell_culture_plate.state.json \
+  racks openscad \
+  cell-culture-6well \
+  docs/figures/cell_culture_plate.scad \
+  --template cell_culture_plate
+
+cargo run --quiet --bin gentle_cli -- \
+  svg-pdf \
+  docs/figures/cell_culture_plate_hero.svg \
+  docs/figures/cell_culture_plate_hero.pdf \
+  --scale 2
+```
 
 ### Overlap-Extension PCR Substitution Mechanism
 
@@ -585,7 +695,7 @@ Canonical offline workflow example:
 
 Matching GUI/CLI tutorial:
 
-- [`docs/tutorial/stateless_sequence_inspection_gui_cli.md`](docs/tutorial/stateless_sequence_inspection_gui_cli.md)
+- [`docs/tutorial/02-02_stateless_sequence_inspection_gui_cli.md`](docs/tutorial/02-02_stateless_sequence_inspection_gui_cli.md)
 
 Matching ClawBio workflow request:
 
@@ -605,12 +715,21 @@ This writes four portable artifacts from one synthetic inline sequence:
 - TFBS score-track JSON
 - TFBS score-track SVG
 
-### Ongoing Work With ClawBio
+### ClawBio / OpenClaw Handoff
 
 ![GENtle VKORC1/rs9923231 luciferase hero figure](docs/figures/vkorc1_rs9923231_luciferase_hero.png)
 
-Ongoing integration work with ClawBio now also has a dedicated hero image:
-ClawBio raises the pharmacogenomic alert around `VKORC1` / `rs9923231`, and
+GENtle now has a concrete ClawBio/OpenClaw bridge rather than only a loose
+prompting story. Requests use `gentle.clawbio_skill_request.v1`, results use
+`gentle.clawbio_skill_result.v1`, and readiness-sensitive follow-ons can be
+surfaced through `gentle.service_handoff.v1`. In practice, that means one
+structured request can trigger a shared GENtle shell/operation/workflow route,
+write `report.md` plus `result.json`, capture reproducibility files, and
+promote one PNG-first artifact for chat-style review while leaving supporting
+SVG and report outputs inspectable.
+
+The strongest current exemplar is the `VKORC1` / `rs9923231`
+promoter-luciferase handoff. ClawBio raises the pharmacogenomic alert, and
 GENtle turns that into a concrete promoter-fragment and luciferase-reporter
 design story. The left panel explains the reverse-strand promoter interval to
 take forward, while the right panel shows the study construct as a real GENtle
@@ -628,13 +747,20 @@ gates. The current integration notes live in
 and
 [`integrations/clawbio/experimental_followup_requests.md`](integrations/clawbio/experimental_followup_requests.md).
 
+If you want the concrete wrapper examples first, start with
+[`integrations/clawbio/skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json`](integrations/clawbio/skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json),
+the matching generated workflow note
+[`docs/examples/generated/vkorc1_rs9923231_promoter_luciferase_assay_planning.md`](docs/examples/generated/vkorc1_rs9923231_promoter_luciferase_assay_planning.md),
+and the reproducibility bundle under
+[`docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/`](docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/).
+
 ### Guided GUI Tutorials
 
 ![GENtle Gibson testing tutorial in the Help window](docs/screenshots/screenshot_GUI_help_tutorial_testing_gibson.png)
 
 GENtle also ships guided GUI tutorials. For example, the Gibson specialist has
 a dedicated walkthrough in
-[`docs/tutorial/gibson_specialist_testing_gui.md`](docs/tutorial/gibson_specialist_testing_gui.md),
+[`docs/tutorial/03-05_gibson_specialist_testing_gui.md`](docs/tutorial/03-05_gibson_specialist_testing_gui.md),
 and that guide is available directly through the Help window with associated
 screenshots. This keeps the interactive workflow teachable and reproducible:
 users can follow a stable step-by-step path inside the GUI, and contributors
@@ -799,5 +925,5 @@ what is actively being built next, see [`docs/roadmap.md`](docs/roadmap.md).
 - CLI manual: [`docs/cli.md`](docs/cli.md)
 - Tutorial guide: [`docs/tutorial/README.md`](docs/tutorial/README.md)
 - Executable tutorial hub: [`docs/tutorial/generated/README.md`](docs/tutorial/generated/README.md)
-- Agent interfaces tutorial: [`docs/agent_interfaces_tutorial.md`](docs/agent_interfaces_tutorial.md)
+- Agent interfaces tutorial: [`docs/tutorial/01-01_agent_interfaces.md`](docs/tutorial/01-01_agent_interfaces.md)
 - Acknowledgements: [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md)

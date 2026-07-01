@@ -14,6 +14,21 @@ Always include these blocks in your prompt:
 5. `Output wanted`
 6. `Execution policy`
 
+Before asking an agent to produce commands, provide or point it to the GENtle
+documentation bundle:
+
+- `docs/glossary.json` for command paths and usage skeletons
+- `docs/cli.md` for operand metavariable conventions and shell examples
+- `docs/protocol.md` for request/response schemas and execution semantics
+- `docs/ai_cloning_primer.md` and `docs/ai_task_playbooks.md` for biology-first
+  context
+- `docs/examples/ai_cloning_examples.md` and optionally
+  `docs/ai_glossary_extensions.json` for compact examples and terminology
+
+Do not ask the model to infer operand meanings from uppercase placeholders
+alone. `QUERY`, `ID`, `SEQ_ID`, `GENOME_ID`, `ENTRY_ID`, `PATH`, and coordinate
+operands are conventions that need the CLI manual or route-specific docs.
+
 Minimal template:
 
 ```text
@@ -47,6 +62,8 @@ Execution policy:
 The assistant should:
 
 - prefer deterministic GENtle shell/CLI commands over free-form advice
+- consult the GENtle documentation bundle before proposing commands when that
+  bundle is available
 - explicitly list assumptions
 - ask questions when required fields are missing
 - avoid claiming biology facts not derivable from user/project data
@@ -56,6 +73,8 @@ The assistant should:
 The assistant should not:
 
 - confuse local sequence anchors with genome provenance anchoring
+- treat `QUERY`, `ID`, or other glossary placeholders as self-explanatory when
+  the route-specific operand semantics are missing
 - silently choose unavailable systems/models/endpoints
 - output destructive commands without explicit rationale and confirmation
 

@@ -48,6 +48,19 @@ fn ui_intent_to_shell_command(value: &Value) -> Result<String, String> {
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "ui_intent.target must be a non-empty string".to_string())?;
     let mut tokens = vec!["ui".to_string(), action.to_string(), target.to_string()];
+    if target == "sequence-window" {
+        let seq_id = obj
+            .get("seq_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                "ui_intent.seq_id must be a non-empty string when target is sequence-window"
+                    .to_string()
+            })?;
+        tokens.push(seq_id.to_string());
+        return Ok(tokens.join(" "));
+    }
     if let Some(genome_id) = obj
         .get("genome_id")
         .and_then(Value::as_str)
@@ -246,6 +259,14 @@ mod tests {
             shell,
             "ui open agent-assistant --helpers --species human".to_string()
         );
+
+        let value = serde_json::json!({
+            "action": "close",
+            "target": "sequence-window",
+            "seq_id": "fus_live"
+        });
+        let shell = ui_intent_to_shell_command(&value).expect("sequence ui intent to shell");
+        assert_eq!(shell, "ui close sequence-window fus_live".to_string());
     }
 
     #[test]

@@ -7,11 +7,12 @@
 
 use crate::{
     about,
+    cli_support::load_state_or_default,
     engine::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, Engine, GentleEngine, Operation, ProjectState, Workflow,
     },
     engine_shell::{
-        ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
+        ShellExecutionOptions, UiIntentAction, UiIntentTarget, execute_shell_command_with_options,
         parse_shell_tokens,
     },
     genomes::{
@@ -23,10 +24,10 @@ use crate::{
         shell_topic_help_markdown, shell_topic_help_text,
     },
 };
+use gentle_protocol::{CapabilitySource, EngineError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
-use std::path::Path;
 
 const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "gentle_mcp";
@@ -77,11 +78,7 @@ fn run_server_loop<R: BufRead, W: Write>(
 }
 
 fn load_state(path: &str) -> Result<ProjectState, String> {
-    if Path::new(path).exists() {
-        ProjectState::load_from_path(path).map_err(|e| e.to_string())
-    } else {
-        Ok(ProjectState::default())
-    }
+    load_state_or_default(path)
 }
 
 fn read_framed_json<R: BufRead>(reader: &mut R) -> Result<Option<Value>, String> {
@@ -177,11 +174,17 @@ fn write_framed_json<W: Write>(writer: &mut W, payload: &Value) -> Result<(), St
 }
 
 fn tool_list() -> Value {
-    let ui_intent_target_enum: Vec<&str> = UiIntentTarget::all()
+    let mut ui_intent_target_enum: Vec<&str> = UiIntentTarget::all()
         .iter()
         .map(|target| target.as_str())
         .collect();
-    json!([
+    ui_intent_target_enum.push("sequence-window");
+    let ui_intent_action_enum = vec![
+        UiIntentAction::Open.as_str(),
+        UiIntentAction::Focus.as_str(),
+        UiIntentAction::Close.as_str(),
+    ];
+    let mut tools = json!([
         {
             "name": "capabilities",
             "title": "Capabilities",
@@ -380,7 +383,7 @@ fn tool_list() -> Value {
                     },
                     "interface": {
                         "type": "string",
-                        "description": "Optional interface filter (all|cli-direct|cli-shell|gui-shell|js|lua|mcp)."
+                        "description": "Optional interface filter (all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp)."
                     },
                     "topic": {
                         "description": "Optional help topic (string path or array of path tokens).",
@@ -617,7 +620,7 @@ fn tool_list() -> Value {
         {
             "name": "ui_intent",
             "title": "UI Intent",
-            "description": "Resolve/record one UI intent through shared `ui open|focus` parser/executor path.",
+            "description": "Resolve/record one UI intent through shared `ui open|focus|close` parser/executor path.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -627,11 +630,15 @@ fn tool_list() -> Value {
                     },
                     "action": {
                         "type": "string",
-                        "enum": ["open", "focus"]
+                        "enum": ui_intent_action_enum
                     },
                     "target": {
                         "type": "string",
                         "enum": ui_intent_target_enum
+                    },
+                    "seq_id": {
+                        "type": "string",
+                        "description": "Loaded sequence id, required when target is sequence-window."
                     },
                     "genome_id": {
                         "type": "string"
@@ -819,9 +826,457 @@ fn tool_list() -> Value {
                 "additionalProperties": false
             }
         }
-    ])
+    ]);
+    if let Some(items) = tools.as_array_mut() {
+        items.push(json!({
+            "name": "construct_reasoning_inspection_actions",
+            "title": "Construct Reasoning Inspection Actions",
+            "description": "Return recommended inspection actions from one stored construct-reasoning graph through the shared `construct-reasoning list-inspection-actions` shell contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "graph_id": {
+                        "type": "string",
+                        "description": "Stored construct-reasoning graph id to inspect."
+                    },
+                    "fact_id": {
+                        "type": "string",
+                        "description": "Optional source fact id filter."
+                    },
+                    "annotation_id": {
+                        "type": "string",
+                        "description": "Optional source annotation id filter."
+                    },
+                    "summary_id": {
+                        "type": "string",
+                        "description": "Optional source summary id filter."
+                    }
+                },
+                "required": ["graph_id"],
+                "additionalProperties": false
+            }
+        }));
+        items.push(json!({
+            "name": "construct_reasoning_run_inspection_action",
+            "title": "Run Construct Reasoning Inspection Action",
+            "description": "Compute the dotplot recommended by one construct-reasoning inspection action through the shared `construct-reasoning run-inspection-action` shell contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "graph_id": {
+                        "type": "string",
+                        "description": "Stored construct-reasoning graph id to inspect."
+                    },
+                    "action_id": {
+                        "type": "string",
+                        "description": "Inspection action id from the graph's inspection_actions list."
+                    },
+                    "word_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Optional dotplot word size override."
+                    },
+                    "step_bp": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Optional dotplot step size override."
+                    },
+                    "max_mismatches": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Optional maximum mismatches per word."
+                    },
+                    "tile_bp": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Optional tile size for summary bins."
+                    },
+                    "dotplot_id": {
+                        "type": "string",
+                        "description": "Optional id for the stored dotplot view."
+                    },
+                    "render_svg_path": {
+                        "type": "string",
+                        "description": "Optional path for rendering the resulting dotplot as SVG."
+                    }
+                },
+                "required": ["graph_id", "action_id"],
+                "additionalProperties": false
+            }
+        }));
+        items.insert(
+            2,
+            json!({
+                "name": "exon_skip_plan",
+                "title": "Exon Skip Plan",
+                "description": "Build and persist an inspectable exon-skip selection plan through the shared `transcripts exon-skip-plan` shell contract.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "state_path": {
+                            "type": "string",
+                            "description": "Optional project state path. Defaults to server startup state path."
+                        },
+                        "seq_id": { "type": "string" },
+                        "transcript_feature_id": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Zero-based feature id, matching the shared shell contract."
+                        },
+                        "candidate_ids": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Candidate exon ids to mark for skipping, e.g. exon_2."
+                        },
+                        "skip_intervals_1based": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "start_1based": { "type": "integer", "minimum": 1 },
+                                    "end_1based": { "type": "integer", "minimum": 1 }
+                                },
+                                "required": ["start_1based", "end_1based"],
+                                "additionalProperties": false
+                            }
+                        },
+                        "overlap_intervals_1based": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "start_1based": { "type": "integer", "minimum": 1 },
+                                    "end_1based": { "type": "integer", "minimum": 1 }
+                                },
+                                "required": ["start_1based", "end_1based"],
+                                "additionalProperties": false
+                            }
+                        },
+                        "length_mod3_values": {
+                            "type": "array",
+                            "items": { "type": "integer", "minimum": 0, "maximum": 2 },
+                            "description": "Select candidate exons whose length modulo 3 is one of these values."
+                        },
+                        "coding_mod3_values": {
+                            "type": "array",
+                            "items": { "type": "integer", "minimum": 0, "maximum": 2 },
+                            "description": "Select candidate exons whose CDS-overlap skip length modulo 3 is one of these values."
+                        },
+                        "coding_contexts": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Select candidate exons by UTR/CDS context: utr_only, cds_only, or mixed_utr_cds."
+                        },
+                        "cds_phase_entry_kinds": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Select candidate exons by CDS entry kind: codon_boundary, split_codon_1, split_codon_2, split_codon, or unavailable."
+                        },
+                        "feature_query": {
+                            "description": "SequenceFeatureQuery object or raw JSON string; seq_id is normalized by the shell parser.",
+                            "oneOf": [
+                                { "type": "object" },
+                                { "type": "string" }
+                            ]
+                        },
+                        "plan_id": { "type": "string" }
+                    },
+                    "required": ["seq_id", "transcript_feature_id"],
+                    "additionalProperties": false
+                }
+            }),
+        );
+        items.insert(
+            3,
+            json!({
+                "name": "exon_skip_materialize",
+                "title": "Exon Skip Materialize",
+                "description": "Materialize one stored exon-skip plan through the shared `transcripts exon-skip-materialize` shell contract and optionally return caller-requested payloads.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "confirm": {
+                            "type": "boolean",
+                            "description": "Must be true because this tool creates derived sequences."
+                        },
+                        "state_path": {
+                            "type": "string",
+                            "description": "Optional project state path. Defaults to server startup state path."
+                        },
+                        "plan_id": { "type": "string" },
+                        "candidate_ids": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                        },
+                        "output_prefix": { "type": "string" },
+                        "return": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": ["genbank", "cdna_fasta", "amino_acid_sequence", "amino_acid_fasta"]
+                            },
+                            "description": "Optional payloads to include in the materialization report for chat/ClawBio handoff."
+                        }
+                    },
+                    "required": ["confirm", "plan_id"],
+                    "additionalProperties": false
+                }
+            }),
+        );
+        items.insert(
+            4,
+            json!({
+                "name": "restriction_site_detail",
+                "title": "Restriction Site Detail",
+                "description": "Return one restriction-site expert record through the shared `inspect-feature-expert ... restriction` shell contract.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "state_path": {
+                            "type": "string",
+                            "description": "Optional project state path. Defaults to server startup state path."
+                        },
+                        "seq_id": {
+                            "type": "string",
+                            "description": "Stored sequence id to inspect."
+                        },
+                        "cut_pos_1based": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "One-based top-strand cut position."
+                        },
+                        "enzyme": {
+                            "type": "string",
+                            "description": "Optional enzyme-name disambiguator."
+                        },
+                        "recognition_start_1based": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "Optional one-based recognition-site start disambiguator."
+                        },
+                        "recognition_end_1based": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "Optional one-based inclusive recognition-site end disambiguator."
+                        }
+                    },
+                    "required": ["seq_id", "cut_pos_1based"],
+                    "additionalProperties": false
+                }
+            }),
+        );
+    }
+    project_mcp_tools_from_registry(&mut tools);
+    if let Some(items) = tools.as_array_mut() {
+        annotate_tool_descriptors(items);
+    }
+    tools
 }
 
+#[doc(hidden)]
+pub fn mcp_tool_list_for_capability_surface_tests() -> Value {
+    tool_list()
+}
+
+#[doc(hidden)]
+pub fn mcp_tool_call_for_capability_surface_tests(
+    default_state_path: &str,
+    name: &str,
+    arguments: Value,
+) -> Value {
+    tool_call_result(
+        default_state_path,
+        ToolCallParams {
+            name: name.to_string(),
+            arguments,
+        },
+    )
+}
+
+#[doc(hidden)]
+pub fn mcp_jsonrpc_error_for_capability_surface_tests(
+    code: i64,
+    message: &str,
+    data: Option<Value>,
+) -> Value {
+    jsonrpc_error(None, code, message, data)
+}
+
+fn project_mcp_tools_from_registry(tools: &mut Value) {
+    let Some(items) = tools.as_array_mut() else {
+        return;
+    };
+    let registry_names =
+        gentle_protocol::capability_registry_for_adapter(gentle_protocol::CapabilityAdapter::Mcp)
+            .into_iter()
+            .filter(|descriptor| descriptor.source == CapabilitySource::McpTool)
+            .map(|descriptor| descriptor.name)
+            .collect::<std::collections::BTreeSet<_>>();
+    items.retain(|tool| {
+        tool.get("name")
+            .and_then(Value::as_str)
+            .map(|name| registry_names.contains(name))
+            .unwrap_or(false)
+    });
+    for tool in items {
+        let Some(name) = tool.get("name").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(descriptor) =
+            gentle_protocol::capability_descriptor(CapabilitySource::McpTool, name)
+        else {
+            continue;
+        };
+        if let Some(title) = &descriptor.title {
+            tool["title"] = json!(title);
+        }
+        tool["description"] = json!(descriptor.description.clone());
+    }
+}
+
+fn annotate_tool_descriptors(tools: &mut [Value]) {
+    for tool in tools {
+        let Some(tool_obj) = tool.as_object_mut() else {
+            continue;
+        };
+        let name = tool_obj
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        tool_obj.insert("mutating".to_string(), tool_mutating_descriptor(&name));
+        tool_obj.insert("outputSchema".to_string(), generic_tool_output_schema());
+        let command_paths = tool_command_paths(&name);
+        if !command_paths.is_empty() {
+            if let Some(description) = glossary_summary(command_paths[0]) {
+                tool_obj.insert("description".to_string(), Value::String(description));
+            }
+            tool_obj.insert(
+                "commandPaths".to_string(),
+                Value::Array(
+                    command_paths
+                        .iter()
+                        .map(|path| Value::String((*path).to_string()))
+                        .collect(),
+                ),
+            );
+        }
+    }
+}
+
+fn tool_mutating_descriptor(name: &str) -> Value {
+    match name {
+        "agent_preflight"
+        | "agent_models"
+        | "agent_plan"
+        | "ensembl_installable_genomes"
+        | "blast_async_start"
+        | "blast_async_status"
+        | "blast_async_cancel"
+        | "blast_async_list" => Value::String("external".to_string()),
+        "agent_execute_plan"
+        | "op"
+        | "workflow"
+        | "exon_skip_plan"
+        | "exon_skip_materialize"
+        | "construct_reasoning_run_inspection_action"
+        | "construct_reasoning_set_annotation_status"
+        | "construct_reasoning_write_annotation" => Value::Bool(true),
+        _ => Value::Bool(false),
+    }
+}
+
+fn tool_command_paths(name: &str) -> &'static [&'static str] {
+    match name {
+        "capabilities" => &["capabilities"],
+        "state_summary" => &["state-summary"],
+        "agent_systems" => &["agents list"],
+        "agent_preflight" => &["agents preflight"],
+        "agent_models" => &["agents discover-models"],
+        "agent_plan" => &["agents plan"],
+        "agent_execute_plan" => &["agents execute-plan"],
+        "op" => &["op"],
+        "workflow" => &["workflow"],
+        "help" => &["help"],
+        "reference_catalog_entries" => &["genomes list"],
+        "helper_catalog_entries" => &["helpers list"],
+        "helper_semantics_vocabulary" => &["helpers vocabulary list"],
+        "host_profile_catalog_entries" => &["hosts list"],
+        "ensembl_installable_genomes" => &["genomes ensembl-available"],
+        "construct_reasoning_graphs" => &["construct-reasoning list-graphs"],
+        "construct_reasoning_graph" => &["construct-reasoning show-graph"],
+        "construct_reasoning_inspection_actions" => {
+            &["construct-reasoning list-inspection-actions"]
+        }
+        "construct_reasoning_run_inspection_action" => {
+            &["construct-reasoning run-inspection-action"]
+        }
+        "construct_reasoning_set_annotation_status" => {
+            &["construct-reasoning set-annotation-status"]
+        }
+        "construct_reasoning_write_annotation" => &["construct-reasoning write-annotation"],
+        "ui_intents" => &["ui intents"],
+        "ui_intent" => &["ui open", "ui focus", "ui close"],
+        "ui_prepared_genomes" => &["ui prepared-genomes"],
+        "ui_latest_prepared" => &["ui latest-prepared"],
+        "blast_async_start" => &["genomes blast-start", "helpers blast-start"],
+        "blast_async_status" => &["genomes blast-status", "helpers blast-status"],
+        "blast_async_cancel" => &["genomes blast-cancel", "helpers blast-cancel"],
+        "blast_async_list" => &["genomes blast-list", "helpers blast-list"],
+        "exon_skip_plan" => &["transcripts exon-skip-plan"],
+        "exon_skip_materialize" => &["transcripts exon-skip-materialize"],
+        _ => &[],
+    }
+}
+
+fn glossary_summary(path: &str) -> Option<String> {
+    let glossary = serde_json::from_str::<Value>(include_str!("../docs/glossary.json")).ok()?;
+    glossary
+        .get("commands")?
+        .as_array()?
+        .iter()
+        .find(|entry| entry.get("path").and_then(Value::as_str) == Some(path))?
+        .get("summary")?
+        .as_str()
+        .map(ToString::to_string)
+}
+
+fn engine_error_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "code": {
+                "type": "string",
+                "enum": ["InvalidInput", "NotFound", "Unsupported", "Io", "Internal"]
+            },
+            "message": { "type": "string" },
+            "cause_chain": {
+                "type": "array",
+                "items": { "type": "string" }
+            }
+        },
+        "required": ["code", "message"],
+        "additionalProperties": false
+    })
+}
+
+fn generic_tool_output_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+            "error": engine_error_schema()
+        }
+    })
+}
 fn jsonrpc_response(id: Value, result: Value) -> Value {
     json!({
         "jsonrpc": "2.0",
@@ -831,13 +1286,25 @@ fn jsonrpc_response(id: Value, result: Value) -> Value {
 }
 
 fn jsonrpc_error(id: Option<Value>, code: i64, message: &str, data: Option<Value>) -> Value {
+    let engine_error = mcp_engine_error(jsonrpc_error_code_to_engine_error_code(code), message)
+        .with_cause(message);
+    let portable_error = engine_error.portable_payload(vec![]);
+    let mut data_value = data.unwrap_or_else(|| json!({}));
+    if let Some(obj) = data_value.as_object_mut() {
+        obj.insert("engine_error".to_string(), json!(engine_error.clone()));
+        obj.insert("error".to_string(), portable_error);
+    } else {
+        data_value = json!({
+            "details": data_value,
+            "engine_error": engine_error,
+            "error": portable_error
+        });
+    }
     let mut error = json!({
         "code": code,
         "message": message
     });
-    if let Some(data) = data {
-        error["data"] = data;
-    }
+    error["data"] = data_value;
     json!({
         "jsonrpc": "2.0",
         "id": id.unwrap_or(Value::Null),
@@ -846,6 +1313,22 @@ fn jsonrpc_error(id: Option<Value>, code: i64, message: &str, data: Option<Value
 }
 
 fn tool_result_text(text: String, format: &'static str, is_error: bool) -> Value {
+    let structured_content = if is_error {
+        json!({
+            "format": format,
+            "text": text.clone(),
+            "error": mcp_engine_error_payload(
+                classify_mcp_error_message(&text),
+                &text,
+                vec![text.clone()]
+            )
+        })
+    } else {
+        json!({
+            "format": format,
+            "text": text.clone()
+        })
+    };
     json!({
         "content": [
             {
@@ -853,16 +1336,19 @@ fn tool_result_text(text: String, format: &'static str, is_error: bool) -> Value
                 "text": text
             }
         ],
-        "structuredContent": {
-            "format": format,
-            "text": text
-        },
+        "structuredContent": structured_content,
         "isError": is_error
     })
 }
 
 fn tool_result_json(value: Value, is_error: bool) -> Value {
-    let text = serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string());
+    let structured_content = if is_error {
+        normalize_error_structured_content(value)
+    } else {
+        value
+    };
+    let text = serde_json::to_string_pretty(&structured_content)
+        .unwrap_or_else(|_| structured_content.to_string());
     json!({
         "content": [
             {
@@ -870,9 +1356,98 @@ fn tool_result_json(value: Value, is_error: bool) -> Value {
                 "text": text
             }
         ],
-        "structuredContent": value,
+        "structuredContent": structured_content,
         "isError": is_error
     })
+}
+
+fn normalize_error_structured_content(mut value: Value) -> Value {
+    if value.get("error").is_some_and(is_engine_error_payload) {
+        if let Some(error) = value.get_mut("error").and_then(Value::as_object_mut) {
+            error
+                .entry("cause_chain".to_string())
+                .or_insert_with(|| json!([]));
+        }
+        return value;
+    }
+    let message = value
+        .get("error")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .unwrap_or_else(|| {
+            serde_json::to_string(&value).unwrap_or_else(|_| "MCP tool failed".to_string())
+        });
+    let error = mcp_engine_error_payload(
+        classify_mcp_error_message(&message),
+        &message,
+        vec![message.clone()],
+    );
+    if let Some(obj) = value.as_object_mut() {
+        if let Some(raw_error) = obj.remove("error") {
+            obj.insert("raw_error".to_string(), raw_error);
+        }
+        obj.insert("error".to_string(), json!(error));
+        value
+    } else {
+        json!({
+            "error": error,
+            "value": value
+        })
+    }
+}
+
+fn is_engine_error_payload(value: &Value) -> bool {
+    let Some(obj) = value.as_object() else {
+        return false;
+    };
+    obj.get("code").and_then(Value::as_str).is_some()
+        && obj.get("message").and_then(Value::as_str).is_some()
+}
+
+fn mcp_engine_error(code: ErrorCode, message: &str) -> EngineError {
+    EngineError::new(code, message)
+}
+
+fn mcp_engine_error_payload(code: ErrorCode, message: &str, cause_chain: Vec<String>) -> Value {
+    let mut error = mcp_engine_error(code, message).with_cause("MCP adapter boundary");
+    for cause in cause_chain {
+        error = error.with_cause(cause);
+    }
+    error.portable_payload(vec![])
+}
+
+fn jsonrpc_error_code_to_engine_error_code(code: i64) -> ErrorCode {
+    match code {
+        -32600 | -32602 | -32700 => ErrorCode::InvalidInput,
+        -32601 => ErrorCode::NotFound,
+        _ => ErrorCode::Internal,
+    }
+}
+
+fn classify_mcp_error_message(message: &str) -> ErrorCode {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("not found") || lower.contains("unknown mcp tool") {
+        ErrorCode::NotFound
+    } else if lower.contains("unsupported") {
+        ErrorCode::Unsupported
+    } else if lower.contains("could not read")
+        || lower.contains("could not write")
+        || lower.contains("could not save")
+        || lower.contains("could not load")
+        || lower.contains("io error")
+    {
+        ErrorCode::Io
+    } else if lower.contains("argument")
+        || lower.contains("requires")
+        || lower.contains("invalid")
+        || lower.contains("parse")
+        || lower.contains("expected")
+        || lower.contains("refusing")
+    {
+        ErrorCode::InvalidInput
+    } else {
+        ErrorCode::Internal
+    }
 }
 
 fn parse_topic(raw: Option<&Value>) -> Result<Option<Vec<String>>, String> {
@@ -1007,6 +1582,15 @@ fn required_string_arg(args: &Map<String, Value>, key: &str) -> Result<String, S
     }
 }
 
+fn required_usize_arg(args: &Map<String, Value>, key: &str) -> Result<usize, String> {
+    match optional_usize_arg(args, key)? {
+        Some(value) => Ok(value),
+        None => Err(format!(
+            "MCP argument '{key}' is required and must be a non-negative integer"
+        )),
+    }
+}
+
 fn optional_bool_arg(args: &Map<String, Value>, key: &str) -> Result<Option<bool>, String> {
     match args.get(key) {
         None | Some(Value::Null) => Ok(None),
@@ -1073,10 +1657,90 @@ fn optional_json_string_arg(
     }
 }
 
+fn optional_string_array_arg(args: &Map<String, Value>, key: &str) -> Result<Vec<String>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(vec![]),
+        Some(Value::Array(items)) => {
+            let mut values = Vec::new();
+            for (idx, item) in items.iter().enumerate() {
+                let Value::String(raw) = item else {
+                    return Err(format!(
+                        "MCP argument '{key}[{idx}]' must be a non-empty string"
+                    ));
+                };
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    return Err(format!(
+                        "MCP argument '{key}[{idx}]' must be a non-empty string"
+                    ));
+                }
+                values.push(trimmed.to_string());
+            }
+            Ok(values)
+        }
+        Some(_) => Err(format!("MCP argument '{key}' must be a string array")),
+    }
+}
+
+fn optional_u8_array_arg(args: &Map<String, Value>, key: &str) -> Result<Vec<u8>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(vec![]),
+        Some(Value::Array(items)) => {
+            let mut values = Vec::new();
+            for (idx, item) in items.iter().enumerate() {
+                let Some(raw) = item.as_u64() else {
+                    return Err(format!(
+                        "MCP argument '{key}[{idx}]' must be a non-negative integer"
+                    ));
+                };
+                let parsed = u8::try_from(raw)
+                    .map_err(|_| format!("MCP argument '{key}[{idx}]' is out of u8 range"))?;
+                values.push(parsed);
+            }
+            Ok(values)
+        }
+        Some(_) => Err(format!("MCP argument '{key}' must be an integer array")),
+    }
+}
+
+fn optional_interval_array_arg(
+    args: &Map<String, Value>,
+    key: &str,
+) -> Result<Vec<(usize, usize)>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(vec![]),
+        Some(Value::Array(items)) => {
+            let mut intervals = Vec::new();
+            for (idx, item) in items.iter().enumerate() {
+                let Some(map) = item.as_object() else {
+                    return Err(format!("MCP argument '{key}[{idx}]' must be an object"));
+                };
+                let start = required_usize_arg(map, "start_1based")?;
+                let end = required_usize_arg(map, "end_1based")?;
+                if start == 0 || end < start {
+                    return Err(format!(
+                        "MCP argument '{key}[{idx}]' must satisfy 1 <= start_1based <= end_1based"
+                    ));
+                }
+                intervals.push((start, end));
+            }
+            Ok(intervals)
+        }
+        Some(_) => Err(format!("MCP argument '{key}' must be an array")),
+    }
+}
+
 fn append_string_flag(tokens: &mut Vec<String>, flag: &str, value: Option<String>) {
     if let Some(value) = value {
         tokens.push(flag.to_string());
         tokens.push(value);
+    }
+}
+
+fn append_usize_flag(tokens: &mut Vec<String>, flag: &str, value: Option<usize>) {
+    if let Some(value) = value {
+        tokens.push(flag.to_string());
+        tokens.push(value.to_string());
     }
 }
 
@@ -1261,6 +1925,106 @@ fn construct_reasoning_graph_tool_result(default_state_path: &str, arguments: &V
     }
 }
 
+fn construct_reasoning_inspection_actions_tool_result(
+    default_state_path: &str,
+    arguments: &Value,
+) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let graph_id = match required_string_arg(&args, "graph_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let fact_id = match optional_string_arg(&args, "fact_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let annotation_id = match optional_string_arg(&args, "annotation_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let summary_id = match optional_string_arg(&args, "summary_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec![
+        "construct-reasoning".to_string(),
+        "list-inspection-actions".to_string(),
+        graph_id,
+    ];
+    append_string_flag(&mut tokens, "--fact-id", fact_id);
+    append_string_flag(&mut tokens, "--annotation-id", annotation_id);
+    append_string_flag(&mut tokens, "--summary-id", summary_id);
+    match run_non_mutating_shell_tool(
+        default_state_path,
+        &args,
+        tokens,
+        "construct_reasoning_inspection_actions",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn construct_reasoning_run_inspection_action_tool_result(
+    default_state_path: &str,
+    arguments: &Value,
+) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let graph_id = match required_string_arg(&args, "graph_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let action_id = match required_string_arg(&args, "action_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let word_size = match optional_usize_arg(&args, "word_size") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let step_bp = match optional_usize_arg(&args, "step_bp") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let max_mismatches = match optional_usize_arg(&args, "max_mismatches") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let tile_bp = match optional_usize_arg(&args, "tile_bp") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let dotplot_id = match optional_string_arg(&args, "dotplot_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let render_svg_path = match optional_string_arg(&args, "render_svg_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec![
+        "construct-reasoning".to_string(),
+        "run-inspection-action".to_string(),
+        graph_id,
+        action_id,
+    ];
+    append_usize_flag(&mut tokens, "--word-size", word_size);
+    append_usize_flag(&mut tokens, "--step", step_bp);
+    append_usize_flag(&mut tokens, "--max-mismatches", max_mismatches);
+    append_usize_flag(&mut tokens, "--tile-bp", tile_bp);
+    append_string_flag(&mut tokens, "--id", dotplot_id);
+    append_string_flag(&mut tokens, "--render-svg", render_svg_path);
+    match run_shell_tool_with_optional_persist(
+        default_state_path,
+        &args,
+        tokens,
+        "construct_reasoning_run_inspection_action",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
 fn construct_reasoning_set_annotation_status_tool_result(
     default_state_path: &str,
     arguments: &Value,
@@ -1319,6 +2083,219 @@ fn construct_reasoning_write_annotation_tool_result(
         ],
         "construct_reasoning_write_annotation",
     ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn exon_skip_plan_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let seq_id = match required_string_arg(&args, "seq_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let transcript_feature_id = match required_usize_arg(&args, "transcript_feature_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let candidate_ids = match optional_string_array_arg(&args, "candidate_ids") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let skip_intervals = match optional_interval_array_arg(&args, "skip_intervals_1based") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let overlap_intervals = match optional_interval_array_arg(&args, "overlap_intervals_1based") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let length_mod3_values = match optional_u8_array_arg(&args, "length_mod3_values") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let coding_mod3_values = match optional_u8_array_arg(&args, "coding_mod3_values") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let coding_contexts = match optional_string_array_arg(&args, "coding_contexts") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let cds_phase_entry_kinds = match optional_string_array_arg(&args, "cds_phase_entry_kinds") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let feature_query = match optional_json_string_arg(&args, "feature_query") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let plan_id = match optional_string_arg(&args, "plan_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+
+    let mut tokens = vec![
+        "transcripts".to_string(),
+        "exon-skip-plan".to_string(),
+        seq_id,
+        "--feature-id".to_string(),
+        transcript_feature_id.to_string(),
+    ];
+    for candidate_id in candidate_ids {
+        tokens.push("--skip".to_string());
+        tokens.push(candidate_id);
+    }
+    for (start, end) in skip_intervals {
+        tokens.push("--skip".to_string());
+        tokens.push(format!("{start}..{end}"));
+    }
+    for (start, end) in overlap_intervals {
+        tokens.push("--overlap".to_string());
+        tokens.push(format!("{start}..{end}"));
+    }
+    for value in length_mod3_values {
+        tokens.push("--length-mod3".to_string());
+        tokens.push(value.to_string());
+    }
+    for value in coding_mod3_values {
+        tokens.push("--coding-mod3".to_string());
+        tokens.push(value.to_string());
+    }
+    for context in coding_contexts {
+        tokens.push("--coding-context".to_string());
+        tokens.push(context);
+    }
+    for kind in cds_phase_entry_kinds {
+        tokens.push("--phase-entry".to_string());
+        tokens.push(kind);
+    }
+    append_string_flag(&mut tokens, "--feature-query-json", feature_query);
+    append_string_flag(&mut tokens, "--plan-id", plan_id);
+    match run_shell_tool_with_optional_persist(default_state_path, &args, tokens, "exon_skip_plan")
+    {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn exon_skip_materialize_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    if let Err(err) = require_confirm_true(&args, "exon_skip_materialize") {
+        return tool_result_text(err, "text", true);
+    }
+    let plan_id = match required_string_arg(&args, "plan_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let candidate_ids = match optional_string_array_arg(&args, "candidate_ids") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let output_prefix = match optional_string_arg(&args, "output_prefix") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let return_items = match optional_string_array_arg(&args, "return") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec![
+        "transcripts".to_string(),
+        "exon-skip-materialize".to_string(),
+        plan_id,
+    ];
+    for candidate_id in candidate_ids {
+        tokens.push("--candidate-id".to_string());
+        tokens.push(candidate_id);
+    }
+    append_string_flag(&mut tokens, "--output-prefix", output_prefix);
+    for item in return_items {
+        tokens.push("--return".to_string());
+        tokens.push(item);
+    }
+    match run_shell_tool_with_optional_persist(
+        default_state_path,
+        &args,
+        tokens,
+        "exon_skip_materialize",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn restriction_site_detail_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let seq_id = match required_string_arg(&args, "seq_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let cut_pos_1based = match required_usize_arg(&args, "cut_pos_1based") {
+        Ok(value) if value > 0 => value,
+        Ok(_) => {
+            return tool_result_text(
+                "MCP argument 'cut_pos_1based' must be >= 1".to_string(),
+                "text",
+                true,
+            );
+        }
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let enzyme = match optional_string_arg(&args, "enzyme") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let recognition_start_1based = match optional_usize_arg(&args, "recognition_start_1based") {
+        Ok(Some(0)) => {
+            return tool_result_text(
+                "MCP argument 'recognition_start_1based' must be >= 1".to_string(),
+                "text",
+                true,
+            );
+        }
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let recognition_end_1based = match optional_usize_arg(&args, "recognition_end_1based") {
+        Ok(Some(0)) => {
+            return tool_result_text(
+                "MCP argument 'recognition_end_1based' must be >= 1".to_string(),
+                "text",
+                true,
+            );
+        }
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    if let (Some(start), Some(end)) = (recognition_start_1based, recognition_end_1based)
+        && start > end
+    {
+        return tool_result_text(
+            "MCP argument 'recognition_start_1based' must be <= 'recognition_end_1based'"
+                .to_string(),
+            "text",
+            true,
+        );
+    }
+
+    let mut tokens = vec![
+        "inspect-feature-expert".to_string(),
+        seq_id,
+        "restriction".to_string(),
+        cut_pos_1based.to_string(),
+    ];
+    append_string_flag(&mut tokens, "--enzyme", enzyme);
+    if let Some(value) = recognition_start_1based {
+        tokens.push("--start".to_string());
+        tokens.push(value.to_string());
+    }
+    if let Some(value) = recognition_end_1based {
+        tokens.push("--end".to_string());
+        tokens.push(value.to_string());
+    }
+    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "restriction_site_detail")
+    {
         Ok(output) => tool_result_json(output, false),
         Err(err) => tool_result_text(err, "text", true),
     }
@@ -1783,17 +2760,17 @@ fn blast_async_start_tool_result(default_state_path: &str, arguments: &Value) ->
         Ok(value) => value,
         Err(err) => return tool_result_text(err, "text", true),
     };
-    if let Some(task_value) = task.as_deref() {
-        if !matches!(task_value, "blastn-short" | "blastn") {
-            return tool_result_text(
-                format!(
-                    "MCP argument 'task' must be 'blastn-short' or 'blastn' (got '{}')",
-                    task_value
-                ),
-                "text",
-                true,
-            );
-        }
+    if let Some(task_value) = task.as_deref()
+        && !matches!(task_value, "blastn-short" | "blastn")
+    {
+        return tool_result_text(
+            format!(
+                "MCP argument 'task' must be 'blastn-short' or 'blastn' (got '{}')",
+                task_value
+            ),
+            "text",
+            true,
+        );
     }
     let options_json = match optional_json_string_arg(&args, "options_json") {
         Ok(value) => value,
@@ -1941,17 +2918,33 @@ fn ui_intent_tool_result(default_state_path: &str, arguments: &Value) -> Value {
         Ok(value) => value.to_ascii_lowercase(),
         Err(err) => return tool_result_text(err, "text", true),
     };
-    if action != "open" && action != "focus" {
-        return tool_result_text(
-            format!("MCP argument 'action' must be 'open' or 'focus' (got '{action}')"),
-            "text",
-            true,
-        );
-    }
+    let action = match UiIntentAction::parse(&action) {
+        Some(action) => action.as_str().to_string(),
+        None => {
+            return tool_result_text(
+                format!(
+                    "MCP argument 'action' must be 'open', 'focus', or 'close' (got '{action}')"
+                ),
+                "text",
+                true,
+            );
+        }
+    };
     let target = match required_string_arg(&args, "target") {
         Ok(value) => value,
         Err(err) => return tool_result_text(err, "text", true),
     };
+    if target == "sequence-window" {
+        let seq_id = match required_string_arg(&args, "seq_id") {
+            Ok(value) => value,
+            Err(err) => return tool_result_text(err, "text", true),
+        };
+        let tokens = vec!["ui".to_string(), action, target, seq_id];
+        return match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_intent") {
+            Ok(output) => tool_result_json(output, false),
+            Err(err) => tool_result_text(err, "text", true),
+        };
+    }
     let helper_mode = match optional_bool_arg(&args, "helpers") {
         Ok(value) => value.unwrap_or(false),
         Err(err) => return tool_result_text(err, "text", true),
@@ -2124,6 +3117,13 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
                 ),
             }
         }
+        "restriction_site_detail" => {
+            restriction_site_detail_tool_result(default_state_path, &params.arguments)
+        }
+        "exon_skip_plan" => exon_skip_plan_tool_result(default_state_path, &params.arguments),
+        "exon_skip_materialize" => {
+            exon_skip_materialize_tool_result(default_state_path, &params.arguments)
+        }
         "agent_systems" => agent_systems_tool_result(default_state_path, &params.arguments),
         "agent_preflight" => agent_preflight_tool_result(default_state_path, &params.arguments),
         "agent_models" => agent_models_tool_result(default_state_path, &params.arguments),
@@ -2143,6 +3143,18 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
         }
         "construct_reasoning_graph" => {
             construct_reasoning_graph_tool_result(default_state_path, &params.arguments)
+        }
+        "construct_reasoning_inspection_actions" => {
+            construct_reasoning_inspection_actions_tool_result(
+                default_state_path,
+                &params.arguments,
+            )
+        }
+        "construct_reasoning_run_inspection_action" => {
+            construct_reasoning_run_inspection_action_tool_result(
+                default_state_path,
+                &params.arguments,
+            )
         }
         "construct_reasoning_set_annotation_status" => {
             construct_reasoning_set_annotation_status_tool_result(
@@ -2313,7 +3325,7 @@ mod tests {
         dna_sequence::DNAsequence,
         engine::{
             AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
-            ConstructObjective,
+            ConstructObjective, construct_reasoning_action_dotplot_request,
         },
         engine_shell::{execute_shell_command, parse_shell_tokens},
         genomes::GenomeCatalog,
@@ -2514,6 +3526,51 @@ mod tests {
         catalog_path.to_string_lossy().to_string()
     }
 
+    fn exon_skip_mcp_test_sequence() -> DNAsequence {
+        let mut dna = DNAsequence::from_sequence("CCCAAAATGAAAGCCAAATAA").expect("valid DNA");
+        let transcript_location = gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(0, 3),
+            gb_io::seq::Location::simple_range(6, 9),
+            gb_io::seq::Location::simple_range(12, 15),
+            gb_io::seq::Location::simple_range(18, 21),
+        ]);
+        let cds_location = gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(6, 9),
+            gb_io::seq::Location::simple_range(12, 15),
+            gb_io::seq::Location::simple_range(18, 21),
+        ]);
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: transcript_location.clone(),
+            qualifiers: vec![
+                ("gene".into(), Some("toy".to_string())),
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("label".into(), Some("TX_TOY".to_string())),
+            ],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: cds_location,
+            qualifiers: vec![
+                ("gene".into(), Some("toy".to_string())),
+                ("product".into(), Some("toy protein".to_string())),
+            ],
+        });
+        dna
+    }
+
+    fn write_exon_skip_mcp_state(path: &Path) -> String {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("exon_skip_mcp".to_string(), exon_skip_mcp_test_sequence());
+        let state_path = path.to_string_lossy().to_string();
+        state
+            .save_to_path(&state_path)
+            .expect("save exon-skip state");
+        state_path
+    }
+
     #[test]
     fn read_framed_json_rejects_oversized_content_length() {
         let oversized = MAX_MCP_CONTENT_LENGTH_BYTES + 1;
@@ -2600,11 +3657,88 @@ mod tests {
             .iter()
             .map(|value| value.as_str().expect("enum string").to_string())
             .collect::<Vec<_>>();
-        let expected = UiIntentTarget::all()
+        let mut expected = UiIntentTarget::all()
             .iter()
             .map(|target| target.as_str().to_string())
             .collect::<Vec<_>>();
+        expected.push("sequence-window".to_string());
         assert_eq!(actual, expected);
+        let actual_actions = ui_intent["inputSchema"]["properties"]["action"]["enum"]
+            .as_array()
+            .expect("ui_intent action enum")
+            .iter()
+            .map(|value| value.as_str().expect("enum string").to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(actual_actions, vec!["open", "focus", "close"]);
+    }
+
+    #[test]
+    fn tools_list_includes_restriction_site_detail_schema() {
+        let tools = tool_list();
+        let restriction_detail = tools
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("restriction_site_detail"))
+            .expect("restriction_site_detail tool");
+        let required = restriction_detail["inputSchema"]["required"]
+            .as_array()
+            .expect("required fields")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+        assert!(required.contains(&"seq_id"));
+        assert!(required.contains(&"cut_pos_1based"));
+        assert_eq!(
+            restriction_detail["inputSchema"]["properties"]["cut_pos_1based"]["minimum"].as_u64(),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn tools_list_includes_exon_skip_schemas() {
+        let tools = tool_list();
+        let tools = tools.as_array().expect("tools array");
+        let plan = tools
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("exon_skip_plan"))
+            .expect("exon_skip_plan tool");
+        assert_eq!(
+            plan["inputSchema"]["properties"]["transcript_feature_id"]["minimum"].as_u64(),
+            Some(0)
+        );
+        assert_eq!(
+            plan["inputSchema"]["properties"]["length_mod3_values"]["items"]["maximum"].as_u64(),
+            Some(2)
+        );
+        assert_eq!(
+            plan["inputSchema"]["properties"]["coding_mod3_values"]["items"]["maximum"].as_u64(),
+            Some(2)
+        );
+        assert!(
+            plan["inputSchema"]["properties"]["coding_contexts"]["description"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("mixed_utr_cds")
+        );
+        assert!(
+            plan["inputSchema"]["properties"]["cds_phase_entry_kinds"]["description"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("split_codon")
+        );
+        let materialize = tools
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("exon_skip_materialize"))
+            .expect("exon_skip_materialize tool");
+        let required = materialize["inputSchema"]["required"]
+            .as_array()
+            .expect("required")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+        assert!(required.contains(&"confirm"));
+        assert!(required.contains(&"plan_id"));
     }
 
     #[test]
@@ -2808,6 +3942,115 @@ mod tests {
             }),
         );
         assert_eq!(response["result"]["structuredContent"], expected);
+    }
+
+    #[test]
+    fn mcp_exon_skip_plan_and_materialize_use_shared_shell_contract() {
+        thread::Builder::new()
+            .name("mcp-exon-skip".to_string())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let temp = tempdir().expect("tempdir");
+                let shell_state_path =
+                    write_exon_skip_mcp_state(&temp.path().join("exon_skip_shell_state.json"));
+                let mcp_state_path =
+                    write_exon_skip_mcp_state(&temp.path().join("exon_skip_mcp_state.json"));
+
+                let expected_plan = {
+                    let state =
+                        ProjectState::load_from_path(&shell_state_path).expect("load shell state");
+                    let mut engine = GentleEngine::from_state(state);
+                    let command = parse_shell_tokens(&[
+                        "transcripts".to_string(),
+                        "exon-skip-plan".to_string(),
+                        "exon_skip_mcp".to_string(),
+                        "--feature-id".to_string(),
+                        "0".to_string(),
+                        "--skip".to_string(),
+                        "exon_1".to_string(),
+                        "--plan-id".to_string(),
+                        "mcp_skip".to_string(),
+                    ])
+                    .expect("parse shell exon-skip plan");
+                    let run = execute_shell_command(&mut engine, &command).expect("execute plan");
+                    engine
+                        .state()
+                        .save_to_path(&shell_state_path)
+                        .expect("persist shell plan state");
+                    run.output
+                };
+
+                let mcp_plan = run_tool(
+                    DEFAULT_MCP_STATE_PATH,
+                    "exon_skip_plan",
+                    json!({
+                        "state_path": mcp_state_path.clone(),
+                        "seq_id": "exon_skip_mcp",
+                        "transcript_feature_id": 0,
+                        "candidate_ids": ["exon_1"],
+                        "plan_id": "mcp_skip"
+                    }),
+                );
+                assert_eq!(
+                    mcp_plan["result"]["structuredContent"]["plan"]["selected_candidate_ids"],
+                    expected_plan["plan"]["selected_candidate_ids"]
+                );
+
+                let expected_materialized = {
+                    let state = ProjectState::load_from_path(&shell_state_path)
+                        .expect("load shell state with plan");
+                    let mut engine = GentleEngine::from_state(state);
+                    let command = parse_shell_tokens(&[
+                        "transcripts".to_string(),
+                        "exon-skip-materialize".to_string(),
+                        "mcp_skip".to_string(),
+                        "--return".to_string(),
+                        "genbank".to_string(),
+                        "--return".to_string(),
+                        "amino_acid_sequence".to_string(),
+                    ])
+                    .expect("parse shell exon-skip materialize");
+                    execute_shell_command(&mut engine, &command).expect("execute materialize")
+                };
+                let mcp_materialized = run_tool(
+                    DEFAULT_MCP_STATE_PATH,
+                    "exon_skip_materialize",
+                    json!({
+                        "state_path": mcp_state_path,
+                        "plan_id": "mcp_skip",
+                        "confirm": true,
+                        "return": ["genbank", "amino_acid_sequence"]
+                    }),
+                );
+                assert_eq!(
+                    mcp_materialized
+                        .pointer("/result/isError")
+                        .and_then(Value::as_bool),
+                    Some(false)
+                );
+                assert_eq!(
+                    mcp_materialized["result"]["structuredContent"]["report"]
+                        ["skipped_candidate_ids"],
+                    expected_materialized.output["report"]["skipped_candidate_ids"]
+                );
+                let payloads =
+                    mcp_materialized["result"]["structuredContent"]["report"]["return_payloads"]
+                        .as_array()
+                        .expect("return payloads");
+                assert!(payloads.iter().any(|payload| {
+                    payload["kind"].as_str() == Some("genbank")
+                        && payload["text"]
+                            .as_str()
+                            .is_some_and(|text| text.contains("LOCUS"))
+                }));
+                assert!(payloads.iter().any(|payload| {
+                    payload["kind"].as_str() == Some("amino_acid_sequence")
+                        && payload["available"].as_bool() == Some(true)
+                }));
+            })
+            .expect("spawn mcp exon-skip test")
+            .join()
+            .expect("join mcp exon-skip test");
     }
 
     #[test]
@@ -3151,6 +4394,56 @@ mod tests {
             "--latest".to_string(),
         ]);
         assert_eq!(mcp_intent["result"]["structuredContent"], expected_intent);
+
+        let mcp_close_intent = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "ui_intent",
+            json!({
+                "action": "close",
+                "target": "pcr-design"
+            }),
+        );
+        assert_eq!(
+            mcp_close_intent
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_close_intent = run_shared_ui_command(vec![
+            "ui".to_string(),
+            "close".to_string(),
+            "pcr-design".to_string(),
+        ]);
+        assert_eq!(
+            mcp_close_intent["result"]["structuredContent"],
+            expected_close_intent
+        );
+
+        let mcp_sequence_intent = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "ui_intent",
+            json!({
+                "action": "close",
+                "target": "sequence-window",
+                "seq_id": "fus_live"
+            }),
+        );
+        assert_eq!(
+            mcp_sequence_intent
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_sequence_intent = run_shared_ui_command(vec![
+            "ui".to_string(),
+            "close".to_string(),
+            "sequence-window".to_string(),
+            "fus_live".to_string(),
+        ]);
+        assert_eq!(
+            mcp_sequence_intent["result"]["structuredContent"],
+            expected_sequence_intent
+        );
     }
 
     #[test]
@@ -3182,7 +4475,7 @@ mod tests {
     fn mcp_blast_async_status_matches_shared_shell_contract() {
         let _guard = crate::engine_shell::BLAST_ASYNC_TEST_MUTEX
             .lock()
-            .expect("blast async test mutex lock");
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         crate::engine_shell::clear_blast_async_jobs_for_test();
         let started = run_tool(
             DEFAULT_MCP_STATE_PATH,
@@ -3377,6 +4670,84 @@ mod tests {
     }
 
     #[test]
+    fn mcp_restriction_site_detail_matches_shared_shell_contract() {
+        let td = tempdir().expect("tempdir");
+        let state_path = td.path().join("restriction_site_state.json");
+        let state_path_str = state_path.to_string_lossy().to_string();
+
+        let mut dna = DNAsequence::from_sequence("AAGAATTCTT").expect("valid dna");
+        *dna.restriction_enzymes_mut() = crate::enzymes::active_restriction_enzymes();
+        dna.update_computed_features();
+        let key = dna
+            .restriction_enzyme_groups()
+            .iter()
+            .find(|(_, names)| names.iter().any(|name| name.eq_ignore_ascii_case("EcoRI")))
+            .map(|(key, _)| key.clone())
+            .expect("EcoRI site should exist");
+        let cut_pos_1based = key.pos() as usize + 1;
+        let recognition_start_1based = key.from() as usize + 1;
+        let recognition_end_1based = key.to() as usize;
+
+        let mut state = ProjectState::default();
+        state.sequences.insert("restriction_mcp".to_string(), dna);
+        state.save_to_path(&state_path_str).expect("save state");
+
+        let response = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "restriction_site_detail",
+            json!({
+                "state_path": state_path_str.clone(),
+                "seq_id": "restriction_mcp",
+                "cut_pos_1based": cut_pos_1based,
+                "enzyme": "EcoRI",
+                "recognition_start_1based": recognition_start_1based,
+                "recognition_end_1based": recognition_end_1based
+            }),
+        );
+        assert_eq!(
+            response.pointer("/result/isError").and_then(Value::as_bool),
+            Some(false)
+        );
+
+        let expected = {
+            let state = ProjectState::load_from_path(&state_path_str).expect("load state");
+            let mut engine = GentleEngine::from_state(state);
+            let command = parse_shell_tokens(&[
+                "inspect-feature-expert".to_string(),
+                "restriction_mcp".to_string(),
+                "restriction".to_string(),
+                cut_pos_1based.to_string(),
+                "--enzyme".to_string(),
+                "EcoRI".to_string(),
+                "--start".to_string(),
+                recognition_start_1based.to_string(),
+                "--end".to_string(),
+                recognition_end_1based.to_string(),
+            ])
+            .expect("parse shell restriction detail");
+            let run = execute_shell_command(&mut engine, &command)
+                .expect("execute shell restriction detail");
+            assert!(!run.state_changed);
+            run.output
+        };
+        let structured = &response["result"]["structuredContent"];
+        assert_eq!(structured, &expected);
+        assert_eq!(structured["kind"].as_str(), Some("restriction_site"));
+        let tooltip_lines = structured["data"]["tooltip_lines"]
+            .as_array()
+            .expect("tooltip lines");
+        assert!(tooltip_lines.iter().any(|line| {
+            line.as_str()
+                .is_some_and(|line| line.contains("EcoRI | 1 site | 5' overhang (4 bp)"))
+        }));
+        assert!(
+            tooltip_lines
+                .iter()
+                .any(|line| line.as_str() == Some("5' G^AATTC 3'"))
+        );
+    }
+
+    #[test]
     fn mcp_construct_reasoning_tools_match_shared_shell_contracts() {
         let td = tempdir().expect("tempdir");
         let state_path = td.path().join("construct_reasoning_state.json");
@@ -3562,6 +4933,154 @@ mod tests {
             ),
             normalize_construct_reasoning_status_output(expected_writeback)
         );
+    }
+
+    #[test]
+    fn mcp_construct_reasoning_inspection_actions_match_shared_shell_contracts() {
+        std::thread::Builder::new()
+            .name("mcp-construct-reasoning-inspection-actions-test".to_string())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let td = tempdir().expect("tempdir");
+                let state_path = td.path().join("construct_reasoning_actions_state.json");
+                let state_path_str = state_path.to_string_lossy().to_string();
+                let sequence = format!(
+                    "{}{}{}{}{}",
+                    "ACGT".repeat(12),
+                    "AAAAAAAAAAAAAA",
+                    "ATATATATATATATATATAT",
+                    "GATTACAGATTACCCGGGGATTACAGATTA",
+                    "GCGTACGCTATTTTTAGCGTACGC"
+                );
+                let mut state = ProjectState::default();
+                state.sequences.insert(
+                    "seq_reasoning_similarity_mcp".to_string(),
+                    DNAsequence::from_sequence(&sequence).expect("sequence"),
+                );
+                let mut engine = GentleEngine::from_state(state);
+                let graph = engine
+                    .build_construct_reasoning_graph("seq_reasoning_similarity_mcp", None, None)
+                    .expect("build construct-reasoning graph");
+                let repeat_fact = graph
+                    .facts
+                    .iter()
+                    .find(|fact| fact.fact_type == "repeat_architecture_context")
+                    .expect("repeat architecture fact");
+                let protocol_action = graph
+                    .inspection_actions
+                    .iter()
+                    .find(|action| {
+                        action
+                            .source_fact_ids
+                            .iter()
+                            .any(|id| id == &repeat_fact.fact_id)
+                    })
+                    .cloned()
+                    .expect("protocol inspection action");
+                let expected_dotplot_request = construct_reasoning_action_dotplot_request(
+                    &protocol_action,
+                    &graph.seq_id,
+                    sequence.len(),
+                )
+                .expect("expected MCP dotplot request");
+                engine
+                    .state()
+                    .save_to_path(&state_path_str)
+                    .expect("save state");
+
+                let mcp_list = run_tool(
+                    DEFAULT_MCP_STATE_PATH,
+                    "construct_reasoning_inspection_actions",
+                    json!({
+                        "state_path": state_path_str,
+                        "graph_id": graph.graph_id.clone(),
+                        "fact_id": repeat_fact.fact_id.clone()
+                    }),
+                );
+                assert_eq!(
+                    mcp_list.pointer("/result/isError").and_then(Value::as_bool),
+                    Some(false)
+                );
+                let expected_list = {
+                    let state = ProjectState::load_from_path(&state_path_str).expect("load state");
+                    let mut engine = GentleEngine::from_state(state);
+                    let command = parse_shell_tokens(&[
+                        "construct-reasoning".to_string(),
+                        "list-inspection-actions".to_string(),
+                        graph.graph_id.clone(),
+                        "--fact-id".to_string(),
+                        repeat_fact.fact_id.clone(),
+                    ])
+                    .expect("parse shell list-inspection-actions");
+                    execute_shell_command(&mut engine, &command)
+                        .expect("execute shell list-inspection-actions")
+                        .output
+                };
+                assert_eq!(mcp_list["result"]["structuredContent"], expected_list);
+
+                let mcp_run = run_tool(
+                    DEFAULT_MCP_STATE_PATH,
+                    "construct_reasoning_run_inspection_action",
+                    json!({
+                        "state_path": state_path_str,
+                        "graph_id": graph.graph_id.clone(),
+                        "action_id": protocol_action.action_id.clone(),
+                        "word_size": 4,
+                        "step_bp": 1,
+                        "max_mismatches": 0,
+                        "tile_bp": 128,
+                        "dotplot_id": "mcp_reasoning_action_plot"
+                    }),
+                );
+                assert_eq!(
+                    mcp_run.pointer("/result/isError").and_then(Value::as_bool),
+                    Some(false)
+                );
+                let structured = &mcp_run["result"]["structuredContent"];
+                assert_eq!(
+                    structured["schema"].as_str(),
+                    Some("gentle.construct_reasoning_inspection_action_dotplot_run.v1")
+                );
+                assert_eq!(
+                    structured["action"]["action_id"].as_str(),
+                    Some(protocol_action.action_id.as_str())
+                );
+                assert_eq!(
+                    structured["dotplot"]["dotplot_id"].as_str(),
+                    Some("mcp_reasoning_action_plot")
+                );
+                assert_eq!(
+                    structured["dotplot"]["mode"].as_str(),
+                    Some(protocol_action.mode.as_str())
+                );
+                assert_eq!(
+                    structured["compute_parameters"]["span_start_0based"].as_u64(),
+                    Some(expected_dotplot_request.span_start_0based as u64)
+                );
+                assert_eq!(
+                    structured["compute_parameters"]["span_end_0based"].as_u64(),
+                    Some(expected_dotplot_request.span_end_0based as u64)
+                );
+                assert_eq!(
+                    structured["dotplot"]["span_start_0based"].as_u64(),
+                    Some(expected_dotplot_request.span_start_0based as u64)
+                );
+                assert_eq!(
+                    structured["dotplot"]["span_end_0based"].as_u64(),
+                    Some(expected_dotplot_request.span_end_0based as u64)
+                );
+                let state = ProjectState::load_from_path(&state_path_str).expect("load run state");
+                let engine = GentleEngine::from_state(state);
+                assert!(
+                    engine
+                        .list_dotplot_views(Some("seq_reasoning_similarity_mcp"))
+                        .iter()
+                        .any(|view| view.dotplot_id == "mcp_reasoning_action_plot")
+                );
+            })
+            .expect("spawn MCP construct-reasoning inspection action test")
+            .join()
+            .expect("MCP construct-reasoning inspection action test");
     }
 
     #[test]

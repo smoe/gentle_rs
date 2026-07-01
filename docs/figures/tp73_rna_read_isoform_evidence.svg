@@ -1,0 +1,789 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 1600 920"
+   role="img"
+   aria-labelledby="title desc"
+   version="1.1"
+   id="svg62"
+   sodipodi:docname="tp73_rna_read_isoform_evidence.svg"
+   inkscape:version="1.3 (0e150ed, 2023-07-21)"
+   inkscape:export-filename="tp73_rna_read_isoform_evidence.png"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview62"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="0.45014485"
+     inkscape:cx="800.85332"
+     inkscape:cy="460.96273"
+     inkscape:window-width="1440"
+     inkscape:window-height="822"
+     inkscape:window-x="0"
+     inkscape:window-y="30"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg62" />
+  <title
+     id="title">GENtle TP73 RNA-read isoform evidence workflow</title>
+  <desc
+     id="desc">Compact grant-style schematic showing GENtle screening nanopore cDNA or RNA-seq reads against TP73 transcript templates, retaining candidate fragments, aligning them, and marking exon-transition evidence that supports TP73 isoform classes.</desc>
+  <defs
+     id="defs4">
+    <linearGradient
+       id="heroGlow"
+       x1="-0.81023977"
+       y1="-1.2342026"
+       x2="-0.81023977"
+       y2="211.04862"
+       gradientTransform="matrix(1.2342026,0,0,0.81023977,650,156)"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0%"
+         stop-color="#eef7f9"
+         id="stop1" />
+      <stop
+         offset="100%"
+         stop-color="#fbfdfe"
+         id="stop2" />
+    </linearGradient>
+    <linearGradient
+       id="panelWash"
+       x1="-3.2596944"
+       y1="-4.965349"
+       x2="850.78027"
+       y2="849.07462"
+       gradientTransform="matrix(1.7226721,0,0,0.58049353,70,350)"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0%"
+         stop-color="#f8fbfd"
+         id="stop3" />
+      <stop
+         offset="100%"
+         stop-color="#fdfdfd"
+         id="stop4" />
+    </linearGradient>
+    <filter
+       id="shadow"
+       x="-0.0038461538"
+       y="-0.0058823529"
+       width="1.0076923"
+       height="1.0117647">
+      <feDropShadow
+         dx="0"
+         dy="10"
+         stdDeviation="12"
+         flood-color="#20343c"
+         flood-opacity="0.12" />
+    </filter>
+    <marker
+       id="arrow"
+       viewBox="0 0 10 10"
+       refX="9"
+       refY="5"
+       markerWidth="9"
+       markerHeight="9"
+       orient="auto-start-reverse">
+      <path
+         d="M 0 0 L 10 5 L 0 10 z"
+         fill="#57737c"
+         id="path4" />
+    </marker>
+    <style
+       id="style4">&#10;      text { font-family: &quot;Avenir Next&quot;, &quot;Segoe UI&quot;, &quot;Helvetica Neue&quot;, Arial, sans-serif; fill: #17343a; }&#10;      .title { font-size: 38px; font-weight: 800; }&#10;      .subtitle { font-size: 18px; fill: #54717a; }&#10;      .section { font-size: 15px; font-weight: 800; letter-spacing: 0.12em; fill: #6d868d; }&#10;      .card-title { font-size: 22px; font-weight: 800; }&#10;      .copy { font-size: 16px; fill: #36535b; }&#10;      .small { font-size: 13px; fill: #607b82; }&#10;      .micro { font-size: 12px; fill: #6f878e; }&#10;      .card { fill: #ffffff; stroke: #d6e3e7; stroke-width: 2; filter: url(#shadow); }&#10;      .hero { fill: url(#heroGlow); stroke: #98bdc7; stroke-width: 2; filter: url(#shadow); }&#10;      .panel { fill: url(#panelWash); stroke: #d6e3e7; stroke-width: 2; filter: url(#shadow); }&#10;      .blue { fill: #e7f1ff; stroke: #b8cdea; stroke-width: 1.5; }&#10;      .teal { fill: #e3f4f4; stroke: #9ecfcb; stroke-width: 1.5; }&#10;      .warm { fill: #fff3e1; stroke: #e8c48b; stroke-width: 1.5; }&#10;      .green { fill: #e9f8ed; stroke: #abd6b2; stroke-width: 1.5; }&#10;      .line { fill: none; stroke: #57737c; stroke-width: 4; stroke-linecap: round; marker-end: url(#arrow); }&#10;      .guide { fill: none; stroke: #8da6ae; stroke-width: 2; stroke-linecap: round; }&#10;      .read-wire { fill: none; stroke: #869fa7; stroke-width: 3; stroke-linecap: round; }&#10;      .read-marked { fill: none; stroke-width: 8; stroke-linecap: round; }&#10;      .chip { stroke-width: 1.5; }&#10;      .row-line { fill: none; stroke: #aac0c6; stroke-width: 5; stroke-linecap: round; }&#10;      .row-label { font-size: 15px; font-weight: 800; }&#10;      .legend-dot { stroke: #ffffff; stroke-width: 2; }&#10;    </style>
+  </defs>
+  <rect
+     x="0"
+     y="0"
+     width="1600"
+     height="920"
+     fill="#ffffff"
+     id="rect4" />
+  <rect
+     x="24"
+     y="24"
+     width="1552"
+     height="872"
+     rx="26"
+     fill="#f9fbfc"
+     stroke="#dce6e9"
+     id="rect5" />
+  <text
+     x="72"
+     y="86"
+     class="title"
+     id="text5">GENtle extracts TP73 isoform evidence from RNA reads</text>
+  <text
+     x="72"
+     y="122"
+     class="subtitle"
+     id="text6">Seed filter -&gt; retained-read alignment -&gt; exon-transition evidence</text>
+  <g
+     transform="translate(70,156)"
+     id="g11">
+    <rect
+       class="card blue"
+       x="0"
+       y="0"
+       width="260"
+       height="170"
+       rx="26"
+       id="rect6" />
+    <text
+       x="24"
+       y="40"
+       class="section"
+       id="text7">INPUT</text>
+    <text
+       x="24"
+       y="76"
+       class="card-title"
+       id="text8">Nanopore / RNA-seq</text>
+    <text
+       x="24"
+       y="114"
+       class="copy"
+       id="text9">Full reads in</text>
+    <text
+       x="24"
+       y="140"
+       class="small"
+       id="text10">orientation-normalized if needed</text>
+    <path
+       d="m 36,128 c 36,-18 62,22 96,4 34,-18 60,-18 96,4"
+       class="read-wire"
+       id="path10" />
+    <path
+       d="m 36,144 c 36,-18 68,20 102,3 34,-17 58,-17 90,5"
+       class="read-wire"
+       id="path11" />
+  </g>
+  <g
+     transform="translate(360,156)"
+     id="g15">
+    <rect
+       class="card teal"
+       x="0"
+       y="0"
+       width="260"
+       height="170"
+       rx="26"
+       id="rect11" />
+    <text
+       x="24"
+       y="40"
+       class="section"
+       id="text11">SCOPE</text>
+    <text
+       x="24"
+       y="76"
+       class="card-title"
+       id="text12">TP73 templates</text>
+    <text
+       x="24"
+       y="114"
+       class="copy"
+       id="text13">Admitted transcript set</text>
+    <text
+       x="24"
+       y="140"
+       class="small"
+       id="text14">single-gene or sparse family-aware</text>
+    <path
+       d="m 38,132 h 50 l 28,-16 h 46 l 32,16 h 32"
+       class="guide"
+       id="path14" />
+    <path
+       d="m 38,148 h 54 26 46 l 30,-16 h 32"
+       class="guide"
+       id="path15" />
+  </g>
+  <rect
+     class="hero"
+     x="650"
+     y="156"
+     width="260"
+     height="170"
+     rx="26"
+     id="rect15"
+     style="fill:url(#heroGlow)" />
+  <text
+     x="674"
+     y="196"
+     class="section"
+     id="text15">PHASE 1</text>
+  <text
+     x="674"
+     y="232"
+     class="card-title"
+     id="text16">Seed filter</text>
+  <text
+     x="674"
+     y="270"
+     class="copy"
+     id="text17">10-mers + support + transitions</text>
+  <text
+     x="674"
+     y="296"
+     class="small"
+     id="text18">retain seed-passed and rescued rows</text>
+  <g
+     id="g63"
+     transform="translate(4)">
+    <path
+       d="m 834,192 h 38 l -18,30 z"
+       fill="#0f5964"
+       opacity="0.85"
+       id="path18" />
+    <path
+       d="m 842,218 h 24 l -8,28 h -8 z"
+       fill="#0f5964"
+       opacity="0.65"
+       id="path19" />
+  </g>
+  <g
+     id="g62">
+    <rect
+       class="card warm"
+       x="940"
+       y="156"
+       width="260"
+       height="170"
+       rx="26"
+       id="rect19" />
+    <text
+       x="964"
+       y="196"
+       class="section"
+       id="text19">PHASE 2</text>
+    <text
+       x="964"
+       y="232"
+       class="card-title"
+       id="text20">Best alignment</text>
+    <text
+       x="964"
+       y="270"
+       class="copy"
+       id="text21">Retained fragments only</text>
+    <text
+       x="964"
+       y="296"
+       class="small"
+       id="text22">identity, coverage, template offsets</text>
+    <rect
+       x="968"
+       y="302"
+       width="56"
+       height="14"
+       rx="7"
+       fill="#84c9bf"
+       id="rect22" />
+    <rect
+       x="1046"
+       y="302"
+       width="42"
+       height="14"
+       rx="7"
+       fill="#f1b16d"
+       id="rect23" />
+    <rect
+       x="1110"
+       y="302"
+       width="64"
+       height="14"
+       rx="7"
+       fill="#8caee2"
+       id="rect24" />
+  </g>
+  <g
+     transform="translate(1230,156)"
+     id="g29">
+    <rect
+       class="card green"
+       x="0"
+       y="0"
+       width="300"
+       height="170"
+       rx="26"
+       id="rect25" />
+    <text
+       x="24"
+       y="40"
+       class="section"
+       id="text25">OUTPUT</text>
+    <text
+       x="24"
+       y="76"
+       class="card-title"
+       id="text26">Isoform evidence</text>
+    <text
+       x="24"
+       y="114"
+       class="copy"
+       id="text27">assigned fragments</text>
+    <text
+       x="24"
+       y="136"
+       class="copy"
+       id="text28">isoform ranking</text>
+    <text
+       x="24"
+       y="158"
+       class="copy"
+       id="text29">transition support</text>
+  </g>
+  <path
+     d="m 330,241 h 30"
+     class="line"
+     id="path29" />
+  <path
+     d="m 620,241 h 30"
+     class="line"
+     id="path30" />
+  <path
+     d="m 910,241 h 30"
+     class="line"
+     id="path31" />
+  <path
+     d="m 1200,241 h 30"
+     class="line"
+     id="path32" />
+  <rect
+     class="panel"
+     x="70"
+     y="350"
+     width="1460"
+     height="490"
+     rx="30"
+     id="rect32"
+     style="fill:url(#panelWash)" />
+  <text
+     x="104"
+     y="394"
+     class="section"
+     id="text32">TP73 TERMINAL-CLASS EXAMPLE</text>
+  <text
+     x="104"
+     y="428"
+     class="card-title"
+     id="text33">Characteristic exon transitions separate TP73 isoform classes</text>
+  <rect
+     class="blue"
+     x="106.03252"
+     y="466.03253"
+     width="889.95831"
+     height="326.59305"
+     rx="23.998875"
+     id="rect33" />
+  <text
+     x="132"
+     y="500"
+     class="section"
+     id="text34">CHARACTERISTIC TP73 TRANSITIONS</text>
+  <text
+     x="132"
+     y="526"
+     class="small"
+     id="text35">Colors mark direct exon-transition classes</text>
+  <g
+     transform="translate(132,560)"
+     id="g52">
+    <text
+       x="0"
+       y="22"
+       class="row-label"
+       id="text36">alpha</text>
+    <path
+       d="M 106,16 H 244"
+       class="row-line"
+       id="path36" />
+    <rect
+       x="244"
+       y="2"
+       width="112"
+       height="28"
+       rx="14"
+       fill="#e5f0ff"
+       stroke="#b8cdea"
+       class="chip"
+       id="rect36" />
+    <text
+       x="260"
+       y="21"
+       class="micro"
+       id="text37">alpha/beta</text>
+    <path
+       d="M 356,16 H 482"
+       class="row-line"
+       id="path37" />
+    <rect
+       x="482"
+       y="2"
+       width="164"
+       height="28"
+       rx="14"
+       fill="#e7f8ef"
+       stroke="#abd6b2"
+       class="chip"
+       id="rect37" />
+    <text
+       x="498"
+       y="21"
+       class="micro"
+       id="text38">alpha/gamma/zeta</text>
+    <path
+       d="M 646,16 H 788"
+       class="row-line"
+       id="path38" />
+    <text
+       x="0"
+       y="60"
+       class="row-label"
+       id="text39">beta</text>
+    <path
+       d="M 106,54 H 244"
+       class="row-line"
+       id="path39" />
+    <rect
+       x="244"
+       y="40"
+       width="112"
+       height="28"
+       rx="14"
+       fill="#e5f0ff"
+       stroke="#b8cdea"
+       class="chip"
+       id="rect39" />
+    <text
+       x="260"
+       y="59"
+       class="micro"
+       id="text40">alpha/beta</text>
+    <path
+       d="M 356,54 H 482"
+       class="row-line"
+       id="path40" />
+    <rect
+       x="482"
+       y="40"
+       width="124"
+       height="28"
+       rx="14"
+       fill="#fff3e1"
+       stroke="#e8c48b"
+       class="chip"
+       id="rect40" />
+    <text
+       x="498"
+       y="59"
+       class="micro"
+       id="text41">beta/epsilon</text>
+    <path
+       d="M 606,54 H 788"
+       class="row-line"
+       id="path41" />
+    <text
+       x="0"
+       y="98"
+       class="row-label"
+       id="text42">gamma</text>
+    <path
+       d="M 106,92 H 216"
+       class="row-line"
+       id="path42" />
+    <rect
+       x="216"
+       y="78"
+       width="142"
+       height="28"
+       rx="14"
+       fill="#fff0ec"
+       stroke="#e7b7aa"
+       class="chip"
+       id="rect42" />
+    <text
+       x="232"
+       y="97"
+       class="micro"
+       id="text43">gamma/epsilon</text>
+    <path
+       d="M 358,92 H 482"
+       class="row-line"
+       id="path43" />
+    <rect
+       x="482"
+       y="78"
+       width="164"
+       height="28"
+       rx="14"
+       fill="#e7f8ef"
+       stroke="#abd6b2"
+       class="chip"
+       id="rect43" />
+    <text
+       x="498"
+       y="97"
+       class="micro"
+       id="text44">alpha/gamma/zeta</text>
+    <path
+       d="M 646,92 H 788"
+       class="row-line"
+       id="path44" />
+    <text
+       x="0"
+       y="136"
+       class="row-label"
+       id="text45">delta</text>
+    <path
+       d="M 106,130 H 320"
+       class="row-line"
+       id="path45" />
+    <rect
+       x="320"
+       y="116"
+       width="82"
+       height="28"
+       rx="14"
+       fill="#f8e8ff"
+       stroke="#d0ade6"
+       class="chip"
+       id="rect45" />
+    <text
+       x="341"
+       y="135"
+       class="micro"
+       id="text46">delta</text>
+    <path
+       d="M 402,130 H 788"
+       class="row-line"
+       id="path46" />
+    <text
+       x="0"
+       y="174"
+       class="row-label"
+       id="text47">epsilon</text>
+    <path
+       d="M 106,168 H 216"
+       class="row-line"
+       id="path47" />
+    <rect
+       x="216"
+       y="154"
+       width="142"
+       height="28"
+       rx="14"
+       fill="#fff0ec"
+       stroke="#e7b7aa"
+       class="chip"
+       id="rect47" />
+    <text
+       x="232"
+       y="173"
+       class="micro"
+       id="text48">gamma/epsilon</text>
+    <path
+       d="M 358,168 H 482"
+       class="row-line"
+       id="path48" />
+    <rect
+       x="482"
+       y="154"
+       width="124"
+       height="28"
+       rx="14"
+       fill="#fff3e1"
+       stroke="#e8c48b"
+       class="chip"
+       id="rect48" />
+    <text
+       x="498"
+       y="173"
+       class="micro"
+       id="text49">beta/epsilon</text>
+    <path
+       d="M 606,168 H 788"
+       class="row-line"
+       id="path49" />
+    <text
+       x="0"
+       y="212"
+       class="row-label"
+       id="text50">zeta</text>
+    <path
+       d="M 106,206 H 288"
+       class="row-line"
+       id="path50" />
+    <rect
+       x="288"
+       y="192"
+       width="72"
+       height="28"
+       rx="14"
+       fill="#e7f4f8"
+       stroke="#a4cad4"
+       class="chip"
+       id="rect50" />
+    <text
+       x="309"
+       y="211"
+       class="micro"
+       id="text51">zeta</text>
+    <path
+       d="M 360,206 H 482"
+       class="row-line"
+       id="path51" />
+    <rect
+       x="482"
+       y="192"
+       width="164"
+       height="28"
+       rx="14"
+       fill="#e7f8ef"
+       stroke="#abd6b2"
+       class="chip"
+       id="rect51" />
+    <text
+       x="498"
+       y="211"
+       class="micro"
+       id="text52">alpha/gamma/zeta</text>
+    <path
+       d="M 646,206 H 788"
+       class="row-line"
+       id="path52" />
+  </g>
+  <rect
+     class="warm"
+     x="1019.9897"
+     y="466.03253"
+     width="473.97778"
+     height="326.59305"
+     rx="23.998875"
+     id="rect52" />
+  <text
+     x="1046"
+     y="500"
+     class="section"
+     id="text53">RETAINED FRAGMENTS AFTER PHASE 2</text>
+  <text
+     x="1046"
+     y="526"
+     class="small"
+     id="text54">Star = characteristic transition observed</text>
+  <text
+     x="1030.2279"
+     y="583.7785"
+     class="row-label"
+     id="text55">alpha-like fragment</text>
+  <path
+     d="m 1214.2279,577.77849 h 198"
+     stroke="#58b8b0"
+     class="read-marked"
+     id="path55" />
+  <polygon
+     points="267,30 257,39 259,52 248,45 237,52 239,39 229,30 242,28 248,16 254,28 "
+     fill="#58b8b0"
+     id="polygon55"
+     transform="translate(1030.2279,561.77849)" />
+  <polygon
+     points="493,30 483,39 485,52 474,45 463,52 465,39 455,30 468,28 474,16 480,28 "
+     fill="#58b8b0"
+     id="polygon56"
+     transform="translate(914.2279,561.77849)" />
+  <text
+     x="1030.2279"
+     y="607.7785"
+     class="micro"
+     id="text56">two characteristic transitions</text>
+  <text
+     x="1030.2279"
+     y="651.7785"
+     class="row-label"
+     id="text57">epsilon-like fragment</text>
+  <g
+     id="g64"
+     transform="translate(26)">
+    <path
+       d="m 1190.2279,645.77849 h 194"
+       stroke="#f09d54"
+       class="read-marked"
+       id="path57" />
+    <polygon
+       points="215,107 205,98 218,96 224,84 230,96 243,98 233,107 235,120 224,113 213,120 "
+       fill="#f09d54"
+       id="polygon57"
+       transform="translate(1030.2279,561.77849)" />
+    <polygon
+       points="438,113 427,120 429,107 419,98 432,96 438,84 444,96 457,98 447,107 449,120 "
+       fill="#f09d54"
+       id="polygon58"
+       transform="translate(914.2279,561.77849)" />
+  </g>
+  <text
+     x="1030.2279"
+     y="675.7785"
+     class="micro"
+     id="text58">gamma/epsilon + beta/epsilon</text>
+  <text
+     x="1030.2279"
+     y="719.7785"
+     class="row-label"
+     id="text59">delta-like fragment</text>
+  <path
+     d="m 1238.2279,713.77849 h 138"
+     stroke="#bc7ae6"
+     class="read-marked"
+     id="path59" />
+  <polygon
+     points="319,166 309,175 311,188 300,181 289,188 291,175 281,166 294,164 300,152 306,164 "
+     fill="#bc7ae6"
+     id="polygon59"
+     transform="translate(1030.2279,561.77849)" />
+  <text
+     x="1030.2279"
+     y="743.7785"
+     class="micro"
+     id="text60">single delta transition</text>
+  <rect
+     class="teal"
+     x="106"
+     y="810"
+     width="1388"
+     height="38"
+     rx="18"
+     id="rect60" />
+  <circle
+     cx="142"
+     cy="827"
+     r="11"
+     fill="#58b8b0"
+     class="legend-dot"
+     id="circle60" />
+  <text
+     x="164"
+     y="832"
+     class="copy"
+     id="text61">star = characteristic transition observed</text>
+  <circle
+     cx="586"
+     cy="827"
+     r="11"
+     fill="#8fa5ad"
+     class="legend-dot"
+     id="circle61" />
+  <text
+     x="608"
+     y="832"
+     class="copy"
+     id="text62">no star = assigned fragment only</text>
+</svg>

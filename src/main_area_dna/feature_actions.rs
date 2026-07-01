@@ -53,6 +53,8 @@ impl MainAreaDna {
         );
         self.splicing_expert_window_feature_id = Some(view.target_feature_id);
         self.splicing_expert_window_view = Some(Arc::new(view.clone()));
+        self.splicing_exon_skip_selected_candidate_ids.clear();
+        self.splicing_exon_skip_plan = None;
         self.splicing_expert_window_pending_initial_render = true;
         self.splicing_expert_window_focus_requested = true;
         self.show_splicing_expert_window = true;
@@ -77,7 +79,8 @@ impl MainAreaDna {
                 egui::Order::Foreground,
                 embedded_window_id,
             ));
-            ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, embedded_window_id));
+            ctx.request_repaint();
+            return;
         }
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);

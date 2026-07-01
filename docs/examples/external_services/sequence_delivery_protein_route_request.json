@@ -1,0 +1,24 @@
+{
+  "schema": "gentle.external_service_delivery_route_request.v1",
+  "source_target": {
+    "kind": "inline_protein",
+    "name": "DEMO_DO_NOT_ORDER_delivery_route_protein_product",
+    "protein_sequence": "MSEQUENCEK",
+    "note": "Synthetic tutorial input for routing a protein product delivery request."
+  },
+  "return_spec": {
+    "requested_payloads": [
+      "amino_acid_sequence",
+      "quote_metadata",
+      "handoff_bundle"
+    ],
+    "inline_max_bytes": 20000,
+    "redact_commercial_fields": true,
+    "prefer_artifact_bundle": true
+  },
+  "request_metadata": {
+    "tutorial": true,
+    "human_review_only": true,
+    "prompt_example": "I want that protein sequence delivered."
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "schema": "gentle.ortholog_resource.v1",
+  "id": "synthetic_tp73_promoter_orthologs",
+  "label": "Synthetic TP73 promoter ortholog tutorial resource",
+  "species_aliases": [
+    {
+      "species": "Homo sapiens",
+      "aliases": ["human", "Human"]
+    },
+    {
+      "species": "Mus musculus",
+      "aliases": ["mouse", "Mouse"]
+    },
+    {
+      "species": "Rattus norvegicus",
+      "aliases": ["rat", "Rat"]
+    }
+  ],
+  "rows": [
+    {
+      "source_species": "Homo sapiens",
+      "source_gene_symbol": "TP73",
+      "target_species": "Mus musculus",
+      "target_gene_symbol": "Trp73",
+      "orthology_type": "synthetic_ortholog",
+      "confidence": "tutorial",
+      "source": "hand-crafted offline tutorial fixture",
+      "evidence": ["synthetic mapping for deterministic promoter comparison"]
+    },
+    {
+      "source_species": "Homo sapiens",
+      "source_gene_symbol": "TP73",
+      "target_species": "Rattus norvegicus",
+      "target_gene_symbol": "Tp73",
+      "orthology_type": "synthetic_ortholog",
+      "confidence": "tutorial",
+      "source": "hand-crafted offline tutorial fixture",
+      "evidence": ["synthetic mapping for deterministic promoter comparison"]
+    },
+    {
+      "source_species": "Homo sapiens",
+      "source_gene_symbol": "E2F1",
+      "target_species": "Mus musculus",
+      "target_gene_symbol": "E2f1",
+      "orthology_type": "synthetic_ortholog",
+      "confidence": "tutorial",
+      "source": "hand-crafted offline tutorial fixture",
+      "evidence": ["second row keeps the local resource multi-gene"]
+    },
+    {
+      "source_species": "Homo sapiens",
+      "source_gene_symbol": "E2F1",
+      "target_species": "Rattus norvegicus",
+      "target_gene_symbol": "E2f1",
+      "orthology_type": "synthetic_ortholog",
+      "confidence": "tutorial",
+      "source": "hand-crafted offline tutorial fixture",
+      "evidence": ["second row keeps the local resource multi-gene"]
+    }
+  ],
+  "warnings": [
+    "Synthetic tutorial-only ortholog mappings; use reviewed ortholog resources for biological analysis."
+  ]
+}
+

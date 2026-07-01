@@ -1,0 +1,341 @@
+{
+  "schema": "gentle.ortholog_promoter_comparison.v1",
+  "generated_at_unix_ms": 0,
+  "op_id": "op-7",
+  "run_id": "example_promoter_gene_set_ortholog_cohort_offline",
+  "cohort": {
+    "schema": "gentle.ortholog_promoter_cohort.v1",
+    "generated_at_unix_ms": 0,
+    "op_id": "op-6",
+    "run_id": "example_promoter_gene_set_ortholog_cohort_offline",
+    "request": {
+      "anchor_species": "Homo sapiens",
+      "anchor_genome_id": "HumanPromoterToy",
+      "anchor_gene_query": "TP73",
+      "target_species": [
+        "Mus musculus",
+        "Rattus norvegicus"
+      ],
+      "target_genome_ids": {
+        "Mus musculus": "MousePromoterToy",
+        "Rattus norvegicus": "RatPromoterToy"
+      },
+      "transcript_ids": {
+        "Homo sapiens": "TX_TP73_HUMAN",
+        "Mus musculus": "TX_TRP73_MOUSE",
+        "Rattus norvegicus": "TX_TP73_RAT"
+      },
+      "ortholog_resource_path": "./docs/examples/assets/promoter_cohort_ortholog_demo/ortholog_resource.json",
+      "upstream_bp": 40,
+      "downstream_bp": 10,
+      "ambiguity_policy": "reject",
+      "relationship": "co_regulated"
+    },
+    "ortholog_resource_label": "Synthetic TP73 promoter ortholog tutorial resource",
+    "resolved_promoter_count": 3,
+    "unresolved_count": 0,
+    "rows": [
+      {
+        "species": "Homo sapiens",
+        "genome_id": "HumanPromoterToy",
+        "role": "anchor",
+        "gene_query": "TP73",
+        "gene_symbol": "TP73",
+        "gene_id": "GENE_TP73",
+        "transcript_id_requested": "TX_TP73_HUMAN",
+        "transcript_id": "TX_TP73_HUMAN",
+        "display_label": "TP73",
+        "chromosome": "chrToyHuman",
+        "strand": "+",
+        "promoter_start_1based": 111,
+        "promoter_end_1based": 161,
+        "promoter_length_bp": 51,
+        "tss_1based": 151,
+        "tss_position_0based": 40,
+        "sequence_orientation": "transcription_aligned",
+        "promoter_sequence": "GGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGGAAAAAA",
+        "orthology_evidence": [],
+        "warnings": []
+      },
+      {
+        "species": "Mus musculus",
+        "genome_id": "MousePromoterToy",
+        "role": "target",
+        "gene_query": "Trp73",
+        "gene_symbol": "Trp73",
+        "gene_id": "GENE_TRP73",
+        "transcript_id_requested": "TX_TRP73_MOUSE",
+        "transcript_id": "TX_TRP73_MOUSE",
+        "display_label": "Trp73",
+        "chromosome": "chrToyMouse",
+        "strand": "+",
+        "promoter_start_1based": 111,
+        "promoter_end_1based": 161,
+        "promoter_length_bp": 51,
+        "tss_1based": 151,
+        "tss_position_0based": 40,
+        "sequence_orientation": "transcription_aligned",
+        "promoter_sequence": "ATATATATATATATATATATATATATATATATATATATATATATATATATA",
+        "orthology_type": "synthetic_ortholog",
+        "confidence": "tutorial",
+        "orthology_source": "hand-crafted offline tutorial fixture",
+        "orthology_evidence": [
+          "synthetic mapping for deterministic promoter comparison"
+        ],
+        "warnings": []
+      },
+      {
+        "species": "Rattus norvegicus",
+        "genome_id": "RatPromoterToy",
+        "role": "target",
+        "gene_query": "Tp73",
+        "gene_symbol": "Tp73",
+        "gene_id": "GENE_TP73_RAT",
+        "transcript_id_requested": "TX_TP73_RAT",
+        "transcript_id": "TX_TP73_RAT",
+        "display_label": "Tp73",
+        "chromosome": "chrToyRat",
+        "strand": "+",
+        "promoter_start_1based": 111,
+        "promoter_end_1based": 161,
+        "promoter_length_bp": 51,
+        "tss_1based": 151,
+        "tss_position_0based": 40,
+        "sequence_orientation": "transcription_aligned",
+        "promoter_sequence": "GGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGGAAAAAA",
+        "orthology_type": "synthetic_ortholog",
+        "confidence": "tutorial",
+        "orthology_source": "hand-crafted offline tutorial fixture",
+        "orthology_evidence": [
+          "synthetic mapping for deterministic promoter comparison"
+        ],
+        "warnings": []
+      }
+    ],
+    "unresolved_rows": [],
+    "relationship": "co_regulated",
+    "relationship_flags": [
+      {
+        "flag_kind": "unexpected_divergence",
+        "evidence_kind": "tfbs_score_track_similarity",
+        "member_symbols": [
+          "Homo sapiens: TP73",
+          "Mus musculus: Trp73"
+        ],
+        "member_dedup_keys": [
+          "ortholog:homosapiens:tp73",
+          "ortholog:musmusculus:trp73"
+        ],
+        "detail": "Declared co-regulated ortholog promoter cohort, but 'TP73' (Homo sapiens) and 'Trp73' (Mus musculus) have low mean smoothed TFBS-track Spearman similarity (+0.000; threshold < +0.25). This is an evidence-triage flag, not a regulatory verdict."
+      },
+      {
+        "flag_kind": "unexpected_divergence",
+        "evidence_kind": "tfbs_score_track_similarity",
+        "member_symbols": [
+          "Mus musculus: Trp73",
+          "Rattus norvegicus: Tp73"
+        ],
+        "member_dedup_keys": [
+          "ortholog:musmusculus:trp73",
+          "ortholog:rattusnorvegicus:tp73"
+        ],
+        "detail": "Declared co-regulated ortholog promoter cohort, but 'Trp73' (Mus musculus) and 'Tp73' (Rattus norvegicus) have low mean smoothed TFBS-track Spearman similarity (+0.000; threshold < +0.25). This is an evidence-triage flag, not a regulatory verdict."
+      }
+    ],
+    "warnings": [
+      "Synthetic tutorial-only ortholog mappings; use reviewed ortholog resources for biological analysis."
+    ]
+  },
+  "motifs_requested": [
+    "SP1"
+  ],
+  "score_kind": "llr_background_tail_log10",
+  "clip_negative": true,
+  "promoter_summaries": [
+    {
+      "species": "Homo sapiens",
+      "gene_label": "TP73",
+      "transcript_id": "TX_TP73_HUMAN",
+      "tf_id": "MA0079.5",
+      "tf_name": "SP1",
+      "max_score": 5.418539921951662,
+      "peak_position_0based": 0,
+      "peak_position_promoter_relative_bp": -40,
+      "peak_genomic_position_1based": 111,
+      "positive_fraction": 0.6744186046511628
+    },
+    {
+      "species": "Mus musculus",
+      "gene_label": "Trp73",
+      "transcript_id": "TX_TRP73_MOUSE",
+      "tf_id": "MA0079.5",
+      "tf_name": "SP1",
+      "max_score": 0.0,
+      "positive_fraction": 0.0
+    },
+    {
+      "species": "Rattus norvegicus",
+      "gene_label": "Tp73",
+      "transcript_id": "TX_TP73_RAT",
+      "tf_id": "MA0079.5",
+      "tf_name": "SP1",
+      "max_score": 5.418539921951662,
+      "peak_position_0based": 0,
+      "peak_position_promoter_relative_bp": -40,
+      "peak_genomic_position_1based": 111,
+      "positive_fraction": 0.6744186046511628
+    }
+  ],
+  "pairwise_tfbs_similarity": [
+    {
+      "left_species": "Homo sapiens",
+      "right_species": "Rattus norvegicus",
+      "left_gene_label": "TP73",
+      "right_gene_label": "Tp73",
+      "shared_motif_count": 1,
+      "mean_raw_pearson": 1.0,
+      "mean_smoothed_spearman": 1.0,
+      "motif_ids": [
+        "MA0079.5"
+      ]
+    },
+    {
+      "left_species": "Homo sapiens",
+      "right_species": "Mus musculus",
+      "left_gene_label": "TP73",
+      "right_gene_label": "Trp73",
+      "shared_motif_count": 1,
+      "mean_raw_pearson": 0.0,
+      "mean_smoothed_spearman": 0.0,
+      "motif_ids": [
+        "MA0079.5"
+      ]
+    },
+    {
+      "left_species": "Mus musculus",
+      "right_species": "Rattus norvegicus",
+      "left_gene_label": "Trp73",
+      "right_gene_label": "Tp73",
+      "shared_motif_count": 1,
+      "mean_raw_pearson": 0.0,
+      "mean_smoothed_spearman": 0.0,
+      "motif_ids": [
+        "MA0079.5"
+      ]
+    }
+  ],
+  "conserved_tfbs_peaks": [],
+  "species_specific_tfbs_peaks": [
+    {
+      "tf_id": "MA0079.5",
+      "tf_name": "SP1",
+      "promoter_count": 2,
+      "species": [
+        "Homo sapiens",
+        "Rattus norvegicus"
+      ],
+      "gene_labels": [
+        "TP73",
+        "Tp73"
+      ],
+      "max_score": 5.418539921951662,
+      "peak_positions_promoter_relative_bp": [
+        -40,
+        -40
+      ]
+    }
+  ],
+  "sequence_similarity": [
+    {
+      "left_species": "Homo sapiens",
+      "right_species": "Mus musculus",
+      "left_gene_label": "TP73",
+      "right_gene_label": "Trp73",
+      "alignment_mode": "direct_promoter_aligned_prefix",
+      "compared_length_bp": 51,
+      "identical_bp": 9,
+      "identity_fraction": 0.176471
+    },
+    {
+      "left_species": "Homo sapiens",
+      "right_species": "Rattus norvegicus",
+      "left_gene_label": "TP73",
+      "right_gene_label": "Tp73",
+      "alignment_mode": "direct_promoter_aligned_prefix",
+      "compared_length_bp": 51,
+      "identical_bp": 51,
+      "identity_fraction": 1.0
+    },
+    {
+      "left_species": "Mus musculus",
+      "right_species": "Rattus norvegicus",
+      "left_gene_label": "Trp73",
+      "right_gene_label": "Tp73",
+      "alignment_mode": "direct_promoter_aligned_prefix",
+      "compared_length_bp": 51,
+      "identical_bp": 9,
+      "identity_fraction": 0.176471
+    }
+  ],
+  "cutrun_support": [
+    {
+      "species": "Homo sapiens",
+      "gene_label": "TP73",
+      "status": "no_data",
+      "contributing_dataset_ids": [],
+      "contributing_read_report_ids": [],
+      "detail": "No CUT&RUN/occupancy source was supplied for this species promoter."
+    },
+    {
+      "species": "Mus musculus",
+      "gene_label": "Trp73",
+      "status": "no_data",
+      "contributing_dataset_ids": [],
+      "contributing_read_report_ids": [],
+      "detail": "No CUT&RUN/occupancy source was supplied for this species promoter."
+    },
+    {
+      "species": "Rattus norvegicus",
+      "gene_label": "Tp73",
+      "status": "no_data",
+      "contributing_dataset_ids": [],
+      "contributing_read_report_ids": [],
+      "detail": "No CUT&RUN/occupancy source was supplied for this species promoter."
+    }
+  ],
+  "expression_assignments": [],
+  "relationship": "co_regulated",
+  "relationship_flags": [
+    {
+      "flag_kind": "unexpected_divergence",
+      "evidence_kind": "tfbs_score_track_similarity",
+      "member_symbols": [
+        "Homo sapiens: TP73",
+        "Mus musculus: Trp73"
+      ],
+      "member_dedup_keys": [
+        "ortholog:homosapiens:tp73",
+        "ortholog:musmusculus:trp73"
+      ],
+      "detail": "Declared co-regulated ortholog promoter cohort, but 'TP73' (Homo sapiens) and 'Trp73' (Mus musculus) have low mean smoothed TFBS-track Spearman similarity (+0.000; threshold < +0.25). This is an evidence-triage flag, not a regulatory verdict."
+    },
+    {
+      "flag_kind": "unexpected_divergence",
+      "evidence_kind": "tfbs_score_track_similarity",
+      "member_symbols": [
+        "Mus musculus: Trp73",
+        "Rattus norvegicus: Tp73"
+      ],
+      "member_dedup_keys": [
+        "ortholog:musmusculus:trp73",
+        "ortholog:rattusnorvegicus:tp73"
+      ],
+      "detail": "Declared co-regulated ortholog promoter cohort, but 'Trp73' (Mus musculus) and 'Tp73' (Rattus norvegicus) have low mean smoothed TFBS-track Spearman similarity (+0.000; threshold < +0.25). This is an evidence-triage flag, not a regulatory verdict."
+    }
+  ],
+  "warnings": [
+    "Synthetic tutorial-only ortholog mappings; use reviewed ortholog resources for biological analysis.",
+    "Declared co-regulated ortholog promoter cohort, but 'TP73' (Homo sapiens) and 'Trp73' (Mus musculus) have low mean smoothed TFBS-track Spearman similarity (+0.000; threshold < +0.25). This is an evidence-triage flag, not a regulatory verdict.",
+    "Declared co-regulated ortholog promoter cohort, but 'Trp73' (Mus musculus) and 'Tp73' (Rattus norvegicus) have low mean smoothed TFBS-track Spearman similarity (+0.000; threshold < +0.25). This is an evidence-triage flag, not a regulatory verdict."
+  ]
+}

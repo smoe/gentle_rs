@@ -1,0 +1,11 @@
+{
+  "schema": "gentle.probe_region_backend_provenance.v1",
+  "backend": "synthetic_fixture",
+  "platform": "Clariom_D_Human",
+  "coordinate_system": "hg38",
+  "genome_build": "GRCh38.p14",
+  "normalization": "synthetic-rma",
+  "probe_intensity_source": "probe_level_input",
+  "probe_intensity_probe_id_column": "probe_id",
+  "source_note": "Hand-crafted tiny helper-output directory for ClawBio PM-probe interpretation smoke coverage; no CEL files, vendor binaries, R, or APT were used."
+}

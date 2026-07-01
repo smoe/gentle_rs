@@ -1,7 +1,16 @@
 //! GUI binary entry point that boots the native GENtle desktop application.
 
 use eframe::{NativeOptions, egui};
-use gentle::{about, app};
+use gentle::{
+    about,
+    agent_bridge::{
+        AGENT_BASE_URL_ENV, AGENT_MODEL_ENV, ANTHROPIC_API_KEY_ENV, MISTRAL_API_KEY_ENV,
+        OPENAI_API_KEY_ENV,
+    },
+    app,
+    cli_support::{SingleProjectCliOptions, parse_single_project_cli_args},
+    gui_profiler,
+};
 use std::{
     backtrace::Backtrace,
     env,
@@ -40,19 +49,19 @@ fn resolve_runtime_asset_path_from(
             return repo_relative;
         }
     }
-    if let Some(exe_path) = current_exe {
-        if let Some(exe_dir) = exe_path.parent() {
-            let mut candidates: Vec<PathBuf> = Vec::new();
-            if let Some(parent) = exe_dir.parent() {
-                candidates.push(parent.join("Resources").join(path));
-                if let Some(grandparent) = parent.parent() {
-                    candidates.push(grandparent.join(path));
-                }
+    if let Some(exe_path) = current_exe
+        && let Some(exe_dir) = exe_path.parent()
+    {
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if let Some(parent) = exe_dir.parent() {
+            candidates.push(parent.join("Resources").join(path));
+            if let Some(grandparent) = parent.parent() {
+                candidates.push(grandparent.join(path));
             }
-            for candidate in candidates {
-                if candidate.exists() {
-                    return candidate;
-                }
+        }
+        for candidate in candidates {
+            if candidate.exists() {
+                return candidate;
             }
         }
     }
@@ -123,71 +132,50 @@ fn install_panic_logging() {
     }));
 }
 
-#[derive(Debug, Default)]
-struct CliArgs {
-    show_help: bool,
-    show_version: bool,
-    project_path: Option<String>,
-    allow_screenshots: bool,
-}
-
-fn print_help() {
-    println!(
+fn help_text() -> String {
+    format!(
         "Usage:\n  \
 gentle [--help|-h] [--version|-V]\n  \
 gentle [--project PATH] [PATH]\n\n  \
-PATH can be a project file such as 'project.gentle.json'."
-    );
+PATH can be a project file such as 'project.gentle.json'.\n\n\
+Related GENtle executables:\n  \
+gentle_cli              automation, JSON operations/workflows, and shared shell commands\n  \
+gentle_mcp              MCP stdio server for external agents and tool clients\n  \
+gentle_js               JavaScript shell, when built with js-interface\n  \
+gentle_lua              Lua shell, when built with lua-interface\n  \
+gentle_examples_docs    regenerate examples and tutorial artifacts\n\n\
+If you expected a terminal command surface, try: gentle_cli --help\n\n\
+Agent Assistant API environment:\n  \
+{OPENAI_API_KEY_ENV}       OpenAI Platform API key for native OpenAI transport\n  \
+{ANTHROPIC_API_KEY_ENV}    Anthropic Console API key for native Claude transport\n  \
+{MISTRAL_API_KEY_ENV}      Mistral La Plateforme API key for native Mistral transport\n  \
+{AGENT_BASE_URL_ENV}  optional native/OpenAI-compatible base URL override\n  \
+{AGENT_MODEL_ENV}     optional model override\n\n\
+GUI diagnostics:\n  \
+{gui_profile_env}=1    enable Puffin GUI profiling when built with --features gui-profiler\n  \
+{gui_profile_addr_env}  optional profiler bind address (default {gui_profile_addr})\n\n  \
+ChatGPT, Claude.ai/Claude Code, and Le Chat subscription/login tokens are not API keys.",
+        gui_profile_env = gui_profiler::GUI_PROFILER_ENV,
+        gui_profile_addr_env = gui_profiler::GUI_PROFILER_ADDR_ENV,
+        gui_profile_addr = gui_profiler::DEFAULT_GUI_PROFILER_ADDR
+    )
 }
 
-fn parse_cli_args(args: &[String]) -> Result<CliArgs, String> {
-    let mut parsed = CliArgs::default();
-    let mut idx = 0usize;
-    while idx < args.len() {
-        match args[idx].as_str() {
-            "--help" | "-h" => {
-                parsed.show_help = true;
-                idx += 1;
-            }
-            "--version" | "-V" => {
-                parsed.show_version = true;
-                idx += 1;
-            }
-            "--project" => {
-                if idx + 1 >= args.len() {
-                    return Err("Missing PATH after --project".to_string());
-                }
-                parsed.project_path = Some(args[idx + 1].clone());
-                idx += 2;
-            }
-            "--allow-screenshots" => {
-                return Err("--allow-screenshots is disabled by security policy".to_string());
-            }
-            arg if arg.starts_with('-') => {
-                return Err(format!("Unknown option '{arg}'"));
-            }
-            path => {
-                if parsed.project_path.is_some() {
-                    return Err(format!(
-                        "Multiple project paths provided ('{}' and '{}')",
-                        parsed.project_path.as_deref().unwrap_or_default(),
-                        path
-                    ));
-                }
-                parsed.project_path = Some(path.to_string());
-                idx += 1;
-            }
-        }
-    }
-    Ok(parsed)
+fn print_help() {
+    println!("{}", help_text());
+}
+
+fn persist_root_window_state() -> bool {
+    !cfg!(target_os = "macos")
 }
 
 fn main() -> eframe::Result<()> {
     install_panic_logging();
+    gui_profiler::init_from_env();
     configure_macos_process_name();
 
     let args: Vec<String> = env::args().skip(1).collect();
-    let cli = match parse_cli_args(&args) {
+    let cli = match parse_single_project_cli_args(&args, SingleProjectCliOptions::gui()) {
         Ok(parsed) => parsed,
         Err(e) => {
             eprintln!("{e}");
@@ -203,18 +191,17 @@ fn main() -> eframe::Result<()> {
         println!("{}", about::version_cli_text());
         return Ok(());
     }
-    if cli.allow_screenshots {
-        eprintln!("--allow-screenshots is not supported in this build");
-    }
-
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([800.0, 600.0])
-        .with_min_inner_size([300.0, 220.0]);
+        .with_min_inner_size([300.0, 220.0])
+        .with_fullscreen(false)
+        .with_maximized(false);
     if let Some(icon) = load_icon("assets/icon.png") {
         viewport = viewport.with_icon(icon);
     }
     let options = NativeOptions {
         viewport,
+        persist_window: persist_root_window_state(),
         ..Default::default()
     };
 
@@ -231,7 +218,7 @@ fn main() -> eframe::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{load_icon, resolve_runtime_asset_path_from};
+    use super::{help_text, load_icon, persist_root_window_state, resolve_runtime_asset_path_from};
     use std::path::Path;
 
     #[test]
@@ -278,5 +265,25 @@ mod tests {
             repo_icon.display()
         );
         assert!(load_icon("assets/icon.png").is_some());
+    }
+
+    #[test]
+    fn root_window_state_persistence_matches_platform_policy() {
+        assert_eq!(persist_root_window_state(), !cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn help_text_points_to_cli_and_agent_api_environment() {
+        let help = help_text();
+        assert!(help.contains("gentle_cli --help"));
+        assert!(help.contains("gentle_mcp"));
+        assert!(help.contains("gentle_js"));
+        assert!(help.contains("gentle_lua"));
+        assert!(help.contains(gentle::agent_bridge::OPENAI_API_KEY_ENV));
+        assert!(help.contains(gentle::agent_bridge::ANTHROPIC_API_KEY_ENV));
+        assert!(help.contains(gentle::agent_bridge::MISTRAL_API_KEY_ENV));
+        assert!(help.contains(gentle::gui_profiler::GUI_PROFILER_ENV));
+        assert!(help.contains(gentle::gui_profiler::GUI_PROFILER_ADDR_ENV));
+        assert!(help.contains("subscription/login tokens are not API keys"));
     }
 }

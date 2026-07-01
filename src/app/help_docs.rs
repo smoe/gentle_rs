@@ -11,7 +11,145 @@
 
 use super::*;
 
+pub(super) const AGENT_INTERFACES_TUTORIAL_PATH: &str = "docs/tutorial/01-01_agent_interfaces.md";
+pub(super) const AGENT_INTERFACES_TUTORIAL_TITLE: &str =
+    "GENtle Agent Assistant and Agent Interfaces Tutorial";
+pub(super) const AGENT_INTERFACES_TUTORIAL_SUMMARY: &str = "docs/tutorial/01-01_agent_interfaces.md\n\
+type: operational_reference\n\
+status: manual/reference\n\
+Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.";
+
 impl GENtleApp {
+    fn help_tutorial_entry_from_catalog_entry(
+        entry: crate::workflow_examples::TutorialCatalogEntry,
+    ) -> Option<HelpTutorialDocEntry> {
+        let resolved_path = Self::resolve_runtime_doc_path(&entry.path)?;
+        let markdown = Self::load_help_markdown_from_path(&resolved_path).unwrap_or_default();
+        let title = Self::markdown_first_heading(&markdown).unwrap_or_else(|| {
+            if entry.title.trim().is_empty() {
+                Self::markdown_title_from_path(&resolved_path)
+            } else {
+                entry.title.clone()
+            }
+        });
+        let mut summary = format!(
+            "{}\ntype: {}\nstatus: {}",
+            entry.path, entry.entry_type, entry.status
+        );
+        summary.push('\n');
+        summary.push_str(&crate::workflow_examples::tutorial_review_badge_label(
+            entry.review_status.as_deref(),
+            entry.review_stale,
+            entry.codex_reviewed_at.as_deref(),
+            entry.human_reviewed_at.as_deref(),
+            entry.human_reviewer.as_deref(),
+        ));
+        if !entry.notes.trim().is_empty() {
+            summary.push('\n');
+            summary.push_str(entry.notes.trim());
+        }
+        Some(HelpTutorialDocEntry {
+            title,
+            path: resolved_path.to_string_lossy().to_string(),
+            summary,
+            audiences: entry.audiences,
+            group_label: entry.group_label,
+            group_order: entry.group_order,
+            group_position: entry.group_position,
+            decimal_id: entry.decimal_id,
+            review_status: entry.review_status,
+            codex_reviewed_at: entry.codex_reviewed_at,
+            human_reviewed_at: entry.human_reviewed_at,
+            human_reviewer: entry.human_reviewer,
+            review_stale: entry.review_stale,
+        })
+    }
+
+    pub(super) fn split_leading_markdown_front_matter(markdown: &str) -> Option<(&str, &str)> {
+        let start = if markdown.starts_with("---\n") {
+            "---\n".len()
+        } else if markdown.starts_with("---\r\n") {
+            "---\r\n".len()
+        } else {
+            return None;
+        };
+        let mut offset = start;
+        while offset < markdown.len() {
+            let line_start = offset;
+            let line_end = markdown[offset..]
+                .find('\n')
+                .map(|relative| offset + relative)
+                .unwrap_or(markdown.len());
+            let line = markdown[line_start..line_end].trim_end_matches('\r');
+            let next_line_start = if line_end < markdown.len() {
+                line_end + 1
+            } else {
+                line_end
+            };
+            if line == "---" {
+                return Some((&markdown[start..line_start], &markdown[next_line_start..]));
+            }
+            offset = next_line_start;
+        }
+        None
+    }
+
+    pub(super) fn markdown_front_matter_value(front_matter: &str, key: &str) -> Option<String> {
+        let prefix = format!("{key}:");
+        front_matter.lines().find_map(|line| {
+            let value = line.trim().strip_prefix(&prefix)?.trim();
+            if value.is_empty() {
+                return None;
+            }
+            Some(value.trim_matches('"').to_string())
+        })
+    }
+
+    pub(super) fn insert_markdown_note_after_first_heading(markdown: &str, note: &str) -> String {
+        let trimmed = markdown.trim_start_matches(['\r', '\n']);
+        if !trimmed.starts_with('#') {
+            return format!("{note}{trimmed}");
+        }
+        let Some(first_line_end) = trimmed.find('\n') else {
+            return format!("{trimmed}\n\n{note}");
+        };
+        let (heading, body) = trimmed.split_at(first_line_end + 1);
+        format!("{heading}\n{note}{}", body.trim_start_matches(['\r', '\n']))
+    }
+
+    pub(super) fn summarize_markdown_front_matter_for_help(markdown: &str) -> String {
+        let Some((front_matter, body)) = Self::split_leading_markdown_front_matter(markdown) else {
+            return markdown.to_string();
+        };
+        let chapter_id = Self::markdown_front_matter_value(front_matter, "chapter_id");
+        let source_example = Self::markdown_front_matter_value(front_matter, "source_example");
+        let mut note = String::from("_Provenance note: ");
+        match (chapter_id, source_example) {
+            (Some(chapter_id), Some(source_example)) => {
+                note.push_str("this generated tutorial is tracked as chapter `");
+                note.push_str(&chapter_id);
+                note.push_str("` from workflow `");
+                note.push_str(&source_example);
+                note.push_str("`.");
+            }
+            (Some(chapter_id), None) => {
+                note.push_str("this generated tutorial is tracked as chapter `");
+                note.push_str(&chapter_id);
+                note.push_str("`.");
+            }
+            (None, Some(source_example)) => {
+                note.push_str("this generated tutorial is tracked from workflow `");
+                note.push_str(&source_example);
+                note.push_str("`.");
+            }
+            (None, None) => {
+                note.push_str("this generated tutorial has machine-readable source metadata.");
+            }
+        }
+        note.push_str(" The note is only there to preserve tutorial provenance; the hands-on walkthrough starts here, and full canonical source details are repeated at the end._\n\n");
+        Self::insert_markdown_note_after_first_heading(body, &note)
+    }
+
     pub(super) fn rewrite_markdown_inline_code_soft_breaks(markdown: &str) -> String {
         let mut out = String::with_capacity(markdown.len() + markdown.len() / 16);
         let mut idx = 0usize;
@@ -148,6 +286,73 @@ impl GENtleApp {
         rewritten.push_str(&absolute_uri);
         rewritten.push_str(&span[dest_end..]);
         Some(rewritten)
+    }
+
+    pub(super) fn help_svg_png_cache_path(svg_path: &Path) -> Option<PathBuf> {
+        if !svg_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("svg"))
+            .unwrap_or(false)
+        {
+            return None;
+        }
+        let metadata = fs::metadata(svg_path).ok();
+        let mut hasher = Sha1::new();
+        hasher.update(svg_path.to_string_lossy().as_bytes());
+        if let Some(metadata) = metadata {
+            hasher.update(metadata.len().to_le_bytes());
+            if let Ok(modified) = metadata.modified()
+                && let Ok(duration) = modified.duration_since(UNIX_EPOCH)
+            {
+                hasher.update(duration.as_secs().to_le_bytes());
+                hasher.update(duration.subsec_nanos().to_le_bytes());
+            }
+        }
+        let digest = format!("{:x}", hasher.finalize());
+        let stem = svg_path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("image")
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+        Some(
+            env::temp_dir()
+                .join("gentle_help_svg_png")
+                .join(format!("{stem}.{digest}.png")),
+        )
+    }
+
+    pub(super) fn help_image_render_path(absolute_dest: &Path) -> PathBuf {
+        let Some(png_path) = Self::help_svg_png_cache_path(absolute_dest) else {
+            return absolute_dest.to_path_buf();
+        };
+        if png_path.is_file() {
+            return png_path;
+        }
+        if let Some(parent) = png_path.parent()
+            && fs::create_dir_all(parent).is_err()
+        {
+            return absolute_dest.to_path_buf();
+        }
+        match crate::svg_png::render_svg_file_to_png(
+            absolute_dest,
+            &png_path,
+            crate::svg_png::SvgPngRenderOptions {
+                scale: 1.0,
+                drop_dotplot_metadata: false,
+            },
+        ) {
+            Ok(_) => png_path,
+            Err(_) => absolute_dest.to_path_buf(),
+        }
     }
 
     pub(super) fn find_inline_image_destination(span: &str) -> Option<(usize, usize)> {
@@ -318,13 +523,13 @@ impl GENtleApp {
     }
 
     pub(super) fn load_help_doc(path: &str, fallback: &'static str) -> String {
-        if let Some(runtime_path) = Self::resolve_runtime_doc_path(path) {
-            if let Ok(text) = fs::read_to_string(&runtime_path) {
-                if let Some(base_dir) = runtime_path.parent() {
-                    return Self::rewrite_markdown_relative_image_links(&text, base_dir);
-                }
-                return text;
+        if let Some(runtime_path) = Self::resolve_runtime_doc_path(path)
+            && let Ok(text) = fs::read_to_string(&runtime_path)
+        {
+            if let Some(base_dir) = runtime_path.parent() {
+                return Self::rewrite_markdown_relative_image_links(&text, base_dir);
             }
+            return text;
         }
         fallback.to_string()
     }
@@ -388,40 +593,18 @@ impl GENtleApp {
     }
 
     pub(super) fn discover_help_tutorial_entries() -> Vec<HelpTutorialDocEntry> {
-        if let Some(catalog_path) = Self::resolve_runtime_doc_path(DEFAULT_TUTORIAL_CATALOG_PATH) {
-            if let Ok(catalog) = load_tutorial_catalog(&catalog_path) {
-                let catalog_entries = catalog
-                    .entries
-                    .into_iter()
-                    .filter_map(|entry| {
-                        let resolved_path = Self::resolve_runtime_doc_path(&entry.path)?;
-                        let markdown =
-                            Self::load_help_markdown_from_path(&resolved_path).unwrap_or_default();
-                        let title = Self::markdown_first_heading(&markdown).unwrap_or_else(|| {
-                            if entry.title.trim().is_empty() {
-                                Self::markdown_title_from_path(&resolved_path)
-                            } else {
-                                entry.title.clone()
-                            }
-                        });
-                        let mut summary = format!(
-                            "{}\ntype: {}\nstatus: {}",
-                            entry.path, entry.entry_type, entry.status
-                        );
-                        if !entry.notes.trim().is_empty() {
-                            summary.push('\n');
-                            summary.push_str(entry.notes.trim());
-                        }
-                        Some(HelpTutorialDocEntry {
-                            title,
-                            path: resolved_path.to_string_lossy().to_string(),
-                            summary,
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                if !catalog_entries.is_empty() {
-                    return catalog_entries;
-                }
+        if let Some(catalog_path) = Self::resolve_runtime_doc_path(DEFAULT_TUTORIAL_CATALOG_PATH)
+            && let Ok(catalog) = load_tutorial_catalog(&catalog_path)
+        {
+            let mut catalog_entries = catalog
+                .entries
+                .into_iter()
+                .filter_map(Self::help_tutorial_entry_from_catalog_entry)
+                .collect::<Vec<_>>();
+            Self::ensure_agent_interfaces_tutorial_entry(&mut catalog_entries);
+            Self::sort_help_tutorial_entries_by_audience_group(&mut catalog_entries);
+            if !catalog_entries.is_empty() {
+                return catalog_entries;
             }
         }
         let Some(tutorial_root) = Self::resolve_runtime_doc_path("docs/tutorial") else {
@@ -441,7 +624,7 @@ impl GENtleApp {
             left_depth.cmp(&right_depth).then_with(|| left.cmp(right))
         });
 
-        markdown_paths
+        let mut entries = markdown_paths
             .into_iter()
             .map(|path| {
                 let markdown = Self::load_help_markdown_from_path(&path).unwrap_or_default();
@@ -455,9 +638,77 @@ impl GENtleApp {
                     title,
                     path: path.to_string_lossy().to_string(),
                     summary: format!("docs/tutorial/{relative}"),
+                    audiences: vec![],
+                    group_label: None,
+                    group_order: None,
+                    group_position: None,
+                    decimal_id: None,
+                    review_status: None,
+                    codex_reviewed_at: None,
+                    human_reviewed_at: None,
+                    human_reviewer: None,
+                    review_stale: false,
                 }
             })
-            .collect()
+            .collect::<Vec<_>>();
+        Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
+        Self::sort_help_tutorial_entries_by_audience_group(&mut entries);
+        entries
+    }
+
+    pub(super) fn discover_guided_walkthrough_entries() -> Vec<HelpTutorialDocEntry> {
+        if let Some(catalog_path) = Self::resolve_runtime_doc_path(DEFAULT_TUTORIAL_CATALOG_PATH)
+            && let Ok(catalog) = load_tutorial_catalog(&catalog_path)
+        {
+            let mut entries = catalog
+                .entries
+                .into_iter()
+                .filter(|entry| entry.status == "manual/reference")
+                .filter_map(Self::help_tutorial_entry_from_catalog_entry)
+                .collect::<Vec<_>>();
+            Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
+            Self::sort_help_tutorial_entries_by_audience_group(&mut entries);
+            if !entries.is_empty() {
+                return entries;
+            }
+        }
+        let mut entries = vec![];
+        Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
+        Self::sort_help_tutorial_entries_by_audience_group(&mut entries);
+        entries
+    }
+
+    pub(super) fn ensure_agent_interfaces_tutorial_entry(entries: &mut Vec<HelpTutorialDocEntry>) {
+        let Some(resolved_path) = Self::resolve_runtime_doc_path(AGENT_INTERFACES_TUTORIAL_PATH)
+        else {
+            return;
+        };
+        let resolved_string = resolved_path.to_string_lossy().to_string();
+        if entries.iter().any(|entry| entry.path == resolved_string) {
+            return;
+        }
+        let markdown = Self::load_help_markdown_from_path(&resolved_path).unwrap_or_default();
+        let title = Self::markdown_first_heading(&markdown)
+            .unwrap_or_else(|| AGENT_INTERFACES_TUTORIAL_TITLE.to_string());
+        entries.push(HelpTutorialDocEntry {
+            title,
+            path: resolved_string,
+            summary: AGENT_INTERFACES_TUTORIAL_SUMMARY.to_string(),
+            audiences: vec![
+                "orientation_interfaces".to_string(),
+                "agent_users".to_string(),
+                "mcp_users".to_string(),
+            ],
+            group_label: Some("Getting Started & Interfaces".to_string()),
+            group_order: Some(1),
+            group_position: Some(1),
+            decimal_id: Some("01.01".to_string()),
+            review_status: Some("unreviewed".to_string()),
+            codex_reviewed_at: None,
+            human_reviewed_at: None,
+            human_reviewer: None,
+            review_stale: false,
+        });
     }
 
     pub(super) fn set_help_tutorial_selected(&mut self, tutorial_index: usize) -> bool {
@@ -559,6 +810,16 @@ impl GENtleApp {
                     title,
                     path: resolved_string,
                     summary,
+                    audiences: vec![],
+                    group_label: None,
+                    group_order: None,
+                    group_position: None,
+                    decimal_id: None,
+                    review_status: None,
+                    codex_reviewed_at: None,
+                    human_reviewed_at: None,
+                    human_reviewer: None,
+                    review_stale: false,
                 });
                 self.help_tutorial_entries.len() - 1
             }

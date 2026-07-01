@@ -1,0 +1,160 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "tp73_genome_evidence_viewer_release_proof",
+  "title": "TP73 genome-anchored evidence viewer release proof",
+  "summary": "Loads the public GRCh38.p14 TP73 locus and overlays tiny deterministic repeat, Clariom-style array, CUT&RUN-style BED, TFBS, sequence SVG, and splicing-expert artifacts without full-genome or raw-read downloads.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/tp73.ncbi.gb",
+    "test_files/fixtures/evidence_viewer/tp73_evidence_viewer.rmsk.hg38.interval-index.json",
+    "test_files/fixtures/evidence_viewer/clariomd.tp73_evidence_viewer.manifest.json",
+    "test_files/fixtures/evidence_viewer/clariomd.tp73_evidence_viewer.AdTAp73alpha-AdGFP.tsv",
+    "test_files/fixtures/evidence_viewer/clariomd.tp73_evidence_viewer.AdTAp73beta-AdGFP.tsv",
+    "test_files/fixtures/evidence_viewer/tp73_cutrun_demo.bed"
+  ],
+  "tags": [
+    "release-proof",
+    "tp73",
+    "genome-anchor",
+    "repeat",
+    "array",
+    "cutrun",
+    "tfbs",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "tp73_genome_evidence_viewer_release_proof",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/tp73.ncbi.gb",
+          "as_id": "tp73_evidence_viewer"
+        }
+      },
+      {
+        "MaterializeRepeatFeatures": {
+          "seq_id": "tp73_evidence_viewer",
+          "rmsk_index_path": "test_files/fixtures/evidence_viewer/tp73_evidence_viewer.rmsk.hg38.interval-index.json",
+          "max_features": 10,
+          "clear_existing": true,
+          "path": "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.repeat_materialization.json"
+        }
+      },
+      {
+        "ProjectMicroarrayTrack": {
+          "seq_id": "tp73_evidence_viewer",
+          "manifest_path": "test_files/fixtures/evidence_viewer/clariomd.tp73_evidence_viewer.manifest.json",
+          "contrasts": [
+            "AdTAp73alpha-AdGFP",
+            "AdTAp73beta-AdGFP"
+          ],
+          "level": "probeset",
+          "min_abs_logfc": 0.0,
+          "max_adj_p": 1.0,
+          "max_features": 20,
+          "clear_existing": true
+        }
+      },
+      {
+        "ImportGenomeBedTrack": {
+          "seq_id": "tp73_evidence_viewer",
+          "path": "test_files/fixtures/evidence_viewer/tp73_cutrun_demo.bed",
+          "track_name": "TP73 CUT&RUN proof BED",
+          "clear_existing": true
+        }
+      },
+      {
+        "AnnotateTfbs": {
+          "seq_id": "tp73_evidence_viewer",
+          "motifs": [
+            "TP73",
+            "TP53",
+            "TP63"
+          ],
+          "min_llr_quantile": 0.9995,
+          "clear_existing": true,
+          "max_hits": 200
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "RepeatFeatures",
+          "visible": true
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "ArrayFeatures",
+          "visible": true
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "Tfbs",
+          "visible": true
+        }
+      },
+      {
+        "SetLinearViewport": {
+          "start_bp": 0,
+          "span_bp": 1200
+        }
+      },
+      {
+        "RenderSequenceSvg": {
+          "seq_id": "tp73_evidence_viewer",
+          "mode": "Linear",
+          "path": "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.linear.svg"
+        }
+      },
+      {
+        "RenderFeatureExpertSvg": {
+          "seq_id": "tp73_evidence_viewer",
+          "target": {
+            "splicing_feature": {
+              "feature_id": 4,
+              "scope": "all_overlapping_any_strand"
+            }
+          },
+          "path": "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.splicing.expert.svg"
+        }
+      },
+      {
+        "SummarizeTfbsScoreTracks": {
+          "target": {
+            "kind": "seq_id",
+            "seq_id": "tp73_evidence_viewer",
+            "span_start_0based": 0,
+            "span_end_0based_exclusive": 1200
+          },
+          "motifs": [
+            "TP73",
+            "TP53",
+            "TP63"
+          ],
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": false,
+          "path": "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.json"
+        }
+      },
+      {
+        "RenderTfbsScoreTracksSvg": {
+          "target": {
+            "kind": "seq_id",
+            "seq_id": "tp73_evidence_viewer",
+            "span_start_0based": 0,
+            "span_end_0based_exclusive": 1200
+          },
+          "motifs": [
+            "TP73",
+            "TP53",
+            "TP63"
+          ],
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": false,
+          "path": "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.svg"
+        }
+      }
+    ]
+  }
+}

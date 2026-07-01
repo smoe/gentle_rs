@@ -144,6 +144,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize sequencing-confirmation metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state.metadata.insert(
             SEQUENCING_CONFIRMATION_REPORTS_METADATA_KEY.to_string(),
@@ -169,6 +171,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "report_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut out = String::with_capacity(trimmed.len());
@@ -184,6 +188,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(out)
@@ -245,6 +251,8 @@ impl GentleEngine {
                         target.start_0based,
                         target.end_0based_exclusive
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             if target.end_0based_exclusive > expected_len {
@@ -257,6 +265,8 @@ impl GentleEngine {
                         target.end_0based_exclusive,
                         expected_len
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let target_id = if target.target_id.trim().is_empty() {
@@ -293,6 +303,8 @@ impl GentleEngine {
                             "Sequencing-confirmation target '{}' requires junction_left_end_0based",
                             target_id
                         ),
+
+                        cause_chain: vec![],
                     })?;
                     if left_end < target.start_0based || left_end > target.end_0based_exclusive {
                         return Err(EngineError {
@@ -304,6 +316,8 @@ impl GentleEngine {
                                 target.start_0based,
                                 target.end_0based_exclusive
                             ),
+
+                            cause_chain: vec![],
                         });
                     }
                     Some(left_end)
@@ -496,10 +510,8 @@ impl GentleEngine {
         let direction_penalty = if in_read_direction { 0 } else { 1000 };
         let distance_penalty = if three_prime_distance_bp < MIN_PREFERRED_DISTANCE_BP {
             MIN_PREFERRED_DISTANCE_BP - three_prime_distance_bp
-        } else if three_prime_distance_bp > MAX_PREFERRED_DISTANCE_BP {
-            three_prime_distance_bp - MAX_PREFERRED_DISTANCE_BP
         } else {
-            0
+            three_prime_distance_bp.saturating_sub(MAX_PREFERRED_DISTANCE_BP)
         };
         direction_penalty + distance_penalty
     }
@@ -824,12 +836,15 @@ impl GentleEngine {
                 message:
                     "SuggestSequencingPrimers requires at least one primer sequence id or a saved sequencing-confirmation report"
                         .to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
         if min_3prime_anneal_bp == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "SuggestSequencingPrimers requires min_3prime_anneal_bp >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if predicted_read_length_bp == 0 {
@@ -837,6 +852,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "SuggestSequencingPrimers requires predicted_read_length_bp >= 1"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let expected_seq_id = expected_seq_id.trim();
@@ -847,6 +864,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Expected sequence '{}' not found", expected_seq_id),
+
+                cause_chain: vec![],
             })?;
         let expected_text = expected.get_forward_string().to_ascii_uppercase();
         if expected_text.is_empty() {
@@ -856,6 +875,8 @@ impl GentleEngine {
                     "SuggestSequencingPrimers cannot scan empty expected sequence '{}'",
                     expected_seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let confirmation_report = if let Some(report_id) = confirmation_report_id {
@@ -867,6 +888,8 @@ impl GentleEngine {
                         "Sequencing-confirmation report '{}' belongs to expected sequence '{}' rather than '{}'",
                         report.report_id, report.expected_seq_id, expected_seq_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             Some(report)
@@ -884,6 +907,8 @@ impl GentleEngine {
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::NotFound,
                     message: format!("Primer sequence '{}' not found", primer_seq_id),
+
+                    cause_chain: vec![],
                 })?;
             let primer_sequence = primer.get_forward_string().to_ascii_uppercase();
             if primer_sequence.is_empty() {
@@ -893,6 +918,8 @@ impl GentleEngine {
                         "Primer sequence '{}' is empty and cannot be scanned",
                         primer_seq_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             if primer_sequence.len() < min_3prime_anneal_bp {
@@ -902,6 +929,8 @@ impl GentleEngine {
                         "Primer sequence '{}' is shorter than min_3prime_anneal_bp={}",
                         primer_seq_id, min_3prime_anneal_bp
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let primer_label = primer
@@ -1411,6 +1440,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Pairwise alignment requires match_score > 0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if gap_open > 0 || gap_extend > 0 {
@@ -1418,6 +1449,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "Pairwise alignment requires gap_open and gap_extend to be <= 0"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let query_text = query_text.to_ascii_uppercase();
@@ -1958,9 +1991,9 @@ impl GentleEngine {
         }
     }
 
-    fn choose_best_variant_observation<'a>(
-        observations: &'a [(SequencingConfirmationReadResult, VariantObservation)],
-    ) -> Option<&'a (SequencingConfirmationReadResult, VariantObservation)> {
+    fn choose_best_variant_observation(
+        observations: &[(SequencingConfirmationReadResult, VariantObservation)],
+    ) -> Option<&(SequencingConfirmationReadResult, VariantObservation)> {
         fn rank(observation: &VariantObservation) -> (i32, usize, i32) {
             let priority = match observation.classification {
                 SequencingConfirmationVariantClassification::ReferenceReversion
@@ -2001,6 +2034,8 @@ impl GentleEngine {
                 message:
                     "ConfirmConstructReads requires at least one read sequence or sequencing trace"
                         .to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&min_identity_fraction) {
@@ -2009,6 +2044,8 @@ impl GentleEngine {
                 message:
                     "ConfirmConstructReads requires min_identity_fraction in the range 0.0..=1.0"
                         .to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&min_target_coverage_fraction)
@@ -2018,7 +2055,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "ConfirmConstructReads requires min_target_coverage_fraction in the range (0.0, 1.0]"
                     .to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
         let expected_dna =
             self.state
@@ -2027,6 +2065,8 @@ impl GentleEngine {
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::NotFound,
                     message: format!("Sequence '{expected_seq_id}' not found"),
+
+                    cause_chain: vec![],
                 })?;
         let expected_text = expected_dna.get_forward_string().to_ascii_uppercase();
         if expected_text.is_empty() {
@@ -2036,6 +2076,8 @@ impl GentleEngine {
                     "ConfirmConstructReads cannot use empty expected sequence '{}'",
                     expected_seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let normalized_baseline_seq_id = baseline_seq_id
@@ -2051,6 +2093,8 @@ impl GentleEngine {
                     .ok_or_else(|| EngineError {
                         code: ErrorCode::NotFound,
                         message: format!("Baseline sequence '{}' not found", baseline_seq_id),
+
+                        cause_chain: vec![],
                     })?;
             let baseline_text = baseline_dna.get_forward_string().to_ascii_uppercase();
             if baseline_text.is_empty() {
@@ -2060,6 +2104,8 @@ impl GentleEngine {
                         "ConfirmConstructReads cannot use empty baseline sequence '{}'",
                         baseline_seq_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             requested_targets.extend(Self::infer_expected_edit_targets(
@@ -2118,6 +2164,8 @@ impl GentleEngine {
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::NotFound,
                     message: format!("Sequence '{read_seq_id}' not found"),
+
+                    cause_chain: vec![],
                 })?;
             let read_text = read_dna.get_forward_string().to_ascii_uppercase();
             if read_text.is_empty() {
@@ -2127,6 +2175,8 @@ impl GentleEngine {
                         "ConfirmConstructReads cannot use empty read sequence '{}'",
                         read_seq_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             evidence_inputs.push(SequencingConfirmationEvidenceInput {
@@ -2150,6 +2200,8 @@ impl GentleEngine {
                         "ConfirmConstructReads cannot use sequencing trace '{}' because it has no called bases",
                         trace.trace_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             evidence_inputs.push(SequencingConfirmationEvidenceInput {
@@ -3062,6 +3114,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequencing-confirmation report '{}' not found", report_id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -3077,10 +3131,14 @@ impl GentleEngine {
                 "Could not serialize sequencing-confirmation report '{}': {e}",
                 report.report_id
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write sequencing-confirmation report to '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(report)
     }
@@ -3097,6 +3155,8 @@ impl GentleEngine {
                 "Could not create sequencing-confirmation TSV output '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?);
         writeln!(
             writer,
@@ -3108,7 +3168,8 @@ impl GentleEngine {
                 "Could not write sequencing-confirmation TSV header '{}': {e}",
                 path
             ),
-        })?;
+        
+            cause_chain: vec![],})?;
         for target in &report.targets {
             writeln!(
                 writer,
@@ -3133,6 +3194,8 @@ impl GentleEngine {
                     "Could not write sequencing-confirmation TSV row '{}': {e}",
                     path
                 ),
+
+                cause_chain: vec![],
             })?;
         }
         writer.flush().map_err(|e| EngineError {
@@ -3141,6 +3204,8 @@ impl GentleEngine {
                 "Could not flush sequencing-confirmation TSV output '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(report)
     }
@@ -3159,6 +3224,8 @@ impl GentleEngine {
             message: format!(
                 "Could not write sequencing-confirmation unresolved summary to '{path}': {e}"
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(report)
     }

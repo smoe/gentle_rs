@@ -1,7 +1,6 @@
 //! Lua adapter wrappers over shared engine contracts.
 
-use crate::app::GENtleApp;
-use crate::dna_sequence::DNAsequence;
+use crate::dna_sequence::{self, DNAsequence};
 use crate::engine::{
     Engine, FeatureExpertTarget, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
     GentleEngine, Operation, ProjectState, Workflow,
@@ -10,6 +9,7 @@ use crate::engine_shell::{ShellCommand, execute_shell_command};
 use crate::enzymes::active_restriction_enzymes;
 use crate::methylation_sites::MethylationMode;
 use crate::resource_sync;
+use gentle_protocol::{EngineError, ErrorCode};
 use mlua::prelude::*;
 use mlua::{Error, Value};
 use mlua::{IntoLuaMulti, Lua, MultiValue, Result as LuaResult};
@@ -38,8 +38,8 @@ impl LuaInterface {
     }
 
     pub fn load_dna(path: &str) -> LuaResult<DNAsequence> {
-        let mut dna =
-            GENtleApp::load_from_file(path).map_err(|e| LuaError::RuntimeError(e.to_string()))?;
+        let mut dna = dna_sequence::load_from_file(path)
+            .map_err(|e| LuaError::RuntimeError(e.to_string()))?;
 
         // Add default enzymes and stuff
         *dna.restriction_enzymes_mut() = active_restriction_enzymes();
@@ -51,6 +51,16 @@ impl LuaInterface {
 
     fn err(s: &str) -> Error {
         Error::RuntimeError(s.to_string())
+    }
+
+    fn engine_err(source: EngineError) -> Error {
+        Self::adapter_err(source.code, "Lua adapter command failed", source)
+    }
+
+    fn adapter_err(code: ErrorCode, message: &str, source: impl std::fmt::Display) -> Error {
+        let error = EngineError::new(code, message).with_cause(source);
+        let payload = serde_json::to_string(&error).unwrap_or_else(|_| error.to_string());
+        Error::RuntimeError(payload)
     }
 
     fn sync_report_from_shell_output(
@@ -121,6 +131,12 @@ impl LuaInterface {
             "  - show_construct_reasoning_graph(project, graph_id): Shows one construct-reasoning graph plus compact summary details"
         );
         println!(
+            "  - list_construct_reasoning_inspection_actions(project, graph_id, [fact_id], [annotation_id], [summary_id]): Lists recommended construct-reasoning inspection actions"
+        );
+        println!(
+            "  - run_construct_reasoning_inspection_action(project, graph_id, action_id, [word_size], [step_bp], [max_mismatches], [tile_bp], [dotplot_id], [render_svg_path]): Runs a recommended inspection action and stores the resulting view"
+        );
+        println!(
             "  - set_construct_reasoning_annotation_status(project, graph_id, annotation_id, status): Updates one stored annotation-candidate review status"
         );
         println!(
@@ -131,6 +147,12 @@ impl LuaInterface {
         );
         println!(
             "  - ask_agent_system(project_or_nil, system_id, prompt, [catalog_path], [allow_auto_exec], [execute_all], [execute_indices], [include_state_summary]): Asks one configured AI system"
+        );
+        println!(
+            "  - plan_agent_system(project_or_nil, system_id, prompt, [catalog_path], [include_state_summary], [max_candidates], [allow_mutating_candidates]): Compiles prose into a typed agent plan"
+        );
+        println!(
+            "  - execute_agent_plan(project_or_nil, plan_json_or_table, candidate_id, [confirm]): Executes one stored agent-plan candidate"
         );
         println!(
             "  - is_reference_genome_prepared(genome_id, [catalog_path], [cache_dir]): Prepared check"
@@ -248,7 +270,7 @@ impl LuaInterface {
             .as_deref()
             .map(str::trim)
             .filter(|v| !v.is_empty());
-        GentleEngine::list_reference_genomes(catalog_path).map_err(|e| Self::err(&e.to_string()))
+        GentleEngine::list_reference_genomes(catalog_path).map_err(Self::engine_err)
     }
 
     fn list_reference_catalog_entries(
@@ -260,8 +282,7 @@ impl LuaInterface {
             .map(str::trim)
             .filter(|v| !v.is_empty());
         let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
-        GentleEngine::list_reference_catalog_entries(catalog_path, filter)
-            .map_err(|e| Self::err(&e.to_string()))
+        GentleEngine::list_reference_catalog_entries(catalog_path, filter).map_err(Self::engine_err)
     }
 
     fn list_helper_catalog_entries(
@@ -273,8 +294,7 @@ impl LuaInterface {
             .map(str::trim)
             .filter(|v| !v.is_empty());
         let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
-        GentleEngine::list_helper_catalog_entries(catalog_path, filter)
-            .map_err(|e| Self::err(&e.to_string()))
+        GentleEngine::list_helper_catalog_entries(catalog_path, filter).map_err(Self::engine_err)
     }
 
     fn list_helper_semantics_vocabulary(
@@ -287,7 +307,7 @@ impl LuaInterface {
             .filter(|v| !v.is_empty());
         let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
         GentleEngine::list_helper_semantics_vocabulary_terms(vocabulary_path, filter)
-            .map_err(|e| Self::err(&e.to_string()))
+            .map_err(Self::engine_err)
     }
 
     fn list_host_profile_catalog_entries(
@@ -300,7 +320,7 @@ impl LuaInterface {
             .filter(|v| !v.is_empty());
         let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
         GentleEngine::list_host_profile_catalog_entries(catalog_path, filter)
-            .map_err(|e| Self::err(&e.to_string()))
+            .map_err(Self::engine_err)
     }
 
     fn list_ensembl_installable_genomes(
@@ -342,6 +362,87 @@ impl LuaInterface {
         let run = execute_shell_command(&mut engine, &command)
             .map_err(|e| Self::err(&format!("construct-reasoning show-graph failed: {e}")))?;
         Ok(run.output)
+    }
+
+    fn list_construct_reasoning_inspection_actions(
+        state: ProjectState,
+        graph_id: String,
+        fact_id: Option<String>,
+        annotation_id: Option<String>,
+        summary_id: Option<String>,
+    ) -> LuaResult<serde_json::Value> {
+        let mut engine = GentleEngine::from_state(state);
+        let command = ShellCommand::ConstructReasoningListInspectionActions {
+            graph_id: graph_id.trim().to_string(),
+            fact_id: fact_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+            annotation_id: annotation_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+            candidate_id: None,
+            evidence_id: None,
+            seq_id: None,
+            action_kind: None,
+            summary_id: summary_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+        };
+        let run = execute_shell_command(&mut engine, &command).map_err(|e| {
+            Self::err(&format!(
+                "construct-reasoning list-inspection-actions failed: {e}"
+            ))
+        })?;
+        Ok(run.output)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_construct_reasoning_inspection_action(
+        state: ProjectState,
+        graph_id: String,
+        action_id: String,
+        word_size: Option<usize>,
+        step_bp: Option<usize>,
+        max_mismatches: Option<usize>,
+        tile_bp: Option<usize>,
+        dotplot_id: Option<String>,
+        render_svg_path: Option<String>,
+    ) -> LuaResult<ShellUtilityResponse> {
+        let mut engine = GentleEngine::from_state(state);
+        let command = ShellCommand::ConstructReasoningRunInspectionAction {
+            graph_id: graph_id.trim().to_string(),
+            action_id: action_id.trim().to_string(),
+            word_size: word_size.unwrap_or(12),
+            step_bp: step_bp.unwrap_or(2),
+            max_mismatches: max_mismatches.unwrap_or(0),
+            tile_bp,
+            dotplot_id: dotplot_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+            render_svg_path: render_svg_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+        };
+        let run = execute_shell_command(&mut engine, &command).map_err(|e| {
+            Self::err(&format!(
+                "construct-reasoning run-inspection-action failed: {e}"
+            ))
+        })?;
+        Ok(ShellUtilityResponse {
+            state: engine.state().clone(),
+            state_changed: run.state_changed,
+            output: run.output,
+        })
     }
 
     fn set_construct_reasoning_annotation_status(
@@ -453,6 +554,61 @@ impl LuaInterface {
         })
     }
 
+    fn plan_agent_system(
+        state: Option<ProjectState>,
+        system_id: String,
+        prompt: String,
+        catalog_path: Option<String>,
+        include_state_summary: Option<bool>,
+        max_candidates: Option<usize>,
+        allow_mutating_candidates: Option<bool>,
+    ) -> LuaResult<serde_json::Value> {
+        let mut engine = GentleEngine::from_state(state.unwrap_or_default());
+        let command = ShellCommand::AgentsPlan {
+            system_id,
+            prompt,
+            catalog_path: catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+            base_url_override: None,
+            model_override: None,
+            timeout_seconds: None,
+            connect_timeout_seconds: None,
+            read_timeout_seconds: None,
+            max_retries: None,
+            max_response_bytes: None,
+            include_state_summary: include_state_summary.unwrap_or(true),
+            max_candidates,
+            allow_mutating_candidates: allow_mutating_candidates.unwrap_or(false),
+        };
+        let run = execute_shell_command(&mut engine, &command)
+            .map_err(|e| Self::err(&format!("agents plan failed: {e}")))?;
+        Ok(run.output)
+    }
+
+    fn execute_agent_plan(
+        state: Option<ProjectState>,
+        plan_input: String,
+        candidate_id: String,
+        confirm: Option<bool>,
+    ) -> LuaResult<ShellUtilityResponse> {
+        let mut engine = GentleEngine::from_state(state.unwrap_or_default());
+        let command = ShellCommand::AgentsExecutePlan {
+            plan_input,
+            candidate_id,
+            confirm: confirm.unwrap_or(false),
+        };
+        let run = execute_shell_command(&mut engine, &command)
+            .map_err(|e| Self::err(&format!("agents execute-plan failed: {e}")))?;
+        Ok(ShellUtilityResponse {
+            state: engine.state().clone(),
+            state_changed: run.state_changed,
+            output: run.output,
+        })
+    }
+
     fn inspect_dna_ladders(
         name_filter: Option<String>,
     ) -> LuaResult<crate::engine::DnaLadderCatalog> {
@@ -471,8 +627,7 @@ impl LuaInterface {
             .as_deref()
             .map(str::trim)
             .filter(|v| !v.is_empty());
-        GentleEngine::export_dna_ladders(&output_json, name_filter)
-            .map_err(|e| Self::err(&e.to_string()))
+        GentleEngine::export_dna_ladders(&output_json, name_filter).map_err(Self::engine_err)
     }
 
     fn inspect_rna_ladders(
@@ -493,8 +648,7 @@ impl LuaInterface {
             .as_deref()
             .map(str::trim)
             .filter(|v| !v.is_empty());
-        GentleEngine::export_rna_ladders(&output_json, name_filter)
-            .map_err(|e| Self::err(&e.to_string()))
+        GentleEngine::export_rna_ladders(&output_json, name_filter).map_err(Self::engine_err)
     }
 
     fn is_reference_genome_prepared(
@@ -513,7 +667,7 @@ impl LuaInterface {
                 .map(str::trim)
                 .filter(|v| !v.is_empty()),
         )
-        .map_err(|e| Self::err(&e.to_string()))
+        .map_err(Self::engine_err)
     }
 
     fn list_reference_genome_genes(
@@ -532,7 +686,7 @@ impl LuaInterface {
                 .map(str::trim)
                 .filter(|v| !v.is_empty()),
         )
-        .map_err(|e| Self::err(&e.to_string()))
+        .map_err(Self::engine_err)
     }
 
     fn blast_reference_genome(
@@ -580,7 +734,7 @@ impl LuaInterface {
                 .map(str::trim)
                 .filter(|v| !v.is_empty()),
         )
-        .map_err(|e| Self::err(&e.to_string()))
+        .map_err(Self::engine_err)
     }
 
     fn blast_helper_genome(
@@ -628,7 +782,7 @@ impl LuaInterface {
                 .map(str::trim)
                 .filter(|v| !v.is_empty()),
         )
-        .map_err(|e| Self::err(&e.to_string()))
+        .map_err(Self::engine_err)
     }
 
     // fn restriction_enzyme_digest(seq: DNAsequence, enzymes: String) -> LuaResult<Vec<DNAsequence>> {
@@ -675,8 +829,7 @@ impl LuaInterface {
         self.lua.globals().set(
             "load_project",
             self.lua.create_function(|lua, filename: String| {
-                let state = ProjectState::load_from_path(&filename)
-                    .map_err(|e| Self::err(&e.to_string()))?;
+                let state = ProjectState::load_from_path(&filename).map_err(Self::engine_err)?;
                 lua.to_value(&state)
             })?,
         )?;
@@ -688,9 +841,7 @@ impl LuaInterface {
                     let state: ProjectState = lua
                         .from_value(state)
                         .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
-                    state
-                        .save_to_path(&filename)
-                        .map_err(|e| Self::err(&e.to_string()))?;
+                    state.save_to_path(&filename).map_err(Self::engine_err)?;
                     Ok(true)
                 })?,
         )?;
@@ -852,6 +1003,76 @@ impl LuaInterface {
         )?;
 
         self.lua.globals().set(
+            "list_construct_reasoning_inspection_actions",
+            self.lua.create_function(
+                |lua,
+                 (state, graph_id, fact_id, annotation_id, summary_id): (
+                    Value,
+                    String,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                )| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let output = Self::list_construct_reasoning_inspection_actions(
+                        state,
+                        graph_id,
+                        fact_id,
+                        annotation_id,
+                        summary_id,
+                    )?;
+                    lua.to_value(&output)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "run_construct_reasoning_inspection_action",
+            self.lua.create_function(
+                |lua,
+                 (
+                    state,
+                    graph_id,
+                    action_id,
+                    word_size,
+                    step_bp,
+                    max_mismatches,
+                    tile_bp,
+                    dotplot_id,
+                    render_svg_path,
+                ): (
+                    Value,
+                    String,
+                    String,
+                    Option<usize>,
+                    Option<usize>,
+                    Option<usize>,
+                    Option<usize>,
+                    Option<String>,
+                    Option<String>,
+                )| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let output = Self::run_construct_reasoning_inspection_action(
+                        state,
+                        graph_id,
+                        action_id,
+                        word_size,
+                        step_bp,
+                        max_mismatches,
+                        tile_bp,
+                        dotplot_id,
+                        render_svg_path,
+                    )?;
+                    lua.to_value(&output)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
             "set_construct_reasoning_annotation_status",
             self.lua.create_function(
                 |lua,
@@ -942,6 +1163,82 @@ impl LuaInterface {
                         execute_indices,
                         include_state_summary,
                     )?;
+                    lua.to_value(&response)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "plan_agent_system",
+            self.lua.create_function(
+                |lua,
+                 (
+                    state,
+                    system_id,
+                    prompt,
+                    catalog_path,
+                    include_state_summary,
+                    max_candidates,
+                    allow_mutating_candidates,
+                ): (
+                    Value,
+                    String,
+                    String,
+                    Option<String>,
+                    Option<bool>,
+                    Option<usize>,
+                    Option<bool>,
+                )| {
+                    let state = if matches!(state, Value::Nil) {
+                        None
+                    } else {
+                        Some(
+                            lua.from_value(state)
+                                .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?,
+                        )
+                    };
+                    let plan = Self::plan_agent_system(
+                        state,
+                        system_id,
+                        prompt,
+                        catalog_path,
+                        include_state_summary,
+                        max_candidates,
+                        allow_mutating_candidates,
+                    )?;
+                    lua.to_value(&plan)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "execute_agent_plan",
+            self.lua.create_function(
+                |lua, (state, plan, candidate_id, confirm): (Value, Value, String, Option<bool>)| {
+                    let state = if matches!(state, Value::Nil) {
+                        None
+                    } else {
+                        Some(
+                            lua.from_value(state)
+                                .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?,
+                        )
+                    };
+                    let plan_input = match plan {
+                        Value::String(value) => value
+                            .to_str()
+                            .map_err(|e| Self::err(&format!("Invalid plan JSON string: {e}")))?
+                            .to_string(),
+                        other => {
+                            let json: serde_json::Value = lua.from_value(other).map_err(|e| {
+                                Self::err(&format!("Invalid plan JSON/table value: {e}"))
+                            })?;
+                            serde_json::to_string(&json).map_err(|e| {
+                                Self::err(&format!("Could not serialize plan payload: {e}"))
+                            })?
+                        }
+                    };
+                    let response =
+                        Self::execute_agent_plan(state, plan_input, candidate_id, confirm)?;
                     lua.to_value(&response)
                 },
             )?,
@@ -1047,7 +1344,7 @@ impl LuaInterface {
                         .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
                     let op: Operation = Self::parse_or_decode(lua, op)?;
                     let mut engine = GentleEngine::from_state(state);
-                    let result = engine.apply(op).map_err(|e| Self::err(&e.to_string()))?;
+                    let result = engine.apply(op).map_err(Self::engine_err)?;
                     #[derive(Serialize)]
                     struct Response {
                         state: ProjectState,
@@ -1072,7 +1369,7 @@ impl LuaInterface {
                     let engine = GentleEngine::from_state(state);
                     let view = engine
                         .inspect_feature_expert(&seq_id, &target)
-                        .map_err(|e| Self::err(&e.to_string()))?;
+                        .map_err(Self::engine_err)?;
                     lua.to_value(&view)
                 })?,
         )?;
@@ -1092,7 +1389,7 @@ impl LuaInterface {
                             target,
                             path,
                         })
-                        .map_err(|e| Self::err(&e.to_string()))?;
+                        .map_err(Self::engine_err)?;
                     #[derive(Serialize)]
                     struct Response {
                         state: ProjectState,
@@ -1703,9 +2000,7 @@ impl LuaInterface {
                         .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
                     let workflow: Workflow = Self::parse_or_decode(lua, workflow)?;
                     let mut engine = GentleEngine::from_state(state);
-                    let results = engine
-                        .apply_workflow(workflow)
-                        .map_err(|e| Self::err(&e.to_string()))?;
+                    let results = engine.apply_workflow(workflow).map_err(Self::engine_err)?;
                     #[derive(Serialize)]
                     struct Response {
                         state: ProjectState,
@@ -1811,6 +2106,20 @@ mod tests {
         value
     }
 
+    struct JasparReloadResetGuard;
+
+    impl Drop for JasparReloadResetGuard {
+        fn drop(&mut self) {
+            crate::tf_motifs::reload();
+        }
+    }
+
+    fn lock_jaspar_registry_for_test() -> std::sync::MutexGuard<'static, ()> {
+        crate::tf_motifs::test_registry_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     #[test]
     fn lua_sync_rebase_wrapper_writes_snapshot() {
         let td = tempdir().expect("tempdir");
@@ -1829,6 +2138,10 @@ mod tests {
 
     #[test]
     fn lua_sync_jaspar_wrapper_writes_snapshot() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
+        let _reset = JasparReloadResetGuard;
+
         let td = tempdir().expect("tempdir");
         let input_path = write_demo_jaspar_pfm(td.path());
         let output_path = td.path().join("motifs.json");
@@ -1900,6 +2213,10 @@ mod tests {
 
     #[test]
     fn lua_sync_jaspar_wrapper_matches_shared_shell_report() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
+        let _reset = JasparReloadResetGuard;
+
         let td = tempdir().expect("tempdir");
         let input_path = write_demo_jaspar_pfm(td.path());
         let output_path = td.path().join("motifs.json");
@@ -2029,6 +2346,72 @@ mod tests {
     }
 
     #[test]
+    fn lua_plan_agent_system_wrapper_uses_builtin_echo() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("agents.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    { "id": "builtin_echo", "label": "Built-in Echo", "transport": "builtin_echo" }
+  ]
+}"#,
+        )
+        .expect("write agent catalog");
+        let out = LuaInterface::plan_agent_system(
+            Some(ProjectState::default()),
+            "builtin_echo".to_string(),
+            "auto: state-summary".to_string(),
+            Some(catalog_path.to_string_lossy().to_string()),
+            Some(false),
+            Some(1),
+            Some(false),
+        )
+        .expect("plan agent");
+        assert_eq!(out["schema"].as_str(), Some("gentle.agent_plan_result.v1"));
+        assert_eq!(out["candidates"].as_array().map(Vec::len), Some(1));
+        assert_eq!(
+            out["candidates"][0]["shell_command"].as_str(),
+            Some("state-summary")
+        );
+    }
+
+    #[test]
+    fn lua_execute_agent_plan_wrapper_runs_shell_candidate() {
+        let plan = serde_json::json!({
+            "schema": "gentle.agent_plan_result.v1",
+            "assistant_message": "ready",
+            "questions": [],
+            "candidates": [
+                {
+                    "candidate_id": "candidate-1",
+                    "title": "Set parameter",
+                    "rationale": "test shell execution",
+                    "kind": "shell",
+                    "mutating": true,
+                    "requires_confirmation": false,
+                    "execution_mode": "auto",
+                    "shell_command": "set-param max_fragments_per_container 123"
+                }
+            ]
+        });
+        let out = LuaInterface::execute_agent_plan(
+            Some(ProjectState::default()),
+            plan.to_string(),
+            "candidate-1".to_string(),
+            Some(false),
+        )
+        .expect("execute agent plan");
+        assert!(out.state_changed);
+        assert_eq!(
+            out.output["schema"].as_str(),
+            Some("gentle.agent_execution_result.v1")
+        );
+        assert_eq!(out.output["candidate_id"].as_str(), Some("candidate-1"));
+    }
+
+    #[test]
     fn lua_ask_agent_system_wrapper_accepts_nil_state() {
         let td = tempdir().expect("tempdir");
         let catalog_path = td.path().join("agents.json");
@@ -2082,7 +2465,7 @@ mod tests {
             .expect("register rust functions");
         lua.lua()
             .load(
-                "assert(type(list_reference_catalog_entries) == 'function')\nassert(type(list_helper_catalog_entries) == 'function')\nassert(type(list_helper_semantics_vocabulary) == 'function')\nassert(type(list_host_profile_catalog_entries) == 'function')\nassert(type(list_ensembl_installable_genomes) == 'function')\nassert(type(list_construct_reasoning_graphs) == 'function')\nassert(type(show_construct_reasoning_graph) == 'function')\nassert(type(set_construct_reasoning_annotation_status) == 'function')\nassert(type(write_back_construct_reasoning_annotation) == 'function')",
+                "assert(type(list_reference_catalog_entries) == 'function')\nassert(type(list_helper_catalog_entries) == 'function')\nassert(type(list_helper_semantics_vocabulary) == 'function')\nassert(type(list_host_profile_catalog_entries) == 'function')\nassert(type(list_ensembl_installable_genomes) == 'function')\nassert(type(list_construct_reasoning_graphs) == 'function')\nassert(type(show_construct_reasoning_graph) == 'function')\nassert(type(list_construct_reasoning_inspection_actions) == 'function')\nassert(type(run_construct_reasoning_inspection_action) == 'function')\nassert(type(set_construct_reasoning_annotation_status) == 'function')\nassert(type(write_back_construct_reasoning_annotation) == 'function')",
             )
             .exec()
             .expect("catalog entry wrappers should be registered");
@@ -2301,6 +2684,174 @@ mod tests {
                     row["fact_type"].as_str() == Some("adapter_restriction_capture_context")
                 }))
                 .unwrap_or(false)
+        );
+    }
+
+    #[test]
+    fn lua_construct_reasoning_inspection_action_wrappers_match_shared_shell_output() {
+        let sequence = format!(
+            "{}{}{}{}{}",
+            "ACGT".repeat(12),
+            "AAAAAAAAAAAAAA",
+            "ATATATATATATATATATAT",
+            "GATTACAGATTACCCGGGGATTACAGATTA",
+            "GCGTACGCTATTTTTAGCGTACGC"
+        );
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "construct_reasoning_lua_inspection".to_string(),
+            DNAsequence::from_sequence(&sequence).expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let graph = engine
+            .build_construct_reasoning_graph("construct_reasoning_lua_inspection", None, None)
+            .expect("build construct-reasoning graph");
+        let repeat_fact = graph
+            .facts
+            .iter()
+            .find(|fact| fact.fact_type == "repeat_architecture_context")
+            .expect("repeat architecture fact");
+        let protocol_action = graph
+            .inspection_actions
+            .iter()
+            .find(|action| {
+                action.mode == gentle_protocol::DotplotMode::SelfReverseComplement
+                    && action
+                        .source_fact_ids
+                        .iter()
+                        .any(|id| id == &repeat_fact.fact_id)
+            })
+            .cloned()
+            .expect("revcomp repeat inspection action");
+        let direct_action = graph
+            .inspection_actions
+            .iter()
+            .find(|action| {
+                action.mode == gentle_protocol::DotplotMode::SelfForward
+                    && action
+                        .source_fact_ids
+                        .iter()
+                        .any(|id| id == &repeat_fact.fact_id)
+            })
+            .cloned()
+            .expect("direct repeat inspection action");
+        assert_ne!(direct_action.action_id, protocol_action.action_id);
+        state = engine.state().clone();
+
+        let wrapper_list = LuaInterface::list_construct_reasoning_inspection_actions(
+            state.clone(),
+            graph.graph_id.clone(),
+            Some(repeat_fact.fact_id.clone()),
+            None,
+            None,
+        )
+        .expect("lua inspection-action list wrapper");
+        let mut shell_engine = GentleEngine::from_state(state.clone());
+        let shell_list = execute_shell_command(
+            &mut shell_engine,
+            &ShellCommand::ConstructReasoningListInspectionActions {
+                graph_id: graph.graph_id.clone(),
+                fact_id: Some(repeat_fact.fact_id.clone()),
+                annotation_id: None,
+                candidate_id: None,
+                evidence_id: None,
+                seq_id: None,
+                action_kind: None,
+                summary_id: None,
+            },
+        )
+        .expect("shell inspection-action list");
+        assert_eq!(wrapper_list, shell_list.output);
+        assert!(wrapper_list["actions"].as_array().is_some_and(|actions| {
+            actions
+                .iter()
+                .any(|row| row["action_id"].as_str() == Some(protocol_action.action_id.as_str()))
+        }));
+        assert!(wrapper_list["actions"].as_array().is_some_and(|actions| {
+            actions.iter().any(|row| {
+                row["action_id"].as_str() == Some(direct_action.action_id.as_str())
+                    && row["mode"].as_str()
+                        == Some(gentle_protocol::DotplotMode::SelfForward.as_str())
+            }) && actions.iter().any(|row| {
+                row["action_id"].as_str() == Some(protocol_action.action_id.as_str())
+                    && row["mode"].as_str()
+                        == Some(gentle_protocol::DotplotMode::SelfReverseComplement.as_str())
+            })
+        }));
+
+        let filtered = LuaInterface::list_construct_reasoning_inspection_actions(
+            state.clone(),
+            graph.graph_id.clone(),
+            Some("missing_fact".to_string()),
+            None,
+            None,
+        )
+        .expect("lua filtered inspection-action list");
+        assert_eq!(filtered["action_count"].as_u64(), Some(0));
+        assert!(
+            LuaInterface::list_construct_reasoning_inspection_actions(
+                state.clone(),
+                "missing_graph".to_string(),
+                None,
+                None,
+                None,
+            )
+            .is_err()
+        );
+
+        let wrapper_run = LuaInterface::run_construct_reasoning_inspection_action(
+            state.clone(),
+            graph.graph_id.clone(),
+            protocol_action.action_id.clone(),
+            Some(4),
+            Some(1),
+            Some(0),
+            Some(128),
+            Some("lua_reasoning_action_plot".to_string()),
+            None,
+        )
+        .expect("lua inspection-action run wrapper");
+        assert!(wrapper_run.state_changed);
+        assert_eq!(
+            wrapper_run.output["schema"].as_str(),
+            Some("gentle.construct_reasoning_inspection_action_dotplot_run.v1")
+        );
+        assert_eq!(
+            wrapper_run.output["action"]["action_id"].as_str(),
+            Some(protocol_action.action_id.as_str())
+        );
+        assert_eq!(
+            wrapper_run.output["dotplot"]["dotplot_id"].as_str(),
+            Some("lua_reasoning_action_plot")
+        );
+        assert_eq!(
+            wrapper_run.output["compute_parameters"]["span_start_0based"],
+            wrapper_run.output["dotplot"]["span_start_0based"]
+        );
+        assert_eq!(
+            wrapper_run.output["compute_parameters"]["span_end_0based"],
+            wrapper_run.output["dotplot"]["span_end_0based"]
+        );
+        let stored = GentleEngine::from_state(wrapper_run.state.clone())
+            .list_dotplot_views(Some("construct_reasoning_lua_inspection"));
+        assert!(
+            stored
+                .iter()
+                .any(|row| row.dotplot_id == "lua_reasoning_action_plot")
+        );
+        assert!(
+            LuaInterface::run_construct_reasoning_inspection_action(
+                state,
+                graph.graph_id,
+                "missing_action".to_string(),
+                Some(4),
+                Some(1),
+                Some(0),
+                Some(128),
+                Some("lua_missing_action_plot".to_string()),
+                None,
+            )
+            .is_err()
         );
     }
 

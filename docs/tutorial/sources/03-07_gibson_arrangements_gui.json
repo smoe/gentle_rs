@@ -1,0 +1,20 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "gibson_arrangements_gui",
+  "title": "Gibson Arrangements Tutorial",
+  "catalog": {
+    "order": 5,
+    "path": "docs/tutorial/03-07_gibson_arrangements_gui.md",
+    "type": "gui_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "cloning_planning",
+      "contributors"
+    ],
+    "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export.",
+    "group": "03",
+    "group_position": 7
+  }
+}

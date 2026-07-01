@@ -32,12 +32,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "GenerateCandidateSet requires length_bp >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if step_bp == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "GenerateCandidateSet requires step_bp >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let limit = limit.unwrap_or(self.max_fragments_per_container());
@@ -45,6 +49,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "GenerateCandidateSet requires limit >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let dna = self
@@ -54,6 +60,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?;
         if dna.len() < length_bp {
             return Err(EngineError {
@@ -64,6 +72,8 @@ impl GentleEngine {
                     seq_id,
                     dna.len()
                 ),
+
+                cause_chain: vec![],
             });
         }
         let label_regex =
@@ -112,6 +122,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "No features matched feature filters while generating candidate set"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -188,6 +200,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "No candidates matched generation constraints".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let generated = candidates.len();
@@ -267,12 +281,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "GenerateCandidateSetBetweenAnchors requires length_bp >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if step_bp == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "GenerateCandidateSetBetweenAnchors requires step_bp >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let limit = limit.unwrap_or(self.max_fragments_per_container());
@@ -280,6 +298,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "GenerateCandidateSetBetweenAnchors requires limit >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -290,6 +310,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?;
         let is_circular = dna.is_circular();
 
@@ -300,6 +322,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "GenerateCandidateSetBetweenAnchors requires distinct anchor positions"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -313,6 +337,8 @@ impl GentleEngine {
                     "Anchor span {} bp is shorter than requested candidate length {} bp",
                     span, length_bp
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -378,6 +404,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "No candidates generated between the two anchors".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -572,11 +600,15 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Guide set '{}' not found", guide_set_id),
+
+                cause_chain: vec![],
             })?;
         if guide_set.guides.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Guide set '{}' is empty", guide_set_id),
+
+                cause_chain: vec![],
             });
         }
 
@@ -618,47 +650,41 @@ impl GentleEngine {
                 });
             }
 
-            if config.gc_min.is_some() || config.gc_max.is_some() {
-                if let Some(gc) = Self::sequence_gc_fraction(&spacer) {
-                    row.metrics.insert("gc_fraction".to_string(), gc);
-                    if let Some(min) = config.gc_min {
-                        if gc < min {
-                            row.reasons.push(GuideFilterReason {
-                                code: "gc_too_low".to_string(),
-                                message: format!(
-                                    "GC fraction {:.3} is below minimum {:.3}",
-                                    gc, min
-                                ),
-                            });
-                        }
-                    }
-                    if let Some(max) = config.gc_max {
-                        if gc > max {
-                            row.reasons.push(GuideFilterReason {
-                                code: "gc_too_high".to_string(),
-                                message: format!(
-                                    "GC fraction {:.3} is above maximum {:.3}",
-                                    gc, max
-                                ),
-                            });
-                        }
-                    }
+            if (config.gc_min.is_some() || config.gc_max.is_some())
+                && let Some(gc) = Self::sequence_gc_fraction(&spacer)
+            {
+                row.metrics.insert("gc_fraction".to_string(), gc);
+                if let Some(min) = config.gc_min
+                    && gc < min
+                {
+                    row.reasons.push(GuideFilterReason {
+                        code: "gc_too_low".to_string(),
+                        message: format!("GC fraction {:.3} is below minimum {:.3}", gc, min),
+                    });
+                }
+                if let Some(max) = config.gc_max
+                    && gc > max
+                {
+                    row.reasons.push(GuideFilterReason {
+                        code: "gc_too_high".to_string(),
+                        message: format!("GC fraction {:.3} is above maximum {:.3}", gc, max),
+                    });
                 }
             }
 
             let max_run = Self::max_homopolymer_run(&spacer);
             row.metrics
                 .insert("max_homopolymer_run".to_string(), max_run as f64);
-            if let Some(limit) = config.max_homopolymer_run {
-                if max_run > limit {
-                    row.reasons.push(GuideFilterReason {
-                        code: "homopolymer_run_exceeded".to_string(),
-                        message: format!(
-                            "Max homopolymer run {} exceeds configured limit {}",
-                            max_run, limit
-                        ),
-                    });
-                }
+            if let Some(limit) = config.max_homopolymer_run
+                && max_run > limit
+            {
+                row.reasons.push(GuideFilterReason {
+                    code: "homopolymer_run_exceeded".to_string(),
+                    message: format!(
+                        "Max homopolymer run {} exceeds configured limit {}",
+                        max_run, limit
+                    ),
+                });
             }
             for (base, limit) in &config.max_homopolymer_run_per_base {
                 let probe = base.as_bytes()[0];
@@ -697,16 +723,16 @@ impl GentleEngine {
                 "max_dinucleotide_repeat_units".to_string(),
                 max_repeat as f64,
             );
-            if let Some(limit) = config.max_dinucleotide_repeat_units {
-                if max_repeat > limit {
-                    row.reasons.push(GuideFilterReason {
-                        code: "dinucleotide_repeat_exceeded".to_string(),
-                        message: format!(
-                            "Max dinucleotide repeat units {} exceeds configured limit {}",
-                            max_repeat, limit
-                        ),
-                    });
-                }
+            if let Some(limit) = config.max_dinucleotide_repeat_units
+                && max_repeat > limit
+            {
+                row.reasons.push(GuideFilterReason {
+                    code: "dinucleotide_repeat_exceeded".to_string(),
+                    message: format!(
+                        "Max dinucleotide repeat units {} exceeds configured limit {}",
+                        max_repeat, limit
+                    ),
+                });
             }
 
             for motif in &config.forbidden_motifs {
@@ -718,24 +744,22 @@ impl GentleEngine {
                 }
             }
 
-            if let Some(required_base) = config.required_5prime_base.as_ref() {
-                if let Some(actual) = spacer.first().map(|b| (*b as char).to_string()) {
-                    if actual != *required_base {
-                        if config.allow_5prime_g_extension && required_base == "G" {
-                            row.warnings.push(
-                                "Missing required 5' G but can be rescued by 5' G extension"
-                                    .to_string(),
-                            );
-                        } else {
-                            row.reasons.push(GuideFilterReason {
-                                code: "required_5prime_base_missing".to_string(),
-                                message: format!(
-                                    "Protospacer 5' base '{}' does not match required '{}'",
-                                    actual, required_base
-                                ),
-                            });
-                        }
-                    }
+            if let Some(required_base) = config.required_5prime_base.as_ref()
+                && let Some(actual) = spacer.first().map(|b| (*b as char).to_string())
+                && actual != *required_base
+            {
+                if config.allow_5prime_g_extension && required_base == "G" {
+                    row.warnings.push(
+                        "Missing required 5' G but can be rescued by 5' G extension".to_string(),
+                    );
+                } else {
+                    row.reasons.push(GuideFilterReason {
+                        code: "required_5prime_base_missing".to_string(),
+                        message: format!(
+                            "Protospacer 5' base '{}' does not match required '{}'",
+                            actual, required_base
+                        ),
+                    });
                 }
             }
 
@@ -824,7 +848,8 @@ impl GentleEngine {
                     "Unknown guide oligo template '{}'; supported templates: lenti_bsmbi_u6_default, plain_forward_reverse",
                     template_id
                 ),
-            }
+            
+                cause_chain: vec![],}
         })?;
         let apply_5prime_g_extension = apply_5prime_g_extension.unwrap_or(false);
         let passed_only = passed_only.unwrap_or(false);
@@ -837,11 +862,15 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Guide set '{}' not found", guide_set_id),
+
+                cause_chain: vec![],
             })?;
         if guide_set.guides.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Guide set '{}' is empty", guide_set_id),
+
+                cause_chain: vec![],
             });
         }
 
@@ -855,7 +884,8 @@ impl GentleEngine {
                         "No practical filter report found for '{}' (required because passed_only=true)",
                         guide_set_id
                     ),
-                })?;
+                
+                    cause_chain: vec![],})?;
             Some(
                 report
                     .results
@@ -877,10 +907,10 @@ impl GentleEngine {
         });
         let mut records = vec![];
         for guide in &guides {
-            if let Some(lookup) = &passed_lookup {
-                if !lookup.contains(&guide.guide_id) {
-                    continue;
-                }
+            if let Some(lookup) = &passed_lookup
+                && !lookup.contains(&guide.guide_id)
+            {
+                continue;
             }
             let mut notes = vec![];
             let mut spacer = guide
@@ -928,6 +958,8 @@ impl GentleEngine {
                     "No guides selected for oligo generation in set '{}'",
                     guide_set_id
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -995,13 +1027,15 @@ impl GentleEngine {
         else {
             return Ok(());
         };
-        std::fs::create_dir_all(&parent).map_err(|e| EngineError {
+        std::fs::create_dir_all(parent).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!(
                 "Could not create output directory '{}' for export '{}': {e}",
                 parent.display(),
                 path
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1019,6 +1053,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "ExportGuideOligos requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut store = self.read_guide_design_store();
@@ -1026,6 +1062,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Guide set '{}' not found", guide_set_id),
+
+                cause_chain: vec![],
             });
         }
         let oligo_set =
@@ -1096,6 +1134,8 @@ impl GentleEngine {
         std::fs::write(&path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write oligo export '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
 
         let report = GuideOligoExportReport {
@@ -1132,6 +1172,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "ExportGuideProtocolText requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut store = self.read_guide_design_store();
@@ -1139,6 +1181,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Guide set '{}' not found", guide_set_id),
+
+                cause_chain: vec![],
             });
         }
         let oligo_set =
@@ -1191,6 +1235,8 @@ impl GentleEngine {
         std::fs::write(&path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write protocol export '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
 
         let report = GuideProtocolExportReport {
@@ -1248,11 +1294,15 @@ impl GentleEngine {
         let set = store.sets.get_mut(&set_name).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Candidate set '{}' not found", set_name),
+
+            cause_chain: vec![],
         })?;
         if set.candidates.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Candidate set '{}' is empty", set_name),
+
+                cause_chain: vec![],
             });
         }
         let mut values = Vec::with_capacity(set.candidates.len());
@@ -1265,6 +1315,8 @@ impl GentleEngine {
                             "Could not evaluate expression for candidate {} in '{}': {}",
                             idx, set_name, e.message
                         ),
+
+                        cause_chain: vec![],
                     }
                 })?;
             values.push(value);
@@ -1330,11 +1382,15 @@ impl GentleEngine {
         let set = store.sets.get_mut(&set_name).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Candidate set '{}' not found", set_name),
+
+            cause_chain: vec![],
         })?;
         if set.candidates.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Candidate set '{}' is empty", set_name),
+
+                cause_chain: vec![],
             });
         }
 
@@ -1352,6 +1408,8 @@ impl GentleEngine {
                         "Candidate set '{}' references missing sequence '{}'",
                         set_name, seq_id
                     ),
+
+                    cause_chain: vec![],
                 });
             };
             feature_cache.insert(
@@ -1374,6 +1432,8 @@ impl GentleEngine {
                         "Missing feature cache for sequence '{}' while scoring candidate set '{}'",
                         candidate.seq_id, set_name
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let distance = Self::nearest_feature_distance(
                 candidate.start_0based,
@@ -1389,6 +1449,8 @@ impl GentleEngine {
                     "No matching features found for candidate {} (seq='{}')",
                     idx, candidate.seq_id
                 ),
+
+                cause_chain: vec![],
             })?;
             values.push(distance as f64);
         }
@@ -1435,6 +1497,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "FilterCandidateSet requires min <= max".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if min_quantile
@@ -1445,25 +1509,31 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "FilterCandidateSet requires min_quantile <= max_quantile".to_string(),
+
+                cause_chain: vec![],
             });
         }
         for (name, value) in [
             ("min_quantile", min_quantile),
             ("max_quantile", max_quantile),
         ] {
-            if let Some(q) = value {
-                if !(0.0..=1.0).contains(&q) {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("FilterCandidateSet {} must be between 0 and 1", name),
-                    });
-                }
+            if let Some(q) = value
+                && !(0.0..=1.0).contains(&q)
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("FilterCandidateSet {} must be between 0 and 1", name),
+
+                    cause_chain: vec![],
+                });
             }
         }
         if min.is_none() && max.is_none() && min_quantile.is_none() && max_quantile.is_none() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "FilterCandidateSet requires at least one bound or quantile".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -1475,11 +1545,15 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Candidate set '{}' not found", input_set),
+
+                cause_chain: vec![],
             })?;
         if input.candidates.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Candidate set '{}' is empty", input_set),
+
+                cause_chain: vec![],
             });
         }
 
@@ -1495,6 +1569,8 @@ impl GentleEngine {
                         "Candidate {} in '{}' is missing metric '{}'",
                         idx, input_set, metric_name
                     ),
+
+                    cause_chain: vec![],
                 })?;
             if !value.is_finite() {
                 return Err(EngineError {
@@ -1503,6 +1579,8 @@ impl GentleEngine {
                         "Candidate {} in '{}' has non-finite metric '{}'",
                         idx, input_set, metric_name
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             metric_values.push(value);
@@ -1532,15 +1610,15 @@ impl GentleEngine {
                 let Some(value) = candidate.metrics.get(&metric_name).copied() else {
                     return false;
                 };
-                if let Some(lo) = lower_bound {
-                    if value < lo {
-                        return false;
-                    }
+                if let Some(lo) = lower_bound
+                    && value < lo
+                {
+                    return false;
                 }
-                if let Some(hi) = upper_bound {
-                    if value > hi {
-                        return false;
-                    }
+                if let Some(hi) = upper_bound
+                    && value > hi
+                {
+                    return false;
                 }
                 true
             })
@@ -1592,6 +1670,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Candidate set '{}' not found", left_set),
+
+                cause_chain: vec![],
             })?;
         let right = store
             .sets
@@ -1600,6 +1680,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Candidate set '{}' not found", right_set),
+
+                cause_chain: vec![],
             })?;
         let mut output_candidates = vec![];
         match op {
@@ -1728,6 +1810,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "ScoreCandidateSetWeightedObjective requires at least one objective term"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let normalize_metrics = normalize_metrics.unwrap_or(true);
@@ -1742,6 +1826,8 @@ impl GentleEngine {
                         "Invalid weighted objective term for metric '{}': weight must be finite and > 0",
                         metric
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             compiled.push((metric, term.weight, term.direction));
@@ -1751,11 +1837,15 @@ impl GentleEngine {
         let set = store.sets.get_mut(&set_name).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Candidate set '{}' not found", set_name),
+
+            cause_chain: vec![],
         })?;
         if set.candidates.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Candidate set '{}' is empty", set_name),
+
+                cause_chain: vec![],
             });
         }
 
@@ -1775,6 +1865,8 @@ impl GentleEngine {
                                 "Candidate {} in '{}' is missing metric '{}'",
                                 idx, set_name, metric_name
                             ),
+
+                            cause_chain: vec![],
                         })?;
                 if !value.is_finite() {
                     return Err(EngineError {
@@ -1783,6 +1875,8 @@ impl GentleEngine {
                             "Candidate {} in '{}' has non-finite metric '{}'",
                             idx, set_name, metric_name
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 min_value = min_value.min(value);
@@ -1808,6 +1902,8 @@ impl GentleEngine {
                                 "Candidate in '{}' is missing metric '{}'",
                                 set_name, metric_name
                             ),
+
+                            cause_chain: vec![],
                         })?;
                 let objective_value = if normalize_metrics {
                     let scaled = if *max_value > *min_value {
@@ -1872,6 +1968,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "TopKCandidateSet requires k >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let direction = direction.unwrap_or_default();
@@ -1885,11 +1983,15 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Candidate set '{}' not found", input_set),
+
+                cause_chain: vec![],
             })?;
         if input.candidates.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Candidate set '{}' is empty", input_set),
+
+                cause_chain: vec![],
             });
         }
 
@@ -1905,6 +2007,8 @@ impl GentleEngine {
                         "Candidate {} in '{}' is missing metric '{}'",
                         idx, input_set, metric_name
                     ),
+
+                    cause_chain: vec![],
                 })?;
             if !value.is_finite() {
                 return Err(EngineError {
@@ -1913,6 +2017,8 @@ impl GentleEngine {
                         "Candidate {} in '{}' has non-finite metric '{}'",
                         idx, input_set, metric_name
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             scored.push((candidate, value));
@@ -2016,12 +2122,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "ParetoFrontierCandidateSet requires at least one objective".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if max_candidates == Some(0) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "ParetoFrontierCandidateSet max_candidates must be >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let tie_break = tie_break.unwrap_or_default();
@@ -2042,11 +2152,15 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Candidate set '{}' not found", input_set),
+
+                cause_chain: vec![],
             })?;
         if input.candidates.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Candidate set '{}' is empty", input_set),
+
+                cause_chain: vec![],
             });
         }
 
@@ -2064,6 +2178,8 @@ impl GentleEngine {
                             "Candidate {} in '{}' is missing metric '{}'",
                             candidate_idx, input_set, objective.metric
                         ),
+
+                        cause_chain: vec![],
                     })?;
                 if !value.is_finite() {
                     return Err(EngineError {
@@ -2072,6 +2188,8 @@ impl GentleEngine {
                             "Candidate {} in '{}' has non-finite metric '{}'",
                             candidate_idx, input_set, objective.metric
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 row.push(value);
@@ -2099,24 +2217,24 @@ impl GentleEngine {
         let mut frontier = input
             .candidates
             .into_iter()
-            .zip(dominated.into_iter())
+            .zip(dominated)
             .filter_map(
                 |(candidate, is_dominated)| if is_dominated { None } else { Some(candidate) },
             )
             .collect::<Vec<_>>();
         let raw_frontier_count = frontier.len();
-        if let Some(limit) = max_candidates {
-            if frontier.len() > limit {
-                frontier.sort_by(|a, b| Self::compare_candidates_by_tie_break(a, b, tie_break));
-                frontier.truncate(limit);
-                result.warnings.push(format!(
+        if let Some(limit) = max_candidates
+            && frontier.len() > limit
+        {
+            frontier.sort_by(|a, b| Self::compare_candidates_by_tie_break(a, b, tie_break));
+            frontier.truncate(limit);
+            result.warnings.push(format!(
                     "Pareto frontier for '{}' had {} candidates and was truncated to {} by tie-break policy '{}'",
                     input_set,
                     raw_frontier_count,
                     limit,
                     tie_break.as_str()
                 ));
-            }
         }
 
         let output_count = frontier.len();
@@ -2170,6 +2288,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Workflow macro template script cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let details_url = Self::normalize_workflow_macro_template_details_url(details_url)?;
@@ -2185,6 +2305,8 @@ impl GentleEngine {
                         "Workflow macro template '{}' contains duplicate parameter '{}'",
                         name, param_name
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let default_value = parameter
@@ -2211,18 +2333,22 @@ impl GentleEngine {
             Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").map_err(|e| EngineError {
                 code: ErrorCode::Internal,
                 message: format!("Could not compile workflow macro placeholder regex: {e}"),
+
+                cause_chain: vec![],
             })?;
         for captures in placeholder_regex.captures_iter(script) {
-            if let Some(param_name) = captures.get(1).map(|m| m.as_str()) {
-                if !declared.contains(param_name) {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Workflow macro template '{}' references undeclared parameter '{}' in script",
-                            name, param_name
-                        ),
-                    });
-                }
+            if let Some(param_name) = captures.get(1).map(|m| m.as_str())
+                && !declared.contains(param_name)
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Workflow macro template '{}' references undeclared parameter '{}' in script",
+                        name, param_name
+                    ),
+
+                    cause_chain: vec![],
+                });
             }
         }
 
@@ -2238,6 +2364,8 @@ impl GentleEngine {
                         "Workflow macro template '{}' has {} port '{}' with empty kind",
                         name, direction_label, port_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let cardinality = match port.cardinality.trim().to_ascii_lowercase().as_str() {
@@ -2250,6 +2378,8 @@ impl GentleEngine {
                             "Workflow macro template '{}' has {} port '{}' with unsupported cardinality '{}' (expected one|many)",
                             name, direction_label, port_id, other
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
             };
@@ -2276,6 +2406,8 @@ impl GentleEngine {
                         "Workflow macro template '{}' contains duplicate input port '{}'",
                         name, port.port_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             normalized_input_ports.push(port);
@@ -2292,6 +2424,8 @@ impl GentleEngine {
                         "Workflow macro template '{}' contains duplicate output port '{}'",
                         name, port.port_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             normalized_output_ports.push(port);
@@ -2374,6 +2508,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Candidate macro template script cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let details_url = Self::normalize_candidate_macro_template_details_url(details_url)?;
@@ -2389,6 +2525,8 @@ impl GentleEngine {
                         "Candidate macro template '{}' contains duplicate parameter '{}'",
                         name, param_name
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let default_value = parameter
@@ -2415,18 +2553,22 @@ impl GentleEngine {
             Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").map_err(|e| EngineError {
                 code: ErrorCode::Internal,
                 message: format!("Could not compile candidate macro placeholder regex: {e}"),
+
+                cause_chain: vec![],
             })?;
         for captures in placeholder_regex.captures_iter(script) {
-            if let Some(param_name) = captures.get(1).map(|m| m.as_str()) {
-                if !declared.contains(param_name) {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Candidate macro template '{}' references undeclared parameter '{}' in script",
-                            name, param_name
-                        ),
-                    });
-                }
+            if let Some(param_name) = captures.get(1).map(|m| m.as_str())
+                && !declared.contains(param_name)
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Candidate macro template '{}' references undeclared parameter '{}' in script",
+                        name, param_name
+                    ),
+
+                    cause_chain: vec![],
+                });
             }
         }
 

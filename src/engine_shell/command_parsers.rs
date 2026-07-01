@@ -16,10 +16,322 @@ use crate::engine::{
     CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
     QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
-    RepeatEnvironmentGeometryMode, TfbsScoreTrackCorrelationMetric,
-    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
-    TfbsTrackSimilarityRankingMetric,
+    ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode,
+    TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
+    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
 };
+
+fn parse_read_acquisition_analysis_format(
+    raw: &str,
+) -> Result<ReadAcquisitionAnalysisFormat, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "fasta" | "fa" => Ok(ReadAcquisitionAnalysisFormat::Fasta),
+        "fastq" | "fq" => Ok(ReadAcquisitionAnalysisFormat::Fastq),
+        other => Err(format!(
+            "Unknown read acquisition analysis format '{other}' (expected fasta|fastq)"
+        )),
+    }
+}
+
+fn parse_read_acquisition_read_layout(raw: &str) -> Result<ReadAcquisitionReadLayout, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "single_end" | "single-end" | "single" | "se" => Ok(ReadAcquisitionReadLayout::SingleEnd),
+        "paired_end" | "paired-end" | "paired" | "pe" => Ok(ReadAcquisitionReadLayout::PairedEnd),
+        "split_spot" | "split-spot" | "splitspot" => Ok(ReadAcquisitionReadLayout::SplitSpot),
+        other => Err(format!(
+            "Unknown read acquisition layout '{other}' (expected single_end|paired_end|split_spot)"
+        )),
+    }
+}
+
+pub(super) fn parse_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("reads requires a subcommand: acquire".to_string());
+    }
+    match tokens[1].as_str() {
+        "acquire" => {
+            if tokens.len() < 3 {
+                return Err("reads acquire requires status|prepare|inspect|cancel".to_string());
+            }
+            match tokens[2].as_str() {
+                "status" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "reads acquire status requires MANIFEST.tsv --cache-dir DIR --work-dir DIR"
+                                .to_string(),
+                        );
+                    }
+                    let manifest_path = tokens[3].trim().to_string();
+                    let mut cache_dir: Option<String> = None;
+                    let mut work_dir: Option<String> = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--cache-dir" => {
+                                cache_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--cache-dir",
+                                    "reads acquire status",
+                                )?);
+                            }
+                            "--work-dir" => {
+                                work_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--work-dir",
+                                    "reads acquire status",
+                                )?);
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for reads acquire status"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ReadsAcquireStatus {
+                        manifest_path,
+                        cache_dir: cache_dir.ok_or_else(|| {
+                            "reads acquire status requires --cache-dir DIR".to_string()
+                        })?,
+                        work_dir: work_dir.ok_or_else(|| {
+                            "reads acquire status requires --work-dir DIR".to_string()
+                        })?,
+                    })
+                }
+                "prepare" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "reads acquire prepare requires MANIFEST.tsv --cache-dir DIR --work-dir DIR [--analysis-format fasta|fastq] [--read-layout single_end|paired_end|split_spot] [--threads N] [--max-size SIZE] [--min-free-gb N] [--drop-intermediate-fastq] [--continue-on-error]"
+                                .to_string(),
+                        );
+                    }
+                    let manifest_path = tokens[3].trim().to_string();
+                    let mut cache_dir: Option<String> = None;
+                    let mut work_dir: Option<String> = None;
+                    let mut analysis_format = ReadAcquisitionAnalysisFormat::Fasta;
+                    let mut read_layout = ReadAcquisitionReadLayout::SingleEnd;
+                    let mut threads: Option<usize> = None;
+                    let mut max_size: Option<String> = None;
+                    let mut min_free_gb: Option<u64> = None;
+                    let mut drop_intermediate_fastq = false;
+                    let mut continue_on_error = false;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--cache-dir" => {
+                                cache_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--cache-dir",
+                                    "reads acquire prepare",
+                                )?);
+                            }
+                            "--work-dir" => {
+                                work_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--work-dir",
+                                    "reads acquire prepare",
+                                )?);
+                            }
+                            "--analysis-format" | "--format" => {
+                                let flag = tokens[idx].clone();
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    &flag,
+                                    "reads acquire prepare",
+                                )?;
+                                analysis_format = parse_read_acquisition_analysis_format(&raw)?;
+                            }
+                            "--read-layout" | "--layout" => {
+                                let flag = tokens[idx].clone();
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    &flag,
+                                    "reads acquire prepare",
+                                )?;
+                                read_layout = parse_read_acquisition_read_layout(&raw)?;
+                            }
+                            "--threads" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--threads",
+                                    "reads acquire prepare",
+                                )?;
+                                threads = Some(raw.parse::<usize>().map_err(|e| {
+                                    format!(
+                                        "Invalid --threads value '{raw}' for reads acquire prepare: {e}"
+                                    )
+                                })?);
+                            }
+                            "--max-size" => {
+                                max_size = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--max-size",
+                                    "reads acquire prepare",
+                                )?);
+                            }
+                            "--min-free-gb" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--min-free-gb",
+                                    "reads acquire prepare",
+                                )?;
+                                min_free_gb = Some(raw.parse::<u64>().map_err(|e| {
+                                    format!(
+                                        "Invalid --min-free-gb value '{raw}' for reads acquire prepare: {e}"
+                                    )
+                                })?);
+                            }
+                            "--drop-intermediate-fastq" => {
+                                drop_intermediate_fastq = true;
+                                idx += 1;
+                            }
+                            "--keep-intermediate-fastq" | "--no-drop-intermediate-fastq" => {
+                                drop_intermediate_fastq = false;
+                                idx += 1;
+                            }
+                            "--continue-on-error" => {
+                                continue_on_error = true;
+                                idx += 1;
+                            }
+                            "--fail-fast" | "--no-continue-on-error" => {
+                                continue_on_error = false;
+                                idx += 1;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for reads acquire prepare"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ReadsAcquirePrepare {
+                        manifest_path,
+                        cache_dir: cache_dir.ok_or_else(|| {
+                            "reads acquire prepare requires --cache-dir DIR".to_string()
+                        })?,
+                        work_dir: work_dir.ok_or_else(|| {
+                            "reads acquire prepare requires --work-dir DIR".to_string()
+                        })?,
+                        analysis_format,
+                        read_layout,
+                        threads,
+                        max_size,
+                        min_free_gb,
+                        drop_intermediate_fastq,
+                        continue_on_error,
+                    })
+                }
+                "inspect" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "reads acquire inspect requires RUN_ACCESSION --cache-dir DIR --work-dir DIR"
+                                .to_string(),
+                        );
+                    }
+                    let sra_accession = tokens[3].trim().to_string();
+                    let mut cache_dir: Option<String> = None;
+                    let mut work_dir: Option<String> = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--cache-dir" => {
+                                cache_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--cache-dir",
+                                    "reads acquire inspect",
+                                )?);
+                            }
+                            "--work-dir" => {
+                                work_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--work-dir",
+                                    "reads acquire inspect",
+                                )?);
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for reads acquire inspect"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ReadsAcquireInspect {
+                        sra_accession,
+                        cache_dir: cache_dir.ok_or_else(|| {
+                            "reads acquire inspect requires --cache-dir DIR".to_string()
+                        })?,
+                        work_dir: work_dir.ok_or_else(|| {
+                            "reads acquire inspect requires --work-dir DIR".to_string()
+                        })?,
+                    })
+                }
+                "cancel" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "reads acquire cancel requires RUN_ACCESSION --cache-dir DIR --work-dir DIR"
+                                .to_string(),
+                        );
+                    }
+                    let sra_accession = tokens[3].trim().to_string();
+                    let mut cache_dir: Option<String> = None;
+                    let mut work_dir: Option<String> = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--cache-dir" => {
+                                cache_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--cache-dir",
+                                    "reads acquire cancel",
+                                )?);
+                            }
+                            "--work-dir" => {
+                                work_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--work-dir",
+                                    "reads acquire cancel",
+                                )?);
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for reads acquire cancel"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ReadsAcquireCancel {
+                        sra_accession,
+                        cache_dir: cache_dir.ok_or_else(|| {
+                            "reads acquire cancel requires --cache-dir DIR".to_string()
+                        })?,
+                        work_dir: work_dir.ok_or_else(|| {
+                            "reads acquire cancel requires --work-dir DIR".to_string()
+                        })?,
+                    })
+                }
+                other => Err(format!(
+                    "Unknown reads acquire subcommand '{other}' (expected status|prepare|inspect|cancel)"
+                )),
+            }
+        }
+        other => Err(format!(
+            "Unknown reads subcommand '{other}' (expected acquire)"
+        )),
+    }
+}
 
 pub(super) fn parse_containers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
@@ -762,10 +1074,10 @@ pub(super) fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand
                 ("min-quantile", min_quantile),
                 ("max-quantile", max_quantile),
             ] {
-                if let Some(q) = value {
-                    if !(0.0..=1.0).contains(&q) {
-                        return Err(format!("--{name} must be between 0 and 1"));
-                    }
+                if let Some(q) = value
+                    && !(0.0..=1.0).contains(&q)
+                {
+                    return Err(format!("--{name} must be between 0 and 1"));
                 }
             }
             if min.is_none() && max.is_none() && min_quantile.is_none() && max_quantile.is_none() {
@@ -1750,6 +2062,47 @@ fn build_sequence_scan_target_from_feature_state(
     }
 }
 
+fn build_sequence_scan_target_from_alignment_state(
+    seq_id: Option<String>,
+    sequence_text: Option<String>,
+    topology: InlineSequenceTopology,
+    id_hint: Option<String>,
+    state: FeatureQueryOptionState,
+    context: &str,
+) -> Result<SequenceScanTarget, String> {
+    if state.range_arg.is_some() && (state.start_arg.is_some() || state.end_arg.is_some()) {
+        return Err(format!(
+            "{context} accepts either --*-range START..END or --*-start/--*-end, not both"
+        ));
+    }
+    let (span_start_0based, span_end_0based_exclusive) =
+        if let Some((start, end_exclusive)) = state.range_arg {
+            (Some(start), Some(end_exclusive))
+        } else {
+            (state.start_arg, state.end_arg)
+        };
+    match (seq_id, sequence_text) {
+        (Some(seq_id), None) => Ok(SequenceScanTarget::SeqId {
+            seq_id,
+            span_start_0based,
+            span_end_0based_exclusive,
+        }),
+        (None, Some(sequence_text)) => Ok(SequenceScanTarget::InlineSequence {
+            sequence_text,
+            topology,
+            id_hint,
+            span_start_0based,
+            span_end_0based_exclusive,
+        }),
+        (Some(_), Some(_)) => Err(format!(
+            "{context} accepts either SEQ_ID or inline sequence text, not both"
+        )),
+        (None, None) => Err(format!(
+            "{context} requires either SEQ_ID or inline sequence text"
+        )),
+    }
+}
+
 fn parse_required_value(tokens: &[String], idx: &mut usize, flag: &str) -> Result<String, String> {
     if *idx >= tokens.len() {
         return Err(format!("{flag} requires a value"));
@@ -1824,14 +2177,69 @@ fn parse_repeat_filter_option(
     }
 }
 
+fn parse_promoter_expression_input_json(
+    raw: &str,
+) -> Result<Vec<PromoterExpressionEvidenceInput>, String> {
+    let value: serde_json::Value = serde_json::from_str(raw)
+        .map_err(|e| format!("Invalid promoter expression evidence JSON: {e}"))?;
+    if value.is_array() {
+        serde_json::from_value::<Vec<PromoterExpressionEvidenceInput>>(value)
+            .map_err(|e| format!("Invalid promoter expression evidence JSON array: {e}"))
+    } else {
+        serde_json::from_value::<PromoterExpressionEvidenceInput>(value)
+            .map(|row| vec![row])
+            .map_err(|e| format!("Invalid promoter expression evidence JSON object: {e}"))
+    }
+}
+
+fn parse_promoter_artifact_manifest_entry_json(
+    raw: &str,
+) -> Result<Vec<PromoterArtifactManifestEntry>, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(raw).map_err(|e| format!("Invalid promoter artifact JSON: {e}"))?;
+    if value.is_array() {
+        serde_json::from_value::<Vec<PromoterArtifactManifestEntry>>(value)
+            .map_err(|e| format!("Invalid promoter artifact JSON array: {e}"))
+    } else {
+        serde_json::from_value::<PromoterArtifactManifestEntry>(value)
+            .map(|row| vec![row])
+            .map_err(|e| format!("Invalid promoter artifact JSON object: {e}"))
+    }
+}
+
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
+            "features requires a subcommand: formula, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, promoter-isoform-comparison, promoter-expression-evidence, promoter-artifact-manifest, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
                 .to_string(),
         );
     }
     match tokens[1].as_str() {
+        "formula" | "resolve-formula" | "resolve_formula" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "features formula requires SEQ_ID EXPR (for example: features formula seq '=gene.upstream(1000) .. gene.tss')"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("features formula SEQ_ID must not be empty".to_string());
+            }
+            let expression = if matches!(tokens[3].as_str(), "--expr" | "--expression") {
+                if tokens.len() < 5 {
+                    return Err("features formula --expr requires a formula expression".to_string());
+                }
+                tokens[4..].join(" ")
+            } else {
+                tokens[3..].join(" ")
+            };
+            let expression = expression.trim().to_string();
+            if expression.is_empty() {
+                return Err("features formula expression must not be empty".to_string());
+            }
+            Ok(ShellCommand::FeaturesResolveFormula { seq_id, expression })
+        }
         "repeat-query" | "repeats-query" => {
             if tokens.len() < 5 {
                 return Err(
@@ -2094,6 +2502,17 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                         idx += 1;
                         motifs.push(parse_required_value(tokens, &mut idx, "--motif")?);
                     }
+                    "--motifs" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--motifs")?;
+                        for token in raw
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                        {
+                            motifs.push(token.to_string());
+                        }
+                    }
                     "--score-kind" => {
                         idx += 1;
                         let raw = parse_required_value(tokens, &mut idx, "--score-kind")?;
@@ -2212,6 +2631,211 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 promoter_upstream_bp,
                 promoter_downstream_bp,
                 include_feature_overlaps,
+                path,
+            })
+        }
+        "promoter-isoform-comparison" | "promoter-isoforms" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features promoter-isoform-comparison requires SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--no-feature-overlaps] [--path FILE.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err(
+                    "features promoter-isoform-comparison SEQ_ID must not be empty".to_string(),
+                );
+            }
+            let mut gene_label: Option<String> = None;
+            let mut transcript_id: Option<String> = None;
+            let mut promoter_upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+            let mut promoter_downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+            let mut include_feature_overlaps = true;
+            let mut path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene-label" | "--gene" => {
+                        idx += 1;
+                        gene_label = Some(parse_required_value(tokens, &mut idx, "--gene-label")?);
+                    }
+                    "--transcript-id" | "--transcript" => {
+                        idx += 1;
+                        transcript_id =
+                            Some(parse_required_value(tokens, &mut idx, "--transcript-id")?);
+                    }
+                    "--promoter-upstream-bp" | "--upstream-bp" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--promoter-upstream-bp")?;
+                        promoter_upstream_bp =
+                            parse_usize_option_value(&raw, "--promoter-upstream-bp")?;
+                    }
+                    "--promoter-downstream-bp" | "--downstream-bp" => {
+                        idx += 1;
+                        let raw =
+                            parse_required_value(tokens, &mut idx, "--promoter-downstream-bp")?;
+                        promoter_downstream_bp =
+                            parse_usize_option_value(&raw, "--promoter-downstream-bp")?;
+                    }
+                    "--no-feature-overlaps" => {
+                        idx += 1;
+                        include_feature_overlaps = false;
+                    }
+                    "--include-feature-overlaps" => {
+                        idx += 1;
+                        include_feature_overlaps = true;
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for features promoter-isoform-comparison"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::FeaturesPromoterIsoformComparison {
+                seq_id,
+                gene_label,
+                transcript_id,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                include_feature_overlaps,
+                path,
+            })
+        }
+        "promoter-expression-evidence" | "promoter-expression" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features promoter-expression-evidence requires SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--expression-json JSON] [--source-label LABEL] [--path FILE.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err(
+                    "features promoter-expression-evidence SEQ_ID must not be empty".to_string(),
+                );
+            }
+            let mut gene_label: Option<String> = None;
+            let mut transcript_id: Option<String> = None;
+            let mut promoter_upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+            let mut promoter_downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+            let mut expression_rows: Vec<PromoterExpressionEvidenceInput> = vec![];
+            let mut expression_source_label: Option<String> = None;
+            let mut path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene-label" | "--gene" => {
+                        idx += 1;
+                        gene_label = Some(parse_required_value(tokens, &mut idx, "--gene-label")?);
+                    }
+                    "--transcript-id" | "--transcript" => {
+                        idx += 1;
+                        transcript_id =
+                            Some(parse_required_value(tokens, &mut idx, "--transcript-id")?);
+                    }
+                    "--promoter-upstream-bp" | "--upstream-bp" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--promoter-upstream-bp")?;
+                        promoter_upstream_bp =
+                            parse_usize_option_value(&raw, "--promoter-upstream-bp")?;
+                    }
+                    "--promoter-downstream-bp" | "--downstream-bp" => {
+                        idx += 1;
+                        let raw =
+                            parse_required_value(tokens, &mut idx, "--promoter-downstream-bp")?;
+                        promoter_downstream_bp =
+                            parse_usize_option_value(&raw, "--promoter-downstream-bp")?;
+                    }
+                    "--expression-json" | "--expression-row-json" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--expression-json")?;
+                        expression_rows.extend(parse_promoter_expression_input_json(&raw)?);
+                    }
+                    "--source-label" | "--expression-source-label" => {
+                        idx += 1;
+                        expression_source_label =
+                            Some(parse_required_value(tokens, &mut idx, "--source-label")?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for features promoter-expression-evidence"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::FeaturesPromoterExpressionEvidence {
+                seq_id,
+                gene_label,
+                transcript_id,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                expression_rows,
+                expression_source_label,
+                path,
+            })
+        }
+        "promoter-artifact-manifest" | "promoter-artifacts" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features promoter-artifact-manifest requires SEQ_ID --artifact-json JSON --path FILE.json [--gene-label LABEL]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err(
+                    "features promoter-artifact-manifest SEQ_ID must not be empty".to_string(),
+                );
+            }
+            let mut gene_label: Option<String> = None;
+            let mut artifacts: Vec<PromoterArtifactManifestEntry> = vec![];
+            let mut path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene-label" | "--gene" => {
+                        idx += 1;
+                        gene_label = Some(parse_required_value(tokens, &mut idx, "--gene-label")?);
+                    }
+                    "--artifact-json" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--artifact-json")?;
+                        artifacts.extend(parse_promoter_artifact_manifest_entry_json(&raw)?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for features promoter-artifact-manifest"
+                        ));
+                    }
+                }
+            }
+            if artifacts.is_empty() {
+                return Err(
+                    "features promoter-artifact-manifest requires at least one --artifact-json JSON"
+                        .to_string(),
+                );
+            }
+            let path = path.ok_or_else(|| {
+                "features promoter-artifact-manifest requires --path FILE.json".to_string()
+            })?;
+            Ok(ShellCommand::FeaturesPromoterArtifactManifest {
+                seq_id,
+                gene_label,
+                artifacts,
                 path,
             })
         }
@@ -3485,7 +4109,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
             })
         }
         other => Err(format!(
-            "Unknown features subcommand '{other}' (expected query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-score-track-correlation-svg, tfbs-scan, or restriction-scan)"
+            "Unknown features subcommand '{other}' (expected formula, query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-score-track-correlation-svg, tfbs-scan, or restriction-scan)"
         )),
     }
 }
@@ -3795,14 +4419,356 @@ fn parse_cdna_assay_test_options(
     Ok(options)
 }
 
+fn parse_oligo_order_rank_csv(raw: &str, flag: &str) -> Result<Vec<usize>, String> {
+    let ranks = split_csv_tokens_with_empty_error(raw)?
+        .into_iter()
+        .map(|token| {
+            let rank = parse_usize_option_value(&token, flag)?;
+            if rank == 0 {
+                return Err(format!("{flag} ranks must be >= 1"));
+            }
+            Ok(rank)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    if ranks.is_empty() {
+        return Err(format!("{flag} requires at least one rank"));
+    }
+    Ok(ranks)
+}
+
+fn parse_primers_oligo_order_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 3 {
+        return Err(
+            "primers oligo-order requires create|from-primer-report|from-qpcr-report|list|show|export|route|quote|review-dedup"
+                .to_string(),
+        );
+    }
+    match tokens[2].as_str() {
+        "create" => {
+            if tokens.len() != 4 {
+                return Err("primers oligo-order create requires REQUEST_JSON_OR_@FILE".to_string());
+            }
+            Ok(ShellCommand::PrimersOligoOrderCreate {
+                request_json: tokens[3].clone(),
+            })
+        }
+        "from-primer-report" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers oligo-order from-primer-report requires REPORT_ID --pair-rank N[,N...] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[3].clone();
+            let mut pair_ranks: Option<Vec<usize>> = None;
+            let mut form_id: Option<String> = None;
+            let mut scale: Option<String> = None;
+            let mut purification: Option<String> = None;
+            let mut modifications = Vec::<String>::new();
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--pair-rank" | "--pair-ranks" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers oligo-order from-primer-report",
+                        )?;
+                        pair_ranks = Some(parse_oligo_order_rank_csv(&raw, &flag)?);
+                    }
+                    "--form-id" => {
+                        form_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--form-id",
+                            "primers oligo-order from-primer-report",
+                        )?);
+                    }
+                    "--scale" => {
+                        scale = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--scale",
+                            "primers oligo-order from-primer-report",
+                        )?);
+                    }
+                    "--purification" => {
+                        purification = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--purification",
+                            "primers oligo-order from-primer-report",
+                        )?);
+                    }
+                    "--modification" => {
+                        modifications.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--modification",
+                            "primers oligo-order from-primer-report",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers oligo-order from-primer-report"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersOligoOrderFromPrimerReport {
+                report_id,
+                pair_ranks: pair_ranks.ok_or_else(|| {
+                    "primers oligo-order from-primer-report requires --pair-rank N[,N...]"
+                        .to_string()
+                })?,
+                form_id,
+                scale,
+                purification,
+                modifications,
+            })
+        }
+        "from-qpcr-report" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers oligo-order from-qpcr-report requires REPORT_ID --assay-rank N[,N...] [--include-probe true|false] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[3].clone();
+            let mut assay_ranks: Option<Vec<usize>> = None;
+            let mut include_probe = true;
+            let mut form_id: Option<String> = None;
+            let mut scale: Option<String> = None;
+            let mut purification: Option<String> = None;
+            let mut modifications = Vec::<String>::new();
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--assay-rank" | "--assay-ranks" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers oligo-order from-qpcr-report",
+                        )?;
+                        assay_ranks = Some(parse_oligo_order_rank_csv(&raw, &flag)?);
+                    }
+                    "--include-probe" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--include-probe",
+                            "primers oligo-order from-qpcr-report",
+                        )?;
+                        include_probe = parse_bool_binding(&raw).ok_or_else(|| {
+                            format!("Invalid --include-probe value '{raw}', expected true|false")
+                        })?;
+                    }
+                    "--form-id" => {
+                        form_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--form-id",
+                            "primers oligo-order from-qpcr-report",
+                        )?);
+                    }
+                    "--scale" => {
+                        scale = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--scale",
+                            "primers oligo-order from-qpcr-report",
+                        )?);
+                    }
+                    "--purification" => {
+                        purification = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--purification",
+                            "primers oligo-order from-qpcr-report",
+                        )?);
+                    }
+                    "--modification" => {
+                        modifications.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--modification",
+                            "primers oligo-order from-qpcr-report",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers oligo-order from-qpcr-report"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersOligoOrderFromQpcrReport {
+                report_id,
+                assay_ranks: assay_ranks.ok_or_else(|| {
+                    "primers oligo-order from-qpcr-report requires --assay-rank N[,N...]"
+                        .to_string()
+                })?,
+                include_probe,
+                form_id,
+                scale,
+                purification,
+                modifications,
+            })
+        }
+        "list" => {
+            if tokens.len() != 3 {
+                return Err("primers oligo-order list takes no extra arguments".to_string());
+            }
+            Ok(ShellCommand::PrimersOligoOrderList)
+        }
+        "show" => {
+            if tokens.len() != 4 {
+                return Err("primers oligo-order show requires FORM_ID".to_string());
+            }
+            Ok(ShellCommand::PrimersOligoOrderShow {
+                form_id: tokens[3].clone(),
+            })
+        }
+        "export" => {
+            if tokens.len() != 5 {
+                return Err("primers oligo-order export requires FORM_ID OUTPUT.json".to_string());
+            }
+            Ok(ShellCommand::PrimersOligoOrderExport {
+                form_id: tokens[3].clone(),
+                path: tokens[4].clone(),
+            })
+        }
+        "route" => {
+            if tokens.len() != 4 {
+                return Err("primers oligo-order route requires FORM_ID".to_string());
+            }
+            Ok(ShellCommand::PrimersOligoOrderRoute {
+                form_id: tokens[3].clone(),
+            })
+        }
+        "quote" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers oligo-order quote requires FORM_ID [--provider metabion|geneart] [--service-kind KIND] [--output-dir DIR]"
+                        .to_string(),
+                );
+            }
+            let form_id = tokens[3].clone();
+            let mut provider: Option<String> = None;
+            let mut service_kind: Option<String> = None;
+            let mut output_dir: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--provider" => {
+                        provider = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--provider",
+                            "primers oligo-order quote",
+                        )?);
+                    }
+                    "--service-kind" => {
+                        service_kind = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--service-kind",
+                            "primers oligo-order quote",
+                        )?);
+                    }
+                    "--output-dir" => {
+                        output_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-dir",
+                            "primers oligo-order quote",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers oligo-order quote"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersOligoOrderQuote {
+                form_id,
+                provider,
+                service_kind,
+                output_dir,
+            })
+        }
+        "review-dedup" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers oligo-order review-dedup requires FORM_ID [--reviewer NAME] [--duplicate-action keep-separate] [--note TEXT]"
+                        .to_string(),
+                );
+            }
+            let form_id = tokens[3].clone();
+            let mut reviewer: Option<String> = None;
+            let mut duplicate_action: Option<String> = None;
+            let mut note: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--reviewer" => {
+                        reviewer = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--reviewer",
+                            "primers oligo-order review-dedup",
+                        )?);
+                    }
+                    "--duplicate-action" => {
+                        duplicate_action = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--duplicate-action",
+                            "primers oligo-order review-dedup",
+                        )?);
+                    }
+                    "--note" => {
+                        note = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--note",
+                            "primers oligo-order review-dedup",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers oligo-order review-dedup"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersOligoOrderReviewDedup {
+                form_id,
+                reviewer,
+                duplicate_action,
+                note,
+            })
+        }
+        other => Err(format!(
+            "Unknown primers oligo-order subcommand '{other}' (expected create|from-primer-report|from-qpcr-report|list|show|export|route|quote|review-dedup)"
+        )),
+    }
+}
+
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, specificity, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
+            "primers requires a subcommand: design, design-qpcr, specificity, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, oligo-order"
                 .to_string(),
         );
     }
     match tokens[1].as_str() {
+        "oligo-order" => parse_primers_oligo_order_command(tokens),
         "design" => {
             if tokens.len() < 3 {
                 return Err(
@@ -4617,7 +5583,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, specificity, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, specificity, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, oligo-order)"
         )),
     }
 }
@@ -4877,10 +5843,57 @@ fn parse_positive_usize_token(raw: &str, label: &str) -> Result<usize, String> {
     Ok(parsed)
 }
 
+fn parse_exon_skip_interval_1based(raw: &str, context: &str) -> Result<SplicingRange, String> {
+    let trimmed = raw.trim();
+    let (left, right) = trimmed
+        .split_once("..")
+        .or_else(|| trimmed.split_once(':'))
+        .ok_or_else(|| {
+            format!(
+                "Invalid interval '{raw}' for {context}; expected START..END (1-based inclusive)"
+            )
+        })?;
+    let start_1based = left.trim().parse::<usize>().map_err(|e| {
+        format!(
+            "Invalid interval start '{}' for {context}: {e}",
+            left.trim()
+        )
+    })?;
+    let end_1based = right
+        .trim()
+        .parse::<usize>()
+        .map_err(|e| format!("Invalid interval end '{}' for {context}: {e}", right.trim()))?;
+    if start_1based == 0 || end_1based < start_1based {
+        return Err(format!(
+            "Invalid interval '{raw}' for {context}: expected 1-based START <= END"
+        ));
+    }
+    Ok(SplicingRange {
+        start_1based,
+        end_1based,
+    })
+}
+
+fn parse_exon_skip_return_kind(raw: &str) -> Result<ExonSkipReturnKind, String> {
+    match raw.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "genbank" | "gb" | "genbank_entry" | "adjusted_genbank" => Ok(ExonSkipReturnKind::Genbank),
+        "cdna_fasta" | "cdna" | "mrna_fasta" | "transcript_fasta" => {
+            Ok(ExonSkipReturnKind::CdnaFasta)
+        }
+        "amino_acid_sequence" | "amino_acid" | "aa" | "protein_sequence" | "protein" => {
+            Ok(ExonSkipReturnKind::AminoAcidSequence)
+        }
+        "amino_acid_fasta" | "aa_fasta" | "protein_fasta" => Ok(ExonSkipReturnKind::AminoAcidFasta),
+        other => Err(format!(
+            "Unsupported exon-skip --return value '{other}', expected genbank|cdna_fasta|amino_acid_sequence|amino_acid_fasta"
+        )),
+    }
+}
+
 pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "transcripts requires a subcommand: derive or residue-genomic-coordinates".to_string(),
+            "transcripts requires a subcommand: derive, exon-skip-plan, exon-skip-materialize, or residue-genomic-coordinates".to_string(),
         );
     }
     match tokens[1].as_str() {
@@ -4950,6 +5963,340 @@ pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellComman
                 feature_ids,
                 scope,
                 output_prefix,
+            })
+        }
+        "exon-skip-plan" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "transcripts exon-skip-plan requires SEQ_ID --feature-id N [--skip exon_2|START..END ...] [--overlap START..END ...] [--length-mod3 0|1|2] [--coding-mod3 0|1|2] [--coding-context utr-only|cds-only|mixed-utr-cds] [--phase-entry codon-boundary|split-codon|split-codon-1|split-codon-2] [--feature-query-json JSON] [--plan-id ID]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("transcripts exon-skip-plan SEQ_ID must not be empty".to_string());
+            }
+            let mut transcript_feature_id: Option<usize> = None;
+            let mut manual_ids: Vec<String> = vec![];
+            let mut explicit_intervals: Vec<SplicingRange> = vec![];
+            let mut selection_intervals: Vec<SplicingRange> = vec![];
+            let mut feature_queries: Vec<SequenceFeatureQuery> = vec![];
+            let mut length_mod3_values: Vec<u8> = vec![];
+            let mut coding_mod3_values: Vec<u8> = vec![];
+            let mut coding_contexts: Vec<String> = vec![];
+            let mut phase_entry_kinds: Vec<String> = vec![];
+            let mut plan_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--feature-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-id",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --feature-id value '{}' for transcripts exon-skip-plan: {e}",
+                                raw
+                            )
+                        })?;
+                        transcript_feature_id = Some(parsed);
+                    }
+                    "--skip" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--skip",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        if raw.contains("..") || raw.contains(':') {
+                            explicit_intervals.push(parse_exon_skip_interval_1based(
+                                &raw,
+                                "transcripts exon-skip-plan --skip",
+                            )?);
+                        } else {
+                            let trimmed = raw.trim();
+                            if trimmed.is_empty() {
+                                return Err("transcripts exon-skip-plan --skip must not be empty"
+                                    .to_string());
+                            }
+                            manual_ids.push(trimmed.to_string());
+                        }
+                    }
+                    "--overlap" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--overlap",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        selection_intervals.push(parse_exon_skip_interval_1based(
+                            &raw,
+                            "transcripts exon-skip-plan --overlap",
+                        )?);
+                    }
+                    "--feature-query-json" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-query-json",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        let mut query: SequenceFeatureQuery =
+                            serde_json::from_str(&raw).map_err(|e| {
+                                format!(
+                                    "Invalid --feature-query-json for transcripts exon-skip-plan: {e}"
+                                )
+                        })?;
+                        query.seq_id = seq_id.clone();
+                        feature_queries.push(query);
+                    }
+                    "--length-mod3" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--length-mod3",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        for value in raw.split(',') {
+                            let value = value.trim();
+                            if value.is_empty() {
+                                continue;
+                            }
+                            let parsed = value.parse::<u8>().map_err(|e| {
+                                format!(
+                                    "Invalid --length-mod3 value '{}' for transcripts exon-skip-plan: {e}",
+                                    value
+                                )
+                            })?;
+                            if parsed > 2 {
+                                return Err(format!(
+                                    "Invalid --length-mod3 value '{}' for transcripts exon-skip-plan: expected 0, 1, or 2",
+                                    value
+                                ));
+                            }
+                            length_mod3_values.push(parsed);
+                        }
+                    }
+                    "--phase-entry" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--phase-entry",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        for value in raw.split(',') {
+                            let trimmed = value.trim();
+                            if trimmed.is_empty() {
+                                continue;
+                            }
+                            phase_entry_kinds.push(trimmed.to_string());
+                        }
+                    }
+                    "--coding-mod3" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--coding-mod3",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        for value in raw.split(',') {
+                            let value = value.trim();
+                            if value.is_empty() {
+                                continue;
+                            }
+                            let parsed = value.parse::<u8>().map_err(|e| {
+                                format!(
+                                    "Invalid --coding-mod3 value '{}' for transcripts exon-skip-plan: {e}",
+                                    value
+                                )
+                            })?;
+                            if parsed > 2 {
+                                return Err(format!(
+                                    "Invalid --coding-mod3 value '{}' for transcripts exon-skip-plan: expected 0, 1, or 2",
+                                    value
+                                ));
+                            }
+                            coding_mod3_values.push(parsed);
+                        }
+                    }
+                    "--coding-context" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--coding-context",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        for value in raw.split(',') {
+                            let trimmed = value.trim();
+                            if trimmed.is_empty() {
+                                continue;
+                            }
+                            coding_contexts.push(trimmed.to_string());
+                        }
+                    }
+                    "--plan-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--plan-id",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        let trimmed = raw.trim();
+                        plan_id = if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        };
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{}' for transcripts exon-skip-plan",
+                            other
+                        ));
+                    }
+                }
+            }
+            let transcript_feature_id = transcript_feature_id
+                .ok_or_else(|| "transcripts exon-skip-plan requires --feature-id N".to_string())?;
+            let mut criteria: Vec<ExonSkipSelectionCriterion> = vec![];
+            if !manual_ids.is_empty() {
+                criteria.push(ExonSkipSelectionCriterion::ManualExonIds {
+                    candidate_ids: manual_ids,
+                });
+            }
+            if !explicit_intervals.is_empty() {
+                criteria.push(ExonSkipSelectionCriterion::ExplicitIntervals {
+                    intervals_1based: explicit_intervals,
+                });
+            }
+            for interval in selection_intervals {
+                criteria.push(ExonSkipSelectionCriterion::CurrentMapSelection {
+                    start_1based: interval.start_1based,
+                    end_1based: interval.end_1based,
+                });
+            }
+            for query in feature_queries {
+                criteria.push(ExonSkipSelectionCriterion::FeatureOverlap { query });
+            }
+            if !length_mod3_values.is_empty() {
+                length_mod3_values.sort_unstable();
+                length_mod3_values.dedup();
+                criteria.push(ExonSkipSelectionCriterion::LengthMod3 {
+                    values: length_mod3_values,
+                });
+            }
+            if !coding_mod3_values.is_empty() {
+                coding_mod3_values.sort_unstable();
+                coding_mod3_values.dedup();
+                criteria.push(ExonSkipSelectionCriterion::CodingMod3 {
+                    values: coding_mod3_values,
+                });
+            }
+            if !coding_contexts.is_empty() {
+                coding_contexts.sort_unstable();
+                coding_contexts.dedup();
+                criteria.push(ExonSkipSelectionCriterion::CodingContext {
+                    contexts: coding_contexts,
+                });
+            }
+            if !phase_entry_kinds.is_empty() {
+                phase_entry_kinds.sort_unstable();
+                phase_entry_kinds.dedup();
+                criteria.push(ExonSkipSelectionCriterion::CdsPhaseEntryKind {
+                    kinds: phase_entry_kinds,
+                });
+            }
+            Ok(ShellCommand::TranscriptsExonSkipPlan {
+                seq_id,
+                transcript_feature_id,
+                criteria,
+                plan_id,
+            })
+        }
+        "exon-skip-materialize" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "transcripts exon-skip-materialize requires PLAN_ID [--candidate-id ID ...] [--output-prefix PREFIX] [--return genbank|cdna_fasta|amino_acid_sequence|amino_acid_fasta ...]"
+                        .to_string(),
+                );
+            }
+            let plan_id = tokens[2].trim().to_string();
+            if plan_id.is_empty() {
+                return Err(
+                    "transcripts exon-skip-materialize PLAN_ID must not be empty".to_string(),
+                );
+            }
+            let mut selected_candidate_ids: Vec<String> = vec![];
+            let mut output_prefix: Option<String> = None;
+            let mut return_kinds: Vec<ExonSkipReturnKind> = vec![];
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--candidate-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--candidate-id",
+                            "transcripts exon-skip-materialize",
+                        )?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(
+                                "transcripts exon-skip-materialize --candidate-id must not be empty"
+                                    .to_string(),
+                            );
+                        }
+                        selected_candidate_ids.push(trimmed.to_string());
+                    }
+                    "--output-prefix" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-prefix",
+                            "transcripts exon-skip-materialize",
+                        )?;
+                        let trimmed = raw.trim();
+                        output_prefix = if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        };
+                    }
+                    "--return" | "--return-kind" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--return",
+                            "transcripts exon-skip-materialize",
+                        )?;
+                        for value in raw.split(',') {
+                            let trimmed = value.trim();
+                            if trimmed.is_empty() {
+                                continue;
+                            }
+                            return_kinds.push(parse_exon_skip_return_kind(trimmed)?);
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{}' for transcripts exon-skip-materialize",
+                            other
+                        ));
+                    }
+                }
+            }
+            selected_candidate_ids.sort();
+            selected_candidate_ids.dedup();
+            return_kinds.sort_by_key(|kind| kind.as_str());
+            return_kinds.dedup();
+            Ok(ShellCommand::TranscriptsExonSkipMaterialize {
+                plan_id,
+                selected_candidate_ids,
+                output_prefix,
+                return_kinds,
             })
         }
         "residue-genomic-coordinates" | "residue-coordinates" | "protein-residue-coordinates" => {
@@ -5612,57 +6959,173 @@ pub(super) fn parse_align_command(tokens: &[String]) -> Result<ShellCommand, Str
     }
     match tokens[1].as_str() {
         "compute" => {
-            if tokens.len() < 4 {
+            if tokens.len() < 3 {
                 return Err(
-                    "align compute requires QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
+                    "align compute requires QUERY_SEQ_ID TARGET_SEQ_ID or --query-sequence-text DNA --target-sequence-text DNA [--query-id-hint TEXT] [--target-id-hint TEXT] [--query-range START..END|--query-start N --query-end N] [--target-range START..END|--target-start N --target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
                         .to_string(),
                 );
             }
-            let query_seq_id = tokens[2].trim().to_string();
-            if query_seq_id.is_empty() {
-                return Err("align compute QUERY_SEQ_ID must not be empty".to_string());
+            let mut query_seq_id: Option<String> = None;
+            let mut target_seq_id: Option<String> = None;
+            let mut idx = 2usize;
+            if idx < tokens.len() && !tokens[idx].starts_with("--") {
+                let value = tokens[idx].trim().to_string();
+                if value.is_empty() {
+                    return Err("align compute QUERY_SEQ_ID must not be empty".to_string());
+                }
+                query_seq_id = Some(value);
+                idx += 1;
             }
-            let target_seq_id = tokens[3].trim().to_string();
-            if target_seq_id.is_empty() {
-                return Err("align compute TARGET_SEQ_ID must not be empty".to_string());
+            if idx < tokens.len() && !tokens[idx].starts_with("--") {
+                let value = tokens[idx].trim().to_string();
+                if value.is_empty() {
+                    return Err("align compute TARGET_SEQ_ID must not be empty".to_string());
+                }
+                target_seq_id = Some(value);
+                idx += 1;
             }
-            let mut query_span_start_0based: Option<usize> = None;
-            let mut query_span_end_0based: Option<usize> = None;
-            let mut target_span_start_0based: Option<usize> = None;
-            let mut target_span_end_0based: Option<usize> = None;
+            let mut query_sequence_text: Option<String> = None;
+            let mut target_sequence_text: Option<String> = None;
+            let mut query_topology = InlineSequenceTopology::Linear;
+            let mut target_topology = InlineSequenceTopology::Linear;
+            let mut query_id_hint: Option<String> = None;
+            let mut target_id_hint: Option<String> = None;
+            let mut query_state = FeatureQueryOptionState::default();
+            let mut target_state = FeatureQueryOptionState::default();
             let mut mode = PairwiseAlignmentMode::Global;
             let mut match_score = 2i32;
             let mut mismatch_score = -3i32;
             let mut gap_open = -5i32;
             let mut gap_extend = -1i32;
-            let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
+                    "--query-seq-id" => {
+                        if query_seq_id.is_some() {
+                            return Err("align compute query seq id was specified multiple times"
+                                .to_string());
+                        }
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--query-seq-id", "align compute")?;
+                        if raw.trim().is_empty() {
+                            return Err("--query-seq-id must not be empty".to_string());
+                        }
+                        query_seq_id = Some(raw);
+                    }
+                    "--target-seq-id" => {
+                        if target_seq_id.is_some() {
+                            return Err("align compute target seq id was specified multiple times"
+                                .to_string());
+                        }
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--target-seq-id",
+                            "align compute",
+                        )?;
+                        if raw.trim().is_empty() {
+                            return Err("--target-seq-id must not be empty".to_string());
+                        }
+                        target_seq_id = Some(raw);
+                    }
+                    "--query-sequence-text" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--query-sequence-text",
+                            "align compute",
+                        )?;
+                        if raw.trim().is_empty() {
+                            return Err("--query-sequence-text must not be empty".to_string());
+                        }
+                        query_sequence_text = Some(raw);
+                    }
+                    "--target-sequence-text" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--target-sequence-text",
+                            "align compute",
+                        )?;
+                        if raw.trim().is_empty() {
+                            return Err("--target-sequence-text must not be empty".to_string());
+                        }
+                        target_sequence_text = Some(raw);
+                    }
+                    "--query-topology" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--query-topology",
+                            "align compute",
+                        )?;
+                        query_topology = parse_inline_sequence_topology(&raw)?;
+                    }
+                    "--target-topology" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--target-topology",
+                            "align compute",
+                        )?;
+                        target_topology = parse_inline_sequence_topology(&raw)?;
+                    }
+                    "--query-id-hint" => {
+                        query_id_hint = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--query-id-hint",
+                            "align compute",
+                        )?);
+                    }
+                    "--target-id-hint" => {
+                        target_id_hint = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--target-id-hint",
+                            "align compute",
+                        )?);
+                    }
+                    "--query-range" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--query-range", "align compute")?;
+                        if query_state.range_arg.is_some() {
+                            return Err("--query-range was specified multiple times".to_string());
+                        }
+                        query_state.range_arg = Some(parse_feature_range(&raw, "align compute")?);
+                    }
+                    "--target-range" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--target-range", "align compute")?;
+                        if target_state.range_arg.is_some() {
+                            return Err("--target-range was specified multiple times".to_string());
+                        }
+                        target_state.range_arg = Some(parse_feature_range(&raw, "align compute")?);
+                    }
                     "--query-start" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--query-start", "align compute")?;
-                        query_span_start_0based = Some(raw.parse::<usize>().map_err(|e| {
+                        query_state.start_arg = Some(raw.parse::<usize>().map_err(|e| {
                             format!("Invalid --query-start value '{raw}' for align compute: {e}")
                         })?);
                     }
                     "--query-end" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--query-end", "align compute")?;
-                        query_span_end_0based = Some(raw.parse::<usize>().map_err(|e| {
+                        query_state.end_arg = Some(raw.parse::<usize>().map_err(|e| {
                             format!("Invalid --query-end value '{raw}' for align compute: {e}")
                         })?);
                     }
                     "--target-start" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--target-start", "align compute")?;
-                        target_span_start_0based = Some(raw.parse::<usize>().map_err(|e| {
+                        target_state.start_arg = Some(raw.parse::<usize>().map_err(|e| {
                             format!("Invalid --target-start value '{raw}' for align compute: {e}")
                         })?);
                     }
                     "--target-end" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--target-end", "align compute")?;
-                        target_span_end_0based = Some(raw.parse::<usize>().map_err(|e| {
+                        target_state.end_arg = Some(raw.parse::<usize>().map_err(|e| {
                             format!("Invalid --target-end value '{raw}' for align compute: {e}")
                         })?);
                     }
@@ -5701,13 +7164,25 @@ pub(super) fn parse_align_command(tokens: &[String]) -> Result<ShellCommand, Str
                     other => return Err(format!("Unknown option '{other}' for align compute")),
                 }
             }
-            Ok(ShellCommand::AlignCompute {
+            let query = build_sequence_scan_target_from_alignment_state(
                 query_seq_id,
+                query_sequence_text,
+                query_topology,
+                query_id_hint,
+                query_state,
+                "align compute query",
+            )?;
+            let target = build_sequence_scan_target_from_alignment_state(
                 target_seq_id,
-                query_span_start_0based,
-                query_span_end_0based,
-                target_span_start_0based,
-                target_span_end_0based,
+                target_sequence_text,
+                target_topology,
+                target_id_hint,
+                target_state,
+                "align compute target",
+            )?;
+            Ok(ShellCommand::AlignCompute {
+                query,
+                target,
                 mode,
                 match_score,
                 mismatch_score,
@@ -6351,7 +7826,7 @@ pub(super) fn parse_reverse_translate_command(tokens: &[String]) -> Result<Shell
 pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "construct-reasoning requires a subcommand: build-protein-dna-handoff, list-graphs, show-graph, set-annotation-status, export-graph"
+            "construct-reasoning requires a subcommand: build-protein-dna-handoff, list-graphs, show-graph, list-inspection-actions, run-inspection-action, set-annotation-status, export-graph"
                 .to_string(),
         );
     }
@@ -6586,6 +8061,224 @@ pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<She
             }
             Ok(ShellCommand::ConstructReasoningShowGraph {
                 graph_id: tokens[2].trim().to_string(),
+            })
+        }
+        "list-inspection-actions" | "list-actions" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "construct-reasoning list-inspection-actions requires GRAPH_ID [--fact-id ID] [--annotation-id ID] [--candidate-id ID] [--evidence-id ID] [--seq-id ID] [--action-kind KIND] [--summary-id ID]"
+                        .to_string(),
+                );
+            }
+            let graph_id = tokens[2].trim().to_string();
+            if graph_id.is_empty() {
+                return Err(
+                    "construct-reasoning list-inspection-actions requires non-empty GRAPH_ID"
+                        .to_string(),
+                );
+            }
+            let mut fact_id: Option<String> = None;
+            let mut annotation_id: Option<String> = None;
+            let mut candidate_id: Option<String> = None;
+            let mut evidence_id: Option<String> = None;
+            let mut seq_id: Option<String> = None;
+            let mut action_kind: Option<String> = None;
+            let mut summary_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--fact-id" | "--fact" => {
+                        let flag = tokens[idx].clone();
+                        fact_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    "--annotation-id" | "--annotation" => {
+                        let flag = tokens[idx].clone();
+                        annotation_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    "--candidate-id" | "--candidate" => {
+                        let flag = tokens[idx].clone();
+                        candidate_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    "--evidence-id" | "--evidence" => {
+                        let flag = tokens[idx].clone();
+                        evidence_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    "--seq-id" | "--seq" | "--sequence-id" | "--sequence" => {
+                        let flag = tokens[idx].clone();
+                        seq_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    "--action-kind" | "--kind" => {
+                        let flag = tokens[idx].clone();
+                        action_kind = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    "--summary-id" | "--summary" => {
+                        let flag = tokens[idx].clone();
+                        summary_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for construct-reasoning list-inspection-actions"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ConstructReasoningListInspectionActions {
+                graph_id,
+                fact_id,
+                annotation_id,
+                candidate_id,
+                evidence_id,
+                seq_id,
+                action_kind,
+                summary_id,
+            })
+        }
+        "run-inspection-action" | "compute-inspection-action-dotplot" | "dotplot-action" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "construct-reasoning run-inspection-action requires GRAPH_ID ACTION_ID [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID] [--render-svg OUTPUT.svg]"
+                        .to_string(),
+                );
+            }
+            let graph_id = tokens[2].trim().to_string();
+            let action_id = tokens[3].trim().to_string();
+            if graph_id.is_empty() || action_id.is_empty() {
+                return Err(
+                    "construct-reasoning run-inspection-action requires non-empty GRAPH_ID and ACTION_ID"
+                        .to_string(),
+                );
+            }
+            let mut word_size = 12usize;
+            let mut step_bp = 2usize;
+            let mut max_mismatches = 0usize;
+            let mut tile_bp: Option<usize> = None;
+            let mut dotplot_id: Option<String> = None;
+            let mut render_svg_path: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--word-size" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--word-size",
+                            "construct-reasoning run-inspection-action",
+                        )?;
+                        word_size = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --word-size value '{raw}' for construct-reasoning run-inspection-action: {e}"
+                            )
+                        })?;
+                    }
+                    "--step" | "--step-bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning run-inspection-action",
+                        )?;
+                        step_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid {flag} value '{raw}' for construct-reasoning run-inspection-action: {e}"
+                            )
+                        })?;
+                    }
+                    "--max-mismatches" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-mismatches",
+                            "construct-reasoning run-inspection-action",
+                        )?;
+                        max_mismatches = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-mismatches value '{raw}' for construct-reasoning run-inspection-action: {e}"
+                            )
+                        })?;
+                    }
+                    "--tile-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--tile-bp",
+                            "construct-reasoning run-inspection-action",
+                        )?;
+                        tile_bp = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --tile-bp value '{raw}' for construct-reasoning run-inspection-action: {e}"
+                            )
+                        })?);
+                    }
+                    "--id" | "--dotplot-id" => {
+                        let flag = tokens[idx].clone();
+                        dotplot_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning run-inspection-action",
+                        )?);
+                    }
+                    "--render-svg" | "--output-svg" => {
+                        let flag = tokens[idx].clone();
+                        render_svg_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning run-inspection-action",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for construct-reasoning run-inspection-action"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ConstructReasoningRunInspectionAction {
+                graph_id,
+                action_id,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                dotplot_id,
+                render_svg_path,
             })
         }
         "set-annotation-status" => {
@@ -7402,8 +9095,171 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                 output_path,
             })
         }
+        "gene-set-regulatory-support" | "gene_set_regulatory_support" => {
+            let context = "cutrun gene-set-regulatory-support";
+            let mut idx = 2usize;
+            let mut genome_id: Option<String> = None;
+            if idx < tokens.len() && !tokens[idx].starts_with("--") {
+                genome_id = Some(tokens[idx].trim().to_string());
+                idx += 1;
+            }
+            let mut source_args = GeneSetSourceArgs::default();
+            let mut resolution: Option<GeneSetResolutionReport> = None;
+            let mut promoter_cohort: Option<GeneSetPromoterCohortReport> = None;
+            let mut relationship = GeneSetCohortRelationship::Unspecified;
+            let mut dataset_ids = vec![];
+            let mut read_report_ids = vec![];
+            let mut upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+            let mut downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+            let mut neighbor_window_bp = 150usize;
+            let mut species_filters = vec![];
+            let mut gene_group_catalog_path: Option<String> = None;
+            let mut genome_catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut allow_draft = false;
+            let mut allow_deprecated = false;
+            let mut output_path: Option<String> = None;
+            while idx < tokens.len() {
+                if parse_gene_set_source_option(tokens, &mut idx, context, &mut source_args)? {
+                    continue;
+                }
+                match tokens[idx].as_str() {
+                    "--genome" | "--genome-id" | "--genome_id" => {
+                        let flag = tokens[idx].clone();
+                        genome_id = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--resolution" | "--gene-set-resolution" | "--gene_set_resolution" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        resolution = Some(parse_required_json_payload::<GeneSetResolutionReport>(
+                            &raw,
+                            "gene-set resolution",
+                        )?);
+                    }
+                    "--promoter-cohort" | "--promoter_cohort" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        promoter_cohort = Some(parse_required_json_payload::<
+                            GeneSetPromoterCohortReport,
+                        >(
+                            &raw, "gene-set promoter cohort"
+                        )?);
+                    }
+                    "--relationship" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--relationship", context)?;
+                        relationship = parse_gene_set_relationship(&raw, context)?;
+                    }
+                    "--dataset" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--dataset", context)?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(format!("{context} --dataset must not be empty"));
+                        }
+                        dataset_ids.push(trimmed.to_string());
+                    }
+                    "--read-report" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--read-report", context)?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(format!("{context} --read-report must not be empty"));
+                        }
+                        read_report_ids.push(trimmed.to_string());
+                    }
+                    "--upstream-bp" | "--upstream_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        upstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {e}")
+                        })?;
+                    }
+                    "--downstream-bp" | "--downstream_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        downstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {e}")
+                        })?;
+                    }
+                    "--neighbor-window-bp" | "--neighbor_window_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        neighbor_window_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {e}")
+                        })?;
+                    }
+                    "--species-filter" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--species-filter", context)?;
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            species_filters.push(trimmed.to_string());
+                        }
+                    }
+                    "--catalog" | "--gene-group-catalog" | "--gene_group_catalog" => {
+                        let flag = tokens[idx].clone();
+                        gene_group_catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--genome-catalog" | "--genome_catalog" => {
+                        let flag = tokens[idx].clone();
+                        genome_catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--cache-dir" | "--cache_dir" => {
+                        let flag = tokens[idx].clone();
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--allow-draft" | "--allow_draft" => {
+                        allow_draft = true;
+                        idx += 1;
+                    }
+                    "--allow-deprecated" | "--allow_deprecated" => {
+                        allow_deprecated = true;
+                        idx += 1;
+                    }
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        output_path = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for {context}")),
+                }
+            }
+            if dataset_ids.is_empty() && read_report_ids.is_empty() {
+                return Err(format!(
+                    "{context} requires at least one --dataset or --read-report"
+                ));
+            }
+            let source = build_gene_set_request_from_args(source_args, context)?;
+            if promoter_cohort.is_none() && source.is_none() && resolution.is_none() {
+                return Err(format!(
+                    "{context} requires --promoter-cohort JSON, --resolution JSON, or a gene-set source"
+                ));
+            }
+            if promoter_cohort.is_none() && genome_id.is_none() {
+                return Err(format!(
+                    "{context} requires GENOME_ID or --genome when not using --promoter-cohort"
+                ));
+            }
+            Ok(ShellCommand::CutRunGeneSetRegulatorySupport {
+                genome_id,
+                source,
+                resolution: resolution.map(Box::new),
+                promoter_cohort: promoter_cohort.map(Box::new),
+                relationship,
+                dataset_ids,
+                read_report_ids,
+                upstream_bp,
+                downstream_bp,
+                neighbor_window_bp,
+                species_filters,
+                gene_group_catalog_path,
+                genome_catalog_path,
+                cache_dir,
+                allow_draft,
+                allow_deprecated,
+                output_path,
+            })
+        }
         other => Err(format!(
-            "Unknown cutrun subcommand '{other}' (expected list, status, prepare, project, interpret, list-read-reports, show-read-report, export-coverage, or inspect-regulatory-support)"
+            "Unknown cutrun subcommand '{other}' (expected list, status, prepare, project, interpret, list-read-reports, show-read-report, export-coverage, inspect-regulatory-support, or gene-set-regulatory-support)"
         )),
     }
 }
@@ -7411,11 +9267,262 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
+            "rna-reads requires a subcommand: preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-isoform-triage-tsv, export-alignment-dotplot-svg"
                 .to_string(),
         );
     }
     match tokens[1].as_str() {
+        "preflight-isoforms" | "preflight-isoform" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads preflight-isoforms requires SEQ_ID FEATURE_ID [--scope SCOPE] [--positive-transcript-fasta PATH ...] [--must-pass-transcript-fasta PATH ...] [--control-transcript-fasta PATH ...] [--optimize-parameters] [--max-control-match-probability F] [seed filter options]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("rna-reads preflight-isoforms SEQ_ID must not be empty".to_string());
+            }
+            let seed_feature_id = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid FEATURE_ID '{}' for rna-reads preflight-isoforms: {e}",
+                    tokens[3]
+                )
+            })?;
+            let mut scope = SplicingScopePreset::AllOverlappingAnyStrand;
+            let mut seed_filter = RnaReadSeedFilterConfig::default();
+            let mut optimize_parameters = false;
+            let mut positive_transcript_fasta_paths = Vec::<String>::new();
+            let mut control_transcript_fasta_paths = Vec::<String>::new();
+            let mut max_control_match_probability = 0.0_f64;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--scope" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--scope",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        scope = parse_splicing_scope_preset(&raw)?;
+                    }
+                    "--positive-transcript-fasta" | "--must-pass-transcript-fasta" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            flag.as_str(),
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        if raw.trim().is_empty() {
+                            return Err(
+                                "rna-reads preflight-isoforms --positive-transcript-fasta requires a non-empty path"
+                                    .to_string(),
+                            );
+                        }
+                        positive_transcript_fasta_paths.push(raw);
+                    }
+                    "--control-transcript-fasta" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--control-transcript-fasta",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        if raw.trim().is_empty() {
+                            return Err(
+                                "rna-reads preflight-isoforms --control-transcript-fasta requires a non-empty path"
+                                    .to_string(),
+                            );
+                        }
+                        control_transcript_fasta_paths.push(raw);
+                    }
+                    "--optimize-parameters" => {
+                        optimize_parameters = true;
+                        idx += 1;
+                    }
+                    "--no-optimize-parameters" => {
+                        optimize_parameters = false;
+                        idx += 1;
+                    }
+                    "--max-control-match-probability" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-control-match-probability",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        max_control_match_probability = raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --max-control-match-probability value '{raw}' for rna-reads preflight-isoforms: {e}"
+                            )
+                        })?;
+                    }
+                    "--kmer-len" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--kmer-len",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.kmer_len = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --kmer-len value '{raw}' for rna-reads preflight-isoforms: {e}"
+                            )
+                        })?;
+                    }
+                    "--seed-stride-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seed-stride-bp",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.seed_stride_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --seed-stride-bp value '{raw}' for rna-reads preflight-isoforms: {e}"
+                            )
+                        })?;
+                    }
+                    "--min-seed-hit-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-seed-hit-fraction",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.min_seed_hit_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-seed-hit-fraction value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-weighted-seed-hit-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-weighted-seed-hit-fraction",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.min_weighted_seed_hit_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-weighted-seed-hit-fraction value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-unique-matched-kmers" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-unique-matched-kmers",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.min_unique_matched_kmers =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-unique-matched-kmers value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--max-median-transcript-gap" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-median-transcript-gap",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.max_median_transcript_gap =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --max-median-transcript-gap value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-chain-consistency-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-chain-consistency-fraction",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.min_chain_consistency_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-chain-consistency-fraction value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-confirmed-transitions" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-confirmed-transitions",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.min_confirmed_exon_transitions =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-confirmed-transitions value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-transition-support-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-transition-support-fraction",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.min_transition_support_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-transition-support-fraction value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--cdna-poly-t-flip" => {
+                        seed_filter.cdna_poly_t_flip_enabled = true;
+                        idx += 1;
+                    }
+                    "--no-cdna-poly-t-flip" => {
+                        seed_filter.cdna_poly_t_flip_enabled = false;
+                        idx += 1;
+                    }
+                    "--poly-t-prefix-min-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--poly-t-prefix-min-bp",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.poly_t_prefix_min_bp =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --poly-t-prefix-min-bp value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads preflight-isoforms"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsPreflightIsoforms {
+                seq_id,
+                seed_feature_id,
+                scope,
+                seed_filter,
+                optimize_parameters,
+                positive_transcript_fasta_paths,
+                control_transcript_fasta_paths,
+                max_control_match_probability,
+            })
+        }
         "interpret" => {
             if tokens.len() < 5 {
                 return Err(
@@ -7790,6 +9897,10 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             let mut concatemer_settings = RnaReadConcatemerInspectionSettings::default();
             let mut concatemer_limit = 5_000usize;
             let mut continue_on_error = true;
+            let mut prepare_sra = false;
+            let mut read_cache_dir: Option<String> = None;
+            let mut read_work_dir: Option<String> = None;
+            let mut drop_intermediate_fastq = false;
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -7910,6 +10021,40 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                     }
                     "--fail-fast" | "--no-continue-on-error" => {
                         continue_on_error = false;
+                        idx += 1;
+                    }
+                    "--prepare-sra" => {
+                        prepare_sra = true;
+                        idx += 1;
+                    }
+                    "--no-prepare-sra" => {
+                        prepare_sra = false;
+                        idx += 1;
+                    }
+                    "--read-cache-dir" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--read-cache-dir",
+                            "rna-reads batch-map",
+                        )?;
+                        read_cache_dir = Some(raw);
+                    }
+                    "--read-work-dir" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--read-work-dir",
+                            "rna-reads batch-map",
+                        )?;
+                        read_work_dir = Some(raw);
+                    }
+                    "--drop-intermediate-fastq" => {
+                        drop_intermediate_fastq = true;
+                        idx += 1;
+                    }
+                    "--keep-intermediate-fastq" | "--no-drop-intermediate-fastq" => {
+                        drop_intermediate_fastq = false;
                         idx += 1;
                     }
                     "--kmer-len" => {
@@ -8220,6 +10365,10 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 concatemer_settings,
                 concatemer_limit,
                 continue_on_error,
+                prepare_sra,
+                read_cache_dir,
+                read_work_dir,
+                drop_intermediate_fastq,
             })
         }
         "align-report" => {
@@ -8359,6 +10508,119 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             Ok(ShellCommand::RnaReadsShowAlignment {
                 report_id,
                 record_index,
+            })
+        }
+        "show-alignments" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "rna-reads show-alignments requires REPORT_ID (--gene GENE [--gene GENE ...] [--cohort all|accepted|fragment|complete|rejected] [--complete-rule near|strict|exact] | --record-indices i,j,k) [--limit N] [--output PATH]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].trim().to_string();
+            if report_id.is_empty() {
+                return Err("rna-reads show-alignments REPORT_ID must not be empty".to_string());
+            }
+            let mut gene_ids = Vec::<String>::new();
+            let mut selected_record_indices = Vec::<usize>::new();
+            let mut complete_rule = RnaReadGeneSupportCompleteRule::Near;
+            let mut cohort_filter = RnaReadGeneSupportAuditCohortFilter::All;
+            let mut complete_rule_set = false;
+            let mut cohort_filter_set = false;
+            let mut limit: Option<usize> = None;
+            let mut output_path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--gene",
+                            "rna-reads show-alignments",
+                        )?;
+                        gene_ids.push(raw);
+                    }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads show-alignments",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
+                    "--complete-rule" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--complete-rule",
+                            "rna-reads show-alignments",
+                        )?;
+                        complete_rule = parse_rna_read_gene_support_complete_rule(&raw)?;
+                        complete_rule_set = true;
+                    }
+                    "--cohort" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cohort",
+                            "rna-reads show-alignments",
+                        )?;
+                        cohort_filter = parse_rna_read_gene_support_audit_cohort_filter(&raw)?;
+                        cohort_filter_set = true;
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--limit",
+                            "rna-reads show-alignments",
+                        )?;
+                        limit = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --limit value '{raw}' for rna-reads show-alignments: {e}"
+                            )
+                        })?);
+                    }
+                    "--output" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output",
+                            "rna-reads show-alignments",
+                        )?;
+                        output_path = Some(raw);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads show-alignments"
+                        ));
+                    }
+                }
+            }
+            if selected_record_indices.is_empty() && gene_ids.is_empty() {
+                return Err(
+                    "rna-reads show-alignments requires either --record-indices i,j,k or at least one --gene GENE"
+                        .to_string(),
+                );
+            }
+            if !selected_record_indices.is_empty()
+                && (!gene_ids.is_empty() || complete_rule_set || cohort_filter_set)
+            {
+                return Err(
+                    "rna-reads show-alignments --record-indices cannot be combined with --gene, --cohort, or --complete-rule"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::RnaReadsShowAlignments {
+                report_id,
+                gene_ids,
+                selected_record_indices,
+                complete_rule,
+                cohort_filter,
+                limit,
+                output_path,
             })
         }
         "summarize-gene-support" => {
@@ -9439,6 +11701,139 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 subset_spec,
             })
         }
+        "export-isoform-triage-tsv" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-isoform-triage-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT] [--min-identity F] [--min-query-coverage F] [--min-confirmed-transition-fraction F] [--max-secondary-mappings N]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut selection = RnaReadHitSelection::Aligned;
+            let mut limit: Option<usize> = None;
+            let mut selected_record_indices: Vec<usize> = vec![];
+            let mut subset_spec: Option<String> = None;
+            let mut min_identity_fraction: Option<f64> = None;
+            let mut min_query_coverage_fraction: Option<f64> = None;
+            let mut min_confirmed_transition_fraction: Option<f64> = None;
+            let mut max_secondary_mappings: Option<usize> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--limit",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        limit = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --limit value '{raw}' for rna-reads export-isoform-triage-tsv: {e}"
+                            )
+                        })?);
+                    }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
+                    "--subset-spec" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--subset-spec",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        subset_spec = Some(raw);
+                    }
+                    "--min-identity" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-identity",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        min_identity_fraction = Some(raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --min-identity value '{raw}' for rna-reads export-isoform-triage-tsv: {e}"
+                            )
+                        })?);
+                    }
+                    "--min-query-coverage" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-query-coverage",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        min_query_coverage_fraction = Some(raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --min-query-coverage value '{raw}' for rna-reads export-isoform-triage-tsv: {e}"
+                            )
+                        })?);
+                    }
+                    "--min-confirmed-transition-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-confirmed-transition-fraction",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        min_confirmed_transition_fraction =
+                            Some(raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-confirmed-transition-fraction value '{raw}' for rna-reads export-isoform-triage-tsv: {e}"
+                                )
+                            })?);
+                    }
+                    "--max-secondary-mappings" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-secondary-mappings",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        max_secondary_mappings = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-secondary-mappings value '{raw}' for rna-reads export-isoform-triage-tsv: {e}"
+                            )
+                        })?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-isoform-triage-tsv"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportIsoformTriageTsv {
+                report_id,
+                path,
+                selection,
+                limit,
+                selected_record_indices,
+                subset_spec,
+                min_identity_fraction,
+                min_query_coverage_fraction,
+                min_confirmed_transition_fraction,
+                max_secondary_mappings,
+            })
+        }
         "export-alignment-dotplot-svg" => {
             if tokens.len() < 4 {
                 return Err(
@@ -9490,7 +11885,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, show-alignments, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-isoform-triage-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }
@@ -9952,10 +12347,159 @@ pub(super) fn parse_planning_suggestion_status(
 pub(super) fn parse_planning_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "planning requires a subcommand: profile, objective, suggestions, sync".to_string(),
+            "planning requires a subcommand: consult, profile, objective, suggestions, sync"
+                .to_string(),
         );
     }
     match tokens[1].as_str() {
+        "consult" => {
+            if tokens.len() < 3 {
+                return Err("planning consult requires a subcommand: cloning".to_string());
+            }
+            match tokens[2].as_str() {
+                "cloning" => {
+                    let mut seq_id: Option<String> = None;
+                    let mut objective_json: Option<String> = None;
+                    let mut profile_scope = PlanningProfileScope::Effective;
+                    let mut output_format = "json".to_string();
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--seq-id" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--seq-id",
+                                    "planning consult cloning",
+                                )?;
+                                seq_id = Some(raw);
+                            }
+                            "--objective" => {
+                                objective_json = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--objective",
+                                    "planning consult cloning",
+                                )?);
+                            }
+                            "--profile-scope" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--profile-scope",
+                                    "planning consult cloning",
+                                )?;
+                                profile_scope = parse_planning_profile_scope(&raw)?;
+                            }
+                            "--format" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--format",
+                                    "planning consult cloning",
+                                )?;
+                                let normalized = raw.trim().to_ascii_lowercase();
+                                if !matches!(normalized.as_str(), "json" | "text") {
+                                    return Err(format!(
+                                        "Invalid --format value '{raw}' for planning consult cloning; expected json or text"
+                                    ));
+                                }
+                                output_format = normalized;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for planning consult cloning"
+                                ));
+                            }
+                        }
+                    }
+                    if profile_scope != PlanningProfileScope::Effective {
+                        return Err(
+                            "planning consult cloning currently supports --profile-scope effective only"
+                                .to_string(),
+                        );
+                    }
+                    Ok(ShellCommand::PlanningConsultCloning {
+                        seq_id,
+                        objective_json,
+                        profile_scope,
+                        output_format,
+                    })
+                }
+                other => Err(format!(
+                    "Unknown planning consult subcommand '{other}' (expected cloning)"
+                )),
+            }
+        }
+        "protein-expression-handoff" | "protein_expression_handoff" => {
+            let mut seq_id: Option<String> = None;
+            let mut objective_json: Option<String> = None;
+            let mut profile_scope = PlanningProfileScope::Effective;
+            let mut output_format = "json".to_string();
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--seq-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seq-id",
+                            "planning protein-expression-handoff",
+                        )?;
+                        seq_id = Some(raw);
+                    }
+                    "--objective" => {
+                        objective_json = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--objective",
+                            "planning protein-expression-handoff",
+                        )?);
+                    }
+                    "--profile-scope" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--profile-scope",
+                            "planning protein-expression-handoff",
+                        )?;
+                        profile_scope = parse_planning_profile_scope(&raw)?;
+                    }
+                    "--format" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--format",
+                            "planning protein-expression-handoff",
+                        )?;
+                        let normalized = raw.trim().to_ascii_lowercase();
+                        if !matches!(normalized.as_str(), "json" | "text") {
+                            return Err(format!(
+                                "Invalid --format value '{raw}' for planning protein-expression-handoff; expected json or text"
+                            ));
+                        }
+                        output_format = normalized;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for planning protein-expression-handoff"
+                        ));
+                    }
+                }
+            }
+            if profile_scope != PlanningProfileScope::Effective {
+                return Err(
+                    "planning protein-expression-handoff currently supports --profile-scope effective only"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::PlanningProteinExpressionHandoff {
+                seq_id,
+                objective_json,
+                profile_scope,
+                output_format,
+            })
+        }
         "profile" => {
             if tokens.len() < 3 {
                 return Err("planning profile requires a subcommand: show, set, clear".to_string());
@@ -10258,7 +12802,7 @@ pub(super) fn parse_planning_command(tokens: &[String]) -> Result<ShellCommand, 
             }
         }
         other => Err(format!(
-            "Unknown planning subcommand '{other}' (expected profile, objective, suggestions, sync)"
+            "Unknown planning subcommand '{other}' (expected consult, profile, objective, suggestions, sync)"
         )),
     }
 }

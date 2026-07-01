@@ -11,19 +11,88 @@
     "source_label": "GENtle local TP73 isoform curation seed",
     "evidence": [
       "TP73 cDNA isoform-selector PCR work in this repository",
-      "local lab knowledge that Ex2/Ex3 TP73 variants are experimentally observed even when public healthy-tissue datasets underrepresent them"
+      "local lab knowledge that Ex2/Ex3 TP73 variants are experimentally observed even when public healthy-tissue datasets underrepresent them",
+      "user-supplied IEGT Rostock full-length TAp73alpha coding cDNA retained as explicit local construct evidence; the exact originating cell line is still pending clarification"
     ],
     "validation_tags": [
       "primer_supported",
       "local_annotation_seed",
-      "public_annotation_incomplete_for_disease_context"
+      "public_annotation_incomplete_for_disease_context",
+      "local_construct_sequence_recorded"
     ],
     "public_database_status": "Public records are useful anchors but are not treated as exhaustive for disease-associated TP73 transcript structure.",
     "notes": [
       "Expression is not implied by inclusion in this panel.",
-      "Use cDNA PCR/qPCR products and Sanger or sequencing confirmation to validate sample-specific expression."
+      "Use cDNA PCR/qPCR products and Sanger or sequencing confirmation to validate sample-specific expression.",
+      "Local construct sequences may represent coding cDNA evidence rather than complete public transcript extents and should remain distinguishable from accession-backed transcript models."
     ]
   },
+  "evidence": [
+    {
+      "evidence_id": "iegt_rostock_tap73alpha_cdna_2026_05_06",
+      "source_type": "Local lab coding cDNA sequence",
+      "accession": "IEGT_TAp73alpha_cDNA_v1",
+      "label": "IEGT Rostock TAp73alpha coding cDNA",
+      "description": "User-supplied full-length TAp73alpha coding cDNA used at the IEGT in Rostock. The exact originating cell line is still pending clarification, so this record is kept as local construct evidence rather than treated as a public transcript accession.",
+      "sequence_path": "data/resources/tp73_tap73alpha_iegt_rostock_cdna.fasta",
+      "sequence_length_bp": 1911,
+      "sequence_sha256": "b4fae4c00602711781b32f1b7eaf2940236a690a6d781cf1f9e9e4a088154987",
+      "cds_start_1based": 1,
+      "cds_end_1based": 1911,
+      "retrieved_on": "2026-05-06"
+    }
+  ],
+  "evaluations": [
+    {
+      "evaluation_id": "tp73_ta_alpha_iegt_local_cdna_record_2026_05_06",
+      "title": "IEGT Rostock TAp73alpha coding cDNA recorded as local TP73 evidence",
+      "created_on": "2026-05-06",
+      "method": "Stored the user-supplied TAp73alpha coding cDNA as a local FASTA resource and linked it to the existing TP73 isoform panel as explicit lab-held construct evidence.",
+      "status": "warning",
+      "summary": "The sequence is recorded as local evidence for the TAp73alpha class. It is a 1911 bp coding cDNA with an ATG start and terminal TGA stop codon, while the exact source cell line remains pending clarification.",
+      "source_evidence_ids": [
+        "iegt_rostock_tap73alpha_cdna_2026_05_06"
+      ],
+      "isoform_ids": [
+        "tp73_ta_alpha"
+      ],
+      "rows": [
+        {
+          "isoform_id": "tp73_ta_alpha",
+          "evidence_id": "iegt_rostock_tap73alpha_cdna_2026_05_06",
+          "compared_to": "TAp73alpha local isoform class",
+          "status": "local_construct_sequence_pending_origin_clarification",
+          "summary": "This user-supplied coding cDNA is retained as explicit local construct knowledge for TAp73alpha and should not be mistaken for a fully provenance-resolved public transcript record.",
+          "metrics": [
+            {
+              "key": "coding_sequence_length_bp",
+              "value": "1911"
+            },
+            {
+              "key": "coding_sequence_1based",
+              "value": "1..1911"
+            },
+            {
+              "key": "expected_protein_length_aa",
+              "value": "636"
+            },
+            {
+              "key": "start_codon",
+              "value": "ATG"
+            },
+            {
+              "key": "stop_codon",
+              "value": "TGA"
+            },
+            {
+              "key": "origin_status",
+              "value": "source_cell_line_pending_clarification"
+            }
+          ]
+        }
+      ]
+    }
+  ],
   "isoforms": [
     {
       "isoform_id": "tp73_ta_alpha",
@@ -32,9 +101,12 @@
       "transactivation_class": "TA",
       "curation": {
         "source_kind": "mixed",
-        "source_label": "RefSeq accession with local isoform-class label",
-        "evidence": ["TA 5' class; α 3' class in local cDNA selector matrix"],
-        "validation_tags": ["primer_supported"],
+        "source_label": "RefSeq accession with local isoform-class label and local coding cDNA evidence",
+        "evidence": [
+          "TA 5' class; α 3' class in local cDNA selector matrix",
+          "IEGT Rostock full-length TAp73alpha coding cDNA retained as local construct evidence"
+        ],
+        "validation_tags": ["primer_supported", "local_construct_sequence_recorded"],
         "public_database_status": "public_refseq_record_available"
       }
     },

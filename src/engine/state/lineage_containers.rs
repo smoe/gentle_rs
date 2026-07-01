@@ -188,14 +188,31 @@ impl GentleEngine {
 
     fn choose_smallest_rack_profile_for_slots(
         slot_count: usize,
+        prefer_plate: bool,
     ) -> Result<RackProfileKind, EngineError> {
-        for kind in [
-            RackProfileKind::SmallTube4x6,
-            RackProfileKind::Plate96,
-            RackProfileKind::Plate384,
-        ] {
+        let profile_order: &[RackProfileKind] = if prefer_plate {
+            &[
+                RackProfileKind::Plate6,
+                RackProfileKind::Plate12,
+                RackProfileKind::Plate24,
+                RackProfileKind::Plate48,
+                RackProfileKind::Plate96,
+                RackProfileKind::Plate384,
+            ]
+        } else {
+            &[
+                RackProfileKind::SmallTube4x6,
+                RackProfileKind::Plate6,
+                RackProfileKind::Plate12,
+                RackProfileKind::Plate24,
+                RackProfileKind::Plate48,
+                RackProfileKind::Plate96,
+                RackProfileKind::Plate384,
+            ]
+        };
+        for kind in profile_order {
             if slot_count <= kind.capacity() {
-                return Ok(kind);
+                return Ok(*kind);
             }
         }
         Err(EngineError {
@@ -204,6 +221,8 @@ impl GentleEngine {
                 "No built-in rack profile can fit {slot_count} occupied positions (max supported: {})",
                 RackProfileKind::Plate384.capacity()
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -215,6 +234,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Custom rack profiles require rows >= 1 and columns >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(())
@@ -232,6 +253,8 @@ impl GentleEngine {
                     "Rack slot index {index} is outside available rack capacity {}",
                     available.len()
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(available[index].clone())
@@ -254,6 +277,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Invalid rack row label '{label}'"),
+
+                cause_chain: vec![],
             });
         }
         let mut value = 0usize;
@@ -264,6 +289,8 @@ impl GentleEngine {
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Rack row label '{}' is too large", label),
+
+                    cause_chain: vec![],
                 })?;
         }
         Ok(value.saturating_sub(1))
@@ -275,6 +302,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Rack coordinate cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut letters = String::new();
@@ -288,6 +317,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Invalid rack coordinate '{coordinate}'"),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -295,17 +326,23 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Invalid rack coordinate '{coordinate}'"),
+
+                cause_chain: vec![],
             });
         }
         let row = Self::rack_row_index_from_label(&letters)?;
         let column = digits.parse::<usize>().map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Invalid rack coordinate '{coordinate}': {e}"),
+
+            cause_chain: vec![],
         })?;
         if column == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Invalid rack coordinate '{coordinate}'"),
+
+                cause_chain: vec![],
             });
         }
         Ok((row, column - 1))
@@ -323,6 +360,8 @@ impl GentleEngine {
                     "Rack position ({}, {}) is outside profile {}x{}",
                     row, column, profile.rows, profile.columns
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(format!(
@@ -362,6 +401,8 @@ impl GentleEngine {
                         "Blocked rack coordinate '{}' is outside profile {}x{}",
                         trimmed, profile.rows, profile.columns
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let canonical = Self::rack_coordinate_from_row_column(profile, row, column)?;
@@ -423,6 +464,8 @@ impl GentleEngine {
                     "Rack coordinate '{}' is outside profile {}x{}",
                     coordinate, profile.rows, profile.columns
                 ),
+
+                cause_chain: vec![],
             });
         }
         let coordinate = Self::rack_coordinate_from_row_column(profile, row, column)?;
@@ -436,6 +479,8 @@ impl GentleEngine {
                     "Rack coordinate '{}' is blocked or unavailable in profile {}x{}",
                     coordinate, profile.rows, profile.columns
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -466,6 +511,8 @@ impl GentleEngine {
                     profile.columns,
                     available.len()
                 ),
+
+                cause_chain: vec![],
             });
         }
         for (idx, entry) in entries.iter_mut().enumerate() {
@@ -488,6 +535,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut placements = self
             .sorted_rack_placements(&existing_rack)?
@@ -505,6 +554,8 @@ impl GentleEngine {
                     placements.len(),
                     available_capacity
                 ),
+
+                cause_chain: vec![],
             });
         }
         Self::reflow_rack_placements(&new_profile, &mut placements)?;
@@ -516,6 +567,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         rack.profile = new_profile;
         rack.placements = placements;
@@ -534,6 +587,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Arrangement '{arrangement_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut payload = vec![];
         if let Some((left, right)) = Self::arrangement_ladder_pair(arrangement) {
@@ -587,6 +642,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "CreateArrangementSerial requires at least one container id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut lane_container_ids: Vec<ContainerId> = vec![];
@@ -600,6 +657,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::NotFound,
                     message: format!("Container '{trimmed}' not found"),
+
+                    cause_chain: vec![],
                 });
             }
             if seen.insert(trimmed.to_string()) {
@@ -611,6 +670,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "CreateArrangementSerial requires at least one non-empty container id"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let arrangement_id = arrangement_id
@@ -626,6 +687,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Arrangement '{arrangement_id}' already exists"),
+
+                cause_chain: vec![],
             });
         }
         let arrangement = Arrangement {
@@ -681,6 +744,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "arrangement_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let arrangement = self
@@ -692,6 +757,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Arrangement '{arrangement_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let payload = self.arrangement_rack_payload(arrangement_id)?;
         let profile_kind = match profile {
@@ -705,11 +772,16 @@ impl GentleEngine {
                             arrangement_id,
                             payload.len()
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 profile
             }
-            None => Self::choose_smallest_rack_profile_for_slots(payload.len())?,
+            None => Self::choose_smallest_rack_profile_for_slots(
+                payload.len(),
+                arrangement.mode == ArrangementMode::Plate,
+            )?,
         };
         let rack_id = rack_id
             .map(|value| value.trim().to_string())
@@ -719,6 +791,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Rack '{rack_id}' already exists"),
+
+                cause_chain: vec![],
             });
         }
         let profile_snapshot = RackProfileSnapshot::from_kind(profile_kind);
@@ -756,15 +830,14 @@ impl GentleEngine {
                 created_at_unix_ms: Self::now_unix_ms(),
             },
         );
-        if set_as_default {
-            if let Some(arrangement) = self
+        if set_as_default
+            && let Some(arrangement) = self
                 .state
                 .container_state
                 .arrangements
                 .get_mut(arrangement_id)
-            {
-                arrangement.default_rack_id = Some(rack_id.clone());
-            }
+        {
+            arrangement.default_rack_id = Some(rack_id.clone());
         }
         Ok(rack_id)
     }
@@ -780,6 +853,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "arrangement_id and rack_id must be non-empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let payload = self.arrangement_rack_payload(arrangement_id)?;
@@ -791,6 +866,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         if rack
             .placements
@@ -803,6 +880,8 @@ impl GentleEngine {
                     "Rack '{}' already contains arrangement '{}'",
                     rack_id, arrangement_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let start_index = rack.placements.len();
@@ -818,6 +897,8 @@ impl GentleEngine {
                     payload.len(),
                     available_capacity.saturating_sub(start_index)
                 ),
+
+                cause_chain: vec![],
             });
         }
         for (offset, (occupant, role_label)) in payload.into_iter().enumerate() {
@@ -861,6 +942,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let from_index = Self::rack_index_from_coordinate(&rack.profile, from_coordinate)?;
         let to_index = Self::rack_index_from_coordinate(&rack.profile, to_coordinate)?;
@@ -874,6 +957,8 @@ impl GentleEngine {
                     "Rack '{}' has no occupied position at '{}'",
                     rack_id, from_coordinate
                 ),
+
+                cause_chain: vec![],
             })?;
         if move_block {
             let arrangement_id = ordered[from_pos].1.arrangement_id.clone();
@@ -901,11 +986,7 @@ impl GentleEngine {
                     .iter()
                     .map(|(_, entry)| entry.clone()),
             );
-            let ordered = reflowed
-                .into_iter()
-                .enumerate()
-                .map(|(index, entry)| (index, entry))
-                .collect::<Vec<_>>();
+            let ordered = reflowed.into_iter().enumerate().collect::<Vec<_>>();
             return self.reflow_ordered_rack_entries(rack_id, &rack.profile, ordered);
         } else {
             let arrangement_id = ordered[from_pos].1.arrangement_id.clone();
@@ -918,7 +999,8 @@ impl GentleEngine {
                         "Sample moves must target an occupied coordinate within arrangement block '{}'",
                         arrangement_id
                     ),
-                })?;
+
+                    cause_chain: vec![],})?;
             let block_positions = ordered
                 .iter()
                 .enumerate()
@@ -939,6 +1021,8 @@ impl GentleEngine {
                         "Sample moves must stay within arrangement block '{}'",
                         arrangement_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let mut block_entries = ordered[block_start..=block_end]
@@ -1059,6 +1143,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Rack sample move requires at least one source coordinate".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let requested_coordinates = from_coordinates
@@ -1071,6 +1157,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Rack sample move requires non-empty source coordinates".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let rack = self
@@ -1082,6 +1170,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let ordered = self.sorted_rack_placements(&rack)?;
         let selected = ordered
@@ -1110,6 +1200,8 @@ impl GentleEngine {
                     rack_id,
                     missing.join(", ")
                 ),
+
+                cause_chain: vec![],
             });
         }
         let arrangement_id = selected
@@ -1121,6 +1213,8 @@ impl GentleEngine {
                     "Rack '{}' does not contain requested sample coordinates",
                     rack_id
                 ),
+
+                cause_chain: vec![],
             })?;
         if selected
             .iter()
@@ -1130,6 +1224,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "Multi-sample rack moves must stay within one arrangement block"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let to_index = Self::rack_index_from_coordinate(&rack.profile, to_coordinate)?;
@@ -1142,7 +1238,8 @@ impl GentleEngine {
                     "Multi-sample moves must target an occupied coordinate within arrangement block '{}'",
                     arrangement_id
                 ),
-            })?;
+
+                cause_chain: vec![],})?;
         let block_positions = ordered
             .iter()
             .enumerate()
@@ -1163,6 +1260,8 @@ impl GentleEngine {
                     "Rack '{}' does not contain requested sample coordinates",
                     rack_id
                 ),
+
+                cause_chain: vec![],
             })?;
         let block_start = *block_positions.first().unwrap_or(&from_pos);
         let block_end = *block_positions.last().unwrap_or(&from_pos);
@@ -1173,6 +1272,8 @@ impl GentleEngine {
                     "Multi-sample moves must stay within arrangement block '{}'",
                     arrangement_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let mut block_entries = ordered[block_start..=block_end]
@@ -1239,6 +1340,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Rack block move requires at least one arrangement id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let rack = self
@@ -1250,6 +1353,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let to_index = Self::rack_index_from_coordinate(&rack.profile, to_coordinate)?;
         let ordered = self.sorted_rack_placements(&rack)?;
@@ -1262,6 +1367,8 @@ impl GentleEngine {
                     "Rack '{}' does not contain any of the requested arrangement blocks",
                     rack_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let selected_id_set = selected_arrangement_ids
@@ -1291,11 +1398,7 @@ impl GentleEngine {
                 .iter()
                 .map(|(_, entry)| entry.clone()),
         );
-        let ordered = reflowed
-            .into_iter()
-            .enumerate()
-            .map(|(index, entry)| (index, entry))
-            .collect::<Vec<_>>();
+        let ordered = reflowed.into_iter().enumerate().collect::<Vec<_>>();
         self.reflow_ordered_rack_entries(rack_id, &rack.profile, ordered)
     }
 
@@ -1309,6 +1412,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "Use SetRackProfileCustom for custom row/column rack dimensions"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let existing_rack = self
@@ -1320,6 +1425,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut new_profile = RackProfileSnapshot::from_kind(profile);
         new_profile.fill_direction = existing_rack.profile.fill_direction;
@@ -1347,6 +1454,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut new_profile = RackProfileSnapshot::custom(rows, columns);
         new_profile.fill_direction = existing_rack.profile.fill_direction;
@@ -1374,6 +1483,8 @@ impl GentleEngine {
                             profile.rows,
                             profile.columns
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 let mut blocked = Vec::new();
@@ -1428,6 +1539,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut new_profile = existing_rack.profile.clone();
         new_profile.fill_direction = match template {
@@ -1455,6 +1568,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut new_profile = existing_rack.profile.clone();
         new_profile.fill_direction = fill_direction;
@@ -1480,6 +1595,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut new_profile = existing_rack.profile.clone();
         new_profile.blocked_coordinates = Self::normalized_blocked_coordinates_for_profile(
@@ -1737,6 +1854,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let arrangement_filter = arrangement_id
             .map(str::trim)
@@ -1758,6 +1877,8 @@ impl GentleEngine {
                     "Rack '{}' has no placements matching the requested arrangement scope",
                     rack_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let layout = match preset {
@@ -1899,6 +2020,8 @@ impl GentleEngine {
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack labels SVG '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(count)
     }
@@ -1919,6 +2042,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let spec = Self::rack_physical_template_spec(template, &rack.profile);
         let rows = self.scoped_rack_entries(rack, arrangement_id)?;
@@ -1929,6 +2054,8 @@ impl GentleEngine {
                     "Rack '{}' has no placements matching the requested arrangement scope",
                     rack_id
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -2114,6 +2241,8 @@ impl GentleEngine {
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack carrier labels SVG '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok((arrangement_summaries.len() + 1, spec))
     }
@@ -2167,6 +2296,35 @@ impl GentleEngine {
                 8.0,
                 1.2,
             ),
+            RackPhysicalTemplateKind::CellCulturePlate => {
+                let (pitch_x_mm, pitch_y_mm, opening_diameter_mm, edge_margin_mm) =
+                    match profile.kind {
+                        RackProfileKind::Plate6 => (39.1, 39.1, 34.8, 9.2),
+                        RackProfileKind::Plate12 => (26.0, 26.0, 22.1, 7.3),
+                        RackProfileKind::Plate24 => (19.3, 19.3, 15.6, 6.4),
+                        RackProfileKind::Plate48 => (13.0, 13.0, 11.0, 5.4),
+                        RackProfileKind::Plate96 => (9.0, 9.0, 6.9, 4.6),
+                        RackProfileKind::Plate384 => (4.5, 4.5, 3.6, 3.2),
+                        RackProfileKind::SmallTube4x6 | RackProfileKind::Custom => {
+                            (18.0, 18.0, 14.0, 5.0)
+                        }
+                    };
+                (
+                    RackPhysicalTemplateFamily::CellCulture,
+                    pitch_x_mm,
+                    pitch_y_mm,
+                    opening_diameter_mm,
+                    0.8,
+                    1.0,
+                    1.0,
+                    4.0,
+                    edge_margin_mm,
+                    2.0,
+                    4.0,
+                    8.0,
+                    0.8,
+                )
+            }
         };
         let overall_width_mm = if profile.columns == 0 {
             0.0
@@ -2183,10 +2341,16 @@ impl GentleEngine {
                 + opening_diameter_mm
                 + profile.rows.saturating_sub(1) as f32 * pitch_y_mm
         };
+        let container_format = match family {
+            RackPhysicalTemplateFamily::Storage | RackPhysicalTemplateFamily::Pipetting => {
+                "pcr_tube_0_2ml"
+            }
+            RackPhysicalTemplateFamily::CellCulture => "cell_culture_plate_well",
+        };
         RackPhysicalTemplateSpec {
             kind: template,
             family,
-            container_format: "pcr_tube_0_2ml".to_string(),
+            container_format: container_format.to_string(),
             rows: profile.rows,
             columns: profile.columns,
             pitch_x_mm,
@@ -2240,6 +2404,51 @@ impl GentleEngine {
         }
         let keep = max_chars.saturating_sub(1);
         format!("{}…", trimmed.chars().take(keep).collect::<String>())
+    }
+
+    fn rack_hero_placement_label(&self, entry: &RackPlacementEntry) -> String {
+        let fallback = entry.role_label.trim();
+        match entry.occupant.as_ref() {
+            Some(RackOccupant::Container { container_id }) => self
+                .state
+                .container_state
+                .containers
+                .get(container_id)
+                .and_then(|container| {
+                    container.members.first().and_then(|seq_id| {
+                        self.state
+                            .sequences
+                            .get(seq_id)
+                            .and_then(|dna| dna.name().as_ref())
+                    })
+                })
+                .or_else(|| {
+                    self.state
+                        .container_state
+                        .containers
+                        .get(container_id)
+                        .and_then(|container| container.name.as_ref())
+                })
+                .map(|name| name.trim())
+                .filter(|name| !name.is_empty() && *name != "Inline sequence")
+                .or_else(|| {
+                    if fallback.is_empty() {
+                        None
+                    } else {
+                        Some(fallback)
+                    }
+                })
+                .unwrap_or(container_id.trim())
+                .to_string(),
+            Some(RackOccupant::LadderReference { ladder_name }) => format!("ladder {ladder_name}"),
+            None => {
+                if fallback.is_empty() {
+                    "empty".to_string()
+                } else {
+                    fallback.to_string()
+                }
+            }
+        }
     }
 
     fn export_rack_physical_svg_string(
@@ -2434,6 +2643,273 @@ impl GentleEngine {
         Ok(svg)
     }
 
+    fn export_rack_hero_svg_string(
+        &self,
+        rack: &Rack,
+        spec: &RackPhysicalTemplateSpec,
+    ) -> Result<String, EngineError> {
+        let placements = self.sorted_rack_placements(rack)?;
+        let mut placements_by_coordinate = HashMap::new();
+        for (_, entry) in &placements {
+            placements_by_coordinate.insert(entry.coordinate.clone(), entry.clone());
+        }
+        let blocked = rack
+            .profile
+            .blocked_coordinates
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+
+        let margin = 8.0;
+        let plate_x = margin;
+        let plate_y = margin + 6.0;
+        let svg_width = spec.overall_width_mm + margin * 2.0;
+        let svg_height = spec.overall_depth_mm + margin * 2.0 + 14.0;
+        let label_h = 7.0;
+        let label_y = plate_y + spec.overall_depth_mm + 2.0;
+        let plate_corner_radius = spec.corner_radius_mm.clamp(1.4, 2.2);
+        let orientation_cut = 6.0_f32.min(spec.overall_width_mm * 0.08);
+        let is_cell_culture = spec.family == RackPhysicalTemplateFamily::CellCulture;
+        let slot_radius = if is_cell_culture {
+            (spec.pitch_x_mm.min(spec.pitch_y_mm) * 0.5 - 0.8).max(spec.opening_diameter_mm * 0.5)
+        } else {
+            (spec.opening_diameter_mm * 0.5).min(spec.pitch_x_mm.min(spec.pitch_y_mm) * 0.45)
+        };
+        let inner_radius = if is_cell_culture {
+            slot_radius * 0.77
+        } else {
+            slot_radius * 0.62
+        };
+        let axis_label_font: f32 = if spec.columns > 16 || spec.rows > 12 {
+            1.8
+        } else if spec.columns > 12 || spec.rows > 8 {
+            2.3
+        } else {
+            3.0
+        };
+        let coordinate_font: f32 = if spec.columns > 16 || spec.rows > 12 {
+            1.3
+        } else if spec.columns > 12 || spec.rows > 8 {
+            1.8
+        } else {
+            2.6
+        };
+        let label_font: f32 = if spec.pitch_x_mm.min(spec.pitch_y_mm) < 8.0 {
+            1.25
+        } else if spec.pitch_x_mm.min(spec.pitch_y_mm) < 12.0 {
+            1.35
+        } else {
+            2.45
+        };
+        let rack_title = if rack.name.trim().is_empty() {
+            rack.rack_id.trim()
+        } else {
+            rack.name.trim()
+        };
+        let rack_title_char_limit =
+            ((spec.overall_width_mm - 10.0) / 1.85).floor().max(12.0) as usize;
+        let rack_title = Self::truncate_rack_label_text(rack_title, rack_title_char_limit);
+
+        let mut svg = format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.1}mm\" height=\"{:.1}mm\" viewBox=\"0 0 {:.1} {:.1}\" data-rack-hero-template=\"{}\" data-rack-id=\"{}\" data-rack-front-top-clearance-mm=\"{:.1}\">",
+            svg_width,
+            svg_height,
+            svg_width,
+            svg_height,
+            spec.kind.as_str(),
+            Self::xml_escape(&rack.rack_id),
+            spec.front_top_clearance_mm
+        );
+        svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>");
+        svg.push_str("<defs>");
+        svg.push_str("<filter id=\"hero-soft-shadow\" x=\"-8%\" y=\"-8%\" width=\"116%\" height=\"116%\"><feDropShadow dx=\"0\" dy=\"1.2\" stdDeviation=\"1.8\" flood-color=\"#334155\" flood-opacity=\"0.12\"/></filter>");
+        svg.push_str("<linearGradient id=\"hero-plate-fill\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#ffffff\"/><stop offset=\"100%\" stop-color=\"#eef3f8\"/></linearGradient>");
+        svg.push_str("<linearGradient id=\"hero-label-strip\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"0%\"><stop offset=\"0%\" stop-color=\"#f8fafc\"/><stop offset=\"100%\" stop-color=\"#e8eef5\"/></linearGradient>");
+        svg.push_str("<radialGradient id=\"hero-well-floor\" cx=\"50%\" cy=\"48%\" r=\"58%\"><stop offset=\"0%\" stop-color=\"#ffffff\"/><stop offset=\"100%\" stop-color=\"#e2e8f0\"/></radialGradient>");
+        svg.push_str("</defs>");
+        let plate_outline_path = format!(
+            "M {:.2} {:.2} L {:.2} {:.2} Q {:.2} {:.2} {:.2} {:.2} L {:.2} {:.2} Q {:.2} {:.2} {:.2} {:.2} L {:.2} {:.2} Q {:.2} {:.2} {:.2} {:.2} L {:.2} {:.2} Z",
+            plate_x + orientation_cut,
+            plate_y,
+            plate_x + spec.overall_width_mm - plate_corner_radius,
+            plate_y,
+            plate_x + spec.overall_width_mm,
+            plate_y,
+            plate_x + spec.overall_width_mm,
+            plate_y + plate_corner_radius,
+            plate_x + spec.overall_width_mm,
+            plate_y + spec.overall_depth_mm - plate_corner_radius,
+            plate_x + spec.overall_width_mm,
+            plate_y + spec.overall_depth_mm,
+            plate_x + spec.overall_width_mm - plate_corner_radius,
+            plate_y + spec.overall_depth_mm,
+            plate_x + plate_corner_radius,
+            plate_y + spec.overall_depth_mm,
+            plate_x,
+            plate_y + spec.overall_depth_mm,
+            plate_x,
+            plate_y + spec.overall_depth_mm - plate_corner_radius,
+            plate_x,
+            plate_y + orientation_cut
+        );
+        svg.push_str(&format!(
+            "<path data-rack-hero-plate-outline=\"1\" data-rack-hero-orientation-cut=\"upper_left\" d=\"{}\" fill=\"url(#hero-plate-fill)\" stroke=\"#64748b\" stroke-width=\"0.70\" filter=\"url(#hero-soft-shadow)\"/>",
+            plate_outline_path
+        ));
+        svg.push_str(&format!(
+            "<rect data-rack-hero-label-strip=\"1\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"1.6\" ry=\"1.6\" fill=\"url(#hero-label-strip)\" stroke=\"#cbd5e1\" stroke-width=\"0.24\"/>",
+            plate_x + 3.0,
+            label_y,
+            spec.overall_width_mm - 6.0,
+            label_h
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.2}\" y=\"{:.2}\" font-family=\"monospace\" font-size=\"3.1\" font-weight=\"700\" fill=\"#475569\">{}</text>",
+            plate_x + 5.0,
+            label_y + 4.65,
+            Self::xml_escape(&rack_title)
+        ));
+
+        for column in 0..spec.columns {
+            let (cx, _) = Self::rack_physical_hole_center_mm(spec, 0, column);
+            svg.push_str(&format!(
+                "<text data-rack-hero-column-label=\"1\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"{:.2}\" font-weight=\"700\" fill=\"#64748b\">{}</text>",
+                plate_x + cx,
+                plate_y - 2.0,
+                axis_label_font,
+                column + 1
+            ));
+        }
+
+        for row in 0..spec.rows {
+            let (_, cy) = Self::rack_physical_hole_center_mm(spec, row, 0);
+            svg.push_str(&format!(
+                "<text data-rack-hero-row-label=\"1\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"{:.2}\" font-weight=\"700\" fill=\"#64748b\">{}</text>",
+                plate_x - 2.0,
+                plate_y + cy,
+                axis_label_font,
+                Self::rack_row_label_from_index(row)
+            ));
+            for column in 0..spec.columns {
+                let coordinate = Self::rack_coordinate_from_row_column(&rack.profile, row, column)?;
+                let (cx_mm, cy_mm) = Self::rack_physical_hole_center_mm(spec, row, column);
+                let x = plate_x + cx_mm;
+                let y = plate_y + cy_mm;
+                let blocked_slot = blocked.contains(&coordinate);
+                if is_cell_culture {
+                    svg.push_str(&format!(
+                        "<circle data-rack-hero-slot=\"1\" data-rack-cell-culture-well=\"1\" data-rack-cell-culture-well-rim=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"#ffffff\" stroke=\"#94a3b8\" stroke-width=\"0.50\"/>",
+                        x,
+                        y,
+                        slot_radius
+                    ));
+                    svg.push_str(&format!(
+                        "<circle data-rack-hero-slot-floor=\"1\" data-rack-cell-culture-well-floor=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"url(#hero-well-floor)\" stroke=\"#cbd5e1\" stroke-width=\"0.28\"/>",
+                        x,
+                        y,
+                        inner_radius
+                    ));
+                } else {
+                    svg.push_str(&format!(
+                        "<circle data-rack-hero-slot=\"1\" data-rack-tube-top=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"#f8fafc\" stroke=\"#64748b\" stroke-width=\"0.48\"/>",
+                        x,
+                        y,
+                        slot_radius
+                    ));
+                    svg.push_str(&format!(
+                        "<circle data-rack-hero-slot-floor=\"1\" data-rack-tube-cap=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"url(#hero-well-floor)\" stroke=\"#cbd5e1\" stroke-width=\"0.24\"/>",
+                        x,
+                        y,
+                        inner_radius
+                    ));
+                }
+                if blocked_slot {
+                    svg.push_str(&format!(
+                        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#94a3b8\" stroke-width=\"0.55\"/><line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#94a3b8\" stroke-width=\"0.55\"/>",
+                        x - inner_radius * 0.55,
+                        y - inner_radius * 0.55,
+                        x + inner_radius * 0.55,
+                        y + inner_radius * 0.55,
+                        x - inner_radius * 0.55,
+                        y + inner_radius * 0.55,
+                        x + inner_radius * 0.55,
+                        y - inner_radius * 0.55
+                    ));
+                    continue;
+                }
+                let has_placement = placements_by_coordinate.contains_key(&coordinate);
+                if let Some(entry) = placements_by_coordinate.get(&coordinate) {
+                    let arrangement_color = "#0f766e";
+                    let cell_culture_ring_attr = if is_cell_culture {
+                        " data-rack-cell-culture-arrangement-ring=\"1\""
+                    } else {
+                        ""
+                    };
+                    svg.push_str(&format!(
+                        "<circle data-rack-hero-arrangement-ring=\"1\"{} data-rack-arrangement-id=\"{}\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"0.62\" stroke-opacity=\"0.78\"/>",
+                        cell_culture_ring_attr,
+                        Self::xml_escape(&entry.arrangement_id),
+                        x,
+                        y,
+                        (inner_radius + 1.0).min(slot_radius - 0.35),
+                        arrangement_color
+                    ));
+                    let label = if is_cell_culture {
+                        self.rack_hero_placement_label(entry)
+                    } else if entry.role_label.trim().is_empty() {
+                        self.rack_hero_placement_label(entry)
+                    } else {
+                        entry.role_label.trim().to_string()
+                    };
+                    let label = if is_cell_culture {
+                        label
+                    } else {
+                        label.replace(['_', '-'], " ")
+                    };
+                    let label_char_limit = if is_cell_culture { 12 } else { 7 };
+                    let lines = Self::wrap_rack_label_text(&label, label_char_limit, 2);
+                    let line_count = lines.len().max(1) as f32;
+                    let line_gap = (label_font + 0.65).max(1.8);
+                    let first_y = y - (line_count - 1.0) * line_gap * 0.5;
+                    for (idx, line) in lines.iter().enumerate() {
+                        let cell_culture_label_attr = if is_cell_culture {
+                            " data-rack-cell-culture-arrangement-label=\"1\""
+                        } else {
+                            ""
+                        };
+                        svg.push_str(&format!(
+                            "<text data-rack-hero-arrangement-label=\"1\"{} x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"{:.2}\" font-weight=\"700\" fill=\"{}\">{}</text>",
+                            cell_culture_label_attr,
+                            x,
+                            first_y + idx as f32 * line_gap,
+                            label_font,
+                            arrangement_color,
+                            Self::xml_escape(line)
+                        ));
+                    }
+                }
+                if is_cell_culture || !has_placement {
+                    let cell_culture_coordinate_attr = if is_cell_culture {
+                        " data-rack-cell-culture-coordinate-label=\"1\""
+                    } else {
+                        ""
+                    };
+                    svg.push_str(&format!(
+                        "<text data-rack-hero-coordinate-label=\"1\"{} x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"{:.2}\" font-weight=\"700\" fill=\"#475569\" fill-opacity=\"0.82\">{}</text>",
+                        cell_culture_coordinate_attr,
+                        x,
+                        y + inner_radius * 0.76,
+                        coordinate_font,
+                        Self::xml_escape(&coordinate)
+                    ));
+                }
+            }
+        }
+
+        svg.push_str("</svg>");
+        Ok(svg)
+    }
+
     fn export_rack_isometric_svg_string(
         &self,
         rack: &Rack,
@@ -2450,6 +2926,12 @@ impl GentleEngine {
             .iter()
             .cloned()
             .collect::<HashSet<_>>();
+        let has_ladder_reference = placements.iter().any(|(_, entry)| {
+            matches!(
+                entry.occupant.as_ref(),
+                Some(RackOccupant::LadderReference { .. })
+            )
+        });
         let mut arrangement_legend = Vec::new();
         let mut seen_arrangements = HashSet::new();
         for (_, entry) in &placements {
@@ -2477,6 +2959,9 @@ impl GentleEngine {
                 ),
                 RackPhysicalTemplateFamily::Pipetting => (
                     "#e7f6f2", "#b8dfd5", "#8ecaba", "#0f766e", "#f8fafc", "#115e59",
+                ),
+                RackPhysicalTemplateFamily::CellCulture => (
+                    "#fff7ed", "#fed7aa", "#fdba74", "#ea580c", "#fff7ed", "#9a3412",
                 ),
             };
         let skew_x = 0.48;
@@ -2637,6 +3122,7 @@ impl GentleEngine {
         let cap_height = match spec.family {
             RackPhysicalTemplateFamily::Storage => 3.0,
             RackPhysicalTemplateFamily::Pipetting => 4.0,
+            RackPhysicalTemplateFamily::CellCulture => 1.6,
         };
         for row in 0..spec.rows {
             for column in 0..spec.columns {
@@ -2662,13 +3148,30 @@ impl GentleEngine {
                     ));
                     continue;
                 }
-                svg.push_str(&format!(
-                    "<ellipse cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"#ffffff\" stroke=\"#475569\" stroke-width=\"0.35\"/>",
-                    x,
-                    y,
-                    hole_rx,
-                    hole_ry
-                ));
+                if spec.family == RackPhysicalTemplateFamily::CellCulture {
+                    svg.push_str(&format!(
+                        "<ellipse data-rack-cell-culture-opening=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"#eef2f7\" stroke=\"#94a3b8\" stroke-width=\"0.36\"/>",
+                        x,
+                        y,
+                        hole_rx,
+                        hole_ry
+                    ));
+                    svg.push_str(&format!(
+                        "<ellipse data-rack-cell-culture-recess=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"#ffffff\" fill-opacity=\"0.82\" stroke=\"#cbd5e1\" stroke-width=\"0.24\"/>",
+                        x,
+                        y + hole_ry * 0.08,
+                        hole_rx * 0.82,
+                        hole_ry * 0.68
+                    ));
+                } else {
+                    svg.push_str(&format!(
+                        "<ellipse cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"#ffffff\" stroke=\"#475569\" stroke-width=\"0.35\"/>",
+                        x,
+                        y,
+                        hole_rx,
+                        hole_ry
+                    ));
+                }
                 if let Some(entry) = placements_by_coordinate.get(&coordinate) {
                     let (fill, top_fill, stroke) = match entry.occupant.as_ref() {
                         Some(RackOccupant::LadderReference { .. }) => {
@@ -2680,6 +3183,37 @@ impl GentleEngine {
                         }
                         None => continue,
                     };
+                    if spec.family == RackPhysicalTemplateFamily::CellCulture {
+                        let liquid_rx = hole_rx * 0.62;
+                        let liquid_ry = hole_ry * 0.46;
+                        svg.push_str(&format!(
+                            "<ellipse data-rack-cell-culture-well=\"1\" data-rack-cell-culture-medium=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"#f4b6c2\" fill-opacity=\"0.54\" stroke=\"{}\" stroke-opacity=\"0.36\" stroke-width=\"0.24\"/>",
+                            x,
+                            y + hole_ry * 0.08,
+                            liquid_rx,
+                            liquid_ry,
+                            stroke
+                        ));
+                        svg.push_str(&format!(
+                            "<circle data-rack-cell-culture-arrangement-marker=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"{}\" fill-opacity=\"0.78\"/>",
+                            x + liquid_rx * 0.44,
+                            y - liquid_ry * 0.16,
+                            liquid_ry * 0.18,
+                            top_fill
+                        ));
+                        svg.push_str(&format!(
+                            "<path d=\"M {:.2} {:.2} C {:.2} {:.2}, {:.2} {:.2}, {:.2} {:.2}\" fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.42\" stroke-width=\"0.34\" stroke-linecap=\"round\"/>",
+                            x - liquid_rx * 0.58,
+                            y - liquid_ry * 0.08,
+                            x - liquid_rx * 0.18,
+                            y - liquid_ry * 0.54,
+                            x + liquid_rx * 0.18,
+                            y - liquid_ry * 0.54,
+                            x + liquid_rx * 0.56,
+                            y - liquid_ry * 0.10
+                        ));
+                        continue;
+                    }
                     let cap_rx = hole_rx * 0.84;
                     let cap_ry = hole_ry * 0.92;
                     let cap_top_y = y - cap_height;
@@ -2763,14 +3297,16 @@ impl GentleEngine {
                 ));
                 legend_y += 5.0;
             }
-            svg.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"4.0\" height=\"4.0\" rx=\"1.0\" ry=\"1.0\" fill=\"#f59e0b\"/><text x=\"{:.2}\" y=\"{:.2}\" font-family=\"monospace\" font-size=\"2.5\" fill=\"#334155\">ladder reference</text>",
-                legend_x,
-                legend_y - 3.0,
-                legend_x + 6.0,
-                legend_y
-            ));
-            legend_y += 5.0;
+            if has_ladder_reference {
+                svg.push_str(&format!(
+                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"4.0\" height=\"4.0\" rx=\"1.0\" ry=\"1.0\" fill=\"#f59e0b\"/><text x=\"{:.2}\" y=\"{:.2}\" font-family=\"monospace\" font-size=\"2.5\" fill=\"#334155\">ladder reference</text>",
+                    legend_x,
+                    legend_y - 3.0,
+                    legend_x + 6.0,
+                    legend_y
+                ));
+                legend_y += 5.0;
+            }
             if !blocked.is_empty() {
                 svg.push_str(&format!(
                     "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"4.0\" height=\"4.0\" rx=\"1.0\" ry=\"1.0\" fill=\"#e2e8f0\" stroke=\"#64748b\" stroke-width=\"0.25\"/><text x=\"{:.2}\" y=\"{:.2}\" font-family=\"monospace\" font-size=\"2.5\" fill=\"#334155\">blocked / reserved</text>",
@@ -2808,12 +3344,16 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let spec = Self::rack_physical_template_spec(template, &rack.profile);
         let svg = self.export_rack_physical_svg_string(rack, &spec)?;
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack fabrication SVG '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(spec)
     }
@@ -2832,12 +3372,44 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let spec = Self::rack_physical_template_spec(template, &rack.profile);
         let svg = self.export_rack_isometric_svg_string(rack, &spec)?;
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack isometric SVG '{}': {e}", path),
+
+            cause_chain: vec![],
+        })?;
+        Ok(spec)
+    }
+
+    pub(super) fn export_rack_hero_svg(
+        &self,
+        rack_id: &str,
+        template: RackPhysicalTemplateKind,
+        path: &str,
+    ) -> Result<RackPhysicalTemplateSpec, EngineError> {
+        let rack = self
+            .state
+            .container_state
+            .racks
+            .get(rack_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
+            })?;
+        let spec = Self::rack_physical_template_spec(template, &rack.profile);
+        let svg = self.export_rack_hero_svg_string(rack, &spec)?;
+        fs::write(path, svg).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write rack hero SVG '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(spec)
     }
@@ -2856,6 +3428,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let spec = Self::rack_physical_template_spec(template, &rack.profile);
         let blocked = rack
@@ -2904,6 +3478,8 @@ impl GentleEngine {
         fs::write(path, scad).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack OpenSCAD '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(spec)
     }
@@ -2922,6 +3498,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let spec = Self::rack_physical_template_spec(template, &rack.profile);
         let placements = self.sorted_rack_placements(rack)?;
@@ -3042,10 +3620,14 @@ impl GentleEngine {
         let payload_text = serde_json::to_string_pretty(&payload).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not serialize rack simulation JSON '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         fs::write(path, payload_text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack simulation JSON '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(spec)
     }
@@ -3060,6 +3642,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "arrangement_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let arrangement = self
@@ -3070,6 +3654,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Arrangement '{arrangement_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         if arrangement.mode != ArrangementMode::Serial {
             return Err(EngineError {
@@ -3078,6 +3664,8 @@ impl GentleEngine {
                     "Arrangement '{}' is mode '{:?}', only serial arrangements can update gel ladders",
                     arrangement_id, arrangement.mode
                 ),
+
+                cause_chain: vec![],
             });
         }
         let normalized = Self::normalize_serial_gel_ladders_owned(ladders);
@@ -3095,6 +3683,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "container_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let container = self
@@ -3105,6 +3695,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Container '{container_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let changed = container.declared_contents_exclusive != exclusive;
         container.declared_contents_exclusive = exclusive;
@@ -3191,6 +3783,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found for singleton container creation"),
+
+                cause_chain: vec![],
             });
         }
         let name = self
@@ -3209,6 +3803,8 @@ impl GentleEngine {
         .ok_or_else(|| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not create singleton container for sequence '{seq_id}'"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -3264,6 +3860,7 @@ impl GentleEngine {
         };
         let name = match op {
             Operation::LoadFile { .. } => Some("Imported sequence".to_string()),
+            Operation::CreateSequenceFromText { .. } => Some("Inline sequence".to_string()),
             Operation::ImportUniprotEntrySequence { .. } => {
                 Some("Imported UniProt sequence".to_string())
             }

@@ -53,6 +53,8 @@ impl GentleEngine {
         let file = std::fs::File::open(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not open track file '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         let lower = path.to_ascii_lowercase();
         if lower.ends_with(".gz") {
@@ -332,7 +334,7 @@ impl GentleEngine {
             if parsed.is_empty() {
                 continue;
             }
-            if !parsed.iter().any(|index| *index == alt_allele_index_1based) {
+            if !parsed.contains(&alt_allele_index_1based) {
                 continue;
             }
             summary.carriers += 1;
@@ -733,6 +735,8 @@ impl GentleEngine {
             reader.read_line(&mut line).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read BED file '{path}': {e}"),
+
+                cause_chain: vec![],
             })? > 0
         } {
             line_no += 1;
@@ -747,18 +751,18 @@ impl GentleEngine {
                 continue;
             }
             report.parsed_records += 1;
-            if report.parsed_records % progress_stride == 0 {
-                if let Some(cb) = progress_cb.as_mut() {
-                    let should_continue = (**cb)(
-                        report.parsed_records,
-                        report.imported_features,
-                        report.skipped_records,
-                        false,
-                    );
-                    if !should_continue {
-                        report.cancelled = true;
-                        break;
-                    }
+            if report.parsed_records.is_multiple_of(progress_stride)
+                && let Some(cb) = progress_cb.as_mut()
+            {
+                let should_continue = (**cb)(
+                    report.parsed_records,
+                    report.imported_features,
+                    report.skipped_records,
+                    false,
+                );
+                if !should_continue {
+                    report.cancelled = true;
+                    break;
                 }
             }
 
@@ -883,6 +887,8 @@ impl GentleEngine {
         let output = NamedTempFile::new().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not create temporary bedGraph file: {e}"),
+
+            cause_chain: vec![],
         })?;
         let output_path = output.path().to_path_buf();
         let command_output = Command::new(&executable)
@@ -895,6 +901,8 @@ impl GentleEngine {
                     "Could not execute '{}' for BigWig conversion (set {} to override): {}",
                     executable, BIGWIG_TO_BEDGRAPH_ENV_BIN, e
                 ),
+
+                cause_chain: vec![],
             })?;
         if !command_output.status.success() {
             let stderr = String::from_utf8_lossy(&command_output.stderr)
@@ -916,6 +924,8 @@ impl GentleEngine {
                     "BigWig conversion failed for '{}' via '{}' (set {} to override): {}",
                     path, executable, BIGWIG_TO_BEDGRAPH_ENV_BIN, detail
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(output)
@@ -958,6 +968,8 @@ impl GentleEngine {
             reader.read_line(&mut line).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read converted bedGraph for '{path}': {e}"),
+
+                cause_chain: vec![],
             })? > 0
         } {
             line_no += 1;
@@ -972,18 +984,18 @@ impl GentleEngine {
                 continue;
             }
             report.parsed_records += 1;
-            if report.parsed_records % progress_stride == 0 {
-                if let Some(cb) = progress_cb.as_mut() {
-                    let should_continue = (**cb)(
-                        report.parsed_records,
-                        report.imported_features,
-                        report.skipped_records,
-                        false,
-                    );
-                    if !should_continue {
-                        report.cancelled = true;
-                        break;
-                    }
+            if report.parsed_records.is_multiple_of(progress_stride)
+                && let Some(cb) = progress_cb.as_mut()
+            {
+                let should_continue = (**cb)(
+                    report.parsed_records,
+                    report.imported_features,
+                    report.skipped_records,
+                    false,
+                );
+                if !should_continue {
+                    report.cancelled = true;
+                    break;
                 }
             }
 
@@ -1128,6 +1140,8 @@ impl GentleEngine {
             reader.read_line(&mut line).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read VCF file '{path}': {e}"),
+
+                cause_chain: vec![],
             })? > 0
         } {
             line_no += 1;
@@ -1154,18 +1168,18 @@ impl GentleEngine {
                 continue;
             }
             report.parsed_records += 1;
-            if report.parsed_records % progress_stride == 0 {
-                if let Some(cb) = progress_cb.as_mut() {
-                    let should_continue = (**cb)(
-                        report.parsed_records,
-                        report.imported_features,
-                        report.skipped_records,
-                        false,
-                    );
-                    if !should_continue {
-                        report.cancelled = true;
-                        break;
-                    }
+            if report.parsed_records.is_multiple_of(progress_stride)
+                && let Some(cb) = progress_cb.as_mut()
+            {
+                let should_continue = (**cb)(
+                    report.parsed_records,
+                    report.imported_features,
+                    report.skipped_records,
+                    false,
+                );
+                if !should_continue {
+                    report.cancelled = true;
+                    break;
                 }
             }
 

@@ -1,0 +1,146 @@
+{
+  "schema": "gentle.gene_set_promoter_cohort.v1",
+  "generated_at_unix_ms": 0,
+  "op_id": "op-4",
+  "run_id": "example_promoter_gene_set_ortholog_cohort_offline",
+  "genome_id": "HumanPromoterToy",
+  "upstream_bp": 40,
+  "downstream_bp": 10,
+  "relationship": "co_regulated",
+  "gene_set_resolution": {
+    "schema": "gentle.gene_set_resolution.v1",
+    "generated_at_unix_ms": 0,
+    "request": {
+      "source_kind": "explicit_members",
+      "members": [
+        "TP73",
+        "E2F1",
+        "PATZ1"
+      ]
+    },
+    "review_status": "unreviewed",
+    "genome_id": "HumanPromoterToy",
+    "genome_catalog_label": "./docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json",
+    "contributing_group_ids": [],
+    "requested_member_count": 3,
+    "resolved_member_count": 3,
+    "unresolved_member_count": 0,
+    "resolved_members": [
+      {
+        "dedup_key": "gene_id:gene_tp73",
+        "symbol": "TP73",
+        "gene_id": "GENE_TP73",
+        "aliases": [],
+        "chromosome": "chrToyHuman",
+        "start_1based": 151,
+        "end_1based": 220,
+        "strand": "+",
+        "contributing_group_ids": [],
+        "provenance": [
+          {
+            "source_kind": "explicit_members",
+            "source_id": "TP73",
+            "note": "User-supplied gene-set member"
+          }
+        ]
+      },
+      {
+        "dedup_key": "gene_id:gene_e2f1",
+        "symbol": "E2F1",
+        "gene_id": "GENE_E2F1",
+        "aliases": [],
+        "chromosome": "chrToyHuman",
+        "start_1based": 351,
+        "end_1based": 420,
+        "strand": "+",
+        "contributing_group_ids": [],
+        "provenance": [
+          {
+            "source_kind": "explicit_members",
+            "source_id": "E2F1",
+            "note": "User-supplied gene-set member"
+          }
+        ]
+      },
+      {
+        "dedup_key": "gene_id:gene_patz1",
+        "symbol": "PATZ1",
+        "gene_id": "GENE_PATZ1",
+        "aliases": [],
+        "chromosome": "chrToyHuman",
+        "start_1based": 551,
+        "end_1based": 620,
+        "strand": "+",
+        "contributing_group_ids": [],
+        "provenance": [
+          {
+            "source_kind": "explicit_members",
+            "source_id": "PATZ1",
+            "note": "User-supplied gene-set member"
+          }
+        ]
+      }
+    ],
+    "unresolved_members": [],
+    "warnings": [],
+    "provenance": []
+  },
+  "requested_member_count": 3,
+  "returned_window_count": 3,
+  "windows": [
+    {
+      "member_dedup_key": "gene_id:gene_tp73",
+      "symbol": "TP73",
+      "gene_id": "GENE_TP73",
+      "gene_query": "GENE_TP73",
+      "occurrence": 1,
+      "transcript_id": "TX_TP73_HUMAN",
+      "display_label": "TP73",
+      "chromosome": "chrToyHuman",
+      "strand": "+",
+      "promoter_start_1based": 111,
+      "promoter_end_1based": 161,
+      "promoter_length_bp": 51,
+      "tss_1based": 151,
+      "sequence_orientation": "transcription_aligned",
+      "used_fuzzy_gene_match": false
+    },
+    {
+      "member_dedup_key": "gene_id:gene_e2f1",
+      "symbol": "E2F1",
+      "gene_id": "GENE_E2F1",
+      "gene_query": "GENE_E2F1",
+      "occurrence": 1,
+      "transcript_id": "TX_E2F1_HUMAN",
+      "display_label": "E2F1",
+      "chromosome": "chrToyHuman",
+      "strand": "+",
+      "promoter_start_1based": 311,
+      "promoter_end_1based": 361,
+      "promoter_length_bp": 51,
+      "tss_1based": 351,
+      "sequence_orientation": "transcription_aligned",
+      "used_fuzzy_gene_match": false
+    },
+    {
+      "member_dedup_key": "gene_id:gene_patz1",
+      "symbol": "PATZ1",
+      "gene_id": "GENE_PATZ1",
+      "gene_query": "GENE_PATZ1",
+      "occurrence": 1,
+      "transcript_id": "TX_PATZ1_HUMAN",
+      "display_label": "PATZ1",
+      "chromosome": "chrToyHuman",
+      "strand": "+",
+      "promoter_start_1based": 511,
+      "promoter_end_1based": 561,
+      "promoter_length_bp": 51,
+      "tss_1based": 551,
+      "sequence_orientation": "transcription_aligned",
+      "used_fuzzy_gene_match": false
+    }
+  ],
+  "relationship_flags": [],
+  "unresolved_members": [],
+  "warnings": []
+}

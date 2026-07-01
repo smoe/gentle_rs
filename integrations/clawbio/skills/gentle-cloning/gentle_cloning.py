@@ -25,18 +25,22 @@ import xml.etree.ElementTree as ET
 REQUEST_SCHEMA = "gentle.clawbio_skill_request.v1"
 RESULT_SCHEMA = "gentle.clawbio_skill_result.v1"
 SKILL_INFO_SCHEMA = "gentle.clawbio_skill_info.v1"
+INTENTS_RUNTIME_SCHEMA = "gentle.clawbio_skill_intents_runtime.v1"
 SKILL_NAME = "gentle-cloning"
 INVOCATION_MARKER = "GENtle ClawBio skill wrapper invoked"
 UI_INTENT_CATALOG_SCHEMA = "gentle.ui_intents.v1"
 UI_INTENT_DISCOVERY_SHELL_LINE = "ui intents"
 SUPPORTED_REQUEST_MODES = (
     "skill-info",
+    "intents",
     "version",
     "capabilities",
     "state-summary",
     "shell",
     "op",
     "workflow",
+    "construct-reasoning-list-inspections",
+    "construct-reasoning-run-inspection",
     "primer-preflight",
     "primer-seed-from-feature",
     "primer-seed-from-splicing",
@@ -62,6 +66,8 @@ SUPPORTED_REQUEST_MODES = (
     "restriction-cloning-handoff-export",
     "pcr-protocol-cartoon",
     "gene-protein-2d-gel",
+    "exon-skip-plan",
+    "exon-skip-materialize",
     "agent-plan",
     "agent-execute-plan",
     "raw",
@@ -88,6 +94,33 @@ PRIMER_SHELL_REQUEST_MODES = {
     "restriction-cloning-handoff-list",
     "restriction-cloning-handoff-show",
     "restriction-cloning-handoff-export",
+}
+DEPRECATED_REQUEST_MODE_EQUIVALENTS = {
+    "primer-preflight": "mode=shell with `primers preflight ...`",
+    "primer-seed-from-feature": "mode=shell with `primers seed-from-feature ...`",
+    "primer-seed-from-splicing": "mode=shell with `primers seed-from-splicing ...`",
+    "primer-design": "mode=shell with `primers design ...`",
+    "primer-report-list": "mode=shell with `primers list-reports ...`",
+    "primer-report-show": "mode=shell with `primers show-report ...`",
+    "primer-report-export": "mode=shell with `primers export-report ...`",
+    "qpcr-seed-from-feature": "mode=shell with `primers seed-qpcr-from-feature ...`",
+    "qpcr-seed-from-splicing": "mode=shell with `primers seed-qpcr-from-splicing ...`",
+    "qpcr-design": "mode=shell with `primers design-qpcr ...`",
+    "qpcr-report-list": "mode=shell with `primers list-qpcr-reports ...`",
+    "qpcr-report-show": "mode=shell with `primers show-qpcr-report ...`",
+    "qpcr-report-export": "mode=shell with `primers export-qpcr-report ...`",
+    "cdna-pcr-test": "mode=shell with `primers test-cdna-pcr ...`",
+    "cdna-qpcr-test": "mode=shell with `primers test-cdna-qpcr ...`",
+    "transcript-qpcr-panel": "mode=shell with `primers transcript-qpcr-panel ...`",
+    "restriction-cloning-pcr-handoff": "mode=shell with `primers prepare-restriction-cloning ...`",
+    "restriction-cloning-pcr-handoff-seed": "mode=shell with `primers seed-restriction-cloning-handoff ...`",
+    "restriction-cloning-vector-suggestions": "mode=shell with `primers restriction-cloning-vector-suggestions ...`",
+    "restriction-cloning-handoff-list": "mode=shell with `primers list-restriction-cloning-handoffs ...`",
+    "restriction-cloning-handoff-show": "mode=shell with `primers show-restriction-cloning-handoff ...`",
+    "restriction-cloning-handoff-export": "mode=shell with `primers export-restriction-cloning-handoff ...`",
+    "pcr-protocol-cartoon": "mode=shell with `protocol-cartoon render-svg ...`",
+    "exon-skip-plan": "mode=shell with `transcripts exon-skip-plan ...`",
+    "exon-skip-materialize": "mode=shell with `transcripts exon-skip-materialize ...`",
 }
 SVG_DIMENSION_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)")
 CLAWBIO_GRAPHICS_SCALE = 2.0
@@ -152,8 +185,27 @@ class Request:
     allow_mutating_candidates: bool | None = None
     plan: Any = None
     plan_path: str | None = None
+    plan_id: str | None = None
+    graph_id: str | None = None
+    fact_id: str | None = None
+    annotation_id: str | None = None
     candidate_id: str | None = None
+    candidate_ids: list[str] | None = None
+    evidence_id: str | None = None
+    summary_id: str | None = None
+    action_kind: str | None = None
+    action_id: str | None = None
     confirm: bool | None = None
+    transcript_feature_id: int | None = None
+    skip_candidate_ids: list[str] | None = None
+    skip_intervals_1based: list[Any] | None = None
+    overlap_intervals_1based: list[Any] | None = None
+    length_mod3_values: list[int] | None = None
+    coding_mod3_values: list[int] | None = None
+    coding_contexts: list[str] | None = None
+    cds_phase_entry_kinds: list[str] | None = None
+    feature_query: Any = None
+    return_items: list[str] | None = None
     expected_artifacts: list[str] | None = None
     ensure_reference_prepared: Any = None
     gene_symbol: str | None = None
@@ -176,6 +228,11 @@ class Request:
     min_amplicon_bp: int | None = None
     max_amplicon_bp: int | None = None
     max_mismatches: int | None = None
+    word_size: int | None = None
+    step_bp: int | None = None
+    tile_bp: int | None = None
+    dotplot_id: str | None = None
+    render_svg_path: str | None = None
     require_3prime_exact_bases: int | None = None
     vector_seq_id: str | None = None
     pair_rank: int | None = None
@@ -186,6 +243,7 @@ class Request:
     reverse_leader_5prime: str | None = None
     protocol_id: str | None = None
     shared_qpcr_report_id: str | None = None
+    output_prefix: str | None = None
     output_path: str | None = None
     svg_path: str | None = None
     materialize_products: bool | None = None
@@ -244,6 +302,10 @@ def _catalog_entry_path(script_path: Path) -> Path:
     return script_path.resolve().parent / "catalog_entry.json"
 
 
+def _intents_descriptor_path(script_path: Path) -> Path:
+    return script_path.resolve().parent / "INTENTS.json"
+
+
 def _read_catalog_entry(script_path: Path) -> dict[str, Any]:
     path = _catalog_entry_path(script_path)
     try:
@@ -264,6 +326,8 @@ def _skill_info_payload(script_path: Path) -> dict[str, Any]:
         "request_schema": REQUEST_SCHEMA,
         "result_schema": RESULT_SCHEMA,
         "supported_request_modes": list(SUPPORTED_REQUEST_MODES),
+        "intents_runtime_schema": INTENTS_RUNTIME_SCHEMA,
+        "intents_runtime_request_mode": "intents",
         "has_demo": bool(catalog_entry.get("has_demo", True)),
         "demo_command": str(
             catalog_entry.get("demo_command")
@@ -296,8 +360,148 @@ def _skill_info_chat_summary_lines(info: dict[str, Any]) -> list[str]:
         f"{name} skill version {version} ({status}).",
         f"Request schema: {info.get('request_schema')}; result schema: {info.get('result_schema')}.",
         "Use request mode `version` when you need the installed local GENtle rewrite runtime version.",
+        "Use request mode `intents` to compare the installed wrapper's live intent descriptor with ClawBio's on-disk snapshot.",
         "Use `resources status` or `services status` to check RNAfold/ViennaRNA and rnapkin executable-resource readiness.",
         CLASSICAL_GENTLE_DISAMBIGUATION,
+    ]
+
+
+def _read_intents_descriptor(script_path: Path) -> tuple[Path, str, dict[str, Any]]:
+    path = _intents_descriptor_path(script_path)
+    try:
+        descriptor_text = path.read_text(encoding="utf-8")
+    except FileNotFoundError as e:
+        raise SkillError(f"INTENTS.json descriptor was not found at '{path}'") from e
+    try:
+        descriptor = json.loads(descriptor_text)
+    except json.JSONDecodeError as e:
+        raise SkillError(f"invalid JSON in INTENTS.json descriptor '{path}': {e}") from e
+    if not isinstance(descriptor, dict):
+        raise SkillError(f"INTENTS.json descriptor '{path}' must contain an object")
+    if descriptor.get("schema") != "clawbio.skill_intents.v1":
+        raise SkillError(
+            "INTENTS.json descriptor has unexpected schema "
+            f"`{descriptor.get('schema')}`"
+        )
+    return path, descriptor_text, descriptor
+
+
+def _runtime_route_request_modes(
+    route: dict[str, Any],
+    skill_root: Path,
+) -> tuple[list[str], list[str]]:
+    request_modes: set[str] = set()
+    warnings: list[str] = []
+    for index, step in enumerate(route.get("plan") or []):
+        if not isinstance(step, dict):
+            warnings.append(f"route step {index} is not an object")
+            continue
+        if step.get("demo") is True:
+            request_modes.add("demo")
+        input_template = step.get("input_template")
+        if isinstance(input_template, dict) and isinstance(input_template.get("mode"), str):
+            request_modes.add(input_template["mode"])
+        input_path = step.get("input")
+        if isinstance(input_path, str) and input_path.strip():
+            resolved = skill_root / input_path
+            try:
+                payload = json.loads(resolved.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as e:
+                warnings.append(f"could not inspect {input_path}: {e}")
+                continue
+            mode = payload.get("mode") if isinstance(payload, dict) else None
+            if isinstance(mode, str) and mode.strip():
+                request_modes.add(mode)
+    return sorted(request_modes), warnings
+
+
+def _runtime_route_example_filenames(route: dict[str, Any]) -> list[str]:
+    filenames: list[str] = []
+    for step in route.get("plan") or []:
+        if not isinstance(step, dict):
+            continue
+        input_path = step.get("input")
+        if isinstance(input_path, str) and input_path.strip():
+            filenames.append(Path(input_path).name)
+    return filenames
+
+
+def _runtime_route_requires_slots(route: dict[str, Any]) -> bool:
+    for step in route.get("plan") or []:
+        if isinstance(step, dict) and isinstance(step.get("slots"), dict):
+            if any(
+                isinstance(slot, dict) and bool(slot.get("required"))
+                for slot in step["slots"].values()
+            ):
+                return True
+    return False
+
+
+def _intents_runtime_payload(script_path: Path) -> dict[str, Any]:
+    descriptor_path, descriptor_text, descriptor = _read_intents_descriptor(script_path)
+    skill_root = descriptor_path.parent
+    routes: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    for route in descriptor.get("routes") or []:
+        if not isinstance(route, dict):
+            warnings.append("skipped non-object route in INTENTS.json")
+            continue
+        request_modes, route_warnings = _runtime_route_request_modes(route, skill_root)
+        warnings.extend(
+            f"{route.get('intent_id', '(unknown)')}: {warning}"
+            for warning in route_warnings
+        )
+        routes.append(
+            {
+                "intent_id": route.get("intent_id"),
+                "description": route.get("description", ""),
+                "trigger_terms": route.get("trigger_terms", []),
+                "demo_policy": route.get("demo_policy", "never_unless_explicit"),
+                "request_modes": request_modes,
+                "example_filenames": _runtime_route_example_filenames(route),
+                "has_input_template": any(
+                    isinstance(step, dict) and isinstance(step.get("input_template"), dict)
+                    for step in (route.get("plan") or [])
+                ),
+                "requires_slots": _runtime_route_requires_slots(route),
+                "plan_step_count": len(route.get("plan") or []),
+            }
+        )
+    return {
+        "schema": INTENTS_RUNTIME_SCHEMA,
+        "skill": descriptor.get("skill") or SKILL_NAME,
+        "intents_schema": descriptor.get("schema"),
+        "descriptor_path": str(descriptor_path),
+        "descriptor_sha256": hashlib.sha256(
+            descriptor_text.encode("utf-8")
+        ).hexdigest(),
+        "supported_request_modes": list(SUPPORTED_REQUEST_MODES),
+        "route_count": len(routes),
+        "routes": routes,
+        "warnings": warnings,
+    }
+
+
+def _intents_runtime_chat_summary_lines(payload: dict[str, Any]) -> list[str]:
+    return [
+        f"GENtle intent descriptor runtime schema: {payload.get('schema')}.",
+        f"Descriptor SHA-256: {payload.get('descriptor_sha256')}.",
+        f"Routes available: {payload.get('route_count', 0)}.",
+        "ClawBio can compare this hash with its local INTENTS.json snapshot before refreshing route metadata.",
+    ]
+
+
+def _request_mode_warnings(request: Request | None) -> list[str]:
+    if request is None:
+        return []
+    equivalent = DEPRECATED_REQUEST_MODE_EQUIVALENTS.get(request.mode)
+    if not equivalent:
+        return []
+    return [
+        (
+            f"Request mode `{request.mode}` is accepted for backward compatibility "
+            f"but is deprecated; prefer {equivalent}."
+        )
     ]
 
 
@@ -485,6 +689,125 @@ def _normalise_gene_protein_2d_gel_request(request: Request) -> None:
         )
 
 
+def _normalise_exon_skip_interval_list(value: Any, field_name: str) -> list[dict[str, int]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SkillError(f"{field_name} must be an array when present")
+    intervals: list[dict[str, int]] = []
+    for idx, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise SkillError(f"{field_name}[{idx}] must be an object")
+        try:
+            start = int(item.get("start_1based"))
+            end = int(item.get("end_1based"))
+        except (TypeError, ValueError) as e:
+            raise SkillError(
+                f"{field_name}[{idx}] requires integer start_1based/end_1based"
+            ) from e
+        if start <= 0 or end < start:
+            raise SkillError(
+                f"{field_name}[{idx}] must satisfy 1 <= start_1based <= end_1based"
+            )
+        intervals.append({"start_1based": start, "end_1based": end})
+    return intervals
+
+
+def _normalise_optional_string_array(value: Any, field_name: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SkillError(f"{field_name} must be a string array when present")
+    result: list[str] = []
+    for idx, item in enumerate(value):
+        if not isinstance(item, str) or not item.strip():
+            raise SkillError(f"{field_name}[{idx}] must be a non-empty string")
+        result.append(item.strip())
+    return result
+
+
+def _normalise_length_mod3_values(value: Any, field_name: str) -> list[int]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SkillError(f"{field_name} must be an integer array when present")
+    result: list[int] = []
+    for idx, item in enumerate(value):
+        try:
+            parsed = int(item)
+        except (TypeError, ValueError) as e:
+            raise SkillError(f"{field_name}[{idx}] must be an integer") from e
+        if parsed not in {0, 1, 2}:
+            raise SkillError(f"{field_name}[{idx}] must be one of 0, 1, or 2")
+        result.append(parsed)
+    return sorted(set(result))
+
+
+def _normalise_exon_skip_request(request: Request) -> None:
+    if request.mode == "exon-skip-plan":
+        if not isinstance(request.seq_id, str) or not request.seq_id.strip():
+            raise SkillError("mode=exon-skip-plan requires non-empty string field 'seq_id'")
+        request.seq_id = request.seq_id.strip()
+        try:
+            transcript_feature_id = int(request.transcript_feature_id)
+        except (TypeError, ValueError) as e:
+            raise SkillError(
+                "mode=exon-skip-plan requires integer field 'transcript_feature_id'"
+            ) from e
+        if transcript_feature_id < 0:
+            raise SkillError("transcript_feature_id must be >= 0")
+        request.transcript_feature_id = transcript_feature_id
+        request.skip_candidate_ids = _normalise_optional_string_array(
+            request.skip_candidate_ids, "skip_candidate_ids"
+        )
+        request.skip_intervals_1based = _normalise_exon_skip_interval_list(
+            request.skip_intervals_1based, "skip_intervals_1based"
+        )
+        request.overlap_intervals_1based = _normalise_exon_skip_interval_list(
+            request.overlap_intervals_1based, "overlap_intervals_1based"
+        )
+        request.length_mod3_values = _normalise_length_mod3_values(
+            request.length_mod3_values, "length_mod3_values"
+        )
+        request.coding_mod3_values = _normalise_length_mod3_values(
+            request.coding_mod3_values, "coding_mod3_values"
+        )
+        request.coding_contexts = _normalise_optional_string_array(
+            request.coding_contexts, "coding_contexts"
+        )
+        request.cds_phase_entry_kinds = _normalise_optional_string_array(
+            request.cds_phase_entry_kinds, "cds_phase_entry_kinds"
+        )
+        if request.plan_id is not None:
+            if not isinstance(request.plan_id, str) or not request.plan_id.strip():
+                raise SkillError("plan_id must be a non-empty string when present")
+            request.plan_id = request.plan_id.strip()
+        if request.feature_query is not None and not isinstance(
+            request.feature_query, (dict, str)
+        ):
+            raise SkillError("feature_query must be an object or JSON string when present")
+    elif request.mode == "exon-skip-materialize":
+        if not isinstance(request.plan_id, str) or not request.plan_id.strip():
+            raise SkillError(
+                "mode=exon-skip-materialize requires non-empty string field 'plan_id'"
+            )
+        request.plan_id = request.plan_id.strip()
+        if request.confirm is not True:
+            raise SkillError(
+                "mode=exon-skip-materialize requires confirm=true because it creates derived sequences"
+            )
+        request.candidate_ids = _normalise_optional_string_array(
+            request.candidate_ids, "candidate_ids"
+        )
+        request.return_items = _normalise_optional_string_array(
+            request.return_items, "return_items"
+        )
+        if request.output_prefix is not None:
+            if not isinstance(request.output_prefix, str) or not request.output_prefix.strip():
+                raise SkillError("output_prefix must be a non-empty string when present")
+            request.output_prefix = request.output_prefix.strip()
+
+
 def _normalise_protein_residue_genomic_coordinate_request(request: Request) -> None:
     if not isinstance(request.seq_id, str) or not request.seq_id.strip():
         raise SkillError(
@@ -558,6 +881,37 @@ def _coerce_optional_int(value: Any, field_name: str, *, minimum: int = 0) -> in
     if coerced < minimum:
         raise SkillError(f"{field_name} must be >= {minimum}")
     return coerced
+
+
+def _normalise_construct_reasoning_inspection_request(request: Request) -> None:
+    request.graph_id = _require_str(request.graph_id, "graph_id", request.mode)
+    if request.mode == "construct-reasoning-list-inspections":
+        request.fact_id = _normalise_optional_str(request.fact_id, "fact_id")
+        request.annotation_id = _normalise_optional_str(
+            request.annotation_id, "annotation_id"
+        )
+        request.candidate_id = _normalise_optional_str(
+            request.candidate_id, "candidate_id"
+        )
+        request.evidence_id = _normalise_optional_str(request.evidence_id, "evidence_id")
+        request.seq_id = _normalise_optional_str(request.seq_id, "seq_id")
+        request.action_kind = _normalise_optional_str(request.action_kind, "action_kind")
+        request.summary_id = _normalise_optional_str(request.summary_id, "summary_id")
+        return
+
+    request.action_id = _require_str(request.action_id, "action_id", request.mode)
+    request.word_size = _coerce_optional_int(request.word_size, "word_size", minimum=1)
+    request.step_bp = _coerce_optional_int(request.step_bp, "step_bp", minimum=1)
+    request.max_mismatches = _coerce_optional_int(
+        request.max_mismatches, "max_mismatches", minimum=0
+    )
+    request.tile_bp = _coerce_optional_int(request.tile_bp, "tile_bp", minimum=1)
+    request.dotplot_id = _normalise_optional_str(request.dotplot_id, "dotplot_id")
+    request.render_svg_path = _normalise_optional_str(
+        request.render_svg_path, "render_svg_path"
+    )
+    if request.render_svg_path is None:
+        request.render_svg_path = _normalise_optional_str(request.svg_path, "svg_path")
 
 
 def _normalise_primer_backend_options(request: Request) -> None:
@@ -808,8 +1162,27 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         allow_mutating_candidates=payload.get("allow_mutating_candidates"),
         plan=payload.get("plan"),
         plan_path=payload.get("plan_path"),
+        plan_id=payload.get("plan_id"),
+        graph_id=payload.get("graph_id"),
+        fact_id=payload.get("fact_id"),
+        annotation_id=payload.get("annotation_id"),
         candidate_id=payload.get("candidate_id"),
+        candidate_ids=payload.get("candidate_ids"),
+        evidence_id=payload.get("evidence_id"),
+        summary_id=payload.get("summary_id"),
+        action_kind=payload.get("action_kind"),
+        action_id=payload.get("action_id"),
         confirm=payload.get("confirm"),
+        transcript_feature_id=payload.get("transcript_feature_id"),
+        skip_candidate_ids=payload.get("skip_candidate_ids"),
+        skip_intervals_1based=payload.get("skip_intervals_1based"),
+        overlap_intervals_1based=payload.get("overlap_intervals_1based"),
+        length_mod3_values=payload.get("length_mod3_values"),
+        coding_mod3_values=payload.get("coding_mod3_values"),
+        coding_contexts=payload.get("coding_contexts"),
+        cds_phase_entry_kinds=payload.get("cds_phase_entry_kinds"),
+        feature_query=payload.get("feature_query"),
+        return_items=payload.get("return_items", payload.get("return")),
         expected_artifacts=payload.get("expected_artifacts"),
         ensure_reference_prepared=payload.get("ensure_reference_prepared"),
         gene_symbol=payload.get("gene_symbol"),
@@ -834,6 +1207,11 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         min_amplicon_bp=payload.get("min_amplicon_bp"),
         max_amplicon_bp=payload.get("max_amplicon_bp"),
         max_mismatches=payload.get("max_mismatches"),
+        word_size=payload.get("word_size"),
+        step_bp=payload.get("step_bp"),
+        tile_bp=payload.get("tile_bp"),
+        dotplot_id=payload.get("dotplot_id"),
+        render_svg_path=payload.get("render_svg_path"),
         require_3prime_exact_bases=payload.get("require_3prime_exact_bases"),
         vector_seq_id=payload.get("vector_seq_id"),
         pair_rank=payload.get("pair_rank"),
@@ -844,6 +1222,7 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         reverse_leader_5prime=payload.get("reverse_leader_5prime"),
         protocol_id=payload.get("protocol_id"),
         shared_qpcr_report_id=payload.get("shared_qpcr_report_id"),
+        output_prefix=payload.get("output_prefix"),
         output_path=payload.get("output_path"),
         svg_path=payload.get("svg_path"),
         materialize_products=payload.get("materialize_products"),
@@ -876,6 +1255,11 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
     elif request.mode == "workflow":
         if request.workflow is None and not request.workflow_path:
             raise SkillError("mode=workflow requires 'workflow' or 'workflow_path'")
+    elif request.mode in {
+        "construct-reasoning-list-inspections",
+        "construct-reasoning-run-inspection",
+    }:
+        _normalise_construct_reasoning_inspection_request(request)
     elif request.mode in {"primer-design", "qpcr-design"}:
         _normalise_primer_design_request(request)
     elif request.mode in {
@@ -909,6 +1293,8 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         _normalise_pcr_protocol_cartoon_request(request)
     elif request.mode == "gene-protein-2d-gel":
         _normalise_gene_protein_2d_gel_request(request)
+    elif request.mode in {"exon-skip-plan", "exon-skip-materialize"}:
+        _normalise_exon_skip_request(request)
     elif request.mode == "agent-plan":
         if not isinstance(request.system_id, str) or not request.system_id.strip():
             raise SkillError("mode=agent-plan requires non-empty string field 'system_id'")
@@ -927,9 +1313,20 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         "model",
         "workflow_path",
         "plan_path",
+        "plan_id",
+        "graph_id",
+        "fact_id",
+        "annotation_id",
         "system_id",
         "prompt",
         "candidate_id",
+        "evidence_id",
+        "summary_id",
+        "action_kind",
+        "action_id",
+        "dotplot_id",
+        "render_svg_path",
+        "output_prefix",
     ):
         value = getattr(request, field_name)
         if value is not None and (not isinstance(value, str) or not value.strip()):
@@ -940,6 +1337,9 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         "max_retries",
         "max_response_bytes",
         "max_candidates",
+        "word_size",
+        "step_bp",
+        "tile_bp",
     ):
         value = getattr(request, field_name)
         if value is None:
@@ -1230,6 +1630,93 @@ def _build_pcr_protocol_cartoon_shell_line(request: Request) -> str:
     return shlex.join(tokens)
 
 
+def _build_exon_skip_shell_line(request: Request) -> str:
+    if request.mode == "exon-skip-plan":
+        tokens = [
+            "transcripts",
+            "exon-skip-plan",
+            request.seq_id or "SEQ_ID",
+            "--feature-id",
+            str(request.transcript_feature_id if request.transcript_feature_id is not None else 0),
+        ]
+        for candidate_id in request.skip_candidate_ids or []:
+            tokens.extend(["--skip", candidate_id])
+        for interval in request.skip_intervals_1based or []:
+            tokens.extend(
+                ["--skip", f"{interval['start_1based']}..{interval['end_1based']}"]
+            )
+        for interval in request.overlap_intervals_1based or []:
+            tokens.extend(
+                ["--overlap", f"{interval['start_1based']}..{interval['end_1based']}"]
+            )
+        for value in request.length_mod3_values or []:
+            tokens.extend(["--length-mod3", str(value)])
+        for value in request.coding_mod3_values or []:
+            tokens.extend(["--coding-mod3", str(value)])
+        for context in request.coding_contexts or []:
+            tokens.extend(["--coding-context", context])
+        for kind in request.cds_phase_entry_kinds or []:
+            tokens.extend(["--phase-entry", kind])
+        if request.feature_query is not None:
+            tokens.extend(
+                [
+                    "--feature-query-json",
+                    request.feature_query
+                    if isinstance(request.feature_query, str)
+                    else json.dumps(request.feature_query, separators=(",", ":")),
+                ]
+            )
+        if request.plan_id:
+            tokens.extend(["--plan-id", request.plan_id])
+        return shlex.join(tokens)
+
+    tokens = ["transcripts", "exon-skip-materialize", request.plan_id or "PLAN_ID"]
+    for candidate_id in request.candidate_ids or []:
+        tokens.extend(["--candidate-id", candidate_id])
+    if request.output_prefix:
+        tokens.extend(["--output-prefix", request.output_prefix])
+    for item in request.return_items or []:
+        tokens.extend(["--return", item])
+    return shlex.join(tokens)
+
+
+def _build_construct_reasoning_inspection_shell_line(request: Request) -> str:
+    if request.mode == "construct-reasoning-list-inspections":
+        tokens = [
+            "construct-reasoning",
+            "list-inspection-actions",
+            request.graph_id or "GRAPH_ID",
+        ]
+        for flag, value in (
+            ("--fact-id", request.fact_id),
+            ("--annotation-id", request.annotation_id),
+            ("--candidate-id", request.candidate_id),
+            ("--evidence-id", request.evidence_id),
+            ("--seq-id", request.seq_id),
+            ("--action-kind", request.action_kind),
+            ("--summary-id", request.summary_id),
+        ):
+            if value:
+                tokens.extend([flag, value])
+        return shlex.join(tokens)
+
+    tokens = [
+        "construct-reasoning",
+        "run-inspection-action",
+        request.graph_id or "GRAPH_ID",
+        request.action_id or "ACTION_ID",
+    ]
+    _append_optional_int(tokens, "--word-size", request.word_size)
+    _append_optional_int(tokens, "--step", request.step_bp)
+    _append_optional_int(tokens, "--max-mismatches", request.max_mismatches)
+    _append_optional_int(tokens, "--tile-bp", request.tile_bp)
+    if request.dotplot_id:
+        tokens.extend(["--id", request.dotplot_id])
+    if request.render_svg_path:
+        tokens.extend(["--render-svg", request.render_svg_path])
+    return shlex.join(tokens)
+
+
 def _preview_text(text: str, *, max_lines: int = 6, max_chars: int = 600) -> str | None:
     trimmed = text.strip()
     if not trimmed:
@@ -1480,11 +1967,70 @@ def _preferred_artifact_id_for_png(raw_id: str | None, bundle_path: str) -> str:
     return stem if stem.endswith("_png") else stem + "_png"
 
 
+def _artifact_reference_keys(artifact: dict[str, Any]) -> set[str]:
+    keys = set()
+    for key in ("declared_path", "bundle_path", "path", "derived_from"):
+        value = artifact.get(key)
+        if isinstance(value, str) and value.strip():
+            keys.add(value.strip())
+    return keys
+
+
+def _collected_svg_artifacts(
+    collected_artifacts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        artifact
+        for artifact in collected_artifacts
+        if isinstance(artifact, dict)
+        and Path(str(artifact.get("copied_path", ""))).suffix.lower() == ".svg"
+        and isinstance(artifact.get("declared_path"), str)
+        and str(artifact["declared_path"]).strip()
+    ]
+
+
+def _best_first_svg_declared_paths(
+    collected_artifacts: list[dict[str, Any]],
+    preferred_artifacts: list[dict[str, Any]] | None,
+) -> set[str]:
+    svg_artifacts = _collected_svg_artifacts(collected_artifacts)
+    if not svg_artifacts:
+        return set()
+    if len(svg_artifacts) == 1:
+        return {str(svg_artifacts[0]["declared_path"]).strip()}
+
+    preferred = [
+        dict(artifact)
+        for artifact in (preferred_artifacts or [])
+        if isinstance(artifact, dict)
+        and isinstance(artifact.get("path"), str)
+        and str(artifact["path"]).strip().lower().endswith(".svg")
+    ]
+    preferred.sort(
+        key=lambda artifact: (
+            int(artifact.get("presentation_rank", 10**9))
+            if isinstance(artifact.get("presentation_rank"), int)
+            else 10**9,
+            str(artifact.get("artifact_id", "")),
+        )
+    )
+    for preferred_artifact in preferred:
+        preferred_path = str(preferred_artifact["path"]).strip()
+        for artifact in svg_artifacts:
+            if preferred_path in _artifact_reference_keys(artifact):
+                return {str(artifact["declared_path"]).strip()}
+
+    if preferred_artifacts:
+        return set()
+    return {str(svg_artifacts[0]["declared_path"]).strip()}
+
+
 def _rasterize_collected_svg_artifacts(
     collected_artifacts: list[dict[str, Any]],
     resolution: CliResolution,
     execution_cwd: Path,
     output_dir: Path,
+    rasterize_declared_paths: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     updated_collected = list(collected_artifacts)
     rasterized_pngs: list[dict[str, Any]] = []
@@ -1492,6 +2038,14 @@ def _rasterize_collected_svg_artifacts(
         copied_path = Path(str(artifact.get("copied_path", "")))
         if copied_path.suffix.lower() != ".svg":
             continue
+        if rasterize_declared_paths is not None:
+            declared_path = str(artifact.get("declared_path", "")).strip()
+            bundle_path = str(artifact.get("bundle_path", "")).strip()
+            if (
+                declared_path not in rasterize_declared_paths
+                and bundle_path not in rasterize_declared_paths
+            ):
+                continue
         png_path = copied_path.with_suffix(".png")
         run_result, step = _run_cli_command(
             resolution,
@@ -1952,6 +2506,11 @@ def _build_cli_args(request: Request, script_path: Path) -> list[str]:
             args.extend(["workflow", f"@{resolved_workflow_path}"])
         else:
             args.extend(["workflow", _json_arg(request.workflow)])
+    elif request.mode in {
+        "construct-reasoning-list-inspections",
+        "construct-reasoning-run-inspection",
+    }:
+        args.extend(["shell", _build_construct_reasoning_inspection_shell_line(request)])
     elif request.mode in PRIMER_SHELL_REQUEST_MODES:
         args.extend(["shell", _build_primer_mode_shell_line(request)])
     elif request.mode == "protein-residue-genomic-coordinates":
@@ -1971,6 +2530,8 @@ def _build_cli_args(request: Request, script_path: Path) -> list[str]:
         args.extend(["shell", _build_pcr_protocol_cartoon_shell_line(request)])
     elif request.mode == "gene-protein-2d-gel":
         args.extend(["workflow", _json_arg(_gene_protein_2d_gel_workflow(request))])
+    elif request.mode in {"exon-skip-plan", "exon-skip-materialize"}:
+        args.extend(["shell", _build_exon_skip_shell_line(request)])
     elif request.mode == "agent-plan":
         tokens = ["agents", "plan", request.system_id.strip(), "--prompt", request.prompt.strip()]
         if request.catalog_path:
@@ -2384,16 +2945,38 @@ def _summary_lines_from_primer_qpcr_payload(candidate: Any) -> list[str] | None:
             product_count = materialization.get("product_count")
             seq_ids = materialization.get("product_seq_ids")
             seq_count = len(seq_ids) if isinstance(seq_ids, list) else 0
+            created_seq_ids = materialization.get("created_product_seq_ids")
+            reused_seq_ids = materialization.get("reused_product_seq_ids")
+            created_count = len(created_seq_ids) if isinstance(created_seq_ids, list) else 0
+            reused_count = len(reused_seq_ids) if isinstance(reused_seq_ids, list) else 0
             container_id = str(materialization.get("container_id") or "").strip()
             gel_path = str(materialization.get("product_gel_svg_path") or "").strip()
             if seq_count:
-                line = f"Materialized {seq_count} cDNA assay product sequence(s)"
+                if created_count and reused_count:
+                    line = (
+                        f"Materialized {created_count} new and reused {reused_count} existing "
+                        "cDNA assay product sequence(s)"
+                    )
+                elif reused_count and not created_count:
+                    line = f"Reused {reused_count} existing cDNA assay product sequence(s)"
+                else:
+                    line = f"Materialized {seq_count} cDNA assay product sequence(s)"
                 if container_id:
                     line += f" into product container '{container_id}'"
                 line += "."
                 lines.append(line)
             elif product_count == 0:
                 lines.append("No product vial was created because the assay detected 0 products.")
+            gel_summary_lines = materialization.get("gel_summary_lines")
+            if isinstance(gel_summary_lines, list):
+                for gel_line in gel_summary_lines[:6]:
+                    text = str(gel_line or "").strip()
+                    if text:
+                        lines.append(text)
+                if len(gel_summary_lines) > 6:
+                    lines.append(
+                        f"Additional gel rows omitted from chat summary: {len(gel_summary_lines) - 6}."
+                    )
             if gel_path:
                 lines.append(f"Product gel SVG: {gel_path}")
         return lines or None
@@ -2622,6 +3205,11 @@ def _request_rerun_shell_line(request: Request | None) -> str:
         return "workflow <inline>"
     if request.mode == "op":
         return "op <inline>"
+    if request.mode in {
+        "construct-reasoning-list-inspections",
+        "construct-reasoning-run-inspection",
+    }:
+        return _build_construct_reasoning_inspection_shell_line(request)
     if request.mode in PRIMER_SHELL_REQUEST_MODES:
         return _build_primer_mode_shell_line(request)
     if request.mode == "protein-residue-genomic-coordinates":
@@ -2652,6 +3240,8 @@ def _request_rerun_shell_line(request: Request | None) -> str:
         species = request.species or "homo_sapiens"
         source = request.source or "ensembl"
         return f"gene-protein-2d-gel {gene} --species {species} --source {source}"
+    if request.mode in {"exon-skip-plan", "exon-skip-materialize"}:
+        return _build_exon_skip_shell_line(request)
     if request.mode == "raw" and request.raw_args:
         return shlex.join(request.raw_args)
     return request.mode
@@ -2683,6 +3273,30 @@ def _request_payload_for_artifact_continuation(
             payload["workflow"] = request.workflow
     elif request.mode == "op":
         payload["operation"] = request.operation
+    elif request.mode in {
+        "construct-reasoning-list-inspections",
+        "construct-reasoning-run-inspection",
+    }:
+        for key in (
+            "graph_id",
+            "fact_id",
+            "annotation_id",
+            "candidate_id",
+            "evidence_id",
+            "seq_id",
+            "action_kind",
+            "summary_id",
+            "action_id",
+            "word_size",
+            "step_bp",
+            "max_mismatches",
+            "tile_bp",
+            "dotplot_id",
+            "render_svg_path",
+        ):
+            value = getattr(request, key)
+            if value is not None:
+                payload[key] = value
     elif request.mode in PRIMER_SHELL_REQUEST_MODES:
         for key in (
             "request_json",
@@ -2730,6 +3344,27 @@ def _request_payload_for_artifact_continuation(
         payload["species"] = request.species
         payload["source"] = request.source
         payload["ladders"] = request.ladders
+    elif request.mode in {"exon-skip-plan", "exon-skip-materialize"}:
+        for key in (
+            "seq_id",
+            "transcript_feature_id",
+            "skip_candidate_ids",
+            "skip_intervals_1based",
+            "overlap_intervals_1based",
+            "length_mod3_values",
+            "coding_mod3_values",
+            "coding_contexts",
+            "cds_phase_entry_kinds",
+            "feature_query",
+            "plan_id",
+            "candidate_ids",
+            "output_prefix",
+            "return_items",
+            "confirm",
+        ):
+            value = getattr(request, key)
+            if value is not None:
+                payload[key] = value
     elif request.mode == "raw":
         payload["raw_args"] = request.raw_args
     return {key: value for key, value in payload.items() if value is not None}
@@ -2799,21 +3434,26 @@ def _suggested_action(
 
 def _continue_artifact_suggested_actions(
     request: Request | None,
-    rasterized_pngs: list[dict[str, Any]],
+    collected_artifacts: list[dict[str, Any]],
     preferred_artifacts: list[dict[str, Any]] | None,
 ) -> list[dict[str, Any]] | None:
-    if len(rasterized_pngs) < 2:
+    svg_artifacts = _collected_svg_artifacts(collected_artifacts)
+    if len(svg_artifacts) < 2:
         return None
-    best_derived_from = {
-        str(artifact.get("derived_from") or "").strip()
-        for artifact in (preferred_artifacts or [])
-        if isinstance(artifact, dict)
-    }
+
+    best_references: set[str] = set()
+    for artifact in preferred_artifacts or []:
+        if not isinstance(artifact, dict):
+            continue
+        if artifact.get("is_best_first_artifact") is True:
+            best_references.update(_artifact_reference_keys(artifact))
+    if not best_references and preferred_artifacts:
+        best_references.update(_artifact_reference_keys(preferred_artifacts[0]))
+
     remaining = [
         artifact
-        for artifact in rasterized_pngs
-        if str(artifact.get("derived_from") or "").strip()
-        and str(artifact.get("derived_from") or "").strip() not in best_derived_from
+        for artifact in svg_artifacts
+        if not (_artifact_reference_keys(artifact) & best_references)
     ]
     if not remaining:
         return None
@@ -2822,13 +3462,15 @@ def _continue_artifact_suggested_actions(
     timeout_secs = request.timeout_secs if request is not None else 180
     actions: list[dict[str, Any]] = []
     for idx, artifact in enumerate(remaining, start=1):
-        source_svg = str(artifact.get("derived_from") or "").strip()
+        source_svg = str(artifact.get("declared_path") or "").strip()
+        if not source_svg:
+            continue
         label = "Continue: show next figure" if idx == 1 else f"Continue: show figure {idx + 1}"
         action = {
             "action_id": f"continue_show_figure_{idx}",
             "label": label,
             "kind": "continue_artifact",
-            "shell_line": shell_line,
+            "source_shell_line": shell_line,
             "timeout_secs": timeout_secs,
             "request": _request_payload_for_artifact_continuation(
                 request,
@@ -2836,13 +3478,13 @@ def _continue_artifact_suggested_actions(
             ),
             "rationale": (
                 "This run generated more than one displayable figure. Re-run the "
-                "same GENtle request while collecting only this next figure."
+                "nested request payload while collecting only this next figure."
             ),
             "requires_confirmation": False,
             "expected_artifacts": [source_svg],
             "artifact": {
                 "declared_path": source_svg,
-                "png_bundle_path": artifact.get("bundle_path"),
+                "svg_bundle_path": artifact.get("bundle_path"),
             },
         }
         actions.append(action)
@@ -3255,6 +3897,39 @@ def _merge_suggested_actions(
     return merged or None
 
 
+def _stamp_action_envelope(
+    actions: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
+    if not actions:
+        return actions
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        action.setdefault("skill_alias", SKILL_NAME)
+        request_payload = action.get("request")
+        if (
+            isinstance(request_payload, dict)
+            and request_payload.get("confirm") is True
+            and not action.get("requires_confirmation", False)
+        ):
+            action["requires_confirmation"] = True
+    return actions
+
+
+def _stamp_blocked_action_envelopes(
+    blocked_actions: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
+    if not blocked_actions:
+        return blocked_actions
+    for blocked_action in blocked_actions:
+        if not isinstance(blocked_action, dict):
+            continue
+        action = blocked_action.get("action")
+        if isinstance(action, dict):
+            _stamp_action_envelope([action])
+    return blocked_actions
+
+
 def _normalize_ui_intent_catalog_row(row: Any) -> dict[str, Any] | None:
     if not isinstance(row, dict):
         return None
@@ -3448,6 +4123,26 @@ def _artifact_bundle_summary(
     }
 
 
+def _suggested_action_command_text(action: dict[str, Any]) -> str:
+    shell_line = str(action.get("shell_line") or "").strip()
+    if shell_line:
+        return shell_line
+    request_payload = action.get("request")
+    if isinstance(request_payload, dict):
+        expected_artifacts = request_payload.get("expected_artifacts")
+        if (
+            action.get("kind") == "continue_artifact"
+            and isinstance(expected_artifacts, list)
+            and expected_artifacts
+        ):
+            return (
+                "use nested request payload for "
+                + ", ".join(str(path) for path in expected_artifacts)
+            )
+        return "use nested request payload"
+    return "(unknown)"
+
+
 def _ensure_default_demo_suggested_action(
     request: Request | None,
     suggested_actions: list[dict[str, Any]] | None,
@@ -3562,6 +4257,7 @@ def _write_report(
     blocked_actions: list[dict[str, Any]] | None,
     ui_intent_catalog: dict[str, Any] | None,
     ui_intent_catalog_error: str | None,
+    warnings: list[str] | None,
 ) -> None:
     command_text = _format_command_text(command)
     stdout = run_result.stdout if run_result else ""
@@ -3596,6 +4292,8 @@ def _write_report(
         lines.append(f"- UI intent catalog targets: `{target_count}`")
     if ui_intent_catalog_error:
         lines.append(f"- UI intent catalog probe: `{ui_intent_catalog_error}`")
+    if warnings:
+        lines.append(f"- Warning count: `{len(warnings)}`")
     if error_message:
         lines.append(f"- Error: `{error_message}`")
     if failure_summary:
@@ -3643,6 +4341,9 @@ def _write_report(
     if chat_summary_lines:
         lines.extend(["", "## Chat Summary", ""])
         lines.extend(f"- {line}" for line in chat_summary_lines)
+    if warnings:
+        lines.extend(["", "## Warnings", ""])
+        lines.extend(f"- {line}" for line in warnings)
     if preferred_artifacts:
         lines.extend(["", "## Preferred Artifacts", ""])
         for artifact in preferred_artifacts:
@@ -3676,7 +4377,7 @@ def _write_report(
                 [
                     "",
                     "```bash",
-                    str(action.get("shell_line", "(unknown)")),
+                    _suggested_action_command_text(action),
                     "```",
                 ]
             )
@@ -3692,7 +4393,7 @@ def _write_report(
             lines.extend(["", "## Suggested Actions", ""])
             for action in suggested_actions:
                 lines.append(
-                    f"- `{action.get('label', 'Action')}`: `{action.get('shell_line', '(unknown)')}`"
+                    f"- `{action.get('label', 'Action')}`: `{_suggested_action_command_text(action)}`"
                 )
                 if action.get("rationale"):
                     lines.append(f"  Why: `{action['rationale']}`")
@@ -3914,6 +4615,7 @@ def main() -> int:
     ui_intent_catalog: dict[str, Any] | None = None
     ui_intent_catalog_error: str | None = None
     auxiliary_steps: list[dict[str, Any]] = []
+    warnings: list[str] = []
 
     try:
         if args.skill_info:
@@ -3925,10 +4627,16 @@ def main() -> int:
                 raise SkillError("--input is required unless --demo or --skill-info is used")
             payload = _read_json(_resolve_existing_request_file(args.input, Path(__file__)))
             request = _coerce_request(payload)
+        warnings.extend(_request_mode_warnings(request))
 
         if request.mode == "skill-info":
             stdout_json = _skill_info_payload(Path(__file__))
             chat_summary_lines = _skill_info_chat_summary_lines(stdout_json)
+            status = "ok"
+        elif request.mode == "intents":
+            stdout_json = _intents_runtime_payload(Path(__file__))
+            chat_summary_lines = _intents_runtime_chat_summary_lines(stdout_json)
+            warnings.extend(_string_list(stdout_json.get("warnings")))
             status = "ok"
         else:
             try:
@@ -4010,11 +4718,16 @@ def main() -> int:
                 collected_artifacts,
                 preferred_artifacts,
             )
+            rasterize_declared_paths = _best_first_svg_declared_paths(
+                collected_artifacts,
+                preferred_artifacts,
+            )
             collected_artifacts, rasterized_pngs = _rasterize_collected_svg_artifacts(
                 collected_artifacts,
                 resolution,
                 execution_cwd,
                 output_dir,
+                rasterize_declared_paths,
             )
             preferred_artifacts = _rewrite_preferred_artifacts_for_png(
                 collected_artifacts,
@@ -4023,7 +4736,7 @@ def main() -> int:
             )
             continue_artifact_actions = _continue_artifact_suggested_actions(
                 request,
-                rasterized_pngs,
+                collected_artifacts,
                 preferred_artifacts,
             )
             suggested_actions = _merge_suggested_actions(
@@ -4083,6 +4796,10 @@ def main() -> int:
     env_path = repro_dir / "environment.yml"
     checksums_path = repro_dir / "checksums.sha256"
 
+    suggested_actions = _stamp_action_envelope(suggested_actions)
+    preferred_demo_actions = _stamp_action_envelope(preferred_demo_actions)
+    blocked_actions = _stamp_blocked_action_envelopes(blocked_actions)
+
     _write_report(
         path=report_path,
         request=request,
@@ -4106,6 +4823,7 @@ def main() -> int:
         blocked_actions=blocked_actions,
         ui_intent_catalog=ui_intent_catalog,
         ui_intent_catalog_error=ui_intent_catalog_error,
+        warnings=warnings,
     )
 
     command_lines = [
@@ -4158,6 +4876,7 @@ def main() -> int:
         "blocked_actions": blocked_actions,
         "ui_intent_catalog": ui_intent_catalog,
         "ui_intent_catalog_error": ui_intent_catalog_error,
+        "warnings": warnings or None,
         "error": error_message,
         "failure_summary": failure_summary,
         "preflight": {

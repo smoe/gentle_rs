@@ -11,7 +11,15 @@ use crate::engine::{
     RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
     RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore,
 };
+#[cfg(test)]
+use crate::enzymes::Enzymes;
+#[cfg(test)]
+use gb_io::seq::Location;
+#[cfg(test)]
+use serde::Deserialize;
 use serde_json::json;
+#[cfg(test)]
+use std::collections::BTreeMap;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -20,6 +28,711 @@ use std::{
 const DEMO_REBASE_WITHREFM: &str = "<1>EcoRI\n<2>EcoRI\n<3>GAATTC (1/5)\n<7>N\n//\n";
 const DEMO_JASPAR_PFM: &str =
     ">MA0001.1 TEST\nA [ 10 0 0 0 ]\nC [ 0 10 0 0 ]\nG [ 0 0 10 0 ]\nT [ 0 0 0 10 ]\n";
+#[cfg(test)]
+const DENSE_PLASMID_VISUAL_BENCHMARK: &str =
+    include_str!("../test_files/fixtures/visual_benchmarks/dense_plasmid_map.json");
+#[cfg(test)]
+const ANTISENSE_REPEAT_DOTPLOT_CONTEXT_VISUAL_BENCHMARK: &str =
+    include_str!("../test_files/fixtures/visual_benchmarks/antisense_repeat_dotplot_context.json");
+
+#[cfg(test)]
+#[derive(Debug, Deserialize)]
+struct VisualBenchmarkFile {
+    schema: String,
+    fixture_id: String,
+    sequences: Vec<VisualBenchmarkSequence>,
+}
+
+#[cfg(test)]
+#[derive(Debug, Deserialize)]
+struct VisualBenchmarkSequence {
+    id: String,
+    name: Option<String>,
+    topology: Option<String>,
+    #[serde(default)]
+    restriction_enzymes: Vec<String>,
+    sequence_segments: Vec<VisualBenchmarkSequenceSegment>,
+    #[serde(default)]
+    features: Vec<VisualBenchmarkFeature>,
+}
+
+#[cfg(test)]
+#[derive(Debug, Deserialize)]
+struct VisualBenchmarkSequenceSegment {
+    literal: Option<String>,
+    repeat: Option<String>,
+    count: Option<usize>,
+}
+
+#[cfg(test)]
+#[derive(Debug, Deserialize)]
+struct VisualBenchmarkFeature {
+    kind: String,
+    label: Option<String>,
+    strand: Option<String>,
+    ranges: Vec<[usize; 2]>,
+    #[serde(default)]
+    qualifiers: BTreeMap<String, String>,
+}
+
+#[cfg(test)]
+fn visual_benchmark_sequence_text(segments: &[VisualBenchmarkSequenceSegment]) -> String {
+    let mut sequence = String::new();
+    for segment in segments {
+        match (&segment.literal, &segment.repeat, segment.count) {
+            (Some(literal), None, None) => sequence.push_str(literal),
+            (None, Some(unit), Some(count)) => {
+                for _ in 0..count {
+                    sequence.push_str(unit);
+                }
+            }
+            _ => {
+                panic!("visual benchmark sequence segment must have either literal or repeat+count")
+            }
+        }
+    }
+    sequence
+}
+
+#[cfg(test)]
+fn visual_benchmark_location(feature: &VisualBenchmarkFeature) -> Location {
+    assert!(
+        !feature.ranges.is_empty(),
+        "visual benchmark feature requires at least one range"
+    );
+    let mut parts = feature
+        .ranges
+        .iter()
+        .map(|[start, end]| {
+            assert!(
+                end > start,
+                "visual benchmark feature range must be non-empty"
+            );
+            Location::simple_range(*start as i64, *end as i64)
+        })
+        .collect::<Vec<_>>();
+    let base = if parts.len() == 1 {
+        parts.remove(0)
+    } else {
+        Location::Join(parts)
+    };
+    if feature.strand.as_deref() == Some("-") {
+        Location::Complement(Box::new(base))
+    } else {
+        base
+    }
+}
+
+#[cfg(test)]
+fn visual_benchmark_dna(sequence_fixture: &VisualBenchmarkSequence) -> DNAsequence {
+    let sequence_text = visual_benchmark_sequence_text(&sequence_fixture.sequence_segments);
+    let mut dna = DNAsequence::from_sequence(&sequence_text).expect("visual benchmark sequence");
+    if let Some(name) = sequence_fixture.name.as_ref() {
+        dna.set_name(name);
+    }
+    if sequence_fixture
+        .topology
+        .as_deref()
+        .is_some_and(|topology| topology.eq_ignore_ascii_case("circular"))
+    {
+        dna.set_circular(true);
+    }
+    for feature in &sequence_fixture.features {
+        let mut qualifiers = Vec::new();
+        if let Some(label) = feature.label.as_ref() {
+            qualifiers.push(("label".into(), Some(label.clone())));
+        }
+        qualifiers.extend(
+            feature
+                .qualifiers
+                .iter()
+                .filter(|(key, _)| key.as_str() != "label")
+                .map(|(key, value)| (key.clone().into(), Some(value.clone()))),
+        );
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: feature.kind.clone().into(),
+            location: visual_benchmark_location(feature),
+            qualifiers,
+        });
+    }
+    if !sequence_fixture.restriction_enzymes.is_empty() {
+        let enzyme_names = sequence_fixture
+            .restriction_enzymes
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let enzymes = Enzymes::default().restriction_enzymes_by_name(&enzyme_names);
+        assert_eq!(
+            enzymes.len(),
+            enzyme_names.len(),
+            "visual benchmark restriction-enzyme fixture references missing enzymes"
+        );
+        *dna.restriction_enzymes_mut() = enzymes;
+        dna.set_max_restriction_enzyme_sites(None);
+    }
+    dna.update_computed_features();
+    dna
+}
+
+#[cfg(test)]
+fn visual_benchmark_state_from_json(text: &str, expected_fixture_id: &str) -> ProjectState {
+    let fixture: VisualBenchmarkFile =
+        serde_json::from_str(text).expect("parse visual benchmark fixture");
+    assert_eq!(fixture.schema, "gentle.visual_benchmark_fixture.v1");
+    assert_eq!(fixture.fixture_id, expected_fixture_id);
+    let mut state = ProjectState::default();
+    for sequence in &fixture.sequences {
+        state
+            .sequences
+            .insert(sequence.id.clone(), visual_benchmark_dna(sequence));
+    }
+    state
+}
+
+/// Synthetic dense plasmid-map benchmark state.
+#[cfg(test)]
+pub fn dense_plasmid_visual_benchmark_state() -> ProjectState {
+    visual_benchmark_state_from_json(DENSE_PLASMID_VISUAL_BENCHMARK, "dense_plasmid_map")
+}
+
+/// Synthetic genomic dotplot-context benchmark state.
+#[cfg(test)]
+pub fn antisense_repeat_dotplot_context_visual_benchmark_state() -> ProjectState {
+    visual_benchmark_state_from_json(
+        ANTISENSE_REPEAT_DOTPLOT_CONTEXT_VISUAL_BENCHMARK,
+        "antisense_repeat_dotplot_context",
+    )
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy)]
+struct SvgViewBox {
+    min_x: f32,
+    min_y: f32,
+    width: f32,
+    height: f32,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone)]
+struct VisualSvgLabelBox {
+    role: String,
+    text: String,
+    rect: VisualSvgRect,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy)]
+struct VisualSvgRect {
+    left: f32,
+    top: f32,
+    right: f32,
+    bottom: f32,
+}
+
+#[cfg(test)]
+impl VisualSvgRect {
+    fn intersects_meaningfully(&self, other: &Self) -> bool {
+        let overlap_x = self.right.min(other.right) - self.left.max(other.left);
+        let overlap_y = self.bottom.min(other.bottom) - self.top.max(other.top);
+        overlap_x > 1.5 && overlap_y > 1.5
+    }
+}
+
+/// Assert that a generated SVG preserves the semantic markers used by visual benchmarks.
+#[cfg(test)]
+pub fn assert_visual_svg_lint(svg: &str, expected_roles: &[(&str, usize)]) {
+    assert!(svg.contains("<svg"), "visual benchmark output must be SVG");
+    assert!(!svg.contains("NaN"), "SVG must not contain NaN coordinates");
+    assert!(
+        !svg.contains("Infinity"),
+        "SVG must not contain infinite coordinates"
+    );
+
+    let view_box = visual_svg_view_box(svg);
+    let mut role_counts = BTreeMap::<String, usize>::new();
+    for tag in visual_svg_tags(svg) {
+        let attrs = visual_svg_attrs(tag);
+        let Some(role) = attrs.get("data-gentle-role") else {
+            continue;
+        };
+        assert!(
+            !role.trim().is_empty(),
+            "data-gentle-role must not be empty on tag <{tag}>"
+        );
+        *role_counts.entry(role.clone()).or_default() += 1;
+        if let Some(kind) = attrs.get("data-gentle-feature-kind") {
+            assert!(
+                !kind.trim().is_empty(),
+                "data-gentle-feature-kind must not be empty on tag <{tag}>"
+            );
+        }
+        lint_visual_svg_numeric_attrs(tag, &attrs, view_box);
+    }
+    lint_visual_svg_label_readability(svg, view_box);
+
+    assert!(
+        !role_counts.is_empty(),
+        "visual benchmark SVG should expose data-gentle-role markers"
+    );
+    for (role, min_count) in expected_roles {
+        let count = role_counts.get(*role).copied().unwrap_or_default();
+        assert!(
+            count >= *min_count,
+            "expected at least {min_count} SVG elements with data-gentle-role={role:?}, found {count}"
+        );
+    }
+}
+
+#[cfg(test)]
+fn lint_visual_svg_label_readability(svg: &str, view_box: SvgViewBox) {
+    let labels = visual_svg_label_boxes(svg);
+    for label in &labels {
+        assert!(
+            visual_svg_rect_is_inside_view_box(label.rect, view_box, 2.0),
+            "SVG {} {:?} label should not be clipped by the viewBox: {:?}",
+            label.role,
+            label.text,
+            label.rect
+        );
+    }
+    for (i, left) in labels.iter().enumerate() {
+        for right in labels.iter().skip(i + 1) {
+            assert!(
+                !left.rect.intersects_meaningfully(&right.rect),
+                "SVG label overlap between {} {:?} at {:?} and {} {:?} at {:?}",
+                left.role,
+                left.text,
+                left.rect,
+                right.role,
+                right.text,
+                right.rect
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+fn visual_svg_label_boxes(svg: &str) -> Vec<VisualSvgLabelBox> {
+    let mut labels = Vec::new();
+    for (tag, text) in visual_svg_text_elements(svg) {
+        let attrs = visual_svg_attrs(tag);
+        let Some(role) = attrs.get("data-gentle-role") else {
+            continue;
+        };
+        if !matches!(role.as_str(), "feature-label" | "restriction-label") {
+            continue;
+        }
+        let text = decode_svg_text(&strip_svg_tags(text));
+        if text.trim().is_empty() {
+            continue;
+        }
+        labels.push(VisualSvgLabelBox {
+            role: role.clone(),
+            rect: visual_svg_text_rect(&attrs, &text),
+            text,
+        });
+    }
+    labels
+}
+
+#[cfg(test)]
+fn visual_svg_text_elements(svg: &str) -> Vec<(&str, &str)> {
+    let mut elements = Vec::new();
+    let mut offset = 0usize;
+    while let Some(relative_start) = svg[offset..].find("<text") {
+        let start = offset + relative_start + 1;
+        let Some(relative_tag_end) = svg[start..].find('>') else {
+            break;
+        };
+        let tag_end = start + relative_tag_end;
+        let content_start = tag_end + 1;
+        let Some(relative_close) = svg[content_start..].find("</text>") else {
+            break;
+        };
+        let close = content_start + relative_close;
+        elements.push((&svg[start..tag_end], &svg[content_start..close]));
+        offset = close + "</text>".len();
+    }
+    elements
+}
+
+#[cfg(test)]
+fn visual_svg_text_rect(attrs: &BTreeMap<String, String>, text: &str) -> VisualSvgRect {
+    let x = parse_svg_float(attrs.get("x").expect("marked SVG text should carry x"));
+    let y = parse_svg_float(attrs.get("y").expect("marked SVG text should carry y"));
+    let font_size = attrs
+        .get("font-size")
+        .map(|value| parse_svg_float(value))
+        .unwrap_or(10.0);
+    let text_anchor = attrs
+        .get("text-anchor")
+        .map(String::as_str)
+        .unwrap_or("start");
+    let width = text.chars().count() as f32 * font_size * 0.61;
+    let (left, right) = match text_anchor {
+        "middle" => (x - width * 0.5, x + width * 0.5),
+        "end" => (x - width, x),
+        _ => (x, x + width),
+    };
+    let dominant_baseline_middle = attrs
+        .get("dominant-baseline")
+        .is_some_and(|value| value == "middle");
+    let (top, bottom) = if dominant_baseline_middle {
+        let half_height = font_size * 0.6;
+        (y - half_height, y + half_height)
+    } else {
+        (y - font_size * 0.82, y + font_size * 0.28)
+    };
+    VisualSvgRect {
+        left,
+        top,
+        right,
+        bottom,
+    }
+}
+
+#[cfg(test)]
+fn visual_svg_rect_is_inside_view_box(
+    rect: VisualSvgRect,
+    view_box: SvgViewBox,
+    tolerance: f32,
+) -> bool {
+    rect.left >= view_box.min_x - tolerance
+        && rect.right <= view_box.min_x + view_box.width + tolerance
+        && rect.top >= view_box.min_y - tolerance
+        && rect.bottom <= view_box.min_y + view_box.height + tolerance
+}
+
+#[cfg(test)]
+fn strip_svg_tags(text: &str) -> String {
+    let mut stripped = String::with_capacity(text.len());
+    let mut in_tag = false;
+    for ch in text.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => stripped.push(ch),
+            _ => {}
+        }
+    }
+    stripped
+}
+
+#[cfg(test)]
+fn decode_svg_text(text: &str) -> String {
+    text.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+}
+
+#[cfg(test)]
+fn visual_svg_tags(svg: &str) -> Vec<&str> {
+    let mut tags = Vec::new();
+    let mut cursor = svg;
+    while let Some(start) = cursor.find('<') {
+        cursor = &cursor[start + 1..];
+        if cursor.starts_with('/') || cursor.starts_with('!') || cursor.starts_with('?') {
+            let Some(end) = cursor.find('>') else {
+                break;
+            };
+            cursor = &cursor[end + 1..];
+            continue;
+        }
+        let Some(end) = cursor.find('>') else {
+            break;
+        };
+        tags.push(cursor[..end].trim());
+        cursor = &cursor[end + 1..];
+    }
+    tags
+}
+
+#[cfg(test)]
+fn visual_svg_attrs(tag: &str) -> BTreeMap<String, String> {
+    let bytes = tag.as_bytes();
+    let mut attrs = BTreeMap::new();
+    let mut i = 0usize;
+    while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    while i < bytes.len() {
+        while i < bytes.len() && (bytes[i].is_ascii_whitespace() || bytes[i] == b'/') {
+            i += 1;
+        }
+        let key_start = i;
+        while i < bytes.len()
+            && !bytes[i].is_ascii_whitespace()
+            && bytes[i] != b'='
+            && bytes[i] != b'/'
+        {
+            i += 1;
+        }
+        if key_start == i {
+            break;
+        }
+        let key = &tag[key_start..i];
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] != b'=' {
+            continue;
+        }
+        i += 1;
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            break;
+        }
+        let quote = bytes[i];
+        let value = if quote == b'"' || quote == b'\'' {
+            i += 1;
+            let value_start = i;
+            while i < bytes.len() && bytes[i] != quote {
+                i += 1;
+            }
+            let value = tag[value_start..i].to_string();
+            if i < bytes.len() {
+                i += 1;
+            }
+            value
+        } else {
+            let value_start = i;
+            while i < bytes.len() && !bytes[i].is_ascii_whitespace() && bytes[i] != b'/' {
+                i += 1;
+            }
+            tag[value_start..i].to_string()
+        };
+        attrs.insert(key.to_string(), value);
+    }
+    attrs
+}
+
+#[cfg(test)]
+fn visual_svg_view_box(svg: &str) -> SvgViewBox {
+    let root = visual_svg_tags(svg)
+        .into_iter()
+        .find(|tag| tag.starts_with("svg"))
+        .expect("SVG root tag");
+    let attrs = visual_svg_attrs(root);
+    if let Some(view_box) = attrs.get("viewBox") {
+        let parts = view_box
+            .split(|c: char| c.is_ascii_whitespace() || c == ',')
+            .filter(|part| !part.is_empty())
+            .map(|part| {
+                part.parse::<f32>()
+                    .expect("SVG viewBox values should be numeric")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(parts.len(), 4, "SVG viewBox should have four numbers");
+        assert!(
+            parts[2].is_finite() && parts[2] > 0.0,
+            "SVG viewBox width should be positive"
+        );
+        assert!(
+            parts[3].is_finite() && parts[3] > 0.0,
+            "SVG viewBox height should be positive"
+        );
+        return SvgViewBox {
+            min_x: parts[0],
+            min_y: parts[1],
+            width: parts[2],
+            height: parts[3],
+        };
+    }
+
+    let width = parse_svg_float(attrs.get("width").expect("SVG width attribute"));
+    let height = parse_svg_float(attrs.get("height").expect("SVG height attribute"));
+    assert!(
+        width.is_finite() && width > 0.0,
+        "SVG width should be positive"
+    );
+    assert!(
+        height.is_finite() && height > 0.0,
+        "SVG height should be positive"
+    );
+    SvgViewBox {
+        min_x: 0.0,
+        min_y: 0.0,
+        width,
+        height,
+    }
+}
+
+#[cfg(test)]
+fn lint_visual_svg_numeric_attrs(
+    tag: &str,
+    attrs: &BTreeMap<String, String>,
+    view_box: SvgViewBox,
+) {
+    for name in [
+        "x",
+        "y",
+        "x1",
+        "y1",
+        "x2",
+        "y2",
+        "cx",
+        "cy",
+        "width",
+        "height",
+        "r",
+        "stroke-width",
+        "font-size",
+    ] {
+        let Some(value) = attrs.get(name) else {
+            continue;
+        };
+        let parsed = parse_svg_float(value);
+        assert!(
+            parsed.is_finite(),
+            "SVG attribute {name}={value:?} should be finite on tag <{tag}>"
+        );
+        if matches!(
+            name,
+            "width" | "height" | "r" | "stroke-width" | "font-size"
+        ) {
+            assert!(
+                parsed > 0.0,
+                "SVG attribute {name}={value:?} should be positive on tag <{tag}>"
+            );
+        }
+        if matches!(name, "x" | "x1" | "x2" | "cx") {
+            assert_svg_coordinate_in_view_box(name, parsed, view_box.min_x, view_box.width, tag);
+        }
+        if matches!(name, "y" | "y1" | "y2" | "cy") {
+            assert_svg_coordinate_in_view_box(name, parsed, view_box.min_y, view_box.height, tag);
+        }
+    }
+}
+
+#[cfg(test)]
+fn assert_svg_coordinate_in_view_box(name: &str, value: f32, min: f32, span: f32, tag: &str) {
+    let tolerance = 1.0;
+    assert!(
+        value >= min - tolerance && value <= min + span + tolerance,
+        "SVG coordinate {name}={value} should be inside viewBox range {min}..{} on tag <{tag}>",
+        min + span
+    );
+}
+
+#[cfg(test)]
+fn parse_svg_float(value: &str) -> f32 {
+    value
+        .trim()
+        .trim_end_matches("px")
+        .parse::<f32>()
+        .unwrap_or_else(|err| panic!("SVG numeric value {value:?} should parse: {err}"))
+}
+
+fn push_zip_u16(out: &mut Vec<u8>, value: u16) {
+    out.extend_from_slice(&value.to_le_bytes());
+}
+
+fn push_zip_u32(out: &mut Vec<u8>, value: u32) {
+    out.extend_from_slice(&value.to_le_bytes());
+}
+
+fn zip_crc32(bytes: &[u8]) -> u32 {
+    let mut crc = 0xffff_ffffu32;
+    for &byte in bytes {
+        crc ^= byte as u32;
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg();
+            crc = (crc >> 1) ^ (0xedb8_8320 & mask);
+        }
+    }
+    !crc
+}
+
+/// Write a minimal ZIP archive with stored members for tests.
+///
+/// This avoids depending on a host `zip` binary while still exercising the
+/// production unzip-backed resource import paths.
+pub fn write_stored_zip_archive(path: &Path, members: &[(&str, &[u8])]) {
+    let mut out = Vec::new();
+    let mut central = Vec::new();
+
+    for (name, data) in members {
+        let name_bytes = name.as_bytes();
+        assert!(
+            name_bytes.len() <= u16::MAX as usize,
+            "synthetic ZIP member name too long"
+        );
+        assert!(
+            data.len() <= u32::MAX as usize,
+            "synthetic ZIP member too large"
+        );
+        assert!(
+            out.len() <= u32::MAX as usize,
+            "synthetic ZIP local offset too large"
+        );
+
+        let local_offset = out.len() as u32;
+        let crc = zip_crc32(data);
+        let size = data.len() as u32;
+        let name_len = name_bytes.len() as u16;
+
+        push_zip_u32(&mut out, 0x0403_4b50);
+        push_zip_u16(&mut out, 20);
+        push_zip_u16(&mut out, 0);
+        push_zip_u16(&mut out, 0);
+        push_zip_u16(&mut out, 0);
+        push_zip_u16(&mut out, 0);
+        push_zip_u32(&mut out, crc);
+        push_zip_u32(&mut out, size);
+        push_zip_u32(&mut out, size);
+        push_zip_u16(&mut out, name_len);
+        push_zip_u16(&mut out, 0);
+        out.extend_from_slice(name_bytes);
+        out.extend_from_slice(data);
+
+        push_zip_u32(&mut central, 0x0201_4b50);
+        push_zip_u16(&mut central, 20);
+        push_zip_u16(&mut central, 20);
+        push_zip_u16(&mut central, 0);
+        push_zip_u16(&mut central, 0);
+        push_zip_u16(&mut central, 0);
+        push_zip_u16(&mut central, 0);
+        push_zip_u32(&mut central, crc);
+        push_zip_u32(&mut central, size);
+        push_zip_u32(&mut central, size);
+        push_zip_u16(&mut central, name_len);
+        push_zip_u16(&mut central, 0);
+        push_zip_u16(&mut central, 0);
+        push_zip_u16(&mut central, 0);
+        push_zip_u16(&mut central, 0);
+        push_zip_u32(&mut central, 0);
+        push_zip_u32(&mut central, local_offset);
+        central.extend_from_slice(name_bytes);
+    }
+
+    assert!(
+        members.len() <= u16::MAX as usize,
+        "synthetic ZIP has too many members"
+    );
+    assert!(
+        out.len() <= u32::MAX as usize && central.len() <= u32::MAX as usize,
+        "synthetic ZIP central directory too large"
+    );
+
+    let central_offset = out.len() as u32;
+    let central_size = central.len() as u32;
+    out.extend_from_slice(&central);
+    push_zip_u32(&mut out, 0x0605_4b50);
+    push_zip_u16(&mut out, 0);
+    push_zip_u16(&mut out, 0);
+    push_zip_u16(&mut out, members.len() as u16);
+    push_zip_u16(&mut out, members.len() as u16);
+    push_zip_u32(&mut out, central_size);
+    push_zip_u32(&mut out, central_offset);
+    push_zip_u16(&mut out, 0);
+
+    fs::write(path, out).expect("write synthetic ZIP archive");
+}
 
 /// Synthetic project state with one routine-decision trace used in parity tests.
 pub fn decision_trace_fixture_state() -> ProjectState {
@@ -167,4 +880,42 @@ pub fn write_demo_pool_json(dir: &Path) -> PathBuf {
     )
     .expect("write pool json");
     path
+}
+
+#[cfg(test)]
+mod visual_svg_lint_tests {
+    use super::*;
+
+    #[test]
+    fn visual_svg_lint_accepts_separated_labels() {
+        let svg = r#"<svg viewBox="0 0 200 80" width="200" height="80">
+<text data-gentle-role="feature-label" x="20" y="30" text-anchor="start" font-family="monospace" font-size="10">Alpha</text>
+<text data-gentle-role="restriction-label" data-gentle-feature-kind="restriction_site" x="120" y="30" text-anchor="start" font-family="monospace" font-size="10">EcoRI</text>
+</svg>"#;
+        assert_visual_svg_lint(svg, &[("feature-label", 1), ("restriction-label", 1)]);
+    }
+
+    #[test]
+    fn visual_svg_lint_rejects_overlapping_labels() {
+        let svg = r#"<svg viewBox="0 0 200 80" width="200" height="80">
+<text data-gentle-role="feature-label" x="20" y="30" text-anchor="start" font-family="monospace" font-size="10">Alpha</text>
+<text data-gentle-role="restriction-label" data-gentle-feature-kind="restriction_site" x="25" y="30" text-anchor="start" font-family="monospace" font-size="10">EcoRI</text>
+</svg>"#;
+        let result =
+            std::panic::catch_unwind(|| assert_visual_svg_lint(svg, &[("feature-label", 1)]));
+        assert!(
+            result.is_err(),
+            "overlapping marked labels should fail lint"
+        );
+    }
+
+    #[test]
+    fn visual_svg_lint_rejects_clipped_labels() {
+        let svg = r#"<svg viewBox="0 0 200 80" width="200" height="80">
+<text data-gentle-role="feature-label" x="198" y="30" text-anchor="start" font-family="monospace" font-size="10">Clipped</text>
+</svg>"#;
+        let result =
+            std::panic::catch_unwind(|| assert_visual_svg_lint(svg, &[("feature-label", 1)]));
+        assert!(result.is_err(), "clipped marked labels should fail lint");
+    }
 }

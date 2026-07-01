@@ -102,6 +102,7 @@ developer build.
 Required local matrix:
 
 ```bash
+cargo check -q
 cargo build --release --features script-interfaces
 cargo run --release --bin gentle -- --version
 cargo run --release --bin gentle_cli -- capabilities
@@ -116,6 +117,11 @@ Release-note expectations for that smoke pass:
 
 - record pass/fail per command in the versioned root release-notes document
 - call out any intentionally skipped entrypoint or known failure explicitly
+- when exercising the pre-release CUT&RUN proof path, follow
+  [`docs/cutrun_release_smoke.md`](cutrun_release_smoke.md) and record whether
+  the proof used processed evidence only or also included ROI read
+  interpretation, plus whether the optional DNA-window GUI report inspector was
+  used to review the same regulatory-support payload
 
 Release-workflow assumptions to re-check before tagging:
 
@@ -167,7 +173,5 @@ If a release artifact is broken:
 
 ## Internal Release Notes
 
-For internal tags, keep a versioned release-notes document at repository root,
-e.g.:
-
-- `release_notes_v0.1.0-internal.2.md`
+For internal tags, keep versioned release-note documents under
+`docs/release_notes/`.

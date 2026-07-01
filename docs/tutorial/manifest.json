@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_manifest.v1",
+  "schema": "gentle.tutorial_manifest.v2",
   "description": "Generated executable tutorial runtime manifest for GENtle. Used by `tutorial-generate` / `tutorial-check` and the GUI `Open Tutorial Project...` flow to map source-backed chapters onto canonical workflow examples.",
   "concepts": [
     {
@@ -66,6 +66,11 @@
       "id": "expert_view_parity",
       "name": "Expert View Parity",
       "description": "The same expert-view payloads should be inspectable and renderable from GUI, CLI, and other adapters without frontend-only projection logic."
+    },
+    {
+      "id": "promoter_motif_controls",
+      "name": "Promoter Motif Controls",
+      "description": "Foreground promoter motif signals should be compared with matched controls before being treated as candidate enrichment, depletion, or co-occurrence evidence."
     }
   ],
   "chapters": [
@@ -73,11 +78,16 @@
       "id": "load_branch_reverse_complement_pgex_fasta",
       "order": 1,
       "title": "Load FASTA, branch, and reverse-complement",
+      "group": "02",
+      "group_label": "Sequence Basics & Lineage",
+      "group_order": 2,
+      "group_position": 1,
+      "decimal_id": "02.01",
       "example_id": "load_branch_reverse_complement_pgex_fasta",
       "tier": "core",
       "guide_path": null,
       "summary": "Start with a simple cloning-prep routine to learn product IDs and sequence lineage.",
-      "narrative": "In real cloning projects, the first question is often whether a sequence in hand is represented correctly and whether you can derive alternative views without losing provenance. This routine is the smallest possible example of that practice: load one sequence, create an explicit branch, and generate the reverse complement as a separate product.",
+      "narrative": "In real cloning projects, people often say \"the sequence\" even when they mean different biological records: the sequence as downloaded from a public database or read from a local sample, versus a derivative changed by an operation such as introducing a nonsense mutation. GENtle keeps those records apart. Each conceptual or hands-on sequence is represented as a vial node in a lineage graph, and each operation is represented as a transaction node connecting biological inputs to outputs. Even this small routine can branch: the original FASTA remains the provenance-preserving input, while the branch and reverse-complement become separate products. Larger projects can branch one product into several downstream operations or merge independent products into one process.",
       "use_cases": [
         "You received a FASTA plasmid or amplicon sequence and want a reproducible project starting point.",
         "You need a reverse-complemented working copy but want to preserve the original sequence identity.",
@@ -87,6 +97,16 @@
         "Open GENtle and load `test_files/pGEX_3X.fa` via `File -> Open`.",
         "In the DNA window, create a branch copy from the loaded sequence (Branch action).",
         "Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/pGEX_3X.fa\",\"as_id\":\"pgex_fasta\"}}'",
+        "cargo run --bin gentle_cli -- op '{\"Branch\":{\"input\":\"pgex_fasta\",\"output_id\":\"pgex_fasta_branch\"}}'",
+        "cargo run --bin gentle_cli -- op '{\"ReverseComplement\":{\"input\":\"pgex_fasta_branch\",\"output_id\":\"pgex_fasta_branch_rc\"}}'"
+      ],
+      "step_expectations": [
+        "The project state contains the loaded source sequence `pgex_fasta` while preserving its file provenance.",
+        "A separate derivative sequence `pgex_fasta_branch` appears without replacing the original FASTA record.",
+        "A new sequence `pgex_fasta_branch_rc` appears as the reverse-complement product linked to the branch input."
       ],
       "learning_objectives": [
         "Run one canonical workflow from source JSON and interpret the result IDs.",
@@ -125,6 +145,11 @@
       "id": "find_and_extend_genomic_target_local_catalog",
       "order": 2,
       "title": "Find and extend the right genomic target (local catalog)",
+      "group": "05",
+      "group_label": "Genome Context & Coordinates",
+      "group_order": 5,
+      "group_position": 1,
+      "decimal_id": "05.01",
       "example_id": "prepare_extract_extend_localproject_gene",
       "tier": "core",
       "guide_path": null,
@@ -139,6 +164,19 @@
         "Open `File -> Prepare Reference Genome...`, set catalog to `assets/genomes.json`, choose `LocalProject`, and prepare it.",
         "Open `File -> Retrieve Genome Sequence...`, use `Gene filter` (regex) to narrow annotation hits, pick one gene match, and extract it.",
         "In the resulting DNA window, use the `Extend 5'` / `Extend 3'` anchor controls (next to `Genome anchor`) to add flanking context."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- genomes prepare LocalProject --catalog assets/genomes.json --cache-dir cache/localproject",
+        "cargo run --bin gentle_cli -- genomes genes LocalProject --catalog assets/genomes.json --cache-dir cache/localproject --filter '^etp' --limit 20\ncargo run --bin gentle_cli -- genomes extract-gene LocalProject etpC --occurrence 1 --output-id local_etpc --catalog assets/genomes.json --cache-dir cache/localproject",
+        "cargo run --bin gentle_cli -- genomes extend-anchor local_etpc 5p 250 --output-id local_etpc_ext5 --catalog assets/genomes.json --cache-dir cache/localproject"
+      ],
+      "step_expectations": [
+        "The offline `LocalProject` reference is prepared into `cache/localproject` without network access.",
+        "The gene listing narrows annotation candidates, and extraction creates the anchored sequence id `local_etpc`.",
+        "Anchor extension creates `local_etpc_ext5` with widened interval provenance rather than a disconnected sequence copy."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
       ],
       "learning_objectives": [
         "Understand that `assets/genomes.json` defines selectable genome sources for preparation/retrieval.",
@@ -190,6 +228,11 @@
       "id": "load_and_digest_pgex",
       "order": 3,
       "title": "Load pGEX and digest with BamHI/EcoRI",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 1,
+      "decimal_id": "03.01",
       "example_id": "load_and_digest_pgex",
       "tier": "core",
       "guide_path": null,
@@ -204,6 +247,19 @@
         "Load `test_files/pGEX-3X.gb` in the GUI and inspect annotated features.",
         "Run Digest from the DNA window using enzymes `BamHI` and `EcoRI`.",
         "Review created fragment entries and confirm they are stored as independent sequence products."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/pGEX-3X.gb\",\"as_id\":\"pgex\"}}'",
+        "cargo run --bin gentle_cli -- op '{\"Digest\":{\"input\":\"pgex\",\"enzymes\":[\"BamHI\",\"EcoRI\"],\"output_prefix\":\"frag\"}}'",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_and_digest_pgex.json"
+      ],
+      "step_expectations": [
+        "The state contains the annotated pGEX sequence as `pgex`.",
+        "The digest operation creates deterministic fragment sequence IDs using the `frag` prefix.",
+        "Replaying the workflow reproduces the same loaded sequence and fragment-product lineage."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
       ],
       "learning_objectives": [
         "Execute digest operations and inspect created fragment IDs.",
@@ -241,6 +297,11 @@
       "id": "gibson_two_fragment_overlap_preview",
       "order": 4,
       "title": "Gibson two-fragment overlap planning baseline",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 3,
+      "decimal_id": "03.03",
       "example_id": "gibson_two_fragment_overlap_preview",
       "tier": "core",
       "guide_path": null,
@@ -252,9 +313,22 @@
         "You want one routine that can be explained to collaborators through GUI + shell parity."
       ],
       "gui_steps": [
-        "Load `test_files/pGEX_3X.fa` and create two overlapping fragments (`gibson_left`, `gibson_right`) using region extraction.",
-        "Open `Patterns -> Routine catalog`, locate `Gibson Two-Fragment Overlap Preview`, and import it.",
-        "Run from `Shell`: `macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --validate-only`, then execute without `--validate-only`."
+        "Create two overlapping pGEX fragments (`gibson_left`, `gibson_right`) from `test_files/pGEX_3X.fa` using region extraction.",
+        "Import the Gibson two-fragment overlap preview routine from `Patterns -> Routine catalog`.",
+        "Validate the Gibson overlap preview from `Shell`, then rerun the same template without `--validate-only` to create outputs."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_two_fragment_overlap_preview.json",
+        "cargo run --bin gentle_cli -- shell 'macros template-import assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json'",
+        "cargo run --bin gentle_cli -- shell 'macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --validate-only'"
+      ],
+      "step_expectations": [
+        "The workflow loads `pgex_fasta`, extracts `gibson_left` and `gibson_right`, and leaves deterministic preview IDs for inspection.",
+        "The routine catalog registers `gibson_two_fragment_overlap_preview`, so the next shell command can validate that specific fragment order.",
+        "The validate-only run reports executable bindings for the chosen overlap; rerun with `--transactional` to create the named preview assembly."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
       ],
       "learning_objectives": [
         "Understand where Gibson overlap assumptions are checked in shared-shell preflight.",
@@ -305,6 +379,11 @@
       "id": "guides_filter_and_generate_oligos",
       "order": 5,
       "title": "Guide practical filtering and oligo generation",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 4,
+      "decimal_id": "04.04",
       "example_id": "guides_filter_and_generate_oligos",
       "tier": "core",
       "guide_path": null,
@@ -319,6 +398,19 @@
         "Open the guides workflow controls in GENtle and create/import a guide set for a target region.",
         "Apply practical filters (GC range, homopolymer limits, U6 terminator avoidance).",
         "Generate oligos from passed guides and inspect the resulting oligo set IDs."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- guides put tp73_guides --json '[{\"guide_id\":\"g1\",\"seq_id\":\"tp73\",\"start_0based\":100,\"end_0based_exclusive\":120,\"strand\":\"+\",\"protospacer\":\"GACCTGTTGACGATGTTCCA\",\"pam\":\"AGG\",\"nuclease\":\"SpCas9\",\"cut_offset_from_protospacer_start\":17,\"rank\":1},{\"guide_id\":\"g2\",\"seq_id\":\"tp73\",\"start_0based\":220,\"end_0based_exclusive\":240,\"strand\":\"+\",\"protospacer\":\"TTTTGCCATGTTGACCTGAA\",\"pam\":\"TGG\",\"nuclease\":\"SpCas9\",\"cut_offset_from_protospacer_start\":17,\"rank\":2},{\"guide_id\":\"g3\",\"seq_id\":\"tp73\",\"start_0based\":340,\"end_0based_exclusive\":360,\"strand\":\"-\",\"protospacer\":\"GGTACCGATGTTGCCAGTAA\",\"pam\":\"CGG\",\"nuclease\":\"SpCas9\",\"cut_offset_from_protospacer_start\":17,\"rank\":3}]'",
+        "cargo run --bin gentle_cli -- guides filter tp73_guides --config '{\"gc_min\":0.3,\"gc_max\":0.7,\"max_homopolymer_run\":4,\"reject_ambiguous_bases\":true,\"avoid_u6_terminator_tttt\":true,\"u6_terminator_window\":\"spacer_plus_tail\",\"required_5prime_base\":\"G\",\"allow_5prime_g_extension\":true}' --output-set tp73_guides_pass",
+        "cargo run --bin gentle_cli -- guides oligos-generate tp73_guides lenti_bsmbi_u6_default --apply-5prime-g-extension --output-oligo-set tp73_lenti --passed-only"
+      ],
+      "step_expectations": [
+        "The guide registry contains `tp73_guides` with three ranked guide candidates.",
+        "The filter report records pass/fail decisions and writes the passing subset as `tp73_guides_pass`.",
+        "The oligo registry contains `tp73_lenti`, generated only from guides that passed the practical filter."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
       ],
       "learning_objectives": [
         "Create and filter guide sets through explicit engine operations.",
@@ -356,6 +448,11 @@
       "id": "digest_ligation_extract_region_minimal",
       "order": 6,
       "title": "Digest -> Ligation -> ExtractRegion minimal slice",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 2,
+      "decimal_id": "03.02",
       "example_id": "digest_ligation_extract_region_minimal",
       "tier": "core",
       "guide_path": null,
@@ -370,6 +467,19 @@
         "Start from the loaded FASTA/plasmid sequence in the GUI.",
         "Run digest with selected enzymes and inspect available products.",
         "Run ligation with the intended inputs, then extract a focused region from the ligation result."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/pGEX_3X.fa\",\"as_id\":\"pgex_fasta\"}}'",
+        "cargo run --bin gentle_cli -- op '{\"Digest\":{\"input\":\"pgex_fasta\",\"enzymes\":[\"BamHI\",\"EcoRI\"],\"output_prefix\":\"d\"}}'",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json"
+      ],
+      "step_expectations": [
+        "The source sequence is loaded as `pgex_fasta`, ready to feed cloning operations.",
+        "The digest step creates deterministic fragment IDs with the `d` prefix.",
+        "The full workflow creates ligation product `lig_1` and extracted handoff sequence `lig_extract`."
+      ],
+      "prerequisites": [
+        "load_and_digest_pgex"
       ],
       "learning_objectives": [
         "Execute a minimal end-to-end cloning chain.",
@@ -408,6 +518,11 @@
       "id": "guides_export_csv_and_protocol",
       "order": 7,
       "title": "Guide oligo export (CSV + protocol)",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 5,
+      "decimal_id": "04.05",
       "example_id": "guides_export_csv_and_protocol",
       "tier": "advanced",
       "guide_path": null,
@@ -422,6 +537,19 @@
         "Open the guide/oligo export controls after guide generation.",
         "Export one CSV table and one protocol text file to verify both machine and human output forms.",
         "Inspect the exported files and confirm they match current guide/oligo set IDs."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- guides put demo_guides --json '[{\"guide_id\":\"demo_1\",\"seq_id\":\"target_demo\",\"start_0based\":10,\"end_0based_exclusive\":30,\"strand\":\"+\",\"protospacer\":\"GACCTGTTGACGATGTTCCA\",\"pam\":\"AGG\",\"nuclease\":\"SpCas9\",\"cut_offset_from_protospacer_start\":17,\"rank\":1}]'\ncargo run --bin gentle_cli -- guides oligos-generate demo_guides lenti_bsmbi_u6_default --apply-5prime-g-extension --output-oligo-set demo_lenti",
+        "cargo run --bin gentle_cli -- guides oligos-export demo_guides exports/demo_guides.csv --format csv_table --oligo-set demo_lenti\ncargo run --bin gentle_cli -- guides protocol-export demo_guides exports/demo_guides.protocol.txt --oligo-set demo_lenti",
+        "cargo run --bin gentle_cli -- guides oligos-show demo_lenti"
+      ],
+      "step_expectations": [
+        "The guide set `demo_guides` and oligo set `demo_lenti` are stored with deterministic ids.",
+        "The CSV and protocol text files are written under `exports/` for machine and bench-facing review.",
+        "The oligo-set inspection output matches the exported set id and guide provenance."
+      ],
+      "prerequisites": [
+        "guides_filter_and_generate_oligos"
       ],
       "learning_objectives": [
         "Export guide outputs in machine-readable and human-readable forms.",
@@ -462,6 +590,11 @@
       "id": "contribute_to_gentle_development",
       "order": 8,
       "title": "Contribute to GENtle development",
+      "group": "01",
+      "group_label": "Getting Started & Interfaces",
+      "group_order": 1,
+      "group_position": 2,
+      "decimal_id": "01.02",
       "example_id": "contribute_gentle_development_baseline",
       "tier": "advanced",
       "guide_path": null,
@@ -476,6 +609,19 @@
         "Run the baseline sequence routine in the GUI and inspect resulting lineage entries.",
         "Locate the same routine as a canonical workflow JSON example in `docs/examples/workflows`.",
         "Use this mapping to validate that your planned code change affects shared engine behavior, not only one interface."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/contribute_gentle_development_baseline.json",
+        "cargo run --bin gentle_examples_docs -- --check",
+        "cargo check -q\ncargo run --bin gentle_examples_docs -- tutorial-check"
+      ],
+      "step_expectations": [
+        "The baseline workflow creates `contrib_seed`, `contrib_branch`, and `contrib_branch_rc` through the shared engine.",
+        "Example generation/checking confirms the canonical workflow JSON remains parseable and adapter snippets are current.",
+        "The Rust check and tutorial drift check catch interface or documentation changes that escaped the GUI path."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
       ],
       "learning_objectives": [
         "Understand the expected contributor loop from change to verification.",
@@ -514,6 +660,11 @@
       "id": "prepare_reference_genome_online",
       "order": 9,
       "title": "Prepare a reference genome cache (online)",
+      "group": "05",
+      "group_label": "Genome Context & Coordinates",
+      "group_order": 5,
+      "group_position": 2,
+      "decimal_id": "05.02",
       "example_id": "prepare_reference_genome_online",
       "tier": "online",
       "guide_path": null,
@@ -529,6 +680,17 @@
         "Select the target genome and start preparation with explicit cache settings.",
         "Confirm prepared status in the GUI before attempting extraction workflows."
       ],
+      "cli_steps": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/prepare_reference_genome_online.json",
+        "cargo run --bin gentle_cli -- genomes status \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- genomes status \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes"
+      ],
+      "step_expectations": [
+        "The workflow starts only when `GENTLE_TEST_ONLINE=1` is set and prepares the selected cache target.",
+        "The status payload names `Human GRCh38 Ensembl 116` and reports the effective cache directory.",
+        "Prepared status becomes visible before extraction or promoter chapters depend on this reference."
+      ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from `https://ftp.ensembl.org/pub/release-116/vertebrates/`; make sure `data/genomes` has enough disk space and that interrupted downloads can be retried.",
       "learning_objectives": [
         "Recognize which tutorial flows require network access and external tools.",
         "Use `GENTLE_TEST_ONLINE` to opt into online chapter execution.",
@@ -568,6 +730,11 @@
       "id": "tp53_isoform_architecture_online",
       "order": 10,
       "title": "TP53 isoform architecture expert panel (online)",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 3,
+      "decimal_id": "06.03",
       "example_id": "tp53_isoform_architecture_online",
       "tier": "online",
       "guide_path": null,
@@ -583,6 +750,20 @@
         "Open DNA window `Engine Ops -> Isoform architecture panels`, import `assets/panels/tp53_isoforms_v1.json`.",
         "Open `Isoform Expert` and export SVG from the same panel context."
       ],
+      "cli_steps": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- shell 'panels import-isoform grch38_tp53 assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'\ncargo run --bin gentle_cli -- shell 'panels inspect-isoform grch38_tp53 tp53_isoforms_v1'",
+        "cargo run --bin gentle_cli -- shell 'panels render-isoform-svg grch38_tp53 tp53_isoforms_v1 exports/tp53_isoform_architecture.svg'"
+      ],
+      "step_expectations": [
+        "The reference is prepared if needed and TP53 is extracted into the stable anchored sequence id `grch38_tp53`.",
+        "The panel import stores `tp53_isoforms_v1`; the inspect route returns the same isoform-architecture payload that the GUI expert view renders.",
+        "The renderer writes `exports/tp53_isoform_architecture.svg` with deterministic isoform lane ordering."
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts `Human GRCh38 Ensembl 116` from Ensembl FTP, then imports the local curated panel `assets/panels/tp53_isoforms_v1.json` and writes `exports/tp53_isoform_architecture.svg`.",
       "learning_objectives": [
         "Execute an end-to-end isoform-panel workflow using shared engine operations.",
         "Understand how curated panel JSON joins genome-derived transcripts without GUI-only logic.",
@@ -628,6 +809,11 @@
       "id": "tp63_anchor_extension_online",
       "order": 11,
       "title": "Retrieve TP63 and extend the displayed region by +/-2 kb (online)",
+      "group": "05",
+      "group_label": "Genome Context & Coordinates",
+      "group_order": 5,
+      "group_position": 3,
+      "decimal_id": "05.03",
       "example_id": "tp63_extend_anchor_online",
       "tier": "online",
       "guide_path": null,
@@ -643,6 +829,20 @@
         "Open `File -> Retrieve Genome Sequence...`, set gene query/filter to `TP63`, review the displayed TP63 coordinate hit, and extract the first TP63 entry.",
         "In the resulting DNA sequence window (`grch38_tp63`), use `Extend 5'` with `2000 bp`, then `Extend 3'` with `2000 bp` to produce the +/-2 kb context sequence."
       ],
+      "cli_steps": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600",
+        "cargo run --bin gentle_cli -- genomes genes \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --filter \"^TP63$\" --limit 20\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP63 --occurrence 1 --output-id grch38_tp63 --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63 5p 2000 --output-id grch38_tp63_ext5_2kb --catalog assets/genomes.json --cache-dir data/genomes\ncargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63_ext5_2kb 3p 2000 --output-id grch38_tp63_ext5_ext3_2kb --catalog assets/genomes.json --cache-dir data/genomes"
+      ],
+      "step_expectations": [
+        "The reference-preparation status becomes ready or reports a reusable prepared cache for GRCh38.",
+        "The gene listing shows the TP63 coordinate candidate(s), and extraction creates the anchored sequence id `grch38_tp63`.",
+        "The final extension step creates or refreshes `grch38_tp63_ext5_ext3_2kb` while preserving genome-anchor provenance."
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares `Human GRCh38 Ensembl 116` using Ensembl FTP FASTA/GTF endpoints from `assets/genomes.json`, then extracts TP63 and extends the anchored locus locally.",
       "learning_objectives": [
         "Use annotation-backed gene retrieval to inspect coordinates before extracting a sequence.",
         "Apply anchored-region extension from the DNA sequence viewer without losing genome-anchor provenance.",
@@ -687,6 +887,11 @@
       "id": "tp53_multi_gene_sparse_mapping_online",
       "order": 12,
       "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
+      "group": "07",
+      "group_label": "RNA Reads, Splicing & Expression",
+      "group_order": 7,
+      "group_position": 2,
+      "decimal_id": "07.02",
       "example_id": "tp53_multi_gene_sparse_mapping_online",
       "tier": "online",
       "guide_path": null,
@@ -702,6 +907,20 @@
         "Open Splicing Expert for a TP53 transcript, set `Origin mode` to `multi_gene_sparse`, and set `Target genes` to `TP53, TP63, TP73`.",
         "Run Nanopore interpretation from the same panel and inspect sparse-origin warnings/summary fields in the report section."
       ],
+      "cli_steps": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json",
+        "cargo run --bin gentle_cli -- shell 'rna-reads list-reports grch38_tp53'",
+        "cargo run --bin gentle_cli -- shell 'rna-reads show-report tp53_family_sparse_template'"
+      ],
+      "step_expectations": [
+        "The workflow prepares/extracts TP53 and runs the read interpretation template with `origin_mode=multi_gene_sparse`.",
+        "The report list includes `tp53_family_sparse_template` after the interpretation step has stored its report.",
+        "The report detail exposes target-gene provenance, sparse-origin warnings, and seed/align summary fields for review."
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, then runs the multi-gene sparse RNA-read interpretation against locally derived TP53-family transcript templates.",
       "learning_objectives": [
         "Map one gene locus from reference genome preparation through read-interpretation in a single operation chain.",
         "Understand what `multi_gene_sparse` changes at runtime (expanded local transcript-template indexing).",
@@ -752,6 +971,11 @@
       "id": "pcr_selection_batch_primer_pairs_offline",
       "order": 13,
       "title": "Selection-first PCR batch primer design (offline)",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 2,
+      "decimal_id": "04.02",
       "example_id": "pcr_selection_batch_primer_pairs_offline",
       "tier": "core",
       "guide_path": null,
@@ -776,6 +1000,29 @@
         "Optionally enable `Also create extracted region copies`, then run `Design Primer Pairs for queued regions`.",
         "In `PCR batch results`, use `Show` for report summary, `Export` for JSON output, and `Open` to jump to the extracted copy (or template when copy mode is off)."
       ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/tp73.ncbi.gb\",\"as_id\":\"tp73_locus\"}}'",
+        "cargo run --bin gentle_cli -- op '{\"ExtractRegion\":{\"input\":\"tp73_locus\",\"from\":61720,\"to\":62120,\"output_id\":\"tp73_as2_promoter_roi_1\"}}'",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+        "cargo run --bin gentle_cli -- op '{\"ExtractRegion\":{\"input\":\"tp73_locus\",\"from\":61940,\"to\":62340,\"output_id\":\"tp73_as2_promoter_roi_2\"}}'",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+        "cargo run --bin gentle_cli -- shell 'primers show-report tp73_as2_promoter_batch_r01'"
+      ],
+      "step_expectations": [
+        "The local TP73 GenBank record is available as `tp73_locus`, and the PCR Designer can use the same state.",
+        "The CLI materializes the first painted ROI as `tp73_as2_promoter_roi_1`, mirroring the green target interval.",
+        "The canonical workflow records the upstream/downstream primer-window geometry used for the first primer-pair report.",
+        "The canonical workflow preserves deterministic queue semantics even when the GUI path uses post-drag queue actions.",
+        "The second ROI copy `tp73_as2_promoter_roi_2` represents the annotation-driven queue row.",
+        "Reports `tp73_as2_promoter_batch_r01` and `tp73_as2_promoter_batch_r02` are produced with the shared constraint set.",
+        "Extracted-region copies and primer reports are present after the workflow replay.",
+        "`primers show-report` prints the selected report so it can be reviewed or exported without hand-editing JSON."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
       "learning_objectives": [
         "Capture PCR queue regions from paint-first map interaction and selected-feature fallback actions.",
         "Use semantic painted intervals to preview pair-PCR geometry before execution.",
@@ -789,14 +1036,14 @@
       ],
       "parameter_notes": [
         {
-          "parameter": "TP73-AS2 promoter-proximal ROI window (for example `61720..62120`)",
+          "parameter": "TP73-AS2 promoter-proximal ROI window, for example 61720..62120",
           "where_used": "painted ROI role and Design primer pairs ROI fields around TP73-AS2",
           "why_it_matters": "Keeps PCR targets tied to a biologically meaningful promoter-proximal context that can later feed luciferase planning.",
           "how_to_derive": "Anchor on TP73-AS2 annotation in `test_files/tp73.ncbi.gb` (gene/ncRNA at lines ~1257-1270), then choose a local promoter-proximal window around the antisense 5' boundary.",
           "omit_when": ""
         },
         {
-          "parameter": "Paint roles (`ROI` green, `Upstream` red, `Downstream` blue)",
+          "parameter": "Paint roles: ROI green, Upstream red, Downstream blue",
           "where_used": "PCR Designer map interaction + live pair-PCR cartoon geometry",
           "why_it_matters": "Separates biological target interval from allowed primer-placement windows and makes constraint intent visible before design execution.",
           "how_to_derive": "Paint ROI over the target biology first, then paint upstream/downstream windows that bound forward/reverse primer search space.",
@@ -810,14 +1057,14 @@
           "omit_when": ""
         },
         {
-          "parameter": "PCR queue copy toggle (`Also create extracted region copies`)",
+          "parameter": "PCR queue copy toggle: Also create extracted region copies",
           "where_used": "batch execution in Design primer pairs form",
           "why_it_matters": "Enables per-region `ExtractRegion` artifacts before/alongside primer report generation.",
           "how_to_derive": "Enable when downstream steps need sequence artifacts; leave off for report-only planning (default off).",
           "omit_when": ""
         },
         {
-          "parameter": "Queue source mode (`painted ROI` vs `selected feature` fallback)",
+          "parameter": "Queue source mode: painted ROI vs selected feature fallback",
           "where_used": "queue rows before batch execution",
           "why_it_matters": "Preserves coordinate provenance for each batch row and keeps mixed ad hoc + annotation flows inspectable.",
           "how_to_derive": "Use paint-first for custom windows; use selected-feature fallback for annotation-defined intervals.",
@@ -846,6 +1093,11 @@
       "id": "tp73_cdna_genomic_dotplot_online",
       "order": 14,
       "title": "Compare TP73 cDNA against TP73 genomic context via dotplot (online)",
+      "group": "02",
+      "group_label": "Sequence Basics & Lineage",
+      "group_order": 2,
+      "group_position": 4,
+      "decimal_id": "02.04",
       "example_id": "tp73_cdna_genomic_dotplot_online",
       "tier": "online",
       "guide_path": null,
@@ -861,6 +1113,20 @@
         "Prepare `Human GRCh38 Ensembl 116`, retrieve gene `TP73` as `tp73_genomic`.",
         "Open `tp73_cdna`, switch to `Dotplot map`, set pair mode against `tp73_genomic`, and compute with `word<=7`, `step=1`, `mismatches=0`."
       ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- shell 'genbank fetch NM_001126241.3 --as-id tp73_cdna'",
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP73 --occurrence 1 --output-id tp73_genomic --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- shell 'dotplot compute tp73_cdna --reference-seq tp73_genomic --mode pair_forward --word-size 7 --step 1 --max-mismatches 0 --id tp73_cdna_vs_genomic_dotplot'"
+      ],
+      "step_expectations": [
+        "The GenBank route imports the TP73 cDNA accession under the stable id `tp73_cdna`.",
+        "The reference is prepared if needed and TP73 is extracted into the stable genomic sequence id `tp73_genomic`.",
+        "The dotplot compute route creates `tp73_cdna_vs_genomic_dotplot` with the same high-sensitivity seed settings used by the GUI."
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter fetches TP73 cDNA `NM_001126241.3` from NCBI/GenBank and prepares GRCh38 Ensembl 116 from Ensembl FTP before computing the local dotplot.",
       "learning_objectives": [
         "Use one deterministic route from accession retrieval to pairwise dotplot artifact generation.",
         "Understand why high-sensitivity seed sampling (`step=1`, low word size) improves cDNA-vs-genomic block visibility.",
@@ -903,9 +1169,14 @@
       "id": "gibson_specialist_testing_baseline",
       "order": 15,
       "title": "Gibson Specialist Starter Project (offline)",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 4,
+      "decimal_id": "03.04",
       "example_id": "gibson_specialist_testing_baseline",
       "tier": "core",
-      "guide_path": "docs/tutorial/gibson_specialist_testing_gui.md",
+      "guide_path": "docs/tutorial/03-05_gibson_specialist_testing_gui.md",
       "summary": "Build a ready-to-open tutorial project with one circular destination and one linear insert so the Gibson specialist can be tested without setup drift.",
       "narrative": "This chapter exists to remove setup friction from Gibson specialist testing. The executable workflow loads a known circular pGEX destination and one small synthetic insert under stable IDs, so `File -> Open Tutorial Project...` can hand you a reproducible starting state before you continue in the dedicated GUI specialist.",
       "use_cases": [
@@ -914,9 +1185,22 @@
         "You want one deterministic starting state for checking overlaps, primer suggestions, cartoon rendering, and export behavior."
       ],
       "gui_steps": [
-        "Open `File -> Open Tutorial Project...` and choose `Gibson Specialist Starter Project (offline)`.",
-        "Confirm the opened project contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).",
-        "The Help window should open automatically on `Gibson Specialist Testing Tutorial`; continue there from `Step 3` onward to exercise the Gibson specialist itself."
+        "Open the Gibson specialist starter project from `File -> Open Tutorial Project...`.",
+        "Confirm the starter contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).",
+        "Continue in the automatically opened `Gibson Specialist Testing Tutorial` from `Step 3` onward."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json",
+        "cargo run --bin gentle_examples_docs -- tutorial-catalog-check"
+      ],
+      "step_expectations": [
+        "The workflow loads the same starter inputs that the GUI tutorial-project menu opens, without requiring manual sequence import.",
+        "The workflow result contains `gibson_destination_pgex` from `test_files/pGEX-3X.gb` and `gibson_insert_demo` from the tutorial insert FASTA.",
+        "The tutorial catalog remains linked so the generated starter chapter points readers to the hand-written Gibson specialist walkthrough."
+      ],
+      "prerequisites": [
+        "gibson_two_fragment_overlap_preview"
       ],
       "learning_objectives": [
         "Use executable tutorial projects as deterministic GUI test baselines.",
@@ -965,24 +1249,44 @@
       "id": "gibson_arrangements_baseline",
       "order": 16,
       "title": "Gibson Arrangements Starter Project (offline)",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 6,
+      "decimal_id": "03.06",
       "example_id": "gibson_arrangements_baseline",
       "tier": "core",
-      "guide_path": "docs/tutorial/gibson_arrangements_gui.md",
-      "summary": "Open directly into an arrangement-ready Gibson result with vector, insert, assembled product, and the stored three-lane lane set already present.",
-      "narrative": "This chapter now uses its own deterministic workflow example instead of reusing the Gibson specialist starter. `File -> Open Tutorial Project...` builds the pGEX + insert starter, applies the canonical single-insert Gibson plan, and then opens the arrangement guide so the user can inspect singleton outputs, stored arrangements, and gel export without first repeating the cloning step.",
+      "guide_path": "docs/tutorial/03-07_gibson_arrangements_gui.md",
+      "summary": "Open directly into an arrangement-ready Gibson result with vector, insert, assembled product, a stored three-lane lane set, and an assistant-facing bench handoff already present.",
+      "narrative": "This chapter now uses its own deterministic workflow example instead of reusing the Gibson specialist starter. `File -> Open Tutorial Project...` builds the pGEX + insert starter, applies the canonical single-insert Gibson plan, exports a lab-assistant handoff Markdown file, and then opens the arrangement guide so the user can inspect singleton outputs, stored arrangements, gel export, and bench-facing instructions without first repeating the cloning step.",
       "use_cases": [
         "You want to inspect the arrangement that Gibson apply creates without first navigating through the earlier Gibson-specialist apply walkthrough.",
         "You want a reproducible starter state for checking singleton output containers, the assembled product, and arrangement-level gel export.",
+        "You want a deterministic example of GENtle handing a designed cloning experiment to a non-IT lab assistant.",
         "You want one offline tutorial-project entry that opens directly on the arrangement guide in Help/Tutorial."
       ],
       "gui_steps": [
-        "Open `File -> Open Tutorial Project...` and choose `Gibson Arrangements Starter Project (offline)`.",
-        "Confirm the opened project contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`.",
-        "The Help window should open automatically on `Gibson Arrangements Tutorial`; continue there from `Step 1` onward."
+        "Open the Gibson arrangements starter project from `File -> Open Tutorial Project...`.",
+        "Confirm the starter contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`.",
+        "Continue in the automatically opened `Gibson Arrangements Tutorial` from `Step 1` onward."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json",
+        "cargo run --bin gentle_examples_docs -- tutorial-catalog-check"
+      ],
+      "step_expectations": [
+        "The workflow builds the same arrangement-ready starter state that the GUI tutorial-project menu opens.",
+        "The workflow result includes the vector, insert, assembled Gibson product, stored arrangement context, and the retained handoff artifact.",
+        "The tutorial catalog remains linked so the generated arrangement starter points readers to the hand-written Gibson Arrangements walkthrough."
+      ],
+      "prerequisites": [
+        "gibson_specialist_testing_baseline"
       ],
       "learning_objectives": [
         "Use one executable starter project to reach an arrangement-ready walkthrough directly.",
         "Recognize the separation between the Gibson specialist apply tutorial and the downstream arrangement/gel-inspection tutorial.",
+        "Inspect the generated lab-assistant handoff as the bench-facing counterpart to the design state.",
         "Replay the same arrangement-focused setup from GUI and CLI without requiring a second manual Gibson apply."
       ],
       "concepts": [
@@ -1018,14 +1322,24 @@
           "why_it_matters": "The arrangement starter now has its own canonical example so the tutorial can begin with the cloned result and stored lane arrangement already available.",
           "how_to_derive": "Select the chapter from `Open Tutorial Project...` or run the canonical workflow JSON directly.",
           "omit_when": ""
+        },
+        {
+          "parameter": "lab assistant handoff = artifacts/gibson_lab_assistant_handoff.md",
+          "where_used": "ClawBio/Telegram demo artifact and CLI replay",
+          "why_it_matters": "Provides non-IT bench-facing instructions tied to the exact deterministic design outputs.",
+          "how_to_derive": "The workflow calls `ExportLabAssistantInstructions` after applying the Gibson plan.",
+          "omit_when": ""
         }
       ],
       "follow_up_commands": [
         "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json"
       ],
-      "retain_outputs": [],
+      "retain_outputs": [
+        "artifacts/gibson_lab_assistant_handoff.md"
+      ],
       "checkpoints": [
         "The tutorial project opens with the expected destination, insert, and assembled-product IDs already loaded.",
+        "The workflow writes `artifacts/gibson_lab_assistant_handoff.md` with material IDs, design-derived bench steps, checkpoints, and safety scope.",
         "The Help window lands on the arrangement tutorial rather than the specialist testing tutorial.",
         "The arrangement guide can start from this baseline without an additional manual Gibson apply."
       ]
@@ -1034,6 +1348,11 @@
       "id": "tp53_uniprot_projection_online",
       "order": 17,
       "title": "TP53 UniProt domain mapping and feature-coding DNA query (online)",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 4,
+      "decimal_id": "06.04",
       "example_id": "tp53_uniprot_projection_online",
       "tier": "online",
       "guide_path": null,
@@ -1051,6 +1370,24 @@
         "In `Feature coding DNA query`, enter `DNA-binding`, leave `feature transcript` empty unless you want to pin one isoform, choose `mode=both`, and press `Query Coding DNA`.",
         "Read the result panel to see the amino-acid span, genomic coding DNA, optional translation-speed optimized DNA, and the reported exon or exon pair for each matching transcript feature span."
       ],
+      "cli_steps": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- shell 'uniprot fetch P04637 --entry-id P04637'\ncargo run --bin gentle_cli -- shell 'uniprot map P04637 grch38_tp53 --projection-id tp53_uniprot_p04637'",
+        "cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp53 uniprot-projection tp53_uniprot_p04637\ncargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp53 uniprot-projection tp53_uniprot_p04637 exports/tp53_uniprot_projection.svg",
+        "cargo run --bin gentle_cli -- shell 'uniprot feature-coding-dna tp53_uniprot_p04637 DNA-binding --mode both --speed-profile human'",
+        "cargo run --bin gentle_cli -- shell 'uniprot projection-show tp53_uniprot_p04637'"
+      ],
+      "step_expectations": [
+        "The reference is prepared if needed and TP53 is extracted into the anchored sequence id `grch38_tp53`.",
+        "The reviewed UniProt entry is stored as `P04637`, then projected onto TP53 as `tp53_uniprot_p04637`.",
+        "The shared expert inspection and SVG export expose the same projected domain geometry used by the GUI Protein Expert.",
+        "The coding-DNA query reports genomic-as-encoded and optimized alternatives for mapped `DNA-binding` feature spans.",
+        "Projection inspection keeps the transcript, feature, and evidence metadata available for audit after the GUI panel is closed."
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches reviewed UniProt accession `P04637`, then performs projection and coding-DNA queries locally.",
       "learning_objectives": [
         "Use one persisted UniProt projection as the canonical bridge from reviewed protein annotation to locus-level transcript/CDS geometry and back to coding DNA.",
         "Understand that both the protein expert and the feature-coding DNA query are thin views over stored engine state, not separate GUI-only mapping models.",
@@ -1122,9 +1459,14 @@
       "id": "simple_pcr_selection_gui",
       "order": 18,
       "title": "Simple PCR From a Selected Core Region",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 1,
+      "decimal_id": "04.01",
       "example_id": "simple_pcr_selection_gui",
       "tier": "core",
-      "guide_path": "docs/tutorial/simple_pcr_selection_gui.md",
+      "guide_path": "docs/tutorial/04-01_simple_pcr_selection_gui.md",
       "summary": "Open a ready local TP73 sequence and walk through the smallest useful PCR story: select the core ROI, limit primer distance from the core, and cap the amplicon length.",
       "narrative": "This chapter is intentionally minimal. The tutorial project opens one stable local TP73 locus so you can stay in the GUI, paint or select one region of interest, launch `Simple PCR from selection`, and reason about primer placement in beginner terms before moving on to the richer batch-PCR chapter.",
       "use_cases": [
@@ -1138,6 +1480,23 @@
         "Right-click the selection and choose `Simple PCR from selection`.",
         "In `PCR Designer`, adjust `max primer distance from core` and `max amplicon`, then click `Apply simple flank windows` if you changed the distance.",
         "Run `Design Primer Pairs` and inspect the in-panel primer report preview for left/right distance from the core ROI and whether the pair cleanly flanks the core."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/simple_pcr_selection_gui.json",
+        "# GUI-only selection gesture. For a fully scripted primer-design payload, use Chapter 13's batch PCR route.",
+        "cargo run --bin gentle_cli -- shell 'ui open pcr-design'",
+        "# The scripted equivalent is a DesignPrimerPairs request with explicit core_start/core_end and flank limits.",
+        "cargo run --bin gentle_cli -- shell 'primers list-reports'"
+      ],
+      "step_expectations": [
+        "The starter project loads local TP73 context as `tp73_locus` and pins the primer backend to the deterministic internal implementation.",
+        "The selected core ROI is the biological interval that must be included; scripted users should encode the same interval explicitly in a primer-design request.",
+        "The PCR Designer opens from the same shared UI-intent route used by agent and shell callers.",
+        "The primer-design request should carry flank-window and maximum-amplicon constraints derived from the selected core ROI.",
+        "After primer design, report rows expose amplicon length plus left/right distance from the core ROI."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
       ],
       "learning_objectives": [
         "Start a simple PCR directly from one sequence selection.",
@@ -1188,9 +1547,14 @@
       "id": "tp73_uniprot_projection_audit_cli",
       "order": 19,
       "title": "Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 5,
+      "decimal_id": "06.05",
       "example_id": "tp73_uniprot_projection_audit_online",
       "tier": "online",
-      "guide_path": "docs/tutorial/tp73_uniprot_projection_audit_cli.md",
+      "guide_path": "docs/tutorial/06-05_tp73_uniprot_projection_audit_cli.md",
       "summary": "Build a TP73 locus project, fetch UniProt and Ensembl protein evidence, persist the integrated audit plus parity report, and keep the matching expert SVG as an inspectable artifact.",
       "narrative": "This executable chapter turns the TP73 UniProt/Ensembl audit into a reproducible online workflow. It prepares GRCh38, extracts TP73, fetches the reviewed UniProt entry and matching Ensembl protein evidence, projects the protein onto the locus, persists the integrated audit and direct-vs-composed parity report, and keeps one shared expert SVG export alongside the stored report artifacts. The companion hand-written tutorial then explains how to inspect the same outcome through the public primitive commands.",
       "use_cases": [
@@ -1205,6 +1569,24 @@
         "Open the saved projection in the Protein Expert or inspect the exported SVG artifact to verify the projected feature geometry.",
         "Use the companion CLI tutorial to rebuild the same result from `resolve-ensembl-links`, `transcript-accounting`, `compare-ensembl-exons`, and `compare-ensembl-peptide`."
       ],
+      "cli_steps": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP73 --occurrence 1 --output-id grch38_tp73 --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- shell 'uniprot fetch Q9H3D4 --entry-id Q9H3D4'\ncargo run --bin gentle_cli -- shell 'ensembl-protein fetch ENSP00000264724 --entry-id TP73_ENS'\ncargo run --bin gentle_cli -- shell 'uniprot map Q9H3D4 grch38_tp73 --projection-id tp73_uniprot_q9h3d4'",
+        "cargo run --bin gentle_cli -- shell 'uniprot audit-projection tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS --report-id tp73_projection_audit'\ncargo run --bin gentle_cli -- shell 'uniprot audit-parity tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS --report-id tp73_projection_audit_parity'",
+        "cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp73 uniprot-projection tp73_uniprot_q9h3d4\ncargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp73 uniprot-projection tp73_uniprot_q9h3d4 exports/tp73_uniprot_projection.svg",
+        "cargo run --bin gentle_cli -- shell 'uniprot resolve-ensembl-links tp73_uniprot_q9h3d4'\ncargo run --bin gentle_cli -- shell 'uniprot transcript-accounting tp73_uniprot_q9h3d4'\ncargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-exons tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'\ncargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-peptide tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'"
+      ],
+      "step_expectations": [
+        "The reference is prepared if needed and TP73 is extracted into the anchored sequence id `grch38_tp73`.",
+        "The UniProt, Ensembl protein, and projection records persist under the ids used by the audit workflow.",
+        "The integrated audit and parity reports are stored as `tp73_projection_audit` and `tp73_projection_audit_parity`.",
+        "Expert inspection and SVG export show the same projected TP73 feature geometry used by the GUI.",
+        "The primitive CLI commands rebuild the audit evidence path behind the integrated reports."
+      ],
+      "prerequisites": [
+        "tp53_uniprot_projection_online"
+      ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches UniProt `Q9H3D4`, queries Ensembl protein evidence for `ENSP00000264724`, and then writes the audit/parity reports plus SVG locally.",
       "learning_objectives": [
         "Use one executable chapter as the reproducible setup layer behind the TP73 UniProt/Ensembl audit walkthrough.",
         "Understand that the high-level audit and parity report are built on the same reusable primitive record families exposed to shell/CLI and future AI callers.",
@@ -1264,6 +1646,361 @@
         "The integrated audit stores `tp73_projection_audit` with per-transcript accounting and a local unsent maintainer-email draft.",
         "The parity report stores `tp73_projection_audit_parity` and confirms whether the integrated Rust audit matches the public primitive composition.",
         "The shared expert SVG export succeeds so the projected TP73 feature geometry remains inspectable outside the live GUI."
+      ]
+    },
+    {
+      "id": "promoter_design_artifact_slice_offline",
+      "order": 24,
+      "title": "Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 3,
+      "decimal_id": "08.03",
+      "example_id": "promoter_design_artifact_slice_offline",
+      "tier": "core",
+      "guide_path": null,
+      "summary": "Learn how GENtle turns a TP73-like annotated locus into promoter windows, promoter evidence tables, expression-linked promoter groups, TFBS score tracks, similarity rankings, and a manifest of reusable artifacts.",
+      "narrative": "Promoter design begins by asking where transcription is likely to start for each transcript and which DNA span should be treated as the upstream regulatory context. GENtle first derives promoter windows around transcript starts, then collapses transcript-level interpretations that point to the same DNA span. It then collects evidence into portable artifacts: an alternative-promoter summary, a promoter evidence matrix, an isoform promoter comparison, expression evidence linked by transcript id, TFBS score-track graphics, TFBS similarity rankings, and a manifest that lets GUI users, CLI users, or ClawBio-style consumers choose their own presentation.\n\nThis tutorial uses a synthetic 249 bp TP73-labeled locus with two transcripts sharing one 5' boundary, one alternative-start transcript, and local annotation evidence. It is not making a biological claim about TP73. The small artificial locus keeps the algorithm visible: every promoter window, evidence row, and plotted TFBS score can be traced back to a short local sequence without requiring an online genome fetch.",
+      "use_cases": [
+        "You want a fast offline Promoter design example before prepared Ensembl data are available.",
+        "You want to verify that transcript-derived promoter windows collapse by DNA span instead of stacking duplicate promoter symbols.",
+        "You want a compact promoter evidence matrix with transcript, TFBS, variant, repeat, and CUT&RUN-style interval evidence.",
+        "You want to compare common and differential promoter-region evidence between isoform starts of the same gene.",
+        "You want to attach downstream transcript/gene expression evidence to promoter candidates without forcing GENtle to write the final story.",
+        "You want to understand why single-promoter TFBS signals need matched foreground/control comparison before being treated as enrichment evidence."
+      ],
+      "gui_steps": [
+        "Open `docs/examples/assets/tp73_promoter_artifact_demo.gb` via `File -> Open Sequence...`.",
+        "Open `Promoter design` from the `TP73` gene or one of the `TP73-demo-*` mRNA features.",
+        "Set `Gene label` to `TP73`, `promoter upstream bp` to `40`, and `promoter downstream bp` to `15`.",
+        "Click `Annotate promoter windows`, then `Compare alternative promoters`; confirm that three transcript-level interpretations collapse into two DNA-level promoter windows.",
+        "Click `Build evidence matrix`; confirm the shared promoter row reports `2 tx` and that evidence kinds include promoter geometry, transcript support, promoter annotation, TFBS, variant, repeat, and CUT&RUN-style overlap evidence.",
+        "Run the isoform promoter comparison; confirm that the shared TSS transcripts and alternative-start transcript are compared as separate promoter groups with differential evidence signatures.",
+        "Load or paste expression rows for the TP73 demo transcripts; confirm that expression evidence attaches to the matching promoter groups rather than becoming a GUI-only note.",
+        "Set TF motifs to `SP1,TP53,TP63,TP73`, run `Show TF score tracks`, then export `TF score tracks SVG...` for the visual artifact.",
+        "Set TFBS similarity anchor to `SP1`, compare against `TP53,TP63,TP73,CTCF`, run `Show TFBS similarity ranking`, then export the JSON ranking.",
+        "Inspect the component manifest to see which JSON/SVG artifacts were produced; downstream tools can choose their own presentation order."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_design_artifact_slice_offline.json",
+        "cargo run --bin gentle_cli -- shell 'variant annotate-promoters tp73_promoter_artifact_demo --gene-label TP73 --upstream-bp 40 --downstream-bp 15 --collapse transcript'",
+        "cargo run --bin gentle_cli -- shell 'variant annotate-promoters tp73_promoter_artifact_demo --gene-label TP73 --upstream-bp 40 --downstream-bp 15 --collapse transcript'",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_design_artifact_slice_offline.json",
+        "cargo run --bin gentle_cli -- shell 'features promoter-evidence-matrix tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --path artifacts/tp73_promoter_artifact_demo.evidence_matrix.json'",
+        "cargo run --bin gentle_cli -- shell 'features promoter-isoform-comparison tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --path artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json'",
+        "cargo run --bin gentle_cli -- shell 'features promoter-expression-evidence tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --source-label synthetic_demo --expression-json {\"transcript_id\":\"ENSTTP73DEMO1\",\"value\":18.0,\"unit\":\"a.u.\"} --path artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json'",
+        "cargo run --bin gentle_cli -- shell 'features tfbs-score-tracks-svg tp73_promoter_artifact_demo artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg --motif SP1 --motif TP53 --motif TP63 --motif TP73 --range 60..158 --score-kind llr_background_tail_log10'",
+        "cargo run --bin gentle_cli -- shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --anchor-motif SP1 --candidate-motif TP53 --candidate-motif TP63 --candidate-motif TP73 --candidate-motif CTCF --range 60..158 --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --path artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json'",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_design_artifact_slice_offline.json"
+      ],
+      "step_expectations": [
+        "The canonical workflow loads the synthetic TP73-like locus under `tp73_promoter_artifact_demo` and writes the promoter artifact bundle.",
+        "Promoter-window controls resolve against the TP73 gene/mRNA features in the same shared engine state.",
+        "The window parameters are the tiny-locus tutorial values used by all downstream promoter reports.",
+        "`alternative_promoters.json` reports three transcript windows collapsed into two DNA-level promoter windows.",
+        "`evidence_matrix.json` contains two promoter candidates and shows the shared promoter with `2 tx` support plus multiple evidence kinds.",
+        "`isoform_promoter_comparison.json` separates the shared-TSS and alternative-start promoter groups.",
+        "`promoter_expression_evidence.json` links the synthetic expression rows to promoter groups through transcript IDs.",
+        "`tfbs_score_tracks.svg` is written and embedded below as the visual output of the chapter.",
+        "`tfbs_similarity.json` ranks TP53, TP63, TP73, and CTCF against SP1 using `smoothed_spearman`.",
+        "`promoter_artifact_manifest.json` lists the generated JSON/SVG components so downstream tools can present them in their own order."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta",
+        "guides_export_csv_and_protocol",
+        "contribute_to_gentle_development"
+      ],
+      "learning_objectives": [
+        "Run the GUI-facing Promoter design controls through the same shared engine operations used by CLI and automation.",
+        "Inspect the boundary between GENtle-owned component artifacts and downstream ClawBio/OpenClaw narrative assembly.",
+        "Recognize the difference between transcript-level promoter interpretation and collapsed DNA-level promoter candidates.",
+        "Compare common and unique promoter-region evidence between isoforms of the same gene.",
+        "Attach expression-level evidence to promoter groups through a structured report instead of free-text reasoning.",
+        "Explain why TFBS score tracks and similarity rankings are screening artifacts that need control-set follow-up before motif-enrichment claims.",
+        "Use one synthetic input to exercise JSON and SVG exports deterministically."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "promoter_motif_controls",
+        "artifact_exports",
+        "tutorial_drift_checks"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "promoter_upstream_bp=40 / promoter_downstream_bp=15",
+          "where_used": "AnnotatePromoterWindows, SummarizeAlternativePromoterComparison, SummarizePromoterEvidenceMatrix, SummarizeIsoformPromoterComparison, SummarizePromoterExpressionEvidence",
+          "why_it_matters": "The synthetic locus is deliberately tiny; these values create readable promoter windows around TSS positions 101 and 141.",
+          "how_to_derive": "Use the fixed tutorial values so the shared TSS pair collapses to local span `60..116` and the alternative start produces `100..156`.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "expression rows for ENSTTP73DEMO1, ENSTTP73DEMO2, and ENSTTP73DEMO3",
+          "where_used": "SummarizePromoterExpressionEvidence",
+          "why_it_matters": "Expression evidence is deliberately externalized as rows/artifact references so GENtle can attach it to promoter groups without inventing a biological conclusion.",
+          "how_to_derive": "Use transcript IDs from the synthetic mRNA features; real workflows would supply RNA-seq, qPCR, or ClawBio-provided abundance rows.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "target span 60..158",
+          "where_used": "SummarizeTfbsScoreTracks, RenderTfbsScoreTracksSvg, SummarizeTfbsTrackSimilarity",
+          "why_it_matters": "This span covers both promoter windows plus the synthetic SP1 and TP73-like TFBS sites.",
+          "how_to_derive": "Use the coordinate range printed by the workflow or the Promoter design score-track range seeded from the evidence rows.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "motifs SP1,TP53,TP63,TP73 and similarity candidates TP53,TP63,TP73,CTCF",
+          "where_used": "TF score tracks and TFBS similarity ranking",
+          "why_it_matters": "The motif set keeps the demo close to TP73/p53-family promoter reasoning while still producing a compact ranking table.",
+          "how_to_derive": "Use the exact tokens in this chapter; they resolve through GENtle's shared local JASPAR query layer.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_design_artifact_slice_offline.json",
+        "cargo run --bin gentle_cli -- shell 'features promoter-evidence-matrix tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --path artifacts/tp73_promoter_artifact_demo.evidence_matrix.json'",
+        "cargo run --bin gentle_cli -- shell 'features promoter-isoform-comparison tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --path artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json'",
+        "cargo run --bin gentle_cli -- shell 'features promoter-expression-evidence tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --source-label synthetic_demo --expression-json {\"transcript_id\":\"ENSTTP73DEMO1\",\"value\":18.0,\"unit\":\"a.u.\"} --path artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json'",
+        "cargo run --bin gentle_cli -- shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --anchor SP1 --candidate TP53 --candidate TP63 --candidate TP73 --candidate CTCF --range 60..158 --score-kind llr_background_tail_log10 --path artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json'"
+      ],
+      "retain_outputs": [
+        "artifacts/tp73_promoter_artifact_demo.alternative_promoters.json",
+        "artifacts/tp73_promoter_artifact_demo.evidence_matrix.json",
+        "artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json",
+        "artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json",
+        "artifacts/tp73_promoter_artifact_demo.promoter_artifact_manifest.json",
+        "artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg",
+        "artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json"
+      ],
+      "checkpoints": [
+        "The workflow executes offline without warnings beyond the expected alternative-promoter collapse note.",
+        "`alternative_promoters.json` reports `transcript_window_count=3` and `collapsed_window_count=2`.",
+        "`evidence_matrix.json` reports two promoter candidates and includes `cutrun_peak_overlap`, `repeat_context`, `tfbs_annotation`, and `variant_overlap` among observed evidence kinds.",
+        "`isoform_promoter_comparison.json` reports two promoter groups and surfaces differential evidence signatures for the shared versus alternative-start promoter.",
+        "`promoter_expression_evidence.json` assigns three synthetic expression rows to the two promoter groups.",
+        "`promoter_artifact_manifest.json` reports all required promoter component artifacts as present.",
+        "`tfbs_score_tracks.svg` is written and opens as a compact promoter score-track figure.",
+        "`tfbs_similarity.json` ranks four candidates against SP1 using `smoothed_spearman`."
+      ],
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg",
+          "caption": "TFBS score tracks across the synthetic TP73 promoter slice.",
+          "illustrates_step": 8,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ]
+    },
+    {
+      "id": "promoter_gene_set_ortholog_cohort_offline",
+      "order": 25,
+      "title": "Promoter Cohorts With Gene-Set and Ortholog Relationship Flags",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 7,
+      "decimal_id": "08.07",
+      "example_id": "promoter_gene_set_ortholog_cohort_offline",
+      "tier": "core",
+      "guide_path": null,
+      "summary": "Run an offline TP73-centered promoter-cohort demo that records a declared co-regulation expectation, surfaces a deliberately synthetic unexpected-divergence motif flag, and repeats the idea across a local ortholog resource.",
+      "narrative": "Promoter cohorts are useful only when GENtle keeps two ideas separate: how the member list was obtained, and what relationship the user expects among the promoters. A gene-set source can be explicit, catalog-backed, ontology-derived, neighboring, or random; the relationship expectation can independently be manual, co-regulated, or anti-co-regulated. This chapter uses a small artificial human-labeled genome where TP73 and E2F1 have similar SP1-rich promoter windows while PATZ1 is intentionally motif-poor. The declared expectation is co-regulation, so GENtle records the low TFBS-score-track similarity involving PATZ1 as an unexpected-divergence evidence flag, not as proof that the genes are or are not co-regulated.\n\nThe second half resolves TP73 ortholog promoter windows from a local `gentle.ortholog_resource.v1` file for synthetic human, mouse, and rat genomes. The mouse-labeled Trp73 promoter is deliberately different from the human- and rat-labeled TP73/Tp73 promoters, so the ortholog comparison emits relationship flags under the same conservative evidence-triage framing. All data are synthetic and local; the purpose is to teach the contract, not biology.",
+      "use_cases": [
+        "You want an offline example of gene-set promoter cohort comparison before prepared genome resources are available.",
+        "You want to see how `--relationship co-regulated` changes report interpretation without becoming a biological verdict.",
+        "You want to inspect an unexpected-divergence flag caused by one cohort member with a different promoter motif profile.",
+        "You want a small local ortholog resource that resolves promoter windows without online genome or orthology downloads.",
+        "You want generated JSON artifacts that can be compared by GUI, CLI, and automation tests."
+      ],
+      "gui_steps": [
+        "Open the tutorial chapter and inspect the retained JSON artifacts under `docs/tutorial/generated/artifacts/promoter_gene_set_ortholog_cohort_offline/`.",
+        "Use the Promoter design and gene-set inspection concepts from the previous promoter chapters; this slice is headless because it demonstrates cohort contracts rather than a new GUI-only workflow.",
+        "Compare the `relationship` field in `gene_set_promoter_cohort.json` with the `relationship_flags` in `gene_set_promoter_cohort_comparison.json`.",
+        "Open `ortholog_promoter_cohort.json` and confirm that the local ortholog resource resolved human, mouse, and rat promoter rows.",
+        "Open `ortholog_promoter_comparison.json` and inspect the `relationship_flags` that mark the synthetic mouse-labeled Trp73 promoter as divergent from the co-regulated expectation."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_gene_set_ortholog_cohort_offline.json",
+        "cargo run --bin gentle_cli -- shell 'gene-sets promoter-cohort HumanPromoterToy --members TP73,E2F1,PATZ1 --relationship co-regulated --upstream-bp 40 --downstream-bp 10 --genome-catalog docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json --cache-dir /tmp/gentle-promoter-cohort-demo-cache --output /tmp/gene_set_promoter_cohort.json'",
+        "cargo run --bin gentle_cli -- shell 'genomes promoter-cohort-comparison HumanPromoterToy --cohort-label synthetic_tp73_e2f1_patz1_co_regulated_review --cohort-kind co-regulated --gene TP73 --gene E2F1 --gene PATZ1 --motif SP1 --upstream-bp 40 --downstream-bp 10 --catalog docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json --cache-dir /tmp/gentle-promoter-cohort-demo-cache --path /tmp/gene_set_promoter_cohort_comparison.json'",
+        "cargo run --bin gentle_cli -- shell 'orthologs resolve-promoter-cohort --anchor-species \"Homo sapiens\" --anchor-genome HumanPromoterToy --anchor-gene TP73 --target-species \"Mus musculus\" --target-species \"Rattus norvegicus\" --target-genome \"Mus musculus=MousePromoterToy\" --target-genome \"Rattus norvegicus=RatPromoterToy\" --transcript \"Homo sapiens=TX_TP73_HUMAN\" --transcript \"Mus musculus=TX_TRP73_MOUSE\" --transcript \"Rattus norvegicus=TX_TP73_RAT\" --orthologs docs/examples/assets/promoter_cohort_ortholog_demo/ortholog_resource.json --relationship co-regulated --upstream-bp 40 --downstream-bp 10 --catalog docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json --cache-dir /tmp/gentle-promoter-cohort-demo-cache --path /tmp/ortholog_promoter_cohort.json'",
+        "cargo run --bin gentle_cli -- shell 'orthologs promoter-comparison --cohort /tmp/ortholog_promoter_cohort.json --motif SP1 --relationship co-regulated --path /tmp/ortholog_promoter_comparison.json'"
+      ],
+      "step_expectations": [
+        "The canonical workflow prepares the three synthetic local genomes into a temporary tutorial cache and writes four retained JSON artifacts.",
+        "`gene_set_promoter_cohort.json` records an explicit-member source and `relationship: co_regulated` for TP73, E2F1, and PATZ1 promoter windows.",
+        "`gene_set_promoter_cohort_comparison.json` contains at least one `unexpected_divergence` flag involving the deliberately motif-poor PATZ1 promoter.",
+        "`ortholog_promoter_cohort.json` uses the local `gentle.ortholog_resource.v1` fixture to resolve Homo sapiens TP73, Mus musculus Trp73, and Rattus norvegicus Tp73 promoter windows.",
+        "`ortholog_promoter_comparison.json` contains co-regulated relationship flags where the synthetic mouse promoter diverges from the human/rat motif profile."
+      ],
+      "prerequisites": [
+        "promoter_design_artifact_slice_offline"
+      ],
+      "learning_objectives": [
+        "Distinguish a gene-set source kind from a promoter relationship expectation.",
+        "Explain why `relationship_flags` are evidence-triage annotations and not causal claims.",
+        "Run a co-regulated promoter cohort comparison with a synthetic unexpected-divergence member.",
+        "Resolve an ortholog promoter cohort from a local `gentle.ortholog_resource.v1` fixture.",
+        "Inspect cross-species promoter relationship flags without requiring online ortholog or genome downloads."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "genome_catalog_targeting",
+        "promoter_motif_controls",
+        "artifact_exports",
+        "deterministic_workflows"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "relationship=co_regulated",
+          "where_used": "BuildGeneSetPromoterCohort, SummarizePromoterCohortComparison, ResolveOrthologPromoterCohort, SummarizeOrthologPromoterComparison",
+          "why_it_matters": "The relationship is a declared expectation used to label evidence consistency or divergence; GENtle does not claim the promoters are biologically co-regulated.",
+          "how_to_derive": "Use `co_regulated` only when the cohort was selected for expected similarity, then inspect any unexpected-divergence flags as prompts for review.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "upstream_bp=40 / downstream_bp=10",
+          "where_used": "All promoter-window operations in this tutorial",
+          "why_it_matters": "The local chromosomes are artificial and short; these values create compact 51 bp promoter windows around the synthetic TSS positions.",
+          "how_to_derive": "Use the fixed tutorial values so the inserted motif-rich and motif-poor segments dominate each promoter window.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "motif SP1",
+          "where_used": "Promoter cohort and ortholog promoter comparisons",
+          "why_it_matters": "The motif-rich synthetic windows contain GC-rich SP1-like sequence, while the motif-poor windows do not, producing deterministic similarity differences.",
+          "how_to_derive": "Use the exact `SP1` token so the chapter stays compact and exercises one motif-track relationship flag.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "local ortholog resource",
+          "where_used": "ResolveOrthologPromoterCohort",
+          "why_it_matters": "The tutorial demonstrates offline-first ortholog promoter resolution without online orthology services.",
+          "how_to_derive": "Use `docs/examples/assets/promoter_cohort_ortholog_demo/ortholog_resource.json`; real analyses should replace it with reviewed ortholog mappings.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_gene_set_ortholog_cohort_offline.json",
+        "cargo run --bin gentle_cli -- shell 'gene-sets promoter-cohort HumanPromoterToy --members TP73,E2F1,PATZ1 --relationship co-regulated --upstream-bp 40 --downstream-bp 10 --genome-catalog docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json --cache-dir /tmp/gentle-promoter-cohort-demo-cache --output /tmp/gene_set_promoter_cohort.json'",
+        "cargo run --bin gentle_cli -- shell 'genomes promoter-cohort-comparison HumanPromoterToy --cohort-kind co-regulated --gene TP73 --gene E2F1 --gene PATZ1 --motif SP1 --upstream-bp 40 --downstream-bp 10 --catalog docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json --cache-dir /tmp/gentle-promoter-cohort-demo-cache --path /tmp/gene_set_promoter_cohort_comparison.json'",
+        "cargo run --bin gentle_cli -- shell 'orthologs resolve-promoter-cohort --anchor-species \"Homo sapiens\" --anchor-genome HumanPromoterToy --anchor-gene TP73 --target-species \"Mus musculus\" --target-species \"Rattus norvegicus\" --target-genome \"Mus musculus=MousePromoterToy\" --target-genome \"Rattus norvegicus=RatPromoterToy\" --orthologs docs/examples/assets/promoter_cohort_ortholog_demo/ortholog_resource.json --relationship co-regulated --upstream-bp 40 --downstream-bp 10 --catalog docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json --cache-dir /tmp/gentle-promoter-cohort-demo-cache --path /tmp/ortholog_promoter_cohort.json'",
+        "cargo run --bin gentle_cli -- shell 'orthologs promoter-comparison --cohort /tmp/ortholog_promoter_cohort.json --motif SP1 --relationship co-regulated --path /tmp/ortholog_promoter_comparison.json'"
+      ],
+      "retain_outputs": [
+        "artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort.json",
+        "artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort_comparison.json",
+        "artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_cohort.json",
+        "artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_comparison.json"
+      ],
+      "checkpoints": [
+        "The workflow executes offline and does not require prepared Ensembl/UCSC resources.",
+        "`gene_set_promoter_cohort.json` returns three synthetic promoter windows and carries `relationship: co_regulated`.",
+        "`gene_set_promoter_cohort_comparison.json` reports `unexpected_divergence` rather than silently treating all members as equivalent.",
+        "`ortholog_promoter_cohort.json` reports three resolved promoter rows and zero unresolved rows.",
+        "`ortholog_promoter_comparison.json` reports `relationship_flags` under the same evidence-not-verdict framing."
+      ]
+    },
+    {
+      "id": "gene_set_ortholog_promoter_cohorts_offline",
+      "order": 26,
+      "title": "Gene-Set and Ortholog Promoter Cohorts (Offline Synthetic TP73 Demo)",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 8,
+      "decimal_id": "08.08",
+      "example_id": "gene_set_ortholog_promoter_cohorts_offline",
+      "tier": "core",
+      "guide_path": null,
+      "summary": "Run a fully offline promoter-cohort demo that resolves a reviewed gene set, records a co-regulated relationship expectation, shows an unexpected TFBS-divergence flag, then repeats the same expectation framing for a local TP73/Trp73 ortholog promoter comparison.",
+      "narrative": "Relationship flags are triage aids, not biological verdicts. In this chapter, GENtle prepares two tiny synthetic genome fixtures, resolves a reviewed human gene set (`TP73` plus a deliberately divergent synthetic partner), and records that the set is expected to be co-regulated. The follow-up promoter comparison finds that the available SP1 score-track evidence is not concordant, so it emits an `unexpected_divergence` flag.\n\nThe second half uses a local `gentle.ortholog_resource.v1` fixture mapping synthetic human `TP73` to mouse `Trp73`. It resolves strand-aware promoter windows from local prepared genome indexes and then compares promoter TFBS evidence with the same conservative co-regulated expectation. This is cross-species association evidence only; the fixture is artificial and does not prove regulation, conservation, or orthology in real organisms.",
+      "use_cases": [
+        "You want a deterministic offline smoke test for gene-set promoter cohort artifacts.",
+        "You want to see how a declared co-regulated expectation is carried separately from evidence-derived relationship flags.",
+        "You want a tiny local ortholog-resource example before using a larger reviewed ortholog table.",
+        "You need generated JSON artifacts that can be inspected by GUI, CLI, MCP, or agent consumers without network access."
+      ],
+      "gui_steps": [
+        "Open the generated artifact directory for this chapter after running tutorial generation.",
+        "Inspect `promoter_cohort_tutorial.gene_set_promoter_cohort.json` to see the resolved gene-set members and promoter windows.",
+        "Inspect `promoter_cohort_tutorial.gene_set_promoter_comparison.json` to see the co-regulated expectation and the `unexpected_divergence` relationship flag.",
+        "Inspect `promoter_cohort_tutorial.ortholog_promoter_cohort.json` to compare human TP73 and mouse Trp73 promoter window geometry.",
+        "Inspect `promoter_cohort_tutorial.ortholog_promoter_comparison.json` to see cross-species TFBS evidence kept separate from the relationship flag."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gene_set_ortholog_promoter_cohorts_offline.json",
+        "cargo run --bin gentle_cli -- shell 'gene-sets promoter-cohort TutorialHumanPromoterToy --group tutorial_p73_promoter_cohort --relationship co-regulated --upstream-bp 40 --downstream-bp 10 --gene-group-catalog docs/examples/assets/promoter_cohort_tutorial_gene_groups.json --genome-catalog docs/examples/assets/promoter_cohort_tutorial_genomes.json --cache-dir /tmp/gentle-promoter-cohort-cache --path /tmp/gene_set_promoter_cohort.json'",
+        "cargo run --bin gentle_cli -- shell 'genomes promoter-cohort-comparison TutorialHumanPromoterToy --cohort-label tutorial_p73_gene_set_co_regulated --cohort-kind co_regulated --gene TP73 --gene TP73D --motif SP1 --upstream-bp 40 --downstream-bp 10 --score-kind llr_background_tail_log10 --catalog docs/examples/assets/promoter_cohort_tutorial_genomes.json --cache-dir /tmp/gentle-promoter-cohort-cache --path /tmp/gene_set_promoter_comparison.json'",
+        "cargo run --bin gentle_cli -- shell 'orthologs resolve-promoter-cohort --anchor-species human --anchor-genome TutorialHumanPromoterToy --anchor-gene TP73 --target-species mouse --target-genome mouse=TutorialMousePromoterToy --transcript human=TX_HUMAN_TP73 --transcript mouse=TX_MOUSE_TRP73 --orthologs docs/examples/assets/promoter_cohort_tutorial_orthologs.json --relationship co-regulated --upstream-bp 40 --downstream-bp 10 --catalog docs/examples/assets/promoter_cohort_tutorial_genomes.json --cache-dir /tmp/gentle-promoter-cohort-cache --path /tmp/ortholog_promoter_cohort.json'",
+        "cargo run --bin gentle_cli -- shell 'orthologs promoter-comparison --cohort /tmp/ortholog_promoter_cohort.json --motif SP1 --score-kind llr_background_tail_log10 --relationship co-regulated --path /tmp/ortholog_promoter_comparison.json'"
+      ],
+      "step_expectations": [
+        "The canonical workflow prepares `TutorialHumanPromoterToy` and `TutorialMousePromoterToy` from local FASTA/GTF fixtures.",
+        "`gene_set_promoter_cohort.json` resolves two reviewed gene-set members and records `relationship: co_regulated`.",
+        "`gene_set_promoter_comparison.json` contains a non-empty `relationship_flags[]` row with `flag_kind: unexpected_divergence`.",
+        "`ortholog_promoter_cohort.json` resolves human TP73 and mouse Trp73 promoter windows from the local ortholog resource.",
+        "`ortholog_promoter_comparison.json` contains the ortholog `relationship: co_regulated` expectation and an `unexpected_divergence` relationship flag."
+      ],
+      "prerequisites": [
+        "promoter_design_artifact_slice_offline"
+      ],
+      "learning_objectives": [
+        "Distinguish a resolved gene-set promoter cohort from a promoter TFBS comparison over that cohort.",
+        "Read `relationship` as a declared expectation and `relationship_flags[]` as non-blocking evidence triage.",
+        "Use a local `gentle.ortholog_resource.v1` fixture for offline ortholog promoter resolution.",
+        "Keep cross-species promoter evidence conservative: association evidence, not proof of regulation.",
+        "Verify that generated tutorial artifacts are deterministic and reviewable."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "genome_catalog_targeting",
+        "promoter_motif_controls",
+        "tutorial_drift_checks"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "upstream_bp=40 / downstream_bp=10",
+          "where_used": "BuildGeneSetPromoterCohort, SummarizePromoterCohortComparison, ResolveOrthologPromoterCohort",
+          "why_it_matters": "The synthetic chromosomes are only a few hundred bases long; compact promoter windows make the TSS geometry and motif contrast inspectable.",
+          "how_to_derive": "Use the fixed tutorial TSS at 151 bp, which yields promoter windows spanning 111..161 on the plus strand.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "relationship=co_regulated",
+          "where_used": "Gene-set promoter cohort, same-genome promoter comparison, ortholog promoter cohort, ortholog promoter comparison",
+          "why_it_matters": "The relationship is a declared expectation carried into reports; it does not itself assert regulation.",
+          "how_to_derive": "Use `co_regulated` here because the fixture is deliberately arranged to show what an unexpected divergence flag looks like.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "motif=SP1",
+          "where_used": "Same-genome and ortholog promoter comparisons",
+          "why_it_matters": "The synthetic TP73 promoter contains one GC-rich SP1-like patch while the comparison promoters are T-rich.",
+          "how_to_derive": "Use the exact local fixture sequences in `docs/examples/assets/promoter_cohort_tutorial_*.fa`.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_examples_docs -- tutorial-generate",
+        "cargo run --bin gentle_examples_docs -- tutorial-check",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gene_set_ortholog_promoter_cohorts_offline.json"
+      ],
+      "retain_outputs": [
+        "artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json",
+        "artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json",
+        "artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json",
+        "artifacts/promoter_cohort_tutorial.ortholog_promoter_comparison.json"
+      ],
+      "checkpoints": [
+        "The workflow executes offline with no genome download or ortholog API call.",
+        "The gene-set cohort artifact reports exactly two returned promoter windows.",
+        "The same-genome promoter comparison reports at least one `unexpected_divergence` flag under the co-regulated expectation.",
+        "The ortholog cohort artifact reports two resolved promoter rows and zero unresolved targets.",
+        "The ortholog comparison artifact reports at least one `unexpected_divergence` relationship flag and keeps the wording evidence-based."
       ]
     }
   ]

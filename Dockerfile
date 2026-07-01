@@ -105,7 +105,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # Runtime packages only: helper tools and headless dependencies. Keep the CLI
 # image narrow so Apptainer/Singularity and MCP use do not carry the GUI stack.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i -E 's/^Components: main$/Components: main non-free/' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     ncbi-blast+ \
     passwd \

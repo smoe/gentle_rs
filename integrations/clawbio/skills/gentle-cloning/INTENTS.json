@@ -17,8 +17,6 @@
         "isoforms guide for",
         "gentle isoform guide for",
         "gentle isoforms guide for",
-        "show me the gentle isoform guide",
-        "show me the gentle isoforms guide",
         "show me the gentle isoform guide for",
         "show me the gentle isoforms guide for"
       ],
@@ -42,6 +40,48 @@
       ]
     },
     {
+      "intent_id": "lab_assistant_handoff_export",
+      "description": "Export assistant-ready wet-lab cloning instructions from the current GENtle design/run history as Markdown.",
+      "trigger_terms": [
+        "lab assistant handoff",
+        "lab assistant instructions",
+        "bench handoff",
+        "wet lab instructions",
+        "cloning instructions for lab assistant",
+        "export lab instructions",
+        "prepare lab instructions",
+        "assistant-ready cloning handoff"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_export_lab_assistant_instructions.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "demo_lab_assistant_handoff",
+      "description": "Run the deterministic offline Gibson cloning demo and export assistant-ready bench instructions as Markdown.",
+      "trigger_terms": [
+        "demo lab assistant handoff",
+        "show lab assistant handoff demo",
+        "cloning handoff demo",
+        "gibson lab assistant demo",
+        "demo wet lab instructions",
+        "show cloning instructions demo"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_gibson_lab_assistant_handoff_demo.json"
+        }
+      ]
+    },
+    {
       "intent_id": "skill_info",
       "description": "Report GENtle ClawBio skill metadata without requiring a GENtle runtime.",
       "trigger_terms": [
@@ -57,6 +97,26 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_skill_info.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "intents_runtime",
+      "description": "Report the installed GENtle ClawBio intent descriptor, descriptor hash, request modes, and referenced examples without requiring a GENtle runtime.",
+      "trigger_terms": [
+        "intent descriptor",
+        "intents runtime",
+        "runtime intents",
+        "skill intents",
+        "descriptor hash",
+        "refresh gentle intents"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_intents_runtime.json"
         }
       ]
     },
@@ -179,6 +239,8 @@
         "isoforms guide",
         "gentle isoform guide",
         "gentle isoforms guide",
+        "show me the gentle isoform guide",
+        "show me the gentle isoforms guide",
         "protein gel guide",
         "gel guide"
       ],
@@ -229,6 +291,26 @@
       ]
     },
     {
+      "intent_id": "clariom_pm_probe_interpretation",
+      "description": "Run an offline Clariom D PM-probe projection and review-only transcript/exon geometry constraint report; this does not run R/APT, assess probe multi-hits, or make an isoform-support call.",
+      "trigger_terms": [
+        "clariom pm probe interpretation",
+        "clariom probe region interpretation",
+        "pm probe constraint report",
+        "probe-region interpretation report",
+        "array probe transcript geometry",
+        "clariom transcript geometry review"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_clariom_pm_probe_interpretation.json"
+        }
+      ]
+    },
+    {
       "intent_id": "runtime_version",
       "description": "Check the installed local ClawBio GENtle rewrite runtime version through the skill bundle.",
       "trigger_terms": [
@@ -273,6 +355,222 @@
       ]
     },
     {
+      "intent_id": "sequence_delivery_route",
+      "description": "Classify a generic 'deliver this sequence' request into the appropriate external-service provider/service-kind route before quote or handoff.",
+      "trigger_terms": [
+        "deliver this sequence",
+        "deliver that sequence",
+        "sequence delivered",
+        "i want that sequence delivered",
+        "i want this sequence delivered",
+        "order this sequence",
+        "get this sequence synthesized",
+        "synthesize this sequence",
+        "send this sequence for synthesis",
+        "deliver this oligo",
+        "deliver this primer",
+        "deliver this protein sequence"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "slots": {
+            "delivery_route_request_json": {
+              "required": true,
+              "description": "One JSON argument with schema gentle.external_service_delivery_route_request.v1 built from the active sequence/source context"
+            }
+          },
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "shell",
+            "shell_line": "services delivery-route {delivery_route_request_json}",
+            "timeout_secs": 180
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "external_service_provider_catalog",
+      "description": "List configured external-service providers and quote/handoff capabilities, including GeneArt and Metabion when present.",
+      "trigger_terms": [
+        "external service providers",
+        "service provider catalog",
+        "provider catalog",
+        "services providers list",
+        "list service providers",
+        "geneart metabion providers",
+        "metabion geneart providers",
+        "external services catalog"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_providers_list.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "external_service_provider_doctor",
+      "description": "Validate the external-service provider configuration discovery chain and report source/catalog issues.",
+      "trigger_terms": [
+        "provider config doctor",
+        "external service provider doctor",
+        "services providers doctor",
+        "validate provider catalog",
+        "external services doctor",
+        "check service provider config"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_providers_doctor.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "metabion_oligo_preflight",
+      "description": "Preflight the synthetic Metabion single-tube DNA oligo handoff example without submitting an order.",
+      "trigger_terms": [
+        "metabion oligo preflight",
+        "metabion primer preflight",
+        "metabion oligo handoff preflight",
+        "metabion primer order preflight"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_metabion_oligo_preflight.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "metabion_oligo_quote_handoff",
+      "description": "Prepare the synthetic Metabion single-tube DNA oligo quote/handoff packet without WOP scraping or order submission.",
+      "trigger_terms": [
+        "metabion oligo quote",
+        "metabion primer quote",
+        "metabion oligo handoff",
+        "metabion primer handoff",
+        "prepare metabion oligo order",
+        "prepare metabion primer order",
+        "metabion dna oligo quote"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_metabion_oligo_quote.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "metabion_mblock_quote_handoff",
+      "description": "Prepare the synthetic Metabion m-block DNA fragment quote/handoff packet without WOP scraping or order submission.",
+      "trigger_terms": [
+        "metabion m-block quote",
+        "metabion mblock quote",
+        "metabion dna fragment quote",
+        "metabion fragment handoff",
+        "metabion m-block handoff"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_metabion_mblock_quote.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "geneart_cloned_gene_preflight",
+      "description": "Preflight the synthetic GeneArt cloned-gene handoff example without contacting Thermo Fisher or submitting an order.",
+      "trigger_terms": [
+        "geneart cloned gene preflight",
+        "geneart gene synthesis preflight",
+        "geneart construct preflight",
+        "thermo fisher geneart preflight",
+        "thermofisher geneart preflight"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_geneart_cloned_gene_preflight.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "geneart_cloned_gene_quote_handoff",
+      "description": "Prepare the synthetic GeneArt cloned-gene quote/handoff packet without Thermo Fisher API upload or order submission.",
+      "trigger_terms": [
+        "geneart cloned gene quote",
+        "geneart gene synthesis quote",
+        "geneart construct handoff",
+        "geneart cloned gene handoff",
+        "thermo fisher geneart quote",
+        "thermofisher geneart quote",
+        "geneart long synthetic sequence"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_geneart_cloned_gene_quote.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "geneart_protein_expression_preflight",
+      "description": "Preflight the synthetic GeneArt protein-expression handoff example without contacting Thermo Fisher or submitting an order.",
+      "trigger_terms": [
+        "geneart protein expression preflight",
+        "geneart protein production preflight",
+        "geneart expression service preflight",
+        "thermo fisher protein expression preflight",
+        "thermofisher protein expression preflight"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_geneart_protein_expression_preflight.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "geneart_protein_expression_quote_handoff",
+      "description": "Prepare the synthetic GeneArt protein-expression quote/handoff packet without provider submission.",
+      "trigger_terms": [
+        "geneart protein expression quote",
+        "geneart protein expression handoff",
+        "thermo fisher protein expression quote",
+        "thermofisher protein expression quote",
+        "geneart expression service handoff",
+        "geneart protein production quote"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_geneart_protein_expression_quote.json"
+        }
+      ]
+    },
+    {
       "intent_id": "resources_status",
       "description": "Check GENtle external resource and installed database readiness.",
       "trigger_terms": [
@@ -298,6 +596,29 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_resources_status.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "protein_expression_handoff",
+      "description": "Route underspecified high-yield protein-expression requests through GENtle's read-only planning handoff.",
+      "trigger_terms": [
+        "protein expression handoff",
+        "protein production handoff",
+        "maximal protein yield",
+        "maximum protein yield",
+        "maximum protein expression",
+        "maximal amount of protein",
+        "give me the maximal amount of protein",
+        "high yield protein expression",
+        "highest protein yield"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_planning_protein_expression_handoff.json"
         }
       ]
     },
@@ -1000,6 +1321,80 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_workflow_trypsin_digest_gel_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "construct_reasoning_recommended_inspections",
+      "description": "List portable recommended inspection actions for one persisted construct-reasoning graph, such as repeat/similarity dotplot handoffs.",
+      "trigger_terms": [
+        "construct reasoning recommended inspections",
+        "recommended inspections for graph",
+        "which dotplot should I inspect",
+        "list reasoning inspection actions",
+        "list recommended dotplots",
+        "construct reasoning dotplot recommendations"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "slots": {
+            "graph_id": {
+              "required": true,
+              "description": "Persisted construct-reasoning graph id"
+            },
+            "action_kind": {
+              "required": false,
+              "default": "dotplot",
+              "description": "Optional inspection action kind filter"
+            }
+          },
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "construct-reasoning-list-inspections",
+            "state_path": ".gentle_state.json",
+            "graph_id": "{graph_id}",
+            "action_kind": "{action_kind}",
+            "timeout_secs": 180
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "construct_reasoning_run_recommended_inspection",
+      "description": "Run one portable construct-reasoning recommended inspection action by action id, currently resolving dotplot actions through the shared dotplot engine path.",
+      "trigger_terms": [
+        "run reasoning inspection action",
+        "render recommended dotplot",
+        "run recommended dotplot",
+        "open reasoning dotplot action",
+        "compute reasoning inspection action"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "slots": {
+            "graph_id": {
+              "required": true,
+              "description": "Persisted construct-reasoning graph id"
+            },
+            "action_id": {
+              "required": true,
+              "description": "Recommended inspection action id from the graph's inspection_actions[] list"
+            }
+          },
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "construct-reasoning-run-inspection",
+            "state_path": ".gentle_state.json",
+            "graph_id": "{graph_id}",
+            "action_id": "{action_id}",
+            "timeout_secs": 180
+          }
         }
       ]
     },

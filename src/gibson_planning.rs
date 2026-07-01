@@ -498,6 +498,8 @@ pub fn suggest_gibson_destination_openings(
         .ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Destination sequence '{}' not found", seq_id),
+
+            cause_chain: vec![],
         })?;
     let seq_len = dna.len();
     if seq_len == 0 {
@@ -544,9 +546,9 @@ pub fn suggest_gibson_destination_openings(
     Ok(suggestions)
 }
 
-fn unique_forward_sites<'a>(
-    dna: &'a crate::dna_sequence::DNAsequence,
-) -> HashMap<String, &'a RestrictionEnzymeSite> {
+fn unique_forward_sites(
+    dna: &crate::dna_sequence::DNAsequence,
+) -> HashMap<String, &RestrictionEnzymeSite> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     let mut first_sites: HashMap<String, &RestrictionEnzymeSite> = HashMap::new();
     for site in dna
@@ -786,10 +788,10 @@ fn extract_rebase_enzyme_names_from_text(
     let mut out = vec![];
     let mut seen = HashSet::new();
     let mut push_candidate = |candidate: String| {
-        if let Some(name) = canonicalize_rebase_enzyme_name(&candidate, lookup) {
-            if seen.insert(name.clone()) {
-                out.push(name);
-            }
+        if let Some(name) = canonicalize_rebase_enzyme_name(&candidate, lookup)
+            && seen.insert(name.clone())
+        {
+            out.push(name);
         }
     };
     for idx in 0..tokens.len() {
@@ -824,7 +826,7 @@ fn feature_first_nonempty_qualifier(
     keys: &[&str],
 ) -> Option<String> {
     for key in keys {
-        for value in feature.qualifier_values(*key) {
+        for value in feature.qualifier_values(key) {
             let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
             let normalized = normalized.trim().to_string();
             if !normalized.is_empty() {
@@ -843,18 +845,18 @@ fn suggestion_feature_context(
     seq_len: usize,
 ) -> String {
     let mut parts = vec![];
-    if in_mcs_context {
-        if let Some(hint) = mcs_hints.iter().find(|hint| {
+    if in_mcs_context
+        && let Some(hint) = mcs_hints.iter().find(|hint| {
             hint.candidate_enzymes
                 .iter()
                 .any(|name| name == &site.enzyme.name)
-        }) {
-            parts.push(format!(
-                "MCS {}..{}",
-                hint.start_0based + 1,
-                hint.end_0based_exclusive
-            ));
-        }
+        })
+    {
+        parts.push(format!(
+            "MCS {}..{}",
+            hint.start_0based + 1,
+            hint.end_0based_exclusive
+        ));
     }
 
     let mut overlapping_genes = vec![];
@@ -934,6 +936,8 @@ pub fn preview_gibson_assembly_plan(
                 "Unsupported Gibson assembly plan schema '{}' (expected '{}')",
                 plan.schema, GIBSON_ASSEMBLY_PLAN_SCHEMA
             ),
+
+            cause_chain: vec![],
         });
     }
 
@@ -942,6 +946,8 @@ pub fn preview_gibson_assembly_plan(
         return Err(EngineError {
             code: ErrorCode::InvalidInput,
             message: "Gibson plan requires destination.seq_id".to_string(),
+
+            cause_chain: vec![],
         });
     }
     let destination = engine
@@ -951,6 +957,8 @@ pub fn preview_gibson_assembly_plan(
         .ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Destination sequence '{}' not found", destination_id),
+
+            cause_chain: vec![],
         })?
         .clone();
 
@@ -1400,6 +1408,8 @@ pub fn derive_gibson_execution_plan(
         return Err(EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Gibson plan cannot be applied: {detail}"),
+
+            cause_chain: vec![],
         });
     }
 
@@ -1413,6 +1423,8 @@ pub fn derive_gibson_execution_plan(
                 "Destination sequence '{}' not found during Gibson apply",
                 preview.destination.seq_id
             ),
+
+            cause_chain: vec![],
         })?
         .clone();
     let mut oriented_inserts = Vec::with_capacity(preview.fragments.len());
@@ -1428,6 +1440,8 @@ pub fn derive_gibson_execution_plan(
                     "Insert sequence '{}' not found during Gibson apply",
                     fragment.seq_id
                 ),
+
+                cause_chain: vec![],
             })?
             .clone();
         fragment_seq_ids.push(fragment.seq_id.clone());
@@ -1444,6 +1458,8 @@ pub fn derive_gibson_execution_plan(
                 preview.fragments.len().saturating_mul(2),
                 preview.primer_suggestions.len()
             ),
+
+            cause_chain: vec![],
         });
     }
 
@@ -1460,6 +1476,8 @@ pub fn derive_gibson_execution_plan(
                     message:
                         "Multi-insert Gibson apply currently requires a defined destination opening"
                             .to_string(),
+
+                    cause_chain: vec![],
                 });
             }
             format!("{destination_seq}{concatenated_insert_seq}")
@@ -1481,7 +1499,8 @@ pub fn derive_gibson_execution_plan(
                         message:
                             "Executable Gibson preview did not retain the left terminal junction"
                                 .to_string(),
-                    }
+                    
+                        cause_chain: vec![],}
                         })?;
                 let right_terminal_overlap =
                     preview
@@ -1493,7 +1512,8 @@ pub fn derive_gibson_execution_plan(
                         message:
                             "Executable Gibson preview did not retain the right terminal junction"
                                 .to_string(),
-                    }
+                    
+                        cause_chain: vec![],}
                         })?;
                 build_defined_site_product_sequence_with_terminal_overlaps(
                     &destination_seq,
@@ -1516,7 +1536,8 @@ pub fn derive_gibson_execution_plan(
                     message: format!(
                         "Could not materialize Gibson assembled product with engineered terminal overlap: {message}"
                     ),
-                })?
+                
+                    cause_chain: vec![],})?
             } else {
                 let start =
                     preview
@@ -1527,6 +1548,8 @@ pub fn derive_gibson_execution_plan(
                             message:
                                 "Executable Gibson defined-site preview did not retain start_0based"
                                     .to_string(),
+
+                            cause_chain: vec![],
                         })?;
                 let end = preview
                     .destination
@@ -1536,7 +1559,8 @@ pub fn derive_gibson_execution_plan(
                         message:
                             "Executable Gibson defined-site preview did not retain end_0based_exclusive"
                                 .to_string(),
-                    })?;
+                    
+                        cause_chain: vec![],})?;
                 format!(
                     "{}{}{}",
                     &destination_seq[..start],
@@ -1549,6 +1573,8 @@ pub fn derive_gibson_execution_plan(
             return Err(EngineError {
                 code: ErrorCode::Unsupported,
                 message: format!("Unsupported Gibson opening mode '{other}' for apply"),
+
+                cause_chain: vec![],
             });
         }
     };
@@ -1562,6 +1588,8 @@ pub fn derive_gibson_execution_plan(
                     "Could not materialize Gibson primer '{}' as DNA sequence: {err}",
                     primer.primer_id
                 ),
+
+                cause_chain: vec![],
             })?;
         dna.set_name(match primer.side.as_str() {
             "left_insert_primer" => format!(
@@ -1642,6 +1670,8 @@ fn build_gibson_assembled_product(
         DNAsequence::from_sequence(assembled_product_seq).map_err(|err| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Could not materialize Gibson assembled product sequence: {err}"),
+
+            cause_chain: vec![],
         })?;
     let mut features = Vec::new();
     match preview.destination.opening_mode.as_str() {
@@ -1652,7 +1682,8 @@ fn build_gibson_assembled_product(
                     message:
                         "Multi-insert Gibson feature transfer currently requires a defined destination opening"
                             .to_string(),
-                });
+                
+                    cause_chain: vec![],});
             }
             features.extend(clone_shifted_features(destination, 0));
             features.extend(clone_shifted_features(
@@ -1668,6 +1699,8 @@ fn build_gibson_assembled_product(
                     code: ErrorCode::Internal,
                     message: "Executable Gibson defined-site preview did not retain start_0based"
                         .to_string(),
+
+                    cause_chain: vec![],
                 })? as i64;
             let end = preview
                 .destination
@@ -1677,6 +1710,8 @@ fn build_gibson_assembled_product(
                     message:
                         "Executable Gibson defined-site preview did not retain end_0based_exclusive"
                             .to_string(),
+
+                    cause_chain: vec![],
                 })? as i64;
             let total_insert_len = oriented_inserts
                 .iter()
@@ -1703,6 +1738,8 @@ fn build_gibson_assembled_product(
             return Err(EngineError {
                 code: ErrorCode::Unsupported,
                 message: format!("Unsupported Gibson opening mode '{other}' for feature transfer"),
+
+                cause_chain: vec![],
             });
         }
     }
@@ -1852,13 +1889,13 @@ fn join_projected_feature_fragments(
     right: Location,
     is_reverse_feature: bool,
 ) -> Location {
-    if is_reverse_feature {
-        if let (Some(left_inner), Some(right_inner)) = (
+    if is_reverse_feature
+        && let (Some(left_inner), Some(right_inner)) = (
             unwrap_single_complement(left.clone()),
             unwrap_single_complement(right.clone()),
-        ) {
-            return Location::Complement(Box::new(Location::Join(vec![right_inner, left_inner])));
-        }
+        )
+    {
+        return Location::Complement(Box::new(Location::Join(vec![right_inner, left_inner])));
     }
     Location::Join(vec![left, right])
 }
@@ -2281,22 +2318,20 @@ fn preview_multi_insert_gibson_assembly_plan(
 
     if let (Some(left_overlap), Some(right_overlap)) =
         (resolved_overlaps.first(), resolved_overlaps.last())
+        && plan.validation_policy.require_distinct_terminal_junctions
     {
-        if plan.validation_policy.require_distinct_terminal_junctions {
-            let right_overlap_rc =
-                GentleEngine::reverse_complement(&right_overlap.overlap_sequence);
-            if left_overlap
+        let right_overlap_rc = GentleEngine::reverse_complement(&right_overlap.overlap_sequence);
+        if left_overlap
+            .overlap_sequence
+            .eq_ignore_ascii_case(&right_overlap.overlap_sequence)
+            || left_overlap
                 .overlap_sequence
-                .eq_ignore_ascii_case(&right_overlap.overlap_sequence)
-                || left_overlap
-                    .overlap_sequence
-                    .eq_ignore_ascii_case(&right_overlap_rc)
-            {
-                preview.errors.push(format!(
+                .eq_ignore_ascii_case(&right_overlap_rc)
+        {
+            preview.errors.push(format!(
                     "Terminal overlap regions are not distinct enough for a destination-first Gibson plan (left='{}', right='{}')",
                     left_overlap.overlap_sequence, right_overlap.overlap_sequence
                 ));
-            }
         }
     }
 
@@ -2565,6 +2600,8 @@ fn load_gibson_fragments(
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Gibson plan fragment {} requires seq_id", idx + 1),
+
+                cause_chain: vec![],
             });
         }
         let dna = engine
@@ -2574,6 +2611,8 @@ fn load_gibson_fragments(
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Insert sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?
             .clone();
         let preview_fragment = GibsonPreviewInsert {
@@ -3908,9 +3947,7 @@ fn build_cartoon_bindings(
             ProtocolCartoonTemplateEventBinding {
                 event_id: "anneal".to_string(),
                 title: Some("Anneal".to_string()),
-                caption: Some(format!(
-                    "Both junctions anneal simultaneously: the left homology pairs on one side of the insert and the right homology pairs on the other, while short single-stranded gaps remain to be filled."
-                )),
+                caption: Some("Both junctions anneal simultaneously: the left homology pairs on one side of the insert and the right homology pairs on the other, while short single-stranded gaps remain to be filled.".to_string()),
                 action: None,
             },
             ProtocolCartoonTemplateEventBinding {

@@ -1,27 +1,54 @@
 ---
 name: gentle-cloning
 description: >-
-  Deterministic sequence-design and genome-context specialist that executes
-  GENtle commands and workflows, not just usage advice. Translates cohort or
-  patient-data observations or direct DNA fragment requests into
-  sequence-grounded mechanistic follow-up, assay-planning artifacts,
-  stateless sequence inspection, reusable local reference-preparation
-  workflows, transcript-native protein-residue-to-genomic-codon mapping,
-  RNA secondary-structure readiness via ViennaRNA/RNAfold and rnapkin
-  executable resources,
-  ClawBio-accessible PCR/qPCR/TaqMan automation (Primer3 preflight, seed
-  helpers, PCR primer design, probe-based qPCR/TaqMan design, transcript-
-  derived cDNA PCR/qPCR assay testing, report inspection/export, PCR protocol
-  cartoons, and restriction-cloning PCR handoffs), transcript qPCR panel
-  tables with shared reverse/probe components and characteristic forward
-  primers,
-  and transcript-native protein-gel / protein 2D-gel / protease digest
-  figures for bundled example loci, parameterized Ensembl genes, and Ensembl
-  gene panels.
+  GENtle Cloning is ClawBio's specialist for deterministic, parser-validated
+  DNA design and genome-context analysis. It executes real GENtle commands
+  and workflows on local data — not free-form LLM advice — and returns
+  auditable bundles. The skill is the in-application action layer for
+  cloning: ClawBio chat remains the orchestration and conversation layer,
+  while this skill carries out the cloning-side work under engine-validated
+  bounds, with the GUI as the inspection and review surface.
+
+  Capabilities: (1) translation of cohort or patient-data observations,
+  differential-expression hits, splice-variant observations, perturbation
+  requests, or direct DNA fragment input into sequence-grounded mechanistic
+  follow-up; (2) stateless DNA-fragment inspection (restriction sites, TFBS
+  hits) for fast read-only checks without project-state mutation;
+  (3) reusable local reference preparation, including prepared Ensembl
+  caches and BLAST-ready indices that other bioinformatics tools can reuse;
+  (4) transcript-native protein-residue-to-genomic-codon mapping;
+  (5) RNA secondary-structure readiness via ViennaRNA/RNAfold and rnapkin
+  executable resources; (6) the full PCR/qPCR/TaqMan automation family —
+  Primer3 preflight, seed helpers, PCR primer design, probe-based
+  qPCR/TaqMan design, transcript-derived cDNA PCR/qPCR assay testing,
+  report inspection/export, PCR protocol cartoons, restriction-cloning PCR
+  handoffs, and assistant-ready wet-lab cloning instruction exports;
+  (7) transcript qPCR panel tables with shared reverse/probe components and
+  characteristic forward primers; (8) transcript-native protein-gel /
+  protein 2D-gel / protease digest figures for bundled example loci,
+  parameterized Ensembl genes, and Ensembl gene panels; and
+  (9) bench-side handoff outputs including arrangements, rack placements,
+  label sheets, and fabrication templates that connect digital planning to
+  physical sample handling within the same replayable workflow; and
+  (10) provider-neutral external-service delivery routing, catalog, preflight,
+  and quote/handoff packets for configured GeneArt and Metabion service routes
+  without portal scraping, credential use, or order submission.
+
+  Each successful run produces a versioned ClawBio bundle with `report.md`,
+  `result.json`, and reproducibility files (`commands.sh`, `environment.yml`,
+  `checksums.sha256`), plus a PNG-first preferred-artifacts set for
+  figure-producing runs. Operation-level provenance is tracked in a shared
+  lineage graph so every derived sequence is traceable to its source inputs
+  and the operations that produced it. The parser-validated boundary means
+  the skill never invents filesystem search, content scanning, or shell-like
+  commands: unknown slash commands are rejected with structured suggestions
+  rather than fabricated execution. Adversarial content in imported sequence
+  records or external documents therefore cannot extend the skill's
+  effective vocabulary.
 version: 0.1.0
 author: GENtle project
 license: MIT
-    tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, cdna, genome-context, reproducibility, tfbs, restriction-sites, ensembl, protein-gel, protein-analysis, protease-digest, rna-structure, viennarna, rnapkin]
+tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, cdna, genome-context, reproducibility, tfbs, restriction-sites, ensembl, protein-gel, protein-analysis, protease-digest, rna-structure, viennarna, rnapkin, bench-handoff, external-services, geneart, metabion, lineage-provenance]
 metadata:
   openclaw:
     requires:
@@ -37,45 +64,364 @@ metadata:
     install: []
     trigger_keywords:
       - gentle
-      - cloning workflow
-      - gibson assembly
-      - primer design
-      - pcr design
+      - gentle cloning
+      - gentle-cloning
+      - cloning
+      - isoform guide for
+      - isoforms guide for
+      - gentle isoform guide for
+      - gentle isoforms guide for
+      - show me the gentle isoform guide for
+      - show me the gentle isoforms guide for
+      - lab assistant handoff
+      - lab assistant instructions
+      - bench handoff
+      - wet lab instructions
+      - cloning instructions for lab assistant
+      - export lab instructions
+      - prepare lab instructions
+      - assistant-ready cloning handoff
+      - demo lab assistant handoff
+      - show lab assistant handoff demo
+      - cloning handoff demo
+      - gibson lab assistant demo
+      - demo wet lab instructions
+      - show cloning instructions demo
+      - skill info
+      - skill metadata
+      - gentle skill
+      - gentle skill info
+      - gentle schema
+      - intent descriptor
+      - intents runtime
+      - runtime intents
+      - skill intents
+      - descriptor hash
+      - refresh gentle intents
+      - gentle guide
+      - show guide
+      - show me the gentle guide
+      - what can gentle do
+      - help me use gentle
+      - continue guide
+      - continue readiness
+      - readiness guide
+      - data readiness guide
+      - gentle readiness guide
+      - continue gene context
+      - gene context guide
+      - gene guide
+      - locus guide
+      - continue tfbs
+      - continue promoter
+      - tfbs guide
+      - promoter guide
+      - continue pasted dna
+      - continue inline dna
+      - pasted dna guide
+      - inline dna guide
+      - continue cloning
+      - continue vectors
+      - cloning guide
+      - vector guide
+      - continue isoforms
+      - isoform guide
+      - isoforms guide
+      - gentle isoform guide
+      - gentle isoforms guide
+      - show me the gentle isoform guide
+      - show me the gentle isoforms guide
+      - protein gel guide
+      - gel guide
+      - continue follow-up
+      - continue follow up
+      - follow-up guide
+      - experimental follow-up guide
+      - validation planning guide
+      - capabilities
+      - available operations
+      - what operations
+      - what commands
+      - clariom pm probe interpretation
+      - clariom probe region interpretation
+      - pm probe constraint report
+      - probe-region interpretation report
+      - array probe transcript geometry
+      - clariom transcript geometry review
+      - version
+      - runtime version
+      - installed version
+      - installed gentle
+      - gentle runtime
+      - services status
+      - service status
+      - services
+      - readiness
+      - ready
+      - local resources
+      - resources are ready
+      - rna structure resources
+      - rnafold resource
+      - viennarna resource
+      - rnapkin resource
+      - deliver this sequence
+      - deliver that sequence
+      - sequence delivered
+      - i want that sequence delivered
+      - i want this sequence delivered
+      - order this sequence
+      - get this sequence synthesized
+      - synthesize this sequence
+      - send this sequence for synthesis
+      - deliver this oligo
+      - deliver this primer
+      - deliver this protein sequence
+      - external service providers
+      - service provider catalog
+      - provider catalog
+      - services providers list
+      - list service providers
+      - geneart metabion providers
+      - metabion geneart providers
+      - external services catalog
+      - provider config doctor
+      - external service provider doctor
+      - services providers doctor
+      - validate provider catalog
+      - external services doctor
+      - check service provider config
+      - metabion oligo preflight
+      - metabion primer preflight
+      - metabion oligo handoff preflight
+      - metabion primer order preflight
+      - metabion oligo quote
+      - metabion primer quote
+      - metabion oligo handoff
+      - metabion primer handoff
+      - prepare metabion oligo order
+      - prepare metabion primer order
+      - metabion dna oligo quote
+      - metabion m-block quote
+      - metabion mblock quote
+      - metabion dna fragment quote
+      - metabion fragment handoff
+      - metabion m-block handoff
+      - geneart cloned gene preflight
+      - geneart gene synthesis preflight
+      - geneart construct preflight
+      - thermo fisher geneart preflight
+      - thermofisher geneart preflight
+      - geneart cloned gene quote
+      - geneart gene synthesis quote
+      - geneart construct handoff
+      - geneart cloned gene handoff
+      - thermo fisher geneart quote
+      - thermofisher geneart quote
+      - geneart long synthetic sequence
+      - geneart protein expression preflight
+      - geneart protein production preflight
+      - geneart expression service preflight
+      - thermo fisher protein expression preflight
+      - thermofisher protein expression preflight
+      - geneart protein expression quote
+      - geneart protein expression handoff
+      - thermo fisher protein expression quote
+      - thermofisher protein expression quote
+      - geneart expression service handoff
+      - geneart protein production quote
+      - resources status
+      - resource status
+      - resources
+      - databases
+      - installed databases
+      - jaspar
+      - rebase
+      - attract
+      - rna secondary structure resources
+      - rnafold
+      - viennarna
+      - vienna rna
+      - rnapkin
+      - mfe
+      - protein expression handoff
+      - protein production handoff
+      - maximal protein yield
+      - maximum protein yield
+      - maximum protein expression
+      - maximal amount of protein
+      - give me the maximal amount of protein
+      - high yield protein expression
+      - highest protein yield
+      - protein residue coordinates
+      - map residue to genome
+      - protein to genome
+      - residue to genome
+      - genomic codon
+      - codon coordinates
+      - codon bases
+      - protein gel demo
+      - continue protein gel
+      - isoform protein gel demo
+      - molecular weight gel demo
+      - protein 2d gel demo
+      - continue 2d gel
+      - isoform protein 2d gel demo
+      - isoelectric point demo
+      - pi vs kda demo
       - simple pcr
+      - simplest pcr
+      - continue pcr
+      - pcr primer design
+      - design pcr primers
+      - pcr constraints
+      - selected region pcr
       - primer preflight
       - primer3 preflight
+      - pcr backend status
+      - qpcr backend status
+      - taqman backend status
+      - can gentle design primers
+      - seed primers from feature
       - seed pcr from feature
+      - pcr seed from feature
+      - primer seed feature
+      - feature to pcr seed
+      - seed primers from splicing
       - seed pcr from splicing
-      - design pcr primers
-      - design primers from json
-      - pcr constraints
-      - qpcr design
-      - taqman design
-      - design taqman assay
+      - splicing to pcr seed
+      - transcript pcr seed
+      - primer seed splicing
       - seed qpcr from feature
-      - seed qpcr from splicing
       - seed taqman from feature
+      - feature to qpcr seed
+      - feature to taqman assay
+      - qpcr seed feature
+      - seed qpcr from splicing
       - seed taqman from splicing
+      - shared transcript qpcr seed
+      - transcript-aware qpcr seed
+      - junction qpcr seed
+      - exon junction taqman seed
+      - run pcr primer design payload
+      - design primers from json
+      - design pcr primers from payload
+      - execute designprimerpairs
+      - primer design operation
+      - run qpcr design payload
+      - run taqman design payload
+      - design qpcr from json
+      - design taqman assay
+      - execute designqpcrassays
+      - probe based qpcr design
       - transcript qpcr panel
       - isoform qpcr panel
       - characteristic qpcr primers
       - transcript-specific qpcr primers
+      - shared reverse probe qpcr
+      - qpcr primer table
+      - forward primers per transcript
+      - test cdna pcr
+      - test cdna qpcr
+      - cdna pcr test
+      - cdna qpcr test
+      - test qpcr assay
+      - qpcr assay test
+      - cdna pcr qpcr
+      - transcript cdna assay
+      - show non-specific pcr products on a gel
+      - show nonspecific pcr products on a gel
+      - visualize non-specific pcr products
+      - visualize nonspecific pcr products
+      - pcr products gel
+      - qpcr products gel
+      - cdna product gel
+      - show cdna pcr products on gel
+      - show cdna qpcr products on gel
+      - multiple pcr products gel
+      - direct cdna pcr test
+      - test these cdna pcr primers
+      - check cdna pcr primers
+      - validate rt-pcr primers
+      - rt pcr primer test
+      - direct cdna qpcr test
+      - direct taqman test
+      - test these taqman primers
+      - test these qpcr primers and probe
+      - validate cdna taqman assay
+      - check taqman probe
+      - list primer reports
+      - list pcr primer reports
+      - show available primer reports
+      - primer reports
+      - show primer report
+      - show pcr primer report
+      - inspect primer report
+      - primer report details
+      - export primer report
+      - export pcr primer report
+      - save primer report
+      - primer report json
+      - list qpcr reports
+      - list taqman reports
+      - show available qpcr reports
+      - qpcr reports
+      - taqman reports
+      - show qpcr report
+      - show taqman report
+      - inspect qpcr report
+      - taqman report details
+      - export qpcr report
+      - export taqman report
+      - save qpcr report
+      - taqman report json
+      - pcr protocol cartoon
+      - render pcr cartoon
+      - qpcr protocol cartoon
+      - taqman protocol cartoon
+      - show taqman graphic
+      - probe qpcr graphic
+      - gene panel protein gel
+      - continue panel gel
+      - multi gene protein gel
+      - 1d protein gel
+      - molecular weight isoform panel
+      - patz1 tp73 tp53 tp63 sp1 bach2
+      - patz1 tp73 tp53 tp63 sp1 bach2 protein gel
+      - 2d protein gel
+      - protein 2d gel
+      - gene protein 2d gel
+      - ensembl protein 2d gel
+      - ensembl gene protein 2d gel
+      - isoforms from ensembl
+      - from ensembl
+      - ensembl gene protein 2d gel demo
+      - gene protein 2d gel demo
+      - parameterized protein 2d gel demo
+      - trypsin digest gel demo
+      - protease digest demo
+      - peptide gel demo
+      - gentle demo
+      - cloning demo
+      - continue gibson
+      - demo
+      - demonstration
+      - example
+      - cloning workflow
+      - gibson assembly
+      - primer design
+      - pcr design
+      - qpcr design
+      - taqman design
       - exon junction taqman
       - cdna pcr
       - cdna qpcr
       - rt-pcr
-      - test cdna pcr
-      - test cdna qpcr
-      - direct taqman test
-      - qpcr assay test
       - taqman assay test
       - non-specific pcr products
       - nonspecific pcr products
       - show pcr products on gel
-      - cdna product gel
-      - pcr protocol cartoon
-      - taqman protocol cartoon
       - restriction cloning pcr handoff
+      - lab assistant demo
       - analyze dna sequence
       - restriction sites
       - tfbs score tracks
@@ -84,10 +430,6 @@ metadata:
       - jaspar motif
       - protein residue
       - map residue
-      - protein to genome
-      - residue to genome
-      - genomic codon
-      - codon coordinates
       - sequence context
       - extract gene from ensembl
       - fetch ensembl gene
@@ -100,35 +442,14 @@ metadata:
       - fetch genbank
       - design assay
       - gentle version
-      - runtime version
-      - installed gentle
-      - service status
-      - services status
-      - readiness
-      - local resources
       - database status
-      - installed databases
-      - resources status
-      - rna structure resources
-      - rnafold resource
-      - viennarna resource
-      - rnapkin resource
       - rna secondary structure
-      - rnafold
-      - viennarna
-      - rnapkin
-      - mfe
       - protein gel
-      - gene panel protein gel
-      - multi gene protein gel
-      - protein 2d gel
       - 2d gel
       - molecular weight gel
       - protein isoform
       - isoform protein gel
       - isoform protein 2d gel
-      - gene protein 2d gel
-      - ensembl protein 2d gel
       - protease digest
       - trypsin digest
       - trypsin digest gel
@@ -159,9 +480,12 @@ This skill is execution-first.
 
 ClawBio shared chat adapters should consume `INTENTS.json` first. That
 `clawbio.skill_intents.v1` descriptor maps runtime-version, service-readiness,
-installed-database/resource, residue-to-genome codon mapping, Telegram guide
-overview/section navigation, PCR/qPCR/TaqMan seed/design/test/report/cartoon
-requests, transcript qPCR panel requests, parameterized Ensembl gene 2D-gel,
+installed-database/resource, generic sequence-delivery routing,
+external-service provider catalog/doctor and GeneArt/Metabion quote-handoff
+requests, residue-to-genome codon mapping, Telegram guide overview/section
+navigation, PCR/qPCR/TaqMan
+seed/design/test/report/cartoon requests, lab-assistant cloning handoff
+exports, transcript qPCR panel requests, parameterized Ensembl gene 2D-gel,
 Ensembl gene-panel 1D protein-gel, bundled example protein-gel, bundled
 example 2D-gel, Ensembl gene 2D-gel example, trypsin-digest, capability,
 skill-info, and explicit-demo wording to concrete `examples/*.json` requests
@@ -213,6 +537,12 @@ trail.
 - **Why ClawBio**: this keeps AI-guided sequence design grounded in GENtle's
   deterministic engine rather than free-form LLM advice, while still fitting
   into a broader local-first bioinformatics skill system.
+- **Local agent wrappers**: if Codex, Claude, OpenClaw, or another local agent
+  needs a small host-specific routing note rather than the full skill manual,
+  see `integrations/clawbio/local_agent_handoff.md` in the GENtle checkout.
+  If only the skill directory was copied into ClawBio, copy that note alongside
+  the deployment notes or preserve its "delegate to this ClawBio runner, inspect
+  the output bundle, do not invent a second GENtle interface" contract.
 
 ## User-Facing Framing
 
@@ -243,6 +573,11 @@ capability-led language:
   - inspect annotations, isoforms, splicing structure, TFBS/JASPAR hits, and
     restriction-enzyme features,
   - export graphics and tables such as SVG and BED artifacts,
+  - route generic "deliver this sequence" requests by sequence kind before
+    provider selection, then list configured external-service providers and
+    prepare human-reviewable quote/handoff packets for GeneArt and Metabion
+    tutorial routes without submitting vendor orders or storing
+    account/PO/shipping details,
   - bootstrap Ensembl/reference datasets and BLAST-ready indices for later
     automated queries.
 - Be equally explicit that prepared reference assets are not GENtle-only:
@@ -402,6 +737,10 @@ Recommended preparation order for common human-question answering:
 5. for cloning/vector-heavy follow-up if likely:
    - `helpers status "Plasmid pUC19 (online)"`
    - `helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800`
+   - `planning consult cloning --format json`
+   - for reporter/synthetic-biology follow-up:
+     - `reporters list --limit 10`
+     - `reporters recommend --class luciferase --limit 5`
 6. `resources status`
 
 For a generic "what is installed?" or "what databases do you know about?"
@@ -675,11 +1014,54 @@ Expected outputs:
   `materialize_products` or `product_gel_svg_path` is requested, at which point
   detected products become deterministic sequence entries in one vial/container
   and optional product-gel SVG/PNG artifacts show non-specific products as
-  multiple bands in one lane
+  multiple bands in one lane. Repeated materializing requests reuse matching
+  product sequence ids and the same vial/container, and product-gel results
+  include text band summaries so Telegram replies can explain the gel even
+  before or instead of showing an image.
 - transcript qPCR panel tables with shared reverse/probe plus characteristic
   forward-primer rows when possible
 - PCR-family SVG/PNG protocol cartoons, including `pcr.assay.pair`,
   `pcr.assay.pair.with_tail`, `pcr.oe.substitution`, and `pcr.assay.qpcr`
+
+### 5b. Lab Assistant Handoff Export
+
+Use this when the user asks for bench-ready instructions for a designed cloning
+experiment, especially wording such as "lab assistant handoff", "wet-lab
+instructions", "bench handoff", or "cloning instructions for a non-IT person".
+
+Preferred route when a design/state already exists:
+
+- `examples/request_export_lab_assistant_instructions.json`
+- shell command:
+  `export-lab-instructions artifacts/lab_assistant_handoff.odt --format odt --title 'GENtle lab assistant handoff' --audience 'non-IT lab assistant'`
+
+Preferred route when the user asks for a demo:
+
+- `examples/request_workflow_gibson_lab_assistant_handoff_demo.json`
+- workflow:
+  `docs/examples/workflows/gibson_arrangements_baseline.json`
+- primary artifact:
+  `artifacts/gibson_lab_assistant_handoff.md`
+
+Behavior:
+
+- The export is generated by GENtle's shared operation
+  `ExportLabAssistantInstructions`, not by free-form ClawBio prose.
+- The demo route first runs the deterministic offline Gibson pGEX/insert design
+  and then exports the bench-facing handoff, so it is suitable when the user
+  has not yet built a local GENtle design state.
+- If the current GENtle state/run history contains cloning operations, the
+  handoff lists material IDs, designed outputs, container/rack/gel references,
+  design-derived bench steps, checkpoints, safety scope, and record keeping
+  instructions. ODT/DOCX outputs embed a lineage overview graphic when GENtle
+  can rasterize the project lineage SVG.
+- If the skill is invoked without a populated state or run history, GENtle still
+  creates a scaffold and explicitly warns that no recorded design operations
+  were available. In that case, ask the user to run the design workflow first or
+  provide the relevant state path.
+- Do not invent reagent volumes, incubation temperatures, or kit-specific
+  timings. GENtle names design intent and checkpoints; local SOPs, kit manuals,
+  and supervisor approval remain authoritative for execution conditions.
 
 ### 6. Splicing Expert
 
@@ -772,20 +1154,72 @@ Current shared GENtle routes behind this capability:
 - `SummarizeVariantPromoterContext`
 - `SuggestPromoterReporterFragments`
 - `MaterializeVariantAllele`
-- shared reporter-preview workflow/macro paths
+- `ListReporterCatalog`
+- `RecommendReporters`
+- `ExportReporterCorpus`
+- `PlanReporterConstructHandoff`
+- `reporters list [--catalog PATH] [--filter TEXT] [--limit N] [--output FILE.json]`
+- `reporters recommend [--catalog PATH] [--assay NAME] [--chassis HOST] [--class CLASS] [--limit N] [--output FILE.json]`
+- `reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--catalog PATH] [--format json|jsonl]`
 - `routines list|explain|compare ... --seq-id ...`
 - `planning profile|objective|suggestions ...`
+- `planning consult cloning --format json`
+- `planning consult cloning --objective '{"schema":"gentle.planning_objective.v1","biological_intent":"protein_expression_max_yield"}' --format json`
+- `planning protein-expression-handoff --objective '{"schema":"gentle.planning_objective.v1","biological_intent":"protein_expression_max_yield"}' --format json`
+  - example request: `examples/request_planning_protein_expression_handoff.json`
+- `macros template-import assets/cloning_patterns_catalog`
+- `macros template-run allele_paired_promoter_luciferase_reporter ... --validate-only`
 
 Expected outputs:
 
 - promoter-context report
 - reporter-fragment candidates
+- reporter catalog/recommendation reports with accepted/rejected candidates
 - paired allele inserts
+- read-only reporter construct handoff plan with macro-port readiness,
+  reporter-backbone resolution, warnings, and exact next commands
 - perturbation and readout candidate families
 - routine time/cost/local-fit planning evidence when available
+- deterministic cloning strategy/vector consultation reports when users ask
+  which cloning strategy or target vector to choose
 - construct previews and handoff bundle artifacts
 - one best-first storyboard-style PNG when the wrapper collects multiple
   follow-up figures from the same run
+
+Reporter/synthetic-biology bridge pipeline:
+
+1. Start from sequence-grounded biology, not from a naked construct request.
+   Use `SummarizeVariantPromoterContext` and
+   `SuggestPromoterReporterFragments` when the user asks whether a variant or
+   promoter window can become a reporter assay.
+2. Inspect the local reporter substrate before choosing:
+   - shell route: `reporters list --limit 10`
+   - shell route: `reporters recommend --class luciferase --limit 5`
+   - corpus route for local retrieval/training prep:
+     `reporters export-corpus artifacts/reporter_corpus.jsonl --format jsonl`
+3. For promoter-luciferase V1, create the handoff through the engine operation
+   `PlanReporterConstructHandoff` rather than free-form prose. In a ClawBio
+   request this is `mode=op`, because the shared shell exposes the reporter
+   catalog/recommender routes while the direct `reporters plan-handoff ...`
+   helper is a `gentle_cli reporters ...` convenience route.
+4. Quote the handoff plan's typed fields:
+   - `status`
+   - `biological_intent`
+   - `port_bindings[]`
+   - `backbone`
+   - `selected_reporter`
+   - `reporter_recommendation.biological_intent`
+   - `reporter_recommendation`
+   - `commands[]`
+   - `warnings[]`
+5. If the handoff plan names missing ports or unresolved backbone state, report
+   those gaps as questions. Do not invent marker, promoter, MCS, host, license,
+   or sequence-availability answers from helper-vector notes.
+6. If the handoff plan is ready, the next deterministic step is macro
+   validation, not automatic construct creation:
+   `macros template-run allele_paired_promoter_luciferase_reporter ... --validate-only`.
+   Use a mutating macro run only when the user explicitly asks for it and the
+   normal GENtle confirmation/transactional path applies.
 
 ## Core Capabilities
 
@@ -848,11 +1282,30 @@ task:
    - restriction analysis
    - splicing expert
    - isoform architecture
+   - cloning strategy/vector planning
    - experimental follow-up
    - general cloning/workflow replay if none of the above fits better
    - if the user only supplied raw DNA text and asked for a read-only scan,
      prefer the stateless inline-sequence operation path under TFBS or
      restriction analysis instead of inventing project state
+   - if the user asks which cloning strategy, helper vector, target vector, or
+     local setup path to choose, prefer `planning consult cloning --format json`
+     and quote its `strategy_candidates`, `vector_candidates`, and
+     `missing_questions` rather than improvising biological planning prose
+   - if the user asks for the maximal amount/yield of protein, call
+     `planning protein-expression-handoff` with
+     `biological_intent=protein_expression_max_yield` and quote
+     `biological_intent`, `product_definition`, `host_chassis_candidates`,
+     `vector_route_candidates`, `missing_questions`,
+     `service_handoff_candidates`, and `suggested_next_actions`; do not equate
+     maximum yield with the strongest promoter until the product metric, host,
+     folding, toxicity, and purification endpoint are explicit
+   - if the user asks for reporter selection, reporter catalog inspection,
+     promoter-reporter handoff, or local-AI reporter-corpus preparation, prefer
+     the reporter routes (`reporters list`, `reporters recommend`,
+     `reporters export-corpus`, or `PlanReporterConstructHandoff`) and quote
+     their structured report fields, including `biological_intent` when
+     present, rather than inventing a synthetic-biology design narrative
 3. **Resolve execution route**: choose `--gentle-cli`, then `GENTLE_CLI_CMD`
    (recommended for the included local-checkout launcher or Docker /
    Apptainer/Singularity-backed execution), then `gentle_cli` on `PATH`, then
@@ -917,6 +1370,9 @@ python clawbio.py run gentle-cloning \
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_services_telegram_guide.json \
   --output /tmp/gentle_clawbio_telegram_guide
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_planning_consult_cloning.json \
+  --output /tmp/gentle_clawbio_planning_consult
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_services_handoff.json \
   --output /tmp/gentle_clawbio_services_handoff
@@ -1338,7 +1794,9 @@ Apply the following methodology:
 **Key parameters / control points**:
 
 - `mode`: one of `skill-info`, `version`, `capabilities`, `state-summary`,
-  `shell`, `op`, `workflow`, or `raw`.
+  `shell`, `op`, `workflow`, `construct-reasoning-list-inspections`,
+  `construct-reasoning-run-inspection`, `exon-skip-plan`,
+  `exon-skip-materialize`, or `raw`.
 - `skill-info`: reports ClawBio skill/catalog schema metadata without invoking
   `gentle_cli`; use it when checking which copied skill scaffold is installed.
 - `capabilities`: runs `gentle_cli capabilities` and then a best-effort shared
@@ -1355,6 +1813,26 @@ Apply the following methodology:
   can prepare it first when that is the only missing step."
 - `workflow_path`: preferred when a saved replayable GENtle workflow already
   exists.
+- `construct-reasoning-list-inspections`: typed wrapper over
+  `construct-reasoning list-inspection-actions`; requires `graph_id` and
+  accepts optional `fact_id`, `annotation_id`, `candidate_id`, `evidence_id`,
+  `seq_id`, `action_kind`, and `summary_id` filters.
+- `construct-reasoning-run-inspection`: typed wrapper over
+  `construct-reasoning run-inspection-action`; requires `graph_id` and
+  `action_id`, and accepts optional dotplot/render fields `word_size`,
+  `step_bp`, `max_mismatches`, `tile_bp`, `dotplot_id`, and
+  `render_svg_path`.
+- `exon-skip-plan`: typed wrapper over `transcripts exon-skip-plan`; use it
+  when ClawBio has chosen or inferred exons to skip but wants GENtle to store
+  an auditable selection plan first. It accepts explicit candidate/interval
+  criteria plus `length_mod3_values[]`, `coding_mod3_values[]`,
+  `coding_contexts[]`, and `cds_phase_entry_kinds[]` filters over GENtle's
+  persisted exon-frame attributes.
+- `exon-skip-materialize`: typed wrapper over
+  `transcripts exon-skip-materialize`; requires `confirm=true` and accepts
+  `return_items[]` (`genbank`, `cdna_fasta`, `amino_acid_sequence`,
+  `amino_acid_fasta`) so ClawBio can state whether it wants the adjusted
+  GenBank entry, the cDNA, or just the translated amino-acid sequence.
 - Resolver order: explicit `--gentle-cli`, then Docker/OCI-friendly
   `GENTLE_CLI_CMD`, then `gentle_cli` on `PATH`, then local `cargo run`
   fallback.
@@ -1560,6 +2038,12 @@ Apply the following methodology:
     - replays the anchored p53-family comparison with TP73 as the shared
       reference axis and TP63 plus TP53 aligned by the conserved motif
       `CATGTGTAACAG`
+  - `examples/request_construct_reasoning_list_inspections.json` and
+    `examples/request_construct_reasoning_run_inspection_dotplot.json`
+    - show the typed ClawBio request modes for listing graph-level portable
+      recommended inspections and running one selected dotplot action by
+      `action_id`; both modes build the shared `construct-reasoning ...`
+      shell commands rather than a ClawBio-only model
   - `examples/request_protocol_cartoon_gibson_svg.json`
     - declares `expected_artifacts[]` so the generated SVG is copied into the
       wrapper output bundle under `generated/...`
@@ -1649,8 +2133,8 @@ For status/readiness outputs, `result.json` may additionally include:
 - `chat_summary_lines[]` for concise first replies
 - `preferred_artifacts[]` for best-first figures
   - graphics now use a PNG-first outward contract for messenger consumers
-  - declared SVG engine outputs are rasterized into deterministic PNG bundle
-    artifacts at fixed scale `2.0`
+  - the best-first declared SVG engine output is rasterized into one
+    deterministic PNG bundle artifact at fixed scale `2.0`
   - text-bearing SVGs require usable fonts during rasterization. If the PNG
     shows bands/shapes but no labels, install a host/container font package
     such as `fonts-dejavu-core` or `fonts-liberation`, or set
@@ -1662,7 +2146,8 @@ For status/readiness outputs, `result.json` may additionally include:
     provenance artifacts
   - one-image-per-reply chat surfaces should treat
     `preferred_artifacts[0]` as the only immediate image and offer any
-    `continue_artifact` suggested actions to page through additional figures
+    request-first `continue_artifact` suggested actions to page through
+    additional SVG figures
 - `suggested_actions[]` with deterministic follow-up commands and nested
   request objects that ClawBio can offer to execute after confirmation
   - those suggestions now follow GENtle's lifecycle state directly:

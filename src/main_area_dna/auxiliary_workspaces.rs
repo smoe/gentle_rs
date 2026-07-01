@@ -1377,37 +1377,7 @@ impl MainAreaDna {
         center_0based: usize,
         half_window_bp: usize,
     ) -> Option<(usize, usize)> {
-        if sequence_len == 0 {
-            return None;
-        }
-        let half_window_bp = half_window_bp.max(1);
-        let center_0based = center_0based.min(sequence_len.saturating_sub(1));
-        let target_span = half_window_bp
-            .saturating_mul(2)
-            .saturating_add(1)
-            .min(sequence_len);
-        let mut start = center_0based.saturating_sub(half_window_bp);
-        let mut end = center_0based
-            .saturating_add(half_window_bp)
-            .saturating_add(1)
-            .min(sequence_len);
-        let current_span = end.saturating_sub(start);
-        if current_span < target_span {
-            let deficit = target_span - current_span;
-            let shift_left = deficit.min(start);
-            start = start.saturating_sub(shift_left);
-            let remaining = deficit.saturating_sub(shift_left);
-            end = end.saturating_add(remaining).min(sequence_len);
-            let second_span = end.saturating_sub(start);
-            if second_span < target_span {
-                let second_deficit = target_span - second_span;
-                start = start.saturating_sub(second_deficit.min(start));
-            }
-        }
-        if end <= start {
-            end = (start + 1).min(sequence_len);
-        }
-        Some((start, end))
+        crate::engine::bounded_center_window(sequence_len, center_0based, half_window_bp)
     }
 
     pub(super) fn default_dotplot_span_for_view(
@@ -2424,7 +2394,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             annotation_rect,
             2.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
             egui::StrokeKind::Inside,
         );
         let reference_span_f32 = reference_span.max(1) as f32;
@@ -2460,7 +2430,7 @@ impl MainAreaDna {
                     + (lower_start as f32 / reference_span_f32) * annotation_rect.height();
                 painter.line_segment(
                     [egui::pos2(lane_x, y0), egui::pos2(lane_x, y1)],
-                    egui::Stroke::new(1.0, egui::Color32::from_rgb(187, 247, 208)),
+                    egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(187, 247, 208)),
                 );
             }
         }
@@ -2550,7 +2520,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             canvas_rect,
             6.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
             egui::StrokeKind::Inside,
         );
 
@@ -2574,7 +2544,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             dotplot_rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
             egui::StrokeKind::Inside,
         );
 
@@ -2587,14 +2557,14 @@ impl MainAreaDna {
                     egui::pos2(x, dotplot_rect.top()),
                     egui::pos2(x, dotplot_rect.bottom()),
                 ],
-                egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
+                egui::Stroke::new(0.5_f32, egui::Color32::from_rgb(241, 245, 249)),
             );
             painter.line_segment(
                 [
                     egui::pos2(dotplot_rect.left(), y),
                     egui::pos2(dotplot_rect.right(), y),
                 ],
-                egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
+                egui::Stroke::new(0.5_f32, egui::Color32::from_rgb(241, 245, 249)),
             );
         }
         if overlay_mode {
@@ -2794,7 +2764,7 @@ impl MainAreaDna {
                 {
                     let cell_w = dotplot_rect.width() / cols as f32;
                     let cell_h = dotplot_rect.height() / rows as f32;
-                    let stroke_width = (cell_w.min(cell_h) * 0.45).clamp(0.8, 2.0);
+                    let stroke_width = (cell_w.min(cell_h) * 0.45_f32).clamp(0.8_f32, 2.0_f32);
                     for ((x_cell, y_cell), color) in &visible_cells {
                         for dy in [-1, 0, 1] {
                             let neighbor = (*x_cell + 1, *y_cell + dy);
@@ -2975,14 +2945,14 @@ impl MainAreaDna {
                         egui::pos2(pointer_x, dotplot_rect.top()),
                         egui::pos2(pointer_x, dotplot_rect.bottom()),
                     ],
-                    egui::Stroke::new(1.0, egui::Color32::from_rgb(15, 23, 42)),
+                    egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(15, 23, 42)),
                 );
                 painter.line_segment(
                     [
                         egui::pos2(dotplot_rect.left(), pointer_y),
                         egui::pos2(dotplot_rect.right(), pointer_y),
                     ],
-                    egui::Stroke::new(1.0, egui::Color32::from_rgb(15, 23, 42)),
+                    egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(15, 23, 42)),
                 );
                 painter.circle_filled(
                     egui::pos2(pointer_x, pointer_y),
@@ -3082,7 +3052,7 @@ impl MainAreaDna {
                 painter.rect_stroke(
                     flex_rect,
                     4.0,
-                    egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+                    egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
                     egui::StrokeKind::Inside,
                 );
                 let score_span = (track.max_score - track.min_score).abs().max(1e-12);
@@ -3106,7 +3076,7 @@ impl MainAreaDna {
                     let [left, right] = [segment[0], segment[1]];
                     painter.line_segment(
                         [left, right],
-                        egui::Stroke::new(1.5, egui::Color32::from_rgb(22, 101, 52)),
+                        egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(22, 101, 52)),
                     );
                 }
             }
@@ -3196,7 +3166,7 @@ impl MainAreaDna {
         if !visible_cells.is_empty() && visible_cells.len() <= DOTPLOT_CONNECT_DIAGONALS_MAX_CELLS {
             let cell_w = dotplot_rect.width() / cols as f32;
             let cell_h = dotplot_rect.height() / rows as f32;
-            let stroke_width = (cell_w.min(cell_h) * 0.45).clamp(0.8, 2.0);
+            let stroke_width = (cell_w.min(cell_h) * 0.45_f32).clamp(0.8_f32, 2.0_f32);
             for ((x_cell, y_cell), color) in &visible_cells {
                 for dy in [-1, 0, 1] {
                     let neighbor = (*x_cell + 1, *y_cell + dy);
@@ -3373,14 +3343,14 @@ impl MainAreaDna {
                     egui::pos2(x, dotplot_rect.top()),
                     egui::pos2(x, dotplot_rect.bottom()),
                 ],
-                egui::Stroke::new(if is_locked { 1.6 } else { 1.1 }, crosshair_color),
+                egui::Stroke::new(if is_locked { 1.6_f32 } else { 1.1_f32 }, crosshair_color),
             );
             painter.line_segment(
                 [
                     egui::pos2(dotplot_rect.left(), y),
                     egui::pos2(dotplot_rect.right(), y),
                 ],
-                egui::Stroke::new(if is_locked { 1.6 } else { 1.1 }, crosshair_color),
+                egui::Stroke::new(if is_locked { 1.6_f32 } else { 1.1_f32 }, crosshair_color),
             );
             painter.circle_filled(
                 egui::pos2(x, y),
@@ -3424,7 +3394,7 @@ impl MainAreaDna {
             painter.rect_stroke(
                 flex_rect,
                 4.0,
-                egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+                egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
                 egui::StrokeKind::Inside,
             );
             let score_span = (track.max_score - track.min_score).abs().max(1e-12);
@@ -3447,7 +3417,7 @@ impl MainAreaDna {
                 let [left, right] = [segment[0], segment[1]];
                 painter.line_segment(
                     [left, right],
-                    egui::Stroke::new(1.5, egui::Color32::from_rgb(22, 101, 52)),
+                    egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(22, 101, 52)),
                 );
             }
             painter.text(
@@ -3487,7 +3457,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             canvas_rect,
             6.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
             egui::StrokeKind::Inside,
         );
 
@@ -3509,7 +3479,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             plot_rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
             egui::StrokeKind::Inside,
         );
         for tick_idx in 1..10 {
@@ -3521,14 +3491,14 @@ impl MainAreaDna {
                     egui::pos2(x, plot_rect.top()),
                     egui::pos2(x, plot_rect.bottom()),
                 ],
-                egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
+                egui::Stroke::new(0.5_f32, egui::Color32::from_rgb(241, 245, 249)),
             );
             painter.line_segment(
                 [
                     egui::pos2(plot_rect.left(), y),
                     egui::pos2(plot_rect.right(), y),
                 ],
-                egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
+                egui::Stroke::new(0.5_f32, egui::Color32::from_rgb(241, 245, 249)),
             );
         }
 
@@ -3589,7 +3559,7 @@ impl MainAreaDna {
                 painter.rect_stroke(
                     egui::Rect::from_min_max(egui::pos2(x0, y_top), egui::pos2(x1, y_bottom)),
                     0.5,
-                    egui::Stroke::new(0.9, egui::Color32::from_rgb(29, 78, 216)),
+                    egui::Stroke::new(0.9_f32, egui::Color32::from_rgb(29, 78, 216)),
                     egui::StrokeKind::Inside,
                 );
             }
@@ -3600,14 +3570,14 @@ impl MainAreaDna {
                 let y_max = y_from_ref(max_ref);
                 painter.line_segment(
                     [egui::pos2(x_center, y_min), egui::pos2(x_center, y_max)],
-                    egui::Stroke::new(0.9, egui::Color32::from_rgb(15, 23, 42)),
+                    egui::Stroke::new(0.9_f32, egui::Color32::from_rgb(15, 23, 42)),
                 );
             }
             if let Some(median) = bin.median_reference_0based {
                 let y_median = y_from_ref(median);
                 painter.line_segment(
                     [egui::pos2(x0, y_median), egui::pos2(x1, y_median)],
-                    egui::Stroke::new(1.2, egui::Color32::from_rgb(190, 24, 93)),
+                    egui::Stroke::new(1.2_f32, egui::Color32::from_rgb(190, 24, 93)),
                 );
             }
         }
@@ -3737,7 +3707,7 @@ impl MainAreaDna {
 
         egui::Frame::NONE
             .fill(egui::Color32::from_gray(249))
-            .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(206)))
+            .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_gray(206)))
             .show(ui, |ui| {
                 ui.set_width(panel_width);
                 ui.vertical(|ui| {
@@ -4179,7 +4149,7 @@ impl MainAreaDna {
 
         egui::Frame::NONE
             .fill(egui::Color32::from_gray(249))
-            .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(206)))
+            .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_gray(206)))
             .show(ui, |ui| {
                 ui.set_width(panel_width);
                 ui.vertical(|ui| {
@@ -5061,7 +5031,7 @@ impl MainAreaDna {
         self.last_linear_map_width_px = panel_width;
         egui::Frame::NONE
             .fill(egui::Color32::from_gray(249))
-            .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(206)))
+            .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_gray(206)))
             .show(ui, |ui| {
                 ui.set_width(panel_width);
                 ui.vertical(|ui| {
@@ -5167,8 +5137,9 @@ impl MainAreaDna {
                 egui::RichText::new("only shown when CDS ranges are available")
                     .size(8.5)
                     .color(egui::Color32::from_rgb(100, 116, 139)),
-            );
+                );
         });
+        self.render_splicing_array_probe_geometry_section(ui, view, id_namespace);
         if !view.boundaries.is_empty() {
             let motif_rows = Self::splicing_boundary_motif_rows(view);
             let mut motif_class_counts = std::collections::BTreeMap::<String, usize>::new();
@@ -5944,6 +5915,190 @@ impl MainAreaDna {
         );
     }
 
+    fn render_splicing_array_probe_geometry_section(
+        &self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+        id_namespace: &str,
+    ) {
+        ui.separator();
+        ui.label(
+            egui::RichText::new("Array probe geometry")
+                .monospace()
+                .size(self.feature_details_font_size()),
+        );
+        ui.label(
+            egui::RichText::new(
+                "Review-only array design/alignment constraints over transcript lanes. This is visually and semantically separate from RNA-read evidence and does not infer isoform support.",
+            )
+            .size(9.0)
+            .color(egui::Color32::from_rgb(71, 85, 105)),
+        );
+
+        let Some(report) = self.cached_array_probe_geometry_report_for_splicing_view(view) else {
+            ui.small(
+                egui::RichText::new(Self::array_probe_geometry_empty_state_text())
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        let rows = Self::array_probe_geometry_rows_for_splicing_view(report, view);
+        if rows.is_empty() {
+            ui.small(
+                egui::RichText::new(Self::array_probe_geometry_empty_state_text())
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        }
+
+        ui.horizontal_wrapped(|ui| {
+            ui.small(format!(
+                "{} row(s) from {} array feature(s), level {}",
+                rows.len(),
+                report.array_feature_count,
+                report.level
+            ));
+            if let Some(gene) = report.gene_label.as_deref() {
+                ui.small(format!("gene {gene}"));
+            }
+        });
+        egui::ScrollArea::horizontal()
+            .id_salt((
+                "splicing_array_probe_geometry_scroll",
+                id_namespace,
+                view.seq_id.as_str(),
+                view.target_feature_id,
+            ))
+            .show(ui, |ui| {
+                egui::Grid::new((
+                    "splicing_array_probe_geometry_grid",
+                    id_namespace,
+                    view.seq_id.as_str(),
+                    view.target_feature_id,
+                ))
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.label(egui::RichText::new("transcript").monospace().strong());
+                    ui.label(egui::RichText::new("probe").monospace().strong());
+                    ui.label(egui::RichText::new("parent").monospace().strong());
+                    ui.label(egui::RichText::new("interval").monospace().strong());
+                    ui.label(egui::RichText::new("geometry").strong());
+                    ui.label(egui::RichText::new("junctions").strong());
+                    ui.label(egui::RichText::new("status").strong());
+                    ui.label(egui::RichText::new("tags").strong());
+                    ui.end_row();
+                    for row in rows.iter().take(48) {
+                        let status_color =
+                            if row.unresolved_tags.is_empty() && row.mapping_status != "unmapped" {
+                                egui::Color32::from_rgb(22, 101, 52)
+                            } else {
+                                egui::Color32::from_rgb(180, 83, 9)
+                            };
+                        ui.label(
+                            egui::RichText::new(row.transcript_id.as_str())
+                                .monospace()
+                                .size(9.0),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} {}",
+                                row.feature_id,
+                                if row.intensity_source == "probe_level_input" {
+                                    "PM"
+                                } else {
+                                    "summary"
+                                }
+                            ))
+                            .monospace()
+                            .size(9.0)
+                            .color(
+                                if row.intensity_source == "probe_level_input" {
+                                    egui::Color32::from_rgb(17, 24, 39)
+                                } else {
+                                    egui::Color32::from_rgb(71, 85, 105)
+                                },
+                            ),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.label(
+                            egui::RichText::new(row.parent_feature_id.as_str())
+                                .monospace()
+                                .size(9.0)
+                                .color(if row.parent_mixes_transcript_features {
+                                    egui::Color32::from_rgb(146, 64, 14)
+                                } else {
+                                    egui::Color32::from_rgb(71, 85, 105)
+                                }),
+                        )
+                        .on_hover_text(if row.parent_mixes_transcript_features {
+                            "parent probeset contains probes across multiple transcript features"
+                        } else {
+                            row.tooltip.as_str()
+                        });
+                        ui.label(
+                            egui::RichText::new(row.coordinate_label.as_str())
+                                .monospace()
+                                .size(9.0),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.label(
+                            egui::RichText::new(if row.exon_labels.is_empty() {
+                                row.mapping_kind.clone()
+                            } else {
+                                row.exon_labels.join(", ")
+                            })
+                            .size(9.0),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.label(
+                            egui::RichText::new(if row.junction_labels.is_empty() {
+                                "-".to_string()
+                            } else {
+                                row.junction_labels.join(", ")
+                            })
+                            .size(9.0)
+                            .color(
+                                if row.junction_labels.is_empty() {
+                                    egui::Color32::from_rgb(100, 116, 139)
+                                } else {
+                                    egui::Color32::from_rgb(124, 58, 237)
+                                },
+                            ),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.label(
+                            egui::RichText::new(row.mapping_status.as_str())
+                                .size(9.0)
+                                .color(status_color),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        let mut tags = row.unresolved_tags.clone();
+                        tags.extend(row.ambiguity_tags.iter().cloned());
+                        tags.sort();
+                        tags.dedup();
+                        ui.label(
+                            egui::RichText::new(if tags.is_empty() {
+                                "-".to_string()
+                            } else {
+                                Self::probe_region_preview_list(&tags)
+                            })
+                            .size(9.0)
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.end_row();
+                    }
+                });
+            });
+        if rows.len() > 48 {
+            ui.small(format!(
+                "{} additional array probe geometry row(s) hidden in this preview",
+                rows.len() - 48
+            ));
+        }
+    }
+
     pub(super) fn render_isoform_architecture_expert_view_ui(
         &self,
         ui: &mut egui::Ui,
@@ -6705,68 +6860,88 @@ impl MainAreaDna {
 
     pub fn collect_open_auxiliary_window_entries(&self) -> Vec<(egui::ViewportId, String, String)> {
         let mut entries = Vec::new();
-        if self.show_dotplot_window {
-            if let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id() {
-                let query_label = self.current_dotplot_query_label();
-                entries.push((
-                    Self::dotplot_viewport_id(&viewport_seq_id),
-                    Self::dotplot_window_title(&query_label),
-                    format!("Dotplot workspace for '{query_label}'"),
-                ));
-            }
+        if self.show_dotplot_window
+            && let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id()
+        {
+            let query_label = self.current_dotplot_query_label();
+            entries.push((
+                Self::dotplot_viewport_id(&viewport_seq_id),
+                Self::dotplot_window_title(&query_label),
+                format!("Dotplot workspace for '{query_label}'"),
+            ));
         }
-        if self.show_splicing_expert_window {
-            if let Some(view) = self.splicing_expert_window_view.as_ref() {
+        if self.show_splicing_expert_window
+            && let Some(view) = self.splicing_expert_window_view.as_ref()
+        {
+            entries.push((
+                Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id),
+                Self::splicing_expert_window_title(view),
+                format!(
+                    "Splicing expert for feature n-{} on '{}'",
+                    view.target_feature_id, view.seq_id
+                ),
+            ));
+        }
+        if self.show_rna_read_mapping_window
+            && let Some(view) = self.rna_read_mapping_window_view.as_ref()
+        {
+            entries.push((
+                Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id),
+                Self::rna_read_mapping_window_title(view),
+                format!(
+                    "RNA-read mapping workspace for feature n-{} on '{}'",
+                    view.target_feature_id, view.seq_id
+                ),
+            ));
+        }
+        if self.show_variant_followup_window {
+            let seq_id = self.variant_followup_ui.source_seq_id.trim();
+            if !seq_id.is_empty() {
                 entries.push((
-                    Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id),
-                    Self::splicing_expert_window_title(view),
-                    format!(
-                        "Splicing expert for feature n-{} on '{}'",
-                        view.target_feature_id, view.seq_id
+                    Self::variant_followup_viewport_id(
+                        seq_id,
+                        self.variant_followup_ui.source_feature_id,
                     ),
-                ));
-            }
-        }
-        if self.show_rna_read_mapping_window {
-            if let Some(view) = self.rna_read_mapping_window_view.as_ref() {
-                entries.push((
-                    Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id),
-                    Self::rna_read_mapping_window_title(view),
-                    format!(
-                        "RNA-read mapping workspace for feature n-{} on '{}'",
-                        view.target_feature_id, view.seq_id
-                    ),
-                ));
-            }
-        }
-        if self.show_isoform_expert_window {
-            if let Some(view) = self.isoform_expert_window_view.as_ref() {
-                let panel_id = self
-                    .isoform_expert_window_panel_id
-                    .as_deref()
-                    .unwrap_or(view.panel_id.as_str());
-                entries.push((
-                    Self::isoform_expert_viewport_id(&view.seq_id, panel_id),
-                    Self::isoform_expert_window_title(panel_id, &view.seq_id, view),
-                    if view
-                        .panel_source
-                        .as_deref()
-                        .map(str::trim)
-                        .map(|value| {
-                            value.starts_with("UniProt projection ")
-                                || value.starts_with("Transcript-native protein")
+                    Self::variant_followup_window_title(&self.variant_followup_ui),
+                    self.variant_followup_ui
+                        .source_feature_id
+                        .map(|feature_id| {
+                            format!(
+                                "Promoter design workspace for feature n-{feature_id} on '{seq_id}'"
+                            )
                         })
-                        .unwrap_or(false)
-                    {
-                        format!("Protein Expert '{}' on '{}'", panel_id, view.seq_id)
-                    } else {
-                        format!(
-                            "Isoform architecture panel '{panel_id}' on '{}'",
-                            view.seq_id
-                        )
-                    },
+                        .unwrap_or_else(|| format!("Promoter design workspace on '{seq_id}'")),
                 ));
             }
+        }
+        if self.show_isoform_expert_window
+            && let Some(view) = self.isoform_expert_window_view.as_ref()
+        {
+            let panel_id = self
+                .isoform_expert_window_panel_id
+                .as_deref()
+                .unwrap_or(view.panel_id.as_str());
+            entries.push((
+                Self::isoform_expert_viewport_id(&view.seq_id, panel_id),
+                Self::isoform_expert_window_title(panel_id, &view.seq_id, view),
+                if view
+                    .panel_source
+                    .as_deref()
+                    .map(str::trim)
+                    .map(|value| {
+                        value.starts_with("UniProt projection ")
+                            || value.starts_with("Transcript-native protein")
+                    })
+                    .unwrap_or(false)
+                {
+                    format!("Protein Expert '{}' on '{}'", panel_id, view.seq_id)
+                } else {
+                    format!(
+                        "Isoform architecture panel '{panel_id}' on '{}'",
+                        view.seq_id
+                    )
+                },
+            ));
         }
         entries
     }
@@ -6775,89 +6950,113 @@ impl MainAreaDna {
         &self,
         viewport_id: egui::ViewportId,
     ) -> Option<egui::LayerId> {
-        if self.show_dotplot_window {
-            if let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id() {
-                if viewport_id == Self::dotplot_viewport_id(&viewport_seq_id) {
-                    return Some(egui::LayerId::new(
-                        egui::Order::Middle,
-                        egui::Id::new(format!("dotplot_window_embedded_{viewport_seq_id}")),
-                    ));
-                }
+        if self.show_dotplot_window
+            && let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id()
+            && viewport_id == Self::dotplot_viewport_id(&viewport_seq_id)
+        {
+            return Some(egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new(format!("dotplot_window_embedded_{viewport_seq_id}")),
+            ));
+        }
+        if self.show_splicing_expert_window
+            && let Some(view) = self.splicing_expert_window_view.as_ref()
+            && viewport_id
+                == Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id)
+        {
+            let order = if self.splicing_expert_window_focus_requested {
+                egui::Order::Foreground
+            } else {
+                egui::Order::Middle
+            };
+            return Some(egui::LayerId::new(
+                order,
+                Self::splicing_expert_embedded_window_id(view),
+            ));
+        }
+        if self.show_rna_read_mapping_window
+            && let Some(view) = self.rna_read_mapping_window_view.as_ref()
+            && viewport_id
+                == Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id)
+        {
+            let order = if self.rna_read_mapping_window_focus_requested {
+                egui::Order::Foreground
+            } else {
+                egui::Order::Middle
+            };
+            return Some(egui::LayerId::new(
+                order,
+                Self::rna_read_mapping_embedded_window_id(view),
+            ));
+        }
+        if self.show_variant_followup_window {
+            let seq_id = self.variant_followup_ui.source_seq_id.trim();
+            if !seq_id.is_empty()
+                && viewport_id
+                    == Self::variant_followup_viewport_id(
+                        seq_id,
+                        self.variant_followup_ui.source_feature_id,
+                    )
+            {
+                let order = if self.variant_followup_window_focus_requested {
+                    egui::Order::Foreground
+                } else {
+                    egui::Order::Middle
+                };
+                return Some(egui::LayerId::new(
+                    order,
+                    Self::variant_followup_embedded_window_id(&self.variant_followup_ui),
+                ));
             }
         }
-        if self.show_splicing_expert_window {
-            if let Some(view) = self.splicing_expert_window_view.as_ref() {
-                if viewport_id
-                    == Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id)
-                {
-                    let order = if self.splicing_expert_window_focus_requested {
-                        egui::Order::Foreground
-                    } else {
-                        egui::Order::Middle
-                    };
-                    return Some(egui::LayerId::new(
-                        order,
-                        Self::splicing_expert_embedded_window_id(view),
-                    ));
-                }
-            }
-        }
-        if self.show_rna_read_mapping_window {
-            if let Some(view) = self.rna_read_mapping_window_view.as_ref() {
-                if viewport_id
-                    == Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id)
-                {
-                    let order = if self.rna_read_mapping_window_focus_requested {
-                        egui::Order::Foreground
-                    } else {
-                        egui::Order::Middle
-                    };
-                    return Some(egui::LayerId::new(
-                        order,
-                        Self::rna_read_mapping_embedded_window_id(view),
-                    ));
-                }
-            }
-        }
-        if self.show_isoform_expert_window {
-            if let Some(view) = self.isoform_expert_window_view.as_ref() {
-                let panel_id = self
-                    .isoform_expert_window_panel_id
-                    .as_deref()
-                    .unwrap_or(view.panel_id.as_str());
-                if viewport_id == Self::isoform_expert_viewport_id(&view.seq_id, panel_id) {
-                    return Some(egui::LayerId::new(
-                        egui::Order::Middle,
-                        egui::Id::new(format!(
-                            "isoform_expert_window_embedded_{}_{}",
-                            view.seq_id, panel_id
-                        )),
-                    ));
-                }
+        if self.show_isoform_expert_window
+            && let Some(view) = self.isoform_expert_window_view.as_ref()
+        {
+            let panel_id = self
+                .isoform_expert_window_panel_id
+                .as_deref()
+                .unwrap_or(view.panel_id.as_str());
+            if viewport_id == Self::isoform_expert_viewport_id(&view.seq_id, panel_id) {
+                return Some(egui::LayerId::new(
+                    egui::Order::Middle,
+                    egui::Id::new(format!(
+                        "isoform_expert_window_embedded_{}_{}",
+                        view.seq_id, panel_id
+                    )),
+                ));
             }
         }
         None
     }
 
     pub(crate) fn request_focus_auxiliary_window(&mut self, viewport_id: egui::ViewportId) -> bool {
-        if self.show_splicing_expert_window {
-            if let Some(view) = self.splicing_expert_window_view.as_ref() {
-                if viewport_id
-                    == Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id)
-                {
-                    self.splicing_expert_window_focus_requested = true;
-                    return true;
-                }
-            }
+        if self.show_splicing_expert_window
+            && let Some(view) = self.splicing_expert_window_view.as_ref()
+            && viewport_id
+                == Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id)
+        {
+            self.splicing_expert_window_focus_requested = true;
+            return true;
         }
-        if self.show_rna_read_mapping_window {
-            if let Some(view) = self.rna_read_mapping_window_view.as_ref() {
-                if viewport_id
-                    == Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id)
-                {
-                    self.rna_read_mapping_window_focus_requested = true;
-                    return true;
-                }
+        if self.show_rna_read_mapping_window
+            && let Some(view) = self.rna_read_mapping_window_view.as_ref()
+            && viewport_id
+                == Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id)
+        {
+            self.rna_read_mapping_window_focus_requested = true;
+            return true;
+        }
+        if self.show_variant_followup_window {
+            let seq_id = self.variant_followup_ui.source_seq_id.trim();
+            if !seq_id.is_empty()
+                && viewport_id
+                    == Self::variant_followup_viewport_id(
+                        seq_id,
+                        self.variant_followup_ui.source_feature_id,
+                    )
+            {
+                self.variant_followup_window_focus_requested = true;
+                return true;
             }
         }
         false
@@ -6878,6 +7077,35 @@ impl MainAreaDna {
         let default_size = Self::dotplot_window_default_size(has_loaded_payload);
         let min_size = Self::dotplot_window_min_size(has_loaded_payload);
         let content_min_size = Self::dotplot_window_content_min_size(has_loaded_payload);
+        if ctx.embed_viewports() {
+            let mut open = self.show_dotplot_window;
+            let spec = crate::egui_compat::HostedWindowSpec::new(
+                title.clone(),
+                egui::Id::new(format!("dotplot_window_embedded_{}", viewport_seq_id)),
+                default_size,
+                min_size,
+            );
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                let backdrop_settings = current_window_backdrop_settings();
+                paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
+                egui::ScrollArea::both()
+                    .id_salt(format!(
+                        "dotplot_window_scroll_embedded_{}",
+                        viewport_seq_id
+                    ))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        ui.set_min_size(content_min_size);
+                        self.render_dotplot_workspace_ui(ui);
+                    });
+            });
+            self.show_dotplot_window = open;
+            return;
+        }
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
             .with_inner_size([default_size.x, default_size.y])
@@ -6891,7 +7119,7 @@ impl MainAreaDna {
                     default_size,
                     min_size,
                 );
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     let backdrop_settings = current_window_backdrop_settings();
                     paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
                     egui::ScrollArea::both()
@@ -6913,24 +7141,28 @@ impl MainAreaDna {
                 return;
             }
 
-            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                let backdrop_settings = current_window_backdrop_settings();
-                paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
-                egui::ScrollArea::both()
-                    .id_salt(format!(
-                        "dotplot_window_scroll_viewport_{}",
-                        viewport_seq_id
-                    ))
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        ui.set_min_size(content_min_size);
-                        self.render_dotplot_workspace_ui(ui);
-                    });
-            });
+            crate::egui_compat::show_central_panel(
+                &mut *ctx,
+                egui::CentralPanel::default(),
+                |ui| {
+                    let backdrop_settings = current_window_backdrop_settings();
+                    paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
+                    egui::ScrollArea::both()
+                        .id_salt(format!(
+                            "dotplot_window_scroll_viewport_{}",
+                            viewport_seq_id
+                        ))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            ui.set_min_size(content_min_size);
+                            self.render_dotplot_workspace_ui(ui);
+                        });
+                },
+            );
 
             if crate::app::GENtleApp::viewport_close_requested_or_shortcut(ctx) {
                 self.show_dotplot_window = false;

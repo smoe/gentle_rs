@@ -498,8 +498,8 @@ pub fn build_entry_from_rest_payloads(
     let mut aliases = BTreeSet::new();
     for value in std::iter::once(entry_id.clone())
         .chain(std::iter::once(lookup.gene_id.clone()))
-        .chain(lookup.gene_symbol.clone().into_iter())
-        .chain(lookup.gene_display_name.clone().into_iter())
+        .chain(lookup.gene_symbol.clone())
+        .chain(lookup.gene_display_name.clone())
         .chain(
             lookup
                 .transcripts

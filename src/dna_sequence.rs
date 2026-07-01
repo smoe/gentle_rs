@@ -8,7 +8,7 @@ use crate::{
     open_reading_frame::OpenReadingFrame,
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeKey, RestrictionEnzymeSite},
 };
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use bio::io::fasta;
 use gb_io::seq::{Feature, Seq, Topology};
 use rayon::prelude::*;
@@ -19,9 +19,73 @@ use std::{
     fmt,
     fs::File,
     ops::{Range, RangeInclusive},
+    path::Path,
 };
 
 type DNAstring = Vec<u8>;
+
+pub fn load_from_file(path: &str) -> Result<DNAsequence> {
+    let extension = Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase());
+    match extension.as_deref() {
+        Some("dna") => return load_snapgene_file(path),
+        Some("embl") | Some("emb") => return load_embl_file(path),
+        Some("gb") | Some("gbk") | Some("genbank") => return load_genbank_file(path),
+        Some("fa") | Some("fasta") | Some("fna") | Some("fas") => return load_fasta_file(path),
+        Some("xml") => return load_xml_file(path),
+        _ => {}
+    }
+
+    for loader in [
+        load_snapgene_file,
+        load_genbank_file,
+        load_embl_file,
+        load_fasta_file,
+        load_xml_file,
+    ] {
+        if let Ok(dna) = loader(path) {
+            return Ok(dna);
+        }
+    }
+    Err(anyhow!("Could not load file '{path}'"))
+}
+
+fn load_genbank_file(filename: &str) -> Result<DNAsequence> {
+    let dna = DNAsequence::from_genbank_file(filename)?
+        .pop()
+        .ok_or_else(|| anyhow!("Could not read GenBank file {filename}"))?;
+    Ok(dna)
+}
+
+fn load_embl_file(filename: &str) -> Result<DNAsequence> {
+    let dna = DNAsequence::from_embl_file(filename)?
+        .pop()
+        .ok_or_else(|| anyhow!("Could not read EMBL file {filename}"))?;
+    Ok(dna)
+}
+
+fn load_fasta_file(filename: &str) -> Result<DNAsequence> {
+    let dna = DNAsequence::from_fasta_file(filename)?
+        .pop()
+        .ok_or_else(|| anyhow!("Could not read fasta file {filename}"))?;
+    Ok(dna)
+}
+
+fn load_xml_file(filename: &str) -> Result<DNAsequence> {
+    let dna = DNAsequence::from_ncbi_gbseq_xml_file(filename)?
+        .pop()
+        .ok_or_else(|| anyhow!("Could not read XML file {filename}"))?;
+    Ok(dna)
+}
+
+fn load_snapgene_file(filename: &str) -> Result<DNAsequence> {
+    let dna = DNAsequence::from_snapgene_file(filename)?
+        .pop()
+        .ok_or_else(|| anyhow!("Could not read SnapGene file {filename}"))?;
+    Ok(dna)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SyntheticMoleculeType {
@@ -230,6 +294,21 @@ impl DNAsequence {
             })?;
         }
         Ok(vec![DNAsequence::from_genbank_seq(seq)])
+    }
+
+    pub fn to_genbank_string(&self) -> Result<String> {
+        let mut buffer = Vec::new();
+        let mut seq = self.seq.clone();
+        for feature in &mut seq.features {
+            let location_text = feature.location.to_gb_format();
+            feature.location = gb_io::seq::Location::from_gb_format(&location_text).map_err(|e| {
+                anyhow::anyhow!(
+                    "Could not canonicalize feature location '{location_text}' before GenBank write: {e}"
+                )
+            })?;
+        }
+        gb_io::writer::write(&mut buffer, &seq)?;
+        Ok(String::from_utf8(buffer)?)
     }
 
     pub fn write_genbank_file(&self, filename: &str) -> Result<()> {
@@ -1174,7 +1253,7 @@ impl From<String> for DNAsequence {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{app::GENtleApp, enzymes::Enzymes};
+    use crate::enzymes::Enzymes;
     use std::{fs, io::Write};
     use tempfile::Builder;
 
@@ -1267,7 +1346,7 @@ mod tests {
 
     #[test]
     fn test_restriction_enzymes_full_digest() {
-        let seq = GENtleApp::load_from_file("test_files/pGEX-3X.gb").unwrap();
+        let seq = load_from_file("test_files/pGEX-3X.gb").unwrap();
         let enzymes = Enzymes::default();
         let res = enzymes.restriction_enzymes_by_name(&["BamHI", "EcoRI"]);
         assert_eq!(res.len(), 2);
@@ -1393,7 +1472,7 @@ mod tests {
     #[test]
     fn test_toy_small_gbseq_xml_load_from_file_by_extension_and_fallback() {
         let xml_path = "test_files/fixtures/import_parity/toy.small.gbseq.xml";
-        let xml_loaded = GENtleApp::load_from_file(xml_path).expect("load XML by extension");
+        let xml_loaded = load_from_file(xml_path).expect("load XML by extension");
         assert_eq!(xml_loaded.len(), 120);
         assert!(
             xml_loaded
@@ -1403,8 +1482,7 @@ mod tests {
         );
 
         let insd_xml_path = "test_files/fixtures/import_parity/toy.small.insdseq.xml";
-        let insd_loaded =
-            GENtleApp::load_from_file(insd_xml_path).expect("load INSD XML by extension");
+        let insd_loaded = load_from_file(insd_xml_path).expect("load INSD XML by extension");
         assert_eq!(insd_loaded.len(), 120);
         assert!(insd_loaded.features().iter().any(|feature| {
             feature.kind.to_string().eq_ignore_ascii_case("gene")
@@ -1420,7 +1498,7 @@ mod tests {
             .expect("temp disguised XML");
         tmp.write_all(xml_text.as_bytes())
             .expect("write disguised XML");
-        let fallback_loaded = GENtleApp::load_from_file(
+        let fallback_loaded = load_from_file(
             tmp.path()
                 .to_str()
                 .expect("temp path should be valid UTF-8"),
@@ -1436,8 +1514,7 @@ mod tests {
     #[test]
     fn test_toy_small_snapgene_load_from_file_by_extension_and_fallback() {
         let snapgene_path = "packages/snapgene-reader/tests/data/toy.small.dna";
-        let snapgene_loaded =
-            GENtleApp::load_from_file(snapgene_path).expect("load SnapGene by extension");
+        let snapgene_loaded = load_from_file(snapgene_path).expect("load SnapGene by extension");
         assert_eq!(snapgene_loaded.len(), 120);
         assert!(
             snapgene_loaded
@@ -1452,7 +1529,7 @@ mod tests {
             .tempfile()
             .expect("temp disguised SnapGene");
         tmp.write_all(&raw).expect("write disguised SnapGene");
-        let fallback_loaded = GENtleApp::load_from_file(
+        let fallback_loaded = load_from_file(
             tmp.path()
                 .to_str()
                 .expect("temp path should be valid UTF-8"),
@@ -1621,7 +1698,7 @@ mod tests {
 
     #[test]
     fn test_pgex_3x_embl_load_from_file() {
-        let dna = GENtleApp::load_from_file("test_files/pGEX-3X.embl").unwrap();
+        let dna = load_from_file("test_files/pGEX-3X.embl").unwrap();
         assert_eq!(dna.len(), 4952);
         assert!(!dna.features().is_empty());
     }
@@ -1692,7 +1769,7 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
             .tempfile()
             .expect("temp EMBL file");
         tmp.write_all(embl.as_bytes()).expect("write EMBL fixture");
-        let dna_via_loader = GENtleApp::load_from_file(
+        let dna_via_loader = load_from_file(
             tmp.path()
                 .to_str()
                 .expect("temp EMBL path should be valid UTF-8"),
@@ -1759,7 +1836,7 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
             .expect("temp EMBL file");
         tmp.write_all(embl.as_bytes()).expect("write EMBL fixture");
 
-        let dna = GENtleApp::load_from_file(
+        let dna = load_from_file(
             tmp.path()
                 .to_str()
                 .expect("temp EMBL path should be valid UTF-8"),

@@ -4,6 +4,148 @@
 //! one place so the main app file can focus more on menu/dialog orchestration.
 
 use super::*;
+use crate::engine_shell::UiIntentTarget;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GuiProminentGlossaryEntry {
+    pub glossary_path: &'static str,
+    pub menu_path: &'static str,
+    pub palette_title: &'static str,
+    pub ui_intent_target: Option<UiIntentTarget>,
+}
+
+const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
+    GuiProminentGlossaryEntry {
+        glossary_path: "load-project",
+        menu_path: "File > Open Project...",
+        palette_title: "Open Project",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "save-project",
+        menu_path: "File > Save Project...",
+        palette_title: "Save Project",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "history undo",
+        menu_path: "Edit > Undo",
+        palette_title: "Undo Last Operation",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "history redo",
+        menu_path: "Edit > Redo",
+        palette_title: "Redo Last Operation",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "gibson preview",
+        menu_path: "Patterns > Gibson...",
+        palette_title: "Gibson",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "gibson apply",
+        menu_path: "Patterns > Gibson...",
+        palette_title: "Gibson",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "genomes prepare",
+        menu_path: "Genome > Prepare Reference Genome...",
+        palette_title: "Prepare Reference Genome",
+        ui_intent_target: Some(UiIntentTarget::PrepareReferenceGenome),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "genomes extract-region",
+        menu_path: "Genome > Retrieve Genomic Sequence...",
+        palette_title: "Retrieve Genomic Sequence",
+        ui_intent_target: Some(UiIntentTarget::RetrieveGenomeSequence),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "genomes extract-gene",
+        menu_path: "Genome > Retrieve Genomic Sequence...",
+        palette_title: "Retrieve Genomic Sequence",
+        ui_intent_target: Some(UiIntentTarget::RetrieveGenomeSequence),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "genomes blast-track",
+        menu_path: "Genome > BLAST Genome Sequence...",
+        palette_title: "BLAST Genome Sequence",
+        ui_intent_target: Some(UiIntentTarget::BlastGenomeSequence),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "helpers prepare",
+        menu_path: "Genome > Prepare Helper Genome...",
+        palette_title: "Prepare Helper Genome",
+        ui_intent_target: Some(UiIntentTarget::PrepareHelperGenome),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "helpers extract-region",
+        menu_path: "Genome > Retrieve Helper Sequence...",
+        palette_title: "Retrieve Helper Sequence",
+        ui_intent_target: Some(UiIntentTarget::RetrieveHelperSequence),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "helpers extract-gene",
+        menu_path: "Genome > Retrieve Helper Sequence...",
+        palette_title: "Retrieve Helper Sequence",
+        ui_intent_target: Some(UiIntentTarget::RetrieveHelperSequence),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "helpers blast-track",
+        menu_path: "Genome > BLAST Helper Sequence...",
+        palette_title: "BLAST Helper Sequence",
+        ui_intent_target: Some(UiIntentTarget::BlastHelperSequence),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "tracks import-bed",
+        menu_path: "Genome > Import Genome Track...",
+        palette_title: "Import Genome Track",
+        ui_intent_target: Some(UiIntentTarget::ImportGenomeTrack),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "tracks import-bigwig",
+        menu_path: "Genome > Import Genome Track...",
+        palette_title: "Import Genome Track",
+        ui_intent_target: Some(UiIntentTarget::ImportGenomeTrack),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "tracks import-vcf",
+        menu_path: "Genome > Import Genome Track...",
+        palette_title: "Import Genome Track",
+        ui_intent_target: Some(UiIntentTarget::ImportGenomeTrack),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "primers design",
+        menu_path: "Patterns > PCR Designer...",
+        palette_title: "PCR Designer",
+        ui_intent_target: Some(UiIntentTarget::PcrDesign),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "primers design-qpcr",
+        menu_path: "Patterns > PCR Designer...",
+        palette_title: "PCR Designer",
+        ui_intent_target: Some(UiIntentTarget::PcrDesign),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "seq-confirm run",
+        menu_path: "Patterns > Sequencing Confirmation...",
+        palette_title: "Sequencing Confirmation",
+        ui_intent_target: Some(UiIntentTarget::SequencingConfirmation),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "mirna scan-target",
+        menu_path: "Patterns > microRNA Target Scan...",
+        palette_title: "microRNA Target Scan",
+        ui_intent_target: None,
+    },
+];
+
+pub fn gui_prominent_glossary_entries() -> &'static [GuiProminentGlossaryEntry] {
+    GUI_PROMINENT_GLOSSARY_ENTRIES
+}
 
 #[derive(Clone)]
 pub(super) struct OpenWindowEntry {
@@ -48,63 +190,74 @@ impl GENtleApp {
             return Some(Self::embedded_window_layer_from_title("Operation History"));
         }
         if viewport_id == Self::prepare_genome_viewport_id() {
-            return Some(Self::embedded_window_layer_from_title(
-                self.genome_dialog_scope.prepare_title(),
-            ));
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+                "hosted_prepare_genome_window",
+                viewport_id,
+            ))));
         }
         if viewport_id == Self::retrieve_genome_viewport_id() {
-            return Some(Self::embedded_window_layer_from_title(
-                self.genome_dialog_scope.retrieve_title(),
-            ));
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+                "hosted_retrieve_genome_window",
+                viewport_id,
+            ))));
         }
         if viewport_id == Self::blast_genome_viewport_id() {
-            return Some(Self::embedded_window_layer_from_title(
-                self.genome_dialog_scope.blast_title(),
-            ));
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+                "hosted_blast_genome_window",
+                viewport_id,
+            ))));
         }
         if viewport_id == Self::bed_track_viewport_id() {
-            return Some(Self::embedded_window_layer_from_title(
-                "Import Genome Tracks",
-            ));
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+                "hosted_bed_track_window",
+                viewport_id,
+            ))));
         }
         if viewport_id == Self::gibson_viewport_id() {
-            return Some(Self::embedded_window_layer_from_title("Gibson"));
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+                "hosted_gibson_window",
+                viewport_id,
+            ))));
         }
         if viewport_id == Self::arrangement_gel_preview_viewport_id() {
-            return Some(Self::embedded_window_layer_from_title(
-                self.arrangement_gel_preview_title(),
-            ));
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+                "hosted_arrangement_gel_preview_window",
+                viewport_id,
+            ))));
         }
         if viewport_id == Self::pcr_design_viewport_id() {
-            let title = if self.pcr_design_seq_id.trim().is_empty() {
-                "PCR Designer".to_string()
-            } else {
-                format!("PCR Designer — {}", self.pcr_design_seq_id.trim())
-            };
-            return Some(Self::embedded_window_layer_from_title(title));
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+                "hosted_pcr_design_window",
+                viewport_id,
+            ))));
         }
         if viewport_id == Self::sequencing_confirmation_viewport_id() {
-            let title = if self.sequencing_confirmation_seq_id.trim().is_empty() {
-                "Sequencing Confirmation".to_string()
-            } else {
-                format!(
-                    "Sequencing Confirmation — {}",
-                    self.sequencing_confirmation_seq_id.trim()
-                )
-            };
-            return Some(Self::embedded_window_layer_from_title(title));
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+                "hosted_sequencing_confirmation_window",
+                viewport_id,
+            ))));
         }
         if viewport_id == Self::planning_viewport_id() {
-            return Some(Self::embedded_window_layer_from_title("Planning"));
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+                "hosted_planning_window",
+                viewport_id,
+            ))));
         }
         if viewport_id == Self::routine_assistant_viewport_id() {
-            return Some(Self::embedded_window_layer_from_title("Routine Assistant"));
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::hosted_routine_assistant_window_id(),
+            ));
         }
         if viewport_id == Self::agent_assistant_viewport_id() {
-            return Some(Self::embedded_window_layer_from_title("Agent Assistant"));
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::hosted_agent_assistant_window_id(),
+            ));
         }
         if viewport_id == Self::uniprot_viewport_id() {
-            return Some(Self::embedded_window_layer_from_title("Protein Evidence"));
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+                "hosted_uniprot_window",
+                viewport_id,
+            ))));
         }
         if viewport_id == Self::genbank_viewport_id() {
             return Some(Self::embedded_window_layer_from_title(
@@ -113,7 +266,7 @@ impl GENtleApp {
         }
         if self.windows.contains_key(&viewport_id) {
             return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
-                "hosted_sequence_window",
+                "hosted_sequence_window_v2",
                 viewport_id,
             ))));
         }
@@ -173,12 +326,42 @@ impl GENtleApp {
                 detail: "Action launcher".to_string(),
             });
         }
-        if self.show_history_panel {
+        if self.external_services_ui.show_panel {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::external_services_viewport_id(),
+                ),
+                viewport_id: Self::external_services_viewport_id(),
+                title: "External Services".to_string(),
+                detail: "Provider catalog, preflight, and quote handoff workspace".to_string(),
+            });
+        }
+        if self.evidence_preparation_panel.show_panel {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::evidence_preparation_viewport_id(),
+                ),
+                viewport_id: Self::evidence_preparation_viewport_id(),
+                title: "Evidence Preparation".to_string(),
+                detail: "TP73 evidence-viewer proof material preparation".to_string(),
+            });
+        }
+        if self.history_ui.show_panel {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::history_viewport_id()),
                 viewport_id: Self::history_viewport_id(),
                 title: "Operation History".to_string(),
                 detail: "Undo/redo operation log".to_string(),
+            });
+        }
+        if self.show_jobs_panel {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::background_jobs_viewport_id(),
+                ),
+                viewport_id: Self::background_jobs_viewport_id(),
+                title: "Background Jobs".to_string(),
+                detail: "Progress, cancellation, and retry snapshots".to_string(),
             });
         }
         if self.show_reference_genome_prepare_dialog {
@@ -299,6 +482,26 @@ impl GENtleApp {
                 viewport_id: Self::agent_assistant_viewport_id(),
                 title: "Agent Assistant".to_string(),
                 detail: "Agent chat and per-reply command execution".to_string(),
+            });
+        }
+        if self.show_jaspar_expert_dialog {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::jaspar_expert_viewport_id(),
+                ),
+                viewport_id: Self::jaspar_expert_viewport_id(),
+                title: "JASPAR Expert".to_string(),
+                detail: "Motif registry, sequence-logo, and scoring diagnostics".to_string(),
+            });
+        }
+        if self.show_new_sequence_dialog {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::new_sequence_viewport_id(),
+                ),
+                viewport_id: Self::new_sequence_viewport_id(),
+                title: "New Sequence".to_string(),
+                detail: "Typed/clipboard sequence creation".to_string(),
             });
         }
         if self.show_uniprot_dialog {
@@ -548,20 +751,31 @@ impl GENtleApp {
             .values()
             .find(|window| Self::window_owns_auxiliary_viewport(window, viewport_id))
             .cloned();
-        if let Some(window) = detached_owner {
-            if let Ok(mut guard) = window.write() {
-                guard.request_focus_auxiliary_window(viewport_id);
-            }
+        if let Some(window) = detached_owner
+            && let Ok(mut guard) = window.write()
+        {
+            guard.request_focus_auxiliary_window(viewport_id);
         }
         None
     }
 
     pub(super) fn focus_window_viewport(&mut self, ctx: &egui::Context, viewport_id: ViewportId) {
         let auxiliary_owner_viewport = self.request_auxiliary_window_focus(viewport_id);
+        let embedded_auxiliary_focus = ctx.embed_viewports() && auxiliary_owner_viewport.is_some();
         if let Some(owner_viewport_id) = auxiliary_owner_viewport {
-            self.queue_focus_viewport(owner_viewport_id);
-            ctx.send_viewport_cmd_to(owner_viewport_id, egui::ViewportCommand::Visible(true));
-            ctx.send_viewport_cmd_to(owner_viewport_id, egui::ViewportCommand::Focus);
+            if ctx.embed_viewports() {
+                if let Some(layer_id) =
+                    self.embedded_window_layer_id_for_viewport(owner_viewport_id)
+                {
+                    ctx.move_to_top(layer_id);
+                }
+                ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Focus);
+            } else {
+                self.queue_focus_viewport(owner_viewport_id);
+                ctx.send_viewport_cmd_to(owner_viewport_id, egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd_to(owner_viewport_id, egui::ViewportCommand::Focus);
+            }
         }
 
         if viewport_id == Self::configuration_viewport_id() {
@@ -571,8 +785,10 @@ impl GENtleApp {
         } else if viewport_id == Self::command_palette_viewport_id() {
             self.show_command_palette_dialog = true;
             self.command_palette_focus_query = true;
+        } else if viewport_id == Self::external_services_viewport_id() {
+            self.external_services_ui.show_panel = true;
         } else if viewport_id == Self::history_viewport_id() {
-            self.show_history_panel = true;
+            self.history_ui.show_panel = true;
         } else if viewport_id == Self::prepare_genome_viewport_id() {
             self.show_reference_genome_prepare_dialog = true;
         } else if viewport_id == Self::retrieve_genome_viewport_id() {
@@ -595,19 +811,26 @@ impl GENtleApp {
             self.show_agent_assistant_dialog = true;
         } else if viewport_id == Self::uniprot_viewport_id() {
             self.show_uniprot_dialog = true;
+        } else if viewport_id == Self::new_sequence_viewport_id() {
+            self.show_new_sequence_dialog = true;
         } else if viewport_id == Self::genbank_viewport_id() {
             self.show_genbank_dialog = true;
         }
 
-        if ctx.embed_viewports() {
-            if let Some(layer_id) = self.embedded_window_layer_id_for_viewport(viewport_id) {
-                ctx.move_to_top(layer_id);
-                ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Visible(true));
-                ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Focus);
-            }
+        let focused_embedded_host = if ctx.embed_viewports()
+            && let Some(layer_id) = self.embedded_window_layer_id_for_viewport(viewport_id)
+        {
+            ctx.move_to_top(layer_id);
+            ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Focus);
+            true
+        } else {
+            false
+        };
+        if !embedded_auxiliary_focus && !focused_embedded_host {
+            ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
         }
-        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
-        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
         ctx.request_repaint();
         self.set_active_window_viewport(viewport_id);
     }

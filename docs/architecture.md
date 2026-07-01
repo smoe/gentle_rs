@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-04-29
+Last updated: 2026-05-07
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -13,7 +13,10 @@ It has two goals:
 Related shared documents:
 
 - `docs/protocol.md`: operation/state/result contracts
-- `docs/roadmap.md`: implementation status, known gaps, and execution order
+- `docs/roadmap.md`: current release gate, next priorities, and execution
+  phases
+- `docs/decisions.md`: durable architecture and implementation decisions
+- `docs/CHANGELOG.md`: completed-work history migrated out of the roadmap
 
 ## 1. Product intent
 
@@ -34,6 +37,33 @@ The long-term requirement is strict behavioral parity:
 - This document does not describe any current protocol that could be used
   to change the human genome or that of animals or plants.
 
+Adapter parity policy — three levels:
+
+- Engine capability parity (strict):
+  - Every operation is part of one engine-owned set.
+  - Adapters do not own additional operations.
+- Reachability parity (strict):
+  - Every operation is invokable from every adapter via the shared shell
+    pass-through: GUI Shell window, `gentle_cli shell '<command>'`, MCP
+    shell-like routes, and JS/Lua shell wrappers.
+  - No operation is reachable from one adapter and not another.
+- First-class surfacing (per-adapter):
+  - Each adapter independently chooses which operations get prominent
+    affordances, such as menu items, named CLI subcommands, MCP `tools/list`
+    entries, or ClawBio skill operations.
+  - This is allowed to differ by design and reflects the adapter's UX nature:
+    GUI surfaces operations whose value is inspecting reasoning, lineage, and
+    decisions, plus tactile workflow steps a user wants to drive
+    interactively.
+  - CLI/MCP surfaces workflow-preparation operations, batch/parameter-sweep
+    operations, and one-off operations an agent typically reaches for.
+  - ClawBio surfaces a curated agent-friendly skill set, deliberately narrower
+    than CLI/MCP.
+  - JS/Lua surfaces scripting-natural operations; coverage depth tracks the
+    feature gate.
+- A row that is "not first-class" on a surface is not a parity gap.
+- A row that is "not reachable" on a surface is a parity gap.
+
 Wet-lab semantic rule (target model):
 
 - A main DNA window represents a wet-lab container (tube/vial), not a single
@@ -41,6 +71,90 @@ Wet-lab semantic rule (target model):
 - A container may hold multiple candidate molecules/fragments.
 - Filter-like steps (PCR, gel extraction, in silico selection) produce a new
   container with a narrower candidate set.
+
+Sequence collection subject rule (target model):
+
+- A set of sequences should be treated as a first-class engine-owned subject,
+  not as a GUI-only convenience loop over single-sequence actions.
+- Gene sets are one producer of such subjects: they resolve catalog groups,
+  explicit members, local external mappings, genomic neighborhoods, or
+  deterministic samples into auditable member rows. They are not a separate GUI
+  object class with private behavior.
+- Existing collection-like concepts keep their own semantics:
+  - logical sets preserve membership and provenance without implying physical
+    mixing
+  - pools/containers represent one sample that may contain multiple molecules
+  - arrangements preserve semantic order for lanes, racks, plates, or other
+    experimental layouts
+  - alignments preserve member order plus aligned-column correspondence
+  - derived collections preserve source-member provenance for subsequences,
+    promoter windows, fragments, amplicons, and neighboring loci
+  - storage collections preserve physical placement through containers,
+    arrangements, racks, and future inventory/freezer views
+- Any operation that is valid for one stored sequence should declare how it
+  lifts over a collection before a prominent GUI affordance is added:
+  map per member, combine/pool, compare/align, arrange/place, derive new
+  members, or reject with a typed reason.
+- GUI, CLI, JS, Lua, Python, MCP, and agent routes must call the same lifted
+  engine/shell operation path. Adapters must not implement their own hidden
+  per-member loops with different readiness, error, or provenance behavior.
+- Detailed implementation plan:
+  `docs/gui_gene_set_collection_operations_plan.md`.
+
+Primer/oligo identity rule (target model):
+
+- A PCR primer should not be modeled as only a DNA string.
+- In a cloning workflow, a primer appears in progressively more concrete forms:
+  - concept: once PCR is chosen, the workflow requires primer roles such as
+    forward and reverse primer; qPCR additionally requires a probe role when a
+    probe-based assay is selected.
+  - retrieval/design constraint: once the region or amplicon to amplify has
+    been selected, each role becomes a constraint on a substance to retrieve,
+    design, order, or select from local stock. This constraint includes the
+    binding window, orientation, acceptable length/Tm/GC/specificity,
+    admissible tails or modifications, and local/vendor availability.
+  - instantiation: once a candidate is chosen, the constraint is satisfied by a
+    concrete oligo design with sequence, coordinates, diagnostics, provenance,
+    and later material status.
+- Current primer-design operations bridge the constraint-to-instantiation
+  boundary in silico: `DesignPrimerPairs` and `DesignQpcrAssays` persist
+  deterministic reports and may materialize graph-visible primer/probe sequence
+  artifacts for accepted candidates.
+- Such in-silico instantiations are not evidence that the oligo exists in the
+  lab. Future inventory/procurement support should track material states such
+  as `designed`, `reviewed`, `ordered`, `received`, `available_locally`, and
+  `consumed` without changing the underlying PCR biology operation.
+- Primer/probe ordering should be modeled as a batch artifact, analogous to an
+  assembly or arrangement: multiple concrete oligo instantiations can belong
+  together in one reviewed order form because they share one experimental
+  purpose, provider route, commercial context, or bench timing.
+- An oligo order form is neither a wet-lab container nor a silent vendor
+  submission. It is a logistics/procurement artifact with stable line-item
+  order, shared order metadata (for example scale, purification, delivery
+  channel, provider route), and links back to the primer/qPCR reports, pair or
+  assay ranks, roles, and sequences that justified each line item.
+- Identical or near-identical oligos from different PCR intents may be
+  de-duplicated or intentionally kept separate only by an explicit review step;
+  the default should preserve provenance and make grouping decisions visible.
+- GUI, CLI, JS, Lua, Python, MCP, and agent routes must preserve this
+  distinction. No adapter may silently equate a planned primer or persisted
+  design artifact with physical stock.
+
+Project fact-graph planning rule (target model):
+
+- Agent-facing planning should converge on an engine-owned structured project
+  fact graph rather than relying on an LLM to interpret prose state summaries.
+- Human-readable preconditions and expected outcomes remain useful comments for
+  users and AI systems, but deterministic planning needs parallel typed logic:
+  `precondition_expr` for readiness checks and `expected_effects[]` for
+  post-execution verification.
+- Negative biological or design requirements must be proof-backed positive
+  facts when possible. For example, "no EcoRI site in this insert" should be a
+  `restriction_site.absent` fact with subject, enzyme, coordinate range, and
+  basis report, not an inference from a missing restriction-site feature.
+- The planner should treat unknown, present, and verified-absent as distinct
+  states. Missing state means unknown unless a complete-enough verification
+  report establishes absence for the stated scope.
 
 Rack-placement rule (target model):
 
@@ -103,6 +217,10 @@ Strategic aims:
 3. Make every process exportable as a human-readable protocol text that a
    technical assistant can follow step by step (inputs, operations, expected
    outputs, and checkpoints).
+   - The first shared implementation is `ExportLabAssistantInstructions`, which
+     turns operation-journal rows plus sequence/container state into a Markdown
+     handoff with material IDs, design-derived steps, checkpoints, safety scope,
+     and record-keeping notes.
 4. Support optional, explicit screenshot artifact generation for documentation
    and progress communication without weakening default safety boundaries
    (compile-time feature gate + explicit runtime opt-in).
@@ -198,6 +316,62 @@ Internal-first execution rule:
   - but do not silently let the external workaround become the de facto
     product behavior.
 
+External-service integration rule:
+
+- Vendor/CRO/eProcurement integrations must enter GENtle through provider-
+  neutral, engine-owned service request/status/artifact contracts.
+- Provider-specific adapters (for example GeneArt) translate those contracts to
+  official APIs or dashboard handoff packets; GUI/CLI/MCP/ClawBio must not
+  hard-code vendor-specific biology or commerce behavior.
+- Routine provider behavior, channel definitions, template mappings, validation
+  rules, delivery/QC hints, and required follow-up policies belong in
+  overlay-discovered provider config catalogs (`assets/`, system, user, then
+  project) rather than in GUI/CLI adapters. Later catalog sources may override
+  earlier provider ids, and doctor routes should expose provenance/debug output.
+- Credentials, purchase-order values, shipping details, and account enablement
+  state stay out of project state. Project state may retain only explicit
+  provider project/order identifiers, redacted receipts, lineage links, and
+  user-approved artifacts needed for replay/audit.
+- Direct vendor submission or ordering is mutating external behavior and must
+  require explicit confirmation, stronger than ordinary local project
+  mutations. Quote/dashboard handoff remains the safe default when API support
+  or account enablement is uncertain.
+- Primer/probe order forms should enter this layer as provider-neutral
+  order-batch artifacts. Provider adapters may translate the batch into a
+  Metabion WOP/email+Excel packet, a GeneArt dashboard/API request, or another
+  configured route, but the project-facing artifact remains one reviewed batch
+  of oligo line items with lineage links.
+- External-service operations that wait on remote processing should use the
+  same inspectable progress/status/cancel/artifact posture as other
+  long-running GENtle work, even if provider-side cancellation is represented
+  only as a local "cancel polling / mark abandoned" action.
+
+Shell modularisation rule:
+
+- Shared shell syntax and discoverability contracts should move into
+  `crates/gentle-shell` as soon as they are root-independent.
+- While the full engine still lives in the root crate, root
+  `engine_shell` remains the execution compatibility layer and re-exports
+  shell-owned contracts for older call sites.
+- The full typed `ShellCommand` parser may move before the executor only after
+  all command field types it needs live in root-independent crates, preferably
+  `gentle-protocol`.
+- When a command field type moves to `gentle-protocol`, its stable spelling
+  helpers (`as_str`, labels, extension inference, and similar adapter-facing
+  methods) move with it; lower adapters must not recreate those mappings.
+- If shell parsing needs aliases for an engine-owned contract enum, those alias
+  parsers should live with the shared contract when they are stable enough for
+  cross-adapter reuse; avoid parallel shell-local and engine-local enums.
+- The public shell executor boundary must remain stack-safe for test harnesses,
+  CLI, GUI, MCP, and agent callers. Until the large root-crate dispatcher is
+  split into smaller crate-owned executors, `execute_shell_command_with_options`
+  runs the typed dispatcher on an explicitly sized worker stack and uses a
+  guard to avoid recursively spawning workers for nested workflow/macro
+  commands.
+- The executor moves to `gentle-shell` only after `gentle-engine` owns the
+  `GentleEngine` type, avoiding a dependency cycle from `gentle-shell` back to
+  the root crate.
+
 Tooltip coverage rule:
 
 - Every actionable GUI button must include a concise, context-sensitive
@@ -214,6 +388,13 @@ Visual consistency rule:
 - Legends must map 1:1 to rendered glyph semantics (shape + color + label).
 - If node/track glyph semantics change, legend text/colors must be updated in
   the same change.
+- Engine-owned SVG exports should expose stable `data-gentle-role` and, where
+  useful, `data-gentle-feature-kind` attributes on semantic biological glyphs
+  so tests and downstream tools can inspect figures without depending only on
+  text placement or raster screenshots.
+- Restriction-site hover/popover UI must consume the shared
+  `RestrictionSiteExpertView` detail contract rather than deriving cut
+  geometry, recognition text, or site counts in GUI-only tooltip code.
 - Interaction contracts should be explicit where ambiguity is costly
   (for example, click vs double-click behavior).
 
@@ -256,6 +437,12 @@ Window visual identity rule:
   of sequence/map labels, controls, or quantitative overlays.
 - Window-type coloring must remain stable (`main`, `sequence`, `splicing`,
   `pool`, `configuration`, `help`) and should not encode scientific semantics.
+- GUI theme tokens must keep decorative window-surface colors separate from
+  biological/analysis colors such as strand, feature, node, warning, and
+  success semantics.
+- Scientific canvas fills/strokes must be mode-aware for both light and dark
+  egui visuals instead of hard-coding a color that only works in one system
+  theme.
 - Backdrop images are expected to be monochrome or monochrome-tinted in
   rendering, with low opacity and a fast global disable path.
 
@@ -270,8 +457,8 @@ Discoverability rule:
 - Command discoverability and documentation should be glossary-driven:
   - shell command help is generated from `docs/glossary.json` (single source of truth)
   - the help viewer should support interface/language filtering (GUI shell,
-    CLI shell, CLI direct, JS, Lua, MCP, or all) to avoid duplicated manuals
-    while keeping context-specific views.
+    GUI menu, CLI shell, CLI direct, JS, Lua, MCP, or all) to avoid duplicated
+    manuals while keeping context-specific views.
 - Menu information architecture should separate sequence ingress from reference
   lifecycle:
   - `File` may include sequence ingress/start actions (for example local open,
@@ -408,10 +595,11 @@ Rules:
   should publish the same OCI artifact that local Docker and Linux Apptainer
   users consume
 
-## 3. Implementation status and roadmap
+## 3. Implementation status, decisions, and roadmap
 
-Shared implementation status, parity matrices, known gaps, and execution order
-are now maintained in `docs/roadmap.md`.
+Current priorities and release-gate rules are maintained in `docs/roadmap.md`.
+Completed work is recorded in `docs/CHANGELOG.md`. Durable implementation
+constraints and architectural decisions are indexed in `docs/decisions.md`.
 
 ## 4. Engine model
 
@@ -482,10 +670,15 @@ Progress/cancellation contract:
 - `true` continues the running operation.
 - `false` requests cancellation.
 - Long-running operations that support this contract (genome-track imports and
-  genome-prepare flow) can stop early while returning warnings/progress
-  summaries.
+  genome-prepare flow, plus shared read acquisition) can stop early while
+  returning warnings/progress summaries.
 - Genome-prepare additionally supports explicit timeboxing (`timeout_seconds`
   in operation payload, `--timeout-secs` in CLI/shell, `timeout_sec` in GUI).
+- Shared read acquisition must treat SRA Toolkit downloads/dumps as explicit
+  cancellable setup work: write activity JSON with the cancel-marker path,
+  emit progress snapshots, terminate the external child process group on
+  cancellation, and keep monitoring configured disk-space thresholds while the
+  child process is running.
 - Annotation parsing during genome preparation is fault-tolerant: malformed
   tabular annotation lines are skipped, summarized, and reported with capped
   file/line examples in warnings.
@@ -548,6 +741,11 @@ Practical rule:
 - Route hosted/specialist working windows through `egui_compat::HostedWindowSpec`
   and `show_hosted_window` so stable ids, safe-area clamping, foreground focus,
   viewport-builder defaults, and stale title-layer cleanup stay centralized.
+- Route one-shot GUI prompts through `egui_compat::ModalWindowSpec` and
+  `show_modal_window` so stable ids, foreground ordering, centered placement,
+  close-state reconciliation, and safe-area clamping stay centralized. Direct
+  production `egui::Window::new` calls should remain inside `egui_compat`; tests
+  may use them only to exercise compatibility behavior.
 - Keep anchored-data imports preflighted in UI (detected anchor, matching
   status, projected targets), while execution remains engine-owned.
 - Current GUI-only routing note:
@@ -556,8 +754,8 @@ Practical rule:
   - prepared-cache cleanup (`Genome -> Clear Caches...`) is a GUI specialist
     over shared engine/cache-inspection helpers; adapters must not invent their
     own filesystem cleanup rules
-  - shared shell commands can query/prepare/extract, but cannot yet directly
-    open/focus GUI dialogs
+  - shared shell `ui ...` commands can query prepared references and
+    open/focus/close catalogued GUI dialogs without duplicating GUI-only logic
 
 ### JavaScript/Lua shells
 
@@ -578,6 +776,13 @@ Practical rule:
   - consumed by runtime `help` rendering (`text|json|markdown`)
   - intended as single machine-readable command semantics index for
     CLI/GUI-shell/JS/Lua documentation generation
+  - glossary `usage` rows are syntax skeletons; operand metavariables such as
+    `QUERY`, `SEQ_ID`, `GENOME_ID`, `ENTRY_ID`, `PATH`, and `OUTPUT.svg` are
+    interpreted through the operand-convention section in `docs/cli.md` plus the
+    route-specific manual text
+  - AI helpers must not infer command operands from uppercase placeholder names
+    alone; when the relevant manual/glossary context is absent or ambiguous,
+    they should ask for the missing identifier instead of inventing one
 - Protocol-first workflow example contract:
   - canonical source files: `docs/examples/workflows/*.json`
   - schema: `gentle.workflow_example.v1`
@@ -590,15 +795,18 @@ Practical rule:
       hand-written material are distinguishable at discovery time
   - canonical machine-readable tutorial discovery catalog:
     `docs/tutorial/catalog.json`
-    - schema: `gentle.tutorial_catalog.v1`
+    - schema: `gentle.tutorial_catalog.v2`
     - lists both generated tutorial collections and hand-written pages
+    - supports optional group placement and nullable/absent decimal ids for
+      reference/navigation units
     - current consumer for GUI help/tutorial discovery
     - source of runtime manifest resolution for `Open Tutorial Project...`
   - tutorial discovery authoring source units:
     - `docs/tutorial/sources/catalog_meta.json`
-      (`gentle.tutorial_catalog_meta.v1`)
+      (`gentle.tutorial_catalog_meta.v2`)
     - `docs/tutorial/sources/*.json`
-      (`gentle.tutorial_source.v2`)
+      (`gentle.tutorial_source.v4`; legacy `gentle.tutorial_source.v3` and
+      `gentle.tutorial_source.v2` remain readable)
     - generated outputs:
       - `docs/tutorial/catalog.json`
       - `docs/tutorial/manifest.json`
@@ -609,7 +817,7 @@ Practical rule:
       `gentle_examples_docs tutorial-catalog-check`
       `gentle_examples_docs tutorial-manifest-check`
   - generated tutorial runtime manifest: `docs/tutorial/manifest.json`
-  - tutorial runtime schema: `gentle.tutorial_manifest.v1`
+  - tutorial runtime schema: `gentle.tutorial_manifest.v2`
   - committed tutorial runtime outputs: `docs/tutorial/generated/`
   - tutorial generator/check commands:
     - `gentle_examples_docs tutorial-generate`
@@ -696,6 +904,7 @@ Current baseline:
 - Exposed tools:
   - `capabilities`
   - `state_summary`
+  - `restriction_site_detail`
   - `op` (shared engine operation execution; explicit `confirm=true` required)
   - `workflow` (shared engine workflow execution; explicit `confirm=true` required)
   - `help`
@@ -706,7 +915,8 @@ Current baseline:
 - Handlers are thin and map to existing shared contracts
   (`GentleEngine::capabilities`, state summary, `Engine::apply`,
   `Engine::apply_workflow`, glossary-backed help, and shared shell
-  parser/executor for `ui ...` routes).
+  parser/executor for `ui ...` and `inspect-feature-expert ... restriction`
+  routes).
 - Mutating MCP tools persist project state to disk after successful execution.
 - Structured JSON-RPC diagnostics are returned for invalid requests/params.
 - UI-intent MCP tools are explicitly non-mutating and reject unexpected
@@ -718,7 +928,8 @@ Current baseline:
   an intentional shared-state model and should be treated as a trusted-client
   boundary.
 - Adapter-equivalence tests cover MCP-vs-shared-shell parity for:
-  `ui_intents`, `ui_prepared_genomes`, `ui_latest_prepared`, and `ui_intent`.
+  `ui_intents`, `ui_prepared_genomes`, `ui_latest_prepared`, `ui_intent`, and
+  `restriction_site_detail`.
 
 Remaining expansion scope:
 
@@ -748,17 +959,27 @@ Current baseline:
   - `ui intents`
   - `ui open TARGET ...`
   - `ui focus TARGET ...`
+  - `ui open sequence-window SEQ_ID`
+  - `ui focus sequence-window SEQ_ID`
+  - `ui close TARGET`
+  - `ui close sequence-window SEQ_ID`
+  - `ui selection sequence-window SEQ_ID [--range START..END]`
   - `ui prepared-genomes ...`
   - `ui latest-prepared SPECIES ...`
-- GUI-side intent handlers in `src/app.rs` now map `ui open|focus` intents to
-  existing dialog openers (Prepared References, prepare/retrieve/blast, track
-  import, agent assistant, helper-genome dialogs).
+- GUI-side intent handlers in `src/app.rs` now map `ui open|focus|close`
+  intents to existing dialog openers/closers (Prepared References,
+  prepare/retrieve/blast, track import, agent assistant, helper-genome dialogs)
+  and close individual DNA sequence windows through an explicit `SEQ_ID`.
+- GUI-side selection handlers set or report an active DNA sequence-window
+  selection through the same shared command plane; feature-layer display
+  visibility stays an engine-owned `SetDisplayVisibility` operation exposed by
+  shared shell `display show|hide|visibility` commands.
 - UI-intent capability/introspection output is available via `ui intents`.
 - Command Palette entries for UI-intent targets are generated from the shared
   `UiIntentTarget` metadata (title, detail, keywords) instead of duplicating
   those labels inside the GUI adapter; helper-genome targets participate in
   the same metadata path.
-- Query helpers are implemented and can be composed with open/focus for
+- Query helpers are implemented and can be composed with open/focus/close for
   prepared-reference selection, for example:
   - `ui open prepared-references --species human --latest`
   - explicit `--genome-id` overrides query-based selection
@@ -782,13 +1003,13 @@ UI-intent tool routine (target contract for MCP/agent/voice adapters):
    - adapter returns stable action/target list and required/optional arguments
 2. Resolve:
    - caller resolves target selection deterministically (for example
-     `ui prepared-genomes` / `ui latest-prepared`) before open/focus execution
+     `ui prepared-genomes` / `ui latest-prepared`) before open/focus/close execution
    - ambiguous query results must return structured "needs disambiguation"
      payloads instead of guessing
 3. Guard:
    - mutating/destructive intents require explicit confirmation field in the
      adapter request before execution
-   - non-mutating intents (`open`, `focus`, list/query helpers) execute without
+   - non-mutating intents (`open`, `focus`, `close`, list/query helpers) execute without
      mutating confirmation
 4. Execute:
    - adapter maps request to existing shared `ui ...` command contracts
@@ -950,6 +1171,9 @@ Minimal-success rollout profile (recommended):
 - Include compact machine context (`state_summary`) instead of large free-form
   project dumps to keep prompts deterministic and understandable.
 - For local/small models, provide a domain bootstrap package:
+  - command glossary and operand conventions: `docs/glossary.json` plus
+    `docs/cli.md`
+  - agent/protocol contract: `docs/protocol.md`
   - `docs/ai_cloning_primer.md`
   - `docs/ai_task_playbooks.md`
   - `docs/ai_prompt_contract.md`
@@ -1146,9 +1370,9 @@ Sequence-linked construct reasoning graph direction:
     `repClass`, and `repFamily` qualifiers for display/filtering.
   - Prepared `rmsk` interval indexes are the shared overlap-service boundary:
     engine, shell, GUI, and future adapters should query/project them through
-    the same coordinate helper, then materialize selected rows as ordinary
-    `repeat_region` sequence features rather than inventing parallel repeat
-    tracks.
+    the same coordinate helper, including chromosome/contig alias resolution,
+    then materialize selected rows as ordinary `repeat_region` sequence features
+    rather than inventing parallel repeat tracks.
   - frontends must not fake non-sequence host facts as anonymous sequence spans
     just to make them visible.
 - Evidence classes must remain explicit rather than collapsed into one opaque
@@ -1220,6 +1444,53 @@ Sequence-linked construct reasoning graph direction:
   - richer ontology-backed vocabularies are expected later, but the first
     catalog-semantic layer should already preserve enough typed structure that
     future ontology mapping is additive rather than a rewrite
+
+Gene-group knowledge-layer rule:
+
+- Public ontologies such as Gene Ontology are reference/evidence namespaces, not
+  the sole authority for how GENtle users may group genes.
+- GENtle needs a local, deterministic, catalog-extensible gene-group layer for
+  lab-facing concepts that are useful in experimental reasoning even when they
+  are not accepted terms in a public ontology, such as reprogramming-factor
+  shorthand, clinical/research panels, family aliases, or project-specific
+  gene cohorts.
+- A gene-group record should keep:
+  - stable id, label, aliases, short description, and long definition
+  - scope, including organism/taxon, symbol namespace, and optional reference
+    genome/transcript-source expectations
+  - membership rows with canonical gene symbol/id, optional species-specific
+    identifiers, evidence notes, confidence/status, and provenance
+  - external mappings such as GO, Reactome, MSigDB, HPO, MeSH, UniProt keyword,
+    or lab/project namespaces when available
+  - curation status (`draft`, `reviewed`, `curated`, `deprecated`) and source
+    provenance sufficient for offline debugging and reproducible reports
+- GO mappings are therefore additive anchors: a GENtle group may point to GO
+  terms where useful, but lack of a GO term must not prevent a lab-useful group
+  from existing locally.
+- Gene Ontology should be represented through the same resource/catalog
+  discipline as other external data: a declared namespace/resource in the
+  catalog metadata, explicit mappings on records, and doctor/debug output for
+  malformed or unsupported mappings.
+- AI-assisted gene-group creation is allowed only as a provenance-marked draft
+  workflow:
+  - the user supplies a long definition / scope
+  - an agent may propose a stable id, label, short description, aliases, and
+    candidate gene memberships
+  - the shared `gene-groups draft` route stores the proposal as a draft catalog
+    fragment with generation provenance, an input-description hash, candidate
+    memberships/external mappings, explicit separation between user-supplied
+    and agent/literature-suggested candidates, unresolved candidates, warnings,
+    and `review_required=true`
+  - GENtle must not treat AI-proposed memberships as curated facts until a user
+    or project policy promotes them
+- Downstream operations consume resolved catalog records, not hidden prompt
+  state. This keeps group-based promoter/TFBS comparisons, motif-order queries,
+  RNA-read cohorts, CUT&RUN summaries, MCP tools, and ClawBio reports
+  deterministic and inspectable.
+- Long-running runbooks and release evidence bundles that use a group should
+  snapshot the resolved group record and catalog/overlay provenance beside the
+  generated analysis artifacts, so later readers can reproduce which reviewed
+  lab term, ontology anchor, or project-local cohort definition was active.
 
 Decision-trace capture/export contract (detailed plan):
 
@@ -1391,6 +1662,12 @@ inspection/export paths:
     product sequence entries, groups them into one singleton/pool container,
     and renders optional product-gel SVGs through the shared pool-gel renderer
     so non-specific products remain visible as multiple vial/gel bands.
+    Materialization is idempotent: repeat runs with the same assay, transcript,
+    coordinates, and product sequence reuse the existing product sequence ids
+    and matching product container instead of minting duplicate vials.
+    Product-gel layouts also emit engine-owned text band rows/summary lines so
+    Telegram, CLI, ClawBio, JS, and Lua can explain the gel even when an image
+    preview is unavailable or text labels fail to rasterize on a host.
   - cDNA PCR/qPCR reports and transcript-aware qPCR assay contexts carry
     engine-owned genomic-DNA carryover risk classifications. The classification
     uses mapped exon/source ranges, junction-spanning primer/probe evidence, and
@@ -1405,6 +1682,9 @@ inspection/export paths:
     - one derived sequence per forward/reverse primer in each accepted pair
     - one container per primer pair (forward + reverse members)
     - lineage edges from template sequence to each created primer sequence
+    - these outputs are in-silico primer instantiations, not proof that the
+      corresponding physical oligos have been ordered, received, or found in
+      local stock
   - `PcrOverlapExtensionMutagenesis` materializes graph-visible staged outputs:
     - outer/inner primer sequences
     - stage-1 left/right fragments and stage-2 mutant product
@@ -1737,6 +2017,13 @@ Architecture constraints for this track:
   - transcript derivation and primer/qPCR ROI seeding stay in `Splicing Expert`
     because they are splicing-locus quick actions, not mapping-configuration
     controls.
+  - exon-skipped isoform creation is explicitly two-phase:
+    selection/planning produces an engine-owned plan record, and
+    materialization consumes that stored plan to create genomic annotation and
+    cDNA products without silently re-planning.
+  - adapter-facing exon-skip return payloads (GenBank, cDNA FASTA, amino-acid
+    text/FASTA) must be produced by the engine report, not invented by GUI,
+    MCP, or ClawBio wrappers after the fact.
   - `RNA-read Mapping` is the dedicated workspace for
     `InterpretRnaReads`/`AlignRnaReadReport` run configuration, workflow
     staging, live progress, and export actions.
@@ -1759,6 +2046,10 @@ Architecture constraints for this track:
 - Batch-oriented outputs must remain engine-owned: sample-sheet export contracts
   (TSV + machine-readable frequency columns) are shared across GUI/CLI/agents
   and derived from persisted RNA-read reports.
+- SRA-backed read preparation must stay in a shared, headless acquisition layer:
+  RNA expression and CUT&RUN consume prepared FASTA/FASTQ outputs plus
+  `gentle.read_acquisition_report.v1` records rather than embedding separate
+  downloader/conversion logic in each workflow.
 - Per-read exon-path and exon/transition abundance TSV exports should remain
   first-class engine contracts (not GUI-only derivations) so downstream cohort
   analysis is adapter-equivalent.
@@ -1770,6 +2061,11 @@ Architecture constraints for this track:
   operations.
 - Cross-adapter parity (GUI/CLI/shared shell) is required for summary
   inspection/export surfaces.
+- GUI inspection may be richer than CLI text output, but it must remain an
+  introspection view over engine-owned explanation records: score inputs,
+  thresholds, provenance, accepted/rejected reasons, and per-row diagnostics
+  should come from persisted payloads or shared helper contracts, not from
+  duplicate GUI-side biology logic.
 - Long-running RNA-read interpretation should avoid exclusive engine-write
   lock residency during compute-heavy read parsing/filtering so adapters stay
   responsive while progress streams are active.
@@ -2011,7 +2307,7 @@ Deferred-scope rules:
   `RenderIsoformArchitectureSvg`): accepted and implemented
 - Add async long-running command execution contract for agent-suggested BLAST
   and primer-pair multi-BLAST workflows: accepted and planned
-- Add shared GUI intent command plane (`ui intents`, `ui open|focus`, prepared
+- Add shared GUI intent command plane (`ui intents`, `ui open|focus|close`, prepared
   query helpers) and wire it into GUI-host dialog openers with deterministic
   prepared-reference selection: accepted and implemented (baseline)
 - Add MCP server adapter that exposes shared deterministic command/operation

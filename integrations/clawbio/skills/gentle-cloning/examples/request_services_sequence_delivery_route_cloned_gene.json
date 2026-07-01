@@ -1,0 +1,6 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "shell_line": "services delivery-route @docs/examples/external_services/sequence_delivery_cloned_gene_route_request.json",
+  "timeout_secs": 180
+}

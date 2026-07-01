@@ -21,6 +21,48 @@ const AGENT_RESPONSE_SCHEMA: &str = "gentle.agent_response.v1";
 const AGENT_SYSTEMS_SCHEMA_PREFIX: &str = "gentle.agent_systems.v";
 const AGENT_REQUEST_SCHEMA_PREFIX: &str = "gentle.agent_request.v";
 const AGENT_RESPONSE_SCHEMA_PREFIX: &str = "gentle.agent_response.v";
+pub(crate) const AGENT_BRIDGE_SYSTEM_PROMPT: &str = r#"You are a GENtle agent bridge.
+Return STRICT JSON only with this exact object shape:
+{"schema":"gentle.agent_response.v1","assistant_message":"string","questions":["string"],"suggested_commands":[{"title":"string","preconditions":["string"],"precondition_expr":{"all":[]},"expected_outcomes":["string"],"expected_effects":[{"fact":"string"}],"rationale":"string","command":"string","execution":"chat|ask|auto"}]}
+The top-level field named "schema" is a literal protocol id string, not a JSON Schema object. It must be exactly "gentle.agent_response.v1".
+Do not output JSON Schema definitions, "type"/"properties" schema documents, markdown fences, or explanatory prose outside the JSON object.
+Use only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.
+Suggested command contract:
+- Documentation context rule: before proposing commands, use the GENtle documentation bundle when available: docs/glossary.json for command paths, docs/cli.md for operand conventions and examples, docs/protocol.md for schemas/execution semantics, docs/ai_prompt_contract.md for agent behavior, and the biology/context docs docs/ai_cloning_primer.md, docs/ai_task_playbooks.md, docs/examples/ai_cloning_examples.md, plus docs/ai_glossary_extensions.json when present. If the relevant documentation is not available in your context, say what is missing or ask a clarifying question instead of guessing.
+- Operand rule: glossary usage words such as QUERY, ID, SEQ_ID, GENOME_ID, ENTRY_ID, PATH, START, END, CHR, and OUTPUT.svg are placeholders with route-specific meanings. Do not infer species aliases, accession formats, local output IDs, coordinate systems, or filesystem paths from the placeholder name alone.
+- Current scope declaration: GENtle does not currently implement OpenClaw-like filesystem, operating-system, or gateway commands. That may change in a future gateway layer; for now, concentrate on actions GENtle can also perform through its GUI or shared shell on the same project state.
+- Intent/precondition/outcome rule: use suggested_commands[].title for the user intent, suggested_commands[].preconditions for human-readable requirements such as "a sequence with seq_id demo_seq exists", optional suggested_commands[].precondition_expr for machine-readable fact-graph logic, suggested_commands[].expected_outcomes for postcondition-like effects expected if the command succeeds, and optional suggested_commands[].expected_effects for machine-readable fact-graph effects. Expected outcomes/effects are not guarantees; phrase prose as observable results to verify. Do not suggest downstream analysis on a seq_id unless the current project state says that seq_id exists or an earlier suggested command in the same reply creates it.
+- Fact vocabulary rule: when emitting precondition_expr or expected_effects, use the generated Known project fact vocabulary block appended to this system prompt. Unknown future fact names evaluate as "unknown"; avoid them unless your intent is to ask GENtle for a non-ready future capability.
+- suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
+- GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /open; /import; /open sequence-window SEQ_ID; /close sequence-window SEQ_ID; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /features restriction-scan SEQ_ID [--enzyme NAME]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--id ID] [--no-open]; /fetch ensembl-gene QUERY [--species NAME] [--id ID] [--no-open]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
+- /list reports GENtle's current project state and loaded sequence/project records. It does not list operating-system files or folders.
+- Window-management safety rule: close, hide, dismiss, focus, and open viewer-window requests are GUI intents, not project mutations. Never suggest deleting, removing, discarding, or clearing a sequence record to close a DNA sequence viewer. For catalogued dialogs/tools, use ui open TARGET, ui focus TARGET, or ui close TARGET. For a loaded sequence id such as fus_live, suggest ui open sequence-window fus_live, ui focus sequence-window fus_live, ui close sequence-window fus_live, /open sequence-window fus_live, or /close sequence-window fus_live. Use /delete, /remove, or lineage removal only when the user explicitly asks to delete project data.
+- Selection/display rule: to control a DNA viewer selection, use ui selection sequence-window SEQ_ID --range START..END (0-based, end-exclusive) or ui selection sequence-window SEQ_ID to inspect the current selection. To toggle feature display classes, use display show TARGET or display hide TARGET with targets such as features, gene-features, mrna-features, cds-features, repeat-features, array-features, tfbs, restriction-enzymes, gc-contents, open-reading-frames, and methylation-sites.
+- For simple first replies or orientation requests, prefer safe GENtle controls such as help, /help, /list, state-summary, capabilities, /open, concrete /open file examples, or confirmation-gated /fetch examples. Do not suggest sequence-analysis commands such as features restriction-scan as first runnable actions unless the current state already contains the referenced seq_id or an earlier suggested command in the same reply creates it. Mark runnable controls execution="ask"; use execution="chat" only when the row is explanatory and should not run.
+- Describe help as GENtle command/help documentation, state-summary as current project state, capabilities as available GENtle capabilities, and /list as loaded project/sequence state. Do not describe any of these as filesystem or operating-system commands.
+- Do not suggest Ollama REPL commands such as /set, /show, /load, /save, /clear, or bare /path/to/file attachments. In GENtle, use /open file PATH or /import file PATH when the user supplies an exact sequence-file path.
+- Ensembl route rule: use species names such as homo_sapiens, not HUMAN. /fetch ensembl-protein does not accept --species; for a human gene symbol such as FUS, use /fetch ensembl FUS --species homo_sapiens --id fus_live or a prepared-genome genomes genes/extract-gene workflow.
+- External aliases such as /fetch genbank, /fetch ncbi, /fetch uniprot, /fetch ensembl*, and /fetch dbsnp require explicit user confirmation or network opt-in; mark them execution="ask" unless the caller has already opted into network execution.
+- Common valid non-slash examples include: state-summary; ui open sequence-window fus_live; ui focus sequence-window fus_live; ui close pcr-design; ui close sequence-window fus_live; ui selection sequence-window fus_live --range 100..250; display show tfbs; display hide restriction-enzymes; op '{"LoadFile":{"path":"PATH","as_id":"ID"}}'; sequence create --sequence-text DNA --output-id ID; genbank fetch ACCESSION --as-id ID; ensembl-gene fetch SYMBOL --species SPECIES --entry-id ID; ensembl-region fetch SPECIES CHR:START..END:+ --output-id ID.
+- Do not invent OS, gateway, or OpenClaw-style commands such as fs.ls, fs.find, fs.grep, workspace.status, import.sequence, gentle.load_sequence, agent.help, sequence.new, /grep, /find, /ls, /new, or /example.
+- If the user asks you to search local files and no exact path is already known, ask the user to pick/provide the path; do not suggest filesystem discovery as a GENtle command. It is fine to explain that file discovery must happen by regular operating-system means outside GENtle. On macOS, suggest Finder search or Spotlight when appropriate.
+- Use ASCII punctuation in assistant_message, questions, titles, rationales, and commands. In particular, use the regular breakable hyphen '-' and plain quotes; avoid non-breaking hyphen, en dash, em dash, smart quotes, and mathematical minus.
+
+GENtle Agent Control Card:
+- Local controls: help or /help show GENtle help; /help TOPIC shows topic help; /list shows loaded GENtle project/sequence state; state-summary returns current project state; capabilities lists available GENtle capabilities.
+- File inputs: never use bare /path/to/file. If the user gave an exact local sequence-file path, suggest /open file PATH or /import file PATH with execution="ask".
+- Viewer windows: ui open TARGET, ui focus TARGET, and ui close TARGET control catalogued GENtle tool/dialog windows; ui open/focus/close sequence-window SEQ_ID controls only the DNA sequence viewer for that loaded sequence. Slash aliases /open sequence-window SEQ_ID and /close sequence-window SEQ_ID are also available. These commands keep the sequence record in the current project. Do not use deletion commands for window-close requests.
+- Viewer selection/display: ui selection sequence-window SEQ_ID --range START..END sets the DNA viewer selection; ui selection sequence-window SEQ_ID reports it. display show/hide TARGET toggles project display settings for feature classes and tracks.
+- Empty project: do not refer to existing seq_id values. Stage the answer as intents: inspect state, load/open/retrieve a sequence or reopen a project, then analyze only after a sequence exists. Suggest state-summary, capabilities, /list, /open, /paste sequence, /open file PATH when a path is known, or a confirmation-gated /fetch route for public data. Put "requires a loaded sequence" in preconditions[] for analysis commands and the expected loaded record/report in expected_outcomes[].
+- Negative logic rule: do not infer absence from missing state. If an action needs "no restriction site" or similar absence, require a complete-enough verification report as a precondition/effect. Prefer positive proof facts such as {"fact":"restriction_site.absent","subject":"demo_seq","enzyme":"EcoRI","range":"whole_sequence","basis_report":"restriction_scan_report_id"} over bare negation of a missing presence fact.
+- Continuing work: if the user wants an earlier project, suggest the GUI paths File -> Open Project... or File -> Open Recent Project..., or tell them to launch GENtle with an exact saved project path. Do not invent a recent-project slash command.
+- Public data: ask before network retrieval. For human genes, prefer /fetch ensembl SYMBOL --species homo_sapiens --id ID or a prepared-genome genomes genes/extract-gene workflow. Add --no-open when the user wants the record loaded without opening a DNA sequence viewer.
+- First reply examples:
+  {"title":"Show GENtle help","command":"help","execution":"ask"}
+  {"title":"Show project state","command":"state-summary","execution":"ask"}
+  {"title":"List loaded GENtle records","command":"/list","execution":"ask"}
+  {"title":"Open a sequence file","preconditions":["GUI host is available"],"precondition_expr":{"all":[{"fact":"ui.host_available"}]},"expected_outcomes":["A user-selected sequence file is loaded into the current GENtle project if parsing succeeds."],"expected_effects":[{"fact":"sequence.exists","source":"user_selected_file"}],"command":"/open","execution":"ask"}
+  {"title":"Retrieve human FUS from Ensembl","expected_outcomes":["A new local sequence record with id fus_live is available if Ensembl retrieval succeeds."],"expected_effects":[{"fact":"sequence.exists","id":"fus_live"}],"command":"/fetch ensembl FUS --species homo_sapiens --id fus_live","execution":"ask"}"#;
 const AGENT_SCHEMA_SUPPORTED_MAJOR: u32 = 1;
 const AGENT_INVOKE_RETRY_BASE_DELAY_MS: u64 = 250;
 const AGENT_REQUEST_TIMEOUT_SECS_DEFAULT: u64 = 180;
@@ -31,10 +73,64 @@ const AGENT_MAX_RESPONSE_BYTES_DEFAULT: usize = 1_048_576;
 const AGENT_MAX_RESPONSE_BYTES_HARD_MAX: usize = 64 * 1024 * 1024;
 const OPENAI_DEFAULT_MODEL: &str = "gpt-5";
 const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+const ANTHROPIC_DEFAULT_MODEL: &str = "claude-sonnet-4-6";
+const ANTHROPIC_DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
+const ANTHROPIC_API_VERSION: &str = "2023-06-01";
+const MISTRAL_DEFAULT_MODEL: &str = "mistral-large-latest";
+const MISTRAL_DEFAULT_BASE_URL: &str = "https://api.mistral.ai/v1";
 pub const OPENAI_COMPAT_UNSPECIFIED_MODEL: &str = "unspecified";
 const OPENAI_COMPAT_DEFAULT_MODEL: &str = OPENAI_COMPAT_UNSPECIFIED_MODEL;
 const OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 pub const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
+pub const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
+
+pub(crate) fn agent_bridge_system_prompt() -> String {
+    format!(
+        "{}\n\n{}",
+        AGENT_BRIDGE_SYSTEM_PROMPT,
+        crate::engine::project_fact_registry_prompt_block()
+    )
+}
+
+pub fn agent_fact_readiness_label(evaluation: &crate::engine::FactEvaluationResult) -> String {
+    match evaluation.truth {
+        crate::engine::FactTruth::Satisfied => "ready".to_string(),
+        crate::engine::FactTruth::Unsatisfied => {
+            let atoms = evaluation
+                .unmet_atoms
+                .iter()
+                .map(|atom| atom.fact.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            if atoms.is_empty() {
+                "blocked".to_string()
+            } else {
+                format!("blocked ({atoms})")
+            }
+        }
+        crate::engine::FactTruth::Unknown => {
+            let atoms = evaluation
+                .unknown_atoms
+                .iter()
+                .map(|atom| atom.fact.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            if atoms.is_empty() {
+                "unknown".to_string()
+            } else {
+                format!("unknown; needs evidence/project state for {atoms}")
+            }
+        }
+    }
+}
+pub const MISTRAL_API_KEY_ENV: &str = "MISTRAL_API_KEY";
+pub(crate) const ANTHROPIC_API_KEY_AUTH_HINT: &str = "Use an Anthropic Console API key for ANTHROPIC_API_KEY; Claude Code/Claude.ai subscription or OAuth tokens are not Anthropic API keys.";
+pub(crate) const MISTRAL_API_KEY_AUTH_HINT: &str = "Use a Mistral La Plateforme API key for MISTRAL_API_KEY; Le Chat or Mistral account login tokens are not Mistral API keys.";
+pub(crate) const OPENAI_USAGE_URL: &str = "https://platform.openai.com/usage";
+pub(crate) const OPENAI_BILLING_URL: &str =
+    "https://platform.openai.com/settings/organization/billing/overview";
+const ANTHROPIC_API_KEY_WRONG_KIND_HINT: &str = "This looks like a Claude Code/Claude.ai OAuth token, not an Anthropic Console API key. Use an Anthropic Console API key for ANTHROPIC_API_KEY instead.";
+const ANTHROPIC_API_KEY_UNUSUAL_SHAPE_HINT: &str = "This does not look like an Anthropic Console API key. Current Anthropic API keys usually begin with sk-ant-api; Test Setup can still verify the key live.";
 pub const AGENT_BASE_URL_ENV: &str = "GENTLE_AGENT_BASE_URL";
 pub const AGENT_MODEL_ENV: &str = "GENTLE_AGENT_MODEL";
 pub const AGENT_TIMEOUT_SECS_ENV: &str = "GENTLE_AGENT_TIMEOUT_SECS";
@@ -94,6 +190,15 @@ pub(crate) fn redact_sensitive_text(raw: &str) -> String {
             "$1[REDACTED_OPENAI_API_KEY]",
         ),
         (
+            r"(?i)(ANTHROPIC_API_KEY\s*=\s*)([^\s,;]+)",
+            "$1[REDACTED_ANTHROPIC_API_KEY]",
+        ),
+        (
+            r"(?i)(MISTRAL_API_KEY\s*=\s*)([^\s,;]+)",
+            "$1[REDACTED_MISTRAL_API_KEY]",
+        ),
+        (r"(?i)(x-api-key\s*:\s*)([^\s,;]+)", "$1[REDACTED_API_KEY]"),
+        (
             r"(?i)(authorization\s*:\s*bearer\s+)([^\s,;]+)",
             "$1[REDACTED_BEARER_TOKEN]",
         ),
@@ -106,6 +211,7 @@ pub(crate) fn redact_sensitive_text(raw: &str) -> String {
             "$1=[REDACTED]",
         ),
         (r"\bsk-[A-Za-z0-9_-]{8,}\b", "[REDACTED_OPENAI_KEY]"),
+        (r"\bsk-ant-[A-Za-z0-9_-]{8,}\b", "[REDACTED_ANTHROPIC_KEY]"),
     ] {
         if let Ok(re) = Regex::new(pattern) {
             out = re.replace_all(&out, replacement).into_owned();
@@ -185,9 +291,9 @@ fn is_executable_file(path: &Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        return fs::metadata(path)
+        fs::metadata(path)
             .map(|meta| meta.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false);
+            .unwrap_or(false)
     }
     #[cfg(not(unix))]
     {
@@ -214,18 +320,49 @@ fn resolve_executable_path(program: &str) -> Option<PathBuf> {
     None
 }
 
-fn resolve_api_key(system: &AgentSystemSpec) -> Option<String> {
+fn resolve_env_key(system: &AgentSystemSpec, key: &str) -> Option<String> {
     system
         .env
-        .get(OPENAI_API_KEY_ENV)
+        .get(key)
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .or_else(|| {
-            std::env::var(OPENAI_API_KEY_ENV)
+            std::env::var(key)
                 .ok()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
         })
+}
+
+fn resolve_openai_api_key(system: &AgentSystemSpec) -> Option<String> {
+    resolve_env_key(system, OPENAI_API_KEY_ENV)
+}
+
+fn resolve_anthropic_api_key(system: &AgentSystemSpec) -> Option<String> {
+    resolve_env_key(system, ANTHROPIC_API_KEY_ENV)
+}
+
+fn resolve_mistral_api_key(system: &AgentSystemSpec) -> Option<String> {
+    resolve_env_key(system, MISTRAL_API_KEY_ENV)
+}
+
+pub(crate) fn anthropic_api_key_kind_warning(raw: &str) -> Option<&'static str> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("sk-ant-oat") {
+        Some(ANTHROPIC_API_KEY_WRONG_KIND_HINT)
+    } else if lower.starts_with("sk-ant-api") || lower.starts_with("sk-ant-") {
+        None
+    } else {
+        Some(ANTHROPIC_API_KEY_UNUSUAL_SHAPE_HINT)
+    }
+}
+
+pub(crate) fn anthropic_api_key_is_known_non_api_token(raw: &str) -> bool {
+    raw.trim().to_ascii_lowercase().starts_with("sk-ant-oat")
 }
 
 fn parse_positive_u64(raw: &str) -> Option<u64> {
@@ -417,11 +554,7 @@ fn resolve_base_url_with_source(system: &AgentSystemSpec, default: &str) -> Reso
             source: BaseUrlSource::EnvOverride,
         };
     }
-    if let Some(url) = system
-        .base_url
-        .as_deref()
-        .and_then(|value| normalize_base_url(value))
-    {
+    if let Some(url) = system.base_url.as_deref().and_then(normalize_base_url) {
         return ResolvedBaseUrl {
             url,
             source: BaseUrlSource::Catalog,
@@ -527,6 +660,32 @@ fn enforce_openai_compat_base_url_policy(
 }
 
 fn openai_compat_endpoint_candidates(base_url: &str) -> Vec<String> {
+    let normalized =
+        normalize_base_url(base_url).unwrap_or_else(|| base_url.trim_end_matches('/').to_string());
+    let mut endpoints = vec![format!("{normalized}/chat/completions")];
+    if !normalized.ends_with("/v1") {
+        let v1 = format!("{normalized}/v1/chat/completions");
+        if !endpoints.contains(&v1) {
+            endpoints.push(v1);
+        }
+    }
+    endpoints
+}
+
+fn anthropic_endpoint_candidates(base_url: &str) -> Vec<String> {
+    let normalized =
+        normalize_base_url(base_url).unwrap_or_else(|| base_url.trim_end_matches('/').to_string());
+    let mut endpoints = vec![format!("{normalized}/messages")];
+    if !normalized.ends_with("/v1") {
+        let v1 = format!("{normalized}/v1/messages");
+        if !endpoints.contains(&v1) {
+            endpoints.push(v1);
+        }
+    }
+    endpoints
+}
+
+fn mistral_endpoint_candidates(base_url: &str) -> Vec<String> {
     let normalized =
         normalize_base_url(base_url).unwrap_or_else(|| base_url.trim_end_matches('/').to_string());
     let mut endpoints = vec![format!("{normalized}/chat/completions")];
@@ -658,6 +817,144 @@ pub fn discover_openai_models(
         .unwrap_or_else(|| "model discovery failed: no endpoint candidate succeeded".to_string()))
 }
 
+pub fn discover_anthropic_models(
+    base_url: &str,
+    api_key: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let endpoints =
+        openai_model_list_endpoint_candidates(base_url).map_err(|e| redact_sensitive_text(&e))?;
+    let api_key = api_key
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("{ANTHROPIC_API_KEY_ENV} is required for Claude model discovery"))?;
+    if anthropic_api_key_is_known_non_api_token(api_key) {
+        return Err(ANTHROPIC_API_KEY_WRONG_KIND_HINT.to_string());
+    }
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("could not build Anthropic model-discovery client: {e}"))?;
+    let mut first_error: Option<String> = None;
+    for endpoint in endpoints {
+        match client
+            .get(&endpoint)
+            .header("x-api-key", api_key)
+            .header("anthropic-version", ANTHROPIC_API_VERSION)
+            .send()
+        {
+            Ok(response) => {
+                let status = response.status();
+                let body = response
+                    .text()
+                    .map_err(|e| format!("could not read model discovery response body: {e}"))?;
+                if !status.is_success() {
+                    if (status.as_u16() == 404 || status.as_u16() == 405) && first_error.is_none() {
+                        first_error = Some(format!(
+                            "model discovery endpoint not supported at {endpoint} (status={status})"
+                        ));
+                        continue;
+                    }
+                    let hint = if status.as_u16() == 401 || status.as_u16() == 403 {
+                        format!(" Hint: {ANTHROPIC_API_KEY_AUTH_HINT}")
+                    } else {
+                        String::new()
+                    };
+                    return Err(redact_sensitive_text(&format!(
+                        "Anthropic model discovery failed at {endpoint} (status={status}): {}{}",
+                        body.trim(),
+                        hint
+                    )));
+                }
+                let value = serde_json::from_str::<Value>(&body).map_err(|e| {
+                    format!(
+                        "Anthropic model discovery endpoint returned invalid JSON at {endpoint}: {e}"
+                    )
+                })?;
+                let models = extract_models_from_openai_models_payload(&value);
+                if models.is_empty() {
+                    return Err(format!(
+                        "Anthropic model discovery at {endpoint} succeeded but returned no model ids"
+                    ));
+                }
+                return Ok(models);
+            }
+            Err(e) => {
+                if first_error.is_none() {
+                    first_error = Some(format!("request failed at {endpoint}: {e}"));
+                }
+            }
+        }
+    }
+    Err(first_error.unwrap_or_else(|| {
+        "Anthropic model discovery failed: no endpoint candidate succeeded".to_string()
+    }))
+}
+
+pub fn discover_mistral_models(
+    base_url: &str,
+    api_key: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let endpoints =
+        openai_model_list_endpoint_candidates(base_url).map_err(|e| redact_sensitive_text(&e))?;
+    let api_key = api_key
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("{MISTRAL_API_KEY_ENV} is required for Mistral model discovery"))?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("could not build Mistral model-discovery client: {e}"))?;
+    let mut first_error: Option<String> = None;
+    for endpoint in endpoints {
+        match client.get(&endpoint).bearer_auth(api_key).send() {
+            Ok(response) => {
+                let status = response.status();
+                let body = response
+                    .text()
+                    .map_err(|e| format!("could not read model discovery response body: {e}"))?;
+                if !status.is_success() {
+                    if (status.as_u16() == 404 || status.as_u16() == 405) && first_error.is_none() {
+                        first_error = Some(format!(
+                            "model discovery endpoint not supported at {endpoint} (status={status})"
+                        ));
+                        continue;
+                    }
+                    let hint = if status.as_u16() == 401 || status.as_u16() == 403 {
+                        format!(" Hint: {MISTRAL_API_KEY_AUTH_HINT}")
+                    } else {
+                        String::new()
+                    };
+                    return Err(redact_sensitive_text(&format!(
+                        "Mistral model discovery failed at {endpoint} (status={status}): {}{}",
+                        body.trim(),
+                        hint
+                    )));
+                }
+                let value = serde_json::from_str::<Value>(&body).map_err(|e| {
+                    format!(
+                        "Mistral model discovery endpoint returned invalid JSON at {endpoint}: {e}"
+                    )
+                })?;
+                let models = extract_models_from_openai_models_payload(&value);
+                if models.is_empty() {
+                    return Err(format!(
+                        "Mistral model discovery at {endpoint} succeeded but returned no model ids"
+                    ));
+                }
+                return Ok(models);
+            }
+            Err(e) => {
+                if first_error.is_none() {
+                    first_error = Some(format!("request failed at {endpoint}: {e}"));
+                }
+            }
+        }
+    }
+    Err(first_error.unwrap_or_else(|| {
+        "Mistral model discovery failed: no endpoint candidate succeeded".to_string()
+    }))
+}
+
 pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailability {
     match system.transport {
         AgentSystemTransport::BuiltinEcho => AgentSystemAvailability {
@@ -690,10 +987,34 @@ pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailab
             }
         }
         AgentSystemTransport::NativeOpenai => {
-            if resolve_api_key(system).is_none() {
+            if resolve_openai_api_key(system).is_none() {
                 return AgentSystemAvailability {
                     available: false,
                     reason: Some(format!("{OPENAI_API_KEY_ENV} is not set")),
+                };
+            }
+            AgentSystemAvailability {
+                available: true,
+                reason: None,
+            }
+        }
+        AgentSystemTransport::NativeAnthropic => {
+            if resolve_anthropic_api_key(system).is_none() {
+                return AgentSystemAvailability {
+                    available: false,
+                    reason: Some(format!("{ANTHROPIC_API_KEY_ENV} is not set")),
+                };
+            }
+            AgentSystemAvailability {
+                available: true,
+                reason: None,
+            }
+        }
+        AgentSystemTransport::NativeMistral => {
+            if resolve_mistral_api_key(system).is_none() {
+                return AgentSystemAvailability {
+                    available: false,
+                    reason: Some(format!("{MISTRAL_API_KEY_ENV} is not set")),
                 };
             }
             AgentSystemAvailability {
@@ -754,6 +1075,8 @@ pub enum AgentSystemTransport {
     #[default]
     ExternalJsonStdio,
     NativeOpenai,
+    NativeAnthropic,
+    NativeMistral,
     NativeOpenaiCompat,
     BuiltinEcho,
 }
@@ -763,6 +1086,8 @@ impl AgentSystemTransport {
         match self {
             Self::ExternalJsonStdio => "external_json_stdio",
             Self::NativeOpenai => "native_openai",
+            Self::NativeAnthropic => "native_anthropic",
+            Self::NativeMistral => "native_mistral",
             Self::NativeOpenaiCompat => "native_openai_compat",
             Self::BuiltinEcho => "builtin_echo",
         }
@@ -963,6 +1288,10 @@ impl AgentExecutionIntent {
 #[serde(default)]
 pub struct AgentSuggestedCommand {
     pub title: Option<String>,
+    pub preconditions: Vec<String>,
+    pub precondition_expr: Option<Value>,
+    pub expected_outcomes: Vec<String>,
+    pub expected_effects: Vec<Value>,
     pub rationale: Option<String>,
     pub command: String,
     pub execution: AgentExecutionIntent,
@@ -1129,13 +1458,13 @@ fn validate_agent_request_value(value: &Value) -> Result<(), String> {
             "agent request 'sent_at_unix_ms' must be an unsigned integer",
         ));
     }
-    if let Some(state_summary) = object.get("state_summary") {
-        if !(state_summary.is_null() || state_summary.is_object()) {
-            return Err(agent_err(
-                AgentBridgeErrorCode::SchemaValidation,
-                "agent request 'state_summary' must be object or null",
-            ));
-        }
+    if let Some(state_summary) = object.get("state_summary")
+        && !(state_summary.is_null() || state_summary.is_object())
+    {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            "agent request 'state_summary' must be object or null",
+        ));
     }
     Ok(())
 }
@@ -1190,7 +1519,16 @@ fn parse_suggested_command_value(
     };
     ensure_known_keys(
         obj,
-        &["title", "rationale", "command", "execution"],
+        &[
+            "title",
+            "preconditions",
+            "precondition_expr",
+            "expected_outcomes",
+            "expected_effects",
+            "rationale",
+            "command",
+            "execution",
+        ],
         "agent suggested command",
         AgentBridgeErrorCode::ResponseValidation,
     )?;
@@ -1268,9 +1606,105 @@ fn parse_suggested_command_value(
     } else {
         None
     };
+    let preconditions = if let Some(value) = obj.get("preconditions") {
+        let items = value.as_array().ok_or_else(|| {
+            agent_err(
+                AgentBridgeErrorCode::ResponseValidation,
+                format!(
+                    "agent response 'suggested_commands[{idx}].preconditions' must be an array"
+                ),
+            )
+        })?;
+        let mut parsed = Vec::with_capacity(items.len());
+        for (precondition_idx, item) in items.iter().enumerate() {
+            let precondition = item.as_str().ok_or_else(|| {
+                agent_err(
+                    AgentBridgeErrorCode::ResponseValidation,
+                    format!(
+                        "agent response 'suggested_commands[{idx}].preconditions[{precondition_idx}]' must be a string"
+                    ),
+                )
+            })?;
+            let trimmed = precondition.trim();
+            if !trimmed.is_empty() {
+                parsed.push(trimmed.to_string());
+            }
+        }
+        parsed
+    } else {
+        vec![]
+    };
+    let precondition_expr = if let Some(value) = obj.get("precondition_expr") {
+        if !value.is_object() {
+            return Err(agent_err(
+                AgentBridgeErrorCode::ResponseValidation,
+                format!(
+                    "agent response 'suggested_commands[{idx}].precondition_expr' must be an object"
+                ),
+            ));
+        }
+        Some(value.clone())
+    } else {
+        None
+    };
+    let expected_outcomes = if let Some(value) = obj.get("expected_outcomes") {
+        let items = value.as_array().ok_or_else(|| {
+            agent_err(
+                AgentBridgeErrorCode::ResponseValidation,
+                format!(
+                    "agent response 'suggested_commands[{idx}].expected_outcomes' must be an array"
+                ),
+            )
+        })?;
+        let mut parsed = Vec::with_capacity(items.len());
+        for (outcome_idx, item) in items.iter().enumerate() {
+            let outcome = item.as_str().ok_or_else(|| {
+                agent_err(
+                    AgentBridgeErrorCode::ResponseValidation,
+                    format!(
+                        "agent response 'suggested_commands[{idx}].expected_outcomes[{outcome_idx}]' must be a string"
+                    ),
+                )
+            })?;
+            let trimmed = outcome.trim();
+            if !trimmed.is_empty() {
+                parsed.push(trimmed.to_string());
+            }
+        }
+        parsed
+    } else {
+        vec![]
+    };
+    let expected_effects = if let Some(value) = obj.get("expected_effects") {
+        let items = value.as_array().ok_or_else(|| {
+            agent_err(
+                AgentBridgeErrorCode::ResponseValidation,
+                format!(
+                    "agent response 'suggested_commands[{idx}].expected_effects' must be an array"
+                ),
+            )
+        })?;
+        for (effect_idx, item) in items.iter().enumerate() {
+            if !item.is_object() {
+                return Err(agent_err(
+                    AgentBridgeErrorCode::ResponseValidation,
+                    format!(
+                        "agent response 'suggested_commands[{idx}].expected_effects[{effect_idx}]' must be an object"
+                    ),
+                ));
+            }
+        }
+        items.clone()
+    } else {
+        vec![]
+    };
 
     Ok(AgentSuggestedCommand {
         title,
+        preconditions,
+        precondition_expr,
+        expected_outcomes,
+        expected_effects,
         rationale,
         command: command.to_string(),
         execution,
@@ -1368,10 +1802,72 @@ fn parse_agent_response(stdout: &str) -> Result<AgentResponse, String> {
     let value = serde_json::from_str::<Value>(trimmed).map_err(|e| {
         agent_err(
             AgentBridgeErrorCode::ResponseParse,
-            format!("agent stdout was not valid JSON: {e}"),
+            format!(
+                "agent stdout was not valid JSON: {e}; first output: {}",
+                agent_stdout_excerpt(trimmed)
+            ),
         )
     })?;
     parse_agent_response_value(value)
+}
+
+fn agent_stdout_excerpt(stdout: &str) -> String {
+    const MAX_EXCERPT_CHARS: usize = 240;
+    let mut excerpt = String::new();
+    let mut chars = stdout.chars();
+    for _ in 0..MAX_EXCERPT_CHARS {
+        let Some(ch) = chars.next() else {
+            return excerpt.replace('\n', "\\n");
+        };
+        excerpt.push(ch);
+    }
+    if chars.next().is_some() {
+        excerpt.push_str("...");
+    }
+    excerpt.replace('\n', "\\n")
+}
+
+fn normalize_native_agent_response_text(stdout: &str) -> String {
+    let trimmed = stdout.trim();
+    let json_text = unwrap_markdown_json_code_fence(trimmed).unwrap_or(trimmed);
+    let Ok(value) = serde_json::from_str::<Value>(json_text) else {
+        return stdout.to_string();
+    };
+    if let Some(chat_text) = extract_openai_chat_completions_text(&value) {
+        return normalize_native_agent_response_text(&chat_text);
+    }
+    let Value::Object(mut obj) = value else {
+        return json_text.to_string();
+    };
+    let looks_like_agent_response = obj.contains_key("assistant_message")
+        || obj.contains_key("questions")
+        || obj.contains_key("suggested_commands");
+    let schema_is_string = obj.get("schema").and_then(Value::as_str).is_some();
+    if looks_like_agent_response && !schema_is_string {
+        obj.insert(
+            "schema".to_string(),
+            Value::String(AGENT_RESPONSE_SCHEMA.to_string()),
+        );
+        serde_json::to_string(&Value::Object(obj)).unwrap_or_else(|_| stdout.to_string())
+    } else {
+        json_text.to_string()
+    }
+}
+
+fn unwrap_markdown_json_code_fence(text: &str) -> Option<&str> {
+    let fenced = text.strip_prefix("```")?;
+    let line_end = fenced.find('\n')?;
+    let info = fenced[..line_end].trim();
+    if !info.is_empty() && !info.eq_ignore_ascii_case("json") {
+        return None;
+    }
+    let body = fenced[line_end + 1..].trim_end();
+    let body = body.strip_suffix("```")?.trim();
+    if body.is_empty() { None } else { Some(body) }
+}
+
+fn parse_native_agent_response(stdout: &str) -> Result<AgentResponse, String> {
+    parse_agent_response(&normalize_native_agent_response_text(stdout))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1633,6 +2129,27 @@ fn extract_openai_chat_completions_text(response_json: &Value) -> Option<String>
     }
 }
 
+fn extract_anthropic_message_text(response_json: &Value) -> Option<String> {
+    let content = response_json.get("content").and_then(Value::as_array)?;
+    let mut collected = String::new();
+    for block in content {
+        if let Some(text) = block.get("text").and_then(Value::as_str) {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                if !collected.is_empty() {
+                    collected.push('\n');
+                }
+                collected.push_str(trimmed);
+            }
+        }
+    }
+    if collected.trim().is_empty() {
+        None
+    } else {
+        Some(collected)
+    }
+}
+
 pub(crate) fn extract_openai_error_code(body: &str) -> Option<String> {
     let value = serde_json::from_str::<Value>(body).ok()?;
     let error = value.get("error")?;
@@ -1644,6 +2161,33 @@ pub(crate) fn extract_openai_error_code(body: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+pub(crate) fn extract_anthropic_error_code(body: &str) -> Option<String> {
+    let value = serde_json::from_str::<Value>(body).ok()?;
+    let error = value.get("error")?;
+    error
+        .get("type")
+        .and_then(Value::as_str)
+        .or_else(|| error.get("code").and_then(Value::as_str))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+pub(crate) fn extract_mistral_error_code(body: &str) -> Option<String> {
+    let value = serde_json::from_str::<Value>(body).ok()?;
+    value
+        .get("error")
+        .and_then(|error| {
+            error
+                .get("code")
+                .and_then(Value::as_str)
+                .or_else(|| error.get("type").and_then(Value::as_str))
+        })
+        .or_else(|| value.get("code").and_then(Value::as_str))
+        .or_else(|| value.get("type").and_then(Value::as_str))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 fn classify_openai_http_error(status: reqwest::StatusCode, body: &str) -> ExternalAttemptError {
     let message_prefix = format!("OpenAI API error (status={}): {}", status, body.trim());
     let error_code = extract_openai_error_code(body).unwrap_or_default();
@@ -1651,7 +2195,7 @@ fn classify_openai_http_error(status: reqwest::StatusCode, body: &str) -> Extern
         return ExternalAttemptError {
             kind: ExternalAttemptErrorKind::Unavailable,
             message: format!(
-                "{message_prefix}\nHint: OpenAI reported insufficient quota. Check API project billing/usage at https://platform.openai.com/usage and https://platform.openai.com/settings/organization/billing/overview ."
+                "{message_prefix}\nHint: OpenAI reported insufficient quota. Check API project billing/usage at {OPENAI_USAGE_URL} and {OPENAI_BILLING_URL}."
             ),
         };
     }
@@ -1668,19 +2212,71 @@ fn classify_openai_http_error(status: reqwest::StatusCode, body: &str) -> Extern
     }
 }
 
+fn classify_anthropic_http_error(status: reqwest::StatusCode, body: &str) -> ExternalAttemptError {
+    let message_prefix = format!("Anthropic API error (status={}): {}", status, body.trim());
+    let error_code = extract_anthropic_error_code(body).unwrap_or_default();
+    let lower = format!("{error_code} {body}").to_ascii_lowercase();
+    let kind = if status.as_u16() == 401 || status.as_u16() == 403 {
+        ExternalAttemptErrorKind::Unavailable
+    } else if status.as_u16() == 429
+        && (lower.contains("credit")
+            || lower.contains("quota")
+            || lower.contains("billing")
+            || lower.contains("balance"))
+    {
+        ExternalAttemptErrorKind::Unavailable
+    } else if status.is_server_error() || status.as_u16() == 429 {
+        ExternalAttemptErrorKind::Transient
+    } else {
+        ExternalAttemptErrorKind::Fatal
+    };
+    let message = if status.as_u16() == 401 || status.as_u16() == 403 {
+        format!("{message_prefix}\nHint: {ANTHROPIC_API_KEY_AUTH_HINT}")
+    } else {
+        message_prefix
+    };
+    ExternalAttemptError { kind, message }
+}
+
+fn classify_mistral_http_error(status: reqwest::StatusCode, body: &str) -> ExternalAttemptError {
+    let message_prefix = format!("Mistral API error (status={}): {}", status, body.trim());
+    let error_code = extract_mistral_error_code(body).unwrap_or_default();
+    let lower = format!("{error_code} {body}").to_ascii_lowercase();
+    let kind = if status.as_u16() == 401 || status.as_u16() == 403 {
+        ExternalAttemptErrorKind::Unavailable
+    } else if status.as_u16() == 429
+        && (lower.contains("credit")
+            || lower.contains("quota")
+            || lower.contains("billing")
+            || lower.contains("balance"))
+    {
+        ExternalAttemptErrorKind::Unavailable
+    } else if status.is_server_error() || status.as_u16() == 429 {
+        ExternalAttemptErrorKind::Transient
+    } else {
+        ExternalAttemptErrorKind::Fatal
+    };
+    let message = if status.as_u16() == 401 || status.as_u16() == 403 {
+        format!("{message_prefix}\nHint: {MISTRAL_API_KEY_AUTH_HINT}")
+    } else {
+        message_prefix
+    };
+    ExternalAttemptError { kind, message }
+}
+
 fn invoke_native_openai_once(
     system: &AgentSystemSpec,
     request_json: &str,
 ) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
     let runtime = resolve_agent_runtime_config(system);
-    let api_key = resolve_api_key(system).ok_or_else(|| ExternalAttemptError {
+    let api_key = resolve_openai_api_key(system).ok_or_else(|| ExternalAttemptError {
         kind: ExternalAttemptErrorKind::Unavailable,
         message: format!("{OPENAI_API_KEY_ENV} is not set"),
     })?;
     let model = resolve_model(system, OPENAI_DEFAULT_MODEL);
     let base_url = resolve_base_url(system, OPENAI_DEFAULT_BASE_URL);
     let endpoint = format!("{base_url}/responses");
-    let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
+    let system_prompt = agent_bridge_system_prompt();
     let payload = json!({
         "model": model,
         "input": [
@@ -1744,12 +2340,169 @@ fn invoke_native_openai_once(
     })
 }
 
+fn invoke_native_anthropic_once(
+    system: &AgentSystemSpec,
+    request_json: &str,
+) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
+    let runtime = resolve_agent_runtime_config(system);
+    let api_key = resolve_anthropic_api_key(system).ok_or_else(|| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Unavailable,
+        message: format!("{ANTHROPIC_API_KEY_ENV} is not set"),
+    })?;
+    if anthropic_api_key_is_known_non_api_token(&api_key) {
+        return Err(ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Unavailable,
+            message: ANTHROPIC_API_KEY_WRONG_KIND_HINT.to_string(),
+        });
+    }
+    let model = resolve_model(system, ANTHROPIC_DEFAULT_MODEL);
+    let base_url = resolve_base_url(system, ANTHROPIC_DEFAULT_BASE_URL);
+    let endpoints = anthropic_endpoint_candidates(&base_url);
+    let endpoint = endpoints
+        .first()
+        .cloned()
+        .unwrap_or_else(|| format!("{base_url}/messages"));
+    let system_prompt = agent_bridge_system_prompt();
+    let payload = json!({
+        "model": model,
+        "max_tokens": 4096,
+        "system": system_prompt,
+        "messages": [
+            {
+                "role": "user",
+                "content": format!("GENtle agent request JSON:\n{request_json}")
+            }
+        ]
+    });
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(runtime.connect_timeout_secs))
+        .timeout(Duration::from_secs(runtime.read_timeout_secs))
+        .build()
+        .map_err(|e| ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: format!("could not build Anthropic client: {e}"),
+        })?;
+    let response = client
+        .post(&endpoint)
+        .header("x-api-key", api_key)
+        .header("anthropic-version", ANTHROPIC_API_VERSION)
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .map_err(|e| ExternalAttemptError {
+            kind: if e.is_timeout() || e.is_connect() || e.is_request() {
+                ExternalAttemptErrorKind::Transient
+            } else {
+                ExternalAttemptErrorKind::Fatal
+            },
+            message: format!("Anthropic request failed: {e}"),
+        })?;
+    let status = response.status();
+    let body =
+        read_response_body_limited(response, runtime.max_response_bytes, "Anthropic response")?;
+    if !status.is_success() {
+        return Err(classify_anthropic_http_error(status, &body));
+    }
+    let response_json = serde_json::from_str::<Value>(&body).map_err(|e| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Fatal,
+        message: format!("Anthropic API returned invalid JSON: {e}"),
+    })?;
+    let text =
+        extract_anthropic_message_text(&response_json).ok_or_else(|| ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: "Anthropic API response did not contain content text".to_string(),
+        })?;
+    Ok(NativeHttpInvokeResult {
+        text,
+        raw_body: body,
+        attempted_endpoints: vec![endpoint.clone()],
+        selected_endpoint: Some(endpoint),
+    })
+}
+
+fn invoke_native_mistral_once(
+    system: &AgentSystemSpec,
+    request_json: &str,
+) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
+    let runtime = resolve_agent_runtime_config(system);
+    let api_key = resolve_mistral_api_key(system).ok_or_else(|| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Unavailable,
+        message: format!("{MISTRAL_API_KEY_ENV} is not set"),
+    })?;
+    let model = resolve_model(system, MISTRAL_DEFAULT_MODEL);
+    let base_url = resolve_base_url(system, MISTRAL_DEFAULT_BASE_URL);
+    let endpoints = mistral_endpoint_candidates(&base_url);
+    let endpoint = endpoints
+        .first()
+        .cloned()
+        .unwrap_or_else(|| format!("{base_url}/chat/completions"));
+    let system_prompt = agent_bridge_system_prompt();
+    let payload = json!({
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": format!("GENtle agent request JSON:\n{request_json}")
+            }
+        ],
+        "temperature": 0.2
+    });
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(runtime.connect_timeout_secs))
+        .timeout(Duration::from_secs(runtime.read_timeout_secs))
+        .build()
+        .map_err(|e| ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: format!("could not build Mistral client: {e}"),
+        })?;
+    let response = client
+        .post(&endpoint)
+        .bearer_auth(api_key)
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .map_err(|e| ExternalAttemptError {
+            kind: if e.is_timeout() || e.is_connect() || e.is_request() {
+                ExternalAttemptErrorKind::Transient
+            } else {
+                ExternalAttemptErrorKind::Fatal
+            },
+            message: format!("Mistral request failed: {e}"),
+        })?;
+    let status = response.status();
+    let body =
+        read_response_body_limited(response, runtime.max_response_bytes, "Mistral response")?;
+    if !status.is_success() {
+        return Err(classify_mistral_http_error(status, &body));
+    }
+    let response_json = serde_json::from_str::<Value>(&body).map_err(|e| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Fatal,
+        message: format!("Mistral API returned invalid JSON: {e}"),
+    })?;
+    let text = extract_openai_chat_completions_text(&response_json).ok_or_else(|| {
+        ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: "Mistral response did not contain choices[0].message.content".to_string(),
+        }
+    })?;
+    Ok(NativeHttpInvokeResult {
+        text,
+        raw_body: body,
+        attempted_endpoints: vec![endpoint.clone()],
+        selected_endpoint: Some(endpoint),
+    })
+}
+
 fn invoke_native_openai_compat_once(
     system: &AgentSystemSpec,
     request_json: &str,
 ) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
     let runtime = resolve_agent_runtime_config(system);
-    let api_key = resolve_api_key(system);
+    let api_key = resolve_openai_api_key(system);
     let model = resolve_model(system, OPENAI_COMPAT_DEFAULT_MODEL);
     if is_model_unspecified(&model) {
         return Err(ExternalAttemptError {
@@ -1768,7 +2521,7 @@ fn invoke_native_openai_compat_once(
         }
     })?;
     let endpoints = openai_compat_endpoint_candidates(&base_url);
-    let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
+    let system_prompt = agent_bridge_system_prompt();
     let payload = json!({
         "model": model,
         "messages": [
@@ -1879,6 +2632,10 @@ fn builtin_echo_response(prompt: &str) -> AgentResponse {
             if !command.is_empty() {
                 suggested.push(AgentSuggestedCommand {
                     title: Some("Auto suggestion (demo)".to_string()),
+                    preconditions: vec![],
+                    precondition_expr: None,
+                    expected_outcomes: vec![],
+                    expected_effects: vec![],
                     rationale: Some("Extracted from 'auto:' line in prompt".to_string()),
                     command: command.to_string(),
                     execution: AgentExecutionIntent::Auto,
@@ -1891,6 +2648,10 @@ fn builtin_echo_response(prompt: &str) -> AgentResponse {
             if !command.is_empty() {
                 suggested.push(AgentSuggestedCommand {
                     title: Some("Confirm suggestion (demo)".to_string()),
+                    preconditions: vec![],
+                    precondition_expr: None,
+                    expected_outcomes: vec![],
+                    expected_effects: vec![],
                     rationale: Some("Extracted from 'ask:' line in prompt".to_string()),
                     command: command.to_string(),
                     execution: AgentExecutionIntent::Ask,
@@ -2129,12 +2890,174 @@ pub fn invoke_agent_support_with_env_overrides(
                 ));
             }
             let stdout = stdout.expect("checked is_some above");
-            let response = parse_agent_response(&stdout)?;
+            let response = parse_native_agent_response(&stdout)?;
             let mut runtime_summary = runtime_summary(&runtime);
             runtime_summary.endpoint_candidates = vec![format!(
                 "{}/responses",
                 resolve_base_url(&system, OPENAI_DEFAULT_BASE_URL)
             )];
+            runtime_summary.attempted_endpoints = attempted_endpoints;
+            runtime_summary.selected_endpoint = selected_endpoint;
+            AgentInvocationOutcome {
+                catalog_path: resolved_catalog_path,
+                system_id: system.id,
+                system_label: system.label,
+                transport: system.transport.as_str().to_string(),
+                command: vec![],
+                request: request_value,
+                response,
+                raw_stdout: stdout,
+                raw_stderr: raw_body.unwrap_or_default(),
+                exit_code: Some(0),
+                elapsed_ms: start.elapsed().as_millis(),
+                runtime: runtime_summary,
+            }
+        }
+        AgentSystemTransport::NativeAnthropic => {
+            let mut stdout: Option<String> = None;
+            let mut raw_body: Option<String> = None;
+            let mut attempted_endpoints: Vec<String> = vec![];
+            let mut selected_endpoint: Option<String> = None;
+            let mut last_transient_message: Option<String> = None;
+            for attempt in 1..=attempt_limit {
+                match invoke_native_anthropic_once(&system, &request_json) {
+                    Ok(result) => {
+                        stdout = Some(result.text);
+                        raw_body = Some(result.raw_body);
+                        attempted_endpoints = result.attempted_endpoints;
+                        selected_endpoint = result.selected_endpoint;
+                        break;
+                    }
+                    Err(error) => match error.kind {
+                        ExternalAttemptErrorKind::Unavailable => {
+                            return Err(agent_err(
+                                AgentBridgeErrorCode::AdapterUnavailable,
+                                error.message,
+                            ));
+                        }
+                        ExternalAttemptErrorKind::Fatal => {
+                            return Err(agent_err(
+                                AgentBridgeErrorCode::AdapterFailed,
+                                error.message,
+                            ));
+                        }
+                        ExternalAttemptErrorKind::Transient => {
+                            last_transient_message = Some(error.message.clone());
+                            if attempt >= attempt_limit {
+                                return Err(agent_err(
+                                    AgentBridgeErrorCode::AdapterTransient,
+                                    format!(
+                                        "native Anthropic call remained transiently unavailable after {} attempts (max_retries={}): {}",
+                                        attempt_limit, runtime.max_retries, error.message
+                                    ),
+                                ));
+                            }
+                            thread::sleep(retry_backoff_duration(attempt));
+                        }
+                    },
+                }
+            }
+            if stdout.is_none() {
+                return Err(agent_err(
+                    AgentBridgeErrorCode::AdapterTransient,
+                    format!(
+                        "native Anthropic call did not complete after {} attempts (max_retries={}){}",
+                        attempt_limit,
+                        runtime.max_retries,
+                        last_transient_message
+                            .as_ref()
+                            .map(|value| format!(": {value}"))
+                            .unwrap_or_default()
+                    ),
+                ));
+            }
+            let stdout = stdout.expect("checked is_some above");
+            let response = parse_native_agent_response(&stdout)?;
+            let mut runtime_summary = runtime_summary(&runtime);
+            runtime_summary.endpoint_candidates = anthropic_endpoint_candidates(&resolve_base_url(
+                &system,
+                ANTHROPIC_DEFAULT_BASE_URL,
+            ));
+            runtime_summary.attempted_endpoints = attempted_endpoints;
+            runtime_summary.selected_endpoint = selected_endpoint;
+            AgentInvocationOutcome {
+                catalog_path: resolved_catalog_path,
+                system_id: system.id,
+                system_label: system.label,
+                transport: system.transport.as_str().to_string(),
+                command: vec![],
+                request: request_value,
+                response,
+                raw_stdout: stdout,
+                raw_stderr: raw_body.unwrap_or_default(),
+                exit_code: Some(0),
+                elapsed_ms: start.elapsed().as_millis(),
+                runtime: runtime_summary,
+            }
+        }
+        AgentSystemTransport::NativeMistral => {
+            let mut stdout: Option<String> = None;
+            let mut raw_body: Option<String> = None;
+            let mut attempted_endpoints: Vec<String> = vec![];
+            let mut selected_endpoint: Option<String> = None;
+            let mut last_transient_message: Option<String> = None;
+            for attempt in 1..=attempt_limit {
+                match invoke_native_mistral_once(&system, &request_json) {
+                    Ok(result) => {
+                        stdout = Some(result.text);
+                        raw_body = Some(result.raw_body);
+                        attempted_endpoints = result.attempted_endpoints;
+                        selected_endpoint = result.selected_endpoint;
+                        break;
+                    }
+                    Err(error) => match error.kind {
+                        ExternalAttemptErrorKind::Unavailable => {
+                            return Err(agent_err(
+                                AgentBridgeErrorCode::AdapterUnavailable,
+                                error.message,
+                            ));
+                        }
+                        ExternalAttemptErrorKind::Fatal => {
+                            return Err(agent_err(
+                                AgentBridgeErrorCode::AdapterFailed,
+                                error.message,
+                            ));
+                        }
+                        ExternalAttemptErrorKind::Transient => {
+                            last_transient_message = Some(error.message.clone());
+                            if attempt >= attempt_limit {
+                                return Err(agent_err(
+                                    AgentBridgeErrorCode::AdapterTransient,
+                                    format!(
+                                        "native Mistral call remained transiently unavailable after {} attempts (max_retries={}): {}",
+                                        attempt_limit, runtime.max_retries, error.message
+                                    ),
+                                ));
+                            }
+                            thread::sleep(retry_backoff_duration(attempt));
+                        }
+                    },
+                }
+            }
+            if stdout.is_none() {
+                return Err(agent_err(
+                    AgentBridgeErrorCode::AdapterTransient,
+                    format!(
+                        "native Mistral call did not complete after {} attempts (max_retries={}){}",
+                        attempt_limit,
+                        runtime.max_retries,
+                        last_transient_message
+                            .as_ref()
+                            .map(|value| format!(": {value}"))
+                            .unwrap_or_default()
+                    ),
+                ));
+            }
+            let stdout = stdout.expect("checked is_some above");
+            let response = parse_native_agent_response(&stdout)?;
+            let mut runtime_summary = runtime_summary(&runtime);
+            runtime_summary.endpoint_candidates =
+                mistral_endpoint_candidates(&resolve_base_url(&system, MISTRAL_DEFAULT_BASE_URL));
             runtime_summary.attempted_endpoints = attempted_endpoints;
             runtime_summary.selected_endpoint = selected_endpoint;
             AgentInvocationOutcome {
@@ -2211,7 +3134,7 @@ pub fn invoke_agent_support_with_env_overrides(
                 ));
             }
             let stdout = stdout.expect("checked is_some above");
-            let response = parse_agent_response(&stdout)?;
+            let response = parse_native_agent_response(&stdout)?;
             let mut runtime_summary = runtime_summary(&runtime);
             runtime_summary.endpoint_candidates =
                 openai_compat_endpoint_candidates_for_system(&system).unwrap_or_default();
@@ -2267,6 +3190,7 @@ mod tests {
     fn parse_agent_response_rejects_plain_text() {
         let err = parse_agent_response("hello world").expect_err("plain text should fail");
         assert!(err.starts_with("AGENT_RESPONSE_PARSE:"));
+        assert!(err.contains("first output: hello world"));
     }
 
     #[test]
@@ -2303,6 +3227,191 @@ mod tests {
     }
 
     #[test]
+    fn parse_agent_response_keeps_external_adapter_schema_strict() {
+        let err = parse_agent_response(
+            r#"{
+  "assistant_message": "ready",
+  "questions": [],
+  "suggested_commands": []
+}"#,
+        )
+        .expect_err("external adapter payload without schema should fail");
+        assert!(err.contains("agent response 'schema' must be a string"));
+    }
+
+    #[test]
+    fn parse_native_agent_response_repairs_missing_schema_for_model_payload() {
+        let response = parse_native_agent_response(
+            r#"{
+  "assistant_message": "ready",
+  "questions": [],
+  "suggested_commands": []
+}"#,
+        )
+        .expect("native model payload should be repaired");
+        assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
+        assert_eq!(response.assistant_message, "ready");
+    }
+
+    #[test]
+    fn parse_native_agent_response_repairs_schema_object_for_model_payload() {
+        let response = parse_native_agent_response(
+            r#"{
+  "schema": {"type": "object"},
+  "assistant_message": "ready",
+  "questions": [],
+  "suggested_commands": []
+}"#,
+        )
+        .expect("native model schema-object payload should be repaired");
+        assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
+        assert_eq!(response.assistant_message, "ready");
+    }
+
+    #[test]
+    fn parse_native_agent_response_accepts_fenced_json_payload() {
+        let response = parse_native_agent_response(
+            r#"```json
+{
+  "schema": "gentle.agent_response.v1",
+  "assistant_message": "ready",
+  "questions": [],
+  "suggested_commands": []
+}
+```"#,
+        )
+        .expect("native model fenced json payload should be unwrapped");
+        assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
+        assert_eq!(response.assistant_message, "ready");
+    }
+
+    #[test]
+    fn parse_native_agent_response_rejects_prose_around_fenced_json() {
+        let err = parse_native_agent_response(
+            r#"Here is the JSON:
+```json
+{
+  "schema": "gentle.agent_response.v1",
+  "assistant_message": "ready",
+  "questions": [],
+  "suggested_commands": []
+}
+```"#,
+        )
+        .expect_err("native model prose around fenced json should stay rejected");
+        assert!(err.starts_with("AGENT_RESPONSE_PARSE:"));
+    }
+
+    #[test]
+    fn parse_native_agent_response_unwraps_chat_completion_envelope() {
+        let response = parse_native_agent_response(
+            r#"{
+  "id": "chatcmpl-local",
+  "object": "chat.completion",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"To fetch the gene FUS from Ensembl, I'll need to confirm if you'd like me to connect to the network.\",\"questions\":[\"Would you like me to fetch this gene from Ensembl?\"],\"suggested_commands\":[{\"title\":\"Fetch FUS from Ensembl\",\"rationale\":\"To retrieve the gene sequence for further analysis.\",\"command\":\"/fetch ensembl FUS --species HUMAN\",\"execution\":\"ask\"}]}"
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}"#,
+        )
+        .expect("native model chat-completion envelope should be unwrapped");
+        assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
+        assert_eq!(
+            response
+                .suggested_commands
+                .first()
+                .map(|cmd| cmd.command.as_str()),
+            Some("/fetch ensembl FUS --species HUMAN")
+        );
+    }
+
+    #[test]
+    fn parse_agent_response_accepts_suggested_command_planning_fields() {
+        let response = parse_agent_response(
+            r#"{
+  "schema": "gentle.agent_response.v1",
+  "assistant_message": "Open a sequence before scanning features.",
+  "questions": [],
+  "suggested_commands": [
+    {
+      "title": "Scan restriction sites",
+      "preconditions": ["Sequence demo_seq exists in the current GENtle project."],
+      "precondition_expr": {"all":[{"fact":"sequence.exists","id":"demo_seq"},{"fact":"sequence.kind","id":"demo_seq","equals":"dna"}]},
+      "expected_outcomes": ["A restriction-site report for demo_seq is available if the scan succeeds."],
+      "expected_effects": [{"fact":"restriction_site.absent","subject":"demo_seq","enzyme":"EcoRI","range":"whole_sequence","basis_report":"restriction_scan"}],
+      "rationale": "Restriction scans operate on a loaded sequence id.",
+      "command": "/features restriction-scan demo_seq --enzyme EcoRI",
+      "execution": "ask"
+    }
+  ]
+}"#,
+        )
+        .expect("preconditions should be accepted on suggested commands");
+
+        let command = response
+            .suggested_commands
+            .first()
+            .expect("suggested command");
+        assert_eq!(command.title.as_deref(), Some("Scan restriction sites"));
+        assert_eq!(
+            command.preconditions,
+            vec!["Sequence demo_seq exists in the current GENtle project.".to_string()]
+        );
+        assert_eq!(
+            command.expected_outcomes,
+            vec![
+                "A restriction-site report for demo_seq is available if the scan succeeds."
+                    .to_string()
+            ]
+        );
+        assert_eq!(
+            command
+                .precondition_expr
+                .as_ref()
+                .and_then(|expr| expr.get("all"))
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(
+            command
+                .expected_effects
+                .first()
+                .and_then(|effect| effect.get("fact"))
+                .and_then(Value::as_str),
+            Some("restriction_site.absent")
+        );
+    }
+
+    #[test]
+    fn parse_agent_response_rejects_non_structured_planning_logic() {
+        let err = parse_agent_response(
+            r#"{
+  "schema": "gentle.agent_response.v1",
+  "assistant_message": "bad logic",
+  "questions": [],
+  "suggested_commands": [
+    {
+      "title": "Bad logic",
+      "precondition_expr": "sequence exists",
+      "expected_effects": ["report exists"],
+      "command": "state-summary",
+      "execution": "ask"
+    }
+  ]
+}"#,
+        )
+        .expect_err("logic fields should be structured JSON");
+        assert!(err.contains("precondition_expr"));
+    }
+
+    #[test]
     fn parse_agent_response_rejects_future_schema_major() {
         let err = parse_agent_response(
             r#"{
@@ -2314,6 +3423,13 @@ mod tests {
         )
         .expect_err("future schema major should fail");
         assert!(err.starts_with("AGENT_SCHEMA_UNSUPPORTED:"));
+    }
+
+    #[test]
+    fn bridge_system_prompt_disambiguates_schema_field_for_local_models() {
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("literal protocol id string"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("not a JSON Schema object"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not output JSON Schema definitions"));
     }
 
     #[test]
@@ -2334,6 +3450,70 @@ mod tests {
         system
             .env
             .insert(OPENAI_API_KEY_ENV.to_string(), "sk-test".to_string());
+        let available = agent_system_availability(&system);
+        assert!(available.available);
+    }
+
+    #[test]
+    fn availability_native_anthropic_uses_system_env_override() {
+        let mut system = AgentSystemSpec {
+            id: "anthropic_native".to_string(),
+            label: "Anthropic Native".to_string(),
+            description: None,
+            transport: AgentSystemTransport::NativeAnthropic,
+            command: vec![],
+            model: Some("claude-sonnet-4-6".to_string()),
+            base_url: None,
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        let unavailable = agent_system_availability(&system);
+        assert!(!unavailable.available);
+        assert_eq!(
+            unavailable.reason.as_deref(),
+            Some("ANTHROPIC_API_KEY is not set")
+        );
+        system
+            .env
+            .insert(ANTHROPIC_API_KEY_ENV.to_string(), "sk-ant-test".to_string());
+        let available = agent_system_availability(&system);
+        assert!(available.available);
+    }
+
+    #[test]
+    fn availability_native_mistral_uses_system_env_override() {
+        let mut system = AgentSystemSpec {
+            id: "mistral_native".to_string(),
+            label: "Mistral Native".to_string(),
+            description: None,
+            transport: AgentSystemTransport::NativeMistral,
+            command: vec![],
+            model: Some("mistral-large-latest".to_string()),
+            base_url: None,
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        let _lock = crate::genomes::genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous_key = std::env::var(MISTRAL_API_KEY_ENV).ok();
+        unsafe {
+            std::env::remove_var(MISTRAL_API_KEY_ENV);
+        }
+        let unavailable = agent_system_availability(&system);
+        if let Some(value) = previous_key {
+            unsafe {
+                std::env::set_var(MISTRAL_API_KEY_ENV, value);
+            }
+        }
+        assert!(!unavailable.available);
+        assert_eq!(
+            unavailable.reason.as_deref(),
+            Some("MISTRAL_API_KEY is not set")
+        );
+        system
+            .env
+            .insert(MISTRAL_API_KEY_ENV.to_string(), "mistral-test".to_string());
         let available = agent_system_availability(&system);
         assert!(available.available);
     }
@@ -2436,6 +3616,15 @@ mod tests {
     }
 
     #[test]
+    fn openai_model_list_endpoint_candidates_use_v1_base_directly() {
+        let endpoints = openai_model_list_endpoint_candidates("http://localhost:11973/v1").unwrap();
+        assert_eq!(
+            endpoints,
+            vec!["http://localhost:11973/v1/models".to_string()]
+        );
+    }
+
+    #[test]
     fn openai_compat_endpoint_candidates_for_system_use_resolved_base_only() {
         let system = AgentSystemSpec {
             id: "local-compat".to_string(),
@@ -2472,6 +3661,100 @@ mod tests {
     }
 
     #[test]
+    fn extract_models_from_openai_models_payload_reads_msty_mlx_shape() {
+        let value = serde_json::json!({
+            "object": "list",
+            "data": [
+                {
+                    "id": "mlx-community/gemma-4-e2b-it-4bit",
+                    "object": "model",
+                    "owned_by": "mlx-knife-2.0",
+                    "permission": [],
+                    "context_length": 4096
+                },
+                {
+                    "id": "mlx-community/granite-3.3-2b-instruct-4bit",
+                    "object": "model",
+                    "owned_by": "mlx-knife-2.0",
+                    "permission": [],
+                    "context_length": 131072
+                }
+            ]
+        });
+        let models = extract_models_from_openai_models_payload(&value);
+        assert_eq!(
+            models,
+            vec![
+                "mlx-community/gemma-4-e2b-it-4bit".to_string(),
+                "mlx-community/granite-3.3-2b-instruct-4bit".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_models_from_openai_models_payload_treats_null_data_as_empty() {
+        let value = serde_json::json!({
+            "object": "list",
+            "data": null
+        });
+        let models = extract_models_from_openai_models_payload(&value);
+        assert!(models.is_empty());
+    }
+
+    #[test]
+    fn extract_anthropic_message_text_reads_text_blocks() {
+        let value = serde_json::json!({
+            "type": "message",
+            "content": [
+                {"type": "text", "text": "{\"schema\":\"gentle.agent_response.v1\"}"},
+                {"type": "text", "text": "{\"assistant_message\":\"ok\"}"}
+            ]
+        });
+        let text = extract_anthropic_message_text(&value).expect("anthropic text");
+        assert!(text.contains("gentle.agent_response.v1"));
+        assert!(text.contains("assistant_message"));
+    }
+
+    #[test]
+    fn classify_anthropic_auth_error_is_unavailable() {
+        let body = r#"{
+  "type": "error",
+  "error": {
+    "type": "authentication_error",
+    "message": "invalid x-api-key"
+  }
+}"#;
+        let err = classify_anthropic_http_error(reqwest::StatusCode::UNAUTHORIZED, body);
+        assert_eq!(err.kind, ExternalAttemptErrorKind::Unavailable);
+        assert!(err.message.contains("Anthropic API error (status=401"));
+        assert!(err.message.contains("Claude Code/Claude.ai"));
+    }
+
+    #[test]
+    fn classify_mistral_auth_error_is_unavailable() {
+        let body = r#"{
+  "object": "error",
+  "message": "Unauthorized",
+  "type": "authentication_error",
+  "code": "authentication_error"
+}"#;
+        let err = classify_mistral_http_error(reqwest::StatusCode::UNAUTHORIZED, body);
+        assert_eq!(err.kind, ExternalAttemptErrorKind::Unavailable);
+        assert!(err.message.contains("Mistral API error (status=401"));
+        assert!(err.message.contains("Mistral La Plateforme API key"));
+        assert!(err.message.contains("Le Chat"));
+    }
+
+    #[test]
+    fn anthropic_key_kind_warning_flags_claude_oauth_token() {
+        let warning = anthropic_api_key_kind_warning("sk-ant-oat01-not-for-api")
+            .expect("Claude OAuth token should be flagged");
+        assert!(warning.contains("Claude Code/Claude.ai OAuth token"));
+        assert!(warning.contains("Anthropic Console API key"));
+        assert!(anthropic_api_key_kind_warning("sk-ant-api03-console-key").is_none());
+    }
+
+    #[test]
     fn classify_openai_insufficient_quota_is_non_transient_with_hint() {
         let body = r#"{
   "error": {
@@ -2484,6 +3767,78 @@ mod tests {
         assert_eq!(err.kind, ExternalAttemptErrorKind::Unavailable);
         assert!(err.message.contains("OpenAI API error (status=429"));
         assert!(err.message.contains("insufficient quota"));
+        assert!(err.message.contains(OPENAI_USAGE_URL));
+        assert!(err.message.contains(OPENAI_BILLING_URL));
+    }
+
+    #[test]
+    fn agent_bridge_system_prompt_rejects_invented_gateway_commands() {
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("GENtle shared-shell command"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("does not currently implement OpenClaw-like"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("/help"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("/list"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("/open sequence-window SEQ_ID"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("/close sequence-window SEQ_ID"));
+        assert!(
+            AGENT_BRIDGE_SYSTEM_PROMPT.contains("/list reports GENtle's current project state")
+        );
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("does not list operating-system files"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("prefer safe GENtle controls such as help"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Mark runnable controls execution=\"ask\""));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not suggest Ollama REPL commands"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("bare /path/to/file attachments"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("GENtle Agent Control Card"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("preconditions"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("precondition_expr"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("expected_outcomes"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("expected_effects"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("restriction_site.absent"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Intent/precondition/outcome rule"));
+        assert!(
+            AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not invent a recent-project slash command")
+        );
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("First reply examples"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("\"command\":\"state-summary\""));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("op '{\"LoadFile\""));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("sequence create --sequence-text"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not invent"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("fs.find"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("gentle.load_sequence"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("/import"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Spotlight"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("non-breaking hyphen"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("homo_sapiens"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("docs/glossary.json"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Operand rule"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Window-management safety rule"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Never suggest deleting"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("ui close TARGET"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("ui open sequence-window fus_live"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("ui focus sequence-window fus_live"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("ui close pcr-design"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("ui close sequence-window fus_live"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Selection/display rule"));
+        assert!(
+            AGENT_BRIDGE_SYSTEM_PROMPT
+                .contains("ui selection sequence-window fus_live --range 100..250")
+        );
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("display show tfbs"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("display hide restriction-enzymes"));
+        assert!(
+            AGENT_BRIDGE_SYSTEM_PROMPT.contains("/fetch ensembl-protein does not accept --species")
+        );
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("--no-open"));
+    }
+
+    #[test]
+    fn agent_bridge_system_prompt_includes_generated_fact_vocabulary() {
+        let prompt = agent_bridge_system_prompt();
+        assert!(prompt.contains("Known project fact vocabulary"));
+        assert!(prompt.contains("gentle.fact_expression.v1"));
+        assert!(prompt.contains("sequence.kind"));
+        assert!(prompt.contains("restriction_site.absent"));
+        assert!(prompt.contains("subject_kind=sequence"));
+        assert!(prompt.contains("requires_basis=true"));
     }
 
     #[test]

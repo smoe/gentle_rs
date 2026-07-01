@@ -1,0 +1,23 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "geneart_external_service_handoff_gui_cli",
+  "title": "Prepare a GeneArt Handoff from Shared External-Service Contracts",
+  "catalog": {
+    "order": 13,
+    "path": "docs/tutorial/09-02_geneart_external_service_handoff_gui_cli.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "cli_first",
+      "agent_users",
+      "clawbio",
+      "cloning_planning",
+      "protein_workflows"
+    ],
+    "notes": "Safe GeneArt cloned-gene and protein-expression quote-handoff rehearsal through the shared provider catalog, preflight, quote bundle, and return_spec contracts; no vendor submission.",
+    "group": "09",
+    "group_position": 2
+  }
+}

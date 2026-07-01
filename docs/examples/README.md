@@ -39,6 +39,14 @@ syntax.
 - Folder note:
   - `docs/examples/plans/README.md`
 
+## Shell-only inspection examples
+
+- `docs/examples/shell/rna_reads_show_alignments_tp73_template.md`
+  documents the shared-shell `rna-reads show-alignments` batch inspector for a
+  saved TP73 RNA-read report. It stays outside `docs/examples/workflows/`
+  because the route is intentionally shell-only, matching the existing
+  `rna-reads show-alignment` inspector precedent.
+
 ## Example assets
 
 - `docs/examples/assets/cdna_assay_demo.gb`
@@ -84,9 +92,11 @@ Generated tutorial pages and retained runtime artifacts are committed under:
 Tutorial source layer:
 
 - `docs/tutorial/sources/catalog_meta.json`
-- `docs/tutorial/sources/*.json` (schema `gentle.tutorial_source.v2`)
+- `docs/tutorial/sources/*.json` (schema `gentle.tutorial_source.v4`;
+  legacy `gentle.tutorial_source.v3` and `gentle.tutorial_source.v2` remain
+  readable)
 - generated runtime manifest: `docs/tutorial/manifest.json`
-  (schema `gentle.tutorial_manifest.v1`)
+  (schema `gentle.tutorial_manifest.v2`)
 
 Generate tutorial output:
 
@@ -109,6 +119,14 @@ Relevant executable Gibson specialist setup baseline:
   - loads the same deterministic destination and insert, then applies the
     canonical single-insert Gibson plan so arrangement/gel tutorials open with
     the assembled product and stored lane arrangement already present
+
+Relevant executable release proof baseline:
+
+- `docs/examples/workflows/tp73_genome_evidence_viewer_release_proof.json`
+  - loads the public GRCh38.p14 TP73 locus and overlays tiny local repeat,
+    Clariom-style array, CUT&RUN-style BED, and TFBS fixtures for the
+    genome-anchored evidence-viewer release path
+  - runbook: `docs/tp73_genome_evidence_viewer_runbook.md`
 
 ## Test examples
 

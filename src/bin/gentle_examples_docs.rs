@@ -1,5 +1,6 @@
 //! Documentation helper binary that renders workflow examples into generated snippets.
 
+use gentle::cli_support::svg_png_summary_json;
 use gentle::svg_png::{SvgPngRenderOptions, render_svg_file_to_png};
 use gentle::workflow_examples::{
     DEFAULT_TUTORIAL_CATALOG_META_PATH, DEFAULT_TUTORIAL_CATALOG_PATH,
@@ -11,7 +12,7 @@ use gentle::workflow_examples::{
 };
 use serde_json::json;
 use std::{
-    env,
+    env, fs,
     path::{Path, PathBuf},
     process,
 };
@@ -27,6 +28,8 @@ enum Mode {
     TutorialCatalogCheck,
     TutorialManifestGenerate,
     TutorialManifestCheck,
+    ParityMatrixGenerate,
+    ParityMatrixCheck,
 }
 
 #[derive(Debug)]
@@ -44,6 +47,7 @@ struct CliArgs {
     tutorial_source_dir: String,
     tutorial_manifest: String,
     tutorial_output_dir: String,
+    parity_matrix_output: String,
     repo_root: String,
 }
 
@@ -63,6 +67,7 @@ impl Default for CliArgs {
             tutorial_source_dir: DEFAULT_TUTORIAL_SOURCE_DIR.to_string(),
             tutorial_manifest: DEFAULT_TUTORIAL_MANIFEST_PATH.to_string(),
             tutorial_output_dir: DEFAULT_TUTORIAL_OUTPUT_DIR.to_string(),
+            parity_matrix_output: "docs/gui_cli_mcp_parity.md".to_string(),
             repo_root: ".".to_string(),
         }
     }
@@ -79,7 +84,9 @@ gentle_examples_docs tutorial-check [--source DIR] [--manifest FILE] [--tutorial
 gentle_examples_docs tutorial-catalog-generate [--catalog-meta FILE] [--tutorial-sources DIR] [--tutorial-catalog FILE]\n  \
 gentle_examples_docs tutorial-catalog-check [--catalog-meta FILE] [--tutorial-sources DIR] [--tutorial-catalog FILE]\n  \
 gentle_examples_docs tutorial-manifest-generate [--catalog-meta FILE] [--tutorial-sources DIR] [--manifest FILE]\n  \
-gentle_examples_docs tutorial-manifest-check [--catalog-meta FILE] [--tutorial-sources DIR] [--manifest FILE]\n\n  \
+gentle_examples_docs tutorial-manifest-check [--catalog-meta FILE] [--tutorial-sources DIR] [--manifest FILE]\n  \
+gentle_examples_docs parity-matrix-generate [--output FILE]\n  \
+gentle_examples_docs parity-matrix-check [--output FILE]\n\n  \
 Defaults:\n  \
   --source {}\n  \
   --output {}\n  \
@@ -138,6 +145,7 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 }
                 parsed.example_output_dir = args[idx + 1].clone();
                 parsed.tutorial_output_dir = args[idx + 1].clone();
+                parsed.parity_matrix_output = args[idx + 1].clone();
                 idx += 2;
             }
             "--tutorial-output" => {
@@ -214,6 +222,14 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 parsed.mode = Mode::TutorialManifestCheck;
                 idx += 1;
             }
+            "parity-matrix-generate" => {
+                parsed.mode = Mode::ParityMatrixGenerate;
+                idx += 1;
+            }
+            "parity-matrix-check" => {
+                parsed.mode = Mode::ParityMatrixCheck;
+                idx += 1;
+            }
             other => {
                 if parsed.mode == Mode::SvgPng && parsed.svg_input.is_empty() {
                     parsed.svg_input = other.to_string();
@@ -271,17 +287,7 @@ fn run_svg_png_mode(
             drop_dotplot_metadata,
         },
     )?;
-    let summary = json!({
-        "status": "ok",
-        "mode": "svg-png",
-        "input_path": summary.input_path,
-        "output_path": summary.output_path,
-        "scale": summary.scale,
-        "drop_dotplot_metadata": summary.drop_dotplot_metadata,
-        "width": summary.width,
-        "height": summary.height,
-        "font_face_count": summary.font_face_count,
-    });
+    let summary = svg_png_summary_json(&summary);
     let pretty = serde_json::to_string_pretty(&summary)
         .map_err(|e| format!("Could not serialize svg-png summary: {e}"))?;
     println!("{pretty}");
@@ -295,6 +301,7 @@ fn run_tutorial_generate_mode(
     repo_root: &Path,
 ) -> Result<(), String> {
     let report = generate_tutorial_docs(source_dir, manifest_path, output_dir, repo_root)?;
+    emit_tutorial_warnings(&report.warnings);
     let pretty = serde_json::to_string_pretty(&report)
         .map_err(|e| format!("Could not serialize tutorial generation report: {e}"))?;
     println!("{pretty}");
@@ -308,16 +315,24 @@ fn run_tutorial_check_mode(
     repo_root: &Path,
 ) -> Result<(), String> {
     let report = check_tutorial_generated(source_dir, manifest_path, output_dir, repo_root)?;
+    emit_tutorial_warnings(&report.warnings);
     let summary = json!({
         "status": "ok",
         "mode": "tutorial-check",
         "chapter_count": report.chapter_count,
         "generated_files": report.generated_files,
+        "warnings": report.warnings,
     });
     let pretty = serde_json::to_string_pretty(&summary)
         .map_err(|e| format!("Could not serialize tutorial check report: {e}"))?;
     println!("{pretty}");
     Ok(())
+}
+
+fn emit_tutorial_warnings(warnings: &[String]) {
+    for warning in warnings {
+        eprintln!("warning: {warning}");
+    }
 }
 
 fn run_tutorial_catalog_generate_mode(
@@ -392,6 +407,46 @@ fn run_tutorial_manifest_check_mode(
     Ok(())
 }
 
+fn run_parity_matrix_generate_mode(output_path: &Path) -> Result<(), String> {
+    let markdown = gentle_protocol::render_gui_cli_mcp_parity_matrix_markdown();
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Could not create {}: {e}", parent.display()))?;
+    }
+    fs::write(output_path, markdown)
+        .map_err(|e| format!("Could not write {}: {e}", output_path.display()))?;
+    let summary = json!({
+        "status": "ok",
+        "mode": "parity-matrix-generate",
+        "output_path": output_path.to_string_lossy(),
+    });
+    let pretty = serde_json::to_string_pretty(&summary)
+        .map_err(|e| format!("Could not serialize parity matrix report: {e}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
+fn run_parity_matrix_check_mode(output_path: &Path) -> Result<(), String> {
+    let expected = gentle_protocol::render_gui_cli_mcp_parity_matrix_markdown();
+    let actual = fs::read_to_string(output_path)
+        .map_err(|e| format!("Could not read {}: {e}", output_path.display()))?;
+    if actual != expected {
+        return Err(format!(
+            "{} is stale; run scripts/regenerate_parity_matrix.sh",
+            output_path.display()
+        ));
+    }
+    let summary = json!({
+        "status": "ok",
+        "mode": "parity-matrix-check",
+        "output_path": output_path.to_string_lossy(),
+    });
+    let pretty = serde_json::to_string_pretty(&summary)
+        .map_err(|e| format!("Could not serialize parity matrix check report: {e}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     let parsed = match parse_args(&args) {
@@ -414,6 +469,7 @@ fn main() {
     let tutorial_source_dir = PathBuf::from(parsed.tutorial_source_dir);
     let tutorial_manifest = PathBuf::from(parsed.tutorial_manifest);
     let tutorial_output = PathBuf::from(parsed.tutorial_output_dir);
+    let parity_matrix_output = PathBuf::from(parsed.parity_matrix_output);
     let repo_root = PathBuf::from(parsed.repo_root);
     let svg_input = PathBuf::from(parsed.svg_input);
     let png_output = PathBuf::from(parsed.png_output);
@@ -458,6 +514,8 @@ fn main() {
             &tutorial_source_dir,
             &tutorial_manifest,
         ),
+        Mode::ParityMatrixGenerate => run_parity_matrix_generate_mode(&parity_matrix_output),
+        Mode::ParityMatrixCheck => run_parity_matrix_check_mode(&parity_matrix_output),
     };
     if let Err(e) = result {
         eprintln!("{e}");

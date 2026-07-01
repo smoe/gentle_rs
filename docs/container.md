@@ -73,6 +73,8 @@ Current implementation detail:
 - `bigWigToBedGraph` is provided by a compatibility wrapper script that uses
   Debian's `python3-pybigwig`
 - `RNAfold` is provided by the Debian `vienna-rna` package
+  - Debian publishes this package in the `non-free` component, so the runtime
+    image explicitly enables `main non-free` before installing helper tools
 - `rnapkin` is installed via `cargo install` because it is not presently part
   of the Debian package set we rely on
 - release/distribution follow-up: pin the `rnapkin` source/version explicitly
@@ -132,7 +134,8 @@ Why `forky` by default:
   `qemu-aarch64` failure mode in GitHub Actions multi-arch builds
 - Debian testing (`forky`) currently ships a meaningfully newer `rust-all`
   than `trixie`, while still providing the runtime packages this image needs,
-  including `novnc` and `python3-pybigwig`
+  including `novnc`, `python3-pybigwig`, and `vienna-rna` once the runtime
+  apt sources enable Debian's `non-free` component
 - this keeps the project on Debian-packaged `rust-all` instead of switching
   the container over to `rustup`
 - GENtle does not need audio output, so the image intentionally omits ALSA

@@ -1,0 +1,109 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "gene_set_ortholog_promoter_cohorts_offline",
+  "title": "Gene-Set and Ortholog Promoter Cohorts (Offline Synthetic TP73 Demo)",
+  "catalog": {
+    "order": 47,
+    "path": "docs/tutorial/generated/chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "cli_first",
+      "regulatory_analysis",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter for offline gene-set and ortholog promoter cohort relationship flags.",
+    "group": "08",
+    "group_position": 8
+  },
+  "generated_chapter": {
+    "order": 26,
+    "example_id": "gene_set_ortholog_promoter_cohorts_offline",
+    "tier": "core",
+    "summary": "Run a fully offline promoter-cohort demo that resolves a reviewed gene set, records a co-regulated relationship expectation, shows an unexpected TFBS-divergence flag, then repeats the same expectation framing for a local TP73/Trp73 ortholog promoter comparison.",
+    "narrative": "Relationship flags are triage aids, not biological verdicts. In this chapter, GENtle prepares two tiny synthetic genome fixtures, resolves a reviewed human gene set (`TP73` plus a deliberately divergent synthetic partner), and records that the set is expected to be co-regulated. The follow-up promoter comparison finds that the available SP1 score-track evidence is not concordant, so it emits an `unexpected_divergence` flag.\n\nThe second half uses a local `gentle.ortholog_resource.v1` fixture mapping synthetic human `TP73` to mouse `Trp73`. It resolves strand-aware promoter windows from local prepared genome indexes and then compares promoter TFBS evidence with the same conservative co-regulated expectation. This is cross-species association evidence only; the fixture is artificial and does not prove regulation, conservation, or orthology in real organisms.",
+    "use_cases": [
+      "You want a deterministic offline smoke test for gene-set promoter cohort artifacts.",
+      "You want to see how a declared co-regulated expectation is carried separately from evidence-derived relationship flags.",
+      "You want a tiny local ortholog-resource example before using a larger reviewed ortholog table.",
+      "You need generated JSON artifacts that can be inspected by GUI, CLI, MCP, or agent consumers without network access."
+    ],
+    "gui_steps": [
+      "Open the generated artifact directory for this chapter after running tutorial generation.",
+      "Inspect `promoter_cohort_tutorial.gene_set_promoter_cohort.json` to see the resolved gene-set members and promoter windows.",
+      "Inspect `promoter_cohort_tutorial.gene_set_promoter_comparison.json` to see the co-regulated expectation and the `unexpected_divergence` relationship flag.",
+      "Inspect `promoter_cohort_tutorial.ortholog_promoter_cohort.json` to compare human TP73 and mouse Trp73 promoter window geometry.",
+      "Inspect `promoter_cohort_tutorial.ortholog_promoter_comparison.json` to see cross-species TFBS evidence kept separate from the relationship flag."
+    ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gene_set_ortholog_promoter_cohorts_offline.json",
+      "cargo run --bin gentle_cli -- shell 'gene-sets promoter-cohort TutorialHumanPromoterToy --group tutorial_p73_promoter_cohort --relationship co-regulated --upstream-bp 40 --downstream-bp 10 --gene-group-catalog docs/examples/assets/promoter_cohort_tutorial_gene_groups.json --genome-catalog docs/examples/assets/promoter_cohort_tutorial_genomes.json --cache-dir /tmp/gentle-promoter-cohort-cache --path /tmp/gene_set_promoter_cohort.json'",
+      "cargo run --bin gentle_cli -- shell 'genomes promoter-cohort-comparison TutorialHumanPromoterToy --cohort-label tutorial_p73_gene_set_co_regulated --cohort-kind co_regulated --gene TP73 --gene TP73D --motif SP1 --upstream-bp 40 --downstream-bp 10 --score-kind llr_background_tail_log10 --catalog docs/examples/assets/promoter_cohort_tutorial_genomes.json --cache-dir /tmp/gentle-promoter-cohort-cache --path /tmp/gene_set_promoter_comparison.json'",
+      "cargo run --bin gentle_cli -- shell 'orthologs resolve-promoter-cohort --anchor-species human --anchor-genome TutorialHumanPromoterToy --anchor-gene TP73 --target-species mouse --target-genome mouse=TutorialMousePromoterToy --transcript human=TX_HUMAN_TP73 --transcript mouse=TX_MOUSE_TRP73 --orthologs docs/examples/assets/promoter_cohort_tutorial_orthologs.json --relationship co-regulated --upstream-bp 40 --downstream-bp 10 --catalog docs/examples/assets/promoter_cohort_tutorial_genomes.json --cache-dir /tmp/gentle-promoter-cohort-cache --path /tmp/ortholog_promoter_cohort.json'",
+      "cargo run --bin gentle_cli -- shell 'orthologs promoter-comparison --cohort /tmp/ortholog_promoter_cohort.json --motif SP1 --score-kind llr_background_tail_log10 --relationship co-regulated --path /tmp/ortholog_promoter_comparison.json'"
+    ],
+    "step_expectations": [
+      "The canonical workflow prepares `TutorialHumanPromoterToy` and `TutorialMousePromoterToy` from local FASTA/GTF fixtures.",
+      "`gene_set_promoter_cohort.json` resolves two reviewed gene-set members and records `relationship: co_regulated`.",
+      "`gene_set_promoter_comparison.json` contains a non-empty `relationship_flags[]` row with `flag_kind: unexpected_divergence`.",
+      "`ortholog_promoter_cohort.json` resolves human TP73 and mouse Trp73 promoter windows from the local ortholog resource.",
+      "`ortholog_promoter_comparison.json` contains the ortholog `relationship: co_regulated` expectation and an `unexpected_divergence` relationship flag."
+    ],
+    "prerequisites": [
+      "promoter_design_artifact_slice_offline"
+    ],
+    "learning_objectives": [
+      "Distinguish a resolved gene-set promoter cohort from a promoter TFBS comparison over that cohort.",
+      "Read `relationship` as a declared expectation and `relationship_flags[]` as non-blocking evidence triage.",
+      "Use a local `gentle.ortholog_resource.v1` fixture for offline ortholog promoter resolution.",
+      "Keep cross-species promoter evidence conservative: association evidence, not proof of regulation.",
+      "Verify that generated tutorial artifacts are deterministic and reviewable."
+    ],
+    "concepts": [
+      "shared_engine_contract",
+      "deterministic_workflows",
+      "genome_catalog_targeting",
+      "promoter_motif_controls",
+      "tutorial_drift_checks"
+    ],
+    "parameter_notes": [
+      {
+        "parameter": "upstream_bp=40 / downstream_bp=10",
+        "where_used": "BuildGeneSetPromoterCohort, SummarizePromoterCohortComparison, ResolveOrthologPromoterCohort",
+        "why_it_matters": "The synthetic chromosomes are only a few hundred bases long; compact promoter windows make the TSS geometry and motif contrast inspectable.",
+        "how_to_derive": "Use the fixed tutorial TSS at 151 bp, which yields promoter windows spanning 111..161 on the plus strand."
+      },
+      {
+        "parameter": "relationship=co_regulated",
+        "where_used": "Gene-set promoter cohort, same-genome promoter comparison, ortholog promoter cohort, ortholog promoter comparison",
+        "why_it_matters": "The relationship is a declared expectation carried into reports; it does not itself assert regulation.",
+        "how_to_derive": "Use `co_regulated` here because the fixture is deliberately arranged to show what an unexpected divergence flag looks like."
+      },
+      {
+        "parameter": "motif=SP1",
+        "where_used": "Same-genome and ortholog promoter comparisons",
+        "why_it_matters": "The synthetic TP73 promoter contains one GC-rich SP1-like patch while the comparison promoters are T-rich.",
+        "how_to_derive": "Use the exact local fixture sequences in `docs/examples/assets/promoter_cohort_tutorial_*.fa`."
+      }
+    ],
+    "follow_up_commands": [
+      "cargo run --bin gentle_examples_docs -- tutorial-generate",
+      "cargo run --bin gentle_examples_docs -- tutorial-check",
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gene_set_ortholog_promoter_cohorts_offline.json"
+    ],
+    "retain_outputs": [
+      "artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json",
+      "artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json",
+      "artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json",
+      "artifacts/promoter_cohort_tutorial.ortholog_promoter_comparison.json"
+    ],
+    "checkpoints": [
+      "The workflow executes offline with no genome download or ortholog API call.",
+      "The gene-set cohort artifact reports exactly two returned promoter windows.",
+      "The same-genome promoter comparison reports at least one `unexpected_divergence` flag under the co-regulated expectation.",
+      "The ortholog cohort artifact reports two resolved promoter rows and zero unresolved targets.",
+      "The ortholog comparison artifact reports at least one `unexpected_divergence` relationship flag and keeps the wording evidence-based."
+    ]
+  }
+}

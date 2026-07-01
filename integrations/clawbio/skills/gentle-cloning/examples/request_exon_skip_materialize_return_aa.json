@@ -1,0 +1,8 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "exon-skip-materialize",
+  "state_path": "gentle_project.json",
+  "plan_id": "annotated_locus_skip_exon_2",
+  "confirm": true,
+  "return_items": ["amino_acid_sequence"]
+}

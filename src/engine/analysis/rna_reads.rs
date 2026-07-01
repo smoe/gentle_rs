@@ -61,6 +61,14 @@ struct RnaReadFullLengthClassification {
     full_length_strict: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct RnaReadIsoformTriageThresholds {
+    min_identity_fraction: f64,
+    min_query_coverage_fraction: f64,
+    min_confirmed_transition_fraction: f64,
+    max_secondary_mappings: usize,
+}
+
 #[derive(Debug, Clone)]
 struct RnaReadGeneSupportContext {
     group_label: String,
@@ -157,6 +165,25 @@ struct RnaReadConcatemerFragmentContext {
     seed_kmer_len: usize,
 }
 
+#[derive(Debug, Clone)]
+struct RnaReadPreflightScoringContext {
+    templates: Vec<SplicingTranscriptTemplate>,
+    seed_index: HashSet<u32>,
+    seed_occurrence_counts: HashMap<u32, usize>,
+    seed_template_positions: HashMap<u32, Vec<SeedTemplatePosition>>,
+    seed_to_exons: HashMap<u32, Vec<usize>>,
+    seed_to_transitions: HashMap<u32, Vec<(usize, usize)>>,
+    transcript_exon_models: Vec<TranscriptExonPathModel>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RnaReadPreflightControlAccumulator {
+    source_paths: BTreeSet<String>,
+    transcript_count: usize,
+    passed_transcript_count: usize,
+    best_score: Option<RnaReadIsoformPreflightScore>,
+}
+
 impl RnaReadGeneSupportAccumulator {
     fn add_read(
         &mut self,
@@ -227,6 +254,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize RNA-read report metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -249,6 +278,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "report_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut out = String::with_capacity(trimmed.len());
@@ -264,6 +295,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(out)
@@ -281,11 +314,15 @@ impl GentleEngine {
         let text = std::fs::read_to_string(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not read RNA-read checkpoint '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         let mut checkpoint =
             serde_json::from_str::<RnaReadInterpretCheckpoint>(&text).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Could not parse RNA-read checkpoint '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
         if checkpoint.schema.trim().is_empty() {
             checkpoint.schema = RNA_READ_CHECKPOINT_SCHEMA.to_string();
@@ -297,6 +334,8 @@ impl GentleEngine {
                     "Unsupported RNA-read checkpoint schema '{}' in '{}'",
                     checkpoint.schema, path
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(checkpoint)
@@ -312,10 +351,14 @@ impl GentleEngine {
                 "Could not serialize RNA-read checkpoint for '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA-read checkpoint '{}': {e}", path),
+
+            cause_chain: vec![],
         })
     }
 
@@ -352,6 +395,8 @@ impl GentleEngine {
                 seed_feature_id: report.seed_feature_id,
                 scope: report.scope,
                 origin_mode: report.origin_mode,
+                input_orientation_mode: report.seed_filter.input_orientation_mode().to_string(),
+                input_orientation_label: report.seed_filter.input_orientation_label().to_string(),
                 target_gene_count: report.target_gene_ids.len(),
                 roi_seed_capture_enabled: report.roi_seed_capture_enabled,
                 read_count_total: report.read_count_total,
@@ -383,10 +428,12 @@ impl GentleEngine {
             (row.read_count_seed_passed as f64 / row.read_count_total as f64) * 100.0
         };
         format!(
-            "{} seq={} mode={} origin={} targets={} roi_capture={} reads={} seed_passed={} ({:.2}%) aligned={} msa_eligible(retained)={}",
+            "{} seq={} mode={} input_orientation={} input_orientation_label={} origin={} targets={} roi_capture={} reads={} seed_passed={} ({:.2}%) aligned={} msa_eligible(retained)={}",
             row.report_id,
             row.seq_id,
             row.report_mode.as_str(),
+            row.input_orientation_mode,
+            row.input_orientation_label,
             row.origin_mode.as_str(),
             row.target_gene_count,
             row.roi_seed_capture_enabled,
@@ -458,11 +505,13 @@ impl GentleEngine {
             8,
         );
         format!(
-            "{} seq={} profile={} mode={} origin={} targets={} roi_capture={} reads={} seed_passed={} ({:.2}%) aligned={} ({:.2}%) full_length(exact/near/strict)={}/{}/{} ({:.2}%/{:.2}%/{:.2}% aligned) msa_eligible(retained)={} len_bp_bins(all|seed|aligned|exact|near|strict)={} | {} | {} | {} | {} | {}",
+            "{} seq={} profile={} mode={} input_orientation={} input_orientation_label={} origin={} targets={} roi_capture={} reads={} seed_passed={} ({:.2}%) aligned={} ({:.2}%) full_length(exact/near/strict)={}/{}/{} ({:.2}%/{:.2}%/{:.2}% aligned) msa_eligible(retained)={} len_bp_bins(all|seed|aligned|exact|near|strict)={} | {} | {} | {} | {} | {}",
             report.report_id,
             report.seq_id,
             report.profile.as_str(),
             report.report_mode.as_str(),
+            report.seed_filter.input_orientation_mode(),
+            report.seed_filter.input_orientation_label(),
             report.origin_mode.as_str(),
             report.target_gene_ids.len(),
             report.roi_seed_capture_enabled,
@@ -499,6 +548,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("RNA-read report '{}' not found", report_id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -508,18 +559,48 @@ impl GentleEngine {
         path: &str,
     ) -> Result<RnaReadInterpretationReport, EngineError> {
         let report = self.get_rna_read_report(report_id)?;
-        let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
+        let text = serde_json::to_string_pretty(&Self::rna_read_report_export_value(&report)?)
+            .map_err(|e| EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Could not serialize RNA-read report '{}': {e}",
+                    report.report_id
+                ),
+
+                cause_chain: vec![],
+            })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write RNA-read report to '{path}': {e}"),
+
+            cause_chain: vec![],
+        })?;
+        Ok(report)
+    }
+
+    pub(crate) fn rna_read_report_export_value(
+        report: &RnaReadInterpretationReport,
+    ) -> Result<serde_json::Value, EngineError> {
+        let mut value = serde_json::to_value(report).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!(
                 "Could not serialize RNA-read report '{}': {e}",
                 report.report_id
             ),
+
+            cause_chain: vec![],
         })?;
-        std::fs::write(path, text).map_err(|e| EngineError {
-            code: ErrorCode::Io,
-            message: format!("Could not write RNA-read report to '{path}': {e}"),
-        })?;
-        Ok(report)
+        if let serde_json::Value::Object(map) = &mut value {
+            map.insert(
+                "input_orientation_mode".to_string(),
+                serde_json::Value::String(report.seed_filter.input_orientation_mode().to_string()),
+            );
+            map.insert(
+                "input_orientation_label".to_string(),
+                serde_json::Value::String(report.seed_filter.input_orientation_label().to_string()),
+            );
+        }
+        Ok(value)
     }
 
     fn normalize_rna_read_gene_support_ids(
@@ -531,13 +612,14 @@ impl GentleEngine {
             .filter(|raw| !raw.is_empty())
             .map(|raw| raw.to_string())
             .collect::<Vec<_>>();
-        normalized
-            .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        normalized.sort_by_key(|left| left.to_ascii_lowercase());
         normalized.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         if normalized.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read gene-support commands require at least one gene id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(normalized)
@@ -787,6 +869,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", report.seq_id),
+
+                cause_chain: vec![],
             })?;
         let (_base_splicing, transcript_lanes) =
             self.collect_rna_read_report_transcript_lanes(dna, &report)?;
@@ -926,22 +1010,19 @@ impl GentleEngine {
                     .cloned();
                 row.gene_id = resolved_gene_id.clone();
 
-                if let Some(gene_id) = resolved_gene_id.as_deref() {
-                    if !prepared.contexts.contains_key(gene_id) {
-                        if let Some(feature_id) = prepared.context_feature_ids.get(gene_id).copied()
-                        {
-                            let group_scope =
-                                Self::rna_read_gene_support_group_scope(prepared.report.scope);
-                            let splicing = self.build_splicing_expert_view(
-                                &prepared.report.seq_id,
-                                feature_id,
-                                group_scope,
-                            )?;
-                            let context =
-                                Self::rna_read_gene_support_context_from_splicing(splicing);
-                            prepared.contexts.insert(gene_id.to_string(), context);
-                        }
-                    }
+                if let Some(gene_id) = resolved_gene_id.as_deref()
+                    && !prepared.contexts.contains_key(gene_id)
+                    && let Some(feature_id) = prepared.context_feature_ids.get(gene_id).copied()
+                {
+                    let group_scope =
+                        Self::rna_read_gene_support_group_scope(prepared.report.scope);
+                    let splicing = self.build_splicing_expert_view(
+                        &prepared.report.seq_id,
+                        feature_id,
+                        group_scope,
+                    )?;
+                    let context = Self::rna_read_gene_support_context_from_splicing(splicing);
+                    prepared.contexts.insert(gene_id.to_string(), context);
                 }
 
                 let target_length_bp = resolved_gene_id
@@ -1172,10 +1253,14 @@ impl GentleEngine {
                 "Could not serialize RNA-read gene-support summary '{}': {e}",
                 summary.report_id
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA-read gene-support summary to '{path}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1190,10 +1275,14 @@ impl GentleEngine {
                 "Could not serialize RNA-read gene-support audit '{}': {e}",
                 audit.report_id
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA-read gene-support audit to '{path}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1315,6 +1404,8 @@ impl GentleEngine {
         let text = std::fs::read_to_string(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not read RNA-read target-quality bundle '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         if text.trim().is_empty() {
             return Ok(None);
@@ -1336,6 +1427,8 @@ impl GentleEngine {
             message: format!(
                 "Existing file '{path}' is neither a RNA-read target-quality comparison bundle nor a legacy gene-support summary JSON"
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1384,12 +1477,16 @@ impl GentleEngine {
             message: format!(
                 "Could not serialize RNA-read target-quality comparison bundle for '{path}': {e}"
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!(
                 "Could not write RNA-read target-quality comparison bundle to '{path}': {e}"
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1441,6 +1538,7 @@ impl GentleEngine {
         width: f32,
         height: f32,
         title: &str,
+        x_axis_label: &str,
         counts: &[u64],
         color: &str,
     ) {
@@ -1455,6 +1553,17 @@ impl GentleEngine {
             out,
             "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\" />",
             x, y, width, height
+        );
+        Self::render_rna_read_target_quality_panel_axes_svg(
+            out,
+            x,
+            y,
+            width,
+            height,
+            x_axis_label,
+            "relative read count",
+            "max",
+            "0",
         );
         if counts.is_empty() {
             return;
@@ -1504,6 +1613,17 @@ impl GentleEngine {
             "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\" />",
             x, y, width, height
         );
+        Self::render_rna_read_target_quality_panel_axes_svg(
+            out,
+            x,
+            y,
+            width,
+            height,
+            "read length bins (bp)",
+            "target-positive share",
+            "100%",
+            "0%",
+        );
         if total_counts.is_empty() {
             return;
         }
@@ -1536,6 +1656,71 @@ impl GentleEngine {
         }
     }
 
+    fn render_rna_read_target_quality_panel_axes_svg(
+        out: &mut String,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        x_axis_label: &str,
+        y_axis_label: &str,
+        y_top_label: &str,
+        y_bottom_label: &str,
+    ) {
+        let axis_color = "#64748b";
+        let label_color = "#475569";
+        let _ = write!(
+            out,
+            "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"0.8\" />",
+            x + 0.5,
+            y + height - 1.5,
+            x + width - 0.5,
+            y + height - 1.5,
+            axis_color
+        );
+        let _ = write!(
+            out,
+            "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"0.8\" />",
+            x + 0.5,
+            y + 0.5,
+            x + 0.5,
+            y + height - 1.5,
+            axis_color
+        );
+        let _ = write!(
+            out,
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"8\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"{}\">{}</text>",
+            x + 4.0,
+            y + 10.0,
+            label_color,
+            Self::svg_escape_text(y_top_label)
+        );
+        let _ = write!(
+            out,
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"8\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"{}\">{}</text>",
+            x + 4.0,
+            y + height - 4.0,
+            label_color,
+            Self::svg_escape_text(y_bottom_label)
+        );
+        let _ = write!(
+            out,
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"8\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"{}\">y-axis: {}</text>",
+            x + 28.0,
+            y + 10.0,
+            label_color,
+            Self::svg_escape_text(y_axis_label)
+        );
+        let _ = write!(
+            out,
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"9\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"{}\">x-axis: {}</text>",
+            x + 4.0,
+            y + height + 13.0,
+            label_color,
+            Self::svg_escape_text(x_axis_label)
+        );
+    }
+
     fn render_rna_read_target_quality_comparison_svg_text(
         bundle: &RnaReadTargetQualityComparisonBundle,
     ) -> String {
@@ -1543,7 +1728,7 @@ impl GentleEngine {
         let margin = 18.0f32;
         let panel_w = 180.0f32;
         let panel_h = 82.0f32;
-        let entry_h = 164.0f32;
+        let entry_h = 184.0f32;
         let total_w = margin * 2.0 + panel_w * 4.0 + 16.0 * 3.0;
         let total_h = margin * 2.0 + entry_h * entry_count as f32;
         let mut svg = String::new();
@@ -1624,6 +1809,7 @@ impl GentleEngine {
                 panel_w,
                 panel_h,
                 "All read lengths",
+                "read length bins (bp)",
                 &entry.all_read_lengths.length_counts,
                 "#94a3b8",
             );
@@ -1645,6 +1831,7 @@ impl GentleEngine {
                 panel_w,
                 panel_h,
                 "Target fragment lengths",
+                "target fragment length bins (bp)",
                 &entry.summary.accepted_target_fragment_lengths.length_counts,
                 "#0d9488",
             );
@@ -1655,6 +1842,7 @@ impl GentleEngine {
                 panel_w,
                 panel_h,
                 "Target/read coverage %",
+                "target/read coverage (%)",
                 &Self::rebin_counts(&entry.summary.accepted_target_query_coverage.bin_counts, 24),
                 "#0284c7",
             );
@@ -1675,6 +1863,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read target-quality export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let report = self.get_rna_read_report(report_id)?;
@@ -1741,6 +1931,8 @@ impl GentleEngine {
                 "Could not write RNA-read target-quality SVG to '{}': {e}",
                 written_svg_path
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadTargetQualityExport {
             schema: RNA_READ_TARGET_QUALITY_EXPORT_SCHEMA.to_string(),
@@ -2026,6 +2218,8 @@ impl GentleEngine {
         let mut writer = BufWriter::new(File::create(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not create RNA-read FASTA output '{}': {e}", path),
+
+            cause_chain: vec![],
         })?);
         let explicit_record_filter = selected_record_indices
             .iter()
@@ -2101,16 +2295,22 @@ impl GentleEngine {
             writeln!(writer, ">{header}").map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write FASTA header to '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
             writeln!(writer, "{}", hit.sequence).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write FASTA sequence to '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
             written += 1;
         }
         writer.flush().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not flush FASTA output '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(written)
     }
@@ -2672,13 +2872,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read transcript catalog index requires at least one --transcript-fasta path".to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
         if seed_kmer_len == 0 || seed_kmer_len > 16 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read transcript catalog index requires --kmer-len within 1..=16"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut warnings = Vec::<String>::new();
@@ -2741,6 +2944,8 @@ impl GentleEngine {
                 "Could not serialize RNA-read transcript catalog index for '{}': {}",
                 output_path, e
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(output_path, payload).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -2748,6 +2953,8 @@ impl GentleEngine {
                 "Could not write RNA-read transcript catalog index to '{}': {}",
                 output_path, e
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(index)
     }
@@ -2771,6 +2978,8 @@ impl GentleEngine {
                 "Could not read RNA-read transcript catalog index '{}': {}",
                 path, e
             ),
+
+            cause_chain: vec![],
         })?;
         let index: RnaReadTranscriptCatalogIndex =
             serde_json::from_str(&text).map_err(|e| EngineError {
@@ -2779,6 +2988,8 @@ impl GentleEngine {
                     "Could not parse RNA-read transcript catalog index '{}': {}",
                     path, e
                 ),
+
+                cause_chain: vec![],
             })?;
         if index.schema != RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA {
             return Err(EngineError {
@@ -2787,6 +2998,8 @@ impl GentleEngine {
                     "RNA-read transcript catalog index '{}' uses unsupported schema '{}' (expected '{}')",
                     path, index.schema, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA
                 ),
+
+                cause_chain: vec![],
             });
         }
         if index.seed_kmer_len != expected_kmer_len {
@@ -2796,6 +3009,8 @@ impl GentleEngine {
                     "RNA-read transcript catalog index '{}' was built with kmer_len={} but the report requires kmer_len={}",
                     path, index.seed_kmer_len, expected_kmer_len
                 ),
+
+                cause_chain: vec![],
             });
         }
         for warning in &index.warnings {
@@ -2903,6 +3118,8 @@ impl GentleEngine {
         let text = std::fs::read_to_string(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not read RNA-read adapter FASTA '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         let mut signatures = Vec::<RnaReadAdapterSignature>::new();
         let mut current_header = None::<String>;
@@ -2958,6 +3175,8 @@ impl GentleEngine {
                     "RNA-read adapter FASTA '{}' did not contain any readable sequences",
                     path
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(signatures)
@@ -3421,6 +3640,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read concatemer inspection requires --limit >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut settings = settings;
@@ -3833,6 +4054,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read alignment inspection requires --limit >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let subset_spec = Self::normalize_rna_read_alignment_inspection_subset_spec(subset_spec);
@@ -3993,6 +4216,8 @@ impl GentleEngine {
                     "RNA-read report '{}' has no retained row with record_index={}",
                     report.report_id, record_index
                 ),
+
+                cause_chain: vec![],
             })?;
         let mapping = hit.best_mapping.as_ref().ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
@@ -4001,6 +4226,8 @@ impl GentleEngine {
                 report.report_id,
                 record_index + 1
             ),
+
+            cause_chain: vec![],
         })?;
         let dna = self
             .state
@@ -4009,6 +4236,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", report.seq_id),
+
+                cause_chain: vec![],
             })?;
         let (_splicing, transcript_lanes) =
             self.collect_rna_read_report_transcript_lanes(dna, &report)?;
@@ -4021,6 +4250,8 @@ impl GentleEngine {
                     "Could not rebuild transcript template '{}' for RNA-read report '{}'",
                     mapping.transcript_id, report.report_id
                 ),
+
+                cause_chain: vec![],
             })?;
         let template =
             Self::make_transcript_template(dna, template_lane, report.seed_filter.kmer_len);
@@ -4031,6 +4262,8 @@ impl GentleEngine {
                     "Transcript template '{}' is empty for RNA-read alignment detail",
                     mapping.transcript_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let normalized_read = hit
@@ -4063,7 +4296,8 @@ impl GentleEngine {
                 record_index + 1,
                 report.report_id
             ),
-        })?;
+        
+            cause_chain: vec![],})?;
         let (aligned_query, aligned_relation, aligned_target, _insertions, _deletions) =
             Self::format_rna_read_alignment_strings(
                 &oriented_query,
@@ -4130,15 +4364,19 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read alignment TSV export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
-        if let Some(value) = limit {
-            if value == 0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "RNA-read alignment TSV export requires --limit >= 1".to_string(),
-                });
-            }
+        if let Some(value) = limit
+            && value == 0
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read alignment TSV export requires --limit >= 1".to_string(),
+
+                cause_chain: vec![],
+            });
         }
         let report = self.get_rna_read_report(report_id)?;
         let mut inspection = self.inspect_rna_read_alignments(report_id, selection, usize::MAX)?;
@@ -4163,6 +4401,8 @@ impl GentleEngine {
                 "Could not create RNA-read alignment TSV export '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?;
         let mut writer = BufWriter::new(file);
         for line in Self::rna_read_alignment_tsv_metadata_lines(
@@ -4179,6 +4419,8 @@ impl GentleEngine {
                     "Could not write RNA-read alignment TSV metadata to '{}': {e}",
                     path
                 ),
+
+                cause_chain: vec![],
             })?;
         }
         writeln!(
@@ -4191,7 +4433,8 @@ impl GentleEngine {
                 "Could not write RNA-read alignment TSV header to '{}': {e}",
                 path
             ),
-        })?;
+        
+            cause_chain: vec![],})?;
         for row in &inspection.rows {
             let full_length_class = Self::rna_read_full_length_class_label(
                 row.full_length_exact,
@@ -4248,11 +4491,14 @@ impl GentleEngine {
                     "Could not write RNA-read alignment TSV row to '{}': {e}",
                     path
                 ),
-            })?;
+            
+                cause_chain: vec![],})?;
         }
         writer.flush().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not flush RNA-read alignment TSV '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadAlignmentTsvExport {
             schema: RNA_READ_ALIGNMENT_TSV_EXPORT_SCHEMA.to_string(),
@@ -4263,6 +4509,329 @@ impl GentleEngine {
             aligned_count: inspection.aligned_count,
             limit,
         })
+    }
+
+    pub fn export_rna_read_isoform_triage_tsv(
+        &self,
+        report_id: &str,
+        path: &str,
+        selection: RnaReadHitSelection,
+        limit: Option<usize>,
+        selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
+        min_identity_fraction: Option<f64>,
+        min_query_coverage_fraction: Option<f64>,
+        min_confirmed_transition_fraction: Option<f64>,
+        max_secondary_mappings: Option<usize>,
+    ) -> Result<RnaReadIsoformTriageTsvExport, EngineError> {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError::invalid_input(
+                "RNA-read isoform triage TSV export requires non-empty path",
+            ));
+        }
+        if let Some(value) = limit
+            && value == 0
+        {
+            return Err(EngineError::invalid_input(
+                "RNA-read isoform triage TSV export requires --limit >= 1",
+            ));
+        }
+        let report = self.get_rna_read_report(report_id)?;
+        let defaults = Self::default_rna_read_isoform_triage_thresholds(
+            report.align_config.min_identity_fraction,
+        );
+        let thresholds = RnaReadIsoformTriageThresholds {
+            min_identity_fraction: Self::validate_optional_fraction(
+                min_identity_fraction,
+                "--min-identity",
+            )?
+            .unwrap_or(defaults.min_identity_fraction),
+            min_query_coverage_fraction: Self::validate_optional_fraction(
+                min_query_coverage_fraction,
+                "--min-query-coverage",
+            )?
+            .unwrap_or(defaults.min_query_coverage_fraction),
+            min_confirmed_transition_fraction: Self::validate_optional_fraction(
+                min_confirmed_transition_fraction,
+                "--min-confirmed-transition-fraction",
+            )?
+            .unwrap_or(defaults.min_confirmed_transition_fraction),
+            max_secondary_mappings: max_secondary_mappings
+                .unwrap_or(defaults.max_secondary_mappings),
+        };
+        let explicit_record_filter = selected_record_indices
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
+        let file = File::create(path).map_err(|e| {
+            EngineError::new(
+                ErrorCode::Io,
+                format!(
+                    "Could not create RNA-read isoform triage TSV export '{}'",
+                    path
+                ),
+            )
+            .with_cause(e)
+        })?;
+        let mut writer = BufWriter::new(file);
+        for line in Self::rna_read_isoform_triage_tsv_metadata_lines(
+            &report,
+            selection,
+            limit,
+            selected_record_indices,
+            subset_spec,
+            thresholds,
+        ) {
+            writeln!(writer, "{line}").map_err(|e| {
+                EngineError::new(
+                    ErrorCode::Io,
+                    format!(
+                        "Could not write RNA-read isoform triage TSV metadata to '{}'",
+                        path
+                    ),
+                )
+                .with_cause(e)
+            })?;
+        }
+        writeln!(
+            writer,
+            "report_id\tseq_id\trecord_index\theader_id\ttriage_bin\ttriage_reason\tread_length_bp\tpassed_seed_filter\torigin_class\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\tbest_transcript_id\tbest_transcript_label\tbest_strand\talignment_effect\tidentity_fraction\tquery_coverage_fraction\tsecondary_mapping_count\texon_path\texon_transitions_confirmed\texon_transitions_total\tconfirmed_transition_fraction\tseed_hit_fraction\tweighted_seed_hit_fraction\tmsa_eligible"
+        )
+        .map_err(|e| {
+            EngineError::new(
+                ErrorCode::Io,
+                format!(
+                    "Could not write RNA-read isoform triage TSV header to '{}'",
+                    path
+                ),
+            )
+            .with_cause(e)
+        })?;
+        let mut row_count = 0usize;
+        let mut bin_counts = BTreeMap::<String, usize>::new();
+        for hit in &report.hits {
+            if !Self::include_rna_read_hit_by_selection_and_indices(
+                hit,
+                selection,
+                &explicit_record_filter,
+            ) {
+                continue;
+            }
+            if let Some(value) = limit
+                && row_count >= value
+            {
+                break;
+            }
+            let triage = Self::classify_rna_read_isoform_triage_hit(hit, thresholds);
+            *bin_counts.entry(triage.0.as_str().to_string()).or_default() += 1;
+            let primary_transcript_id = Self::primary_phase1_transcript_id(hit);
+            let transition_fraction = Self::rna_read_confirmed_transition_fraction(hit);
+            let (best_transcript_id, best_transcript_label, best_strand, alignment_effect) =
+                if let Some(mapping) = hit.best_mapping.as_ref() {
+                    (
+                        mapping.transcript_id.as_str(),
+                        mapping.transcript_label.as_str(),
+                        mapping.strand.as_str(),
+                        Self::alignment_effect_for_hit(hit, mapping).as_str(),
+                    )
+                } else {
+                    ("", "", "", "none")
+                };
+            let (identity, query_coverage, secondary_mapping_count) =
+                if let Some(mapping) = hit.best_mapping.as_ref() {
+                    (
+                        format!("{:.6}", mapping.identity_fraction),
+                        format!("{:.6}", mapping.query_coverage_fraction),
+                        hit.secondary_mappings.len().to_string(),
+                    )
+                } else {
+                    (String::new(), String::new(), String::new())
+                };
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}",
+                Self::sanitize_tsv_cell(&report.report_id),
+                Self::sanitize_tsv_cell(&report.seq_id),
+                hit.record_index,
+                Self::sanitize_tsv_cell(&hit.header_id),
+                triage.0.as_str(),
+                Self::sanitize_tsv_cell(&triage.1),
+                hit.read_length_bp,
+                hit.passed_seed_filter,
+                hit.origin_class.as_str(),
+                Self::sanitize_tsv_cell(primary_transcript_id),
+                Self::sanitize_tsv_cell(&hit.seed_chain_transcript_id),
+                Self::sanitize_tsv_cell(&hit.exon_path_transcript_id),
+                Self::sanitize_tsv_cell(best_transcript_id),
+                Self::sanitize_tsv_cell(best_transcript_label),
+                Self::sanitize_tsv_cell(best_strand),
+                alignment_effect,
+                identity,
+                query_coverage,
+                secondary_mapping_count,
+                Self::sanitize_tsv_cell(&hit.exon_path),
+                hit.exon_transitions_confirmed,
+                hit.exon_transitions_total,
+                transition_fraction,
+                hit.seed_hit_fraction,
+                hit.weighted_seed_hit_fraction,
+                hit.msa_eligible,
+            )
+            .map_err(|e| {
+                EngineError::new(
+                    ErrorCode::Io,
+                    format!("Could not write RNA-read isoform triage TSV row to '{}'", path),
+                )
+                .with_cause(e)
+            })?;
+            row_count = row_count.saturating_add(1);
+        }
+        writer.flush().map_err(|e| {
+            EngineError::new(
+                ErrorCode::Io,
+                format!("Could not flush RNA-read isoform triage TSV '{}'", path),
+            )
+            .with_cause(e)
+        })?;
+        Ok(RnaReadIsoformTriageTsvExport {
+            schema: RNA_READ_ISOFORM_TRIAGE_TSV_EXPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            report_id: report.report_id,
+            selection,
+            row_count,
+            limit,
+            min_identity_fraction: thresholds.min_identity_fraction,
+            min_query_coverage_fraction: thresholds.min_query_coverage_fraction,
+            min_confirmed_transition_fraction: thresholds.min_confirmed_transition_fraction,
+            max_secondary_mappings: thresholds.max_secondary_mappings,
+            bin_counts,
+        })
+    }
+
+    fn validate_optional_fraction(
+        value: Option<f64>,
+        flag: &str,
+    ) -> Result<Option<f64>, EngineError> {
+        match value {
+            Some(value) if value.is_finite() && (0.0..=1.0).contains(&value) => Ok(Some(value)),
+            Some(value) => Err(EngineError::invalid_input(format!(
+                "{flag} must be a finite fraction between 0 and 1 (got {value})"
+            ))),
+            None => Ok(None),
+        }
+    }
+
+    fn rna_read_confirmed_transition_fraction(hit: &RnaReadInterpretationHit) -> f64 {
+        if hit.exon_transitions_total == 0 {
+            1.0
+        } else {
+            hit.exon_transitions_confirmed as f64 / hit.exon_transitions_total as f64
+        }
+    }
+
+    fn default_rna_read_isoform_triage_thresholds(
+        min_identity_fraction: f64,
+    ) -> RnaReadIsoformTriageThresholds {
+        RnaReadIsoformTriageThresholds {
+            min_identity_fraction,
+            min_query_coverage_fraction: 0.80,
+            min_confirmed_transition_fraction: 0.80,
+            max_secondary_mappings: 0,
+        }
+    }
+
+    fn rna_read_isoform_transcript_signals(hit: &RnaReadInterpretationHit) -> BTreeSet<String> {
+        [
+            Self::primary_phase1_transcript_id(hit),
+            hit.seed_chain_transcript_id.as_str(),
+            hit.exon_path_transcript_id.as_str(),
+        ]
+        .into_iter()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+    }
+
+    fn classify_rna_read_isoform_triage_hit(
+        hit: &RnaReadInterpretationHit,
+        thresholds: RnaReadIsoformTriageThresholds,
+    ) -> (RnaReadIsoformTriageBin, String) {
+        if !hit.passed_seed_filter {
+            return (
+                RnaReadIsoformTriageBin::OffTargetOrBadSeed,
+                "seed filter failed".to_string(),
+            );
+        }
+        if matches!(
+            hit.origin_class,
+            RnaReadOriginClass::RoiReverseStrandLocalBlock
+                | RnaReadOriginClass::TpFamilyAmbiguous
+                | RnaReadOriginClass::BackgroundLikely
+        ) {
+            return (
+                RnaReadIsoformTriageBin::OffTargetOrBadSeed,
+                format!("origin_class={}", hit.origin_class.as_str()),
+            );
+        }
+        let Some(mapping) = hit.best_mapping.as_ref() else {
+            return (
+                RnaReadIsoformTriageBin::GeneSupportedNoIsoformCall,
+                "seed-supported read has no phase-2 transcript alignment".to_string(),
+            );
+        };
+        let transition_fraction = Self::rna_read_confirmed_transition_fraction(hit);
+        let transcript_signals = Self::rna_read_isoform_transcript_signals(hit);
+        let all_transcript_signals_match = !transcript_signals.is_empty()
+            && transcript_signals
+                .iter()
+                .all(|transcript_id| transcript_id == &mapping.transcript_id);
+        let has_conflicting_transcript_signal = transcript_signals
+            .iter()
+            .any(|transcript_id| transcript_id != &mapping.transcript_id);
+        let secondary_mapping_count = hit.secondary_mappings.len();
+        let alignment_effect = Self::alignment_effect_for_hit(hit, mapping);
+
+        if all_transcript_signals_match
+            && mapping.identity_fraction >= thresholds.min_identity_fraction
+            && mapping.query_coverage_fraction >= thresholds.min_query_coverage_fraction
+            && transition_fraction >= thresholds.min_confirmed_transition_fraction
+            && secondary_mapping_count <= thresholds.max_secondary_mappings
+            && hit.origin_class == RnaReadOriginClass::TargetCoherent
+        {
+            return (
+                RnaReadIsoformTriageBin::KnownIsoformConfirmed,
+                "phase-1 transcript, phase-2 alignment, seed, transition, and ambiguity gates agree"
+                    .to_string(),
+            );
+        }
+
+        if has_conflicting_transcript_signal
+            || secondary_mapping_count > thresholds.max_secondary_mappings
+            || alignment_effect == RnaReadAlignmentEffect::ReassignedTranscript
+        {
+            return (
+                RnaReadIsoformTriageBin::KnownIsoformAmbiguous,
+                format!(
+                    "known-transcript evidence is not unique (signals={}, secondary_mappings={}, alignment_effect={})",
+                    transcript_signals.into_iter().collect::<Vec<_>>().join(","),
+                    secondary_mapping_count,
+                    alignment_effect.as_str()
+                ),
+            );
+        }
+
+        (
+            RnaReadIsoformTriageBin::GeneSupportedNoIsoformCall,
+            format!(
+                "gene-supported read does not satisfy isoform-confirmation gates (identity={:.3}, query_coverage={:.3}, transition_fraction={:.3}, origin_class={})",
+                mapping.identity_fraction,
+                mapping.query_coverage_fraction,
+                transition_fraction,
+                hit.origin_class.as_str()
+            ),
+        )
     }
 
     pub(super) fn alignment_scatter_color_hex(
@@ -4425,12 +4994,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read alignment dotplot export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if max_points == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read alignment dotplot export requires max_points >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -4474,6 +5047,8 @@ impl GentleEngine {
                 "Could not write RNA-read alignment dotplot SVG '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadAlignmentDotplotSvgExport {
             schema: RNA_READ_ALIGNMENT_DOTPLOT_SVG_EXPORT_SCHEMA.to_string(),
@@ -4508,10 +5083,10 @@ impl GentleEngine {
                 current.clear();
             }
         }
-        if !current.is_empty() {
-            if let Ok(value) = current.parse::<usize>() {
-                ordinals.push(value);
-            }
+        if !current.is_empty()
+            && let Ok(value) = current.parse::<usize>()
+        {
+            ordinals.push(value);
         }
         while transitions.len() > ordinals.len().saturating_sub(1) {
             let _ = transitions.pop();
@@ -4533,11 +5108,15 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read exon-path export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let file = File::create(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not create RNA-read exon-path export '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         let mut writer = BufWriter::new(file);
         for line in Self::rna_read_tsv_common_metadata_lines(
@@ -4552,6 +5131,8 @@ impl GentleEngine {
                     "Could not write RNA-read exon-path export metadata to '{}': {e}",
                     path
                 ),
+
+                cause_chain: vec![],
             })?;
         }
         writeln!(
@@ -4564,7 +5145,8 @@ impl GentleEngine {
                 "Could not write RNA-read exon-path export header to '{}': {e}",
                 path
             ),
-        })?;
+        
+            cause_chain: vec![],})?;
         let explicit_record_filter = selected_record_indices
             .iter()
             .copied()
@@ -4648,12 +5230,16 @@ impl GentleEngine {
             writeln!(writer, "{row}").map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write RNA-read exon-path row to '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
             row_count = row_count.saturating_add(1);
         }
         writer.flush().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not flush RNA-read exon-path export '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadExonPathsExport {
             schema: RNA_READ_EXON_PATHS_EXPORT_SCHEMA.to_string(),
@@ -4678,6 +5264,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read exon-abundance export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let file = File::create(path).map_err(|e| EngineError {
@@ -4686,6 +5274,8 @@ impl GentleEngine {
                 "Could not create RNA-read exon-abundance export '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?;
         let mut writer = BufWriter::new(file);
         for line in Self::rna_read_tsv_common_metadata_lines(
@@ -4700,6 +5290,8 @@ impl GentleEngine {
                     "Could not write RNA-read exon-abundance metadata to '{}': {e}",
                     path
                 ),
+
+                cause_chain: vec![],
             })?;
         }
         writeln!(
@@ -4712,7 +5304,8 @@ impl GentleEngine {
                 "Could not write RNA-read exon-abundance header to '{}': {e}",
                 path
             ),
-        })?;
+        
+            cause_chain: vec![],})?;
         let mut exon_counts = BTreeMap::<usize, usize>::new();
         let mut transition_counts = BTreeMap::<(usize, usize), (usize, usize)>::new();
         let explicit_record_filter = selected_record_indices
@@ -4768,6 +5361,8 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write exon-abundance row to '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
         }
         for ((from_exon, to_exon), (confirmed, total)) in &transition_counts {
@@ -4796,6 +5391,8 @@ impl GentleEngine {
                     "Could not write transition-abundance row to '{}': {e}",
                     path
                 ),
+
+                cause_chain: vec![],
             })?;
         }
         writer.flush().map_err(|e| EngineError {
@@ -4804,6 +5401,8 @@ impl GentleEngine {
                 "Could not flush RNA-read exon-abundance export '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadExonAbundanceExport {
             schema: RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA.to_string(),
@@ -5167,6 +5766,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read score-density SVG export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let (bins, derived_from_report_hits_only) =
@@ -5185,6 +5786,8 @@ impl GentleEngine {
         std::fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA-read score-density SVG to '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadScoreDensitySvgExport {
             schema: RNA_READ_SCORE_DENSITY_SVG_EXPORT_SCHEMA.to_string(),
@@ -5243,7 +5846,7 @@ impl GentleEngine {
 
     fn rna_read_seed_filter_summary(seed_filter: &RnaReadSeedFilterConfig) -> String {
         format!(
-            "seed_filter: k={} stride={} min_seed_hit_fraction={:.2} min_weighted_seed_hit_fraction={:.2} min_unique_matched_kmers={} max_median_transcript_gap={:.2} min_chain_consistency_fraction={:.2} min_confirmed_exon_transitions={} min_transition_support_fraction={:.2} poly_t_flip={} poly_t_prefix_min_bp={} | {}",
+            "seed_filter: k={} stride={} min_seed_hit_fraction={:.2} min_weighted_seed_hit_fraction={:.2} min_unique_matched_kmers={} max_median_transcript_gap={:.2} min_chain_consistency_fraction={:.2} min_confirmed_exon_transitions={} min_transition_support_fraction={:.2} input_orientation_mode={} input_orientation_label={} poly_t_flip={} poly_t_prefix_min_bp={} | {}",
             seed_filter.kmer_len,
             seed_filter.seed_stride_bp,
             seed_filter.min_seed_hit_fraction,
@@ -5253,6 +5856,8 @@ impl GentleEngine {
             seed_filter.min_chain_consistency_fraction,
             seed_filter.min_confirmed_exon_transitions,
             seed_filter.min_transition_support_fraction,
+            seed_filter.input_orientation_mode(),
+            seed_filter.input_orientation_label(),
             seed_filter.cdna_poly_t_flip_enabled,
             seed_filter.poly_t_prefix_min_bp,
             Self::ordered_window_overlap_summary(
@@ -5303,10 +5908,12 @@ impl GentleEngine {
                 Self::format_subset_spec_for_metadata(subset_spec),
             ),
             format!(
-                "# profile={} report_mode={} input_format={} scope={} origin_mode={} roi_seed_capture_enabled={} target_gene_ids={}",
+                "# profile={} report_mode={} input_format={} input_orientation_mode={} input_orientation_label={} scope={} origin_mode={} roi_seed_capture_enabled={} target_gene_ids={}",
                 report.profile.as_str(),
                 report.report_mode.as_str(),
                 report.input_format.as_str(),
+                report.seed_filter.input_orientation_mode(),
+                report.seed_filter.input_orientation_label(),
                 report.scope.as_str(),
                 report.origin_mode.as_str(),
                 report.roi_seed_capture_enabled,
@@ -5354,6 +5961,46 @@ impl GentleEngine {
         lines
     }
 
+    fn rna_read_isoform_triage_tsv_metadata_lines(
+        report: &RnaReadInterpretationReport,
+        selection: RnaReadHitSelection,
+        limit: Option<usize>,
+        selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
+        thresholds: RnaReadIsoformTriageThresholds,
+    ) -> Vec<String> {
+        let limit_text = limit
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "all".to_string());
+        let mut lines = Self::rna_read_tsv_common_metadata_lines(
+            report,
+            selection,
+            selected_record_indices,
+            subset_spec,
+        );
+        lines[0] = format!(
+            "# report_id={} seq_id={} selection={} selected_record_indices={} subset_spec={} limit={}",
+            Self::sanitize_tsv_cell(&report.report_id),
+            Self::sanitize_tsv_cell(&report.seq_id),
+            selection.as_str(),
+            Self::format_selected_record_indices_for_metadata(selected_record_indices),
+            Self::format_subset_spec_for_metadata(subset_spec),
+            limit_text,
+        );
+        lines.push(format!(
+            "# isoform_triage_thresholds: min_identity_fraction={:.3} min_query_coverage_fraction={:.3} min_confirmed_transition_fraction={:.3} max_secondary_mappings={}",
+            thresholds.min_identity_fraction,
+            thresholds.min_query_coverage_fraction,
+            thresholds.min_confirmed_transition_fraction,
+            thresholds.max_secondary_mappings,
+        ));
+        lines.push(
+            "# isoform_triage: v1 bins are conservative read-triage labels, not novel-isoform calls or expression values"
+                .to_string(),
+        );
+        lines
+    }
+
     pub fn export_rna_read_sample_sheet(
         &self,
         path: &str,
@@ -5368,6 +6015,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read sample sheet export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let seq_filter = seq_id_filter
@@ -5385,6 +6034,8 @@ impl GentleEngine {
                     return Err(EngineError {
                         code: ErrorCode::NotFound,
                         message: format!("RNA-read report '{}' not found", normalized),
+
+                        cause_chain: vec![],
                     });
                 };
                 out.push(report.clone());
@@ -5399,6 +6050,8 @@ impl GentleEngine {
                 code: ErrorCode::NotFound,
                 message: "No RNA-read reports matched the requested sample-sheet selection"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         selected.sort_by(|left, right| {
@@ -5426,17 +6079,20 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not open RNA-read sample sheet '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
         let mut writer = BufWriter::new(file);
         if !existing_nonempty {
             writeln!(
                 writer,
-                "sample_id\tsample_name\tsample_description\treport_id\tseq_id\tseed_feature_id\tgenerated_at_unix_ms\tinput_path\tprofile\tscope\treport_mode\torigin_mode\ttarget_gene_count\ttarget_gene_ids_json\troi_seed_capture_enabled\tread_count_total\tread_count_seed_passed\tread_count_aligned\tseed_pass_fraction\taligned_fraction\tmean_read_length_bp\tgene_support_requested_gene_ids_json\tgene_support_matched_gene_ids_json\tgene_support_missing_gene_ids_json\tgene_support_complete_rule\tgene_support_aligned_base_count\tgene_support_accepted_target_count\tgene_support_accepted_target_fraction_total\tgene_support_accepted_target_fraction_aligned\tgene_support_fragment_count\tgene_support_complete_count\tgene_support_complete_strict_count\tgene_support_complete_exact_count\tgene_support_mean_assigned_read_length_bp\tgene_support_exon_support_json\tgene_support_exon_pair_support_json\tgene_support_direct_transition_support_json\texon_support_frequencies_json\tjunction_support_frequencies_json\torigin_class_counts_json"
+                "sample_id\tsample_name\tsample_description\treport_id\tseq_id\tseed_feature_id\tgenerated_at_unix_ms\tinput_path\tprofile\tinput_orientation_mode\tinput_orientation_label\tscope\treport_mode\torigin_mode\ttarget_gene_count\ttarget_gene_ids_json\troi_seed_capture_enabled\tread_count_total\tread_count_seed_passed\tread_count_aligned\tseed_pass_fraction\taligned_fraction\tmean_read_length_bp\tgene_support_requested_gene_ids_json\tgene_support_matched_gene_ids_json\tgene_support_missing_gene_ids_json\tgene_support_complete_rule\tgene_support_aligned_base_count\tgene_support_accepted_target_count\tgene_support_accepted_target_fraction_total\tgene_support_accepted_target_fraction_aligned\tgene_support_fragment_count\tgene_support_complete_count\tgene_support_complete_strict_count\tgene_support_complete_exact_count\tgene_support_mean_assigned_read_length_bp\tgene_support_exon_support_json\tgene_support_exon_pair_support_json\tgene_support_direct_transition_support_json\texon_support_frequencies_json\tjunction_support_frequencies_json\torigin_class_counts_json"
             )
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write sample-sheet header to '{}': {e}", path),
-            })?;
+            
+                cause_chain: vec![],})?;
         }
 
         for report in &selected {
@@ -5543,21 +6199,24 @@ impl GentleEngine {
                             "Could not serialize gene-support requested_gene_ids for report '{}': {e}",
                             report.report_id
                         ),
-                    })?,
+                    
+                        cause_chain: vec![],})?,
                     serde_json::to_string(&summary.matched_gene_ids).map_err(|e| EngineError {
                         code: ErrorCode::Internal,
                         message: format!(
                             "Could not serialize gene-support matched_gene_ids for report '{}': {e}",
                             report.report_id
                         ),
-                    })?,
+                    
+                        cause_chain: vec![],})?,
                     serde_json::to_string(&summary.missing_gene_ids).map_err(|e| EngineError {
                         code: ErrorCode::Internal,
                         message: format!(
                             "Could not serialize gene-support missing_gene_ids for report '{}': {e}",
                             report.report_id
                         ),
-                    })?,
+                    
+                        cause_chain: vec![],})?,
                     summary.complete_rule.as_str().to_string(),
                     summary.aligned_base_count,
                     summary.accepted_target_count,
@@ -5583,7 +6242,8 @@ impl GentleEngine {
                                 "Could not serialize gene-support exon rows for report '{}': {e}",
                                 report.report_id
                             ),
-                        }
+                        
+                            cause_chain: vec![],}
                     })?,
                     serde_json::to_string(&summary.all_target.exon_pair_support).map_err(
                         |e| EngineError {
@@ -5592,7 +6252,8 @@ impl GentleEngine {
                                 "Could not serialize gene-support exon-pair rows for report '{}': {e}",
                                 report.report_id
                             ),
-                        },
+                        
+                            cause_chain: vec![],},
                     )?,
                     serde_json::to_string(&summary.all_target.direct_transition_support).map_err(
                         |e| EngineError {
@@ -5601,7 +6262,8 @@ impl GentleEngine {
                                 "Could not serialize gene-support direct-transition rows for report '{}': {e}",
                                 report.report_id
                             ),
-                        },
+                        
+                            cause_chain: vec![],},
                     )?,
                 )
             };
@@ -5613,6 +6275,8 @@ impl GentleEngine {
                             "Could not serialize exon support frequencies for report '{}': {e}",
                             report.report_id
                         ),
+
+                        cause_chain: vec![],
                     }
                 })?;
             let junction_json = serde_json::to_string(&report.junction_support_frequencies)
@@ -5622,6 +6286,8 @@ impl GentleEngine {
                         "Could not serialize junction support frequencies for report '{}': {e}",
                         report.report_id
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let target_gene_ids_json =
                 serde_json::to_string(&report.target_gene_ids).map_err(|e| EngineError {
@@ -5630,6 +6296,8 @@ impl GentleEngine {
                         "Could not serialize target_gene_ids for report '{}': {e}",
                         report.report_id
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let origin_class_counts_json = serde_json::to_string(&report.origin_class_counts)
                 .map_err(|e| EngineError {
@@ -5638,10 +6306,12 @@ impl GentleEngine {
                         "Could not serialize origin_class_counts for report '{}': {e}",
                         report.report_id
                     ),
+
+                    cause_chain: vec![],
                 })?;
             writeln!(
                 writer,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}",
                 Self::sanitize_tsv_cell(&report.report_id),
                 Self::sanitize_tsv_cell(&sample_name),
                 Self::sanitize_tsv_cell(&sample_description),
@@ -5651,6 +6321,8 @@ impl GentleEngine {
                 report.generated_at_unix_ms,
                 Self::sanitize_tsv_cell(&report.input_path),
                 report.profile.as_str(),
+                report.seed_filter.input_orientation_mode(),
+                report.seed_filter.input_orientation_label(),
                 report.scope.as_str(),
                 report.report_mode.as_str(),
                 report.origin_mode.as_str(),
@@ -5689,11 +6361,14 @@ impl GentleEngine {
                     "Could not write RNA-read sample sheet row to '{}': {e}",
                     path
                 ),
-            })?;
+            
+                cause_chain: vec![],})?;
         }
         writer.flush().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not flush RNA-read sample sheet '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadSampleSheetExport {
             schema: RNA_READ_SAMPLE_SHEET_EXPORT_SCHEMA.to_string(),
@@ -5719,6 +6394,7 @@ impl GentleEngine {
         EngineError {
             code: ErrorCode::InvalidInput,
             message: message.into(),
+            cause_chain: vec![],
         }
     }
 
@@ -5726,6 +6402,7 @@ impl GentleEngine {
         EngineError {
             code: ErrorCode::Io,
             message: format!("Could not {action} '{}': {err}", path.display()),
+            cause_chain: vec![],
         }
     }
 
@@ -5769,6 +6446,8 @@ impl GentleEngine {
         serde_json::to_string(value).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize RNA-read batch {label}: {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -5780,6 +6459,8 @@ impl GentleEngine {
         let text = serde_json::to_string_pretty(value).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize RNA-read batch {label}: {e}"),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text)
             .map_err(|e| Self::rna_read_batch_io_error(path, "write RNA-read batch JSON", e))
@@ -5797,6 +6478,8 @@ impl GentleEngine {
         let text = std::fs::read_to_string(manifest_path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not read RNA-read batch manifest '{manifest_path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         let mut meaningful_lines = text.lines().enumerate().filter(|(_, line)| {
             let trimmed = line.trim();
@@ -6160,11 +6843,23 @@ impl GentleEngine {
         concatemer_json_path: &Path,
         isoform_support_count: usize,
     ) -> RnaReadBatchMapSampleRow {
-        let mean_read_length_bp = if report.read_count_total == 0 {
-            0.0
+        let all_read_count = Self::sum_read_length_counts(&report.read_length_counts_all);
+        let all_mean_bp = if all_read_count == 0 {
+            None
         } else {
-            Self::sum_read_length_bases(&report.read_length_counts_all) as f64
-                / report.read_count_total as f64
+            Some(
+                Self::sum_read_length_bases(&report.read_length_counts_all) as f64
+                    / all_read_count as f64,
+            )
+        };
+        let seed_read_count = Self::sum_read_length_counts(&report.read_length_counts_seed_passed);
+        let seed_mean_bp = if seed_read_count == 0 {
+            None
+        } else {
+            Some(
+                Self::sum_read_length_bases(&report.read_length_counts_seed_passed) as f64
+                    / seed_read_count as f64,
+            )
         };
         let accepted_bases = summary.accepted_target_read_lengths.mean_length_bp
             * summary.accepted_target_read_lengths.sample_count as f64;
@@ -6215,7 +6910,63 @@ impl GentleEngine {
             } else {
                 report.read_count_aligned as f64 / report.read_count_total as f64
             },
-            mean_read_length_bp,
+            mean_read_length_bp: all_mean_bp.unwrap_or(0.0),
+            all_q0_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.0,
+                )
+            }),
+            all_q25_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.25,
+                )
+            }),
+            all_q50_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.50,
+                )
+            }),
+            all_q75_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.75,
+                )
+            }),
+            all_q90_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.90,
+                )
+            }),
+            all_q95_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.95,
+                )
+            }),
+            all_q99_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.99,
+                )
+            }),
+            all_q100_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    1.0,
+                )
+            }),
             origin_class_counts: report.origin_class_counts.clone(),
             requested_gene_ids: summary.requested_gene_ids.clone(),
             matched_gene_ids: summary.matched_gene_ids.clone(),
@@ -6258,8 +7009,115 @@ impl GentleEngine {
             internal_poly_a_count: inspection.internal_poly_a_count,
             internal_poly_t_count: inspection.internal_poly_t_count,
             phase1_partial_origin_count: inspection.phase1_partial_origin_count,
+            seed_passed_q90_bp: (seed_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_seed_passed,
+                    seed_read_count,
+                    0.90,
+                )
+            }),
+            seed_passed_q95_bp: (seed_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_seed_passed,
+                    seed_read_count,
+                    0.95,
+                )
+            }),
+            seed_passed_q99_bp: (seed_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_seed_passed,
+                    seed_read_count,
+                    0.99,
+                )
+            }),
+            seed_passed_max_bp: (seed_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_seed_passed,
+                    seed_read_count,
+                    1.0,
+                )
+            }),
+            seed_passed_mean_bp: seed_mean_bp,
+            accepted_target_max_bp: (summary.accepted_target_count > 0)
+                .then_some(summary.accepted_target_read_lengths.max_length_bp),
+            accepted_target_mean_bp: (summary.accepted_target_count > 0)
+                .then_some(summary.accepted_target_read_lengths.mean_length_bp),
             ..Default::default()
         }
+    }
+
+    fn rna_read_batch_optional_usize(value: Option<usize>) -> String {
+        value.map(|value| value.to_string()).unwrap_or_default()
+    }
+
+    fn rna_read_batch_optional_f64(value: Option<f64>) -> String {
+        value.map(|value| format!("{value:.6}")).unwrap_or_default()
+    }
+
+    fn rna_read_batch_per_million(count: usize, total: usize) -> f64 {
+        if total == 0 {
+            0.0
+        } else {
+            count as f64 * 1_000_000.0 / total as f64
+        }
+    }
+
+    fn rna_read_batch_extract_srr_token(text: &str) -> Option<String> {
+        let bytes = text.as_bytes();
+        for idx in 0..bytes.len() {
+            if idx + 3 >= bytes.len() || &bytes[idx..idx + 3] != b"SRR" {
+                continue;
+            }
+            let mut end = idx + 3;
+            while end < bytes.len() && bytes[end].is_ascii_digit() {
+                end += 1;
+            }
+            if end > idx + 3 {
+                return Some(text[idx..end].to_string());
+            }
+        }
+        None
+    }
+
+    fn rna_read_batch_run_accession(row: &RnaReadBatchMapSampleRow) -> String {
+        for value in [
+            row.sra_accession.as_deref(),
+            row.report_id.as_deref(),
+            row.input_path.as_deref(),
+            Some(row.sample_id.as_str()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let Some(token) = Self::rna_read_batch_extract_srr_token(value) {
+                return token;
+            }
+        }
+        row.sra_accession
+            .clone()
+            .unwrap_or_else(|| row.sample_id.clone())
+    }
+
+    fn rna_read_batch_gene_label(
+        row: &RnaReadBatchMapSampleRow,
+        fallback_gene_ids: &[String],
+    ) -> String {
+        let ids = if row.requested_gene_ids.is_empty() {
+            fallback_gene_ids
+        } else {
+            &row.requested_gene_ids
+        };
+        ids.join(",")
+    }
+
+    fn write_tsv_fields(
+        writer: &mut BufWriter<File>,
+        path: &Path,
+        fields: Vec<String>,
+        context: &str,
+    ) -> Result<(), EngineError> {
+        writeln!(writer, "{}", fields.join("\t"))
+            .map_err(|e| Self::rna_read_batch_io_error(path, context, e))
     }
 
     fn write_rna_read_batch_summary_tsv(
@@ -6269,11 +7127,78 @@ impl GentleEngine {
         let file = File::create(path)
             .map_err(|e| Self::rna_read_batch_io_error(path, "create batch summary TSV", e))?;
         let mut writer = BufWriter::new(file);
-        writeln!(
-            writer,
-            "sample_id\tsample_name\tsample_description\tstatus\terror\twarnings_json\telapsed_ms\treport_id\tseq_id\tseed_feature_id\tinput_path\tsra_accession\ttotal_reads\tseed_passed_reads\taligned_reads\tseed_pass_fraction\taligned_fraction\tmean_read_length_bp\torigin_class_counts_json\trequested_gene_ids_json\tmatched_gene_ids_json\tmissing_gene_ids_json\taccepted_target_count\taccepted_target_fraction_total\taccepted_target_fraction_aligned\taligned_other_gene_count\taligned_other_gene_fraction_aligned\tfragment_count\tcomplete_near_count\tcomplete_strict_count\tcomplete_exact_count\tmean_assigned_read_length_bp\tisoform_support_count\tconcatemer_inspected_count\tconcatemer_suspicious_count\tconcatemer_strong_count\tconcatemer_multi_gene_fragment_count\ttarget_partner_gene_fragment_count\tinternal_adapter_match_count\tdisjoint_secondary_mapping_count\tlow_primary_coverage_count\tinternal_poly_a_count\tinternal_poly_t_count\tphase1_partial_origin_count\tgene_support_summary_json_path\tgene_support_audit_json_path\tconcatemer_json_path"
-        )
-        .map_err(|e| Self::rna_read_batch_io_error(path, "write batch summary TSV header", e))?;
+        Self::write_tsv_fields(
+            &mut writer,
+            path,
+            [
+                "sample_id",
+                "sample_name",
+                "sample_description",
+                "status",
+                "error",
+                "warnings_json",
+                "elapsed_ms",
+                "report_id",
+                "seq_id",
+                "seed_feature_id",
+                "input_path",
+                "sra_accession",
+                "total_reads",
+                "seed_passed_reads",
+                "aligned_reads",
+                "seed_pass_fraction",
+                "aligned_fraction",
+                "mean_read_length_bp",
+                "all_q0_bp",
+                "all_q25_bp",
+                "all_q50_bp",
+                "all_q75_bp",
+                "all_q90_bp",
+                "all_q95_bp",
+                "all_q99_bp",
+                "all_q100_bp",
+                "seed_passed_q90_bp",
+                "seed_passed_q95_bp",
+                "seed_passed_q99_bp",
+                "seed_passed_max_bp",
+                "seed_passed_mean_bp",
+                "accepted_target_max_bp",
+                "accepted_target_mean_bp",
+                "origin_class_counts_json",
+                "requested_gene_ids_json",
+                "matched_gene_ids_json",
+                "missing_gene_ids_json",
+                "accepted_target_count",
+                "accepted_target_fraction_total",
+                "accepted_target_fraction_aligned",
+                "aligned_other_gene_count",
+                "aligned_other_gene_fraction_aligned",
+                "fragment_count",
+                "complete_near_count",
+                "complete_strict_count",
+                "complete_exact_count",
+                "mean_assigned_read_length_bp",
+                "isoform_support_count",
+                "concatemer_inspected_count",
+                "concatemer_suspicious_count",
+                "concatemer_strong_count",
+                "concatemer_multi_gene_fragment_count",
+                "target_partner_gene_fragment_count",
+                "internal_adapter_match_count",
+                "disjoint_secondary_mapping_count",
+                "low_primary_coverage_count",
+                "internal_poly_a_count",
+                "internal_poly_t_count",
+                "phase1_partial_origin_count",
+                "gene_support_summary_json_path",
+                "gene_support_audit_json_path",
+                "concatemer_json_path",
+            ]
+            .iter()
+            .map(|value| value.to_string())
+            .collect(),
+            "write batch summary TSV header",
+        )?;
         for row in rows {
             let warnings_json = Self::rna_read_batch_json_string(&row.warnings, "warnings")?;
             let origin_json =
@@ -6284,64 +7209,204 @@ impl GentleEngine {
                 Self::rna_read_batch_json_string(&row.matched_gene_ids, "matched genes")?;
             let missing_json =
                 Self::rna_read_batch_json_string(&row.missing_gene_ids, "missing genes")?;
-            writeln!(
-                writer,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{:.6}\t{}\t{}\t{}\t{}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-                Self::sanitize_tsv_cell(&row.sample_id),
-                Self::sanitize_tsv_cell(row.sample_name.as_deref().unwrap_or("")),
-                Self::sanitize_tsv_cell(row.sample_description.as_deref().unwrap_or("")),
-                row.status.as_str(),
-                Self::sanitize_tsv_cell(row.error.as_deref().unwrap_or("")),
-                Self::sanitize_tsv_cell(&warnings_json),
-                row.elapsed_ms.map(|value| value.to_string()).unwrap_or_default(),
-                Self::sanitize_tsv_cell(row.report_id.as_deref().unwrap_or("")),
-                Self::sanitize_tsv_cell(&row.seq_id),
-                row.seed_feature_id,
-                Self::sanitize_tsv_cell(row.input_path.as_deref().unwrap_or("")),
-                Self::sanitize_tsv_cell(row.sra_accession.as_deref().unwrap_or("")),
-                row.read_count_total,
-                row.read_count_seed_passed,
-                row.read_count_aligned,
-                row.seed_pass_fraction,
-                row.aligned_fraction,
-                row.mean_read_length_bp,
-                Self::sanitize_tsv_cell(&origin_json),
-                Self::sanitize_tsv_cell(&requested_json),
-                Self::sanitize_tsv_cell(&matched_json),
-                Self::sanitize_tsv_cell(&missing_json),
-                row.accepted_target_count,
-                row.accepted_target_fraction_total,
-                row.accepted_target_fraction_aligned,
-                row.aligned_other_gene_count,
-                row.aligned_other_gene_fraction_aligned,
-                row.fragment_count,
-                row.complete_count,
-                row.complete_strict_count,
-                row.complete_exact_count,
-                row.mean_assigned_read_length_bp,
-                row.isoform_support_count,
-                row.concatemer_inspected_count,
-                row.concatemer_suspicious_count,
-                row.concatemer_strong_count,
-                row.concatemer_multi_gene_fragment_count,
-                row.target_partner_gene_fragment_count,
-                row.internal_adapter_match_count,
-                row.disjoint_secondary_mapping_count,
-                row.low_primary_coverage_count,
-                row.internal_poly_a_count,
-                row.internal_poly_t_count,
-                row.phase1_partial_origin_count,
-                Self::sanitize_tsv_cell(
-                    row.gene_support_summary_json_path.as_deref().unwrap_or("")
-                ),
-                Self::sanitize_tsv_cell(row.gene_support_audit_json_path.as_deref().unwrap_or("")),
-                Self::sanitize_tsv_cell(row.concatemer_json_path.as_deref().unwrap_or("")),
-            )
-            .map_err(|e| Self::rna_read_batch_io_error(path, "write batch summary TSV row", e))?;
+            Self::write_tsv_fields(
+                &mut writer,
+                path,
+                vec![
+                    Self::sanitize_tsv_cell(&row.sample_id),
+                    Self::sanitize_tsv_cell(row.sample_name.as_deref().unwrap_or("")),
+                    Self::sanitize_tsv_cell(row.sample_description.as_deref().unwrap_or("")),
+                    row.status.as_str().to_string(),
+                    Self::sanitize_tsv_cell(row.error.as_deref().unwrap_or("")),
+                    Self::sanitize_tsv_cell(&warnings_json),
+                    row.elapsed_ms
+                        .map(|value| value.to_string())
+                        .unwrap_or_default(),
+                    Self::sanitize_tsv_cell(row.report_id.as_deref().unwrap_or("")),
+                    Self::sanitize_tsv_cell(&row.seq_id),
+                    row.seed_feature_id.to_string(),
+                    Self::sanitize_tsv_cell(row.input_path.as_deref().unwrap_or("")),
+                    Self::sanitize_tsv_cell(row.sra_accession.as_deref().unwrap_or("")),
+                    row.read_count_total.to_string(),
+                    row.read_count_seed_passed.to_string(),
+                    row.read_count_aligned.to_string(),
+                    format!("{:.6}", row.seed_pass_fraction),
+                    format!("{:.6}", row.aligned_fraction),
+                    format!("{:.6}", row.mean_read_length_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q0_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q25_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q50_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q75_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q90_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q95_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q99_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q100_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_q90_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_q95_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_q99_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_max_bp),
+                    Self::rna_read_batch_optional_f64(row.seed_passed_mean_bp),
+                    Self::rna_read_batch_optional_usize(row.accepted_target_max_bp),
+                    Self::rna_read_batch_optional_f64(row.accepted_target_mean_bp),
+                    Self::sanitize_tsv_cell(&origin_json),
+                    Self::sanitize_tsv_cell(&requested_json),
+                    Self::sanitize_tsv_cell(&matched_json),
+                    Self::sanitize_tsv_cell(&missing_json),
+                    row.accepted_target_count.to_string(),
+                    format!("{:.6}", row.accepted_target_fraction_total),
+                    format!("{:.6}", row.accepted_target_fraction_aligned),
+                    row.aligned_other_gene_count.to_string(),
+                    format!("{:.6}", row.aligned_other_gene_fraction_aligned),
+                    row.fragment_count.to_string(),
+                    row.complete_count.to_string(),
+                    row.complete_strict_count.to_string(),
+                    row.complete_exact_count.to_string(),
+                    format!("{:.6}", row.mean_assigned_read_length_bp),
+                    row.isoform_support_count.to_string(),
+                    row.concatemer_inspected_count.to_string(),
+                    row.concatemer_suspicious_count.to_string(),
+                    row.concatemer_strong_count.to_string(),
+                    row.concatemer_multi_gene_fragment_count.to_string(),
+                    row.target_partner_gene_fragment_count.to_string(),
+                    row.internal_adapter_match_count.to_string(),
+                    row.disjoint_secondary_mapping_count.to_string(),
+                    row.low_primary_coverage_count.to_string(),
+                    row.internal_poly_a_count.to_string(),
+                    row.internal_poly_t_count.to_string(),
+                    row.phase1_partial_origin_count.to_string(),
+                    Self::sanitize_tsv_cell(
+                        row.gene_support_summary_json_path.as_deref().unwrap_or(""),
+                    ),
+                    Self::sanitize_tsv_cell(
+                        row.gene_support_audit_json_path.as_deref().unwrap_or(""),
+                    ),
+                    Self::sanitize_tsv_cell(row.concatemer_json_path.as_deref().unwrap_or("")),
+                ],
+                "write batch summary TSV row",
+            )?;
         }
         writer
             .flush()
             .map_err(|e| Self::rna_read_batch_io_error(path, "flush batch summary TSV", e))
+    }
+
+    fn write_rna_read_gene_screen_summary_tsv(
+        path: &Path,
+        rows: &[RnaReadBatchMapSampleRow],
+        fallback_gene_ids: &[String],
+        source_path: &Path,
+        align_selection: RnaReadHitSelection,
+    ) -> Result<(), EngineError> {
+        let file = File::create(path).map_err(|e| {
+            Self::rna_read_batch_io_error(path, "create gene-screen summary TSV", e)
+        })?;
+        let mut writer = BufWriter::new(file);
+        Self::write_tsv_fields(
+            &mut writer,
+            path,
+            [
+                "schema",
+                "gene",
+                "run_accession",
+                "sample_id",
+                "sample_name",
+                "source_kind",
+                "source_path",
+                "analysis_phase",
+                "report_id",
+                "seq_id",
+                "seed_feature_id",
+                "input_path",
+                "total_reads",
+                "all_q0_bp",
+                "all_q25_bp",
+                "all_q50_bp",
+                "all_q75_bp",
+                "all_q90_bp",
+                "all_q95_bp",
+                "all_q99_bp",
+                "all_q100_bp",
+                "all_mean_bp",
+                "seed_passed_reads",
+                "seed_passed_per_million",
+                "seed_passed_q90_bp",
+                "seed_passed_q95_bp",
+                "seed_passed_q99_bp",
+                "seed_passed_max_bp",
+                "seed_passed_mean_bp",
+                "accepted_target_count",
+                "accepted_target_per_million",
+                "accepted_target_max_bp",
+                "accepted_target_mean_bp",
+                "align_selection",
+            ]
+            .iter()
+            .map(|value| value.to_string())
+            .collect(),
+            "write gene-screen summary TSV header",
+        )?;
+        let source_path = Self::rna_read_batch_path_string(source_path);
+        for row in rows {
+            Self::write_tsv_fields(
+                &mut writer,
+                path,
+                vec![
+                    RNA_READ_GENE_SCREEN_SUMMARY_SCHEMA.to_string(),
+                    Self::sanitize_tsv_cell(&Self::rna_read_batch_gene_label(
+                        row,
+                        fallback_gene_ids,
+                    )),
+                    Self::sanitize_tsv_cell(&Self::rna_read_batch_run_accession(row)),
+                    Self::sanitize_tsv_cell(&row.sample_id),
+                    Self::sanitize_tsv_cell(row.sample_name.as_deref().unwrap_or("")),
+                    "rna_reads_batch_map".to_string(),
+                    Self::sanitize_tsv_cell(&source_path),
+                    "with_alignment".to_string(),
+                    Self::sanitize_tsv_cell(row.report_id.as_deref().unwrap_or("")),
+                    Self::sanitize_tsv_cell(&row.seq_id),
+                    row.seed_feature_id.to_string(),
+                    Self::sanitize_tsv_cell(row.input_path.as_deref().unwrap_or("")),
+                    row.read_count_total.to_string(),
+                    Self::rna_read_batch_optional_usize(row.all_q0_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q25_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q50_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q75_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q90_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q95_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q99_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q100_bp),
+                    format!("{:.6}", row.mean_read_length_bp),
+                    row.read_count_seed_passed.to_string(),
+                    format!(
+                        "{:.6}",
+                        Self::rna_read_batch_per_million(
+                            row.read_count_seed_passed,
+                            row.read_count_total,
+                        )
+                    ),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_q90_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_q95_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_q99_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_max_bp),
+                    Self::rna_read_batch_optional_f64(row.seed_passed_mean_bp),
+                    row.accepted_target_count.to_string(),
+                    format!(
+                        "{:.6}",
+                        Self::rna_read_batch_per_million(
+                            row.accepted_target_count,
+                            row.read_count_total,
+                        )
+                    ),
+                    Self::rna_read_batch_optional_usize(row.accepted_target_max_bp),
+                    Self::rna_read_batch_optional_f64(row.accepted_target_mean_bp),
+                    align_selection.as_str().to_string(),
+                ],
+                "write gene-screen summary TSV row",
+            )?;
+        }
+        writer
+            .flush()
+            .map_err(|e| Self::rna_read_batch_io_error(path, "flush gene-screen summary TSV", e))
     }
 
     fn write_rna_read_batch_isoform_tsv(
@@ -6492,6 +7557,10 @@ impl GentleEngine {
         concatemer_settings: &RnaReadConcatemerInspectionSettings,
         concatemer_limit: usize,
         continue_on_error: bool,
+        prepare_sra: bool,
+        read_cache_dir: Option<&str>,
+        read_work_dir: Option<&str>,
+        drop_intermediate_fastq: bool,
         op_id: &str,
         run_id: &str,
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
@@ -6517,7 +7586,7 @@ impl GentleEngine {
                 "rna-reads batch-map requires --concatemer-limit >= 1",
             ));
         }
-        let manifest_rows = Self::parse_rna_read_batch_manifest(manifest_path)?;
+        let mut manifest_rows = Self::parse_rna_read_batch_manifest(manifest_path)?;
         let out_root = PathBuf::from(out_dir);
         std::fs::create_dir_all(&out_root)
             .map_err(|e| Self::rna_read_batch_io_error(&out_root, "create batch output dir", e))?;
@@ -6542,7 +7611,7 @@ impl GentleEngine {
                 .filter(|value| !value.is_empty())
                 .collect::<Vec<_>>()
         };
-        let origin_mode = origin_mode.unwrap_or_else(|| {
+        let origin_mode = origin_mode.unwrap_or({
             if gene_ids.len() > 1 || target_gene_ids.len() > 1 {
                 RnaReadOriginMode::MultiGeneSparse
             } else {
@@ -6552,11 +7621,57 @@ impl GentleEngine {
 
         let batch_report_json_path = out_root.join("batch_report.json");
         let batch_summary_tsv_path = out_root.join("batch_summary.tsv");
+        let gene_screen_summary_tsv_path = out_root.join("gene_screen_summary.tsv");
         let sample_sheet_tsv_path = out_root.join("sample_sheet.tsv");
         let isoform_support_tsv_path = out_root.join("isoform_support.tsv");
         let concatemer_partner_summary_tsv_path = out_root.join("concatemer_partner_summary.tsv");
         let sra_preparation_plan_tsv_path = out_root.join("sra_preparation_plan.tsv");
         let sra_preparation_commands_sh_path = out_root.join("sra_preparation_commands.sh");
+        let read_acquisition_report = if prepare_sra
+            && manifest_rows
+                .iter()
+                .any(|row| row.input_path.is_none() && row.sra_accession.is_some())
+        {
+            let cache_dir = read_cache_dir
+                .filter(|value| !value.trim().is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| out_root.join("read_cache"));
+            let work_dir = read_work_dir
+                .filter(|value| !value.trim().is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| out_root.join("read_work"));
+            let acquisition = self.read_acquisition_prepare_with_progress(
+                manifest_path,
+                &Self::rna_read_batch_path_string(&cache_dir),
+                &Self::rna_read_batch_path_string(&work_dir),
+                ReadAcquisitionAnalysisFormat::Fasta,
+                ReadAcquisitionReadLayout::SingleEnd,
+                None,
+                None,
+                None,
+                drop_intermediate_fastq,
+                continue_on_error,
+                on_progress,
+            )?;
+            for row in &mut manifest_rows {
+                if row.input_path.is_some() {
+                    continue;
+                }
+                let Some(accession) = row.sra_accession.as_deref() else {
+                    continue;
+                };
+                if let Some(prepared) = acquisition.rows.iter().find(|prepared| {
+                    prepared.sample_id == row.sample_id && prepared.sra_accession == accession
+                }) && prepared.lifecycle_status == "ready"
+                    && let Some(first_output) = prepared.output_paths.first()
+                {
+                    row.input_path = Some(first_output.path.clone());
+                }
+            }
+            Some(acquisition)
+        } else {
+            None
+        };
 
         let mut rows = Vec::<RnaReadBatchMapSampleRow>::new();
         let mut isoform_support_rows = Vec::<RnaReadBatchIsoformSupportRow>::new();
@@ -6626,7 +7741,8 @@ impl GentleEngine {
                             "sample '{}' input_path '{}' does not exist",
                             manifest_row.sample_id, input_path
                         ),
-                    });
+                    
+                        cause_chain: vec![],});
                 }
                 let report_id = match manifest_row.report_id.as_deref() {
                     Some(raw) => Self::normalize_rna_read_report_id(raw)?,
@@ -6809,6 +7925,13 @@ impl GentleEngine {
             )?;
         }
         Self::write_rna_read_batch_summary_tsv(&batch_summary_tsv_path, &rows)?;
+        Self::write_rna_read_gene_screen_summary_tsv(
+            &gene_screen_summary_tsv_path,
+            &rows,
+            &gene_ids,
+            &batch_report_json_path,
+            align_selection,
+        )?;
         Self::write_rna_read_batch_isoform_tsv(&isoform_support_tsv_path, &isoform_support_rows)?;
         Self::write_rna_read_batch_partner_tsv(
             &concatemer_partner_summary_tsv_path,
@@ -6864,6 +7987,9 @@ impl GentleEngine {
             continue_on_error,
             batch_report_json_path: Self::rna_read_batch_path_string(&batch_report_json_path),
             batch_summary_tsv_path: Self::rna_read_batch_path_string(&batch_summary_tsv_path),
+            gene_screen_summary_tsv_path: Self::rna_read_batch_path_string(
+                &gene_screen_summary_tsv_path,
+            ),
             sample_sheet_tsv_path: Self::rna_read_batch_path_string(&sample_sheet_tsv_path),
             isoform_support_tsv_path: Self::rna_read_batch_path_string(&isoform_support_tsv_path),
             concatemer_partner_summary_tsv_path: Self::rna_read_batch_path_string(
@@ -6871,6 +7997,7 @@ impl GentleEngine {
             ),
             sra_preparation_plan_tsv_path: sra_plan_path,
             sra_preparation_commands_sh_path: sra_commands_path,
+            read_acquisition_report,
             sample_count: rows.len(),
             ok_count,
             failed_count,
@@ -6923,6 +8050,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "kmer_len must be within 1..=16".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let dna = self
@@ -6932,6 +8061,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let splicing = self.build_splicing_expert_view(seq_id, seed_feature_id, scope)?;
         let templates = splicing
@@ -6948,9 +8079,851 @@ impl GentleEngine {
                     scope.as_str(),
                     seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(templates)
+    }
+
+    fn build_rna_read_preflight_scoring_context(
+        transcript_lanes: &[SplicingTranscriptLane],
+        templates: &[SplicingTranscriptTemplate],
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> Result<RnaReadPreflightScoringContext, EngineError> {
+        let seed_catalog_rows =
+            Self::collect_rna_seed_hash_catalog_rows(templates, seed_filter.kmer_len);
+        let seed_index = seed_catalog_rows
+            .iter()
+            .map(|row| row.seed_bits)
+            .collect::<HashSet<_>>();
+        if seed_index.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: "No directional k-mer seeds could be generated from transcript templates"
+                    .to_string(),
+
+                cause_chain: vec![],
+            });
+        }
+        let mut seed_occurrence_counts = HashMap::<u32, usize>::new();
+        for row in &seed_catalog_rows {
+            *seed_occurrence_counts.entry(row.seed_bits).or_insert(0) += 1;
+        }
+        let seed_support_exons = Self::collect_seed_support_exon_summaries(transcript_lanes);
+        let (seed_to_exons, seed_to_transitions, transcript_exon_models, _transition_rows) =
+            Self::build_seed_support_indexes(&seed_support_exons, templates, seed_filter.kmer_len);
+        Ok(RnaReadPreflightScoringContext {
+            templates: templates.to_vec(),
+            seed_index,
+            seed_occurrence_counts,
+            seed_template_positions: Self::build_seed_template_position_index(templates),
+            seed_to_exons,
+            seed_to_transitions,
+            transcript_exon_models,
+        })
+    }
+
+    fn score_rna_read_isoform_preflight_sequence(
+        sequence: &[u8],
+        transcript_id: &str,
+        transcript_label: &str,
+        context: &RnaReadPreflightScoringContext,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> RnaReadIsoformPreflightScore {
+        let (normalized, _reverse_complemented) =
+            Self::normalize_rna_read_sequence_for_scoring(sequence, seed_filter);
+        let windows = Self::full_read_hash_windows(normalized.len());
+        let histogram_index = HashMap::<u32, Vec<SeedHistogramWeight>>::new();
+        let mut bins = vec![RnaReadSeedHistogramBin {
+            start_1based: 1,
+            end_1based: 1,
+            confirmed_plus: 0,
+            confirmed_minus: 0,
+        }];
+        let mut tested_kmers = 0usize;
+        let mut matched_kmers = 0usize;
+        let mut matched_seed_bits = HashSet::<u32>::new();
+        let mut matched_seed_observations = Vec::<SeedMatchObservation>::new();
+        for (start, end) in windows {
+            let (tested, matched, matched_bits, matched_observations) =
+                Self::count_seed_hits_in_window_with_histogram(
+                    &normalized[start..end],
+                    start,
+                    seed_filter.kmer_len,
+                    seed_filter.seed_stride_bp,
+                    &context.seed_index,
+                    &histogram_index,
+                    &mut bins,
+                    &context.seed_occurrence_counts,
+                );
+            tested_kmers = tested_kmers.saturating_add(tested);
+            matched_kmers = matched_kmers.saturating_add(matched);
+            matched_seed_bits.extend(matched_bits);
+            matched_seed_observations.extend(matched_observations);
+        }
+        let (raw_hit_fraction, _perfect, _raw_pass) = Self::seed_hit_metrics(
+            tested_kmers,
+            matched_kmers,
+            seed_filter.min_seed_hit_fraction,
+        );
+        let weighted_hit_fraction = if tested_kmers == 0 {
+            0.0
+        } else {
+            Self::weighted_seed_support_from_occurrences(
+                &matched_seed_bits,
+                &context.seed_occurrence_counts,
+            ) / tested_kmers as f64
+        };
+        let spacing = Self::compute_seed_chain_spacing_metrics(
+            &matched_seed_observations,
+            &context.seed_template_positions,
+            &context.templates,
+        );
+        let mut supported_exons = HashSet::<usize>::new();
+        let mut supported_transitions = HashSet::<(usize, usize)>::new();
+        for bits in &matched_seed_bits {
+            if let Some(exons) = context.seed_to_exons.get(bits) {
+                supported_exons.extend(exons.iter().copied());
+            }
+            if let Some(transitions) = context.seed_to_transitions.get(bits) {
+                supported_transitions.extend(transitions.iter().copied());
+            }
+        }
+        let path_inference = Self::infer_read_exon_path(
+            &context.transcript_exon_models,
+            &supported_exons,
+            &supported_transitions,
+            &spacing.transcript_id,
+        );
+        let passed_seed_filter = Self::seed_filter_passes(
+            raw_hit_fraction,
+            weighted_hit_fraction,
+            tested_kmers,
+            matched_seed_bits.len(),
+            spacing.support_fraction,
+            spacing.median_transcript_gap,
+            spacing.transcript_gap_count,
+            path_inference.confirmed_transitions,
+            path_inference.total_transitions,
+            seed_filter,
+        );
+        RnaReadIsoformPreflightScore {
+            transcript_id: transcript_id.to_string(),
+            transcript_label: transcript_label.to_string(),
+            sequence_length_bp: normalized.len(),
+            passed_seed_filter,
+            raw_hit_fraction,
+            weighted_hit_fraction,
+            unique_matched_kmers: matched_seed_bits.len(),
+            chain_consistency_fraction: spacing.support_fraction,
+            seed_median_transcript_gap: spacing.median_transcript_gap,
+            confirmed_transitions: path_inference.confirmed_transitions,
+            total_transitions: path_inference.total_transitions,
+        }
+    }
+
+    fn infer_rna_read_preflight_control_id(path: &str, gene_id: &str) -> String {
+        let path_upper = Path::new(path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(path)
+            .to_ascii_uppercase();
+        for symbol in ["TP53", "TP63", "TP73", "TRP73"] {
+            if path_upper.contains(symbol) {
+                return symbol.to_string();
+            }
+        }
+        let gene = gene_id.trim();
+        if gene.is_empty() {
+            "unknown_control".to_string()
+        } else {
+            gene.to_string()
+        }
+    }
+
+    fn score_rna_read_preflight_control_summaries(
+        control_transcript_fasta_paths: &[String],
+        context: &RnaReadPreflightScoringContext,
+        seed_filter: &RnaReadSeedFilterConfig,
+        warnings: &mut Vec<String>,
+    ) -> Result<Vec<RnaReadIsoformPreflightControlSummary>, EngineError> {
+        let mut groups = BTreeMap::<String, RnaReadPreflightControlAccumulator>::new();
+        let mut next_feature_id = 1_000_000usize;
+        for path in control_transcript_fasta_paths {
+            let (templates, transcript_gene_lookup, _transcript_gene_lookup_by_id) =
+                Self::load_external_rna_read_concatemer_templates(
+                    path,
+                    seed_filter.kmer_len,
+                    next_feature_id,
+                    warnings,
+                )?;
+            next_feature_id = templates
+                .iter()
+                .map(|template| template.transcript_feature_id)
+                .max()
+                .unwrap_or(next_feature_id.saturating_sub(1))
+                .saturating_add(1);
+            if templates.is_empty() {
+                warnings.push(format!(
+                    "control transcript FASTA '{}' did not contain any usable transcript records",
+                    path
+                ));
+            }
+            for template in templates {
+                let gene_id = transcript_gene_lookup
+                    .get(&template.transcript_feature_id)
+                    .map(String::as_str)
+                    .unwrap_or(template.transcript_label.as_str());
+                let control_id = Self::infer_rna_read_preflight_control_id(path, gene_id);
+                let score = Self::score_rna_read_isoform_preflight_sequence(
+                    &template.sequence,
+                    &template.transcript_id,
+                    &template.transcript_label,
+                    context,
+                    seed_filter,
+                );
+                let accumulator = groups.entry(control_id).or_default();
+                accumulator.source_paths.insert(path.clone());
+                accumulator.transcript_count = accumulator.transcript_count.saturating_add(1);
+                if score.passed_seed_filter {
+                    accumulator.passed_transcript_count =
+                        accumulator.passed_transcript_count.saturating_add(1);
+                }
+                let replace_best = accumulator.best_score.as_ref().is_none_or(|best| {
+                    score
+                        .raw_hit_fraction
+                        .partial_cmp(&best.raw_hit_fraction)
+                        .unwrap_or(Ordering::Equal)
+                        .then_with(|| {
+                            score
+                                .weighted_hit_fraction
+                                .partial_cmp(&best.weighted_hit_fraction)
+                                .unwrap_or(Ordering::Equal)
+                        })
+                        .then_with(|| score.unique_matched_kmers.cmp(&best.unique_matched_kmers))
+                        .is_gt()
+                });
+                if replace_best {
+                    accumulator.best_score = Some(score);
+                }
+            }
+        }
+        Ok(groups
+            .into_iter()
+            .map(|(control_id, accumulator)| {
+                let transcript_count = accumulator.transcript_count;
+                let weighted_pass_probability = if transcript_count == 0 {
+                    0.0
+                } else {
+                    accumulator.passed_transcript_count as f64 / transcript_count as f64
+                };
+                let best_score = accumulator.best_score;
+                RnaReadIsoformPreflightControlSummary {
+                    control_id,
+                    source_paths: accumulator.source_paths.into_iter().collect(),
+                    transcript_count,
+                    passed_transcript_count: accumulator.passed_transcript_count,
+                    weighted_pass_probability,
+                    best_transcript_id: best_score
+                        .as_ref()
+                        .map(|score| score.transcript_id.clone()),
+                    best_transcript_label: best_score
+                        .as_ref()
+                        .map(|score| score.transcript_label.clone()),
+                    best_raw_hit_fraction: best_score
+                        .as_ref()
+                        .map(|score| score.raw_hit_fraction)
+                        .unwrap_or(0.0),
+                    best_weighted_hit_fraction: best_score
+                        .as_ref()
+                        .map(|score| score.weighted_hit_fraction)
+                        .unwrap_or(0.0),
+                    best_unique_matched_kmers: best_score
+                        .as_ref()
+                        .map(|score| score.unique_matched_kmers)
+                        .unwrap_or(0),
+                    best_chain_consistency_fraction: best_score
+                        .as_ref()
+                        .map(|score| score.chain_consistency_fraction)
+                        .unwrap_or(0.0),
+                    best_seed_median_transcript_gap: best_score
+                        .as_ref()
+                        .map(|score| score.seed_median_transcript_gap)
+                        .unwrap_or(0.0),
+                    best_confirmed_transitions: best_score
+                        .as_ref()
+                        .map(|score| score.confirmed_transitions)
+                        .unwrap_or(0),
+                    best_total_transitions: best_score
+                        .as_ref()
+                        .map(|score| score.total_transitions)
+                        .unwrap_or(0),
+                    worst_case_ambiguity: best_score
+                        .as_ref()
+                        .map(|score| score.raw_hit_fraction)
+                        .unwrap_or(0.0),
+                }
+            })
+            .collect())
+    }
+
+    fn score_rna_read_preflight_positive_transcripts(
+        positive_transcript_fasta_paths: &[String],
+        context: &RnaReadPreflightScoringContext,
+        seed_filter: &RnaReadSeedFilterConfig,
+        warnings: &mut Vec<String>,
+    ) -> Result<Vec<RnaReadIsoformPreflightScore>, EngineError> {
+        let mut scores = Vec::<RnaReadIsoformPreflightScore>::new();
+        let mut next_feature_id = 2_000_000usize;
+        for path in positive_transcript_fasta_paths {
+            let (templates, _transcript_gene_lookup, _transcript_gene_lookup_by_id) =
+                Self::load_external_rna_read_concatemer_templates(
+                    path,
+                    seed_filter.kmer_len,
+                    next_feature_id,
+                    warnings,
+                )?;
+            next_feature_id = templates
+                .iter()
+                .map(|template| template.transcript_feature_id)
+                .max()
+                .unwrap_or(next_feature_id.saturating_sub(1))
+                .saturating_add(1);
+            if templates.is_empty() {
+                warnings.push(format!(
+                    "positive transcript FASTA '{}' did not contain any usable transcript records",
+                    path
+                ));
+            }
+            for template in templates {
+                scores.push(Self::score_rna_read_isoform_preflight_sequence(
+                    &template.sequence,
+                    &template.transcript_id,
+                    &template.transcript_label,
+                    context,
+                    seed_filter,
+                ));
+            }
+        }
+        Ok(scores)
+    }
+
+    fn rna_read_preflight_candidate_filters(
+        requested: &RnaReadSeedFilterConfig,
+    ) -> Vec<RnaReadSeedFilterConfig> {
+        let raw_thresholds = [requested.min_seed_hit_fraction, 0.30, 0.35, 0.40, 0.50];
+        let weighted_thresholds = [requested.min_weighted_seed_hit_fraction, 0.05, 0.075, 0.10];
+        let unique_thresholds = [requested.min_unique_matched_kmers, 12, 16, 20, 24];
+        let chain_thresholds = [requested.min_chain_consistency_fraction, 0.40, 0.50, 0.60];
+        let mut filters = Vec::<RnaReadSeedFilterConfig>::new();
+        let mut seen = HashSet::<String>::new();
+        for raw in raw_thresholds {
+            for weighted in weighted_thresholds {
+                for unique in unique_thresholds {
+                    for chain in chain_thresholds {
+                        let mut candidate = requested.clone();
+                        candidate.min_seed_hit_fraction = raw.clamp(0.0, 1.0);
+                        candidate.min_weighted_seed_hit_fraction = weighted.clamp(0.0, 1.0);
+                        candidate.min_unique_matched_kmers = unique;
+                        candidate.min_chain_consistency_fraction = chain.clamp(0.0, 1.0);
+                        let key = format!(
+                            "{}:{:.6}:{:.6}:{}:{:.6}:{:.6}:{}:{:.6}:{}:{}",
+                            candidate.kmer_len,
+                            candidate.min_seed_hit_fraction,
+                            candidate.min_weighted_seed_hit_fraction,
+                            candidate.min_unique_matched_kmers,
+                            candidate.max_median_transcript_gap,
+                            candidate.min_chain_consistency_fraction,
+                            candidate.min_confirmed_exon_transitions,
+                            candidate.min_transition_support_fraction,
+                            candidate.cdna_poly_t_flip_enabled,
+                            candidate.poly_t_prefix_min_bp
+                        );
+                        if seen.insert(key) {
+                            filters.push(candidate);
+                        }
+                    }
+                }
+            }
+        }
+        filters
+    }
+
+    fn quote_rna_read_preflight_command_arg(raw: &str) -> String {
+        if raw.is_empty() {
+            "''".to_string()
+        } else if raw
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':'))
+        {
+            raw.to_string()
+        } else {
+            format!("'{}'", raw.replace('\'', "'\"'\"'"))
+        }
+    }
+
+    fn build_rna_read_seed_filter_cli_fragment(seed_filter: &RnaReadSeedFilterConfig) -> String {
+        let mut fragment = format!(
+            "--kmer-len {} --seed-stride-bp {} --min-seed-hit-fraction {:.3} --min-weighted-seed-hit-fraction {:.3} --min-unique-matched-kmers {} --min-chain-consistency-fraction {:.2} --max-median-transcript-gap {:.2} --min-confirmed-transitions {} --min-transition-support-fraction {:.2}",
+            seed_filter.kmer_len,
+            seed_filter.seed_stride_bp,
+            seed_filter.min_seed_hit_fraction,
+            seed_filter.min_weighted_seed_hit_fraction,
+            seed_filter.min_unique_matched_kmers,
+            seed_filter.min_chain_consistency_fraction,
+            seed_filter.max_median_transcript_gap,
+            seed_filter.min_confirmed_exon_transitions,
+            seed_filter.min_transition_support_fraction,
+        );
+        if seed_filter.cdna_poly_t_flip_enabled {
+            fragment.push_str(" --cdna-poly-t-flip");
+        } else {
+            fragment.push_str(" --no-cdna-poly-t-flip");
+        }
+        fragment.push_str(&format!(
+            " --poly-t-prefix-min-bp {}",
+            seed_filter.poly_t_prefix_min_bp
+        ));
+        fragment
+    }
+
+    fn build_rna_read_interpret_threshold_command_fragment(
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> String {
+        format!(
+            "rna-reads interpret {} {} INPUT.fa[.gz] --scope {} {}",
+            Self::quote_rna_read_preflight_command_arg(seq_id),
+            seed_feature_id,
+            scope.as_str(),
+            Self::build_rna_read_seed_filter_cli_fragment(seed_filter)
+        )
+    }
+
+    fn build_rna_read_preflight_threshold_recommendation(
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        recommended_seed_filter: &RnaReadSeedFilterConfig,
+        target_pass_probability: f64,
+        positive_pass_probability: f64,
+        control_summaries: &[RnaReadIsoformPreflightControlSummary],
+    ) -> RnaReadIsoformPreflightThresholdRecommendation {
+        let limiting_control = control_summaries.iter().max_by(|left, right| {
+            left.weighted_pass_probability
+                .partial_cmp(&right.weighted_pass_probability)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| {
+                    left.worst_case_ambiguity
+                        .partial_cmp(&right.worst_case_ambiguity)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| {
+                    left.best_unique_matched_kmers
+                        .cmp(&right.best_unique_matched_kmers)
+                })
+        });
+        let max_control_pass_probability = control_summaries
+            .iter()
+            .map(|summary| summary.weighted_pass_probability)
+            .fold(0.0_f64, f64::max);
+        let max_control_raw = control_summaries
+            .iter()
+            .map(|summary| summary.best_raw_hit_fraction)
+            .fold(0.0_f64, f64::max);
+        let max_control_weighted = control_summaries
+            .iter()
+            .map(|summary| summary.best_weighted_hit_fraction)
+            .fold(0.0_f64, f64::max);
+        let max_control_unique = control_summaries
+            .iter()
+            .map(|summary| summary.best_unique_matched_kmers)
+            .max()
+            .unwrap_or(0);
+        let basis = if control_summaries.is_empty() {
+            "target_only".to_string()
+        } else {
+            "target_vs_control_gene_margin".to_string()
+        };
+        let seed_filter_cli_fragment =
+            Self::build_rna_read_seed_filter_cli_fragment(recommended_seed_filter);
+        let interpret_command_fragment = Self::build_rna_read_interpret_threshold_command_fragment(
+            seq_id,
+            seed_feature_id,
+            scope,
+            recommended_seed_filter,
+        );
+        RnaReadIsoformPreflightThresholdRecommendation {
+            basis,
+            target_pass_probability,
+            positive_pass_probability,
+            max_control_pass_probability,
+            limiting_control_id: limiting_control.map(|summary| summary.control_id.clone()),
+            limiting_control_transcript_id: limiting_control
+                .and_then(|summary| summary.best_transcript_id.clone()),
+            limiting_control_transcript_label: limiting_control
+                .and_then(|summary| summary.best_transcript_label.clone()),
+            control_raw_hit_margin: recommended_seed_filter.min_seed_hit_fraction - max_control_raw,
+            control_weighted_hit_margin: recommended_seed_filter.min_weighted_seed_hit_fraction
+                - max_control_weighted,
+            control_unique_kmer_margin: recommended_seed_filter.min_unique_matched_kmers as isize
+                - max_control_unique as isize,
+            seed_filter_cli_fragment,
+            interpret_command_fragment,
+        }
+    }
+
+    fn build_rna_read_preflight_command_fragment(
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+        positive_transcript_fasta_paths: &[String],
+        control_transcript_fasta_paths: &[String],
+        optimize_parameters: bool,
+        max_control_match_probability: f64,
+    ) -> String {
+        let mut command = format!(
+            "rna-reads preflight-isoforms {} {} --scope {} {}",
+            Self::quote_rna_read_preflight_command_arg(seq_id),
+            seed_feature_id,
+            scope.as_str(),
+            Self::build_rna_read_seed_filter_cli_fragment(seed_filter),
+        );
+        for path in positive_transcript_fasta_paths {
+            command.push_str(" --positive-transcript-fasta ");
+            command.push_str(&Self::quote_rna_read_preflight_command_arg(path));
+        }
+        for path in control_transcript_fasta_paths {
+            command.push_str(" --control-transcript-fasta ");
+            command.push_str(&Self::quote_rna_read_preflight_command_arg(path));
+        }
+        if optimize_parameters {
+            command.push_str(" --optimize-parameters");
+            command.push_str(&format!(
+                " --max-control-match-probability {:.6}",
+                max_control_match_probability
+            ));
+        }
+        command
+    }
+
+    fn evaluate_rna_read_isoform_preflight_for_filter(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+        positive_transcript_fasta_paths: &[String],
+        control_transcript_fasta_paths: &[String],
+    ) -> Result<
+        (
+            Vec<RnaReadIsoformPreflightScore>,
+            Vec<RnaReadIsoformPreflightScore>,
+            Vec<RnaReadIsoformPreflightControlSummary>,
+            Vec<String>,
+        ),
+        EngineError,
+    > {
+        if seed_filter.kmer_len == 0 || seed_filter.kmer_len > 16 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "kmer_len must be within 1..=16".to_string(),
+
+                cause_chain: vec![],
+            });
+        }
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
+            })?;
+        let splicing = self.build_splicing_expert_view(seq_id, seed_feature_id, scope)?;
+        let transcript_lanes = splicing.transcripts;
+        let templates = transcript_lanes
+            .iter()
+            .map(|lane| Self::make_transcript_template(dna, lane, seed_filter.kmer_len))
+            .filter(|template| !template.sequence.is_empty())
+            .collect::<Vec<_>>();
+        if templates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No transcript templates available for splicing scope '{}' on '{}'",
+                    scope.as_str(),
+                    seq_id
+                ),
+
+                cause_chain: vec![],
+            });
+        }
+        let context = Self::build_rna_read_preflight_scoring_context(
+            &transcript_lanes,
+            &templates,
+            seed_filter,
+        )?;
+        let target_transcripts = templates
+            .iter()
+            .map(|template| {
+                Self::score_rna_read_isoform_preflight_sequence(
+                    &template.sequence,
+                    &template.transcript_id,
+                    &template.transcript_label,
+                    &context,
+                    seed_filter,
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut warnings = Vec::<String>::new();
+        let positive_control_transcripts = Self::score_rna_read_preflight_positive_transcripts(
+            positive_transcript_fasta_paths,
+            &context,
+            seed_filter,
+            &mut warnings,
+        )?;
+        let control_summaries = Self::score_rna_read_preflight_control_summaries(
+            control_transcript_fasta_paths,
+            &context,
+            seed_filter,
+            &mut warnings,
+        )?;
+        Ok((
+            target_transcripts,
+            positive_control_transcripts,
+            control_summaries,
+            warnings,
+        ))
+    }
+
+    pub fn preflight_rna_read_isoforms(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+        optimize_parameters: bool,
+        positive_transcript_fasta_paths: &[String],
+        control_transcript_fasta_paths: &[String],
+        max_control_match_probability: f64,
+    ) -> Result<RnaReadIsoformPreflightReport, EngineError> {
+        if optimize_parameters && control_transcript_fasta_paths.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "rna-reads preflight-isoforms --optimize-parameters requires at least one --control-transcript-fasta"
+                    .to_string(),
+            
+                cause_chain: vec![],});
+        }
+        if !(0.0..=1.0).contains(&max_control_match_probability) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "max_control_match_probability must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
+            });
+        }
+
+        let mut recommended_seed_filter = seed_filter.clone();
+        let mut search_candidate_filters = optimize_parameters;
+        if optimize_parameters {
+            let (target_transcripts, positive_control_transcripts, control_summaries, _warnings) =
+                self.evaluate_rna_read_isoform_preflight_for_filter(
+                    seq_id,
+                    seed_feature_id,
+                    scope,
+                    seed_filter,
+                    positive_transcript_fasta_paths,
+                    control_transcript_fasta_paths,
+                )?;
+            let target_count = target_transcripts.len();
+            let target_passed = target_transcripts
+                .iter()
+                .filter(|score| score.passed_seed_filter)
+                .count();
+            let positive_count = positive_control_transcripts.len();
+            let positive_passed = positive_control_transcripts
+                .iter()
+                .filter(|score| score.passed_seed_filter)
+                .count();
+            let max_control_probability = control_summaries
+                .iter()
+                .map(|summary| summary.weighted_pass_probability)
+                .fold(0.0_f64, f64::max);
+            if target_count > 0
+                && target_passed == target_count
+                && positive_passed == positive_count
+                && max_control_probability
+                    <= max_control_match_probability.clamp(0.0, 1.0) + f64::EPSILON
+            {
+                search_candidate_filters = false;
+            }
+        }
+        if search_candidate_filters {
+            let mut best_filter: Option<RnaReadSeedFilterConfig> = None;
+            let mut best_key: Option<(usize, u64, usize)> = None;
+            for candidate in Self::rna_read_preflight_candidate_filters(seed_filter) {
+                let (
+                    target_transcripts,
+                    positive_control_transcripts,
+                    control_summaries,
+                    _warnings,
+                ) = self.evaluate_rna_read_isoform_preflight_for_filter(
+                    seq_id,
+                    seed_feature_id,
+                    scope,
+                    &candidate,
+                    positive_transcript_fasta_paths,
+                    control_transcript_fasta_paths,
+                )?;
+                let target_count = target_transcripts.len();
+                let target_passed = target_transcripts
+                    .iter()
+                    .filter(|score| score.passed_seed_filter)
+                    .count();
+                let positive_count = positive_control_transcripts.len();
+                let positive_passed = positive_control_transcripts
+                    .iter()
+                    .filter(|score| score.passed_seed_filter)
+                    .count();
+                if target_passed != target_count || positive_passed != positive_count {
+                    continue;
+                }
+                let max_control_probability = control_summaries
+                    .iter()
+                    .map(|summary| summary.weighted_pass_probability)
+                    .fold(0.0_f64, f64::max);
+                if max_control_probability
+                    > max_control_match_probability.clamp(0.0, 1.0) + f64::EPSILON
+                {
+                    continue;
+                }
+                let strictness = candidate.min_unique_matched_kmers
+                    + (candidate.min_seed_hit_fraction * 1000.0).round() as usize
+                    + (candidate.min_weighted_seed_hit_fraction * 1000.0).round() as usize
+                    + (candidate.min_chain_consistency_fraction * 1000.0).round() as usize;
+                let control_penalty = (max_control_probability * 1_000_000.0).round() as u64;
+                let key = (
+                    target_passed * 1_000_000 / target_count.max(1),
+                    u64::MAX - control_penalty,
+                    strictness,
+                );
+                if best_key.as_ref().is_none_or(|current| key > *current) {
+                    best_key = Some(key);
+                    best_filter = Some(candidate);
+                }
+            }
+            if let Some(filter) = best_filter {
+                recommended_seed_filter = filter;
+            }
+        }
+
+        let (target_transcripts, positive_control_transcripts, control_summaries, mut warnings) =
+            self.evaluate_rna_read_isoform_preflight_for_filter(
+                seq_id,
+                seed_feature_id,
+                scope,
+                &recommended_seed_filter,
+                positive_transcript_fasta_paths,
+                control_transcript_fasta_paths,
+            )?;
+        let target_transcript_count = target_transcripts.len();
+        let target_passed_transcript_count = target_transcripts
+            .iter()
+            .filter(|score| score.passed_seed_filter)
+            .count();
+        let target_pass_probability = if target_transcript_count == 0 {
+            0.0
+        } else {
+            target_passed_transcript_count as f64 / target_transcript_count as f64
+        };
+        let positive_control_transcript_count = positive_control_transcripts.len();
+        let positive_control_passed_transcript_count = positive_control_transcripts
+            .iter()
+            .filter(|score| score.passed_seed_filter)
+            .count();
+        let positive_control_pass_probability = if positive_control_transcript_count == 0 {
+            1.0
+        } else {
+            positive_control_passed_transcript_count as f64
+                / positive_control_transcript_count as f64
+        };
+        if optimize_parameters {
+            if target_passed_transcript_count != target_transcript_count
+                || positive_control_passed_transcript_count != positive_control_transcript_count
+            {
+                warnings.push(format!(
+                    "No candidate seed filter retained all target/positive transcripts; retained target={}/{} positive={}/{}",
+                    target_passed_transcript_count,
+                    target_transcript_count,
+                    positive_control_passed_transcript_count,
+                    positive_control_transcript_count
+                ));
+            }
+            let max_control_probability = control_summaries
+                .iter()
+                .map(|summary| summary.weighted_pass_probability)
+                .fold(0.0_f64, f64::max);
+            if max_control_probability
+                > max_control_match_probability.clamp(0.0, 1.0) + f64::EPSILON
+            {
+                warnings.push(format!(
+                    "No candidate seed filter kept control-match probability <= {:.6}; best retained max control probability is {:.6}",
+                    max_control_match_probability,
+                    max_control_probability
+                ));
+            }
+        }
+        let recommended_command_fragment = Self::build_rna_read_preflight_command_fragment(
+            seq_id,
+            seed_feature_id,
+            scope,
+            &recommended_seed_filter,
+            positive_transcript_fasta_paths,
+            control_transcript_fasta_paths,
+            optimize_parameters,
+            max_control_match_probability,
+        );
+        let threshold_recommendation = Self::build_rna_read_preflight_threshold_recommendation(
+            seq_id,
+            seed_feature_id,
+            scope,
+            &recommended_seed_filter,
+            target_pass_probability,
+            positive_control_pass_probability,
+            &control_summaries,
+        );
+        Ok(RnaReadIsoformPreflightReport {
+            schema: RNA_READ_ISOFORM_PREFLIGHT_SCHEMA.to_string(),
+            seq_id: seq_id.to_string(),
+            seed_feature_id,
+            scope,
+            seed_filter: seed_filter.clone(),
+            optimize_parameters,
+            positive_transcript_fasta_paths: positive_transcript_fasta_paths.to_vec(),
+            control_transcript_fasta_paths: control_transcript_fasta_paths.to_vec(),
+            max_control_match_probability,
+            target_transcript_count,
+            target_passed_transcript_count,
+            target_pass_probability,
+            positive_control_transcript_count,
+            positive_control_passed_transcript_count,
+            positive_control_pass_probability,
+            target_transcripts,
+            positive_control_transcripts,
+            control_summaries,
+            recommended_seed_filter,
+            threshold_recommendation,
+            recommended_command_fragment,
+            warnings,
+        })
     }
 
     pub fn export_rna_seed_hash_catalog(
@@ -6969,11 +8942,15 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA seed-hash catalog export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let file = File::create(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not create RNA seed-hash catalog '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         let mut writer = BufWriter::new(file);
         writeln!(
@@ -6983,7 +8960,8 @@ impl GentleEngine {
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA seed-hash catalog header to '{}': {e}", path),
-        })?;
+        
+            cause_chain: vec![],})?;
 
         let mut unique_hashes = HashSet::<u32>::new();
         for row in &rows {
@@ -7004,11 +8982,15 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write RNA seed-hash row to '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
         }
         writer.flush().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not flush RNA seed-hash catalog '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok((rows.len(), unique_hashes.len()))
     }
@@ -7110,6 +9092,8 @@ impl GentleEngine {
         let file = File::open(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not open FASTA input '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         let input_bytes_total = file.metadata().map(|meta| meta.len()).unwrap_or(0);
         let source_bytes_read = Arc::new(AtomicU64::new(0));
@@ -7172,7 +9156,7 @@ impl GentleEngine {
                     record_index,
                     source_byte_offset: header_offset,
                     header_id,
-                    header_text: header_text,
+                    header_text,
                     sequence: normalized.as_bytes().to_vec(),
                 },
                 FastaVisitProgress {
@@ -7192,6 +9176,8 @@ impl GentleEngine {
             let bytes = reader.read_line(&mut line).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read FASTA input '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
             io_read_ms.set(io_read_ms.get() + read_started.elapsed().as_secs_f64() * 1000.0);
             if bytes == 0 {
@@ -7223,6 +9209,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("No FASTA records found in '{}'", path),
+
+                cause_chain: vec![],
             });
         }
         let input_bytes_processed = if input_bytes_total > 0 {
@@ -7249,13 +9237,15 @@ impl GentleEngine {
         Self::visit_fasta_records_with_offsets(path, &mut |record, progress| {
             out.push(record);
             processed = progress.records_processed;
-            if (processed % RNA_READ_PROGRESS_UPDATE_EVERY_READS == 0 || processed <= 3)
+            if (processed.is_multiple_of(RNA_READ_PROGRESS_UPDATE_EVERY_READS) || processed <= 3)
                 && !on_record_progress(processed)
             {
                 return Err(EngineError {
                     code: ErrorCode::Internal,
                     message: "RNA-read FASTA parsing cancelled during progress reporting"
                         .to_string(),
+
+                    cause_chain: vec![],
                 });
             }
             Ok(())
@@ -7264,6 +9254,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read FASTA parsing cancelled at completion".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(out)
@@ -7573,7 +9565,7 @@ impl GentleEngine {
             }
         }
         for bits in &matched_seed_bits {
-            if let Some(weights) = histogram_index.get(&bits) {
+            if let Some(weights) = histogram_index.get(bits) {
                 for weight in weights {
                     if weight.strand_minus {
                         minus_bins_touched.insert(weight.bin_index);
@@ -8336,7 +10328,7 @@ impl GentleEngine {
     ) -> bool {
         let update_every_reads = update_every_reads.max(1);
         reads_processed <= 3
-            || reads_processed % update_every_reads == 0
+            || reads_processed.is_multiple_of(update_every_reads)
             || elapsed_since_last_emit >= RNA_READ_PROGRESS_UPDATE_MAX_INTERVAL
     }
 
@@ -8657,10 +10649,11 @@ impl GentleEngine {
             }
             let exon_offset_start = template_cursor;
             let exon_offset_end = template_cursor.saturating_add(exon_len);
-            if aligned_start < exon_offset_end && aligned_end > exon_offset_start {
-                if let Some(exon_idx) = exon_index.get(&(exon_start_1based, exon_end_1based)) {
-                    exon_indices.insert(*exon_idx);
-                }
+            if aligned_start < exon_offset_end
+                && aligned_end > exon_offset_start
+                && let Some(exon_idx) = exon_index.get(&(exon_start_1based, exon_end_1based))
+            {
+                exon_indices.insert(*exon_idx);
             }
             if idx + 1 < ordered_exons.len() {
                 let boundary_offset = exon_offset_end;
@@ -9079,6 +11072,8 @@ impl GentleEngine {
         let target_feature = features.get(seed_feature_id).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Feature id '{}' was not found in sequence", seed_feature_id),
+
+            cause_chain: vec![],
         })?;
         let target_is_reverse = feature_is_reverse(target_feature);
         let restrict_to_target_strand = scope.restrict_to_target_strand();
@@ -9089,7 +11084,7 @@ impl GentleEngine {
             .filter(|raw| !raw.is_empty())
             .map(|raw| raw.to_string())
             .collect::<Vec<_>>();
-        requested.sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        requested.sort_by_key(|left| left.to_ascii_lowercase());
         requested.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         let requested_lower = requested
             .iter()
@@ -9120,6 +11115,8 @@ impl GentleEngine {
                 let (from, to) = feature.location.find_bounds().map_err(|e| EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Could not parse transcript range: {e}"),
+
+                    cause_chain: vec![],
                 })?;
                 if from >= 0 && to >= 0 {
                     exon_ranges.push((from as usize, to as usize));
@@ -9170,10 +11167,8 @@ impl GentleEngine {
             .filter(|gene| !matched_requested.contains(&gene.to_ascii_lowercase()))
             .cloned()
             .collect::<Vec<_>>();
-        matched_gene_ids
-            .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
-        missing_gene_ids
-            .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        matched_gene_ids.sort_by_key(|left| left.to_ascii_lowercase());
+        missing_gene_ids.sort_by_key(|left| left.to_ascii_lowercase());
         if restrict_to_target_strand && target_feature_strand.trim().is_empty() {
             missing_gene_ids = requested;
             lanes.clear();
@@ -9250,12 +11245,12 @@ impl GentleEngine {
         if ambiguous_strand_tie {
             row.reads_ambiguous_strand_ties = row.reads_ambiguous_strand_ties.saturating_add(1);
         }
-        if passed_seed_filter {
-            if let Some(model) = transcript_models_by_id.get(assigned_transcript_id) {
-                for transition in &model.transitions {
-                    if read_supported_transitions.contains(transition) {
-                        row.transition_rows_supported.insert(*transition);
-                    }
+        if passed_seed_filter
+            && let Some(model) = transcript_models_by_id.get(assigned_transcript_id)
+        {
+            for transition in &model.transitions {
+                if read_supported_transitions.contains(transition) {
+                    row.transition_rows_supported.insert(*transition);
                 }
             }
         }
@@ -9331,7 +11326,9 @@ impl GentleEngine {
 
     pub(super) fn collect_mapped_isoform_support_rows(
         hits: &[RnaReadInterpretationHit],
+        min_identity_fraction: f64,
     ) -> Vec<RnaReadMappedIsoformSupportRow> {
+        let thresholds = Self::default_rna_read_isoform_triage_thresholds(min_identity_fraction);
         #[derive(Default)]
         struct Accumulator {
             transcript_feature_id: usize,
@@ -9344,6 +11341,7 @@ impl GentleEngine {
             query_coverage_sum: f64,
             best_alignment_score: isize,
             secondary_mapping_total: usize,
+            triage_bin_counts: BTreeMap<String, usize>,
         }
 
         let mut accumulators = BTreeMap::<String, Accumulator>::new();
@@ -9371,12 +11369,18 @@ impl GentleEngine {
             row.secondary_mapping_total = row
                 .secondary_mapping_total
                 .saturating_add(hit.secondary_mappings.len());
+            let triage = Self::classify_rna_read_isoform_triage_hit(hit, thresholds);
+            *row.triage_bin_counts
+                .entry(triage.0.as_str().to_string())
+                .or_default() += 1;
         }
 
         let mut rows = accumulators
             .into_values()
             .map(|row| {
                 let denom = row.aligned_read_count.max(1) as f64;
+                let dominant_triage_bin =
+                    Self::dominant_rna_read_isoform_triage_bin(&row.triage_bin_counts);
                 RnaReadMappedIsoformSupportRow {
                     transcript_feature_id: row.transcript_feature_id,
                     transcript_id: row.transcript_id,
@@ -9392,6 +11396,8 @@ impl GentleEngine {
                         row.best_alignment_score
                     },
                     secondary_mapping_total: row.secondary_mapping_total,
+                    dominant_triage_bin,
+                    triage_bin_counts: row.triage_bin_counts,
                 }
             })
             .collect::<Vec<_>>();
@@ -9422,6 +11428,27 @@ impl GentleEngine {
         rows
     }
 
+    fn dominant_rna_read_isoform_triage_bin(
+        counts: &BTreeMap<String, usize>,
+    ) -> Option<RnaReadIsoformTriageBin> {
+        let mut best = None::<(RnaReadIsoformTriageBin, usize)>;
+        for bin in [
+            RnaReadIsoformTriageBin::KnownIsoformConfirmed,
+            RnaReadIsoformTriageBin::KnownIsoformAmbiguous,
+            RnaReadIsoformTriageBin::GeneSupportedNoIsoformCall,
+            RnaReadIsoformTriageBin::OffTargetOrBadSeed,
+        ] {
+            let count = counts.get(bin.as_str()).copied().unwrap_or_default();
+            if count == 0 {
+                continue;
+            }
+            if best.is_none_or(|(_best_bin, best_count)| count > best_count) {
+                best = Some((bin, count));
+            }
+        }
+        best.map(|(bin, _count)| bin)
+    }
+
     pub(super) fn transition_gate_passes(
         confirmed_transitions: usize,
         total_transitions: usize,
@@ -9448,13 +11475,13 @@ impl GentleEngine {
         if candidate.exon_hits != current.exon_hits {
             return candidate.exon_hits > current.exon_hits;
         }
-        if candidate.model.strand != current.model.strand {
-            if let Some(preferred) = chain_preferred_strand {
-                let candidate_pref = candidate.model.strand == preferred;
-                let current_pref = current.model.strand == preferred;
-                if candidate_pref != current_pref {
-                    return candidate_pref;
-                }
+        if candidate.model.strand != current.model.strand
+            && let Some(preferred) = chain_preferred_strand
+        {
+            let candidate_pref = candidate.model.strand == preferred;
+            let current_pref = current.model.strand == preferred;
+            if candidate_pref != current_pref {
+                return candidate_pref;
             }
         }
         candidate.model.transcript_feature_id < current.model.transcript_feature_id
@@ -10105,40 +12132,13 @@ impl GentleEngine {
         Ok((splicing, transcript_lanes))
     }
 
-    pub fn build_rna_read_alignment_display(
-        &self,
-        report_id: &str,
-        record_index: usize,
+    fn build_rna_read_alignment_display_for_hit(
+        report: &RnaReadInterpretationReport,
+        hit: &RnaReadInterpretationHit,
+        mapping: &RnaReadMappingHit,
+        dna: &DNAsequence,
+        transcript_lanes: &[SplicingTranscriptLane],
     ) -> Result<RnaReadAlignmentDisplay, EngineError> {
-        let report = self.get_rna_read_report(report_id)?;
-        let hit = report
-            .hits
-            .iter()
-            .find(|hit| hit.record_index == record_index)
-            .ok_or_else(|| EngineError {
-                code: ErrorCode::NotFound,
-                message: format!(
-                    "RNA-read report '{}' does not contain record_index {}",
-                    report.report_id, record_index
-                ),
-            })?;
-        let mapping = hit.best_mapping.as_ref().ok_or_else(|| EngineError {
-            code: ErrorCode::NotFound,
-            message: format!(
-                "RNA-read report '{}' record_index {} has no best_mapping",
-                report.report_id, record_index
-            ),
-        })?;
-        let dna = self
-            .state
-            .sequences
-            .get(&report.seq_id)
-            .ok_or_else(|| EngineError {
-                code: ErrorCode::NotFound,
-                message: format!("Sequence '{}' not found", report.seq_id),
-            })?;
-        let (_splicing, transcript_lanes) =
-            self.collect_rna_read_report_transcript_lanes(dna, &report)?;
         let template_lane = transcript_lanes
             .iter()
             .find(|lane| lane.transcript_feature_id == mapping.transcript_feature_id)
@@ -10148,6 +12148,8 @@ impl GentleEngine {
                     "Transcript feature {} for RNA-read alignment detail is no longer available",
                     mapping.transcript_feature_id
                 ),
+
+                cause_chain: vec![],
             })?;
         let template =
             Self::make_transcript_template(dna, template_lane, report.seed_filter.kmer_len);
@@ -10158,6 +12160,8 @@ impl GentleEngine {
                     "Transcript template '{}' is empty for RNA-read alignment detail",
                     mapping.transcript_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let normalized_read = hit
@@ -10187,14 +12191,135 @@ impl GentleEngine {
             code: ErrorCode::Internal,
             message: format!(
                 "Could not reconstruct RNA-read alignment detail for record_index {}",
-                record_index
+                hit.record_index
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(Self::build_alignment_display_from_computed(
             &oriented_query,
             &template,
             &computed,
         ))
+    }
+
+    pub fn build_rna_read_alignment_display(
+        &self,
+        report_id: &str,
+        record_index: usize,
+    ) -> Result<RnaReadAlignmentDisplay, EngineError> {
+        let report = self.get_rna_read_report(report_id)?;
+        let hit = report
+            .hits
+            .iter()
+            .find(|hit| hit.record_index == record_index)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "RNA-read report '{}' does not contain record_index {}",
+                    report.report_id, record_index
+                ),
+
+                cause_chain: vec![],
+            })?;
+        let mapping = hit.best_mapping.as_ref().ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "RNA-read report '{}' record_index {} has no best_mapping",
+                report.report_id, record_index
+            ),
+
+            cause_chain: vec![],
+        })?;
+        let dna = self
+            .state
+            .sequences
+            .get(&report.seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", report.seq_id),
+
+                cause_chain: vec![],
+            })?;
+        let (_splicing, transcript_lanes) =
+            self.collect_rna_read_report_transcript_lanes(dna, &report)?;
+        Self::build_rna_read_alignment_display_for_hit(
+            &report,
+            hit,
+            mapping,
+            dna,
+            &transcript_lanes,
+        )
+    }
+
+    pub fn build_rna_read_alignment_displays(
+        &self,
+        report_id: &str,
+        record_indices: &[usize],
+    ) -> Result<
+        (
+            Vec<RnaReadAlignmentDisplayBatchEntry>,
+            Vec<RnaReadAlignmentDisplayBatchSkippedRecord>,
+        ),
+        EngineError,
+    > {
+        let report = self.get_rna_read_report(report_id)?;
+        let dna = self
+            .state
+            .sequences
+            .get(&report.seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", report.seq_id),
+
+                cause_chain: vec![],
+            })?;
+        let (_splicing, transcript_lanes) =
+            self.collect_rna_read_report_transcript_lanes(dna, &report)?;
+        let hits_by_record_index = report
+            .hits
+            .iter()
+            .map(|hit| (hit.record_index, hit))
+            .collect::<HashMap<_, _>>();
+        let mut entries = Vec::<RnaReadAlignmentDisplayBatchEntry>::new();
+        let mut skipped_records = Vec::<RnaReadAlignmentDisplayBatchSkippedRecord>::new();
+
+        for record_index in record_indices {
+            let hit = hits_by_record_index
+                .get(record_index)
+                .copied()
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "RNA-read report '{}' does not contain record_index {}",
+                        report.report_id, record_index
+                    ),
+
+                    cause_chain: vec![],
+                })?;
+            let Some(mapping) = hit.best_mapping.as_ref() else {
+                skipped_records.push(RnaReadAlignmentDisplayBatchSkippedRecord {
+                    record_index: *record_index,
+                    header_id: hit.header_id.clone(),
+                    reason: "no_best_mapping".to_string(),
+                });
+                continue;
+            };
+            let alignment = Self::build_rna_read_alignment_display_for_hit(
+                &report,
+                hit,
+                mapping,
+                dna,
+                &transcript_lanes,
+            )?;
+            entries.push(RnaReadAlignmentDisplayBatchEntry {
+                record_index: *record_index,
+                header_id: hit.header_id.clone(),
+                alignment,
+            });
+        }
+
+        Ok((entries, skipped_records))
     }
 
     pub(super) fn align_read_to_templates(
@@ -10460,6 +12585,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read alignment phase cancelled before start".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let align_config = align_config_override.unwrap_or_else(|| report.align_config.clone());
@@ -10467,12 +12594,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "align_band_width_bp must be > 0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&align_config.min_identity_fraction) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "align_min_identity_fraction must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let dna = self
@@ -10482,6 +12613,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", report.seq_id),
+
+                cause_chain: vec![],
             })?;
         let (splicing, transcript_lanes) =
             self.collect_rna_read_report_transcript_lanes(dna, &report)?;
@@ -10498,6 +12631,8 @@ impl GentleEngine {
                     report.scope.as_str(),
                     report.seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let transcript_template_lengths = templates
@@ -10518,6 +12653,8 @@ impl GentleEngine {
                 code: ErrorCode::NotFound,
                 message: "No directional k-mer seeds could be generated from transcript templates"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let seed_catalog_rows =
@@ -10639,6 +12776,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read alignment phase cancelled during progress reporting".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut last_progress_emit_at = Instant::now();
@@ -10647,6 +12786,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::Internal,
                     message: "RNA-read alignment phase cancelled during processing".to_string(),
+
+                    cause_chain: vec![],
                 });
             }
             let Some(hit) = report.hits.get_mut(idx) else {
@@ -10859,8 +13000,10 @@ impl GentleEngine {
                         &support_junction_counts,
                         support_aligned_reads,
                     );
-                let mapped_isoform_support_rows =
-                    Self::collect_mapped_isoform_support_rows(&report.hits);
+                let mapped_isoform_support_rows = Self::collect_mapped_isoform_support_rows(
+                    &report.hits,
+                    align_config.min_identity_fraction,
+                );
                 if !on_progress(OperationProgress::RnaReadInterpret(
                     RnaReadInterpretProgress {
                         seq_id: report.seq_id.clone(),
@@ -10908,12 +13051,14 @@ impl GentleEngine {
                         code: ErrorCode::Internal,
                         message: "RNA-read alignment phase cancelled during progress reporting"
                             .to_string(),
+
+                        cause_chain: vec![],
                     });
                 }
                 cumulative_progress_emit_ms += emit_started.elapsed().as_secs_f64() * 1000.0;
                 last_progress_emit_at = Instant::now();
             }
-            if reads_processed % RNA_READ_COOPERATIVE_YIELD_EVERY_READS == 0 {
+            if reads_processed.is_multiple_of(RNA_READ_COOPERATIVE_YIELD_EVERY_READS) {
                 std::thread::yield_now();
             }
         }
@@ -10994,8 +13139,10 @@ impl GentleEngine {
         report.transition_support_rows = transition_support_rows.clone();
         report.isoform_support_rows =
             Self::collect_isoform_support_rows(&isoform_support_accumulators);
-        report.mapped_isoform_support_rows =
-            Self::collect_mapped_isoform_support_rows(&report.hits);
+        report.mapped_isoform_support_rows = Self::collect_mapped_isoform_support_rows(
+            &report.hits,
+            report.align_config.min_identity_fraction,
+        );
         report.origin_class_counts = origin_class_counts.clone();
         report
             .warnings
@@ -11040,7 +13187,10 @@ impl GentleEngine {
             reads_processed,
             cumulative_read_bases_processed,
         );
-        let mapped_isoform_support_rows = Self::collect_mapped_isoform_support_rows(&report.hits);
+        let mapped_isoform_support_rows = Self::collect_mapped_isoform_support_rows(
+            &report.hits,
+            report.align_config.min_identity_fraction,
+        );
         if !on_progress(OperationProgress::RnaReadInterpret(
             RnaReadInterpretProgress {
                 seq_id: report.seq_id.clone(),
@@ -11083,6 +13233,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read alignment phase cancelled at completion".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(report)
@@ -11162,6 +13314,8 @@ impl GentleEngine {
             reverse_translation_report: None,
             protease_digest_report: None,
             protein_residue_genomic_coordinates: None,
+            exon_skip_selection_plan: None,
+            exon_skip_materialization: None,
             cdna_assay_test_report: None,
             cdna_assay_product_materialization: None,
             transcript_qpcr_panel: None,
@@ -11178,15 +13332,26 @@ impl GentleEngine {
             cutrun_read_report_summaries: None,
             cutrun_read_coverage_export: None,
             cutrun_regulatory_support: None,
+            gene_set_resolution: None,
+            gene_set_promoter_cohort: None,
+            gene_set_cutrun_regulatory_support: None,
+            ortholog_promoter_cohort: None,
+            ortholog_promoter_comparison: None,
+            read_acquisition_report: None,
             cutrun_dataset_projection: None,
+            microarray_projection: None,
+            probe_region_evidence_interpretation: None,
+            genome_coordinate_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,
             rna_read_batch_map_report: None,
+            rna_read_isoform_preflight: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
             multi_gene_promoter_tfbs: None,
+            promoter_cohort_comparison: None,
             repeat_annotation_query: None,
             sequence_repeat_overlaps: None,
             repeat_feature_materialization: None,
@@ -11205,9 +13370,17 @@ impl GentleEngine {
             alternative_promoter_comparison: None,
             variant_promoter_context: None,
             promoter_evidence_matrix: None,
+            isoform_promoter_comparison: None,
+            promoter_expression_evidence: None,
+            promoter_artifact_manifest: None,
             promoter_reporter_candidates: None,
+            reporter_catalog: None,
+            reporter_recommendation: None,
+            reporter_corpus_export: None,
+            reporter_construct_handoff: None,
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
+            lab_assistant_instructions: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());
@@ -11251,6 +13424,8 @@ impl GentleEngine {
             reverse_translation_report: None,
             protease_digest_report: None,
             protein_residue_genomic_coordinates: None,
+            exon_skip_selection_plan: None,
+            exon_skip_materialization: None,
             cdna_assay_test_report: None,
             cdna_assay_product_materialization: None,
             transcript_qpcr_panel: None,
@@ -11267,15 +13442,26 @@ impl GentleEngine {
             cutrun_read_report_summaries: None,
             cutrun_read_coverage_export: None,
             cutrun_regulatory_support: None,
+            gene_set_resolution: None,
+            gene_set_promoter_cohort: None,
+            gene_set_cutrun_regulatory_support: None,
+            ortholog_promoter_cohort: None,
+            ortholog_promoter_comparison: None,
+            read_acquisition_report: None,
             cutrun_dataset_projection: None,
+            microarray_projection: None,
+            probe_region_evidence_interpretation: None,
+            genome_coordinate_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,
             rna_read_batch_map_report: None,
+            rna_read_isoform_preflight: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
             multi_gene_promoter_tfbs: None,
+            promoter_cohort_comparison: None,
             repeat_annotation_query: None,
             sequence_repeat_overlaps: None,
             repeat_feature_materialization: None,
@@ -11294,9 +13480,17 @@ impl GentleEngine {
             alternative_promoter_comparison: None,
             variant_promoter_context: None,
             promoter_evidence_matrix: None,
+            isoform_promoter_comparison: None,
+            promoter_expression_evidence: None,
+            promoter_artifact_manifest: None,
             promoter_reporter_candidates: None,
+            reporter_catalog: None,
+            reporter_recommendation: None,
+            reporter_corpus_export: None,
+            reporter_construct_handoff: None,
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
+            lab_assistant_instructions: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());
@@ -11373,8 +13567,7 @@ impl GentleEngine {
             .filter(|id| !id.is_empty())
             .map(|id| id.to_string())
             .collect::<Vec<_>>();
-        normalized_target_gene_ids
-            .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        normalized_target_gene_ids.sort_by_key(|left| left.to_ascii_lowercase());
         normalized_target_gene_ids.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         let mut origin_mode_warnings = Vec::<String>::new();
         if matches!(origin_mode, RnaReadOriginMode::SingleGene)
@@ -11398,6 +13591,8 @@ impl GentleEngine {
                     "Profile '{}' is not implemented yet in phase 1",
                     profile.as_str()
                 ),
+
+                cause_chain: vec![],
             });
         }
         if !matches!(input_format, RnaReadInputFormat::Fasta) {
@@ -11407,6 +13602,8 @@ impl GentleEngine {
                     "Input format '{}' is not supported yet in phase 1",
                     input_format.as_str()
                 ),
+
+                cause_chain: vec![],
             });
         }
         if input_path.trim().to_ascii_lowercase().ends_with(".sra") {
@@ -11414,24 +13611,32 @@ impl GentleEngine {
                 code: ErrorCode::Unsupported,
                 message: "Direct .sra input is not supported; convert externally to FASTA first"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         if seed_filter.kmer_len == 0 || seed_filter.kmer_len > 16 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "kmer_len must be within 1..=16".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&seed_filter.min_seed_hit_fraction) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "min_seed_hit_fraction must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&seed_filter.min_weighted_seed_hit_fraction) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "min_weighted_seed_hit_fraction must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !seed_filter.max_median_transcript_gap.is_finite()
@@ -11440,18 +13645,24 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "max_median_transcript_gap must be >= 1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&seed_filter.min_chain_consistency_fraction) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "min_chain_consistency_fraction must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&seed_filter.min_transition_support_fraction) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "min_transition_support_fraction must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -11462,6 +13673,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let splicing = self.build_splicing_expert_view(seq_id, seed_feature_id, scope)?;
         let target_feature_strand = splicing.strand.clone();
@@ -11530,6 +13743,8 @@ impl GentleEngine {
                     scope.as_str(),
                     seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let transcript_template_lengths = templates
@@ -11550,6 +13765,8 @@ impl GentleEngine {
                 code: ErrorCode::NotFound,
                 message: "No directional k-mer seeds could be generated from transcript templates"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let seed_catalog_rows =
@@ -11590,6 +13807,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "resume_from_checkpoint=true requires checkpoint_path to be set"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let checkpoint_every_reads = options.checkpoint_every_reads.max(1);
@@ -11598,6 +13817,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "resume_from_checkpoint=true requires checkpoint_path to be set"
                     .to_string(),
+
+                cause_chain: vec![],
             })?;
             let checkpoint = Self::read_rna_read_interpret_checkpoint(path)?;
             if checkpoint.seq_id != seq_id
@@ -11619,6 +13840,8 @@ impl GentleEngine {
                         "RNA-read checkpoint '{}' does not match requested interpret parameters",
                         path
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             Some(checkpoint)
@@ -11648,6 +13871,8 @@ impl GentleEngine {
                         "Checkpoint report_id '{}' does not match requested report_id '{}'",
                         checkpoint_report_id, report_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -11885,6 +14110,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read interpretation cancelled before FASTA scan started".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut last_progress_emit_at = Instant::now();
@@ -11892,6 +14119,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read interpretation cancelled before processing started".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let alignment_enabled = !matches!(profile, RnaReadInterpretationProfile::NanoporeCdnaV1)
@@ -11902,6 +14131,8 @@ impl GentleEngine {
                     return Err(EngineError {
                         code: ErrorCode::Internal,
                         message: "RNA-read interpretation cancelled during FASTA scan".to_string(),
+
+                        cause_chain: vec![],
                     });
                 }
                 input_bytes_processed =
@@ -11936,6 +14167,8 @@ impl GentleEngine {
                             code: ErrorCode::Internal,
                             message: "RNA-read interpretation cancelled during seed scanning"
                                 .to_string(),
+
+                            cause_chain: vec![],
                         });
                     }
                     let (tested, matched, matched_bits, matched_observations) =
@@ -12094,6 +14327,8 @@ impl GentleEngine {
                             code: ErrorCode::Internal,
                             message: "RNA-read interpretation cancelled before alignment"
                                 .to_string(),
+
+                            cause_chain: vec![],
                         });
                     }
                     Self::align_read_to_templates(
@@ -12265,6 +14500,8 @@ impl GentleEngine {
                             code: ErrorCode::Internal,
                             message: "RNA-read interpretation cancelled during progress reporting"
                                 .to_string(),
+
+                            cause_chain: vec![],
                         });
                     }
                     cumulative_progress_emit_ms += emit_started.elapsed().as_secs_f64() * 1000.0;
@@ -12275,70 +14512,71 @@ impl GentleEngine {
                 if reads_processed % RNA_READ_COOPERATIVE_YIELD_EVERY_READS == 0 {
                     std::thread::yield_now();
                 }
-                if let Some(path) = checkpoint_path.as_deref() {
-                    if reads_processed > 0 && reads_processed % checkpoint_every_reads == 0 {
-                        let retained_rows = Self::collect_retained_rna_read_hits_union(
-                            &retained_hits,
-                            &guaranteed_score_hits,
-                            &guaranteed_high_bin_hits,
-                        );
-                        let checkpoint = RnaReadInterpretCheckpoint {
-                            schema: RNA_READ_CHECKPOINT_SCHEMA.to_string(),
-                            created_at_unix_ms: Self::now_unix_ms(),
-                            report_id: report_id.clone(),
-                            report_mode,
-                            seq_id: seq_id.to_string(),
-                            seed_feature_id,
-                            profile,
-                            input_path: input_path.to_string(),
-                            input_format,
-                            scope,
-                            origin_mode,
-                            target_gene_ids: normalized_target_gene_ids.clone(),
-                            roi_seed_capture_enabled,
-                            seed_filter: seed_filter.clone(),
-                            align_config: align_config.clone(),
-                            checkpoint_path: checkpoint_path.clone(),
-                            checkpoint_every_reads,
-                            reads_processed,
-                            read_count_seed_passed: seed_passed,
-                            read_count_aligned: aligned,
-                            input_bytes_processed,
-                            input_bytes_total,
-                            cumulative_tested_kmers,
-                            cumulative_matched_kmers,
-                            cumulative_seed_compute_ms,
-                            cumulative_align_compute_ms,
-                            cumulative_io_read_ms,
-                            cumulative_fasta_parse_ms,
-                            cumulative_normalize_compute_ms,
-                            cumulative_inference_compute_ms,
-                            cumulative_progress_emit_ms,
-                            cumulative_read_bases_processed,
-                            read_length_counts_all: read_length_counts_all.clone(),
-                            read_length_counts_seed_passed: read_length_counts_seed_passed.clone(),
-                            read_length_counts_aligned: read_length_counts_aligned.clone(),
-                            read_length_counts_full_length_exact:
-                                read_length_counts_full_length_exact.clone(),
-                            read_length_counts_full_length_near:
-                                read_length_counts_full_length_near.clone(),
-                            read_length_counts_full_length_strict:
-                                read_length_counts_full_length_strict.clone(),
-                            support_aligned_reads,
-                            support_exon_counts: support_exon_counts.clone(),
-                            support_junction_counts: support_junction_counts.clone(),
-                            reads_with_transition_support,
-                            transition_confirmations,
-                            transition_support_rows: transition_support_rows.clone(),
-                            isoform_support_accumulators: isoform_support_accumulators.clone(),
-                            origin_class_counts: origin_class_counts.clone(),
-                            bins: bins.clone(),
-                            score_density_bins: score_density_bins.clone(),
-                            seed_pass_score_density_bins: seed_pass_score_density_bins.clone(),
-                            retained_hits: retained_rows,
-                        };
-                        Self::write_rna_read_interpret_checkpoint(path, &checkpoint)?;
-                    }
+                if let Some(path) = checkpoint_path.as_deref()
+                    && reads_processed > 0
+                    && reads_processed % checkpoint_every_reads == 0
+                {
+                    let retained_rows = Self::collect_retained_rna_read_hits_union(
+                        &retained_hits,
+                        &guaranteed_score_hits,
+                        &guaranteed_high_bin_hits,
+                    );
+                    let checkpoint = RnaReadInterpretCheckpoint {
+                        schema: RNA_READ_CHECKPOINT_SCHEMA.to_string(),
+                        created_at_unix_ms: Self::now_unix_ms(),
+                        report_id: report_id.clone(),
+                        report_mode,
+                        seq_id: seq_id.to_string(),
+                        seed_feature_id,
+                        profile,
+                        input_path: input_path.to_string(),
+                        input_format,
+                        scope,
+                        origin_mode,
+                        target_gene_ids: normalized_target_gene_ids.clone(),
+                        roi_seed_capture_enabled,
+                        seed_filter: seed_filter.clone(),
+                        align_config: align_config.clone(),
+                        checkpoint_path: checkpoint_path.clone(),
+                        checkpoint_every_reads,
+                        reads_processed,
+                        read_count_seed_passed: seed_passed,
+                        read_count_aligned: aligned,
+                        input_bytes_processed,
+                        input_bytes_total,
+                        cumulative_tested_kmers,
+                        cumulative_matched_kmers,
+                        cumulative_seed_compute_ms,
+                        cumulative_align_compute_ms,
+                        cumulative_io_read_ms,
+                        cumulative_fasta_parse_ms,
+                        cumulative_normalize_compute_ms,
+                        cumulative_inference_compute_ms,
+                        cumulative_progress_emit_ms,
+                        cumulative_read_bases_processed,
+                        read_length_counts_all: read_length_counts_all.clone(),
+                        read_length_counts_seed_passed: read_length_counts_seed_passed.clone(),
+                        read_length_counts_aligned: read_length_counts_aligned.clone(),
+                        read_length_counts_full_length_exact: read_length_counts_full_length_exact
+                            .clone(),
+                        read_length_counts_full_length_near: read_length_counts_full_length_near
+                            .clone(),
+                        read_length_counts_full_length_strict:
+                            read_length_counts_full_length_strict.clone(),
+                        support_aligned_reads,
+                        support_exon_counts: support_exon_counts.clone(),
+                        support_junction_counts: support_junction_counts.clone(),
+                        reads_with_transition_support,
+                        transition_confirmations,
+                        transition_support_rows: transition_support_rows.clone(),
+                        isoform_support_accumulators: isoform_support_accumulators.clone(),
+                        origin_class_counts: origin_class_counts.clone(),
+                        bins: bins.clone(),
+                        score_density_bins: score_density_bins.clone(),
+                        seed_pass_score_density_bins: seed_pass_score_density_bins.clone(),
+                        retained_hits: retained_rows,
+                    };
+                    Self::write_rna_read_interpret_checkpoint(path, &checkpoint)?;
                 }
                 Ok(())
             })?;
@@ -12372,7 +14610,8 @@ impl GentleEngine {
                 &support_junction_counts,
                 support_aligned_reads,
             );
-        let mapped_isoform_support_rows = Self::collect_mapped_isoform_support_rows(&hits);
+        let mapped_isoform_support_rows =
+            Self::collect_mapped_isoform_support_rows(&hits, align_config.min_identity_fraction);
         let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
             &read_length_counts_all,
             reads_total,
@@ -12420,6 +14659,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read interpretation cancelled at completion".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let _final_emit_ms = final_emit_started.elapsed().as_secs_f64() * 1000.0;
@@ -12608,6 +14849,141 @@ mod tests {
             passed_seed_filter,
             ..RnaReadInterpretationHit::default()
         }
+    }
+
+    fn test_mapping(transcript_id: &str) -> RnaReadMappingHit {
+        RnaReadMappingHit {
+            transcript_feature_id: 7,
+            transcript_id: transcript_id.to_string(),
+            transcript_label: transcript_id.to_string(),
+            strand: "+".to_string(),
+            query_start_0based: 0,
+            query_end_0based_exclusive: 100,
+            target_start_1based: 1,
+            target_end_1based: 100,
+            target_start_offset_0based: 0,
+            target_end_offset_0based_exclusive: 100,
+            matches: 98,
+            mismatches: 2,
+            score: 96,
+            identity_fraction: 0.98,
+            query_coverage_fraction: 0.95,
+            ..RnaReadMappingHit::default()
+        }
+    }
+
+    fn triage_thresholds() -> RnaReadIsoformTriageThresholds {
+        RnaReadIsoformTriageThresholds {
+            min_identity_fraction: 0.90,
+            min_query_coverage_fraction: 0.80,
+            min_confirmed_transition_fraction: 0.75,
+            max_secondary_mappings: 0,
+        }
+    }
+
+    #[test]
+    fn classify_isoform_triage_confirmed_requires_consistent_transcript_evidence() {
+        let mut hit = test_rna_read_hit(0, 0.95, true);
+        hit.origin_class = RnaReadOriginClass::TargetCoherent;
+        hit.seed_chain_transcript_id = "TP73-201".to_string();
+        hit.exon_path_transcript_id = "TP73-201".to_string();
+        hit.exon_transitions_confirmed = 3;
+        hit.exon_transitions_total = 3;
+        hit.best_mapping = Some(test_mapping("TP73-201"));
+
+        let (bin, reason) =
+            GentleEngine::classify_rna_read_isoform_triage_hit(&hit, triage_thresholds());
+
+        assert_eq!(bin, RnaReadIsoformTriageBin::KnownIsoformConfirmed);
+        assert!(reason.contains("gates agree"));
+    }
+
+    #[test]
+    fn classify_isoform_triage_conflicting_known_transcripts_as_ambiguous() {
+        let mut hit = test_rna_read_hit(0, 0.95, true);
+        hit.origin_class = RnaReadOriginClass::TargetCoherent;
+        hit.seed_chain_transcript_id = "TP73-201".to_string();
+        hit.exon_path_transcript_id = "TP73-202".to_string();
+        hit.exon_transitions_confirmed = 3;
+        hit.exon_transitions_total = 3;
+        hit.best_mapping = Some(test_mapping("TP73-201"));
+
+        let (bin, reason) =
+            GentleEngine::classify_rna_read_isoform_triage_hit(&hit, triage_thresholds());
+
+        assert_eq!(bin, RnaReadIsoformTriageBin::KnownIsoformAmbiguous);
+        assert!(reason.contains("not unique"));
+    }
+
+    #[test]
+    fn classify_isoform_triage_avoids_novel_label_for_unmapped_gene_supported_read() {
+        let mut hit = test_rna_read_hit(0, 0.95, true);
+        hit.origin_class = RnaReadOriginClass::TargetPartialLocalBlock;
+
+        let (bin, reason) =
+            GentleEngine::classify_rna_read_isoform_triage_hit(&hit, triage_thresholds());
+
+        assert_eq!(bin, RnaReadIsoformTriageBin::GeneSupportedNoIsoformCall);
+        assert!(reason.contains("no phase-2 transcript alignment"));
+    }
+
+    #[test]
+    fn mapped_isoform_support_rows_accumulate_triage_bins_with_priority() {
+        let mut confirmed = test_rna_read_hit(0, 0.95, true);
+        confirmed.origin_class = RnaReadOriginClass::TargetCoherent;
+        confirmed.seed_chain_transcript_id = "TP73-201".to_string();
+        confirmed.exon_path_transcript_id = "TP73-201".to_string();
+        confirmed.exon_transitions_confirmed = 3;
+        confirmed.exon_transitions_total = 3;
+        confirmed.best_mapping = Some(test_mapping("TP73-201"));
+
+        let mut ambiguous = test_rna_read_hit(1, 0.95, true);
+        ambiguous.origin_class = RnaReadOriginClass::TargetCoherent;
+        ambiguous.seed_chain_transcript_id = "TP73-201".to_string();
+        ambiguous.exon_path_transcript_id = "TP73-202".to_string();
+        ambiguous.exon_transitions_confirmed = 3;
+        ambiguous.exon_transitions_total = 3;
+        ambiguous.best_mapping = Some(test_mapping("TP73-201"));
+
+        let mut off_target = test_rna_read_hit(2, 0.95, true);
+        off_target.origin_class = RnaReadOriginClass::BackgroundLikely;
+        off_target.best_mapping = Some(test_mapping("TP73-202"));
+
+        let rows = GentleEngine::collect_mapped_isoform_support_rows(
+            &[confirmed, ambiguous, off_target],
+            0.90,
+        );
+
+        let tp73_201 = rows
+            .iter()
+            .find(|row| row.transcript_id == "TP73-201")
+            .expect("TP73-201 row");
+        assert_eq!(tp73_201.aligned_read_count, 2);
+        assert_eq!(
+            tp73_201
+                .triage_bin_counts
+                .get(RnaReadIsoformTriageBin::KnownIsoformConfirmed.as_str()),
+            Some(&1)
+        );
+        assert_eq!(
+            tp73_201
+                .triage_bin_counts
+                .get(RnaReadIsoformTriageBin::KnownIsoformAmbiguous.as_str()),
+            Some(&1)
+        );
+        assert_eq!(
+            tp73_201.dominant_triage_bin,
+            Some(RnaReadIsoformTriageBin::KnownIsoformConfirmed)
+        );
+
+        let tp73_202 = rows
+            .iter()
+            .find(|row| row.transcript_id == "TP73-202")
+            .expect("TP73-202 row");
+        assert_eq!(
+            tp73_202.dominant_triage_bin,
+            Some(RnaReadIsoformTriageBin::OffTargetOrBadSeed)
+        );
     }
 
     fn feed_retention_trackers(

@@ -116,10 +116,10 @@ pub fn load_restriction_enzymes_from_path(path: &str) -> Result<Vec<RestrictionE
 }
 
 pub fn active_restriction_enzymes() -> Vec<RestrictionEnzyme> {
-    if let Ok(custom) = load_restriction_enzymes_from_path(RUNTIME_REBASE_PATH) {
-        if !custom.is_empty() {
-            return custom;
-        }
+    if let Ok(custom) = load_restriction_enzymes_from_path(RUNTIME_REBASE_PATH)
+        && !custom.is_empty()
+    {
+        return custom;
     }
     load_restriction_enzymes_from_json_text(BUILTIN_ENZYMES_JSON).unwrap_or_default()
 }
@@ -194,13 +194,12 @@ pub fn golden_gate_type_iis_preferred_restriction_enzyme_names() -> Vec<String> 
 impl Default for Enzymes {
     fn default() -> Self {
         let mut base = Enzymes::new(BUILTIN_ENZYMES_JSON).unwrap();
-        if let Ok(text) = fs::read_to_string(RUNTIME_REBASE_PATH) {
-            if let Ok(custom) = Enzymes::new(&text) {
-                if !custom.restriction_enzymes.is_empty() {
-                    base.restriction_enzymes = custom.restriction_enzymes;
-                    base.recompute_derived_fields();
-                }
-            }
+        if let Ok(text) = fs::read_to_string(RUNTIME_REBASE_PATH)
+            && let Ok(custom) = Enzymes::new(&text)
+            && !custom.restriction_enzymes.is_empty()
+        {
+            base.restriction_enzymes = custom.restriction_enzymes;
+            base.recompute_derived_fields();
         }
         base
     }

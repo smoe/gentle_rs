@@ -104,17 +104,17 @@ pub fn collect_location_ranges_usize(location: &Location, ranges: &mut Vec<(usiz
 pub fn feature_ranges_sorted_i64(feature: &Feature) -> Vec<(i64, i64)> {
     let mut ranges = Vec::new();
     collect_location_ranges_i64(&feature.location, &mut ranges);
-    if ranges.is_empty() {
-        if let Ok((from, to)) = feature.location.find_bounds() {
-            if from >= 0 && to >= 0 {
-                let mut start = from;
-                let mut end = to;
-                if end < start {
-                    std::mem::swap(&mut start, &mut end);
-                }
-                ranges.push((start, end));
-            }
+    if ranges.is_empty()
+        && let Ok((from, to)) = feature.location.find_bounds()
+        && from >= 0
+        && to >= 0
+    {
+        let mut start = from;
+        let mut end = to;
+        if end < start {
+            std::mem::swap(&mut start, &mut end);
         }
+        ranges.push((start, end));
     }
     ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
     ranges

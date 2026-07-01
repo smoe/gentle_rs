@@ -1,0 +1,27 @@
+{
+  "schema": "gentle.external_service_delivery_route_request.v1",
+  "source_target": {
+    "kind": "inline_dna",
+    "name": "DEMO_DO_NOT_ORDER_delivery_route_mblock_fragment",
+    "sequence": "ATGGCTAGCGGTACTGATCGTACCTGACGATCGGTTACGATGCTAGCTAACTGACCGTACGATCGTACGATGCTAAGGATCCGATCGTACGATCGTACCGATCGTACCGATCGTACCGATCGTACCGATCGTACCGATCGTAA",
+    "note": "Synthetic tutorial input for routing a DNA fragment delivery request."
+  },
+  "delivery_options": {
+    "delivery_form": "dry",
+    "qc": "vendor default"
+  },
+  "return_spec": {
+    "requested_payloads": [
+      "quote_metadata",
+      "handoff_bundle"
+    ],
+    "inline_max_bytes": 20000,
+    "redact_commercial_fields": true,
+    "prefer_artifact_bundle": true
+  },
+  "request_metadata": {
+    "tutorial": true,
+    "human_review_only": true,
+    "prompt_example": "I want that DNA fragment delivered."
+  }
+}

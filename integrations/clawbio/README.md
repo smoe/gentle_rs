@@ -27,9 +27,12 @@ Current scaffold:
   relate)
 - `experimental_followup_requests.md` (requests for ClawBio developers who
   want prompts such as "determine the effect of this SNP", "what should we do
-  with this differentially expressed gene", or "characterize this splice
-  variant" to route through external evidence plus GENtle assay-planning
-  artifacts)
+  with this differentially expressed gene", "characterize this splice variant",
+  or "give me the maximal amount of protein" to route through external
+  evidence plus GENtle assay-planning artifacts)
+- `local_agent_handoff.md` (small routing memory for Codex, Claude, OpenClaw,
+  and other local agents that should call GENtle through the known ClawBio
+  runner instead of rediscovering or reimplementing the skill setup)
 
 Deployment into a ClawBio checkout:
 
@@ -129,6 +132,19 @@ Shared skill-intent descriptor:
 - Keep Telegram/Discord-specific permissions, chat delivery, and subprocess
   execution in ClawBio. GENtle only owns portable route names and request
   paths.
+
+Local agent handoff:
+
+- For local Codex, Claude, OpenClaw, or similar agent wrappers, use
+  `local_agent_handoff.md` as the small shared routing note. It records the
+  "delegate to ClawBio's `gentle-cloning` runner" boundary, the expected
+  `GENTLE_CLI_CMD` pattern, result-inspection order, readiness discipline, and
+  a copyable wrapper prompt.
+- The handoff note is intentionally not a second GENtle command surface. If an
+  agent needs to run GENtle through ClawBio, it should choose an existing
+  `skills/gentle-cloning/examples/*.json` request or construct the documented
+  ClawBio request shape, then inspect `result.json`, `report.md`, preferred
+  artifacts, and reproducibility files.
 
 Recognition smoke tests:
 

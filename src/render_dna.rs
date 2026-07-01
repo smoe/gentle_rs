@@ -3,12 +3,14 @@
 use crate::{
     dna_display::{DnaDisplay, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
+    exon_frame::ExonLengthFrameCue,
+    feature_location::collect_location_ranges_usize,
     render_dna_circular::RenderDnaCircular,
     render_dna_linear::RenderDnaLinear,
     repeat_features::{is_repeat_feature, repeat_feature_display},
     restriction_enzyme::RestrictionEnzymeKey,
 };
-use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Vec2, Widget};
+use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Stroke, Ui, Vec2, Widget};
 use gb_io::seq::Feature;
 use std::{
     collections::BTreeSet,
@@ -23,6 +25,13 @@ pub struct RestrictionEnzymePosition {
     pub area: Rect,
     pub hit_areas: Vec<Rect>,
     pub key: RestrictionEnzymeKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HoveredExonFrameCue {
+    pub exon_number: usize,
+    pub length_mod3: u8,
+    pub skip_frame_hint: &'static str,
 }
 
 impl RestrictionEnzymePosition {
@@ -153,6 +162,19 @@ impl RenderDna {
         }
     }
 
+    pub fn get_hovered_restriction_site(&self) -> Option<RestrictionEnzymePosition> {
+        match self {
+            RenderDna::Circular(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_restriction_enzyme()),
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_restriction_enzyme()),
+        }
+    }
+
     pub fn get_selected_reasoning_evidence_id(&self) -> Option<String> {
         match self {
             RenderDna::Circular(renderer) => renderer
@@ -176,6 +198,16 @@ impl RenderDna {
                 .read()
                 .ok()
                 .and_then(|r| r.hovered_feature_number()),
+        }
+    }
+
+    pub fn get_hovered_exon_frame_cue(&self) -> Option<HoveredExonFrameCue> {
+        match self {
+            RenderDna::Circular(_) => None,
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_exon_frame_cue()),
         }
     }
 
@@ -216,10 +248,10 @@ impl RenderDna {
     }
 
     pub fn set_linear_external_labeled_feature_numbers(&self, feature_numbers: BTreeSet<usize>) {
-        if let RenderDna::Linear(renderer) = self {
-            if let Ok(mut renderer) = renderer.write() {
-                renderer.set_external_labeled_feature_numbers(feature_numbers);
-            }
+        if let RenderDna::Linear(renderer) = self
+            && let Ok(mut renderer) = renderer.write()
+        {
+            renderer.set_external_labeled_feature_numbers(feature_numbers);
         }
     }
 
@@ -280,6 +312,7 @@ impl RenderDna {
     }
 
     fn render(&self, ui: &mut egui::Ui, area: Rect) {
+        crate::gentle_gui_profile_scope!("RenderDna::render");
         let result = catch_unwind(AssertUnwindSafe(|| match self {
             RenderDna::Circular(renderer) => {
                 if let Ok(mut renderer) = renderer.write() {
@@ -297,6 +330,17 @@ impl RenderDna {
         }
     }
 
+    fn interaction_id(&self, ui: &Ui) -> egui::Id {
+        ui.make_persistent_id(("render_dna_map", self.interaction_id_salt()))
+    }
+
+    fn interaction_id_salt(&self) -> usize {
+        match self {
+            RenderDna::Circular(renderer) => Arc::as_ptr(renderer) as usize,
+            RenderDna::Linear(renderer) => Arc::as_ptr(renderer) as usize,
+        }
+    }
+
     pub fn is_feature_pointy(feature: &Feature) -> bool {
         matches!(
             feature.kind.to_string().to_ascii_uppercase().as_str(),
@@ -305,10 +349,40 @@ impl RenderDna {
     }
 
     pub fn is_variation_feature(feature: &Feature) -> bool {
-        feature.kind.to_string().to_ascii_uppercase() == "VARIATION"
+        feature.kind.to_string().eq_ignore_ascii_case("VARIATION")
+    }
+
+    pub fn is_exon_length_frame_cue_feature(feature: &Feature) -> bool {
+        matches!(
+            feature.kind.to_string().to_ascii_uppercase().as_str(),
+            "MRNA" | "TRANSCRIPT" | "EXON" | "CDS"
+        )
+    }
+
+    pub fn exon_length_mod3_for_range(start_0based: usize, end_0based_exclusive: usize) -> u8 {
+        ExonLengthFrameCue::from_range(start_0based, end_0based_exclusive).length_mod3 as u8
+    }
+
+    pub fn exon_length_mod3_color(mod3: u8) -> Color32 {
+        match mod3 % 3 {
+            0 => Color32::from_rgb(30, 64, 175),
+            1 => Color32::from_rgb(217, 119, 6),
+            _ => Color32::from_rgb(225, 29, 72),
+        }
+    }
+
+    pub fn exon_length_mod3_color_label(mod3: u8) -> &'static str {
+        match mod3 % 3 {
+            0 => "blue",
+            1 => "amber",
+            _ => "rose",
+        }
     }
 
     pub fn feature_color(feature: &Feature) -> Color32 {
+        if Self::is_array_track_feature(feature) {
+            return Self::array_feature_color(feature);
+        }
         if Self::is_vcf_track_feature(feature) {
             let class = Self::vcf_variant_class(feature)
                 .unwrap_or_else(|| "OTHER".to_string())
@@ -328,14 +402,14 @@ impl RenderDna {
             let (r, g, b) = repeat.class.color_rgb();
             return Color32::from_rgb(r, g, b);
         }
-        if Self::is_regulatory_feature(feature) {
-            if let Some(reg_class) = Self::regulatory_class(feature) {
-                if reg_class.contains("silencer") || reg_class.contains("repressor") {
-                    return Color32::from_rgb(190, 50, 50);
-                }
-                if reg_class.contains("enhancer") || reg_class.contains("activator") {
-                    return Color32::from_rgb(45, 150, 65);
-                }
+        if Self::is_regulatory_feature(feature)
+            && let Some(reg_class) = Self::regulatory_class(feature)
+        {
+            if reg_class.contains("silencer") || reg_class.contains("repressor") {
+                return Color32::from_rgb(190, 50, 50);
+            }
+            if reg_class.contains("enhancer") || reg_class.contains("activator") {
+                return Color32::from_rgb(45, 150, 65);
             }
         }
         match feature.kind.to_string().to_ascii_uppercase().as_str() {
@@ -361,15 +435,15 @@ impl RenderDna {
     }
 
     pub fn is_cds_feature(feature: &Feature) -> bool {
-        feature.kind.to_string().to_ascii_uppercase() == "CDS"
+        feature.kind.to_string().eq_ignore_ascii_case("CDS")
     }
 
     pub fn is_gene_feature(feature: &Feature) -> bool {
-        feature.kind.to_string().to_ascii_uppercase() == "GENE"
+        feature.kind.to_string().eq_ignore_ascii_case("GENE")
     }
 
     pub fn is_mrna_feature(feature: &Feature) -> bool {
-        feature.kind.to_string().to_ascii_uppercase() == "MRNA"
+        feature.kind.to_string().eq_ignore_ascii_case("MRNA")
     }
 
     pub fn is_contextual_transcript_feature(feature: &Feature) -> bool {
@@ -434,9 +508,24 @@ impl RenderDna {
         feature.qualifier_values("gentle_generated").any(|value| {
             matches!(
                 value.trim().to_ascii_lowercase().as_str(),
-                "genome_bed_track" | "genome_bigwig_track" | "genome_vcf_track" | "blast_hit_track"
+                "genome_bed_track"
+                    | "genome_bigwig_track"
+                    | "genome_vcf_track"
+                    | "blast_hit_track"
+                    | "microarray_track_projection"
             )
         })
+    }
+
+    pub fn is_array_track_feature(feature: &Feature) -> bool {
+        feature
+            .qualifier_values("gentle_track_source")
+            .any(|value| value.trim().eq_ignore_ascii_case("Array"))
+            || feature.qualifier_values("gentle_generated").any(|value| {
+                value
+                    .trim()
+                    .eq_ignore_ascii_case("microarray_track_projection")
+            })
     }
 
     pub fn is_vcf_track_feature(feature: &Feature) -> bool {
@@ -492,7 +581,7 @@ impl RenderDna {
     }
 
     fn compact_mcs_label(text: &str) -> String {
-        let short = text.split(|c| c == ';' || c == '\n').next().unwrap_or(text);
+        let short = text.split([';', '\n']).next().unwrap_or(text);
         let normalized = short.split_whitespace().collect::<Vec<_>>().join(" ");
         let normalized = normalized.trim();
         if normalized.is_empty() {
@@ -534,6 +623,521 @@ impl RenderDna {
             }
         }
         None
+    }
+
+    fn push_repeat_detail_once(
+        lines: &mut Vec<String>,
+        seen: &mut BTreeSet<String>,
+        key: &str,
+        value: String,
+    ) {
+        let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+        let value = value.trim();
+        if value.is_empty() {
+            return;
+        }
+        let line = format!("{key}: {value}");
+        if seen.insert(line.clone()) {
+            lines.push(line);
+        }
+    }
+
+    fn push_repeat_qualifier_detail(
+        lines: &mut Vec<String>,
+        seen: &mut BTreeSet<String>,
+        label: &str,
+        feature: &Feature,
+        keys: &[&str],
+    ) -> bool {
+        if let Some(value) = Self::first_nonempty_qualifier(feature, keys) {
+            Self::push_repeat_detail_once(lines, seen, label, value);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn repeat_divergence_percent_from_milli_div(feature: &Feature) -> Option<String> {
+        let milli_div = Self::first_nonempty_qualifier(feature, &["milliDiv"])?;
+        let value = milli_div.trim().parse::<f64>().ok()?;
+        let percent = value / 10.0;
+        percent.is_finite().then(|| format!("{percent:.1}"))
+    }
+
+    fn repeat_genomic_interval_text(feature: &Feature) -> Option<String> {
+        let chromosome = Self::first_nonempty_qualifier(feature, &["chromosome"])?;
+        let start = Self::first_nonempty_qualifier(feature, &["genomic_start_1based"])?;
+        let end = Self::first_nonempty_qualifier(feature, &["genomic_end_1based"])?;
+        Some(format!("{chromosome}:{start}..{end}"))
+    }
+
+    fn repeat_ucsc_genomic_interval_text(feature: &Feature) -> Option<String> {
+        let chromosome = Self::first_nonempty_qualifier(feature, &["genoName"])?;
+        let start_0based = Self::first_nonempty_qualifier(feature, &["genoStart"])?
+            .trim()
+            .parse::<u64>()
+            .ok()?;
+        let end_1based = Self::first_nonempty_qualifier(feature, &["genoEnd"])?;
+        Some(format!(
+            "{chromosome}:{}..{end_1based}",
+            start_0based.saturating_add(1)
+        ))
+    }
+
+    fn repeat_consensus_interval_text(feature: &Feature) -> Option<String> {
+        let start = Self::first_nonempty_qualifier(feature, &["repStart"])?;
+        let end = Self::first_nonempty_qualifier(feature, &["repEnd"])?;
+        match Self::first_nonempty_qualifier(feature, &["repLeft"]) {
+            Some(left) => Some(format!("{start}..{end} (left {left})")),
+            None => Some(format!("{start}..{end}")),
+        }
+    }
+
+    fn repeat_feature_detail_lines(feature: &Feature) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut seen = BTreeSet::new();
+        let repeat_display = repeat_feature_display(feature);
+
+        let source =
+            Self::first_nonempty_qualifier(feature, &["gentle_feature_source", "gentle_generated"]);
+        if source
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case("ucsc_rmsk"))
+        {
+            Self::push_repeat_detail_once(
+                &mut lines,
+                &mut seen,
+                "repeat_source",
+                "UCSC rmsk".to_string(),
+            );
+        } else if Self::first_nonempty_qualifier(feature, &["rmsk_name", "rmsk_class"]).is_some() {
+            Self::push_repeat_detail_once(
+                &mut lines,
+                &mut seen,
+                "repeat_source",
+                "RepeatMasker/UCSC rmsk".to_string(),
+            );
+        } else if Self::first_nonempty_qualifier(feature, &["genoName", "genoStart", "genoEnd"])
+            .is_some()
+        {
+            Self::push_repeat_detail_once(
+                &mut lines,
+                &mut seen,
+                "repeat_source",
+                "UCSC rmsk".to_string(),
+            );
+        } else if Self::first_nonempty_qualifier(feature, &["repName", "repClass", "repFamily"])
+            .is_some()
+        {
+            Self::push_repeat_detail_once(
+                &mut lines,
+                &mut seen,
+                "repeat_source",
+                "RepeatMasker".to_string(),
+            );
+        }
+
+        if let Some(repeat) = repeat_display.as_ref() {
+            Self::push_repeat_detail_once(
+                &mut lines,
+                &mut seen,
+                "repeat_summary",
+                repeat.display_label(),
+            );
+        }
+        let repeat_name = Self::first_nonempty_qualifier(
+            feature,
+            &[
+                "rmsk_name",
+                "repName",
+                "repeat_name",
+                "rpt_name",
+                "repeat_id",
+            ],
+        );
+        let repeat_class = Self::first_nonempty_qualifier(
+            feature,
+            &[
+                "rmsk_class",
+                "repClass",
+                "repeat_class",
+                "rpt_class",
+                "rpt_type",
+                "mobile_element_type",
+            ],
+        );
+        let repeat_family = Self::first_nonempty_qualifier(
+            feature,
+            &[
+                "rmsk_family",
+                "repFamily",
+                "repeat_family",
+                "rpt_family",
+                "repeat_subfamily",
+                "subfamily",
+            ],
+        );
+        let has_repeat_class = repeat_class.is_some();
+        if let Some(name) = repeat_display
+            .as_ref()
+            .and_then(|repeat| repeat.name.clone())
+            .or(repeat_name)
+        {
+            Self::push_repeat_detail_once(&mut lines, &mut seen, "repeat_name", name);
+        }
+        if let Some(class) = repeat_display
+            .as_ref()
+            .and_then(|repeat| {
+                if has_repeat_class || !repeat.class_label.eq_ignore_ascii_case("Repeat") {
+                    Some(repeat.class_label.clone())
+                } else {
+                    None
+                }
+            })
+            .or(repeat_class)
+        {
+            Self::push_repeat_detail_once(&mut lines, &mut seen, "repeat_class", class);
+        }
+        if let Some(family) = repeat_display
+            .as_ref()
+            .and_then(|repeat| repeat.family.clone())
+            .or(repeat_family)
+        {
+            Self::push_repeat_detail_once(&mut lines, &mut seen, "repeat_family", family);
+        }
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "repeat_alias",
+            feature,
+            &["repeat_alias"],
+        );
+
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "local_strand",
+            feature,
+            &["strand"],
+        );
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "genomic_strand",
+            feature,
+            &["rmsk_genomic_strand"],
+        );
+        if let Some(interval) = Self::repeat_genomic_interval_text(feature)
+            .or_else(|| Self::repeat_ucsc_genomic_interval_text(feature))
+        {
+            Self::push_repeat_detail_once(&mut lines, &mut seen, "genomic_interval", interval);
+        } else {
+            Self::push_repeat_qualifier_detail(
+                &mut lines,
+                &mut seen,
+                "chromosome",
+                feature,
+                &["chromosome", "genoName"],
+            );
+            Self::push_repeat_qualifier_detail(
+                &mut lines,
+                &mut seen,
+                "genomic_start_1based",
+                feature,
+                &["genomic_start_1based"],
+            );
+            Self::push_repeat_qualifier_detail(
+                &mut lines,
+                &mut seen,
+                "genomic_end_1based",
+                feature,
+                &["genomic_end_1based"],
+            );
+        }
+        if let Some(interval) = Self::repeat_consensus_interval_text(feature) {
+            Self::push_repeat_detail_once(
+                &mut lines,
+                &mut seen,
+                "repeat_consensus_interval",
+                interval,
+            );
+        }
+
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "score",
+            feature,
+            &["swScore", "score"],
+        );
+        if !Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "divergence_percent",
+            feature,
+            &["rmsk_divergence_percent"],
+        ) && let Some(value) = Self::repeat_divergence_percent_from_milli_div(feature)
+        {
+            Self::push_repeat_detail_once(&mut lines, &mut seen, "divergence_percent", value);
+        }
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "milli_div",
+            feature,
+            &["milliDiv"],
+        );
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "milli_del",
+            feature,
+            &["milliDel"],
+        );
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "milli_ins",
+            feature,
+            &["milliIns"],
+        );
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "clipped_to_sequence",
+            feature,
+            &["rmsk_clipped"],
+        );
+
+        for (label, keys) in [
+            ("rmsk_annotation_id", &["rmsk_annotation_id"][..]),
+            ("rmsk_row_offset", &["rmsk_row_offset"][..]),
+            ("rmsk_bin", &["rmsk_bin"][..]),
+            ("rmsk_index_path", &["rmsk_index_path"][..]),
+            ("rmsk_table_id", &["id"][..]),
+            ("geno_left", &["genoLeft"][..]),
+            ("note", &["note"][..]),
+            ("db_xref", &["db_xref"][..]),
+        ] {
+            Self::push_repeat_qualifier_detail(&mut lines, &mut seen, label, feature, keys);
+        }
+
+        lines
+    }
+
+    fn push_first_feature_detail_line(
+        lines: &mut Vec<String>,
+        seen: &mut BTreeSet<String>,
+        feature: &Feature,
+        label: &str,
+        keys: &[&str],
+    ) {
+        for key in keys {
+            if let Some(value) = Self::feature_qualifier_text(feature, key) {
+                let line = format!("{label}: {value}");
+                if seen.insert(line.clone()) {
+                    lines.push(line);
+                }
+                break;
+            }
+        }
+    }
+
+    fn array_feature_detail_lines(feature: &Feature) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut seen = BTreeSet::new();
+        for (label, keys) in [
+            ("array_dataset", &["gentle_array_dataset"][..]),
+            ("array_platform", &["gentle_array_platform"][..]),
+            (
+                "array_coordinate_system",
+                &["gentle_array_coordinate_system"][..],
+            ),
+            (
+                "array_supported_genomes",
+                &["gentle_array_supported_genome_ids"][..],
+            ),
+            (
+                "sequence_anchor_genome",
+                &["gentle_array_anchor_genome_id"][..],
+            ),
+            ("assembly_check", &["gentle_array_assembly_check"][..]),
+            ("projection_method", &["gentle_array_projection_method"][..]),
+            ("projection_status", &["gentle_array_projection_status"][..]),
+            ("contrast", &["gentle_array_contrast"][..]),
+            ("level", &["gentle_array_level"][..]),
+            ("feature_id", &["feature_id", "gentle_array_feature_id"][..]),
+            ("transcript_cluster", &["transcript_cluster_id"][..]),
+            ("exon_id", &["exon_id"][..]),
+            ("probe_type", &["gentle_array_probe_type"][..]),
+            ("logFC", &["logFC"][..]),
+            ("adj.P.Val", &["adj_P_Val"][..]),
+            ("AveExpr", &["AveExpr"][..]),
+            ("P.Value", &["P_Value"][..]),
+            ("all_contrast_values", &["gentle_array_value_summary"][..]),
+            ("gene", &["gene", "gene_symbol"][..]),
+            ("junction_start_edge", &["junction_start_edge"][..]),
+            ("junction_stop_edge", &["junction_stop_edge"][..]),
+            ("junction_sequence", &["junction_sequence"][..]),
+            ("has_cds", &["has_cds"][..]),
+        ] {
+            Self::push_first_feature_detail_line(&mut lines, &mut seen, feature, label, keys);
+        }
+        let chrom = Self::feature_qualifier_text(feature, "chromosome");
+        let start = Self::feature_qualifier_text(feature, "start_1based")
+            .or_else(|| Self::feature_qualifier_text(feature, "genomic_start_1based"));
+        let end = Self::feature_qualifier_text(feature, "end_1based")
+            .or_else(|| Self::feature_qualifier_text(feature, "genomic_end_1based"));
+        if let (Some(chrom), Some(start), Some(end)) = (chrom, start, end) {
+            let line = format!("genomic_interval: {chrom}:{start}..{end}");
+            if seen.insert(line.clone()) {
+                lines.push(line);
+            }
+        }
+        let native_chrom = Self::feature_qualifier_text(feature, "gentle_array_native_chromosome");
+        let native_start =
+            Self::feature_qualifier_text(feature, "gentle_array_native_start_1based");
+        let native_end = Self::feature_qualifier_text(feature, "gentle_array_native_end_1based");
+        if let (Some(chrom), Some(start), Some(end)) = (native_chrom, native_start, native_end) {
+            let line = format!("native_array_interval: {chrom}:{start}..{end}");
+            if seen.insert(line.clone()) {
+                lines.push(line);
+            }
+        }
+        let anchor_chrom = Self::feature_qualifier_text(feature, "gentle_array_anchor_chromosome");
+        let anchor_start =
+            Self::feature_qualifier_text(feature, "gentle_array_anchor_start_1based");
+        let anchor_end = Self::feature_qualifier_text(feature, "gentle_array_anchor_end_1based");
+        let anchor_strand = Self::feature_qualifier_text(feature, "gentle_array_anchor_strand")
+            .unwrap_or_else(|| "+".to_string());
+        if let (Some(chrom), Some(start), Some(end)) = (anchor_chrom, anchor_start, anchor_end) {
+            let line = format!("sequence_anchor_interval: {chrom}:{start}..{end} {anchor_strand}");
+            if seen.insert(line.clone()) {
+                lines.push(line);
+            }
+        }
+        for (label, keys) in [
+            ("local_strand", &["strand"][..]),
+            ("array_strand", &["array_strand"][..]),
+            ("track_file", &["gentle_track_file"][..]),
+            ("note", &["note"][..]),
+        ] {
+            Self::push_first_feature_detail_line(&mut lines, &mut seen, feature, label, keys);
+        }
+        lines
+    }
+
+    fn genome_track_feature_detail_lines(feature: &Feature) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut seen = BTreeSet::new();
+        for (label, keys) in [
+            ("track_source", &["gentle_track_source"][..]),
+            ("track_name", &["gentle_track_name"][..]),
+            ("track_file", &["gentle_track_file"][..]),
+            ("track_kind", &["gentle_generated"][..]),
+            ("label", &["label", "name"][..]),
+        ] {
+            Self::push_first_feature_detail_line(&mut lines, &mut seen, feature, label, keys);
+        }
+
+        let chrom = Self::feature_qualifier_text(feature, "chromosome")
+            .or_else(|| Self::feature_qualifier_text(feature, "chrom"));
+        let start = Self::feature_qualifier_text(feature, "genomic_start_1based")
+            .or_else(|| Self::feature_qualifier_text(feature, "start_1based"))
+            .or_else(|| Self::feature_qualifier_text(feature, "vcf_pos_1based"))
+            .or_else(|| {
+                Self::feature_qualifier_text(feature, "bed_start_0based")
+                    .and_then(|value| value.trim().parse::<usize>().ok())
+                    .map(|start| start.saturating_add(1).to_string())
+            });
+        let end = Self::feature_qualifier_text(feature, "genomic_end_1based")
+            .or_else(|| Self::feature_qualifier_text(feature, "end_1based"))
+            .or_else(|| Self::feature_qualifier_text(feature, "vcf_pos_1based"))
+            .or_else(|| Self::feature_qualifier_text(feature, "bed_end_0based"));
+        if let (Some(chrom), Some(start), Some(end)) = (chrom, start, end) {
+            let line = format!("genomic_interval: {chrom}:{start}..{end}");
+            if seen.insert(line.clone()) {
+                lines.push(line);
+            }
+        }
+
+        if let Ok((from, to)) = feature.location.find_bounds()
+            && to > from
+        {
+            let line = format!("local_interval: {}..{}", from + 1, to);
+            if seen.insert(line.clone()) {
+                lines.push(line);
+            }
+        }
+
+        for (label, keys) in [
+            ("local_strand", &["strand"][..]),
+            ("bed_strand", &["bed_strand"][..]),
+            ("score", &["score", "bed_score"][..]),
+            ("bed_start_0based", &["bed_start_0based"][..]),
+            ("bed_end_0based", &["bed_end_0based"][..]),
+            ("vcf_id", &["vcf_id"][..]),
+            ("vcf_ref", &["vcf_ref"][..]),
+            ("vcf_alt", &["vcf_alt"][..]),
+            ("variant_class", &["vcf_variant_class"][..]),
+            ("experiment", &["experiment"][..]),
+            ("note", &["note"][..]),
+            ("db_xref", &["db_xref"][..]),
+        ] {
+            Self::push_first_feature_detail_line(&mut lines, &mut seen, feature, label, keys);
+        }
+        lines
+    }
+
+    fn exon_length_frame_detail_lines(feature: &Feature) -> Vec<String> {
+        if !Self::is_exon_length_frame_cue_feature(feature) {
+            return vec![];
+        }
+        let mut exon_ranges = Vec::new();
+        collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+        if exon_ranges.is_empty() {
+            let Ok((from, to)) = feature.location.find_bounds() else {
+                return vec![];
+            };
+            if from < 0 || to <= from {
+                return vec![];
+            }
+            exon_ranges.push((from as usize, to as usize));
+        }
+        exon_ranges.sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+        exon_ranges.retain(|(start, end)| end > start);
+        if exon_ranges.is_empty() {
+            return vec![];
+        }
+
+        let mut mod_counts = [0usize; 3];
+        let mut parts = Vec::new();
+        for (idx, (start, end)) in exon_ranges.iter().copied().enumerate() {
+            let cue = ExonLengthFrameCue::from_range(start, end);
+            mod_counts[cue.length_mod3] = mod_counts[cue.length_mod3].saturating_add(1);
+            if idx < 12 {
+                parts.push(format!("{}bp->{}", cue.length_bp, cue.length_mod3));
+            }
+        }
+        if exon_ranges.len() > parts.len() {
+            parts.push(format!("+{} more", exon_ranges.len() - parts.len()));
+        }
+
+        let mut lines = Vec::new();
+        lines.push(format!("exon_count: {}", exon_ranges.len()));
+        lines.push(format!(
+            "exon_length_mod3_counts: 0={} 1={} 2={}",
+            mod_counts[0], mod_counts[1], mod_counts[2]
+        ));
+        lines.push(format!("exon_length_mod3_segments: {}", parts.join(", ")));
+        if exon_ranges.len() == 1 {
+            let cue = ExonLengthFrameCue::from_range(exon_ranges[0].0, exon_ranges[0].1);
+            lines.push(format!(
+                "exon_skip_frame_hint: {}",
+                cue.skip_frame_hint(true)
+            ));
+        }
+        lines
     }
 
     pub fn is_mcs_feature(feature: &Feature) -> bool {
@@ -643,6 +1247,9 @@ impl RenderDna {
         if !Self::is_track_feature(feature) {
             return None;
         }
+        if Self::is_array_track_feature(feature) {
+            return Self::array_group_label(feature);
+        }
         let source = Self::feature_qualifier_text(feature, "gentle_track_source");
         let file_name = Self::feature_qualifier_text(feature, "gentle_track_file").and_then(|v| {
             Path::new(v.trim())
@@ -665,6 +1272,20 @@ impl RenderDna {
             (_, _, Some(track_name), _) => Some(track_name),
             (_, _, None, Some(label)) => Some(label),
             _ => Some("Unnamed track".to_string()),
+        }
+    }
+
+    pub fn array_group_label(feature: &Feature) -> Option<String> {
+        if !Self::is_array_track_feature(feature) {
+            return None;
+        }
+        let platform = Self::feature_qualifier_text(feature, "gentle_array_platform")
+            .or_else(|| Self::feature_qualifier_text(feature, "gentle_track_name"))
+            .unwrap_or_else(|| "microarray".to_string());
+        let contrast = Self::feature_qualifier_text(feature, "gentle_array_contrast");
+        match contrast {
+            Some(contrast) => Some(format!("Array: {platform} ({contrast})")),
+            None => Some(format!("Array: {platform}")),
         }
     }
 
@@ -705,6 +1326,50 @@ impl RenderDna {
             .and_then(|v| v.trim().parse::<f64>().ok())
     }
 
+    pub fn array_feature_color(feature: &Feature) -> Color32 {
+        let logfc = Self::feature_qualifier_f64(feature, "logFC").unwrap_or(0.0);
+        let adj_p = Self::feature_qualifier_f64(feature, "adj_P_Val");
+        let strength = (logfc.abs() / 3.0).clamp(0.0, 1.0);
+        let alpha = match adj_p {
+            Some(value) if value <= 0.01 => 235,
+            Some(value) if value <= 0.05 => 205,
+            Some(value) if value <= 0.10 => 170,
+            Some(_) => 115,
+            None => 135,
+        };
+        let neutral = (1.0 - strength) * 158.0;
+        if logfc > 0.05 {
+            Color32::from_rgba_unmultiplied(
+                (neutral + strength * 220.0).round() as u8,
+                (neutral + strength * 38.0).round() as u8,
+                (neutral + strength * 38.0).round() as u8,
+                alpha,
+            )
+        } else if logfc < -0.05 {
+            Color32::from_rgba_unmultiplied(
+                (neutral + strength * 37.0).round() as u8,
+                (neutral + strength * 99.0).round() as u8,
+                (neutral + strength * 235.0).round() as u8,
+                alpha,
+            )
+        } else {
+            Color32::from_rgba_unmultiplied(150, 150, 150, alpha)
+        }
+    }
+
+    pub fn array_feature_confidence_stroke(feature: &Feature) -> Option<Stroke> {
+        let adj_p = Self::feature_qualifier_f64(feature, "adj_P_Val")?;
+        let color = if adj_p <= 0.05 {
+            Color32::from_rgba_unmultiplied(20, 20, 20, 210)
+        } else {
+            Color32::from_rgba_unmultiplied(20, 20, 20, 90)
+        };
+        Some(Stroke::new(
+            if adj_p <= 0.05 { 1.2_f32 } else { 0.6_f32 },
+            color,
+        ))
+    }
+
     pub fn vcf_feature_passes_display_filter(
         feature: &Feature,
         criteria: &VcfDisplayCriteria,
@@ -727,7 +1392,7 @@ impl RenderDna {
         }
         if criteria.pass_only {
             let filter = Self::feature_qualifier_text(feature, "vcf_filter")
-                .unwrap_or_else(|| String::new())
+                .unwrap_or_default()
                 .trim()
                 .to_ascii_uppercase();
             if filter != "PASS" {
@@ -819,7 +1484,7 @@ impl RenderDna {
     }
 
     pub fn is_source_feature(feature: &Feature) -> bool {
-        feature.kind.to_string().to_ascii_uppercase() == "SOURCE"
+        feature.kind.to_string().eq_ignore_ascii_case("SOURCE")
     }
 
     pub fn feature_name(feature: &Feature) -> String {
@@ -827,22 +1492,22 @@ impl RenderDna {
         if let Some(repeat) = repeat_feature_display(feature) {
             return repeat.display_label();
         }
-        if Self::is_regulatory_feature(feature) {
-            if let Some(reg_class) = Self::feature_qualifier_text(feature, "regulatory_class") {
-                let note = Self::feature_qualifier_text(feature, "note");
-                return if let Some(note) = note {
-                    format!("{reg_class}: {note}")
-                } else {
-                    reg_class
-                };
-            }
+        if Self::is_regulatory_feature(feature)
+            && let Some(reg_class) = Self::feature_qualifier_text(feature, "regulatory_class")
+        {
+            let note = Self::feature_qualifier_text(feature, "note");
+            return if let Some(note) = note {
+                format!("{reg_class}: {note}")
+            } else {
+                reg_class
+            };
         }
         if Self::is_mcs_feature(feature) {
             for key in ["label", "standard_name", "name", "gene", "note"] {
-                if let Some(value) = Self::feature_qualifier_text(feature, key) {
-                    if Self::text_mentions_mcs(&value) {
-                        return Self::compact_mcs_label(&value);
-                    }
+                if let Some(value) = Self::feature_qualifier_text(feature, key)
+                    && Self::text_mentions_mcs(&value)
+                {
+                    return Self::compact_mcs_label(&value);
                 }
             }
             if let Some(value) = Self::first_nonempty_qualifier(
@@ -853,8 +1518,8 @@ impl RenderDna {
             }
             return "MCS".to_string();
         }
-        if kind == "MRNA" {
-            if let Some(name) = Self::first_nonempty_qualifier(
+        if kind == "MRNA"
+            && let Some(name) = Self::first_nonempty_qualifier(
                 feature,
                 &[
                     "transcript_id",
@@ -865,12 +1530,12 @@ impl RenderDna {
                     "gene",
                     "locus_tag",
                 ],
-            ) {
-                return name;
-            }
+            )
+        {
+            return name;
         }
-        if kind == "GENE" {
-            if let Some(name) = Self::first_nonempty_qualifier(
+        if kind == "GENE"
+            && let Some(name) = Self::first_nonempty_qualifier(
                 feature,
                 &[
                     "gene",
@@ -880,17 +1545,17 @@ impl RenderDna {
                     "name",
                     "standard_name",
                 ],
-            ) {
-                return name;
-            }
+            )
+        {
+            return name;
         }
-        if Self::is_tfbs_feature(feature) {
-            if let Some(name) = Self::first_nonempty_qualifier(
+        if Self::is_tfbs_feature(feature)
+            && let Some(name) = Self::first_nonempty_qualifier(
                 feature,
                 &["bound_moiety", "standard_name", "name", "tf_id", "label"],
-            ) {
-                return name;
-            }
+            )
+        {
+            return name;
         }
         for k in [
             "label",
@@ -918,32 +1583,19 @@ impl RenderDna {
     }
 
     pub fn feature_detail_lines(feature: &Feature) -> Vec<String> {
-        let mut lines = Vec::new();
+        if Self::is_array_track_feature(feature) {
+            return Self::array_feature_detail_lines(feature);
+        }
+        if Self::is_repeat_feature(feature) {
+            return Self::repeat_feature_detail_lines(feature);
+        }
+        if Self::is_track_feature(feature) {
+            return Self::genome_track_feature_detail_lines(feature);
+        }
+
+        let mut lines = Self::exon_length_frame_detail_lines(feature);
         let kind = feature.kind.to_string().to_ascii_uppercase();
-        let keys = if Self::is_repeat_feature(feature) {
-            vec![
-                "repName",
-                "repClass",
-                "repFamily",
-                "rmsk_name",
-                "rmsk_class",
-                "rmsk_family",
-                "repeat_name",
-                "repeat_class",
-                "repeat_family",
-                "rpt_type",
-                "rpt_family",
-                "mobile_element_type",
-                "label",
-                "name",
-                "note",
-                "score",
-                "milliDiv",
-                "milliDel",
-                "milliIns",
-                "db_xref",
-            ]
-        } else if Self::is_regulatory_feature(feature) {
+        let keys = if Self::is_regulatory_feature(feature) {
             vec![
                 "regulatory_class",
                 "standard_name",
@@ -1046,33 +1698,18 @@ impl RenderDna {
 impl Widget for RenderDna {
     fn ui(self, ui: &mut Ui) -> Response {
         let available = ui.available_size_before_wrap();
-        let clip = ui.clip_rect();
-        let fallback_width = clip.width().max(1.0);
-        let fallback_height = clip.height().max(1.0);
-        let mut width = if available.x.is_finite() {
-            available.x
+        let safe_size = if available.x.is_finite()
+            && available.y.is_finite()
+            && available.x > 0.0
+            && available.y > 0.0
+        {
+            Vec2::new(available.x, available.y)
         } else {
-            fallback_width
+            Vec2::splat(1.0)
         };
-        let mut height = if available.y.is_finite() {
-            available.y
-        } else {
-            fallback_height
-        };
-        if width <= 0.0 {
-            width = fallback_width;
-        }
-        if height <= 0.0 {
-            height = fallback_height;
-        }
-        if !width.is_finite() {
-            width = fallback_width;
-        }
-        if !height.is_finite() {
-            height = fallback_height;
-        }
-        let safe_size = Vec2::new(width.max(1.0), height.max(1.0));
-        let (rect, response) = ui.allocate_exact_size(safe_size, Sense::click_and_drag());
+        let interaction_id = self.interaction_id(ui);
+        let (rect, _) = ui.allocate_exact_size(safe_size, Sense::hover());
+        let response = ui.interact(rect, interaction_id, Sense::click_and_drag());
         self.render(ui, rect);
         response
     }
@@ -1081,8 +1718,10 @@ impl Widget for RenderDna {
 #[cfg(test)]
 mod tests {
     use super::RenderDna;
-    use eframe::egui::Color32;
+    use crate::{dna_display::DnaDisplay, dna_sequence::DNAsequence};
+    use eframe::egui::{self, Color32, Sense, Widget};
     use gb_io::seq::{Feature, Location};
+    use std::sync::{Arc, RwLock};
 
     fn make_feature(kind: &str, qualifiers: &[(&str, &str)]) -> Feature {
         Feature {
@@ -1093,6 +1732,94 @@ mod tests {
                 .map(|(k, v)| ((*k).to_string().into(), Some((*v).to_string())))
                 .collect(),
         }
+    }
+
+    fn make_render_dna() -> RenderDna {
+        let mut dna = DNAsequence::from_sequence("ACGTACGTACGT").expect("test sequence");
+        dna.set_circular(false);
+        RenderDna::new(
+            Arc::new(RwLock::new(dna)),
+            Arc::new(RwLock::new(DnaDisplay::default())),
+        )
+    }
+
+    fn render_map_after_spacer(
+        ctx: &egui::Context,
+        render_dna: RenderDna,
+        spacer_height: f32,
+    ) -> egui::Response {
+        let mut response = None;
+        crate::egui_compat::show_central_panel_for_test_context(
+            ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                ui.allocate_exact_size(egui::vec2(10.0, spacer_height), Sense::hover());
+                response = Some(render_dna.ui(ui));
+            },
+        );
+        response.expect("map response")
+    }
+
+    #[test]
+    fn render_dna_stable_id_does_not_steal_drag_after_layout_shift() {
+        let ctx = egui::Context::default();
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(300.0, 200.0));
+        let render_dna = make_render_dna();
+        let press_pos = egui::pos2(10.0, 15.0);
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![
+                egui::Event::PointerMoved(press_pos),
+                egui::Event::PointerButton {
+                    pos: press_pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::default(),
+                },
+            ],
+            ..Default::default()
+        });
+        let first_response = render_map_after_spacer(&ctx, render_dna.clone(), 20.0);
+        assert!(!first_response.rect.contains(press_pos));
+        let _ = ctx.end_pass();
+
+        let move_pos = egui::pos2(10.0, 70.0);
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![egui::Event::PointerMoved(move_pos)],
+            ..Default::default()
+        });
+        let shifted_response = render_map_after_spacer(&ctx, render_dna, 40.0);
+
+        assert!(shifted_response.rect.contains(move_pos));
+        assert!(!shifted_response.drag_started());
+        assert_ne!(ctx.dragged_id(), Some(shifted_response.id));
+    }
+
+    #[test]
+    fn render_dna_bounds_transient_zero_available_size_to_minimal_rect() {
+        let ctx = egui::Context::default();
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(300.0, 200.0));
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                let rect = egui::Rect::from_min_size(ui.min_rect().min, egui::Vec2::ZERO);
+                let mut child =
+                    ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(*ui.layout()));
+                let response = make_render_dna().ui(&mut child);
+
+                assert!(response.rect.width() <= 1.0);
+                assert!(response.rect.height() <= 1.0);
+            },
+        );
+        let _ = ctx.end_pass();
     }
 
     #[test]
@@ -1218,6 +1945,280 @@ mod tests {
         assert_eq!(
             RenderDna::feature_color(&feature),
             Color32::from_rgb(14, 116, 144)
+        );
+    }
+
+    #[test]
+    fn exon_feature_details_include_length_mod3_frame_hint() {
+        let feature = make_feature("exon", &[("label", "exon 2")]);
+
+        assert_eq!(
+            RenderDna::feature_detail_lines(&feature),
+            vec![
+                "exon_count: 1",
+                "exon_length_mod3_counts: 0=0 1=1 2=0",
+                "exon_length_mod3_segments: 10bp->1",
+                "exon_skip_frame_hint: whole-exon omission changes coding-frame length",
+                "label: exon 2",
+            ]
+        );
+    }
+
+    #[test]
+    fn repeatmasker_feature_details_split_class_family_and_derive_divergence() {
+        let feature = make_feature(
+            "repeat_region",
+            &[
+                ("repName", "L1PA2"),
+                ("repClass", "LINE/L1"),
+                ("milliDiv", "32"),
+            ],
+        );
+
+        let details = RenderDna::feature_detail_lines(&feature);
+        assert_eq!(
+            details,
+            vec![
+                "repeat_source: RepeatMasker",
+                "repeat_summary: L1PA2 (LINE / L1)",
+                "repeat_name: L1PA2",
+                "repeat_class: LINE",
+                "repeat_family: L1",
+                "divergence_percent: 3.2",
+                "milli_div: 32",
+            ]
+        );
+    }
+
+    #[test]
+    fn repeatmasker_feature_details_accept_raw_ucsc_table_fields() {
+        let feature = make_feature(
+            "repeat_region",
+            &[
+                ("bin", "585"),
+                ("swScore", "800"),
+                ("milliDiv", "45"),
+                ("milliDel", "3"),
+                ("milliIns", "1"),
+                ("genoName", "chr7"),
+                ("genoStart", "55000000"),
+                ("genoEnd", "55000120"),
+                ("genoLeft", "-104000000"),
+                ("strand", "+"),
+                ("repName", "MER20"),
+                ("repClass", "DNA/hAT-Charlie"),
+                ("repFamily", "MER20"),
+                ("repStart", "12"),
+                ("repEnd", "132"),
+                ("repLeft", "0"),
+                ("id", "12345"),
+            ],
+        );
+
+        let details = RenderDna::feature_detail_lines(&feature);
+        assert_eq!(
+            details,
+            vec![
+                "repeat_source: UCSC rmsk",
+                "repeat_summary: MER20 (DNA transposon / MER20)",
+                "repeat_name: MER20",
+                "repeat_class: DNA transposon",
+                "repeat_family: MER20",
+                "local_strand: +",
+                "genomic_interval: chr7:55000001..55000120",
+                "repeat_consensus_interval: 12..132 (left 0)",
+                "score: 800",
+                "divergence_percent: 4.5",
+                "milli_div: 45",
+                "milli_del: 3",
+                "milli_ins: 1",
+                "rmsk_table_id: 12345",
+                "geno_left: -104000000",
+            ]
+        );
+    }
+
+    #[test]
+    fn repeatmasker_feature_details_summarize_ucsc_rmsk_qualifiers() {
+        let feature = make_feature(
+            "repeat_region",
+            &[
+                ("gentle_generated", "ucsc_rmsk"),
+                (
+                    "rmsk_index_path",
+                    "data/resources/ucsc.rmsk.hg38.interval-index.json",
+                ),
+                ("rmsk_annotation_id", "chr1:100-200:AluY:42"),
+                ("rmsk_row_offset", "41"),
+                ("rmsk_bin", "585"),
+                ("repName", "AluY"),
+                ("rmsk_name", "AluY"),
+                ("repClass", "SINE"),
+                ("rmsk_class", "SINE"),
+                ("repFamily", "Alu"),
+                ("rmsk_family", "Alu"),
+                ("repeat_alias", "SINE/Alu/AluY"),
+                ("strand", "+"),
+                ("rmsk_genomic_strand", "-"),
+                ("chromosome", "chr1"),
+                ("genomic_start_1based", "101"),
+                ("genomic_end_1based", "200"),
+                ("score", "1234"),
+                ("swScore", "1234"),
+                ("milliDiv", "18"),
+                ("milliDel", "2"),
+                ("milliIns", "0"),
+                ("rmsk_divergence_percent", "1.8"),
+                ("rmsk_clipped", "false"),
+                ("note", "UCSC RepeatMasker rmsk interval"),
+            ],
+        );
+
+        let details = RenderDna::feature_detail_lines(&feature);
+        assert_eq!(
+            details,
+            vec![
+                "repeat_source: UCSC rmsk",
+                "repeat_summary: AluY (SINE / Alu)",
+                "repeat_name: AluY",
+                "repeat_class: SINE",
+                "repeat_family: Alu",
+                "repeat_alias: SINE/Alu/AluY",
+                "local_strand: +",
+                "genomic_strand: -",
+                "genomic_interval: chr1:101..200",
+                "score: 1234",
+                "divergence_percent: 1.8",
+                "milli_div: 18",
+                "milli_del: 2",
+                "milli_ins: 0",
+                "clipped_to_sequence: false",
+                "rmsk_annotation_id: chr1:100-200:AluY:42",
+                "rmsk_row_offset: 41",
+                "rmsk_bin: 585",
+                "rmsk_index_path: data/resources/ucsc.rmsk.hg38.interval-index.json",
+                "note: UCSC RepeatMasker rmsk interval",
+            ]
+        );
+        assert!(!details.iter().any(|line| line.starts_with("repName:")));
+        assert!(!details.iter().any(|line| line.starts_with("rmsk_name:")));
+    }
+
+    #[test]
+    fn array_feature_details_include_values_and_probe_metadata() {
+        let feature = make_feature(
+            "track",
+            &[
+                ("gentle_generated", "microarray_track_projection"),
+                ("gentle_track_source", "Array"),
+                ("gentle_array_dataset", "E-MTAB-14704"),
+                ("gentle_array_platform", "Clariom D human"),
+                ("gentle_array_coordinate_system", "hg19"),
+                ("gentle_array_supported_genome_ids", "hg19,GRCh37"),
+                ("gentle_array_anchor_genome_id", "Human GRCh37"),
+                ("gentle_array_anchor_chromosome", "chr1"),
+                ("gentle_array_anchor_start_1based", "1001"),
+                ("gentle_array_anchor_end_1based", "1100"),
+                ("gentle_array_anchor_strand", "+"),
+                (
+                    "gentle_array_assembly_check",
+                    "supported_genome_id_alias_matches_anchor",
+                ),
+                ("gentle_array_projection_method", "synthetic_interval_map"),
+                (
+                    "gentle_array_projection_status",
+                    "mapped_unique_interval_block",
+                ),
+                ("gentle_array_native_chromosome", "chr1"),
+                ("gentle_array_native_start_1based", "1010"),
+                ("gentle_array_native_end_1based", "1020"),
+                ("gentle_array_contrast", "AdTAp73alpha-AdGFP"),
+                ("gentle_array_level", "probeset"),
+                ("feature_id", "PSR0001"),
+                ("transcript_cluster_id", "TC0001"),
+                ("exon_id", "EX0001"),
+                ("gentle_array_probe_type", "main"),
+                ("logFC", "1.500000"),
+                ("adj_P_Val", "0.020000"),
+                ("AveExpr", "8.250000"),
+                (
+                    "gentle_array_value_summary",
+                    "AdTAp73alpha-AdGFP logFC=1.500000 adj.P.Val=0.020000; AdTAp73beta-AdGFP logFC=-0.750000 adj.P.Val=0.120000",
+                ),
+            ],
+        );
+        assert!(RenderDna::is_array_track_feature(&feature));
+        assert_eq!(
+            RenderDna::array_group_label(&feature).as_deref(),
+            Some("Array: Clariom D human (AdTAp73alpha-AdGFP)")
+        );
+        let details = RenderDna::feature_detail_lines(&feature);
+        assert!(details.contains(&"array_dataset: E-MTAB-14704".to_string()));
+        assert!(details.contains(&"array_coordinate_system: hg19".to_string()));
+        assert!(details.contains(&"array_supported_genomes: hg19,GRCh37".to_string()));
+        assert!(details.contains(&"sequence_anchor_genome: Human GRCh37".to_string()));
+        assert!(
+            details
+                .contains(&"assembly_check: supported_genome_id_alias_matches_anchor".to_string())
+        );
+        assert!(details.contains(&"projection_method: synthetic_interval_map".to_string()));
+        assert!(details.contains(&"projection_status: mapped_unique_interval_block".to_string()));
+        assert!(details.contains(&"native_array_interval: chr1:1010..1020".to_string()));
+        assert!(details.contains(&"sequence_anchor_interval: chr1:1001..1100 +".to_string()));
+        assert!(details.contains(&"contrast: AdTAp73alpha-AdGFP".to_string()));
+        assert!(details.contains(&"logFC: 1.500000".to_string()));
+        assert!(details.contains(&"adj.P.Val: 0.020000".to_string()));
+        assert!(details.contains(&"feature_id: PSR0001".to_string()));
+        assert!(details.contains(&"transcript_cluster: TC0001".to_string()));
+        assert!(details.contains(&"exon_id: EX0001".to_string()));
+        assert!(details.iter().any(|line| {
+            line.starts_with("all_contrast_values:")
+                && line.contains("AdTAp73beta-AdGFP logFC=-0.750000")
+        }));
+    }
+
+    #[test]
+    fn genome_track_feature_details_include_provenance_and_coordinates() {
+        let feature = make_feature(
+            "track",
+            &[
+                ("label", "tp73_cutrun_tap73alpha_peak"),
+                ("gentle_generated", "genome_bed_track"),
+                ("gentle_track_source", "BED"),
+                ("gentle_track_name", "TP73 CUT&RUN proof BED"),
+                (
+                    "gentle_track_file",
+                    "test_files/fixtures/evidence_viewer/tp73_cutrun_demo.bed",
+                ),
+                ("chromosome", "chr1"),
+                ("bed_start_0based", "3652700"),
+                ("bed_end_0based", "3652900"),
+                ("score", "650.000000"),
+                ("bed_strand", "+"),
+                ("strand", "+"),
+                (
+                    "note",
+                    "BED track 'TP73 CUT&RUN proof BED' from proof fixture",
+                ),
+            ],
+        );
+
+        assert_eq!(
+            RenderDna::track_group_label(&feature).as_deref(),
+            Some("BED: tp73_cutrun_demo.bed (TP73 CUT&RUN proof BED)")
+        );
+        let details = RenderDna::feature_detail_lines(&feature);
+        assert!(details.contains(&"track_source: BED".to_string()));
+        assert!(details.contains(&"track_name: TP73 CUT&RUN proof BED".to_string()));
+        assert!(details.contains(&"track_kind: genome_bed_track".to_string()));
+        assert!(details.contains(&"genomic_interval: chr1:3652701..3652900".to_string()));
+        assert!(details.contains(&"local_interval: 1..10".to_string()));
+        assert!(details.contains(&"score: 650.000000".to_string()));
+        assert!(details.contains(&"bed_strand: +".to_string()));
+        assert!(
+            details
+                .iter()
+                .any(|line| line.contains("TP73 CUT&RUN proof BED"))
         );
     }
 }

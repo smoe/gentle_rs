@@ -1,0 +1,124 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "gene_set_ortholog_promoter_cohorts_offline",
+  "title": "Gene-set and ortholog promoter cohorts (offline synthetic TP73 demo)",
+  "summary": "Prepares tiny local human/mouse promoter fixtures, resolves a reviewed gene-set promoter cohort with a co-regulated expectation, scores promoter TFBS divergence, resolves a local TP73/Trp73 ortholog promoter cohort, and compares ortholog promoter TFBS evidence without network access.",
+  "test_mode": "always",
+  "required_files": [
+    "docs/examples/assets/promoter_cohort_tutorial_genomes.json",
+    "docs/examples/assets/promoter_cohort_tutorial_human.fa",
+    "docs/examples/assets/promoter_cohort_tutorial_human.gtf",
+    "docs/examples/assets/promoter_cohort_tutorial_mouse.fa",
+    "docs/examples/assets/promoter_cohort_tutorial_mouse.gtf",
+    "docs/examples/assets/promoter_cohort_tutorial_gene_groups.json",
+    "docs/examples/assets/promoter_cohort_tutorial_orthologs.json"
+  ],
+  "tags": [
+    "tutorial",
+    "offline",
+    "promoter",
+    "gene-set",
+    "ortholog",
+    "tp73",
+    "relationship-flags"
+  ],
+  "workflow": {
+    "run_id": "example_gene_set_ortholog_promoter_cohorts_offline",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "TutorialHumanPromoterToy",
+          "catalog_path": "docs/examples/assets/promoter_cohort_tutorial_genomes.json",
+          "cache_dir": "artifacts/promoter_cohort_cache"
+        }
+      },
+      {
+        "PrepareGenome": {
+          "genome_id": "TutorialMousePromoterToy",
+          "catalog_path": "docs/examples/assets/promoter_cohort_tutorial_genomes.json",
+          "cache_dir": "artifacts/promoter_cohort_cache"
+        }
+      },
+      {
+        "BuildGeneSetPromoterCohort": {
+          "genome_id": "TutorialHumanPromoterToy",
+          "source": {
+            "source_kind": "catalog_group",
+            "query": "tutorial_p73_promoter_cohort"
+          },
+          "relationship": "co_regulated",
+          "upstream_bp": 40,
+          "downstream_bp": 10,
+          "gene_group_catalog_path": "docs/examples/assets/promoter_cohort_tutorial_gene_groups.json",
+          "genome_catalog_path": "docs/examples/assets/promoter_cohort_tutorial_genomes.json",
+          "cache_dir": "artifacts/promoter_cohort_cache",
+          "path": "artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json"
+        }
+      },
+      {
+        "SummarizePromoterCohortComparison": {
+          "genome_id": "TutorialHumanPromoterToy",
+          "cohort_label": "tutorial_p73_gene_set_co_regulated",
+          "cohort_kind": "co_regulated",
+          "genes": [
+            {
+              "gene_query": "TP73",
+              "display_label": "TP73"
+            },
+            {
+              "gene_query": "TP73D",
+              "display_label": "TP73D"
+            }
+          ],
+          "motifs": [
+            "SP1"
+          ],
+          "upstream_bp": 40,
+          "downstream_bp": 10,
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": true,
+          "catalog_path": "docs/examples/assets/promoter_cohort_tutorial_genomes.json",
+          "cache_dir": "artifacts/promoter_cohort_cache",
+          "path": "artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json"
+        }
+      },
+      {
+        "ResolveOrthologPromoterCohort": {
+          "anchor_species": "human",
+          "anchor_genome_id": "TutorialHumanPromoterToy",
+          "anchor_gene_query": "TP73",
+          "target_species": [
+            "mouse"
+          ],
+          "target_genome_ids": {
+            "mouse": "TutorialMousePromoterToy"
+          },
+          "transcript_ids": {
+            "human": "TX_HUMAN_TP73",
+            "mouse": "TX_MOUSE_TRP73"
+          },
+          "ortholog_resource_path": "docs/examples/assets/promoter_cohort_tutorial_orthologs.json",
+          "upstream_bp": 40,
+          "downstream_bp": 10,
+          "ambiguity_policy": "reject",
+          "relationship": "co_regulated",
+          "genome_catalog_path": "docs/examples/assets/promoter_cohort_tutorial_genomes.json",
+          "cache_dir": "artifacts/promoter_cohort_cache",
+          "path": "artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json"
+        }
+      },
+      {
+        "SummarizeOrthologPromoterComparison": {
+          "cohort_path": "artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json",
+          "motifs": [
+            "SP1"
+          ],
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": true,
+          "relationship": "co_regulated",
+          "path": "artifacts/promoter_cohort_tutorial.ortholog_promoter_comparison.json"
+        }
+      }
+    ]
+  }
+}

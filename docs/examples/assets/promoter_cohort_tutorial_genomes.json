@@ -1,0 +1,12 @@
+{
+  "TutorialHumanPromoterToy": {
+    "description": "offline synthetic human promoter tutorial genome",
+    "sequence_local": "promoter_cohort_tutorial_human.fa",
+    "annotations_local": "promoter_cohort_tutorial_human.gtf"
+  },
+  "TutorialMousePromoterToy": {
+    "description": "offline synthetic mouse promoter tutorial genome",
+    "sequence_local": "promoter_cohort_tutorial_mouse.fa",
+    "annotations_local": "promoter_cohort_tutorial_mouse.gtf"
+  }
+}

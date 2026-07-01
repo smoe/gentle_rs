@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "workflow_path": "integrations/clawbio/skills/gentle-cloning/examples/workflows/clariom_pm_probe_interpretation.workflow.json",
+  "expected_artifacts": [
+    "artifacts/clariom_pm_probe_interpretation.json"
+  ],
+  "timeout_secs": 300
+}

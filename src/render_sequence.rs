@@ -193,7 +193,9 @@ impl RenderSequence {
     }
 
     pub fn render(&mut self, ui: &mut egui::Ui) {
+        crate::gentle_gui_profile_scope!("RenderSequence::render");
         if self.layout_needs_recomputing(ui) {
+            crate::gentle_gui_profile_scope!("RenderSequence::layout");
             self.layout(ui);
             self.layout_was_updated();
         }

@@ -1,0 +1,28 @@
+{
+  "schema": "gentle.gene_group_catalog.v1",
+  "groups": [
+    {
+      "id": "tutorial_p73_promoter_cohort",
+      "label": "Tutorial p73 promoter cohort",
+      "curation_status": "reviewed",
+      "external_mappings": [
+        {
+          "namespace": "GO",
+          "id": "GO:0006355"
+        }
+      ],
+      "members": [
+        {
+          "symbol": "TP73",
+          "gene_id": "ENSG_TUTORIAL_TP73",
+          "provenance": "synthetic tutorial member with a GC-rich promoter patch"
+        },
+        {
+          "symbol": "TP73D",
+          "gene_id": "ENSG_TUTORIAL_TP73D",
+          "provenance": "synthetic tutorial member with a deliberately divergent promoter"
+        }
+      ]
+    }
+  ]
+}

@@ -204,14 +204,14 @@ impl WindowDna {
     fn render_nav_row(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if ui
-                .button("Help")
+                .button(crate::i18n::tr("button.help"))
                 .on_hover_text("Open GUI help (F1 on Windows/Linux, Cmd+Shift+/ on macOS)")
                 .clicked()
             {
                 request_open_help_from_native_menu();
             }
             if ui
-                .button("Main")
+                .button(crate::i18n::tr("button.main"))
                 .on_hover_text("Bring the main project workspace to front")
                 .clicked()
             {
@@ -223,14 +223,14 @@ impl WindowDna {
                     .send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus);
             }
             if ui
-                .button("Configuration")
+                .button(crate::i18n::tr("button.configuration"))
                 .on_hover_text("Open Configuration window on Graphics settings")
                 .clicked()
             {
                 request_open_graphics_settings_from_native_menu();
             }
             if ui
-                .button("Close")
+                .button(crate::i18n::tr("button.close"))
                 .on_hover_text("Close this sequence window (Cmd/Ctrl+W)")
                 .clicked()
             {
@@ -244,6 +244,7 @@ impl WindowDna {
     /// This polls deferred load state, renders viewport-scoped controls, and
     /// then delegates the actual sequence-window layout to `MainAreaDna`.
     pub fn update(&mut self, ctx: &egui::Context) {
+        crate::gentle_gui_profile_scope!("WindowDna::update");
         self.poll_deferred_load();
         let result = catch_unwind(AssertUnwindSafe(|| {
             let open_help_f1 = egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F1);
@@ -286,9 +287,7 @@ impl WindowDna {
                                 ui.add_space(48.0);
                                 ui.add(egui::Spinner::new());
                                 ui.add_space(6.0);
-                                ui.label(
-                                    "Opening sequence window: loading sequence content in background...",
-                                );
+                                ui.label(crate::i18n::tr("sequence.loading"));
                             });
                         });
                     },
@@ -316,6 +315,7 @@ impl WindowDna {
     }
 
     pub fn update_embedded(&mut self, ui: &mut egui::Ui) {
+        crate::gentle_gui_profile_scope!("WindowDna::update_embedded");
         self.poll_deferred_load();
         let result = catch_unwind(AssertUnwindSafe(|| {
             let open_help_f1 = egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F1);
@@ -362,9 +362,7 @@ impl WindowDna {
                                 ui.add_space(48.0);
                                 ui.add(egui::Spinner::new());
                                 ui.add_space(6.0);
-                                ui.label(
-                                    "Opening sequence window: loading sequence content in background...",
-                                );
+                                ui.label(crate::i18n::tr("sequence.loading"));
                             });
                         });
                     },
@@ -382,12 +380,30 @@ impl WindowDna {
                     },
                 );
             } else {
-                self.main_area.render_inside(ui);
+                self.render_bounded_embedded_main_area(ui);
             }
         }));
         if result.is_err() {
             eprintln!("E WindowDna: recovered from panic while rendering embedded DNA window");
         }
+    }
+
+    fn render_bounded_embedded_main_area(&mut self, ui: &mut egui::Ui) {
+        crate::gentle_gui_profile_scope!("WindowDna::render_bounded_embedded_main_area");
+        let body_rect = ui.available_rect_before_wrap();
+        let body_id = egui::Id::new(("window_dna_embedded_body", self.main_area.panel_scope_key()));
+        // Do not allocate the child's expanded min_rect in the parent: the DNA
+        // panels can overflow while the hosted window remains user-sized.
+        let mut body_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt(body_id)
+                .max_rect(body_rect)
+                .layout(*ui.layout()),
+        );
+        body_ui.set_clip_rect(body_rect.intersect(ui.clip_rect()));
+        self.main_area
+            .render_inside_without_auxiliary_windows(&mut body_ui);
+        ui.advance_cursor_after_rect(body_rect);
     }
 
     /// Keep detached auxiliary workspaces alive without redrawing the parent
@@ -425,6 +441,15 @@ impl WindowDna {
 
     pub fn selection_range_0based(&self) -> Option<(usize, usize)> {
         self.main_area.selection_range_0based()
+    }
+
+    pub fn set_selection_range_0based(
+        &mut self,
+        start: usize,
+        end_exclusive: usize,
+    ) -> Result<(), String> {
+        self.main_area
+            .set_selection_range_0based(start, end_exclusive)
     }
 
     pub fn collect_open_auxiliary_window_entries(&self) -> Vec<(egui::ViewportId, String, String)> {
@@ -486,6 +511,17 @@ impl WindowDna {
     }
 
     #[cfg(test)]
+    pub(crate) fn seed_variant_followup_window_for_tests(
+        &mut self,
+        seq_id: &str,
+        feature_id: usize,
+        gene_label: &str,
+    ) {
+        self.main_area
+            .seed_variant_followup_window_for_tests(seq_id, feature_id, gene_label);
+    }
+
+    #[cfg(test)]
     pub(crate) fn splicing_expert_focus_requested_for_tests(&self) -> bool {
         self.main_area.splicing_expert_focus_requested_for_tests()
     }
@@ -493,6 +529,11 @@ impl WindowDna {
     #[cfg(test)]
     pub(crate) fn rna_read_mapping_focus_requested_for_tests(&self) -> bool {
         self.main_area.rna_read_mapping_focus_requested_for_tests()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn variant_followup_focus_requested_for_tests(&self) -> bool {
+        self.main_area.variant_followup_focus_requested_for_tests()
     }
 
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {

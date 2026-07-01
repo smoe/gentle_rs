@@ -1,0 +1,41 @@
+{
+  "schema": "gentle.external_service_request.v1",
+  "provider": "geneart",
+  "service_kind": "protein_expression",
+  "source_target": {
+    "kind": "inline_protein",
+    "name": "DEMO_DO_NOT_ORDER_geneart_synthetic_protein",
+    "protein_sequence": "MSTNPKPQRKTKRNTNRRPQDVKFPGG",
+    "note": "Synthetic tutorial protein. Confirm sequence, expression system, tags, purification target, and vendor representation before any real quote or order."
+  },
+  "optimization_target": {
+    "host_system": "review_required",
+    "codon_optimization": "review_required",
+    "expression_notes": "Use a reviewed protein-to-DNA handoff record for real projects."
+  },
+  "delivery_options": {
+    "purification": "review_required",
+    "qc": "vendor default plus project-specific review",
+    "biosafety": "review_required"
+  },
+  "return_spec": {
+    "requested_payloads": [
+      "amino_acid_sequence",
+      "codon_targeted_dna",
+      "quote_metadata",
+      "handoff_bundle"
+    ],
+    "inline_max_bytes": 20000,
+    "redact_commercial_fields": true,
+    "prefer_artifact_bundle": true
+  },
+  "request_metadata": {
+    "tutorial": true,
+    "human_review_only": true,
+    "notes": [
+      "Synthetic tutorial request.",
+      "Protein expression is quote/handoff-only in GENtle v1.",
+      "ClawBio or other callers should use return_spec to state whether they need only amino-acid sequence, codon-targeted DNA, quote metadata, or the full handoff bundle."
+    ]
+  }
+}

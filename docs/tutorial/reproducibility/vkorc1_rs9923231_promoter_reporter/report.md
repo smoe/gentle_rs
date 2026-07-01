@@ -73,7 +73,7 @@ GENtle is responsible for:
 ## Artifacts
 
 - tutorial:
-  [docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md)
+  [docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md)
 - workflow:
   [docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json)
 - promoter-context JSON:

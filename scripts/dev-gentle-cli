@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -u
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+release=0
+
+if [[ "${1:-}" == "--release" ]]; then
+    release=1
+    shift
+fi
+
+if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
+    export CARGO_TARGET_DIR="${GENTLE_SHARED_TARGET_DIR:-"$repo_root/../../.gentle_target_shared"}"
+fi
+
+log_dir="${GENTLE_DEV_LOG_DIR:-/tmp/gentle-dev}"
+mkdir -p "$log_dir"
+timestamp="$(date -u +"%Y%m%dT%H%M%SZ")"
+log_path="$log_dir/gentle-cli-$timestamp-$$.json"
+
+cargo_args=(run -q)
+if [[ "$release" -eq 1 ]]; then
+    cargo_args+=(--release)
+fi
+cargo_args+=(--bin gentle_cli --)
+
+set +e
+(
+    cd "$repo_root" || exit 127
+    cargo "${cargo_args[@]}" "$@"
+) | tee "$log_path"
+status=${PIPESTATUS[0]}
+exit "$status"

@@ -9,6 +9,7 @@ use std::{
 
 const RUNTIME_TF_MOTIF_PATH: &str = "data/resources/jaspar.motifs.json";
 const BUILTIN_TF_MOTIFS_JSON: &str = include_str!("../assets/jaspar.motifs.json");
+const BUNDLED_JASPAR_PFM_SUPPLEMENT_JSON: &str = include_str!("../assets/jaspar_2022.json");
 const TF_QUERY_STOP_WORDS: &[&str] = &[
     "tf",
     "tfs",
@@ -37,11 +38,11 @@ const COMMON_MOTIF_ALIASES: &[(&str, &str)] = &[
 
 #[derive(Debug, Clone)]
 pub struct TfQueryGroupDefinition {
-    pub id: &'static str,
-    pub label: &'static str,
-    pub description: &'static str,
-    pub aliases: &'static [&'static str],
-    pub member_queries: &'static [&'static str],
+    pub id: String,
+    pub label: String,
+    pub description: String,
+    pub aliases: Vec<String>,
+    pub member_queries: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -64,38 +65,6 @@ pub struct TfQueryResolution {
     pub unresolved_reason: Option<String>,
 }
 
-const BUILTIN_TF_QUERY_GROUPS: &[TfQueryGroupDefinition] = &[
-    TfQueryGroupDefinition {
-        id: "yamanaka_factors",
-        label: "Yamanaka factors",
-        description: "Canonical core reprogramming / stemness-associated factors used for induced pluripotency: OCT4/POU5F1, SOX2, KLF4, and MYC.",
-        aliases: &[
-            "yamanaka",
-            "yamanaka factors",
-            "core yamanaka",
-            "stemness",
-            "stemness factors",
-            "pluripotency",
-            "pluripotency factors",
-            "reprogramming factors",
-        ],
-        member_queries: &["POU5F1", "SOX2", "KLF4", "MYC"],
-    },
-    TfQueryGroupDefinition {
-        id: "p53_family",
-        label: "p53 family",
-        description: "The canonical p53 transcription-factor family represented in the local motif registry: TP53, TP63, and TP73.",
-        aliases: &[
-            "p53 family",
-            "tp family",
-            "tp53 family",
-            "tp factors",
-            "tp53 tp63 tp73",
-        ],
-        member_queries: &["TP53", "TP63", "TP73"],
-    },
-];
-
 #[derive(Debug, Clone, Deserialize)]
 struct TfMotifSnapshot {
     schema: String,
@@ -117,6 +86,39 @@ struct TfMotifRecord {
     consensus_iupac: String,
     #[serde(default)]
     pfm: Option<TfPfmRows>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct BundledJasparPfmRows {
+    #[serde(rename = "A")]
+    a: Vec<String>,
+    #[serde(rename = "C")]
+    c: Vec<String>,
+    #[serde(rename = "G")]
+    g: Vec<String>,
+    #[serde(rename = "T")]
+    t: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct BundledJasparPfmRecord {
+    matrix_id: String,
+    name: Option<String>,
+    pfm: BundledJasparPfmRows,
+}
+
+#[derive(Debug, Clone)]
+struct TfPfmSupplement {
+    id: String,
+    name: Option<String>,
+    consensus_iupac: String,
+    matrix_counts: Vec<[f64; 4]>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TfPfmSupplements {
+    by_id: HashMap<String, TfPfmSupplement>,
+    by_unique_name: HashMap<String, TfPfmSupplement>,
 }
 
 #[derive(Debug, Clone)]
@@ -177,19 +179,22 @@ fn common_alias_targets() -> HashMap<String, String> {
         .collect()
 }
 
-fn builtin_group_by_query(query: &str) -> Option<&'static TfQueryGroupDefinition> {
+fn catalog_group_by_query(query: &str) -> Option<crate::gene_groups::LoadedGeneGroupRecord> {
     let normalized = normalize_query_lookup(query);
     if normalized.is_empty() {
         return None;
     }
-    BUILTIN_TF_QUERY_GROUPS.iter().find(|group| {
-        normalize_query_lookup(group.id) == normalized
-            || normalize_query_lookup(group.label) == normalized
-            || group
-                .aliases
-                .iter()
-                .any(|alias| normalize_query_lookup(alias) == normalized)
-    })
+    crate::gene_groups::list_tf_query_gene_groups()
+        .into_iter()
+        .find(|group| {
+            normalize_query_lookup(&group.record.id) == normalized
+                || normalize_query_lookup(&group.record.label) == normalized
+                || group
+                    .record
+                    .aliases
+                    .iter()
+                    .any(|alias| normalize_query_lookup(alias) == normalized)
+        })
 }
 
 #[derive(Debug, Clone, Default)]
@@ -218,7 +223,84 @@ fn iupac_counts(letter: char) -> [f64; 4] {
     }
 }
 
+fn consensus_from_matrix_counts(matrix_counts: &[[f64; 4]]) -> String {
+    const BASES: [char; 4] = ['A', 'C', 'G', 'T'];
+    matrix_counts
+        .iter()
+        .map(|counts| {
+            counts
+                .iter()
+                .copied()
+                .enumerate()
+                .max_by(|left, right| left.1.total_cmp(&right.1))
+                .map(|(idx, _)| BASES[idx])
+                .unwrap_or('N')
+        })
+        .collect()
+}
+
 impl TfMotifDb {
+    fn bundled_jaspar_pfm_matrix(pfm: &BundledJasparPfmRows) -> Option<Vec<[f64; 4]>> {
+        let len = pfm.a.len();
+        if len == 0 || pfm.c.len() != len || pfm.g.len() != len || pfm.t.len() != len {
+            return None;
+        }
+        let mut matrix = Vec::with_capacity(len);
+        for i in 0..len {
+            matrix.push([
+                pfm.a[i].parse::<f64>().ok()?,
+                pfm.c[i].parse::<f64>().ok()?,
+                pfm.g[i].parse::<f64>().ok()?,
+                pfm.t[i].parse::<f64>().ok()?,
+            ]);
+        }
+        Some(matrix)
+    }
+
+    fn bundled_jaspar_pfm_supplements() -> TfPfmSupplements {
+        let records =
+            serde_json::from_str::<Vec<BundledJasparPfmRecord>>(BUNDLED_JASPAR_PFM_SUPPLEMENT_JSON)
+                .unwrap_or_default();
+        let mut by_id = HashMap::new();
+        let mut name_candidates: HashMap<String, Option<TfPfmSupplement>> = HashMap::new();
+        for record in records {
+            let matrix_counts = match Self::bundled_jaspar_pfm_matrix(&record.pfm) {
+                Some(matrix_counts) => matrix_counts,
+                None => continue,
+            };
+            let id = record.matrix_id.trim().to_string();
+            if id.is_empty() {
+                continue;
+            }
+            let supplement = TfPfmSupplement {
+                id: id.clone(),
+                name: record.name.as_ref().map(|name| name.trim().to_string()),
+                consensus_iupac: consensus_from_matrix_counts(&matrix_counts),
+                matrix_counts,
+            };
+            by_id
+                .entry(normalize_lookup_key(&id))
+                .or_insert_with(|| supplement.clone());
+            if let Some(name) = supplement.name.as_deref() {
+                let name_key = normalize_lookup_key(name);
+                if !name_key.is_empty() {
+                    name_candidates
+                        .entry(name_key)
+                        .and_modify(|slot| *slot = None)
+                        .or_insert_with(|| Some(supplement));
+                }
+            }
+        }
+        let by_unique_name = name_candidates
+            .into_iter()
+            .filter_map(|(name, supplement)| supplement.map(|supplement| (name, supplement)))
+            .collect();
+        TfPfmSupplements {
+            by_id,
+            by_unique_name,
+        }
+    }
+
     fn matrix_from_pfm(pfm: &TfPfmRows) -> Option<Vec<[f64; 4]>> {
         let len = pfm.a.len();
         if len == 0 || pfm.c.len() != len || pfm.g.len() != len || pfm.t.len() != len {
@@ -241,38 +323,67 @@ impl TfMotifDb {
             return None;
         }
 
+        static PFM_SUPPLEMENTS: LazyLock<TfPfmSupplements> =
+            LazyLock::new(TfMotifDb::bundled_jaspar_pfm_supplements);
         let mut motifs = Vec::new();
         let mut by_key = HashMap::new();
         let alias_targets = common_alias_targets();
         for m in snapshot.motifs {
-            let consensus = m.consensus_iupac.trim().to_ascii_uppercase();
-            if consensus.is_empty() {
+            let compact_consensus = m.consensus_iupac.trim().to_ascii_uppercase();
+            if compact_consensus.is_empty() {
                 continue;
             }
-            let matrix_counts = match m.pfm.as_ref().and_then(Self::matrix_from_pfm) {
-                Some(matrix) => matrix,
-                None => Self::matrix_from_consensus(&consensus),
+            let original_id = m.id.trim().to_string();
+            let original_id_key = normalize_lookup_key(&original_id);
+            let name_key = m.name.as_ref().map(|name| normalize_lookup_key(name));
+            let pfm_matrix = m.pfm.as_ref().and_then(Self::matrix_from_pfm);
+            let supplement = if pfm_matrix.is_none() {
+                PFM_SUPPLEMENTS.by_id.get(&original_id_key).or_else(|| {
+                    name_key
+                        .as_ref()
+                        .and_then(|name_key| PFM_SUPPLEMENTS.by_unique_name.get(name_key))
+                })
+            } else {
+                None
+            };
+            let (consensus, matrix_counts, supplement_id_key) = match (pfm_matrix, supplement) {
+                (Some(matrix), _) => (compact_consensus, matrix, None),
+                (None, Some(supplement)) => (
+                    supplement.consensus_iupac.clone(),
+                    supplement.matrix_counts.clone(),
+                    Some(normalize_lookup_key(&supplement.id)),
+                ),
+                (None, None) => (
+                    compact_consensus.clone(),
+                    Self::matrix_from_consensus(&compact_consensus),
+                    None,
+                ),
             };
             if matrix_counts.is_empty() {
                 continue;
             }
             let idx = motifs.len();
-            let id_key = normalize_lookup_key(&m.id);
-            let name_key = m.name.as_ref().map(|n| normalize_lookup_key(n));
+            let id_key = normalize_lookup_key(&original_id);
             let motif = TfMotif {
-                id: m.id.trim().to_string(),
+                id: original_id.clone(),
                 name: m.name.as_ref().map(|n| n.trim().to_string()),
                 consensus_iupac: consensus,
                 matrix_counts,
             };
             motifs.push(motif);
             if !id_key.is_empty() {
-                by_key.insert(id_key, idx);
+                by_key.insert(id_key.clone(), idx);
             }
-            if let Some(name_key) = name_key {
-                if !name_key.is_empty() {
-                    by_key.entry(name_key).or_insert(idx);
-                }
+            if let Some(supplement_id_key) = supplement_id_key
+                && supplement_id_key != id_key
+                && !supplement_id_key.is_empty()
+            {
+                by_key.entry(supplement_id_key).or_insert(idx);
+            }
+            if let Some(name_key) = name_key
+                && !name_key.is_empty()
+            {
+                by_key.entry(name_key).or_insert(idx);
             }
             for (alias, target) in &alias_targets {
                 if *target == normalize_lookup_key(&m.id)
@@ -301,6 +412,10 @@ impl TfMotifDb {
         if let Some(db) = Self::try_load_path(RUNTIME_TF_MOTIF_PATH) {
             return db;
         }
+        Self::load_builtin()
+    }
+
+    fn load_builtin() -> Self {
         Self::from_json(BUILTIN_TF_MOTIFS_JSON).unwrap_or_default()
     }
 
@@ -350,6 +465,12 @@ impl TfMotifDb {
 
 static TF_MOTIFS: LazyLock<RwLock<TfMotifDb>> = LazyLock::new(|| RwLock::new(TfMotifDb::load()));
 
+#[cfg(test)]
+pub fn test_registry_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
 pub fn snapshot_db() -> TfMotifDb {
     TF_MOTIFS.read().map(|db| db.clone()).unwrap_or_default()
 }
@@ -375,6 +496,13 @@ pub fn reload() {
 pub fn reload_from_path(path: Option<&str>) {
     if let Ok(mut db) = TF_MOTIFS.write() {
         *db = TfMotifDb::load_from_path(path);
+    }
+}
+
+#[cfg(test)]
+pub fn reload_builtin_for_test() {
+    if let Ok(mut db) = TF_MOTIFS.write() {
+        *db = TfMotifDb::load_builtin();
     }
 }
 
@@ -455,32 +583,32 @@ pub fn resolve_tf_query(query: &str) -> TfQueryResolution {
         };
     }
 
-    if let Some(group) = builtin_group_by_query(&trimmed) {
+    if let Some(group) = catalog_group_by_query(&trimmed) {
         let mut matches = vec![];
         let mut seen = BTreeSet::new();
-        for member in group.member_queries {
-            if let Some(motif) = resolve_motif_definition(member) {
-                if seen.insert(motif.id.clone()) {
-                    matches.push(TfQueryResolvedMotif {
-                        motif_id: motif.id,
-                        motif_name: motif.name,
-                        consensus_iupac: motif.consensus_iupac,
-                        motif_length_bp: motif.matrix_counts.len(),
-                    });
-                }
+        for member in &group.record.members {
+            if let Some(motif) = resolve_motif_definition(&member.symbol)
+                && seen.insert(motif.id.clone())
+            {
+                matches.push(TfQueryResolvedMotif {
+                    motif_id: motif.id,
+                    motif_name: motif.name,
+                    consensus_iupac: motif.consensus_iupac,
+                    motif_length_bp: motif.matrix_counts.len(),
+                });
             }
         }
         return TfQueryResolution {
             query: trimmed,
             normalized_query,
-            resolution_kind: "builtin_group".to_string(),
-            label: Some(group.label.to_string()),
-            description: Some(group.description.to_string()),
-            aliases: group
-                .aliases
-                .iter()
-                .map(|value| value.to_string())
-                .collect(),
+            resolution_kind: if group.source_scope == "built-in" {
+                "builtin_group".to_string()
+            } else {
+                "gene_group_catalog".to_string()
+            },
+            label: Some(group.record.label),
+            description: Some(group.record.long_definition),
+            aliases: group.record.aliases,
             matches,
             unresolved_reason: None,
         };
@@ -527,7 +655,21 @@ pub fn expand_tf_query_to_motif_ids(query: &str) -> Vec<String> {
 }
 
 pub fn list_tf_query_groups() -> Vec<TfQueryGroupDefinition> {
-    BUILTIN_TF_QUERY_GROUPS.to_vec()
+    crate::gene_groups::list_tf_query_gene_groups()
+        .into_iter()
+        .map(|group| TfQueryGroupDefinition {
+            id: group.record.id,
+            label: group.record.label,
+            description: group.record.long_definition,
+            aliases: group.record.aliases,
+            member_queries: group
+                .record
+                .members
+                .into_iter()
+                .map(|member| member.symbol)
+                .collect(),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -576,6 +718,50 @@ mod tests {
     #[test]
     fn resolve_motif_supports_versioned_jaspar_ids() {
         assert!(resolve_motif("MA0001.3").is_some());
+    }
+
+    #[test]
+    fn builtin_tp73_uses_bundled_pfm_not_consensus_fallback() {
+        let db = TfMotifDb::from_json(BUILTIN_TF_MOTIFS_JSON).expect("motif db");
+        let resolved = db.resolve("TP73").expect("resolve TP73");
+        assert_eq!(resolved.id, "MA0861.2");
+        assert_eq!(resolved.matrix_counts.len(), 18);
+        assert_eq!(resolved.consensus_iupac, "GACATGTCTGGACATGTC");
+
+        let ambiguous_column = resolved.matrix_counts[8];
+        let total = ambiguous_column.iter().sum::<f64>();
+        let max_fraction = ambiguous_column
+            .iter()
+            .copied()
+            .map(|value| value / total)
+            .fold(0.0_f64, f64::max);
+        assert!(
+            max_fraction < 0.5,
+            "position 9 should remain mixed, not collapsed to a consensus base"
+        );
+
+        let compact_id_alias = db.resolve("MA0861.2").expect("resolve compact alias");
+        assert_eq!(compact_id_alias.id, "MA0861.2");
+        let supplement_id_alias = db.resolve("MA0861.1").expect("resolve supplement alias");
+        assert_eq!(supplement_id_alias.id, "MA0861.2");
+    }
+
+    #[test]
+    fn bundled_pfm_supplement_does_not_replace_canonical_catalog_ids() {
+        let db = TfMotifDb::from_json(BUILTIN_TF_MOTIFS_JSON).expect("motif db");
+        let myc = db.resolve("MYC").expect("resolve MYC");
+        assert_eq!(myc.id, "MA0147.4");
+        assert_eq!(
+            db.resolve("MA0147.3").map(|motif| motif.id.as_str()),
+            Some("MA0147.4")
+        );
+        let sp1_ids = db
+            .motif_summaries()
+            .into_iter()
+            .filter(|motif| motif.id == "MA0079.5")
+            .collect::<Vec<_>>();
+        assert_eq!(sp1_ids.len(), 1);
+        assert_eq!(sp1_ids[0].name.as_deref(), Some("SP1"));
     }
 
     #[test]

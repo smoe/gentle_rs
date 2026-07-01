@@ -8,3 +8,6 @@ description = "Deterministic GENtle biology and workflow engine"
 [lib]
 name = "gentle_engine"
 path = "src/lib.rs"
+
+[dependencies]
+gentle-protocol = { path = "../gentle-protocol" }

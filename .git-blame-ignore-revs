@@ -1,0 +1,36 @@
+# Merge commits for move-only module-decomposition PRs.
+#
+# After a move-only decomposition PR lands, append the merge commit SHA here so
+# reviewers can opt into history that skips mechanical file movement:
+#
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# chore: GUI module-decomposition for rack workspace
+6090d1d3a9cbcc264fd2df48d26f8fc49e58d372
+
+# chore: Gibson specialist decomposition
+38b3bfeb106cf7bbb20536c2d4a725a2351a0aa4
+
+# chore: decomposition for primer/qPCR UI
+55954302f3773c684f184c68203a9d1d5b9944d4
+
+# chore: decomposition of main area for sequencing confirmation
+2fd74ac29ffdb2c11994714cda8f591ee405549e
+
+# chore: main_area_dna RNA-read mapping decomposition
+91dfb3b8ee793d7a1dc4eb56652a3f8e7f60fca3
+
+# chore: extract assistant UI helpers
+b14536b0a16f74c27cb006926f9f0c630a68e441
+
+# chore: extract genome catalog UI helpers
+2135e6339999577066546cf19d0b0107e614b98b
+
+# chore: extract sequence ingress dialog helpers
+f15d97a7744a940f649e9caa0d2fa1b977c3f815
+
+# chore: extract main lineage UI helpers
+c8d9a6670088e7991830c2818676c08619de37c8
+
+# chore: move iupac_code into gentle-engine
+2be525722250a1d1d7b569a1a212851362724430

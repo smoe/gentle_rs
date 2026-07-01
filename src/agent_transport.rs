@@ -3,13 +3,16 @@
 //! This module exposes the machine-facing transport metadata needed by both the
 //! local assistant UX and external orchestrators. It intentionally keeps the
 //! public surface read-only and deterministic: catalog loading, availability,
-//! preflight summaries, and OpenAI-compatible model discovery.
+//! preflight summaries, and native HTTP model discovery.
 
 use crate::agent_bridge::{
     AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
     AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
-    OPENAI_API_KEY_ENV, extract_models_from_openai_models_payload, extract_openai_error_code,
-    redact_sensitive_text,
+    ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, MISTRAL_API_KEY_AUTH_HINT,
+    MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL, OPENAI_USAGE_URL,
+    anthropic_api_key_is_known_non_api_token, anthropic_api_key_kind_warning,
+    discover_mistral_models, extract_anthropic_error_code, extract_mistral_error_code,
+    extract_models_from_openai_models_payload, extract_openai_error_code, redact_sensitive_text,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -17,7 +20,7 @@ use std::time::Duration;
 pub use crate::agent_bridge::{
     AgentInvocationRuntime, AgentSystemAvailability, AgentSystemCatalog, AgentSystemSpec,
     AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH, agent_system_availability,
-    discover_openai_models, load_agent_system_catalog,
+    discover_anthropic_models, discover_openai_models, load_agent_system_catalog,
 };
 
 const AGENT_REQUEST_TIMEOUT_SECS_DEFAULT: u64 = 180;
@@ -26,6 +29,11 @@ const AGENT_MAX_RETRIES_DEFAULT: usize = 2;
 const AGENT_MAX_RESPONSE_BYTES_DEFAULT: usize = 1_048_576;
 const OPENAI_DEFAULT_MODEL: &str = "gpt-5";
 const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+const ANTHROPIC_DEFAULT_MODEL: &str = "claude-sonnet-4-6";
+const ANTHROPIC_DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
+const ANTHROPIC_API_VERSION: &str = "2023-06-01";
+const MISTRAL_DEFAULT_MODEL: &str = "mistral-large-latest";
+const MISTRAL_DEFAULT_BASE_URL: &str = "https://api.mistral.ai/v1";
 const OPENAI_COMPAT_DEFAULT_MODEL: &str = "unspecified";
 const OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 
@@ -195,28 +203,35 @@ fn resolve_base_url(system: &AgentSystemSpec, default: &str) -> String {
         .env
         .get(AGENT_BASE_URL_ENV)
         .and_then(|value| normalize_base_url(value))
-        .or_else(|| {
-            system
-                .base_url
-                .as_deref()
-                .and_then(|value| normalize_base_url(value))
-        })
+        .or_else(|| system.base_url.as_deref().and_then(normalize_base_url))
         .or_else(|| normalize_base_url(default))
         .unwrap_or_else(|| default.trim_end_matches('/').to_string())
 }
 
-fn resolve_api_key(system: &AgentSystemSpec) -> Option<String> {
+fn resolve_env_key(system: &AgentSystemSpec, key: &str) -> Option<String> {
     system
         .env
-        .get(OPENAI_API_KEY_ENV)
+        .get(key)
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .or_else(|| {
-            std::env::var(OPENAI_API_KEY_ENV)
+            std::env::var(key)
                 .ok()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
         })
+}
+
+fn resolve_openai_api_key(system: &AgentSystemSpec) -> Option<String> {
+    resolve_env_key(system, OPENAI_API_KEY_ENV)
+}
+
+fn resolve_anthropic_api_key(system: &AgentSystemSpec) -> Option<String> {
+    resolve_env_key(system, ANTHROPIC_API_KEY_ENV)
+}
+
+fn resolve_mistral_api_key(system: &AgentSystemSpec) -> Option<String> {
+    resolve_env_key(system, MISTRAL_API_KEY_ENV)
 }
 
 fn openai_compat_endpoint_candidates(base_url: &str) -> Vec<String> {
@@ -294,6 +309,13 @@ fn live_probe_with_status(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModelListAuth {
+    OpenaiBearer,
+    Anthropic,
+    MistralBearer,
+}
+
 fn read_live_probe_body(
     mut response: reqwest::blocking::Response,
     max_response_bytes: usize,
@@ -318,8 +340,13 @@ fn classify_model_list_http_error(
     status: reqwest::StatusCode,
     endpoint: &str,
     body: &str,
+    provider: &str,
 ) -> (AgentLiveProbeStatusClass, bool, String, Option<String>) {
-    let provider_error_code = extract_openai_error_code(body);
+    let provider_error_code = match provider {
+        "Anthropic" => extract_anthropic_error_code(body),
+        "Mistral" => extract_mistral_error_code(body),
+        _ => extract_openai_error_code(body),
+    };
     let body_preview = clipped_message(body);
     let lower_body = body_preview.to_ascii_lowercase();
     let lower_code = provider_error_code
@@ -342,14 +369,36 @@ fn classify_model_list_http_error(
     };
     let auth_ok = !matches!(status_class, AgentLiveProbeStatusClass::AuthFailed);
     let message = match status_class {
-        AgentLiveProbeStatusClass::AuthFailed => format!(
-            "Model-list endpoint rejected authentication at {endpoint} (status={status}). Check the API key/token for this provider."
-        ),
-        AgentLiveProbeStatusClass::QuotaOrBilling => format!(
-            "Provider reported quota or billing trouble during model-list probe at {endpoint} (status={status}). The probe did not send a generation request. Response: {body_preview}"
-        ),
+        AgentLiveProbeStatusClass::AuthFailed => {
+            if provider == "Anthropic" {
+                format!(
+                    "{provider} model-list endpoint rejected authentication at {endpoint} (status={status}). {ANTHROPIC_API_KEY_AUTH_HINT}"
+                )
+            } else if provider == "Mistral" {
+                format!(
+                    "{provider} model-list endpoint rejected authentication at {endpoint} (status={status}). {MISTRAL_API_KEY_AUTH_HINT}"
+                )
+            } else {
+                format!(
+                    "{provider} model-list endpoint rejected authentication at {endpoint} (status={status}). Check the API key/token for this provider."
+                )
+            }
+        }
+        AgentLiveProbeStatusClass::QuotaOrBilling => {
+            let provider_hint = if provider.contains("OpenAI")
+                || lower_code.contains("insufficient_quota")
+                || lower_body.contains("insufficient_quota")
+            {
+                format!(" Check usage at {OPENAI_USAGE_URL} and billing at {OPENAI_BILLING_URL}.")
+            } else {
+                " Check provider billing/quota.".to_string()
+            };
+            format!(
+                "{provider} reported quota or billing trouble during model-list probe at {endpoint} (status={status}). The probe did not send a generation request.{provider_hint} Response: {body_preview}"
+            )
+        }
         _ => format!(
-            "Model-list probe failed at {endpoint} (status={status}). Response: {body_preview}"
+            "{provider} model-list probe failed at {endpoint} (status={status}). Response: {body_preview}"
         ),
     };
     (
@@ -365,6 +414,7 @@ fn build_model_list_live_probe(
     api_key: Option<&str>,
     selected_model: Option<&str>,
     runtime: &AgentInvocationRuntime,
+    auth: ModelListAuth,
 ) -> AgentSystemLiveProbe {
     let endpoints = model_endpoint_candidates(base_url);
     let client = match reqwest::blocking::Client::builder()
@@ -400,7 +450,14 @@ fn build_model_list_live_probe(
         probe.attempted_endpoints.push(endpoint.clone());
         let mut request = client.get(endpoint);
         if let Some(key) = api_key.map(str::trim).filter(|value| !value.is_empty()) {
-            request = request.bearer_auth(key);
+            request = match auth {
+                ModelListAuth::OpenaiBearer | ModelListAuth::MistralBearer => {
+                    request.bearer_auth(key)
+                }
+                ModelListAuth::Anthropic => request
+                    .header("x-api-key", key)
+                    .header("anthropic-version", ANTHROPIC_API_VERSION),
+            };
         }
         let response = match request.send() {
             Ok(response) => response,
@@ -433,7 +490,16 @@ fn build_model_list_live_probe(
                 continue;
             }
             let (status_class, auth_ok, message, provider_error_code) =
-                classify_model_list_http_error(status, endpoint, &body);
+                classify_model_list_http_error(
+                    status,
+                    endpoint,
+                    &body,
+                    match auth {
+                        ModelListAuth::OpenaiBearer => "Provider",
+                        ModelListAuth::Anthropic => "Anthropic",
+                        ModelListAuth::MistralBearer => "Mistral",
+                    },
+                );
             probe.auth_ok = auth_ok;
             probe.status_class = status_class;
             probe.message = message;
@@ -501,13 +567,13 @@ fn build_agent_live_probe(
             live_probe_with_status(
                 AgentLiveProbeStatusClass::UnsupportedTransport,
                 format!(
-                    "Live endpoint probing is only supported for native_openai and native_openai_compat transports, not '{}'",
+                    "Live endpoint probing is only supported for native_openai, native_anthropic, native_mistral, and native_openai_compat transports, not '{}'",
                     system.transport.as_str()
                 ),
             )
         }
         AgentSystemTransport::NativeOpenai => {
-            let Some(api_key) = resolve_api_key(system) else {
+            let Some(api_key) = resolve_openai_api_key(system) else {
                 return live_probe_with_status(
                     AgentLiveProbeStatusClass::MissingKey,
                     format!(
@@ -526,6 +592,64 @@ fn build_agent_live_probe(
                 Some(api_key.as_str()),
                 preflight.model.as_deref(),
                 &agent_runtime(system),
+                ModelListAuth::OpenaiBearer,
+            )
+        }
+        AgentSystemTransport::NativeAnthropic => {
+            let Some(api_key) = resolve_anthropic_api_key(system) else {
+                return live_probe_with_status(
+                    AgentLiveProbeStatusClass::MissingKey,
+                    format!(
+                        "{ANTHROPIC_API_KEY_ENV} is required for native Claude live setup probing"
+                    ),
+                );
+            };
+            if anthropic_api_key_is_known_non_api_token(&api_key) {
+                return AgentSystemLiveProbe {
+                    enabled: true,
+                    status_class: AgentLiveProbeStatusClass::AuthFailed,
+                    message: anthropic_api_key_kind_warning(&api_key)
+                        .unwrap_or(ANTHROPIC_API_KEY_AUTH_HINT)
+                        .to_string(),
+                    provider_error_code: Some("wrong_key_kind".to_string()),
+                    ..Default::default()
+                };
+            }
+            let Some(base_url) = preflight.base_url.as_deref() else {
+                return live_probe_with_status(
+                    AgentLiveProbeStatusClass::ProviderError,
+                    "No base URL resolved for native Claude live setup probing",
+                );
+            };
+            build_model_list_live_probe(
+                base_url,
+                Some(api_key.as_str()),
+                preflight.model.as_deref(),
+                &agent_runtime(system),
+                ModelListAuth::Anthropic,
+            )
+        }
+        AgentSystemTransport::NativeMistral => {
+            let Some(api_key) = resolve_mistral_api_key(system) else {
+                return live_probe_with_status(
+                    AgentLiveProbeStatusClass::MissingKey,
+                    format!(
+                        "{MISTRAL_API_KEY_ENV} is required for native Mistral live setup probing"
+                    ),
+                );
+            };
+            let Some(base_url) = preflight.base_url.as_deref() else {
+                return live_probe_with_status(
+                    AgentLiveProbeStatusClass::ProviderError,
+                    "No base URL resolved for native Mistral live setup probing",
+                );
+            };
+            build_model_list_live_probe(
+                base_url,
+                Some(api_key.as_str()),
+                preflight.model.as_deref(),
+                &agent_runtime(system),
+                ModelListAuth::MistralBearer,
             )
         }
         AgentSystemTransport::NativeOpenaiCompat => {
@@ -544,12 +668,13 @@ fn build_agent_live_probe(
                     "No base URL resolved for OpenAI-compatible live setup probing",
                 );
             };
-            let api_key = resolve_api_key(system);
+            let api_key = resolve_openai_api_key(system);
             build_model_list_live_probe(
                 base_url,
                 api_key.as_deref(),
                 preflight.model.as_deref(),
                 &agent_runtime(system),
+                ModelListAuth::OpenaiBearer,
             )
         }
     }
@@ -601,8 +726,33 @@ pub fn build_agent_system_preflight_with_live(
             model = Some(resolve_model(&system, OPENAI_DEFAULT_MODEL));
             endpoint_candidates = vec![format!("{resolved}/responses")];
             discovery_endpoint_candidates = model_endpoint_candidates(&resolved);
-            if resolve_api_key(&system).is_none() {
+            if resolve_openai_api_key(&system).is_none() {
                 warnings.push(format!("{OPENAI_API_KEY_ENV} is not set"));
+            }
+        }
+        AgentSystemTransport::NativeAnthropic => {
+            let resolved = resolve_base_url(&system, ANTHROPIC_DEFAULT_BASE_URL);
+            base_url = Some(resolved.clone());
+            model = Some(resolve_model(&system, ANTHROPIC_DEFAULT_MODEL));
+            endpoint_candidates = vec![format!("{resolved}/messages")];
+            discovery_endpoint_candidates = model_endpoint_candidates(&resolved);
+            match resolve_anthropic_api_key(&system) {
+                Some(api_key) => {
+                    if let Some(warning) = anthropic_api_key_kind_warning(&api_key) {
+                        warnings.push(warning.to_string());
+                    }
+                }
+                None => warnings.push(format!("{ANTHROPIC_API_KEY_ENV} is not set")),
+            }
+        }
+        AgentSystemTransport::NativeMistral => {
+            let resolved = resolve_base_url(&system, MISTRAL_DEFAULT_BASE_URL);
+            base_url = Some(resolved.clone());
+            model = Some(resolve_model(&system, MISTRAL_DEFAULT_MODEL));
+            endpoint_candidates = vec![format!("{resolved}/chat/completions")];
+            discovery_endpoint_candidates = model_endpoint_candidates(&resolved);
+            if resolve_mistral_api_key(&system).is_none() {
+                warnings.push(format!("{MISTRAL_API_KEY_ENV} is not set"));
             }
         }
         AgentSystemTransport::NativeOpenaiCompat => {
@@ -652,8 +802,8 @@ pub fn build_agent_system_preflight_with_live(
     Ok(preflight)
 }
 
-/// Discover model ids for a configured agent system that uses a native
-/// OpenAI/OpenAI-compatible HTTP transport.
+/// Discover model ids for a configured agent system that uses a native HTTP
+/// transport with model-list support.
 pub fn discover_models_for_agent_system(
     catalog_path: Option<&str>,
     system_id: &str,
@@ -672,6 +822,10 @@ pub fn discover_models_for_agent_system(
     }
     let base_url = match system.transport {
         AgentSystemTransport::NativeOpenai => resolve_base_url(&system, OPENAI_DEFAULT_BASE_URL),
+        AgentSystemTransport::NativeAnthropic => {
+            resolve_base_url(&system, ANTHROPIC_DEFAULT_BASE_URL)
+        }
+        AgentSystemTransport::NativeMistral => resolve_base_url(&system, MISTRAL_DEFAULT_BASE_URL),
         AgentSystemTransport::NativeOpenaiCompat => {
             resolve_base_url(&system, OPENAI_COMPAT_DEFAULT_BASE_URL)
         }
@@ -683,15 +837,27 @@ pub fn discover_models_for_agent_system(
             ));
         }
     };
-    let api_key = resolve_api_key(&system);
-    discover_openai_models(&base_url, api_key.as_deref())
+    match system.transport {
+        AgentSystemTransport::NativeAnthropic => {
+            let api_key = resolve_anthropic_api_key(&system);
+            discover_anthropic_models(&base_url, api_key.as_deref())
+        }
+        AgentSystemTransport::NativeMistral => {
+            let api_key = resolve_mistral_api_key(&system);
+            discover_mistral_models(&base_url, api_key.as_deref())
+        }
+        _ => {
+            let api_key = resolve_openai_api_key(&system);
+            discover_openai_models(&base_url, api_key.as_deref())
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::{
-        io::{Read, Write},
+        io::{ErrorKind, Read, Write},
         net::TcpListener,
         thread,
     };
@@ -709,8 +875,17 @@ mod tests {
         }
     }
 
-    fn spawn_model_list_server(routes: Vec<(&str, u16, &str)>) -> String {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test model server");
+    fn spawn_model_list_server(routes: Vec<(&str, u16, &str)>) -> Option<String> {
+        let listener = match TcpListener::bind("127.0.0.1:0") {
+            Ok(listener) => listener,
+            Err(err) if err.kind() == ErrorKind::PermissionDenied => {
+                eprintln!(
+                    "skipping local live-probe server test because this environment rejects localhost binds: {err}"
+                );
+                return None;
+            }
+            Err(err) => panic!("bind test model server: {err}"),
+        };
         let addr = listener.local_addr().expect("test server addr");
         let routes = routes
             .into_iter()
@@ -746,7 +921,7 @@ mod tests {
                 let _ = stream.write_all(response.as_bytes());
             }
         });
-        format!("http://{addr}")
+        Some(format!("http://{addr}"))
     }
 
     #[test]
@@ -758,6 +933,24 @@ mod tests {
                 "http://127.0.0.1:11434/chat/completions".to_string(),
                 "http://127.0.0.1:11434/v1/chat/completions".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn compat_endpoint_candidates_use_v1_base_directly() {
+        let candidates = openai_compat_endpoint_candidates("http://localhost:11973/v1");
+        assert_eq!(
+            candidates,
+            vec!["http://localhost:11973/v1/chat/completions".to_string()]
+        );
+    }
+
+    #[test]
+    fn model_endpoint_candidates_use_v1_base_directly() {
+        let candidates = model_endpoint_candidates("http://localhost:11973/v1");
+        assert_eq!(
+            candidates,
+            vec!["http://localhost:11973/v1/models".to_string()]
         );
     }
 
@@ -796,14 +989,144 @@ mod tests {
     }
 
     #[test]
+    fn live_probe_classifies_missing_anthropic_key_without_endpoint_attempt() {
+        let system = AgentSystemSpec {
+            id: "claude".to_string(),
+            label: "Claude".to_string(),
+            transport: AgentSystemTransport::NativeAnthropic,
+            model: Some("claude-sonnet-4-6".to_string()),
+            base_url: Some("https://api.anthropic.com/v1".to_string()),
+            ..Default::default()
+        };
+        let availability = AgentSystemAvailability {
+            available: false,
+            reason: Some(format!("{ANTHROPIC_API_KEY_ENV} is not set")),
+        };
+        let preflight = AgentSystemPreflight {
+            base_url: Some("https://api.anthropic.com/v1".to_string()),
+            model: Some("claude-sonnet-4-6".to_string()),
+            ..Default::default()
+        };
+        let previous_key = std::env::var(ANTHROPIC_API_KEY_ENV).ok();
+        unsafe {
+            std::env::remove_var(ANTHROPIC_API_KEY_ENV);
+        }
+        let probe = build_agent_live_probe(&system, &availability, &preflight);
+        if let Some(value) = previous_key {
+            unsafe {
+                std::env::set_var(ANTHROPIC_API_KEY_ENV, value);
+            }
+        }
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::MissingKey);
+        assert!(probe.attempted_endpoints.is_empty());
+        assert!(!probe.auth_ok);
+    }
+
+    #[test]
+    fn live_probe_classifies_missing_mistral_key_without_endpoint_attempt() {
+        let system = AgentSystemSpec {
+            id: "mistral".to_string(),
+            label: "Mistral".to_string(),
+            transport: AgentSystemTransport::NativeMistral,
+            model: Some("mistral-large-latest".to_string()),
+            base_url: Some("https://api.mistral.ai/v1".to_string()),
+            ..Default::default()
+        };
+        let availability = AgentSystemAvailability {
+            available: false,
+            reason: Some(format!("{MISTRAL_API_KEY_ENV} is not set")),
+        };
+        let preflight = AgentSystemPreflight {
+            base_url: Some("https://api.mistral.ai/v1".to_string()),
+            model: Some("mistral-large-latest".to_string()),
+            ..Default::default()
+        };
+        let _lock = crate::genomes::genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous_key = std::env::var(MISTRAL_API_KEY_ENV).ok();
+        unsafe {
+            std::env::remove_var(MISTRAL_API_KEY_ENV);
+        }
+        let probe = build_agent_live_probe(&system, &availability, &preflight);
+        if let Some(value) = previous_key {
+            unsafe {
+                std::env::set_var(MISTRAL_API_KEY_ENV, value);
+            }
+        }
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::MissingKey);
+        assert!(probe.attempted_endpoints.is_empty());
+        assert!(!probe.auth_ok);
+    }
+
+    #[test]
+    fn live_probe_rejects_anthropic_oauth_token_without_endpoint_attempt() {
+        let system = AgentSystemSpec {
+            id: "claude".to_string(),
+            label: "Claude".to_string(),
+            transport: AgentSystemTransport::NativeAnthropic,
+            model: Some("claude-sonnet-4-6".to_string()),
+            base_url: Some("https://api.anthropic.com/v1".to_string()),
+            env: std::collections::HashMap::from([(
+                ANTHROPIC_API_KEY_ENV.to_string(),
+                "sk-ant-oat01-not-for-api".to_string(),
+            )]),
+            ..Default::default()
+        };
+        let availability = AgentSystemAvailability {
+            available: true,
+            reason: None,
+        };
+        let preflight = AgentSystemPreflight {
+            base_url: Some("https://api.anthropic.com/v1".to_string()),
+            model: Some("claude-sonnet-4-6".to_string()),
+            ..Default::default()
+        };
+        let probe = build_agent_live_probe(&system, &availability, &preflight);
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::AuthFailed);
+        assert!(probe.attempted_endpoints.is_empty());
+        assert_eq!(probe.provider_error_code.as_deref(), Some("wrong_key_kind"));
+        assert!(probe.message.contains("Claude Code/Claude.ai OAuth token"));
+    }
+
+    #[test]
+    fn preflight_warns_for_anthropic_oauth_token_shape() {
+        let overrides = std::collections::HashMap::from([(
+            ANTHROPIC_API_KEY_ENV.to_string(),
+            "sk-ant-oat01-not-for-api".to_string(),
+        )]);
+        let preflight = build_agent_system_preflight_with_live(
+            None,
+            "anthropic_claude_sonnet_native",
+            Some(&overrides),
+            false,
+        )
+        .expect("preflight");
+
+        assert!(
+            preflight
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("Claude Code/Claude.ai OAuth token"))
+        );
+    }
+
+    #[test]
     fn live_probe_classifies_auth_failure() {
-        let base_url = spawn_model_list_server(vec![(
+        let Some(base_url) = spawn_model_list_server(vec![(
             "/models",
             401,
             r#"{"error":{"code":"invalid_api_key","message":"bad key"}}"#,
-        )]);
-        let probe =
-            build_model_list_live_probe(&base_url, Some("sk-test"), Some("gpt-5"), &test_runtime());
+        )]) else {
+            return;
+        };
+        let probe = build_model_list_live_probe(
+            &base_url,
+            Some("sk-test"),
+            Some("gpt-5"),
+            &test_runtime(),
+            ModelListAuth::OpenaiBearer,
+        );
         assert_eq!(probe.status_class, AgentLiveProbeStatusClass::AuthFailed);
         assert!(probe.reachable);
         assert!(!probe.auth_ok);
@@ -815,13 +1138,20 @@ mod tests {
 
     #[test]
     fn live_probe_classifies_insufficient_quota() {
-        let base_url = spawn_model_list_server(vec![(
+        let Some(base_url) = spawn_model_list_server(vec![(
             "/models",
             429,
             r#"{"error":{"type":"insufficient_quota","code":"insufficient_quota"}}"#,
-        )]);
-        let probe =
-            build_model_list_live_probe(&base_url, Some("sk-test"), Some("gpt-5"), &test_runtime());
+        )]) else {
+            return;
+        };
+        let probe = build_model_list_live_probe(
+            &base_url,
+            Some("sk-test"),
+            Some("gpt-5"),
+            &test_runtime(),
+            ModelListAuth::OpenaiBearer,
+        );
         assert_eq!(
             probe.status_class,
             AgentLiveProbeStatusClass::QuotaOrBilling
@@ -831,12 +1161,22 @@ mod tests {
             probe.provider_error_code.as_deref(),
             Some("insufficient_quota")
         );
+        assert!(probe.message.contains(OPENAI_USAGE_URL));
+        assert!(probe.message.contains(OPENAI_BILLING_URL));
     }
 
     #[test]
     fn live_probe_classifies_malformed_model_json() {
-        let base_url = spawn_model_list_server(vec![("/models", 200, "not json")]);
-        let probe = build_model_list_live_probe(&base_url, None, Some("llama3"), &test_runtime());
+        let Some(base_url) = spawn_model_list_server(vec![("/models", 200, "not json")]) else {
+            return;
+        };
+        let probe = build_model_list_live_probe(
+            &base_url,
+            None,
+            Some("llama3"),
+            &test_runtime(),
+            ModelListAuth::OpenaiBearer,
+        );
         assert_eq!(probe.status_class, AgentLiveProbeStatusClass::ProviderError);
         assert!(probe.reachable);
         assert!(probe.auth_ok);
@@ -846,13 +1186,20 @@ mod tests {
 
     #[test]
     fn live_probe_classifies_selected_model_absent() {
-        let base_url = spawn_model_list_server(vec![(
+        let Some(base_url) = spawn_model_list_server(vec![(
             "/models",
             200,
             r#"{"data":[{"id":"llama3"},{"id":"qwen3"}]}"#,
-        )]);
-        let probe =
-            build_model_list_live_probe(&base_url, None, Some("missing-model"), &test_runtime());
+        )]) else {
+            return;
+        };
+        let probe = build_model_list_live_probe(
+            &base_url,
+            None,
+            Some("missing-model"),
+            &test_runtime(),
+            ModelListAuth::OpenaiBearer,
+        );
         assert_eq!(probe.status_class, AgentLiveProbeStatusClass::ModelMissing);
         assert!(probe.model_list_ok);
         assert!(!probe.selected_model_seen);
@@ -860,11 +1207,19 @@ mod tests {
 
     #[test]
     fn live_probe_falls_back_to_v1_models_for_compat_roots() {
-        let base_url = spawn_model_list_server(vec![
+        let Some(base_url) = spawn_model_list_server(vec![
             ("/models", 404, r#"{"error":{"code":"not_found"}}"#),
             ("/v1/models", 200, r#"{"data":[{"id":"llama3"}]}"#),
-        ]);
-        let probe = build_model_list_live_probe(&base_url, None, Some("llama3"), &test_runtime());
+        ]) else {
+            return;
+        };
+        let probe = build_model_list_live_probe(
+            &base_url,
+            None,
+            Some("llama3"),
+            &test_runtime(),
+            ModelListAuth::OpenaiBearer,
+        );
         assert_eq!(probe.status_class, AgentLiveProbeStatusClass::Ok);
         assert_eq!(probe.attempted_endpoints.len(), 2);
         assert!(
@@ -875,5 +1230,97 @@ mod tests {
                 .ends_with("/v1/models")
         );
         assert!(probe.selected_model_seen);
+    }
+
+    #[test]
+    fn live_probe_supports_anthropic_model_list_shape() {
+        let Some(base_url) = spawn_model_list_server(vec![(
+            "/models",
+            200,
+            r#"{"data":[{"id":"claude-sonnet-4-6","type":"model"}]}"#,
+        )]) else {
+            return;
+        };
+        let probe = build_model_list_live_probe(
+            &base_url,
+            Some("sk-ant-test"),
+            Some("claude-sonnet-4-6"),
+            &test_runtime(),
+            ModelListAuth::Anthropic,
+        );
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::Ok);
+        assert!(probe.model_list_ok);
+        assert!(probe.selected_model_seen);
+    }
+
+    #[test]
+    fn live_probe_supports_mistral_model_list_shape() {
+        let Some(base_url) = spawn_model_list_server(vec![(
+            "/models",
+            200,
+            r#"{"object":"list","data":[{"id":"mistral-large-latest","object":"model"}]}"#,
+        )]) else {
+            return;
+        };
+        let probe = build_model_list_live_probe(
+            &base_url,
+            Some("mistral-test"),
+            Some("mistral-large-latest"),
+            &test_runtime(),
+            ModelListAuth::MistralBearer,
+        );
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::Ok);
+        assert!(probe.model_list_ok);
+        assert!(probe.selected_model_seen);
+    }
+
+    #[test]
+    fn live_probe_anthropic_auth_failure_mentions_console_key() {
+        let Some(base_url) = spawn_model_list_server(vec![(
+            "/models",
+            401,
+            r#"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#,
+        )]) else {
+            return;
+        };
+        let probe = build_model_list_live_probe(
+            &base_url,
+            Some("not-a-console-api-key"),
+            Some("claude-sonnet-4-6"),
+            &test_runtime(),
+            ModelListAuth::Anthropic,
+        );
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::AuthFailed);
+        assert_eq!(
+            probe.provider_error_code.as_deref(),
+            Some("authentication_error")
+        );
+        assert!(probe.message.contains("Anthropic Console API key"));
+        assert!(probe.message.contains("Claude Code/Claude.ai"));
+    }
+
+    #[test]
+    fn live_probe_mistral_auth_failure_mentions_api_key_kind() {
+        let Some(base_url) = spawn_model_list_server(vec![(
+            "/models",
+            401,
+            r#"{"object":"error","type":"authentication_error","message":"Unauthorized","code":"authentication_error"}"#,
+        )]) else {
+            return;
+        };
+        let probe = build_model_list_live_probe(
+            &base_url,
+            Some("not-a-mistral-api-key"),
+            Some("mistral-large-latest"),
+            &test_runtime(),
+            ModelListAuth::MistralBearer,
+        );
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::AuthFailed);
+        assert_eq!(
+            probe.provider_error_code.as_deref(),
+            Some("authentication_error")
+        );
+        assert!(probe.message.contains("Mistral La Plateforme API key"));
+        assert!(probe.message.contains("Le Chat"));
     }
 }

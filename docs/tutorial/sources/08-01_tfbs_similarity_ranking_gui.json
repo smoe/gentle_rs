@@ -1,0 +1,22 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "tfbs_similarity_ranking_gui",
+  "title": "TFBS Similarity Ranking Tutorial",
+  "graphics": [],
+  "catalog": {
+    "order": 44,
+    "path": "docs/tutorial/08-01_tfbs_similarity_ranking_gui.md",
+    "type": "gui_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "sequence_analysis",
+      "regulatory_analysis",
+      "clawbio"
+    ],
+    "notes": "GUI sign-off tutorial for ranking candidate transcription-factor motifs against one anchor motif over the same DNA span, with JSON export and workflow/ClawBio replay links.",
+    "group": "08",
+    "group_position": 1
+  }
+}

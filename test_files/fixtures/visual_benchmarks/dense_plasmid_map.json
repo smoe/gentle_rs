@@ -1,0 +1,91 @@
+{
+  "schema": "gentle.visual_benchmark_fixture.v1",
+  "fixture_id": "dense_plasmid_map",
+  "sequences": [
+    {
+      "id": "dense_plasmid",
+      "name": "dense synthetic plasmid benchmark",
+      "topology": "circular",
+      "restriction_enzymes": [
+        "EcoRI",
+        "HindIII",
+        "BamHI",
+        "PstI",
+        "SalI",
+        "SmaI",
+        "XbaI",
+        "SacI",
+        "KpnI"
+      ],
+      "sequence_segments": [
+        { "label": "EcoRI", "literal": "GAATTC" },
+        { "label": "fill1", "repeat": "ATGC", "count": 8 },
+        { "label": "HindIII", "literal": "AAGCTT" },
+        { "label": "fill2", "repeat": "CGTA", "count": 7 },
+        { "label": "BamHI", "literal": "GGATCC" },
+        { "label": "fill3", "repeat": "TTAACCGG", "count": 4 },
+        { "label": "PstI", "literal": "CTGCAG" },
+        { "label": "fill4", "repeat": "GATTACA", "count": 5 },
+        { "label": "SalI", "literal": "GTCGAC" },
+        { "label": "fill5", "repeat": "CCATGG", "count": 6 },
+        { "label": "SmaI", "literal": "CCCGGG" },
+        { "label": "fill6", "repeat": "ATATCGCG", "count": 5 },
+        { "label": "XbaI", "literal": "TCTAGA" },
+        { "label": "fill7", "repeat": "GCGT", "count": 9 },
+        { "label": "SacI", "literal": "GAGCTC" },
+        { "label": "fill8", "repeat": "TACGGA", "count": 6 },
+        { "label": "KpnI", "literal": "GGTACC" },
+        { "label": "fill9", "repeat": "CATG", "count": 8 }
+      ],
+      "features": [
+        {
+          "kind": "promoter",
+          "label": "lac promoter",
+          "strand": "+",
+          "ranges": [[6, 38]],
+          "qualifiers": {
+            "note": "synthetic inducible expression promoter"
+          }
+        },
+        {
+          "kind": "CDS",
+          "label": "AmpR",
+          "strand": "-",
+          "ranges": [[44, 151]],
+          "qualifiers": {
+            "gene": "AmpR",
+            "product": "beta-lactamase"
+          }
+        },
+        {
+          "kind": "CDS",
+          "label": "TetR",
+          "strand": "+",
+          "ranges": [[157, 245]],
+          "qualifiers": {
+            "gene": "TetR",
+            "product": "tetracycline resistance regulator"
+          }
+        },
+        {
+          "kind": "rep_origin",
+          "label": "ori",
+          "strand": "+",
+          "ranges": [[245, 323]],
+          "qualifiers": {
+            "note": "synthetic plasmid origin"
+          }
+        },
+        {
+          "kind": "misc_feature",
+          "label": "MCS dense sites",
+          "strand": "+",
+          "ranges": [[0, 116]],
+          "qualifiers": {
+            "note": "Multiple Cloning Site (MCS); contains EcoRI, HindIII, BamHI and PstI"
+          }
+        }
+      ]
+    }
+  ]
+}

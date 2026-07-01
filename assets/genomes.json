@@ -34,6 +34,24 @@
     "ncbi_assembly_name": "GRCh38.p14",
     "cache_dir": "data/genomes"
   },
+  "Human GRCh37 Ensembl 87": {
+    "ncbi_taxonomy_id": 9606,
+    "description": "Human GRCh37.p13 Ensembl 87",
+    "sequence_remote": "https://ftp.ensembl.org/pub/grch37/current/fasta/homo_sapiens/dna/Homo_sapiens.GRCh37.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/grch37/current/gtf/homo_sapiens/Homo_sapiens.GRCh37.87.gtf.gz",
+    "cache_dir": "data/genomes",
+    "aliases": [
+      "GRCh37",
+      "GRCh37.p13",
+      "hg19",
+      "GCA_000001405.14"
+    ],
+    "tags": [
+      "human",
+      "grch37",
+      "hg19"
+    ]
+  },
   "Human T2T CHM13v2.0 NCBI RefSeq GCF_009914755.1": {
     "ncbi_taxonomy_id": 9606,
     "description": "Human T2T CHM13v2.0 from NCBI RefSeq assembly",

@@ -6,13 +6,28 @@
 
 use crate::{
     engine::GentleEngine,
+    external_service_providers::{
+        LoadedExternalServiceProviderConfig, doctor_external_service_provider_config,
+        external_service_provider_config_index,
+    },
     genomes::{GenomeCatalog, PrepareGenomeActivityStatus},
     resource_status::{ExternalToolResourceStatus, ResourceCatalogReport, resource_catalog_status},
 };
+use gentle_protocol::{
+    EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA, EXTERNAL_SERVICE_DELIVERY_ROUTE_SCHEMA,
+    EXTERNAL_SERVICE_PREFLIGHT_SCHEMA, EXTERNAL_SERVICE_PROVIDER_CATALOG_SCHEMA,
+    EXTERNAL_SERVICE_QUOTE_SCHEMA, EXTERNAL_SERVICE_REQUEST_SCHEMA, ExternalServiceArtifactBundle,
+    ExternalServiceArtifactRef, ExternalServiceDeliveryRouteCandidate,
+    ExternalServiceDeliveryRouteReport, ExternalServiceDeliveryRouteRequest,
+    ExternalServiceInlinePayload, ExternalServiceLink, ExternalServicePreflightReport,
+    ExternalServiceProviderCatalog, ExternalServiceQuoteReport, ExternalServiceRequest,
+};
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{
-    env,
+    collections::BTreeMap,
+    env, fs,
+    path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -21,6 +36,8 @@ pub const SERVICE_HANDOFF_SCHEMA: &str = "gentle.service_handoff.v1";
 pub const TELEGRAM_GUIDE_SCHEMA: &str = "gentle.telegram_guide.v1";
 pub const DEFAULT_REFERENCE_GENOME_IDS: &[&str] = &["Human GRCh38 Ensembl 116"];
 pub const DEFAULT_HELPER_IDS: &[&str] = &["Plasmid pUC19 (online)"];
+const DELIVERY_ROUTE_OLIGO_MAX_NT: usize = 120;
+const DELIVERY_ROUTE_METABION_FRAGMENT_MAX_NT: usize = 3000;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ServiceReadinessReport {
@@ -29,6 +46,7 @@ pub struct ServiceReadinessReport {
     pub references: Vec<ServiceDependencyStatus>,
     pub helpers: Vec<ServiceDependencyStatus>,
     pub resources: ResourceCatalogReport,
+    pub external_providers: ExternalServiceProviderCatalog,
     pub summary_lines: Vec<String>,
 }
 
@@ -185,6 +203,1677 @@ fn now_unix_ms() -> u128 {
         .unwrap_or(0)
 }
 
+fn normalize_service_token(raw: &str) -> String {
+    raw.trim().to_ascii_lowercase().replace(['-', ' '], "_")
+}
+
+pub fn external_service_provider_catalog() -> ExternalServiceProviderCatalog {
+    match external_service_provider_config_index() {
+        Ok(index) => index.to_provider_catalog(now_unix_ms()),
+        Err(err) => ExternalServiceProviderCatalog {
+            schema: EXTERNAL_SERVICE_PROVIDER_CATALOG_SCHEMA.to_string(),
+            generated_at_unix_ms: now_unix_ms(),
+            providers: vec![],
+            summary_lines: vec![format!(
+                "External-service provider config could not be loaded: {err}"
+            )],
+        },
+    }
+}
+
+pub fn external_service_provider_config_doctor_report(
+    catalog_path: Option<&str>,
+) -> gentle_protocol::ExternalServiceProviderConfigDoctorReport {
+    doctor_external_service_provider_config(catalog_path)
+}
+
+fn value_string_for_key<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
+    let object = value.as_object()?;
+    for key in keys {
+        if let Some(text) = object.get(*key).and_then(Value::as_str)
+            && !text.trim().is_empty()
+        {
+            return Some(text);
+        }
+    }
+    None
+}
+
+fn value_has_object_key(value: &Value, keys: &[&str]) -> bool {
+    value
+        .as_object()
+        .map(|object| keys.iter().any(|key| object.contains_key(*key)))
+        .unwrap_or(false)
+}
+
+fn service_source_issue(service_kind: &str, source_target: &Value) -> Option<String> {
+    let normalized = normalize_service_token(service_kind);
+    match normalized.as_str() {
+        "protein_expression" => value_string_for_key(
+            source_target,
+            &[
+                "protein_sequence",
+                "amino_acid_sequence",
+                "protein_seq_id",
+                "seq_id",
+                "protein_to_dna_handoff_id",
+            ],
+        )
+        .is_none()
+        .then(|| {
+            "protein_expression requests need source_target.protein_sequence, amino_acid_sequence, protein_seq_id, seq_id, or protein_to_dna_handoff_id".to_string()
+        }),
+        "plasmid_reorder" => value_string_for_key(
+            source_target,
+            &[
+                "provider_project_id",
+                "provider_order_id",
+                "plasmid_id",
+                "seq_id",
+                "sequence",
+                "sequence_text",
+            ],
+        )
+        .is_none()
+        .then(|| {
+            "plasmid_reorder requests need a provider project/order/plasmid id or a sequence-backed source target".to_string()
+        }),
+        "mutagenesis" => {
+            let has_source = value_string_for_key(
+                source_target,
+                &["sequence", "sequence_text", "dna_sequence", "seq_id", "template_seq_id"],
+            )
+            .is_some();
+            let has_mutations = value_has_object_key(source_target, &["mutations", "variants"])
+                || source_target
+                    .get("mutation_table")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| !value.trim().is_empty());
+            (!has_source || !has_mutations).then(|| {
+                "mutagenesis requests need a source sequence/template plus mutations, variants, or mutation_table in source_target".to_string()
+            })
+        }
+        "dna_oligo_single_tube" => {
+            let has_oligo_rows = source_target_has_nonempty_array(source_target, &["line_items", "oligos"]);
+            let has_source = value_string_for_key(
+                source_target,
+                &["sequence", "sequence_text", "dna_sequence", "sequence_5_to_3", "seq_id", "construct_id"],
+            )
+            .is_some();
+            (!has_oligo_rows && !has_source).then(|| {
+                "dna_oligo_single_tube requests need source_target.sequence, sequence_text, dna_sequence, sequence_5_to_3, seq_id, construct_id, line_items, or oligos".to_string()
+            })
+        }
+        _ => value_string_for_key(
+            source_target,
+            &["sequence", "sequence_text", "dna_sequence", "seq_id", "construct_id"],
+        )
+        .is_none()
+        .then(|| {
+            "DNA service requests need source_target.sequence, sequence_text, dna_sequence, seq_id, or construct_id".to_string()
+        }),
+    }
+}
+
+fn request_has_any_source_field(value: &Value, fields: &[String]) -> bool {
+    if fields.is_empty() {
+        return false;
+    }
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    fields.iter().any(|field| {
+        object.get(field).is_some_and(|candidate| match candidate {
+            Value::Null => false,
+            Value::String(text) => !text.trim().is_empty(),
+            Value::Array(rows) => !rows.is_empty(),
+            Value::Object(map) => !map.is_empty(),
+            _ => true,
+        })
+    })
+}
+
+fn configured_service_source_issue(
+    provider_config: &LoadedExternalServiceProviderConfig,
+    service_kind: &str,
+    source_target: &Value,
+) -> Option<String> {
+    let rule = provider_config.validation_rule_for(service_kind)?;
+    if rule.required_source_fields.is_empty()
+        || request_has_any_source_field(source_target, &rule.required_source_fields)
+    {
+        return None;
+    }
+    Some(format!(
+        "{} {} requests need one of source_target.{}",
+        provider_config.record.display_name,
+        normalize_service_token(service_kind),
+        rule.required_source_fields.join(", source_target.")
+    ))
+}
+
+fn external_service_links_for(
+    provider_config: &LoadedExternalServiceProviderConfig,
+    service_kind: &str,
+) -> Vec<ExternalServiceLink> {
+    let normalized = normalize_service_token(service_kind);
+    let mut links = vec![];
+    if !provider_config.record.dashboard_url.trim().is_empty() {
+        links.push(ExternalServiceLink {
+            label: format!("{} dashboard / portal", provider_config.record.display_name),
+            url: provider_config.record.dashboard_url.clone(),
+            purpose:
+                "Manual quote/order handoff route; GENtle does not submit credentials or orders."
+                    .to_string(),
+        });
+    }
+    if !provider_config.record.website_url.trim().is_empty() {
+        links.push(ExternalServiceLink {
+            label: format!("{} overview", provider_config.record.display_name),
+            url: provider_config.record.website_url.clone(),
+            purpose: "Review current provider service offerings before any human submission."
+                .to_string(),
+        });
+    }
+    for channel in &provider_config.record.channels {
+        if let Some(url) = channel.url.as_deref().filter(|url| !url.trim().is_empty()) {
+            links.push(ExternalServiceLink {
+                label: channel.display_name.clone(),
+                url: url.to_string(),
+                purpose: channel.notes.join(" "),
+            });
+        }
+    }
+    if let Some(template) = provider_config.product_template_for(&normalized)
+        && let Some(url) = template
+            .template_url
+            .as_deref()
+            .filter(|url| !url.trim().is_empty())
+    {
+        links.push(ExternalServiceLink {
+            label: format!(
+                "{} template/catalog",
+                if template.product_name.is_empty() {
+                    normalized.as_str()
+                } else {
+                    template.product_name.as_str()
+                }
+            ),
+            url: url.to_string(),
+            purpose: "Vendor template or order-form catalog for the selected service kind."
+                .to_string(),
+        });
+    }
+    if let Some(url) = provider_config
+        .record
+        .api_documentation_url
+        .as_deref()
+        .filter(|url| !url.trim().is_empty())
+    {
+        links.push(ExternalServiceLink {
+            label: format!("{} API documentation", provider_config.record.display_name),
+            url: url.to_string(),
+            purpose: "Provider API documentation; live direct submission remains disabled unless implemented explicitly."
+                .to_string(),
+        });
+    }
+    links
+}
+
+fn summarize_external_service_request(request: &ExternalServiceRequest) -> Vec<String> {
+    let mut lines = vec![
+        format!("provider={}", request.provider),
+        format!("service_kind={}", request.service_kind),
+    ];
+    if let Some(kind) = request
+        .source_target
+        .as_object()
+        .and_then(|object| object.get("kind"))
+        .and_then(Value::as_str)
+    {
+        lines.push(format!("source_target.kind={kind}"));
+    }
+    if let Some(seq_id) = value_string_for_key(
+        &request.source_target,
+        &["seq_id", "protein_seq_id", "template_seq_id"],
+    ) {
+        lines.push(format!("source_target.id={seq_id}"));
+    }
+    if let Some(sequence) = value_string_for_key(
+        &request.source_target,
+        &[
+            "sequence",
+            "sequence_text",
+            "dna_sequence",
+            "protein_sequence",
+            "amino_acid_sequence",
+        ],
+    ) {
+        lines.push(format!("source_sequence_length={}", sequence.trim().len()));
+    }
+    if request.vector_spec.is_some() {
+        lines.push("vector_spec=present".to_string());
+    }
+    if request.delivery_options.is_some() {
+        lines.push("delivery_options=present".to_string());
+    }
+    if request.commercial_context_ref.is_some() {
+        lines.push("commercial_context_ref=present_redacted".to_string());
+    }
+    lines.push(format!(
+        "return_spec={}",
+        request.return_spec.requested_payloads.join(",")
+    ));
+    lines
+}
+
+fn parse_external_service_request(request_json: &str) -> Result<ExternalServiceRequest, String> {
+    serde_json::from_str::<ExternalServiceRequest>(request_json)
+        .map_err(|e| format!("Invalid external-service request JSON: {e}"))
+}
+
+fn parse_external_service_delivery_route_request(
+    request_json: &str,
+) -> Result<ExternalServiceDeliveryRouteRequest, String> {
+    serde_json::from_str::<ExternalServiceDeliveryRouteRequest>(request_json)
+        .map_err(|e| format!("Invalid external-service delivery-route request JSON: {e}"))
+}
+
+fn normalized_sequence_letters(raw: &str) -> String {
+    raw.chars()
+        .filter(|ch| !ch.is_whitespace() && *ch != '-' && !ch.is_ascii_digit())
+        .map(|ch| ch.to_ascii_uppercase())
+        .collect()
+}
+
+fn integer_from_value_keys(value: &Value, keys: &[&str]) -> Option<usize> {
+    let object = value.as_object()?;
+    for key in keys {
+        if let Some(number) = object.get(*key).and_then(Value::as_u64) {
+            return Some(number as usize);
+        }
+        if let Some(text) = object.get(*key).and_then(Value::as_str)
+            && let Ok(number) = text.trim().parse::<usize>()
+        {
+            return Some(number);
+        }
+    }
+    None
+}
+
+fn source_target_kind(value: &Value) -> String {
+    string_from_value_keys(
+        value,
+        &[
+            "kind",
+            "type",
+            "molecule_type",
+            "sequence_kind",
+            "delivery_kind",
+            "product_kind",
+        ],
+    )
+    .unwrap_or("")
+    .trim()
+    .to_ascii_lowercase()
+}
+
+fn source_target_has_any_key(value: &Value, keys: &[&str]) -> bool {
+    value
+        .as_object()
+        .map(|object| keys.iter().any(|key| object.contains_key(*key)))
+        .unwrap_or(false)
+}
+
+fn source_target_warnings(value: &Value) -> Vec<String> {
+    let mut warnings = value
+        .as_object()
+        .and_then(|object| object.get("warnings"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .filter(|warning| !warning.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    warnings.sort();
+    warnings.dedup();
+    warnings
+}
+
+fn source_target_has_nonempty_array(value: &Value, keys: &[&str]) -> bool {
+    value.as_object().is_some_and(|object| {
+        keys.iter().any(|key| {
+            object
+                .get(*key)
+                .and_then(Value::as_array)
+                .is_some_and(|items| !items.is_empty())
+        })
+    })
+}
+
+fn source_target_contains_construct_context(request: &ExternalServiceDeliveryRouteRequest) -> bool {
+    request.vector_spec.is_some()
+        || source_target_has_any_key(
+            &request.source_target,
+            &[
+                "vector_spec",
+                "construct_id",
+                "plasmid_id",
+                "backbone_id",
+                "helper_profile_id",
+                "insertion_site",
+            ],
+        )
+        || source_target_kind(&request.source_target).contains("construct")
+        || source_target_kind(&request.source_target).contains("cloned")
+        || source_target_kind(&request.source_target).contains("plasmid")
+        || source_target_kind(&request.source_target).contains("synthetic_gene")
+}
+
+fn source_target_duplicate_review_required(value: &Value) -> bool {
+    value
+        .as_object()
+        .and_then(|object| object.get("duplicate_review"))
+        .and_then(Value::as_object)
+        .and_then(|review| review.get("status"))
+        .and_then(Value::as_str)
+        .is_some_and(|status| status.trim().eq_ignore_ascii_case("review_required"))
+}
+
+fn source_target_sequences(value: &Value) -> Vec<String> {
+    let mut sequences = vec![];
+    if let Some(text) = string_from_value_keys(
+        value,
+        &[
+            "sequence",
+            "sequence_5_to_3",
+            "sequence_text",
+            "dna_sequence",
+            "protein_sequence",
+            "amino_acid_sequence",
+        ],
+    ) {
+        sequences.push(normalized_sequence_letters(text));
+    }
+    if let Some(object) = value.as_object() {
+        for key in ["line_items", "oligos", "fragments", "sequences", "targets"] {
+            if let Some(items) = object.get(key).and_then(Value::as_array) {
+                for item in items {
+                    if let Some(text) = string_from_value_keys(
+                        item,
+                        &[
+                            "sequence",
+                            "sequence_5_to_3",
+                            "sequence_text",
+                            "dna_sequence",
+                            "protein_sequence",
+                            "amino_acid_sequence",
+                        ],
+                    ) {
+                        sequences.push(normalized_sequence_letters(text));
+                    }
+                }
+            }
+        }
+    }
+    sequences.retain(|sequence| !sequence.is_empty());
+    sequences
+}
+
+fn source_target_declared_length(value: &Value) -> Option<usize> {
+    integer_from_value_keys(
+        value,
+        &[
+            "sequence_length_nt",
+            "length_nt",
+            "length_bp",
+            "nucleotide_length",
+            "nucleotide_length_bp",
+            "amino_acid_length",
+            "length_aa",
+        ],
+    )
+}
+
+fn sequence_looks_dna(sequence: &str) -> bool {
+    !sequence.is_empty()
+        && sequence.chars().all(|ch| {
+            matches!(
+                ch,
+                'A' | 'C'
+                    | 'G'
+                    | 'T'
+                    | 'U'
+                    | 'R'
+                    | 'Y'
+                    | 'S'
+                    | 'W'
+                    | 'K'
+                    | 'M'
+                    | 'B'
+                    | 'D'
+                    | 'H'
+                    | 'V'
+                    | 'N'
+            )
+        })
+}
+
+fn sequence_looks_rna(sequence: &str) -> bool {
+    sequence.contains('U') && !sequence.contains('T') && sequence_looks_dna(sequence)
+}
+
+fn sequence_looks_protein(sequence: &str) -> bool {
+    !sequence.is_empty()
+        && sequence.chars().all(|ch| {
+            matches!(
+                ch,
+                'A' | 'C'
+                    | 'D'
+                    | 'E'
+                    | 'F'
+                    | 'G'
+                    | 'H'
+                    | 'I'
+                    | 'K'
+                    | 'L'
+                    | 'M'
+                    | 'N'
+                    | 'P'
+                    | 'Q'
+                    | 'R'
+                    | 'S'
+                    | 'T'
+                    | 'V'
+                    | 'W'
+                    | 'Y'
+                    | '*'
+                    | 'X'
+            )
+        })
+        && sequence
+            .chars()
+            .any(|ch| !matches!(ch, 'A' | 'C' | 'G' | 'T' | 'N'))
+}
+
+fn capability_display_name(
+    provider: &LoadedExternalServiceProviderConfig,
+    service_kind: &str,
+) -> String {
+    provider
+        .capability_for(service_kind)
+        .map(|capability| capability.display_name)
+        .unwrap_or_else(|| service_kind.to_string())
+}
+
+fn delivery_route_candidate(
+    provider_config: &LoadedExternalServiceProviderConfig,
+    service_kind: &str,
+    confidence: &str,
+    rationale: Vec<String>,
+    route_request: &ExternalServiceDeliveryRouteRequest,
+) -> Option<ExternalServiceDeliveryRouteCandidate> {
+    provider_config.capability_for(service_kind)?;
+    let provider = normalize_service_token(&provider_config.record.provider);
+    let service_kind = normalize_service_token(service_kind);
+    let request = ExternalServiceRequest {
+        schema: EXTERNAL_SERVICE_REQUEST_SCHEMA.to_string(),
+        provider: provider.clone(),
+        service_kind: service_kind.clone(),
+        source_target: route_request.source_target.clone(),
+        optimization_target: route_request.optimization_target.clone(),
+        vector_spec: route_request.vector_spec.clone(),
+        delivery_options: route_request.delivery_options.clone(),
+        commercial_context_ref: route_request.commercial_context_ref.clone(),
+        return_spec: route_request.return_spec.clone(),
+        request_metadata: route_request.request_metadata.clone(),
+    };
+    Some(ExternalServiceDeliveryRouteCandidate {
+        provider,
+        provider_display_name: provider_config.record.display_name.clone(),
+        service_kind: service_kind.clone(),
+        service_display_name: capability_display_name(provider_config, &service_kind),
+        confidence: confidence.to_string(),
+        rationale,
+        request,
+    })
+}
+
+pub fn external_service_delivery_route(
+    request_json: &str,
+) -> Result<ExternalServiceDeliveryRouteReport, String> {
+    let request = parse_external_service_delivery_route_request(request_json)?;
+    let mut warnings = source_target_warnings(&request.source_target);
+    if !request.schema.trim().is_empty()
+        && request.schema != EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA
+    {
+        warnings.push(format!(
+            "Request schema '{}' is not '{}'; parsing with v1 defaults.",
+            request.schema, EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA
+        ));
+    }
+    let provider_index = external_service_provider_config_index()
+        .map_err(|err| format!("External-service provider config could not be loaded: {err}"))?;
+    let sequences = source_target_sequences(&request.source_target);
+    let sequence_count = sequences.len();
+    let max_sequence_length_nt = sequences
+        .iter()
+        .map(String::len)
+        .max()
+        .or_else(|| source_target_declared_length(&request.source_target));
+    let sequence_length_nt = if sequence_count == 1 {
+        sequences
+            .first()
+            .map(String::len)
+            .or(max_sequence_length_nt)
+    } else {
+        None
+    };
+    let source_kind = source_target_kind(&request.source_target);
+    let has_protein_field = source_target_has_any_key(
+        &request.source_target,
+        &["protein_sequence", "amino_acid_sequence", "protein_seq_id"],
+    );
+    let has_line_item_oligos =
+        source_target_has_nonempty_array(&request.source_target, &["line_items", "oligos"]);
+    let has_fragments = source_target_has_any_key(&request.source_target, &["fragments"]);
+    let construct_context = source_target_contains_construct_context(&request);
+    let dna_kind_hint = source_kind.contains("dna")
+        || source_kind.contains("gene")
+        || source_kind.contains("oligo")
+        || source_kind.contains("primer")
+        || source_kind.contains("probe")
+        || source_kind.contains("fragment")
+        || source_kind.contains("mblock")
+        || source_kind.contains("m-block")
+        || source_kind.contains("cloned")
+        || source_kind.contains("plasmid");
+    let all_dna = (!sequences.is_empty()
+        && sequences
+            .iter()
+            .all(|sequence| sequence_looks_dna(sequence)))
+        || (sequences.is_empty() && max_sequence_length_nt.is_some() && dna_kind_hint);
+    let any_rna = sequences
+        .iter()
+        .any(|sequence| sequence_looks_rna(sequence))
+        || source_kind.contains("rna");
+    let protein_like = has_protein_field
+        || source_kind.contains("protein")
+        || (!sequences.is_empty()
+            && !dna_kind_hint
+            && sequences
+                .iter()
+                .all(|sequence| sequence_looks_protein(sequence)));
+
+    let mut candidates = vec![];
+    let mut rationale = vec![];
+    let mut clarification_questions = vec![];
+    let mut molecule_type = "unknown".to_string();
+    let mut sequence_kind = "ambiguous".to_string();
+
+    let route = if any_rna {
+        molecule_type = "rna".to_string();
+        sequence_kind = "rna_sequence".to_string();
+        clarification_questions.push(
+            "RNA oligo delivery is not represented by the active provider config; choose a provider/service kind explicitly or add a provider overlay.".to_string(),
+        );
+        None
+    } else if protein_like {
+        molecule_type = "protein".to_string();
+        sequence_kind = "protein_product".to_string();
+        rationale.push(
+            "Protein/amino-acid source fields route to protein-expression service handoff, not DNA oligo ordering.".to_string(),
+        );
+        Some(("geneart", "protein_expression", "high"))
+    } else if sequences.is_empty() && max_sequence_length_nt.is_none() {
+        clarification_questions.push(
+            "Provide sequence text, line items, a length hint, or a typed source record before selecting a delivery provider.".to_string(),
+        );
+        None
+    } else if source_kind.contains("oligo")
+        || source_kind.contains("primer")
+        || source_kind.contains("probe")
+        || has_line_item_oligos
+        || (all_dna
+            && !construct_context
+            && max_sequence_length_nt.unwrap_or(0) <= DELIVERY_ROUTE_OLIGO_MAX_NT)
+    {
+        molecule_type = "dna".to_string();
+        sequence_kind = "dna_oligo_single_tube".to_string();
+        rationale.push(format!(
+            "DNA line items at or below {DELIVERY_ROUTE_OLIGO_MAX_NT} nt route to the configured Metabion single-tube oligo handoff."
+        ));
+        Some(("metabion", "dna_oligo_single_tube", "high"))
+    } else if construct_context {
+        molecule_type = "dna".to_string();
+        sequence_kind = "cloned_gene_or_construct".to_string();
+        rationale.push(
+            "Vector, plasmid, construct, or cloned-gene context routes to GeneArt cloned-gene/plasmid construction handoff.".to_string(),
+        );
+        Some(("geneart", "cloned_gene", "high"))
+    } else if source_kind.contains("fragment")
+        || source_kind.contains("mblock")
+        || source_kind.contains("m-block")
+        || has_fragments
+        || (all_dna
+            && max_sequence_length_nt.unwrap_or(0) <= DELIVERY_ROUTE_METABION_FRAGMENT_MAX_NT)
+    {
+        molecule_type = "dna".to_string();
+        sequence_kind = "dna_fragment".to_string();
+        rationale.push(format!(
+            "DNA fragments longer than routine oligos and up to the local {DELIVERY_ROUTE_METABION_FRAGMENT_MAX_NT} nt routing threshold use the configured Metabion m-block handoff."
+        ));
+        Some(("metabion", "dna_fragment", "medium"))
+    } else if all_dna {
+        molecule_type = "dna".to_string();
+        sequence_kind = "long_synthetic_dna".to_string();
+        rationale.push(format!(
+            "DNA longer than the Metabion fragment routing threshold is treated as long synthetic DNA and routed to GeneArt DNA-fragment handoff unless construct context is supplied."
+        ));
+        Some(("geneart", "dna_fragment", "medium"))
+    } else {
+        clarification_questions.push(
+            "The sequence alphabet is not clearly DNA, RNA, or protein; provide molecule type before provider selection.".to_string(),
+        );
+        None
+    };
+
+    if let Some((provider_id, service_kind_id, confidence)) = route {
+        if let Some(provider_config) = provider_index.provider(provider_id) {
+            if let Some(candidate) = delivery_route_candidate(
+                provider_config,
+                service_kind_id,
+                confidence,
+                rationale.clone(),
+                &request,
+            ) {
+                candidates.push(candidate);
+            } else {
+                warnings.push(format!(
+                    "Configured provider '{}' does not expose service_kind '{}'",
+                    provider_id, service_kind_id
+                ));
+            }
+        } else {
+            warnings.push(format!(
+                "Configured provider catalog does not include provider '{}'",
+                provider_id
+            ));
+        }
+    }
+
+    if candidates.is_empty() && clarification_questions.is_empty() {
+        clarification_questions.push(
+            "No configured provider/service-kind route matched this delivery request.".to_string(),
+        );
+    }
+    let status = if candidates.is_empty() {
+        "needs_clarification"
+    } else {
+        "route_ready"
+    }
+    .to_string();
+    let length_unit = match molecule_type.as_str() {
+        "protein" => "aa",
+        "dna" | "rna" => "nt",
+        _ => "unknown",
+    }
+    .to_string();
+    let recommended_provider = candidates
+        .first()
+        .map(|candidate| candidate.provider.clone());
+    let recommended_service_kind = candidates
+        .first()
+        .map(|candidate| candidate.service_kind.clone());
+    let mut summary_lines = vec![format!(
+        "Sequence-delivery route status: {status}; molecule_type={molecule_type}; sequence_kind={sequence_kind}."
+    )];
+    if let Some(candidate) = candidates.first() {
+        summary_lines.push(format!(
+            "Recommended route: provider={} service_kind={} ({})",
+            candidate.provider, candidate.service_kind, candidate.service_display_name
+        ));
+    }
+    if !clarification_questions.is_empty() {
+        summary_lines.push(format!(
+            "Clarification required: {}",
+            clarification_questions.join(" ")
+        ));
+    }
+    Ok(ExternalServiceDeliveryRouteReport {
+        schema: EXTERNAL_SERVICE_DELIVERY_ROUTE_SCHEMA.to_string(),
+        generated_at_unix_ms: now_unix_ms(),
+        status,
+        molecule_type,
+        sequence_kind,
+        sequence_count,
+        sequence_length: sequence_length_nt,
+        max_sequence_length: max_sequence_length_nt,
+        length_unit,
+        recommended_provider,
+        recommended_service_kind,
+        candidates,
+        summary_lines,
+        rationale,
+        clarification_questions,
+        warnings,
+    })
+}
+
+pub fn external_service_project_preflight(
+    request_json: &str,
+) -> Result<ExternalServicePreflightReport, String> {
+    let request = parse_external_service_request(request_json)?;
+    Ok(external_service_project_preflight_for_request(&request))
+}
+
+fn external_service_project_preflight_for_request(
+    request: &ExternalServiceRequest,
+) -> ExternalServicePreflightReport {
+    let provider = normalize_service_token(&request.provider);
+    let service_kind = normalize_service_token(&request.service_kind);
+    let mut blocking_issues = vec![];
+    let mut warnings = source_target_warnings(&request.source_target);
+    if !request.schema.trim().is_empty() && request.schema != EXTERNAL_SERVICE_REQUEST_SCHEMA {
+        warnings.push(format!(
+            "Request schema '{}' is not '{}'; parsing with v1 defaults.",
+            request.schema, EXTERNAL_SERVICE_REQUEST_SCHEMA
+        ));
+    }
+    if provider.is_empty() {
+        blocking_issues.push("External-service request requires provider".to_string());
+    }
+    if service_kind.is_empty() {
+        blocking_issues.push("External-service request requires service_kind".to_string());
+    }
+    let provider_index = match external_service_provider_config_index() {
+        Ok(index) => index,
+        Err(err) => {
+            blocking_issues.push(format!(
+                "External-service provider config could not be loaded: {err}"
+            ));
+            return ExternalServicePreflightReport {
+                schema: EXTERNAL_SERVICE_PREFLIGHT_SCHEMA.to_string(),
+                generated_at_unix_ms: now_unix_ms(),
+                provider,
+                service_kind,
+                capability_status: "provider_config_error".to_string(),
+                eligible: false,
+                blocking_issues,
+                warnings,
+                request_summary: summarize_external_service_request(request),
+                ..Default::default()
+            };
+        }
+    };
+    let Some(provider_config) = provider_index.provider(&provider) else {
+        if !provider.is_empty() {
+            let available = provider_index.provider_ids().join(", ");
+            blocking_issues.push(format!(
+                "Provider '{}' is not supported by the active config catalog; available providers: {}",
+                request.provider, available
+            ));
+        }
+        return ExternalServicePreflightReport {
+            schema: EXTERNAL_SERVICE_PREFLIGHT_SCHEMA.to_string(),
+            generated_at_unix_ms: now_unix_ms(),
+            provider,
+            service_kind,
+            capability_status: "unsupported_provider".to_string(),
+            eligible: false,
+            blocking_issues,
+            warnings,
+            request_summary: summarize_external_service_request(request),
+            ..Default::default()
+        };
+    };
+    let Some(capability) = provider_config.capability_for(&service_kind) else {
+        blocking_issues.push(format!(
+            "{} service_kind '{}' is not in the current provider capability catalog",
+            provider_config.record.display_name, request.service_kind
+        ));
+        return ExternalServicePreflightReport {
+            schema: EXTERNAL_SERVICE_PREFLIGHT_SCHEMA.to_string(),
+            generated_at_unix_ms: now_unix_ms(),
+            provider,
+            provider_display_name: provider_config.record.display_name.clone(),
+            service_kind,
+            capability_status: "unsupported_service_kind".to_string(),
+            eligible: false,
+            blocking_issues,
+            warnings,
+            dashboard_links: external_service_links_for(provider_config, &request.service_kind),
+            request_summary: summarize_external_service_request(request),
+            ..Default::default()
+        };
+    };
+    let source_issue = if provider_config.validation_rule_for(&service_kind).is_some() {
+        configured_service_source_issue(provider_config, &service_kind, &request.source_target)
+    } else {
+        service_source_issue(&service_kind, &request.source_target)
+    };
+    if let Some(issue) = source_issue {
+        blocking_issues.push(issue);
+    }
+    if source_target_duplicate_review_required(&request.source_target) {
+        blocking_issues.push(
+            "Oligo order form duplicate review is required before quote handoff; run primers oligo-order review-dedup FORM_ID --duplicate-action keep-separate."
+                .to_string(),
+        );
+    }
+    if capability.direct_api_documented && !capability.direct_api_implemented {
+        warnings.push(format!(
+            "{} direct API support is documented for this service kind, but GENtle currently exposes only deterministic quote/handoff preflight for it.",
+            provider_config.record.display_name
+        ));
+    }
+    if let Some(rule) = provider_config.validation_rule_for(&service_kind) {
+        warnings.extend(rule.warnings);
+    }
+    warnings.extend(provider_config.record.warnings.clone());
+    let eligible = blocking_issues.is_empty();
+    let capability_status = if !eligible {
+        "blocked"
+    } else if capability.quote_handoff_supported && capability.direct_api_documented {
+        "quote_handoff_ready_direct_api_planned"
+    } else if capability.quote_handoff_supported {
+        "quote_handoff_ready"
+    } else {
+        "unsupported"
+    }
+    .to_string();
+    let estimated_turnaround = if !provider_config.record.default_delivery_hints.is_empty() {
+        Some(provider_config.record.default_delivery_hints.join(" "))
+    } else {
+        match service_kind.as_str() {
+        "protein_expression" => {
+            Some("quote follow-up documented; production advertised as as little as 3 weeks depending on project scope".to_string())
+        }
+        "mutagenesis" => Some("quote/form follow-up required; provider page lists service-specific processing times".to_string()),
+        _ => Some("provider validation/quote may return project-specific price and turnaround when submitted through GeneArt".to_string()),
+        }
+    };
+    let mut required_followup = provider_config.record.required_followup.clone();
+    if required_followup.is_empty() {
+        required_followup.push(
+            "Review generated service-ready content before any vendor submission.".to_string(),
+        );
+        required_followup.push(
+            "Use provider dashboard/form routes for quote creation until direct submission is implemented and explicitly confirmed.".to_string(),
+        );
+    }
+    if let Some(rule) = provider_config.validation_rule_for(&service_kind) {
+        required_followup.extend(rule.required_followup);
+    }
+    if capability.direct_api_documented {
+        required_followup.push(format!(
+            "For future direct API use, request {} API/account enablement outside project state.",
+            provider_config.record.display_name
+        ));
+    }
+    ExternalServicePreflightReport {
+        schema: EXTERNAL_SERVICE_PREFLIGHT_SCHEMA.to_string(),
+        generated_at_unix_ms: now_unix_ms(),
+        provider,
+        provider_display_name: provider_config.record.display_name.clone(),
+        service_kind,
+        capability_status,
+        eligible,
+        quote_handoff_available: capability.quote_handoff_supported && eligible,
+        direct_submission_available: capability.direct_api_implemented && eligible,
+        supported_submission_modes: capability.supported_submission_modes,
+        blocking_issues,
+        warnings,
+        estimated_turnaround,
+        estimated_cost_hint: Some(format!(
+            "GENtle has no live price API enabled; use {} quote output as the authoritative commercial record.",
+            provider_config.record.display_name
+        )),
+        required_followup,
+        dashboard_links: external_service_links_for(provider_config, &request.service_kind),
+        request_summary: summarize_external_service_request(request),
+    }
+}
+
+fn service_quote_markdown(
+    request: &ExternalServiceRequest,
+    preflight: &ExternalServicePreflightReport,
+) -> String {
+    let mut lines = vec![
+        format!(
+            "# External service handoff: {}",
+            preflight.provider_display_name
+        ),
+        String::new(),
+        format!("- Provider: `{}`", preflight.provider),
+        format!("- Service kind: `{}`", preflight.service_kind),
+        format!("- Capability status: `{}`", preflight.capability_status),
+        format!(
+            "- Quote handoff available: {}",
+            preflight.quote_handoff_available
+        ),
+        format!(
+            "- Direct submission available from GENtle: {}",
+            preflight.direct_submission_available
+        ),
+        format!(
+            "- Requested return payloads: {}",
+            request.return_spec.requested_payloads.join(", ")
+        ),
+        String::new(),
+        "## Request Summary".to_string(),
+    ];
+    lines.extend(
+        preflight
+            .request_summary
+            .iter()
+            .map(|line| format!("- {line}")),
+    );
+    if !preflight.required_followup.is_empty() {
+        lines.push(String::new());
+        lines.push("## Required Follow-up".to_string());
+        lines.extend(
+            preflight
+                .required_followup
+                .iter()
+                .map(|line| format!("- {line}")),
+        );
+    }
+    if !preflight.warnings.is_empty() {
+        lines.push(String::new());
+        lines.push("## Warnings".to_string());
+        lines.extend(preflight.warnings.iter().map(|line| format!("- {line}")));
+    }
+    lines.push(String::new());
+    lines.join("\n")
+}
+
+fn string_from_value_keys<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
+    let object = value.as_object()?;
+    for key in keys {
+        if let Some(text) = object.get(*key).and_then(Value::as_str)
+            && !text.trim().is_empty()
+        {
+            return Some(text.trim());
+        }
+    }
+    None
+}
+
+fn delivery_string(request: &ExternalServiceRequest, keys: &[&str], default: &str) -> String {
+    request
+        .delivery_options
+        .as_ref()
+        .and_then(|value| string_from_value_keys(value, keys))
+        .unwrap_or(default)
+        .to_string()
+}
+
+fn line_item_value_string(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(text) => (!text.trim().is_empty()).then(|| text.trim().to_string()),
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        Value::Array(values) => (!values.is_empty())
+            .then(|| serde_json::to_string(values).unwrap_or_else(|_| "[]".to_string())),
+        Value::Object(map) => (!map.is_empty())
+            .then(|| serde_json::to_string(map).unwrap_or_else(|_| "{}".to_string())),
+    }
+}
+
+fn insert_line_item_value(row: &mut BTreeMap<String, String>, key: &str, value: Option<&Value>) {
+    if let Some(text) = value.and_then(line_item_value_string) {
+        row.insert(key.to_string(), text);
+    }
+}
+
+fn source_line_group_memberships(
+    source_target: &Value,
+    group_key: &str,
+) -> BTreeMap<String, Vec<String>> {
+    let mut memberships = BTreeMap::<String, Vec<String>>::new();
+    let Some(groups) = source_target
+        .as_object()
+        .and_then(|object| object.get(group_key))
+        .and_then(Value::as_array)
+    else {
+        return memberships;
+    };
+    for group in groups {
+        let Some(group_id) = string_from_value_keys(group, &["group_id", "id"]) else {
+            continue;
+        };
+        let Some(line_ids) = group.get("line_ids").and_then(Value::as_array) else {
+            continue;
+        };
+        for line_id in line_ids.iter().filter_map(Value::as_str) {
+            memberships
+                .entry(line_id.to_string())
+                .or_default()
+                .push(group_id.to_string());
+        }
+    }
+    for group_ids in memberships.values_mut() {
+        group_ids.sort();
+        group_ids.dedup();
+    }
+    memberships
+}
+
+fn line_item_sequence(item: &Value) -> Option<&str> {
+    string_from_value_keys(
+        item,
+        &[
+            "sequence_5_to_3",
+            "sequence",
+            "sequence_text",
+            "dna_sequence",
+        ],
+    )
+}
+
+fn collect_source_line_item_rows_from_array(
+    request: &ExternalServiceRequest,
+    array_key: &str,
+) -> Vec<BTreeMap<String, String>> {
+    let duplicate_groups =
+        source_line_group_memberships(&request.source_target, "duplicate_groups");
+    let reuse_groups =
+        source_line_group_memberships(&request.source_target, "sequence_reuse_groups");
+    let Some(items) = request
+        .source_target
+        .as_object()
+        .and_then(|object| object.get(array_key))
+        .and_then(Value::as_array)
+    else {
+        return vec![];
+    };
+    let mut rows = vec![];
+    for (idx, item) in items.iter().enumerate() {
+        let mut row = BTreeMap::<String, String>::new();
+        let Some(object) = item.as_object() else {
+            continue;
+        };
+        for key in [
+            "line_id",
+            "line_no",
+            "name",
+            "role",
+            "sequence_5_to_3",
+            "length_nt",
+            "modifications",
+            "scale",
+            "purification",
+            "notes",
+            "note",
+            "description",
+            "report_id",
+            "report_schema",
+            "template",
+            "op_id",
+            "run_id",
+            "pair_rank",
+            "assay_rank",
+        ] {
+            insert_line_item_value(&mut row, key, object.get(key));
+        }
+        let name = row
+            .get("name")
+            .cloned()
+            .unwrap_or_else(|| format!("item_{}", idx + 1));
+        row.insert("name".to_string(), name);
+        if let Some(sequence) = line_item_sequence(item) {
+            row.entry("sequence_5_to_3".to_string())
+                .or_insert_with(|| sequence.to_string());
+            row.entry("length_nt".to_string())
+                .or_insert_with(|| sequence.len().to_string());
+        }
+        if let Some(provenance) = object.get("provenance").and_then(Value::as_object) {
+            insert_line_item_value(&mut row, "provenance", object.get("provenance"));
+            for key in [
+                "source_kind",
+                "report_id",
+                "report_schema",
+                "template",
+                "op_id",
+                "run_id",
+                "pair_rank",
+                "assay_rank",
+            ] {
+                if !row.contains_key(key) {
+                    insert_line_item_value(&mut row, key, provenance.get(key));
+                }
+            }
+            insert_line_item_value(&mut row, "provenance_role", provenance.get("role"));
+            insert_line_item_value(
+                &mut row,
+                "source_coordinates_0based",
+                provenance.get("source_coordinates_0based"),
+            );
+        }
+        if let Some(line_id) = row.get("line_id").cloned() {
+            if let Some(groups) = duplicate_groups.get(&line_id) {
+                row.insert("duplicate_group_ids".to_string(), groups.join(";"));
+            }
+            if let Some(groups) = reuse_groups.get(&line_id) {
+                row.insert("sequence_reuse_group_ids".to_string(), groups.join(";"));
+            }
+        }
+        rows.push(row);
+    }
+    rows
+}
+
+fn collect_source_line_items(request: &ExternalServiceRequest) -> Vec<BTreeMap<String, String>> {
+    let mut rows = collect_source_line_item_rows_from_array(request, "line_items");
+    if rows.is_empty() {
+        rows = collect_source_line_item_rows_from_array(request, "oligos");
+    }
+    if rows.is_empty() {
+        let mut row = BTreeMap::<String, String>::new();
+        let name =
+            string_from_value_keys(&request.source_target, &["name", "id", "label", "seq_id"])
+                .unwrap_or("item_1");
+        row.insert("name".to_string(), name.to_string());
+        if let Some(sequence) = string_from_value_keys(
+            &request.source_target,
+            &[
+                "sequence_5_to_3",
+                "sequence",
+                "sequence_text",
+                "dna_sequence",
+            ],
+        ) {
+            row.insert("sequence_5_to_3".to_string(), sequence.to_string());
+            row.insert("length_nt".to_string(), sequence.len().to_string());
+        }
+        rows.push(row);
+    }
+    rows
+}
+
+fn normalized_service_line_items(
+    request: &ExternalServiceRequest,
+    provider_config: &LoadedExternalServiceProviderConfig,
+) -> Vec<BTreeMap<String, String>> {
+    let template = provider_config.product_template_for(&request.service_kind);
+    let product_name = template
+        .as_ref()
+        .map(|template| template.product_name.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(request.service_kind.as_str())
+        .to_string();
+    let purification = delivery_string(
+        request,
+        &["purification", "purification_required"],
+        provider_config
+            .record
+            .default_purification_hints
+            .first()
+            .map(String::as_str)
+            .unwrap_or("confirm before submission"),
+    );
+    let delivery_form = delivery_string(
+        request,
+        &["delivery_form", "delivery", "form"],
+        provider_config
+            .record
+            .default_delivery_hints
+            .first()
+            .map(String::as_str)
+            .unwrap_or("confirm before submission"),
+    );
+    let qc = delivery_string(
+        request,
+        &["qc", "quality_control"],
+        provider_config
+            .record
+            .default_qc_hints
+            .first()
+            .map(String::as_str)
+            .unwrap_or("vendor default"),
+    );
+    collect_source_line_items(request)
+        .into_iter()
+        .enumerate()
+        .map(|(idx, mut row)| {
+            row.entry("line_no".to_string())
+                .or_insert_with(|| (idx + 1).to_string());
+            row.insert(
+                "provider".to_string(),
+                provider_config.record.provider.clone(),
+            );
+            row.insert("service_kind".to_string(), request.service_kind.clone());
+            row.insert("product_name".to_string(), product_name.clone());
+            row.entry("purification".to_string())
+                .or_insert_with(|| purification.clone());
+            row.insert("delivery_form".to_string(), delivery_form.clone());
+            row.insert("qc".to_string(), qc.clone());
+            if let Some(yield_range) = request
+                .delivery_options
+                .as_ref()
+                .and_then(|value| string_from_value_keys(value, &["yield_range", "scale"]))
+            {
+                row.entry("scale".to_string())
+                    .or_insert_with(|| yield_range.to_string());
+                row.entry("yield_range".to_string())
+                    .or_insert_with(|| yield_range.to_string());
+            } else if let Some(scale) = row.get("scale").cloned() {
+                row.entry("yield_range".to_string()).or_insert(scale);
+            }
+            row
+        })
+        .collect()
+}
+
+fn csv_escape(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+fn line_items_csv(rows: &[BTreeMap<String, String>]) -> String {
+    let mut headers = rows
+        .iter()
+        .flat_map(|row| row.keys().cloned())
+        .collect::<Vec<_>>();
+    headers.sort();
+    headers.dedup();
+    let mut lines = vec![headers.join(",")];
+    for row in rows {
+        lines.push(
+            headers
+                .iter()
+                .map(|header| csv_escape(row.get(header).map(String::as_str).unwrap_or("")))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+    }
+    lines.join("\n")
+}
+
+fn email_draft_markdown(
+    request: &ExternalServiceRequest,
+    preflight: &ExternalServicePreflightReport,
+    provider_config: &LoadedExternalServiceProviderConfig,
+    rows: &[BTreeMap<String, String>],
+) -> String {
+    let email = provider_config
+        .channel_for("email_excel")
+        .and_then(|channel| channel.email)
+        .unwrap_or_else(|| "provider email from active config".to_string());
+    let subject = format!(
+        "Quote/order handoff for {} {}",
+        provider_config.record.display_name, preflight.service_kind
+    );
+    let mut lines = vec![
+        "# Email Draft".to_string(),
+        String::new(),
+        format!("- To: `{email}`"),
+        format!("- Subject: `{subject}`"),
+        "- Attach: current vendor Excel/order template if available locally.".to_string(),
+        "- Do not include PO/account/shipping/billing details in GENtle project state.".to_string(),
+        String::new(),
+        "## Body".to_string(),
+        String::new(),
+        format!(
+            "Dear {},",
+            provider_config.record.display_name
+        ),
+        String::new(),
+        "Please find attached/prepared the order information for quote preparation. The line-item summary is included below for review before transfer into the official template.".to_string(),
+        String::new(),
+        format!("- Service kind: `{}`", request.service_kind),
+        format!("- Line items: {}", rows.len()),
+        "- Purchase-order and account details will be provided by the authorized requester outside GENtle.".to_string(),
+        String::new(),
+        "Kind regards,".to_string(),
+        String::new(),
+        "GENtle handoff operator".to_string(),
+    ];
+    lines.push(String::new());
+    lines.push("## Line Items".to_string());
+    for row in rows {
+        let name = row.get("name").map(String::as_str).unwrap_or("item");
+        let length = row.get("length_nt").map(String::as_str).unwrap_or("n/a");
+        lines.push(format!("- `{name}` ({length} nt)"));
+    }
+    lines.join("\n")
+}
+
+fn wop_checklist_markdown(
+    preflight: &ExternalServicePreflightReport,
+    provider_config: &LoadedExternalServiceProviderConfig,
+    rows: &[BTreeMap<String, String>],
+) -> String {
+    let wop_url = provider_config
+        .channel_for("wop")
+        .and_then(|channel| channel.url)
+        .unwrap_or_else(|| provider_config.record.dashboard_url.clone());
+    let mut lines = vec![
+        format!("# Guided WOP Checklist: {}", provider_config.record.display_name),
+        String::new(),
+        format!("- Provider: `{}`", preflight.provider),
+        format!("- Service kind: `{}`", preflight.service_kind),
+        format!("- WOP/dashboard URL: `{wop_url}`"),
+        format!("- Prepared line items: {}", rows.len()),
+        String::new(),
+        "## Checkpoints".to_string(),
+        "- Open WOP manually; GENtle does not scrape or submit through the portal.".to_string(),
+        "- Enter or upload each line item from the normalized CSV/JSON artifact.".to_string(),
+        "- Generate a quote/PDF in WOP when account verification permits it.".to_string(),
+        "- If converting quote to order, provide PO and account details only in the vendor portal or authorized procurement system.".to_string(),
+        "- Import quote/order identifiers back into GENtle later only as redacted advisory metadata.".to_string(),
+    ];
+    lines.extend(
+        preflight
+            .required_followup
+            .iter()
+            .map(|item| format!("- {item}")),
+    );
+    lines.join("\n")
+}
+
+fn provider_config_for_report(provider: &str) -> Option<LoadedExternalServiceProviderConfig> {
+    external_service_provider_config_index()
+        .ok()
+        .and_then(|index| index.provider(provider).cloned())
+}
+
+fn local_template_artifacts_for(
+    provider_config: &LoadedExternalServiceProviderConfig,
+    service_kind: &str,
+) -> Vec<ExternalServiceArtifactRef> {
+    let Some(template) = provider_config.product_template_for(service_kind) else {
+        return vec![];
+    };
+    let Some(path) = template.local_template_path.as_deref() else {
+        return vec![];
+    };
+    if !std::path::Path::new(path).is_file() {
+        return vec![];
+    }
+    vec![ExternalServiceArtifactRef {
+        artifact_kind: "vendor_order_template".to_string(),
+        path: path.to_string(),
+        checksum_sha256: None,
+        description: format!(
+            "Local template for {} {} handoff; copy into the vendor channel after human review.",
+            provider_config.record.display_name,
+            if template.product_name.trim().is_empty() {
+                service_kind
+            } else {
+                template.product_name.as_str()
+            }
+        ),
+    }]
+}
+
+pub fn external_service_project_quote(
+    request_json: &str,
+) -> Result<ExternalServiceQuoteReport, String> {
+    let request = parse_external_service_request(request_json)?;
+    let preflight = external_service_project_preflight_for_request(&request);
+    let eligible = preflight.eligible && preflight.quote_handoff_available;
+    let mut warnings = preflight.warnings.clone();
+    if !eligible {
+        warnings.push("Quote handoff is blocked until preflight issues are resolved.".to_string());
+    }
+    let provider_config = provider_config_for_report(&preflight.provider);
+    if let Some(config) = provider_config.as_ref()
+        && let Some(template) = config.product_template_for(&preflight.service_kind)
+    {
+        if template.local_template_path.is_none() {
+            warnings.push(format!(
+                    "{} template is referenced at '{}' but is not available as a local template fixture; generated JSON/CSV/email/WOP artifacts remain usable.",
+                    template.product_name,
+                    template.template_url.clone().unwrap_or_else(|| "no URL configured".to_string())
+                ));
+        } else if let Some(path) = template.local_template_path.as_deref()
+            && !std::path::Path::new(path).is_file()
+        {
+            warnings.push(format!(
+                        "Configured local template '{}' is missing; generated JSON/CSV/email/WOP artifacts remain usable.",
+                        path
+                    ));
+        }
+    }
+    let line_items = provider_config
+        .as_ref()
+        .map(|config| normalized_service_line_items(&request, config))
+        .unwrap_or_default();
+    let mut inline_payloads = vec![
+        ExternalServiceInlinePayload {
+            payload_kind: "handoff_markdown".to_string(),
+            content_type: "text/markdown".to_string(),
+            text: service_quote_markdown(&request, &preflight),
+            description:
+                "Human-reviewable service handoff summary for dashboard/form quote workflows."
+                    .to_string(),
+        },
+        ExternalServiceInlinePayload {
+            payload_kind: "redacted_request_json".to_string(),
+            content_type: "application/json".to_string(),
+            text: serde_json::to_string_pretty(&json!({
+                "provider": &request.provider,
+                "service_kind": &request.service_kind,
+                "source_target": &request.source_target,
+                "optimization_target": &request.optimization_target,
+                "vector_spec": &request.vector_spec,
+                "delivery_options": &request.delivery_options,
+                "commercial_context_ref_present": request.commercial_context_ref.is_some(),
+                "return_spec": &request.return_spec,
+            }))
+            .unwrap_or_else(|_| "{}".to_string()),
+            description: "Machine-readable redacted request payload; commercial context is represented only by presence/absence.".to_string(),
+        },
+    ];
+    if let Some(config) = provider_config.as_ref() {
+        inline_payloads.push(ExternalServiceInlinePayload {
+            payload_kind: "normalized_line_items_json".to_string(),
+            content_type: "application/json".to_string(),
+            text: serde_json::to_string_pretty(&line_items).unwrap_or_else(|_| "[]".to_string()),
+            description: "Provider-neutral line items normalized for vendor template transfer."
+                .to_string(),
+        });
+        inline_payloads.push(ExternalServiceInlinePayload {
+            payload_kind: "normalized_line_items_csv".to_string(),
+            content_type: "text/csv".to_string(),
+            text: line_items_csv(&line_items),
+            description: "CSV companion for manual transfer into vendor order forms.".to_string(),
+        });
+        inline_payloads.push(ExternalServiceInlinePayload {
+            payload_kind: "email_draft_markdown".to_string(),
+            content_type: "text/markdown".to_string(),
+            text: email_draft_markdown(&request, &preflight, config, &line_items),
+            description: "Reviewable email draft for email+template order handoff.".to_string(),
+        });
+        inline_payloads.push(ExternalServiceInlinePayload {
+            payload_kind: "guided_wop_checklist".to_string(),
+            content_type: "text/markdown".to_string(),
+            text: wop_checklist_markdown(&preflight, config, &line_items),
+            description: "Manual Web Order Portal checklist; no portal automation is performed."
+                .to_string(),
+        });
+    }
+    let local_files = provider_config
+        .as_ref()
+        .map(|config| local_template_artifacts_for(config, &preflight.service_kind))
+        .unwrap_or_default();
+    let bundle = ExternalServiceArtifactBundle {
+        schema: "gentle.external_service_artifact_bundle.v1".to_string(),
+        provider: preflight.provider.clone(),
+        service_kind: preflight.service_kind.clone(),
+        artifact_id: format!(
+            "{}_{}_handoff",
+            preflight.provider,
+            preflight.service_kind
+        ),
+        local_files,
+        inline_payloads,
+        notes: vec![
+            "No vendor order was submitted by this report.".to_string(),
+            "Use provider dashboard/form routes for quote creation until direct API support is implemented and explicitly confirmed.".to_string(),
+            "Do not persist PO numbers, account credentials, shipping, billing, or commercial secrets in GENtle project state.".to_string(),
+        ],
+    };
+    Ok(ExternalServiceQuoteReport {
+        schema: EXTERNAL_SERVICE_QUOTE_SCHEMA.to_string(),
+        generated_at_unix_ms: now_unix_ms(),
+        provider: preflight.provider.clone(),
+        service_kind: preflight.service_kind.clone(),
+        quote_status: if eligible {
+            "handoff_ready".to_string()
+        } else {
+            "blocked".to_string()
+        },
+        quote_mode: "dashboard_or_form_handoff".to_string(),
+        dashboard_links: preflight.dashboard_links.clone(),
+        required_followup: preflight.required_followup.clone(),
+        service_ready_bundle: bundle,
+        return_spec: request.return_spec.clone(),
+        warnings,
+        preflight,
+    })
+}
+
+fn external_service_payload_extension(payload: &ExternalServiceInlinePayload) -> &'static str {
+    let content_type = payload.content_type.to_ascii_lowercase();
+    let payload_kind = payload.payload_kind.to_ascii_lowercase();
+    if content_type.contains("json") || payload_kind.contains("json") {
+        "json"
+    } else if content_type.contains("csv") || payload_kind.contains("csv") {
+        "csv"
+    } else if content_type.contains("markdown")
+        || payload_kind.contains("markdown")
+        || payload_kind.contains("checklist")
+    {
+        "md"
+    } else if content_type.contains("html") {
+        "html"
+    } else {
+        "txt"
+    }
+}
+
+fn safe_external_service_artifact_stem(value: &str) -> String {
+    let mut out = String::new();
+    let mut previous_was_sep = false;
+    for ch in value.chars() {
+        let mapped = if ch.is_ascii_alphanumeric() {
+            Some(ch.to_ascii_lowercase())
+        } else if ch == '-' || ch == '_' {
+            Some('_')
+        } else {
+            Some('_')
+        };
+        if let Some(mapped) = mapped {
+            if mapped == '_' {
+                if previous_was_sep {
+                    continue;
+                }
+                previous_was_sep = true;
+            } else {
+                previous_was_sep = false;
+            }
+            out.push(mapped);
+        }
+    }
+    let trimmed = out.trim_matches('_').to_string();
+    if trimmed.is_empty() {
+        "payload".to_string()
+    } else {
+        trimmed
+    }
+}
+
+fn path_to_report_string(path: &Path) -> String {
+    path.to_string_lossy().to_string()
+}
+
+/// Materialize inline quote payloads as a deterministic file bundle.
+///
+/// The quote report remains the source of truth: generated file references are
+/// appended to `service_ready_bundle.local_files`, and the final
+/// `quote_report.json` contains those references. This is intentionally still a
+/// local handoff/export step, not vendor submission.
+pub fn write_external_service_quote_bundle(
+    report: &mut ExternalServiceQuoteReport,
+    output_dir: impl AsRef<Path>,
+) -> Result<(), String> {
+    let output_dir = output_dir.as_ref();
+    fs::create_dir_all(output_dir).map_err(|error| {
+        format!(
+            "Could not create external-service quote bundle directory '{}': {error}",
+            output_dir.display()
+        )
+    })?;
+    let output_dir = output_dir.canonicalize().map_err(|error| {
+        format!(
+            "Could not resolve external-service quote bundle directory '{}': {error}",
+            output_dir.display()
+        )
+    })?;
+
+    let mut generated_files = Vec::new();
+    for (idx, payload) in report
+        .service_ready_bundle
+        .inline_payloads
+        .iter()
+        .enumerate()
+    {
+        let stem = safe_external_service_artifact_stem(&payload.payload_kind);
+        let extension = external_service_payload_extension(payload);
+        let file_name = format!("{:02}_{}.{}", idx + 1, stem, extension);
+        let path: PathBuf = output_dir.join(file_name);
+        fs::write(&path, payload.text.as_bytes()).map_err(|error| {
+            format!(
+                "Could not write external-service quote payload '{}': {error}",
+                path.display()
+            )
+        })?;
+        generated_files.push(ExternalServiceArtifactRef {
+            artifact_kind: payload.payload_kind.clone(),
+            path: path_to_report_string(&path),
+            checksum_sha256: None,
+            description: payload.description.clone(),
+        });
+    }
+
+    report
+        .service_ready_bundle
+        .local_files
+        .extend(generated_files);
+    let quote_report_path = output_dir.join("quote_report.json");
+    report
+        .service_ready_bundle
+        .local_files
+        .push(ExternalServiceArtifactRef {
+            artifact_kind: "quote_report_json".to_string(),
+            path: path_to_report_string(&quote_report_path),
+            checksum_sha256: None,
+            description:
+                "Complete external-service quote report with generated bundle file references."
+                    .to_string(),
+        });
+
+    let mut text = serde_json::to_string_pretty(report)
+        .map_err(|error| format!("Could not serialize external-service quote report: {error}"))?;
+    text.push('\n');
+    fs::write(&quote_report_path, text).map_err(|error| {
+        format!(
+            "Could not write external-service quote report '{}': {error}",
+            quote_report_path.display()
+        )
+    })?;
+    Ok(())
+}
+
 fn summarize_availability_status(lifecycle_status: &str) -> String {
     match lifecycle_status {
         "running" => "preparing".to_string(),
@@ -250,7 +1939,7 @@ fn inspect_helper_status(genome_id: &str) -> Result<ServiceDependencyStatus, Str
             .map_err(|e| e.to_string())?;
     let interpretation = GentleEngine::interpret_helper_genome(genome_id, None)
         .map_err(|e| e.to_string())?
-        .map(|record| serde_json::to_value(record))
+        .map(serde_json::to_value)
         .transpose()
         .map_err(|e| format!("Could not serialize helper interpretation: {e}"))?;
     let lifecycle_status =
@@ -280,6 +1969,7 @@ fn build_summary_lines(
     references: &[ServiceDependencyStatus],
     helpers: &[ServiceDependencyStatus],
     resources: &ResourceCatalogReport,
+    external_providers: &ExternalServiceProviderCatalog,
 ) -> Vec<String> {
     let mut lines = vec![];
     for reference in references {
@@ -426,6 +2116,22 @@ fn build_summary_lines(
             "ATtRACT is known to GENtle, but no valid runtime snapshot is active yet; run `resources sync-attract ATtRACT.zip` before requesting splice-aware RBP evidence."
                 .to_string(),
         );
+    }
+    for provider in &external_providers.providers {
+        let quote_ready = provider
+            .capabilities
+            .iter()
+            .filter(|capability| capability.quote_handoff_supported)
+            .count();
+        let direct_documented = provider
+            .capabilities
+            .iter()
+            .filter(|capability| capability.direct_api_documented)
+            .count();
+        lines.push(format!(
+            "External provider '{}' is cataloged for {} quote/handoff service kind(s); {} service kind(s) have documented direct API surfaces but live GENtle submission remains disabled.",
+            provider.display_name, quote_ready, direct_documented
+        ));
     }
     lines
 }
@@ -718,6 +2424,45 @@ fn external_tool_readiness_row(tool: &ExternalToolResourceStatus) -> ServiceHand
     }
 }
 
+fn external_provider_readiness_rows(
+    providers: &ExternalServiceProviderCatalog,
+) -> Vec<ServiceHandoffReadinessRow> {
+    providers
+        .providers
+        .iter()
+        .map(|provider| {
+            let quote_ready = provider
+                .capabilities
+                .iter()
+                .filter(|capability| capability.quote_handoff_supported)
+                .count();
+            let direct_planned = provider
+                .capabilities
+                .iter()
+                .filter(|capability| {
+                    capability.direct_api_documented && !capability.direct_api_implemented
+                })
+                .count();
+            ServiceHandoffReadinessRow {
+                resource_key: format!("external_provider:{}", provider.provider),
+                display_name: provider.display_name.clone(),
+                resource_kind: "external_provider".to_string(),
+                prepared: quote_ready > 0,
+                lifecycle_status: if quote_ready > 0 { "ready" } else { "missing" }.to_string(),
+                status_summary: format!(
+                    "{} is available for quote/handoff preflight ({} service kind(s)); {} documented direct API route(s) are planned but not live-submittable from GENtle.",
+                    provider.display_name, quote_ready, direct_planned
+                ),
+                cache_dir: None,
+                runtime_path: None,
+                source: Some(provider.website_url.clone()),
+                last_error: None,
+                current_activity: None,
+            }
+        })
+        .collect()
+}
+
 fn build_handoff_status_overview(
     readiness: &[ServiceHandoffReadinessRow],
     suggested_actions: &[ServiceHandoffAction],
@@ -814,6 +2559,11 @@ fn build_environment_hints() -> Vec<ServiceHandoffEnvironmentHint> {
             "GENTLE_CUTRUN_CACHE_DIR",
             "Shared CUT&RUN dataset cache root.",
             "Set this when dataset-backed regulatory support routes should reuse prepared evidence sets.",
+        ),
+        environment_hint(
+            "GENEART_API_ENABLED",
+            "Non-secret operator note that a GeneArt API account has been enabled outside GENtle.",
+            "Set this only after Thermo Fisher/GeneArt has enabled the account; GENtle still does not store API credentials in project state.",
         ),
     ]
 }
@@ -1432,10 +3182,14 @@ pub fn service_handoff_report(
     scope: Option<&str>,
     export_path: Option<String>,
 ) -> Result<ServiceHandoffReport, String> {
+    let scope_was_omitted = scope
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_none();
     let scope = scope
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or("clawbio")
+        .unwrap_or("default")
         .to_string();
     let service_readiness = service_readiness_status()?;
     let mut readiness = vec![];
@@ -1444,6 +3198,12 @@ pub fn service_handoff_report(
     let mut blocked_actions = vec![];
     let mut warnings = vec![];
     let mut has_running_prepare = false;
+    if scope_was_omitted {
+        warnings.push(
+            "services handoff without --scope now uses provider-neutral scope 'default'; pass --scope clawbio for ClawBio-specific handoff wording."
+                .to_string(),
+        );
+    }
 
     for reference in &service_readiness.references {
         readiness.push(dependency_readiness_row(reference));
@@ -1504,6 +3264,9 @@ pub fn service_handoff_report(
         }
     }
     readiness.extend(resource_readiness_rows(&service_readiness.resources));
+    readiness.extend(external_provider_readiness_rows(
+        &service_readiness.external_providers,
+    ));
 
     if has_running_prepare {
         suggested_actions.push(status_refresh_action());
@@ -1631,13 +3394,15 @@ pub fn service_readiness_status() -> Result<ServiceReadinessReport, String> {
         .map(|id| inspect_helper_status(id))
         .collect::<Result<Vec<_>, _>>()?;
     let resources = resource_catalog_status();
-    let summary_lines = build_summary_lines(&references, &helpers, &resources);
+    let external_providers = external_service_provider_catalog();
+    let summary_lines = build_summary_lines(&references, &helpers, &resources, &external_providers);
     Ok(ServiceReadinessReport {
         schema: SERVICE_READINESS_SCHEMA.to_string(),
         generated_at_unix_ms: now_unix_ms(),
         references,
         helpers,
         resources,
+        external_providers,
         summary_lines,
     })
 }
@@ -1667,6 +3432,25 @@ mod tests {
             last_error: None,
             owner_pid: Some(12345),
         }
+    }
+
+    #[test]
+    fn service_source_issue_accepts_oligo_order_line_items() {
+        let source_target = json!({
+            "kind": "oligo_order_form",
+            "line_items": [
+                {
+                    "name": "demo_forward",
+                    "sequence_5_to_3": "ACGTACGTACGT",
+                    "scale": "25nmol",
+                    "purification": "desalted"
+                }
+            ]
+        });
+        assert_eq!(
+            service_source_issue("dna_oligo_single_tube", &source_target),
+            None
+        );
     }
 
     fn fake_dependency(
@@ -1701,7 +3485,13 @@ mod tests {
         running_actions: Vec<ServiceHandoffAction>,
     ) -> ServiceHandoffReport {
         let resources = resource_catalog_status();
-        let summary_lines = build_summary_lines(std::slice::from_ref(&reference), &[], &resources);
+        let external_providers = external_service_provider_catalog();
+        let summary_lines = build_summary_lines(
+            std::slice::from_ref(&reference),
+            &[],
+            &resources,
+            &external_providers,
+        );
         let readiness = vec![dependency_readiness_row(&reference)];
         let blocked_actions = vec![];
         let status_overview = build_handoff_status_overview(
@@ -1720,6 +3510,7 @@ mod tests {
                 references: vec![reference.clone()],
                 helpers: vec![],
                 resources,
+                external_providers,
                 summary_lines,
             },
             status_overview,
@@ -1738,6 +3529,7 @@ mod tests {
     #[test]
     fn build_summary_lines_reports_active_prepare_for_unprepared_reference() {
         let resources = resource_catalog_status();
+        let external_providers = external_service_provider_catalog();
         let lines = build_summary_lines(
             &[fake_dependency(
                 false,
@@ -1746,6 +3538,7 @@ mod tests {
             )],
             &[],
             &resources,
+            &external_providers,
         );
         assert!(
             lines
@@ -1764,12 +3557,14 @@ mod tests {
     #[test]
     fn build_summary_lines_reports_failed_prepare_attempt() {
         let resources = resource_catalog_status();
+        let external_providers = external_service_provider_catalog();
         let mut activity = fake_activity("failed", "index_blast", 80.0);
         activity.last_error = Some("makeblastdb missing".to_string());
         let lines = build_summary_lines(
             &[fake_dependency(false, "failed", Some(activity))],
             &[],
             &resources,
+            &external_providers,
         );
         assert!(
             lines.iter().any(|line| line.contains("ended as 'failed'")),

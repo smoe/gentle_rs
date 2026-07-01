@@ -14,8 +14,8 @@ build = "build.rs"
 [workspace]
 resolver = "3"
 members = [
-    "crates/gentle-protocol",
     "crates/gentle-engine",
+    "crates/gentle-protocol",
     "crates/gentle-render",
     "crates/gentle-shell",
     "crates/gentle-gui",
@@ -23,8 +23,24 @@ members = [
 exclude = ["packages/snapgene-reader"]
 
 [workspace.package]
-version = "0.1.0-internal.6"
+version = "0.1.0-internal.9"
 edition = "2024"
+
+[workspace.dependencies]
+anyhow = "=1.0.102"
+bio = "=4.0.0"
+image = "=0.25.10"
+itertools = "=0.14.0"
+mlua = "=0.11.6"
+rayon = "=1.12.0"
+reqwest = "=0.13.3"
+rfd = "=0.17.2"
+rustyline = "=18.0.0"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.149"
+serde_with = "=3.20.0"
+svg = "=0.18.0"
+tempfile = "=3.27.0"
 
 [package.metadata.bundle]
 identifier = "com.example.gentle"
@@ -67,6 +83,7 @@ name = "gentle"
 [features]
 default = []
 screenshot-capture = []
+gui-profiler = ["dep:puffin", "dep:puffin_http"]
 snapshot-tests = ["gentle-render/snapshot-tests"]
 js-interface = [
     "dep:deno_core",
@@ -79,23 +96,25 @@ lua-interface = ["dep:mlua", "dep:rustyline"]
 script-interfaces = ["js-interface", "lua-interface"]
 
 [dependencies]
+gentle-engine = { path = "crates/gentle-engine" }
 gentle-gui = { path = "crates/gentle-gui" }
 gentle-protocol = { path = "crates/gentle-protocol" }
 gentle-render = { path = "crates/gentle-render" }
 gentle-shell = { path = "crates/gentle-shell" }
 snapgene-reader = { path = "packages/snapgene-reader", features = ["gb-io"] }
-serde = { version = "^1", features = ["derive"] }
-serde_json = "^1"
-serde_with = "*"
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
 quick-xml = { version = "0.37", features = ["serialize"] }
-bio = "*"
+bio = { workspace = true }
 csv = "^1"
-itertools = "*"
+itertools = { workspace = true }
 gb-io = { version = "0.9.0", features = ["serde"] }
-svg = "*"
-rayon = "*"
-anyhow = "*"
-eframe = { version = "0.34.1", features = [
+svg = { workspace = true }
+rayon = { workspace = true }
+anyhow = { workspace = true }
+arboard = "=3.6.1"
+eframe = { version = "0.34.3", features = [
 	"accesskit",
 	"default_fonts",
 	"glow",
@@ -104,22 +123,24 @@ eframe = { version = "0.34.1", features = [
 	"x11",
 	"persistence",
 ] }
-egui_extras = { version = "0.34.1", features = ["all_loaders"] }
+egui_extras = { version = "0.34.3", features = ["all_loaders"] }
 egui_commonmark = { version = "0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"] }
-image = { version = "*", features = ["jpeg", "png"] }
+image = { workspace = true, features = ["jpeg", "png"] }
 resvg = "0.45.1"
-rfd = "*"
-reqwest = { version = "*", features = ["blocking", "json"] }
-tempfile = "*"
+rfd = { workspace = true }
+reqwest = { workspace = true, features = ["blocking", "json"] }
+tempfile = { workspace = true }
 flate2 = "1.0"
 memchr = "2"
 regex = "^1"
 pulldown-cmark = "0.12.2"
 sha1 = "0.10"
+puffin = { version = "=0.19.1", optional = true }
+puffin_http = { version = "=0.16.1", optional = true }
 
 # For feature-gated JS/Lua shells
-rustyline = { version = "*", optional = true }
-mlua = { version = "*", optional = true, features = ["lua54", "vendored", "serialize"] }
+rustyline = { workspace = true, optional = true }
+mlua = { workspace = true, optional = true, features = ["lua54", "vendored", "serialize"] }
 # Keep the JS shell on a Deno/Temporal stack that is known to compile together.
 # `temporal_rs 0.1.2` expects the ICU 2.1 API; without these explicit pins,
 # cargo can legally float the transitive ICU crates to 2.2.x and break CI.

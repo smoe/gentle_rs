@@ -1,0 +1,7 @@
+chrToyMouse	src	gene	151	220	.	+	.	gene_id "GENE_TRP73"; gene_name "Trp73";
+chrToyMouse	src	transcript	151	220	.	+	.	gene_id "GENE_TRP73"; gene_name "Trp73"; transcript_id "TX_TRP73_MOUSE";
+chrToyMouse	src	exon	151	220	.	+	.	gene_id "GENE_TRP73"; gene_name "Trp73"; transcript_id "TX_TRP73_MOUSE"; exon_number "1";
+chrToyMouse	src	gene	351	420	.	+	.	gene_id "GENE_E2F1_MOUSE"; gene_name "E2f1";
+chrToyMouse	src	transcript	351	420	.	+	.	gene_id "GENE_E2F1_MOUSE"; gene_name "E2f1"; transcript_id "TX_E2F1_MOUSE";
+chrToyMouse	src	exon	351	420	.	+	.	gene_id "GENE_E2F1_MOUSE"; gene_name "E2f1"; transcript_id "TX_E2F1_MOUSE"; exon_number "1";
+

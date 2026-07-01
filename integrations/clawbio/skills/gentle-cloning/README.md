@@ -54,13 +54,16 @@ free text.
 
 The immediate chat-adapter routing layer is `INTENTS.json`. It maps broad user
 wording for runtime version, service readiness, installed databases/resources,
-residue-to-genome codon mapping, Telegram guide overview/sections,
-PCR/qPCR/TaqMan seed/design/test/report/cartoon requests, transcript qPCR
-panels, TP73 protein gel, TP73 2D gel, trypsin-digest gel, capabilities, skill
-info, and explicit demo requests to stable `examples/*.json` payloads or
-typed request templates. Descriptor-only skill directories are
-discoverable by the current ClawBio planner, but execution still requires
-registering `gentle-cloning` in ClawBio's top-level `SKILLS` table.
+generic sequence-delivery routing, external-service provider catalog/doctor
+checks, GeneArt and Metabion quote-handoff requests, residue-to-genome codon
+mapping, Telegram guide overview/sections, PCR/qPCR/TaqMan
+seed/design/test/report/cartoon requests, transcript qPCR panels, TP73 protein
+gel, TP73 2D gel, trypsin-digest gel, capabilities, skill info, and explicit
+demo requests to stable
+`examples/*.json` payloads or typed request templates. Descriptor-only skill
+directories are discoverable by the current ClawBio planner, but execution
+still requires registering `gentle-cloning` in ClawBio's top-level `SKILLS`
+table.
 
 ## Files
 
@@ -74,7 +77,8 @@ registering `gentle-cloning` in ClawBio's top-level `SKILLS` table.
 - `gentle_apptainer_cli.sh`: Apptainer/Singularity launcher for `gentle_cli`
 - `catalog_entry.json`: ready-to-paste object for ClawBio `skills/catalog.json`
 - `examples/*.json`: request payload examples, including bootstrap, stateless
-  inline-sequence scans, extract/BLAST, planning, and graphics flows
+  inline-sequence scans, extract/BLAST, planning, external-service handoff,
+  and graphics flows
 - `tests/test_gentle_cloning.py`: minimal wrapper tests
 
 ## Positioning for OpenClaw
@@ -88,6 +92,10 @@ intended framing is:
 - GENtle does not prove causality by itself.
 - GENtle can also inspect pasted DNA fragments directly for restriction sites
   or TFBS hits without first creating project state when the task is read-only.
+- GENtle can route generic "deliver this sequence" wording by sequence kind,
+  list configured external-service providers, and prepare review-only
+  GeneArt/Metabion quote-handoff packets. It does not submit orders, scrape
+  vendor portals, or store account, PO, shipping, or billing details.
 - GENtle can seed, design, inspect, and export PCR primer and probe-based
   qPCR/TaqMan assay work through typed ClawBio modes over the shared
   `primers ...` command family.
@@ -462,9 +470,9 @@ cargo run --locked --bin gentle_cli -- --version
     `result.json.preferred_artifacts[]`, so ClawBio can choose the best first
     figure without ad hoc path guessing
   - graphics-facing requests now use a PNG-first outward contract:
-    declared SVG engine outputs are rasterized into deterministic PNG bundle
-    artifacts, while the original SVGs remain available as provenance/supporting
-    files when useful
+    the best-first declared SVG engine output is rasterized into one
+    deterministic PNG bundle artifact for the immediate reply, while the
+    original SVGs remain available as provenance/supporting files when useful
   - text-bearing SVGs need usable fonts during rasterization. If the PNG shows
     bands/shapes but no labels, install a host/container font package such as
     `fonts-dejavu-core` or `fonts-liberation`, or set `GENTLE_SVG_FONT_FILE` /
@@ -473,8 +481,9 @@ cargo run --locked --bin gentle_cli -- --version
     producing label-free PNGs.
   - when a run produces multiple displayable figures, the wrapper promotes only
     one PNG in `result.json.preferred_artifacts[]` and emits
-    `continue_artifact` suggested actions for the remaining figures so
-    one-image-per-reply chat surfaces can page through them
+    request-first `continue_artifact` suggested actions for the remaining SVG
+    figures so one-image-per-reply chat surfaces can page through them without
+    older media collectors seeing extra PNG files
   - browser/OpenClaw inline image rendering is still a later ClawBio-side
     attachment/UI step; this repo phase is only about producing the PNG-first
     bundle outputs
@@ -599,12 +608,18 @@ Alternative runtimes:
 ## Request schema
 
 - `schema`: `gentle.clawbio_skill_request.v1`
-- `mode`: `skill-info|version|capabilities|state-summary|shell|op|workflow|raw`
+- `mode`: one of the wrapper's `supported_request_modes`; use
+  `request_skill_info.json` or `request_intents_runtime.json` to inspect the
+  installed list
 - optional: `state_path`, `timeout_secs`, `ensure_reference_prepared`
 
 Mode-specific fields:
 
 - `skill-info`: no extra fields; reports skill/catalog schema metadata without
+  invoking `gentle_cli`
+- `intents`: no extra fields; reports
+  `gentle.clawbio_skill_intents_runtime.v1` with the installed `INTENTS.json`
+  descriptor hash, route list, request modes, and referenced examples without
   invoking `gentle_cli`
 - `capabilities`: no extra fields; runs `gentle_cli capabilities` and then a
   best-effort shared `ui intents` probe so operator-handoff surfaces can reuse
@@ -614,6 +629,23 @@ Mode-specific fields:
 - `shell`: `shell_line`
 - `op`: `operation`
 - `workflow`: `workflow` or `workflow_path`
+- `construct-reasoning-list-inspections`: `graph_id`, with optional
+  `fact_id`, `annotation_id`, `candidate_id`, `evidence_id`, `seq_id`,
+  `action_kind`, and `summary_id` filters
+- `construct-reasoning-run-inspection`: `graph_id`, `action_id`, and optional
+  dotplot/render fields `word_size`, `step_bp`, `max_mismatches`, `tile_bp`,
+  `dotplot_id`, and `render_svg_path`
+- typed primer/qPCR/restriction/exon-skip helper modes remain accepted for
+  backward compatibility but now emit `warnings[]`; new ClawBio callers should
+  prefer `mode: "shell"` with the equivalent shared shell command
+- `exon-skip-plan`: `seq_id`, `transcript_feature_id`, optional
+  `skip_candidate_ids[]`, `skip_intervals_1based[]`,
+  `overlap_intervals_1based[]`, `length_mod3_values[]`,
+  `coding_mod3_values[]`, `coding_contexts[]`, `cds_phase_entry_kinds[]`,
+  `feature_query`, and `plan_id`
+- `exon-skip-materialize`: `plan_id`, required `confirm=true`, optional
+  `candidate_ids[]`, `output_prefix`, and `return_items[]`
+  (`genbank`, `cdna_fasta`, `amino_acid_sequence`, `amino_acid_fasta`)
 - `raw`: `raw_args[]`
 
 `ensure_reference_prepared` is an opt-in wrapper preflight:
@@ -697,6 +729,19 @@ Included first-run bootstrap requests:
 - `examples/request_genomes_install_ensembl_mouse.json`
 - `examples/request_shell_state_summary.json`
 - `examples/request_services_status.json`
+- `examples/request_services_sequence_delivery_route_short_oligo.json`
+- `examples/request_services_sequence_delivery_route_fragment.json`
+- `examples/request_services_sequence_delivery_route_cloned_gene.json`
+- `examples/request_services_sequence_delivery_route_protein.json`
+- `examples/request_services_providers_list.json`
+- `examples/request_services_providers_doctor.json`
+- `examples/request_services_metabion_oligo_preflight.json`
+- `examples/request_services_metabion_oligo_quote.json`
+- `examples/request_services_metabion_mblock_quote.json`
+- `examples/request_services_geneart_cloned_gene_preflight.json`
+- `examples/request_services_geneart_cloned_gene_quote.json`
+- `examples/request_services_geneart_protein_expression_preflight.json`
+- `examples/request_services_geneart_protein_expression_quote.json`
 - `examples/request_services_telegram_guide.json`
 - `examples/request_services_telegram_guide_{readiness,gene_context,tfbs,inline_dna,cloning,isoforms,follow_up}.json`
 - `examples/request_services_telegram_guide_isoforms_bach2.json`
@@ -897,6 +942,20 @@ Included follow-on analysis/planning/graphics requests:
   - replays the cross-family anchored dotplot with TP73 as the shared
     reference axis and TP63 plus TP53 aligned by the conserved motif
     `CATGTGTAACAG`
+  - construct-reasoning repeat/similarity dotplot recommendations are exposed
+    through shared shell commands as portable actions:
+    `construct-reasoning list-inspection-actions GRAPH_ID` and
+    `construct-reasoning run-inspection-action GRAPH_ID ACTION_ID`
+  - ClawBio/OpenClaw callers can use typed request modes
+    `construct-reasoning-list-inspections` and
+    `construct-reasoning-run-inspection` for the same shared commands; the
+    list mode accepts graph/fact/candidate/evidence/sequence/action-kind
+    filters, and the run mode resolves one action id into dotplot compute and
+    optional SVG render parameters
+- `examples/request_construct_reasoning_list_inspections.json` and
+  `examples/request_construct_reasoning_run_inspection_dotplot.json`
+  - show the request shape for listing a graph's portable recommended
+    inspections and running one selected dotplot action by `action_id`
 - `examples/request_protocol_cartoon_gibson_svg.json`
   - uses `expected_artifacts[]` so the generated SVG is copied into the
   wrapper output bundle under `generated/...`

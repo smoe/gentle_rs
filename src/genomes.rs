@@ -40,6 +40,7 @@
 use crate::feature_location::feature_is_reverse;
 use crate::ncbi_genbank_xml::{NcbiXmlDialect, parse_gbseq_xml_file_with_dialect};
 use flate2::read::MultiGzDecoder;
+pub use gentle_protocol::{PreparedCacheCleanupMode, PreparedCacheCleanupRequest};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
@@ -248,21 +249,21 @@ pub fn doctor_helper_construct_vocabulary(
     inspector.finish()
 }
 
-fn configured_builtin_asset_root() -> PathBuf {
+pub(crate) fn configured_builtin_asset_root() -> PathBuf {
     std::env::var_os(BUILTIN_ASSET_ROOT_ENV)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
 }
 
-fn configured_system_config_root() -> PathBuf {
+pub(crate) fn configured_system_config_root() -> PathBuf {
     std::env::var_os(SYSTEM_CONFIG_ROOT_ENV)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/etc/gentle"))
 }
 
-fn configured_user_config_root() -> Option<PathBuf> {
+pub(crate) fn configured_user_config_root() -> Option<PathBuf> {
     if let Some(root) = std::env::var_os("XDG_CONFIG_HOME").filter(|value| !value.is_empty()) {
         return Some(PathBuf::from(root).join("gentle"));
     }
@@ -289,7 +290,7 @@ fn discover_project_root_from_cwd() -> Option<PathBuf> {
     git_root.or(cargo_root)
 }
 
-fn configured_project_root() -> Option<PathBuf> {
+pub(crate) fn configured_project_root() -> Option<PathBuf> {
     if let Some(root) = std::env::var_os(PROJECT_ROOT_ENV).filter(|value| !value.is_empty()) {
         return Some(PathBuf::from(root));
     }
@@ -484,6 +485,10 @@ pub struct GenomeCatalogEntry {
     pub genbank_accession: Option<String>,
     pub genbank_reference: Option<String>,
     pub local_variant_unpublished: Option<bool>,
+    pub sequence_availability: Option<String>,
+    pub redistribution_status: Option<String>,
+    pub biological_safety_note: Option<String>,
+    pub usable_as_empty_backbone: Option<bool>,
     pub sequence_remote: Option<String>,
     pub annotations_remote: Option<String>,
     pub sequence_local: Option<String>,
@@ -532,12 +537,78 @@ pub struct GenomeCatalogListEntry {
     pub species: Option<String>,
     pub helper_kind: Option<String>,
     pub host_system: Option<String>,
+    pub sequence_availability: Option<String>,
+    pub redistribution_status: Option<String>,
+    pub biological_safety_note: Option<String>,
+    pub usable_as_empty_backbone: Option<bool>,
+    #[serde(default)]
+    pub metadata_only_candidate: bool,
     #[serde(default)]
     pub procurement: Option<CatalogProcurementInfo>,
     #[serde(default)]
     pub semantics: Option<HelperConstructSemantics>,
     #[serde(default)]
     pub interpretation: Option<HelperConstructInterpretation>,
+}
+
+/// Deterministic helper/vector catalog doctor report.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HelperVectorCatalogDoctorReport {
+    pub schema: String,
+    pub catalog_path: String,
+    pub issue_count: usize,
+    #[serde(default)]
+    pub issues: Vec<HelperVectorCatalogDoctorIssue>,
+}
+
+/// One deterministic helper/vector catalog issue.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HelperVectorCatalogDoctorIssue {
+    pub helper_id: String,
+    pub code: String,
+    pub severity: String,
+    pub message: String,
+    pub field: Option<String>,
+}
+
+/// Compact helper/vector card report for GUI/CLI/agent inspection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HelperVectorCardReport {
+    pub schema: String,
+    pub catalog_path: String,
+    pub filter: Option<String>,
+    pub card_count: usize,
+    #[serde(default)]
+    pub cards: Vec<HelperVectorCard>,
+}
+
+/// Pure projection of structured helper/vector catalog fields.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HelperVectorCard {
+    pub helper_id: String,
+    pub description: Option<String>,
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub helper_kind: Option<String>,
+    pub host_system: Option<String>,
+    pub sequence_availability: Option<String>,
+    pub redistribution_status: Option<String>,
+    pub biological_safety_note: Option<String>,
+    pub usable_as_empty_backbone: Option<bool>,
+    pub metadata_only_candidate: bool,
+    #[serde(default)]
+    pub procurement: Option<CatalogProcurementInfo>,
+    #[serde(default)]
+    pub affordances: Vec<String>,
+    #[serde(default)]
+    pub constraints: Vec<String>,
+    #[serde(default)]
+    pub components: Vec<HelperConstructComponent>,
+    #[serde(default)]
+    pub relationships: Vec<HelperConstructRelationship>,
 }
 
 /// Ensembl-specific template metadata used to derive refreshable remote URLs.
@@ -2344,48 +2415,6 @@ pub struct PreparedCacheInspectionReport {
     pub total_file_count: usize,
 }
 
-/// Cleanup mode for conservative prepared-cache cleanup.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PreparedCacheCleanupMode {
-    BlastDbOnly,
-    DerivedIndexesOnly,
-    SelectedPreparedInstalls,
-    AllPreparedInCache,
-}
-
-impl PreparedCacheCleanupMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::BlastDbOnly => "blast_db_only",
-            Self::DerivedIndexesOnly => "derived_indexes_only",
-            Self::SelectedPreparedInstalls => "selected_prepared_installs",
-            Self::AllPreparedInCache => "all_prepared_in_cache",
-        }
-    }
-
-    pub fn allows_orphaned_remnants(self) -> bool {
-        matches!(
-            self,
-            Self::SelectedPreparedInstalls | Self::AllPreparedInCache
-        )
-    }
-}
-
-/// Request payload for deterministic prepared-cache cleanup.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PreparedCacheCleanupRequest {
-    pub mode: PreparedCacheCleanupMode,
-    #[serde(default)]
-    pub cache_roots: Vec<String>,
-    #[serde(default)]
-    pub prepared_ids: Vec<String>,
-    #[serde(default)]
-    pub prepared_paths: Vec<String>,
-    #[serde(default)]
-    pub include_orphaned_remnants: bool,
-}
-
 /// Per-entry cleanup result for prepared-cache cleanup.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreparedCacheCleanupItemReport {
@@ -2614,19 +2643,15 @@ pub struct PreparedGenomeResolution {
 /// Policy controlling how prepared-genome compatibility fallback is handled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PreparedGenomeFallbackPolicy {
     /// Require exact prepared genome id (no compatibility fallback).
     Off,
     /// Auto-fallback only when exactly one compatible prepared entry exists.
+    #[default]
     SingleCompatible,
     /// Never auto-fallback; require explicit user/tool choice from options.
     AlwaysExplicit,
-}
-
-impl Default for PreparedGenomeFallbackPolicy {
-    fn default() -> Self {
-        Self::SingleCompatible
-    }
 }
 
 /// Inspection payload used by GUI/CLI preflight for prepared-genome selection.
@@ -3111,12 +3136,227 @@ impl GenomeCatalog {
                 species: entry.species.clone(),
                 helper_kind: entry.helper_kind.clone(),
                 host_system: entry.host_system.clone(),
+                sequence_availability: entry.sequence_availability.clone(),
+                redistribution_status: entry.redistribution_status.clone(),
+                biological_safety_note: entry.biological_safety_note.clone(),
+                usable_as_empty_backbone: entry.usable_as_empty_backbone,
+                metadata_only_candidate: is_metadata_only_catalog_entry(entry),
                 procurement: entry.procurement.clone(),
                 semantics: entry.semantics.clone(),
                 interpretation,
             });
         }
         rows
+    }
+
+    /// Return deterministic catalog-health issues for helper/vector records.
+    ///
+    /// This doctor intentionally checks only structured fields. It does not
+    /// inspect free-text descriptions for implied biology or commercial status.
+    pub fn doctor_helper_vector_catalog(
+        &self,
+        catalog_path: impl Into<String>,
+    ) -> HelperVectorCatalogDoctorReport {
+        let mut issues = vec![];
+        for genome_id in self.list_genomes_unfiltered() {
+            let Some(entry) = self.entries.get(&genome_id) else {
+                continue;
+            };
+            Self::push_helper_vector_catalog_issues(&genome_id, entry, &mut issues);
+        }
+        HelperVectorCatalogDoctorReport {
+            schema: "gentle.helper_vector_catalog_doctor.v1".to_string(),
+            catalog_path: catalog_path.into(),
+            issue_count: issues.len(),
+            issues,
+        }
+    }
+
+    /// Return compact helper/vector cards as a pure structured-field projection.
+    pub fn helper_vector_cards(
+        &self,
+        catalog_path: impl Into<String>,
+        filter: Option<&str>,
+    ) -> HelperVectorCardReport {
+        let filter_text = filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let cards = self
+            .list_entries(filter_text.as_deref())
+            .into_iter()
+            .map(Self::helper_vector_card_from_list_entry)
+            .collect::<Vec<_>>();
+        HelperVectorCardReport {
+            schema: "gentle.helper_vector_card.v1".to_string(),
+            catalog_path: catalog_path.into(),
+            filter: filter_text,
+            card_count: cards.len(),
+            cards,
+        }
+    }
+
+    fn helper_vector_card_from_list_entry(entry: GenomeCatalogListEntry) -> HelperVectorCard {
+        let (affordances, constraints, components, relationships) =
+            if let Some(semantics) = entry.semantics.as_ref() {
+                (
+                    semantics.affordances.clone(),
+                    semantics.constraints.clone(),
+                    semantics.components.clone(),
+                    semantics.relationships.clone(),
+                )
+            } else {
+                (vec![], vec![], vec![], vec![])
+            };
+        HelperVectorCard {
+            helper_id: entry.genome_id,
+            description: entry.description,
+            summary: entry.summary,
+            aliases: entry.aliases,
+            tags: entry.tags,
+            helper_kind: entry.helper_kind,
+            host_system: entry.host_system,
+            sequence_availability: entry.sequence_availability,
+            redistribution_status: entry.redistribution_status,
+            biological_safety_note: entry.biological_safety_note,
+            usable_as_empty_backbone: entry.usable_as_empty_backbone,
+            metadata_only_candidate: entry.metadata_only_candidate,
+            procurement: entry.procurement,
+            affordances,
+            constraints,
+            components,
+            relationships,
+        }
+    }
+
+    fn push_helper_vector_catalog_issues(
+        genome_id: &str,
+        entry: &GenomeCatalogEntry,
+        issues: &mut Vec<HelperVectorCatalogDoctorIssue>,
+    ) {
+        if Self::helper_vector_doctor_should_skip_host_reference(genome_id, entry) {
+            return;
+        }
+        if !has_non_empty(&entry.helper_kind) {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-helper-kind",
+                "warning",
+                "helper/vector entries should declare helper_kind for deterministic grouping",
+                Some("helper_kind"),
+            );
+        }
+        if !has_non_empty(&entry.host_system) {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-host-system",
+                "warning",
+                "helper/vector entries should declare host_system for planning and GUI filtering",
+                Some("host_system"),
+            );
+        }
+        if !has_non_empty(&entry.sequence_availability) {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-sequence-availability",
+                "warning",
+                "helper/vector entries should state whether sequence data is bundled, public, local, commercial, or pending review",
+                Some("sequence_availability"),
+            );
+        }
+        if !has_non_empty(&entry.redistribution_status) {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-redistribution-status",
+                "warning",
+                "helper/vector entries should state whether redistribution is clear, restricted, or pending review",
+                Some("redistribution_status"),
+            );
+        }
+        if !has_non_empty(&entry.biological_safety_note) {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-biological-safety-note",
+                "warning",
+                "helper/vector entries should carry a brief biological-safety note or local-review reminder",
+                Some("biological_safety_note"),
+            );
+        }
+        if entry.usable_as_empty_backbone.is_none() {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-empty-backbone-flag",
+                "warning",
+                "helper/vector entries should explicitly state whether they are usable as empty backbones",
+                Some("usable_as_empty_backbone"),
+            );
+        }
+        let helper_kind = entry
+            .helper_kind
+            .as_deref()
+            .map(HelperConstructInterpretation::normalize_semantic_token)
+            .unwrap_or_default();
+        if helper_kind == "helper_phage" && entry.usable_as_empty_backbone == Some(true) {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "helper-phage-marked-empty-backbone",
+                "error",
+                "helper phage records should not be marked usable as empty plasmid backbones",
+                Some("usable_as_empty_backbone"),
+            );
+        }
+        let component_count = entry
+            .semantics
+            .as_ref()
+            .map(|semantics| semantics.components.len())
+            .unwrap_or(0);
+        if helper_kind.contains("vector") && component_count == 0 {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-structured-components",
+                "warning",
+                "vector records should describe markers, origins, promoters, or cloning/display context as structured semantics components",
+                Some("semantics.components"),
+            );
+        }
+    }
+
+    fn helper_vector_doctor_should_skip_host_reference(
+        genome_id: &str,
+        entry: &GenomeCatalogEntry,
+    ) -> bool {
+        genome_id.starts_with("Host ")
+            || entry
+                .helper_kind
+                .as_deref()
+                .map(HelperConstructInterpretation::normalize_semantic_token)
+                .as_deref()
+                == Some("host_reference")
+    }
+
+    fn push_helper_vector_catalog_issue(
+        issues: &mut Vec<HelperVectorCatalogDoctorIssue>,
+        genome_id: &str,
+        code: &str,
+        severity: &str,
+        message: &str,
+        field: Option<&str>,
+    ) {
+        issues.push(HelperVectorCatalogDoctorIssue {
+            helper_id: genome_id.to_string(),
+            code: code.to_string(),
+            severity: severity.to_string(),
+            message: message.to_string(),
+            field: field.map(str::to_string),
+        });
     }
 
     /// Return the normalized helper-construct interpretation for one catalog
@@ -3190,10 +3430,11 @@ impl GenomeCatalog {
             entry.ncbi_assembly_name.as_ref(),
             entry.ncbi_assembly_accession.as_ref(),
             entry.genbank_accession.as_ref(),
-        ] {
-            if let Some(value) = value {
-                aliases.push(value.clone());
-            }
+        ]
+        .into_iter()
+        .flatten()
+        {
+            aliases.push(value.clone());
         }
         aliases.sort_unstable();
         aliases.dedup();
@@ -3425,6 +3666,21 @@ impl GenomeCatalog {
         if let Some(host_system) = entry.host_system.as_ref() {
             values.push(host_system.clone());
         }
+        if let Some(sequence_availability) = entry.sequence_availability.as_ref() {
+            values.push(sequence_availability.clone());
+        }
+        if let Some(redistribution_status) = entry.redistribution_status.as_ref() {
+            values.push(redistribution_status.clone());
+        }
+        if let Some(biological_safety_note) = entry.biological_safety_note.as_ref() {
+            values.push(biological_safety_note.clone());
+        }
+        if let Some(usable_as_empty_backbone) = entry.usable_as_empty_backbone {
+            values.push(format!(
+                "usable_as_empty_backbone={}",
+                usable_as_empty_backbone
+            ));
+        }
         if let Some(procurement) = entry.procurement.as_ref() {
             for value in [
                 procurement.vendor_name.as_ref(),
@@ -3432,10 +3688,11 @@ impl GenomeCatalog {
                 procurement.order_url.as_ref(),
                 procurement.reference_url.as_ref(),
                 procurement.notes.as_ref(),
-            ] {
-                if let Some(value) = value {
-                    values.push(value.clone());
-                }
+            ]
+            .into_iter()
+            .flatten()
+            {
+                values.push(value.clone());
             }
         }
         if let Some(semantics) = entry.semantics.as_ref() {
@@ -4691,7 +4948,7 @@ impl GenomeCatalog {
                 }
             }
             if !force_refresh_from_sources {
-                Self::validate_manifest_files(&manifest)?;
+                Self::validate_manifest_files(manifest)?;
             }
         } else if reindex_from_cached_files {
             return Err(format!(
@@ -6004,10 +6261,9 @@ FASTA index='{}'.{}{}",
             if let (Some(req_tax), Some(candidate_tax)) = (
                 requested_entry.ncbi_taxonomy_id,
                 candidate_entry.ncbi_taxonomy_id,
-            ) {
-                if req_tax != candidate_tax {
-                    continue;
-                }
+            ) && req_tax != candidate_tax
+            {
+                continue;
             }
             if let Some(family) = requested_family {
                 let candidate_family =
@@ -6783,11 +7039,11 @@ fn summarize_paths(paths: &[PathBuf]) -> (u64, usize) {
     let mut bytes = 0u64;
     let mut count = 0usize;
     for path in paths {
-        if let Ok(meta) = fs::metadata(path) {
-            if meta.is_file() {
-                bytes = bytes.saturating_add(meta.len());
-                count += 1;
-            }
+        if let Ok(meta) = fs::metadata(path)
+            && meta.is_file()
+        {
+            bytes = bytes.saturating_add(meta.len());
+            count += 1;
         }
     }
     (bytes, count)
@@ -7157,6 +7413,41 @@ fn prepare_activity_is_stale(status: &PrepareGenomeActivityStatus, now: u128) ->
     now.saturating_sub(status.updated_at_unix_ms) > PREPARE_ACTIVITY_STALE_AFTER_MS
 }
 
+#[cfg(unix)]
+fn prepare_activity_owner_pid_is_running(pid: u32) -> Option<bool> {
+    if pid == 0 {
+        return None;
+    }
+    Command::new("ps")
+        .arg("-p")
+        .arg(pid.to_string())
+        .arg("-o")
+        .arg("pid=")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .ok()
+        .map(|status| status.success())
+}
+
+#[cfg(not(unix))]
+fn prepare_activity_owner_pid_is_running(_pid: u32) -> Option<bool> {
+    None
+}
+
+fn prepare_activity_owner_pid_stale_reason(status: &PrepareGenomeActivityStatus) -> Option<String> {
+    if status.lifecycle_status != "running" {
+        return None;
+    }
+    let pid = status.owner_pid?;
+    match prepare_activity_owner_pid_is_running(pid) {
+        Some(false) => Some(format!(
+            "Prepare activity owner_pid {pid} is no longer running and is treated as stale"
+        )),
+        Some(true) | None => None,
+    }
+}
+
 fn mark_prepare_activity_stale(
     status_path: &Path,
     lock_path: &Path,
@@ -7197,6 +7488,14 @@ fn inspect_prepare_activity_status_paths(
                 "Prepare activity lost its active lock and is treated as stale",
             )));
         }
+        if let Some(reason) = prepare_activity_owner_pid_stale_reason(&status) {
+            return Ok(Some(mark_prepare_activity_stale(
+                status_path,
+                lock_path,
+                status,
+                &reason,
+            )));
+        }
         if prepare_activity_is_stale(&status, now_unix_ms()) {
             return Ok(Some(mark_prepare_activity_stale(
                 status_path,
@@ -7232,10 +7531,10 @@ impl PrepareGenomeActivityTracker {
     ) -> Result<PrepareGenomeActivityStart, String> {
         let status_path = prepare_activity_status_path(install_dir);
         let lock_path = prepare_activity_lock_path(install_dir);
-        if let Some(existing) = inspect_prepare_activity_status_paths(&status_path, &lock_path)? {
-            if existing.lifecycle_status == "running" {
-                return Ok(PrepareGenomeActivityStart::Running(existing));
-            }
+        if let Some(existing) = inspect_prepare_activity_status_paths(&status_path, &lock_path)?
+            && existing.lifecycle_status == "running"
+        {
+            return Ok(PrepareGenomeActivityStart::Running(existing));
         }
         let now = now_unix_ms();
         let tracker = Self {
@@ -7264,10 +7563,9 @@ impl PrepareGenomeActivityTracker {
         if !create_prepare_activity_lock(&tracker.lock_path, &tracker.status)? {
             if let Some(existing) =
                 inspect_prepare_activity_status_paths(&tracker.status_path, &tracker.lock_path)?
+                && existing.lifecycle_status == "running"
             {
-                if existing.lifecycle_status == "running" {
-                    return Ok(PrepareGenomeActivityStart::Running(existing));
-                }
+                return Ok(PrepareGenomeActivityStart::Running(existing));
             }
             return Err(format!(
                 "Could not acquire a fresh prepare-activity lock for '{}'",
@@ -7510,10 +7808,8 @@ fn sanitize_for_path(s: &str) -> String {
     for c in s.chars() {
         if c.is_ascii_alphanumeric() {
             out.push(c.to_ascii_lowercase());
-        } else if matches!(c, ' ' | '-' | '_' | '.') {
-            if !out.ends_with('_') {
-                out.push('_');
-            }
+        } else if matches!(c, ' ' | '-' | '_' | '.') && !out.ends_with('_') {
+            out.push('_');
         }
     }
     let trimmed = out.trim_matches('_');
@@ -7839,6 +8135,36 @@ fn estimate_double_stranded_dna_mass_da(length_bp: usize) -> Option<f64> {
     }
 }
 
+fn allows_metadata_only_catalog_entry(entry: &GenomeCatalogEntry) -> bool {
+    has_non_empty(&entry.sequence_availability)
+        && has_non_empty(&entry.redistribution_status)
+        && entry.usable_as_empty_backbone.is_some()
+}
+
+fn has_catalog_sequence_source(entry: &GenomeCatalogEntry) -> bool {
+    let has_assembly_accession = has_non_empty(&entry.ncbi_assembly_accession);
+    let has_assembly_name = has_non_empty(&entry.ncbi_assembly_name);
+    has_non_empty(&entry.sequence_local)
+        || has_non_empty(&entry.sequence_remote)
+        || (has_assembly_accession && has_assembly_name)
+        || has_non_empty(&entry.genbank_accession)
+}
+
+fn has_catalog_annotation_source(entry: &GenomeCatalogEntry) -> bool {
+    let has_assembly_accession = has_non_empty(&entry.ncbi_assembly_accession);
+    let has_assembly_name = has_non_empty(&entry.ncbi_assembly_name);
+    has_non_empty(&entry.annotations_local)
+        || has_non_empty(&entry.annotations_remote)
+        || (has_assembly_accession && has_assembly_name)
+        || has_non_empty(&entry.genbank_accession)
+}
+
+fn is_metadata_only_catalog_entry(entry: &GenomeCatalogEntry) -> bool {
+    allows_metadata_only_catalog_entry(entry)
+        && !has_catalog_sequence_source(entry)
+        && !has_catalog_annotation_source(entry)
+}
+
 fn validate_catalog_entries(
     catalog_path: &str,
     entries: &HashMap<String, GenomeCatalogEntry>,
@@ -7916,33 +8242,33 @@ fn validate_catalog_entries(
             || has_non_empty(&entry.annotations_remote)
             || has_assembly
             || genbank_accession.is_some();
+        let metadata_only_candidate = allows_metadata_only_catalog_entry(entry);
 
-        if !has_sequence_source {
+        if !has_sequence_source && !metadata_only_candidate {
             entry_errors.push(
                 "Missing sequence source: provide sequence_local/sequence_remote or NCBI assembly/GenBank accession fields"
                     .to_string(),
             );
         }
-        if !has_annotation_source {
+        if !has_annotation_source && !metadata_only_candidate {
             entry_errors.push(
                 "Missing annotation source: provide annotations_local/annotations_remote or NCBI assembly/GenBank accession fields"
                     .to_string(),
             );
         }
-        if let Some(length_bp) = entry.nucleotide_length_bp {
-            if length_bp == 0 {
-                entry_errors.push(
-                    "'nucleotide_length_bp' must be a positive integer when provided".to_string(),
-                );
-            }
+        if let Some(length_bp) = entry.nucleotide_length_bp
+            && length_bp == 0
+        {
+            entry_errors.push(
+                "'nucleotide_length_bp' must be a positive integer when provided".to_string(),
+            );
         }
-        if let Some(mass_da) = entry.molecular_mass_da {
-            if !mass_da.is_finite() || mass_da <= 0.0 {
-                entry_errors.push(
-                    "'molecular_mass_da' must be a finite positive number when provided"
-                        .to_string(),
-                );
-            }
+        if let Some(mass_da) = entry.molecular_mass_da
+            && (!mass_da.is_finite() || mass_da <= 0.0)
+        {
+            entry_errors.push(
+                "'molecular_mass_da' must be a finite positive number when provided".to_string(),
+            );
         }
         if let Some(template) = entry.ensembl_template.as_ref() {
             if normalize_ensembl_template(template).is_none() {
@@ -8007,7 +8333,7 @@ fn ensembl_template_metadata(entry: &GenomeCatalogEntry) -> Option<EnsemblCatalo
     entry
         .ensembl_template
         .as_ref()
-        .and_then(|template| normalize_ensembl_template(template))
+        .and_then(normalize_ensembl_template)
 }
 
 fn normalize_ensembl_template(template: &EnsemblCatalogTemplate) -> Option<EnsemblCatalogTemplate> {
@@ -8475,17 +8801,17 @@ fn resolve_ensembl_quick_install_output_path(
             )),
         );
     }
-    if let Some(source_path) = catalog.catalog_path() {
-        if catalog.catalog_file_is_writable() {
-            return Ok(source_path.to_path_buf());
-        }
+    if let Some(source_path) = catalog.catalog_path()
+        && catalog.catalog_file_is_writable()
+    {
+        return Ok(source_path.to_path_buf());
     }
-    if let Ok(origin_path) = fs::metadata(catalog.catalog_origin_label()) {
-        if origin_path.is_dir() {
-            return Ok(PathBuf::from(catalog.catalog_origin_label()).join(
-                build_ensembl_quick_install_fragment_filename(template, template.release),
-            ));
-        }
+    if let Ok(origin_path) = fs::metadata(catalog.catalog_origin_label())
+        && origin_path.is_dir()
+    {
+        return Ok(PathBuf::from(catalog.catalog_origin_label()).join(
+            build_ensembl_quick_install_fragment_filename(template, template.release),
+        ));
     }
     let Some(overlay_dir) = preferred_overlay_catalog_dir(domain) else {
         return Err(
@@ -8561,14 +8887,14 @@ fn validate_ensembl_quick_install_target(
 ) -> Result<(), String> {
     match write_mode {
         EnsemblQuickInstallWriteMode::FullCatalog => {
-            if let Some(existing) = catalog.entries.get(genome_id) {
-                if !ensembl_quick_install_entry_matches_template(existing, template) {
-                    return Err(format!(
-                        "Genome id '{}' already exists in '{}' and points to a different catalog entry. Choose another genome id for this quick install.",
-                        genome_id,
-                        catalog.catalog_origin_label()
-                    ));
-                }
+            if let Some(existing) = catalog.entries.get(genome_id)
+                && !ensembl_quick_install_entry_matches_template(existing, template)
+            {
+                return Err(format!(
+                    "Genome id '{}' already exists in '{}' and points to a different catalog entry. Choose another genome id for this quick install.",
+                    genome_id,
+                    catalog.catalog_origin_label()
+                ));
             }
         }
         EnsemblQuickInstallWriteMode::OverlayEntry => {
@@ -9746,16 +10072,16 @@ fn ensure_blast_index(sequence_path: &Path, db_prefix: &Path) -> BlastIndexOutco
     let executable = resolve_tool_executable(MAKEBLASTDB_ENV_BIN, DEFAULT_MAKEBLASTDB_BIN);
     outcome.executable = Some(executable.clone());
 
-    if let Some(parent) = db_prefix.parent() {
-        if let Err(e) = fs::create_dir_all(parent) {
-            outcome.warnings.push(format!(
-                "BLAST indexing skipped for '{}': could not create directory '{}': {}",
-                db_prefix_string,
-                parent.display(),
-                e
-            ));
-            return outcome;
-        }
+    if let Some(parent) = db_prefix.parent()
+        && let Err(e) = fs::create_dir_all(parent)
+    {
+        outcome.warnings.push(format!(
+            "BLAST indexing skipped for '{}': could not create directory '{}': {}",
+            db_prefix_string,
+            parent.display(),
+            e
+        ));
+        return outcome;
     }
 
     let args = vec![
@@ -11057,12 +11383,11 @@ fn normalize_genbank_feature_biotype(
     if kind.is_empty() {
         return None;
     }
-    if kind == "regulatory" {
-        if let Some(class) = attrs.get("regulatory_class").map(|v| v.trim()) {
-            if !class.is_empty() {
-                return Some(class.to_ascii_lowercase());
-            }
-        }
+    if kind == "regulatory"
+        && let Some(class) = attrs.get("regulatory_class").map(|v| v.trim())
+        && !class.is_empty()
+    {
+        return Some(class.to_ascii_lowercase());
     }
     if kind == "rep_origin" {
         return Some("origin_of_replication".to_string());
@@ -11413,10 +11738,10 @@ fn parse_annotation_attributes(raw: &str) -> HashMap<String, String> {
         }
         if let Some((key, value)) = part.split_once('=') {
             let key = key.trim().to_ascii_lowercase();
-            if !key.is_empty() {
-                if let Some(value) = normalize_annotation_attribute_value(value) {
-                    map.entry(key).or_insert(value);
-                }
+            if !key.is_empty()
+                && let Some(value) = normalize_annotation_attribute_value(value)
+            {
+                map.entry(key).or_insert(value);
             }
             continue;
         }
@@ -11427,10 +11752,10 @@ fn parse_annotation_attributes(raw: &str) -> HashMap<String, String> {
             .trim()
             .to_ascii_lowercase();
         let value = pieces.next().unwrap_or_default();
-        if !key.is_empty() {
-            if let Some(value) = normalize_annotation_attribute_value(value) {
-                map.entry(key).or_insert(value);
-            }
+        if !key.is_empty()
+            && let Some(value) = normalize_annotation_attribute_value(value)
+        {
+            map.entry(key).or_insert(value);
         }
     }
     map
@@ -13463,6 +13788,80 @@ mod tests {
         assert!(!report.reused_existing_activity);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn test_running_prepare_activity_with_dead_owner_pid_is_marked_stale() {
+        let dead_pid = u32::MAX;
+        if prepare_activity_owner_pid_is_running(dead_pid) != Some(false) {
+            return;
+        }
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let cache_dir = root.join("cache");
+        let install_dir = cache_dir.join("toygenome");
+        fs::create_dir_all(&install_dir).unwrap();
+        let status_path = prepare_activity_status_path(&install_dir);
+        let lock_path = prepare_activity_lock_path(&install_dir);
+        let now = now_unix_ms();
+        let running_status = PrepareGenomeActivityStatus {
+            genome_id: "ToyGenome".to_string(),
+            status_path: canonical_or_display(&status_path),
+            lock_path: Some(canonical_or_display(&lock_path)),
+            lifecycle_status: "running".to_string(),
+            prepare_mode: PrepareGenomeMode::PrepareOrReuse.label().to_string(),
+            phase: Some("index_fasta".to_string()),
+            item: Some("sequence.fa.fai".to_string()),
+            bytes_done: 1,
+            bytes_total: Some(10),
+            percent: Some(10.0),
+            step_id: Some(PrepareGenomeStepId::FastaIndex),
+            step_label: Some(PrepareGenomeStepId::FastaIndex.label().to_string()),
+            started_at_unix_ms: now.saturating_sub(1_000),
+            updated_at_unix_ms: now,
+            finished_at_unix_ms: None,
+            last_error: None,
+            owner_pid: Some(dead_pid),
+        };
+        write_prepare_activity_status(&status_path, &running_status).unwrap();
+        assert!(create_prepare_activity_lock(&lock_path, &running_status).unwrap());
+
+        let catalog_path = root.join("catalog.json");
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "toy.fa",
+    "annotations_local": "toy.gtf",
+    "cache_dir": "{}"
+  }}
+}}"#,
+                cache_dir.display()
+            ),
+        )
+        .unwrap();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+
+        let inspected = catalog
+            .inspect_prepare_activity_status("ToyGenome", None)
+            .unwrap()
+            .expect("dead-owner activity should still be inspectable as stale");
+        assert_eq!(inspected.lifecycle_status, "stale");
+        assert!(
+            inspected
+                .last_error
+                .as_deref()
+                .is_some_and(|value| value.contains("owner_pid"))
+        );
+        assert_eq!(inspected.owner_pid, Some(dead_pid));
+        assert!(
+            !lock_path.exists(),
+            "dead-owner stale inspection should release abandoned locks"
+        );
+    }
+
     #[test]
     fn test_prepare_warns_but_succeeds_when_makeblastdb_missing() {
         let td = tempdir().unwrap();
@@ -13898,6 +14297,116 @@ mod tests {
     }
 
     #[test]
+    fn test_metadata_only_catalog_candidate_without_sequence_source_is_valid() {
+        let td = tempdir().unwrap();
+        let catalog_path = td.path().join("helper_candidates.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "Local vector candidate": {
+    "description": "Metadata-only vector candidate",
+    "sequence_availability": "source sequence not yet bundled",
+    "redistribution_status": "review required before sequence redistribution",
+    "biological_safety_note": "confirm local classification",
+    "usable_as_empty_backbone": true,
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli"
+  }
+}"#,
+        )
+        .unwrap();
+
+        let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect("metadata-only candidate catalog should validate");
+        let rows = catalog.list_entries(Some("redistribution"));
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].usable_as_empty_backbone, Some(true));
+        assert!(catalog.source_plan("Local vector candidate", None).is_err());
+    }
+
+    #[test]
+    fn test_helper_vector_doctor_and_cards_project_structured_fields() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "Display phagemid".to_string(),
+            GenomeCatalogEntry {
+                summary: Some("Display vector".to_string()),
+                aliases: vec!["pDisplay".to_string()],
+                helper_kind: Some("plasmid_vector".to_string()),
+                host_system: Some("Escherichia coli".to_string()),
+                sequence_availability: Some("metadata-only candidate".to_string()),
+                redistribution_status: Some("review required".to_string()),
+                biological_safety_note: Some("confirm local classification".to_string()),
+                usable_as_empty_backbone: Some(true),
+                semantics: Some(HelperConstructSemantics {
+                    schema: Some("gentle.helper_semantics.v1".to_string()),
+                    affordances: vec!["phagemid_display".to_string()],
+                    constraints: vec!["metadata_only_until_sequence_terms_reviewed".to_string()],
+                    components: vec![HelperConstructComponent {
+                        id: "f1_origin".to_string(),
+                        kind: "origin".to_string(),
+                        label: Some("f1 origin".to_string()),
+                        description: None,
+                        tags: vec!["phagemid".to_string()],
+                        attributes: HashMap::new(),
+                    }],
+                    relationships: vec![],
+                }),
+                ..Default::default()
+            },
+        );
+        entries.insert(
+            "Bad helper phage".to_string(),
+            GenomeCatalogEntry {
+                helper_kind: Some("helper_phage".to_string()),
+                host_system: Some("Escherichia coli".to_string()),
+                sequence_availability: Some("metadata-only candidate".to_string()),
+                redistribution_status: Some("review required".to_string()),
+                biological_safety_note: Some("confirm local classification".to_string()),
+                usable_as_empty_backbone: Some(true),
+                ..Default::default()
+            },
+        );
+        entries.insert(
+            "Host Synthetic coli".to_string(),
+            GenomeCatalogEntry {
+                ncbi_taxonomy_id: Some(562),
+                sequence_remote: Some("https://example.invalid/host.fa.gz".to_string()),
+                annotations_remote: Some("https://example.invalid/host.gff.gz".to_string()),
+                ..Default::default()
+            },
+        );
+        let catalog = GenomeCatalog {
+            entries,
+            catalog_base_dir: PathBuf::from("."),
+            catalog_path: None,
+            catalog_origin_label: "<inline test catalog>".to_string(),
+            helper_semantics_vocabulary: HelperConstructVocabularyIndex::default(),
+        };
+
+        let doctor = catalog.doctor_helper_vector_catalog("test catalog");
+        assert!(doctor.issues.iter().any(|issue| {
+            issue.helper_id == "Bad helper phage"
+                && issue.code == "helper-phage-marked-empty-backbone"
+                && issue.severity == "error"
+        }));
+        assert!(
+            !doctor
+                .issues
+                .iter()
+                .any(|issue| issue.helper_id == "Host Synthetic coli")
+        );
+
+        let cards = catalog.helper_vector_cards("test catalog", Some("pDisplay"));
+        assert_eq!(cards.card_count, 1);
+        let card = &cards.cards[0];
+        assert_eq!(card.helper_id, "Display phagemid");
+        assert!(card.metadata_only_candidate);
+        assert_eq!(card.affordances, vec!["phagemid_display".to_string()]);
+        assert_eq!(card.components[0].kind, "origin");
+    }
+
+    #[test]
     fn test_list_entries_filter_matches_semantic_helper_metadata() {
         let mut entries = HashMap::new();
         entries.insert(
@@ -13913,6 +14422,10 @@ mod tests {
                 species: Some("synthetic construct".to_string()),
                 helper_kind: Some("plasmid_vector".to_string()),
                 host_system: Some("Escherichia coli".to_string()),
+                sequence_availability: Some("metadata-only candidate".to_string()),
+                redistribution_status: Some("review required".to_string()),
+                biological_safety_note: Some("confirm local classification".to_string()),
+                usable_as_empty_backbone: Some(true),
                 procurement: Some(CatalogProcurementInfo {
                     vendor_name: Some("lab_local".to_string()),
                     catalog_number: Some("PGEX-001".to_string()),
@@ -13974,8 +14487,29 @@ mod tests {
         assert_eq!(factor_rows.len(), 1);
         assert_eq!(catalog.list_entries(Some("affinity purification")).len(), 1);
         assert_eq!(catalog.list_entries(Some("Escherichia coli")).len(), 1);
+        assert_eq!(catalog.list_entries(Some("metadata-only")).len(), 1);
+        assert_eq!(
+            catalog
+                .list_entries(Some("usable_as_empty_backbone=true"))
+                .len(),
+            1
+        );
         assert_eq!(catalog.list_entries(Some("PGEX-001")).len(), 1);
         assert!(catalog.list_entries(Some("yeast secretion")).is_empty());
+
+        assert_eq!(
+            factor_rows[0].sequence_availability.as_deref(),
+            Some("metadata-only candidate")
+        );
+        assert_eq!(
+            factor_rows[0].redistribution_status.as_deref(),
+            Some("review required")
+        );
+        assert_eq!(
+            factor_rows[0].biological_safety_note.as_deref(),
+            Some("confirm local classification")
+        );
+        assert_eq!(factor_rows[0].usable_as_empty_backbone, Some(true));
 
         let interpretation = factor_rows[0]
             .interpretation

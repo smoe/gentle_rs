@@ -3,7 +3,10 @@
 //! These types describe inspectable, editable design reasoning that can be
 //! shared across GUI/CLI/MCP/JS/Lua adapters without coupling to one frontend.
 
-use crate::{SeqId, TranslationSpeedMark, TranslationSpeedProfile, TranslationSpeedProfileSource};
+use crate::{
+    DotplotMode, SeqId, TranslationSpeedMark, TranslationSpeedProfile,
+    TranslationSpeedProfileSource,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -15,6 +18,8 @@ pub const CONSTRUCT_CANDIDATE_SCHEMA: &str = "gentle.construct_candidate.v1";
 pub const ANNOTATION_CANDIDATE_SCHEMA: &str = "gentle.annotation_candidate.v1";
 pub const ANNOTATION_CANDIDATE_SUMMARY_SCHEMA: &str = "gentle.annotation_candidate_summary.v1";
 pub const ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA: &str = "gentle.annotation_candidate_writeback.v1";
+pub const CONSTRUCT_REASONING_INSPECTION_ACTION_SCHEMA: &str =
+    "gentle.construct_reasoning_inspection_action.v1";
 pub const CONSTRUCT_REASONING_GRAPH_SCHEMA: &str = "gentle.construct_reasoning_graph.v1";
 pub const CONSTRUCT_REASONING_STORE_SCHEMA: &str = "gentle.construct_reasoning_store.v1";
 pub const HOST_PROFILE_CATALOG_SCHEMA: &str = "gentle.host_profile_catalog.v1";
@@ -49,6 +54,10 @@ fn default_annotation_candidate_summary_schema() -> String {
 
 fn default_annotation_candidate_writeback_schema() -> String {
     ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA.to_string()
+}
+
+fn default_construct_reasoning_inspection_action_schema() -> String {
+    CONSTRUCT_REASONING_INSPECTION_ACTION_SCHEMA.to_string()
 }
 
 fn default_construct_reasoning_graph_schema() -> String {
@@ -221,6 +230,80 @@ impl EvidenceClass {
             Self::ContextEvidence => "context_evidence",
             Self::SoftHypothesis => "soft_hypothesis",
             Self::UserOverride => "user_override",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+/// Task context used to interpret repeat/similarity operational severity.
+pub enum ConstructReasoningRiskTask {
+    #[default]
+    Pcr,
+    NanoporeSequencing,
+    ReadMapping,
+    CloningStability,
+    ConstructMaintenance,
+}
+
+impl ConstructReasoningRiskTask {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pcr => "pcr",
+            Self::NanoporeSequencing => "nanopore_sequencing",
+            Self::ReadMapping => "read_mapping",
+            Self::CloningStability => "cloning_stability",
+            Self::ConstructMaintenance => "construct_maintenance",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+/// Rule-based severity level for one task-specific reasoning concern.
+pub enum ConstructReasoningSeverity {
+    #[default]
+    None,
+    Low,
+    Medium,
+    High,
+}
+
+impl ConstructReasoningSeverity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Transparent task-specific severity attached to a construct-reasoning fact.
+pub struct ConstructReasoningTaskSeverity {
+    pub task: ConstructReasoningRiskTask,
+    pub severity: ConstructReasoningSeverity,
+    /// Optional transparent 0.0-1.0 score behind `severity`.
+    ///
+    /// Engine-generated scores use fixed rule thresholds: `0.0` is `none`,
+    /// `(0.0, 0.25)` is `low`, `[0.25, 0.60)` is `medium`, and `>= 0.60`
+    /// is `high`. Older serialized graphs may omit this field.
+    pub score: Option<f64>,
+    pub rationale: String,
+    pub supporting_evidence_ids: Vec<String>,
+}
+
+impl Default for ConstructReasoningTaskSeverity {
+    fn default() -> Self {
+        Self {
+            task: ConstructReasoningRiskTask::Pcr,
+            severity: ConstructReasoningSeverity::None,
+            score: None,
+            rationale: String::new(),
+            supporting_evidence_ids: vec![],
         }
     }
 }
@@ -532,6 +615,7 @@ impl Default for DesignEvidence {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 /// Curated host/strain record used by construct reasoning.
+#[derive(Default)]
 pub struct HostProfileRecord {
     pub profile_id: String,
     pub species: String,
@@ -541,21 +625,6 @@ pub struct HostProfileRecord {
     pub phenotype_tags: Vec<String>,
     pub notes: Vec<String>,
     pub source_notes: Vec<String>,
-}
-
-impl Default for HostProfileRecord {
-    fn default() -> Self {
-        Self {
-            profile_id: String::new(),
-            species: String::new(),
-            strain: String::new(),
-            aliases: vec![],
-            genotype_tags: vec![],
-            phenotype_tags: vec![],
-            notes: vec![],
-            source_notes: vec![],
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -579,6 +648,7 @@ impl Default for HostProfileCatalog {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 /// Curated helper/vector profile used by construct reasoning.
+#[derive(Default)]
 pub struct HelperConstructProfile {
     pub profile_id: String,
     pub helper_seq_id: Option<String>,
@@ -588,21 +658,6 @@ pub struct HelperConstructProfile {
     pub host_compatibility_tags: Vec<String>,
     pub notes: Vec<String>,
     pub source_notes: Vec<String>,
-}
-
-impl Default for HelperConstructProfile {
-    fn default() -> Self {
-        Self {
-            profile_id: String::new(),
-            helper_seq_id: None,
-            helper_genome_id: None,
-            vector_family: None,
-            backbone_roles: vec![],
-            host_compatibility_tags: vec![],
-            notes: vec![],
-            source_notes: vec![],
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -616,6 +671,7 @@ pub struct DesignFact {
     pub label: String,
     pub rationale: String,
     pub based_on_evidence_ids: Vec<String>,
+    pub task_severities: Vec<ConstructReasoningTaskSeverity>,
     pub value_json: serde_json::Value,
     pub confidence: Option<f64>,
     pub editable_status: EditableStatus,
@@ -630,6 +686,7 @@ impl Default for DesignFact {
             label: String::new(),
             rationale: String::new(),
             based_on_evidence_ids: vec![],
+            task_severities: vec![],
             value_json: serde_json::Value::Null,
             confidence: None,
             editable_status: EditableStatus::Draft,
@@ -872,6 +929,84 @@ impl Default for AnnotationCandidateWriteback {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+/// Kind of portable inspection payload recommended by construct reasoning.
+pub enum ConstructReasoningInspectionActionKind {
+    #[default]
+    Dotplot,
+}
+
+impl ConstructReasoningInspectionActionKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Dotplot => "dotplot",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default, deny_unknown_fields)]
+/// Optional repeat-family backing for a recommended inspection action.
+pub struct ConstructReasoningRepeatFamilyProvenance {
+    pub source_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub family_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub family_name: Option<String>,
+    pub source_refs: Vec<String>,
+    pub evidence_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Portable action that tells adapters how to inspect one reasoning result.
+pub struct ConstructReasoningInspectionAction {
+    #[serde(default = "default_construct_reasoning_inspection_action_schema")]
+    pub schema: String,
+    pub action_id: String,
+    pub action_kind: ConstructReasoningInspectionActionKind,
+    pub button_label: String,
+    pub hover_text: String,
+    pub rationale: String,
+    pub seq_id: SeqId,
+    pub mode: DotplotMode,
+    pub focus_start_0based: usize,
+    pub focus_end_0based_exclusive: usize,
+    pub driving_evidence_ids: Vec<String>,
+    pub source_fact_ids: Vec<String>,
+    pub source_annotation_ids: Vec<String>,
+    pub source_summary_ids: Vec<String>,
+    pub context_tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_family_provenance: Option<ConstructReasoningRepeatFamilyProvenance>,
+}
+
+impl Default for ConstructReasoningInspectionAction {
+    fn default() -> Self {
+        Self {
+            schema: default_construct_reasoning_inspection_action_schema(),
+            action_id: String::new(),
+            action_kind: ConstructReasoningInspectionActionKind::Dotplot,
+            button_label: String::new(),
+            hover_text: String::new(),
+            rationale: String::new(),
+            seq_id: String::new(),
+            mode: DotplotMode::SelfForward,
+            focus_start_0based: 0,
+            focus_end_0based_exclusive: 0,
+            driving_evidence_ids: vec![],
+            source_fact_ids: vec![],
+            source_annotation_ids: vec![],
+            source_summary_ids: vec![],
+            context_tags: vec![],
+            repeat_family_provenance: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 /// Complete sequence-linked reasoning graph for one design objective.
@@ -892,6 +1027,7 @@ pub struct ConstructReasoningGraph {
     pub candidates: Vec<ConstructCandidate>,
     pub annotation_candidates: Vec<AnnotationCandidate>,
     pub annotation_candidate_summaries: Vec<AnnotationCandidateSummary>,
+    pub inspection_actions: Vec<ConstructReasoningInspectionAction>,
     pub notes: Vec<String>,
 }
 
@@ -911,6 +1047,7 @@ impl Default for ConstructReasoningGraph {
             candidates: vec![],
             annotation_candidates: vec![],
             annotation_candidate_summaries: vec![],
+            inspection_actions: vec![],
             notes: vec![],
         }
     }
@@ -971,6 +1108,43 @@ mod tests {
             rationale: "Restriction site".to_string(),
             ..DesignEvidence::default()
         });
+        graph.facts.push(DesignFact {
+            fact_id: "fact_demo".to_string(),
+            fact_type: "repeat_architecture_context".to_string(),
+            label: "Repeat context".to_string(),
+            task_severities: vec![ConstructReasoningTaskSeverity {
+                task: ConstructReasoningRiskTask::CloningStability,
+                severity: ConstructReasoningSeverity::Medium,
+                score: Some(0.52),
+                rationale: "Direct-repeat architecture may matter more for cloning stability."
+                    .to_string(),
+                supporting_evidence_ids: vec!["ev1".to_string()],
+            }],
+            ..DesignFact::default()
+        });
+        graph
+            .inspection_actions
+            .push(ConstructReasoningInspectionAction {
+                action_id: "graph_demo_fact_demo_self_forward_1_12".to_string(),
+                button_label: "Dotplot".to_string(),
+                hover_text: "Open dotplot".to_string(),
+                rationale: "Inspect repeat evidence for local similarity risk.".to_string(),
+                seq_id: "seq1".to_string(),
+                mode: DotplotMode::SelfForward,
+                focus_start_0based: 0,
+                focus_end_0based_exclusive: 12,
+                driving_evidence_ids: vec!["ev1".to_string()],
+                source_fact_ids: vec!["fact_demo".to_string()],
+                context_tags: vec!["direct_repeat".to_string()],
+                repeat_family_provenance: Some(ConstructReasoningRepeatFamilyProvenance {
+                    source_kind: "repeatmasker".to_string(),
+                    family_name: Some("Alu".to_string()),
+                    evidence_ids: vec!["ev1".to_string()],
+                    source_refs: vec!["rmsk".to_string()],
+                    ..ConstructReasoningRepeatFamilyProvenance::default()
+                }),
+                ..ConstructReasoningInspectionAction::default()
+            });
 
         let value = serde_json::to_value(&graph).expect("serialize");
         let round_trip: ConstructReasoningGraph =
@@ -982,11 +1156,45 @@ mod tests {
             round_trip.objective.propagation_host_profile_id.as_deref(),
             Some("ecoli_k12")
         );
+        assert_eq!(round_trip.facts[0].task_severities.len(), 1);
+        assert_eq!(
+            round_trip.facts[0].task_severities[0].task,
+            ConstructReasoningRiskTask::CloningStability
+        );
+        assert_eq!(round_trip.facts[0].task_severities[0].score, Some(0.52));
+        let mut legacy_value = serde_json::to_value(&graph).expect("serialize legacy");
+        legacy_value["facts"][0]["task_severities"][0]
+            .as_object_mut()
+            .expect("task severity object")
+            .remove("score");
+        let legacy_round_trip: ConstructReasoningGraph =
+            serde_json::from_value(legacy_value).expect("deserialize legacy without score");
+        assert_eq!(legacy_round_trip.facts[0].task_severities[0].score, None);
         assert_eq!(round_trip.objective.host_route.len(), 1);
         assert_eq!(round_trip.evidence[0].scope, EvidenceScope::HostTransition);
         assert_eq!(
             round_trip.evidence[0].host_profile_id.as_deref(),
             Some("ecoli_k12")
+        );
+        assert_eq!(round_trip.inspection_actions.len(), 1);
+        assert_eq!(
+            round_trip.inspection_actions[0].schema,
+            CONSTRUCT_REASONING_INSPECTION_ACTION_SCHEMA
+        );
+        assert_eq!(
+            round_trip.inspection_actions[0].driving_evidence_ids,
+            vec!["ev1".to_string()]
+        );
+        assert_eq!(
+            round_trip.inspection_actions[0].rationale,
+            "Inspect repeat evidence for local similarity risk."
+        );
+        assert_eq!(
+            round_trip.inspection_actions[0]
+                .repeat_family_provenance
+                .as_ref()
+                .and_then(|provenance| provenance.family_name.as_deref()),
+            Some("Alu")
         );
     }
 }

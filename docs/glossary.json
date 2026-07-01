@@ -1,5 +1,4 @@
 {
-   "command_count": 373,
    "commands": [
       {
          "aliases": [
@@ -14,7 +13,7 @@
          ],
          "path": "help",
          "summary": "Show full command help catalog or help for one command path.",
-         "usage": "help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua]"
+         "usage": "help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp]"
       },
       {
          "aliases": [],
@@ -41,6 +40,119 @@
          "usage": "state-summary"
       },
       {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "history status",
+         "summary": "Inspect session-local multi-level undo/redo availability.",
+         "usage": "history status"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "facts graph",
+         "summary": "Return the deterministic project fact graph, optionally enriched with explicit evidence files.",
+         "usage": "facts graph [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "facts eval",
+         "summary": "Evaluate a project fact expression against the current fact graph.",
+         "usage": "facts eval FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "introspect facts",
+         "summary": "Inspect typed project, view, host, and configuration facts for adapter readiness.",
+         "usage": "introspect facts [--domain project|view|host|config] [--seq-id ID] [--ui-host true|false] [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "introspect capabilities",
+         "summary": "Inspect annotated capability metadata and fact-readiness contracts.",
+         "usage": "introspect capabilities [--kind KIND]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "introspect readiness",
+         "summary": "Evaluate whether one capability is ready for supplied argument bindings.",
+         "usage": "introspect readiness CAPABILITY_ID [--arg NAME=VALUE ...] [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "introspect verify-effects",
+         "summary": "Compare declared capability effects with before-and-after fact graphs.",
+         "usage": "introspect verify-effects CAPABILITY_ID [--arg NAME=VALUE ...] [--seq-id ID] [--evidence SCAN.json ...] [--ui-host true|false]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "introspect all",
+         "summary": "Emit the complete deterministic introspection bundle for adapters and agents.",
+         "usage": "introspect all [--ui-host true|false] [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu"
+         ],
+         "path": "history undo",
+         "summary": "Undo the most recent operation-level state transition.",
+         "usage": "history undo"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu"
+         ],
+         "path": "history redo",
+         "summary": "Redo the most recently undone operation-level state transition.",
+         "usage": "history redo"
+      },
+      {
          "aliases": [
             "import-state"
          ],
@@ -48,6 +160,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "load-project",
@@ -62,11 +175,25 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "save-project",
          "summary": "Save current state to a project file.",
          "usage": "save-project PATH"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "CreateSequenceFromText"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "sequence create",
+         "summary": "Create a persistent project sequence from inline sequence text.",
+         "usage": "sequence create --sequence-text DNA [--output-id ID] [--name TEXT] [--topology linear|circular]"
       },
       {
          "aliases": [],
@@ -177,8 +304,8 @@
             "cli-direct"
          ],
          "path": "panels render-isoform-svg",
-         "summary": "Render imported isoform architecture as publication-oriented SVG.",
-         "usage": "panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg"
+         "summary": "Render imported isoform architecture as publication-oriented SVG, optionally with an isoform expression TSV heatmap.",
+         "usage": "panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg [--expression-tsv PATH]"
       },
       {
          "aliases": [
@@ -322,6 +449,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "gibson preview",
@@ -336,6 +464,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "gibson apply",
@@ -364,7 +493,7 @@
          ],
          "path": "cache clear",
          "summary": "Conservatively clear derived cache artifacts or prepared installs within selected reference/helper cache roots.",
-         "usage": "cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--include-orphans]"
+         "usage": "cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]"
       },
       {
          "aliases": [],
@@ -420,7 +549,7 @@
          ],
          "path": "racks create-from-arrangement",
          "summary": "Create one deterministic physical rack draft from a stored arrangement.",
-         "usage": "racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]"
+         "usage": "racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_6|plate_96|plate_384]"
       },
       {
          "aliases": [],
@@ -516,7 +645,7 @@
          ],
          "path": "racks fabrication-svg",
          "summary": "Export one deterministic top-view fabrication/planning SVG for a saved rack.",
-         "usage": "racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+         "usage": "racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
       },
       {
          "aliases": [],
@@ -530,7 +659,21 @@
          ],
          "path": "racks isometric-svg",
          "summary": "Export one deterministic pseudo-3D/isometric SVG for a saved rack.",
-         "usage": "racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+         "usage": "racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackHeroSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks hero-svg",
+         "summary": "Export one deterministic README-facing, arrangement-labelled top-down rack/plate SVG for a saved rack.",
+         "usage": "racks hero-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
       },
       {
          "aliases": [],
@@ -544,7 +687,7 @@
          ],
          "path": "racks openscad",
          "summary": "Export one deterministic parameterized OpenSCAD source file for a saved rack.",
-         "usage": "racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+         "usage": "racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
       },
       {
          "aliases": [],
@@ -558,7 +701,7 @@
          ],
          "path": "racks carrier-labels-svg",
          "summary": "Export one carrier-matched front-strip/module-label SVG sheet for a saved rack using shared carrier-label presets.",
-         "usage": "racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack] [--preset front_strip_and_cards|front_strip_only|module_cards_only]"
+         "usage": "racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate] [--preset front_strip_and_cards|front_strip_only|module_cards_only]"
       },
       {
          "aliases": [],
@@ -572,7 +715,7 @@
          ],
          "path": "racks simulation-json",
          "summary": "Export one machine-readable physical rack geometry/placement JSON for downstream simulation adapters.",
-         "usage": "racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+         "usage": "racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
       },
       {
          "aliases": [],
@@ -586,7 +729,7 @@
          ],
          "path": "racks set-profile",
          "summary": "Reflow one saved rack onto another built-in rack or plate profile.",
-         "usage": "racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384"
+         "usage": "racks set-profile RACK_ID small_tube_4x6|plate_6|plate_96|plate_384"
       },
       {
          "aliases": [],
@@ -791,11 +934,63 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "agents preflight",
+         "summary": "Inspect transport/runtime setup for one configured agent system, optionally with a non-generating live model-list probe.",
+         "usage": "agents preflight SYSTEM_ID [--live] [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "agents discover-models",
+         "summary": "Discover model ids for one native OpenAI or OpenAI-compatible agent system.",
+         "usage": "agents discover-models SYSTEM_ID [--catalog PATH] [--base-url URL]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
             "cli-direct"
          ],
          "path": "agents ask",
          "summary": "Send prompt to one agent system and optionally execute suggested shared-shell commands.",
          "usage": "agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "agents plan",
+         "summary": "Compile prose into typed execution candidates for shell, operation, workflow, or UI-intent orchestration.",
+         "usage": "agents plan SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--max-candidates N] [--allow-mutating-candidates|--no-mutating-candidates] [--no-state-summary]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "agents execute-plan",
+         "summary": "Execute one stored agent-plan candidate without re-planning, requiring confirmation for mutating operation or workflow candidates.",
+         "usage": "agents execute-plan PLAN_JSON_OR_@FILE --candidate-id ID [--confirm]"
       },
       {
          "aliases": [],
@@ -841,6 +1036,30 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "ui close",
+         "summary": "Request closing a GUI target or DNA sequence window without deleting project data.",
+         "usage": "ui close TARGET"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ui selection",
+         "summary": "Inspect or set a DNA sequence-window selection in 0-based, end-exclusive coordinates.",
+         "usage": "ui selection sequence-window SEQ_ID [--range START..END|--start N --end N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "ui prepared-genomes",
          "summary": "List prepared genomes/helpers for GUI intent disambiguation.",
          "usage": "ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]"
@@ -867,7 +1086,7 @@
             "gui-shell"
          ],
          "path": "genbank fetch",
-         "summary": "Fetch one GenBank accession via NCBI EFetch and import it as a sequence.",
+         "summary": "Fetch one NCBI GenBank nucleotide accession (for example NM_, NC_, NG_, or other nucleotide accession records) via EFetch and import it as a sequence; --as-id names the local GENtle sequence id.",
          "usage": "genbank fetch ACCESSION [--as-id ID]"
       },
       {
@@ -880,7 +1099,7 @@
             "gui-shell"
          ],
          "path": "dbsnp fetch",
-         "summary": "Resolve one dbSNP rsID and extract an annotated genomic region from a prepared genome.",
+         "summary": "Resolve one dbSNP rsID (for example rs9923231) and extract an annotated flanking genomic region from the prepared GENOME_ID reference; --output-id names the local GENtle sequence id.",
          "usage": "dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]"
       },
       {
@@ -951,7 +1170,7 @@
             "gui-shell"
          ],
          "path": "uniprot fetch",
-         "summary": "Fetch one UniProt SWISS-PROT text entry by accession or ID.",
+         "summary": "Fetch one UniProtKB/Swiss-Prot text entry by UniProt accession or entry name (for example P04637 or P53_HUMAN); --entry-id names the local GENtle metadata entry.",
          "usage": "uniprot fetch QUERY [--entry-id ID]"
       },
       {
@@ -1198,7 +1417,7 @@
             "cli-direct"
          ],
          "path": "ensembl-gene fetch",
-         "summary": "Fetch one Ensembl gene entry from Ensembl REST into project metadata.",
+         "summary": "Fetch one Ensembl gene lookup record from Ensembl REST by HGNC-approved gene symbol or stable Ensembl gene id (for example FUS or ENSG00000089280); --species should be an Ensembl species name such as homo_sapiens; --entry-id names the local GENtle metadata entry. HGNC:n identifiers are nomenclature ids and may need resolution before use.",
          "usage": "ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]"
       },
       {
@@ -1252,7 +1471,7 @@
             "cli-direct"
          ],
          "path": "ensembl-region fetch",
-         "summary": "Fetch one live Ensembl genomic region/ROI directly as an anchored DNA sequence.",
+         "summary": "Fetch one live Ensembl genomic region directly as an anchored DNA sequence; SPECIES is an Ensembl species name such as homo_sapiens, CHR/START/END are assembly coordinates, and --output-id names the local GENtle sequence id.",
          "usage": "ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]"
       },
       {
@@ -1266,7 +1485,7 @@
             "cli-direct"
          ],
          "path": "ensembl-protein fetch",
-         "summary": "Fetch one Ensembl protein/transcript-backed protein entry from Ensembl REST.",
+         "summary": "Fetch one Ensembl protein or translation lookup record from Ensembl REST by Ensembl protein/transcript stable id or accepted lookup query; --entry-id names the local GENtle metadata entry.",
          "usage": "ensembl-protein fetch QUERY [--entry-id ID]"
       },
       {
@@ -1346,6 +1565,54 @@
          "usage": "resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]"
       },
       {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources import-gene-list-cache",
+         "summary": "Normalize a local TSV/CSV gene list into an offline direct gene-list cache for retrieval-backed gene-set producers.",
+         "usage": "resources import-gene-list-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--cache-id ID] [--cache-version VERSION] [--list-id ID] [--list-label LABEL]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources import-ontology-assignment-cache",
+         "summary": "Normalize local TSV/CSV ontology assignment rows into an offline ontology-assignment cache for retrieval-backed gene-set producers.",
+         "usage": "resources import-ontology-assignment-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--ontology-namespace GO] [--organism NAME|--taxon-id N|--symbol-namespace NAMESPACE] [--cache-id ID] [--cache-version VERSION]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources import-co-regulated-cache",
+         "summary": "Normalize local TSV/CSV scored gene rows into an offline co-regulated cohort cache for retrieval-backed gene-set producers.",
+         "usage": "resources import-co-regulated-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--dataset DATASET_ID] [--contrast LABEL] [--condition LABEL] [--normalization METHOD] [--score METHOD] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--cache-id ID] [--cache-version VERSION]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources install-ucsc-rmsk",
+         "summary": "Install a UCSC RepeatMasker rmsk resource snapshot and prepared interval index in one step.",
+         "usage": "resources install-ucsc-rmsk [--assembly DB] [--input PATH_OR_URL] [--resource-output PATH] [--index-output PATH]"
+      },
+      {
          "aliases": [
             "resources index-ucsc-rmsk"
          ],
@@ -1404,6 +1671,48 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ListReporterCatalog"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reporters list",
+         "summary": "List locally curated reporter catalog entries, with optional text filtering and JSON export.",
+         "usage": "reporters list [--catalog PATH] [--filter TEXT] [--limit N] [--output FILE.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RecommendReporters"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reporters recommend",
+         "summary": "Rank reporter candidates against deterministic assay, host, spectral, and motif constraints.",
+         "usage": "reporters recommend [--catalog PATH] [--assay NAME] [--chassis HOST] [--live true|false] [--color COLOR] [--class CLASS] [--excitation-nm NM] [--emission-nm NM] [--fusion MODE] [--max-length-bp N] [--forbid-motif IUPAC] [--substrate-allowed true|false] [--limit N] [--output FILE.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportReporterCorpus"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reporters export-corpus",
+         "summary": "Export the active reporter catalog as a JSON or JSONL corpus for local review or retrieval tooling.",
+         "usage": "reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--catalog PATH] [--format json|jsonl]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "BenchmarkJasparRegistry"
          ],
          "interfaces": [
@@ -1432,6 +1741,260 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ResolveTfQueries"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "resources resolve-tf-query",
+         "summary": "Resolve user-facing TF, group, alias, or family-like tokens against the local motif registry and catalog-backed TF-query groups.",
+         "usage": "resources resolve-tf-query QUERY [QUERY ...] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_groups list",
+            "genegroups list"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-groups list",
+         "summary": "List deterministic local gene-group catalog entries, including lab-facing groups that may map to external ontology resources such as GO.",
+         "usage": "gene-groups list [--catalog PATH] [--filter TEXT] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_groups show",
+            "genegroups show"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-groups show",
+         "summary": "Show one gene-group catalog entry with memberships, curation status, external mappings, and source provenance.",
+         "usage": "gene-groups show GROUP_ID [--catalog PATH] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_groups resolve",
+            "genegroups resolve"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-groups resolve",
+         "summary": "Resolve a user token against gene-group ids, labels, and aliases before using it in downstream group-aware analyses.",
+         "usage": "gene-groups resolve TOKEN [--catalog PATH] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene-groups validate",
+            "gene_groups doctor",
+            "genegroups doctor"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-groups doctor",
+         "summary": "Validate gene-group catalog overlays, reporting duplicate ids, alias collisions, malformed memberships, mapping issues, and source provenance.",
+         "usage": "gene-groups doctor [--catalog PATH] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_groups draft",
+            "genegroups draft",
+            "gene-group draft"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-groups draft",
+         "summary": "Create a review-gated gene-group catalog fragment from an explicit description, optional candidate members, and optional external mappings such as GO.",
+         "usage": "gene-groups draft --description TEXT [--member SYMBOL] [--candidate SYMBOL=EVIDENCE] [--go GO:NNNNNNN] [--output GROUP.json]"
+      },
+      {
+         "aliases": [
+            "gene_sets resolve",
+            "genesets resolve"
+         ],
+         "engine_operations": [
+            "ResolveGeneSet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-sets resolve",
+         "summary": "Resolve a gene set into analysis-ready members with provenance from a catalog group, explicit members, local external mapping such as GO, genomic neighbors, or deterministic random sampling.",
+         "usage": "gene-sets resolve [GROUP_ID|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--genome GENOME_ID] [--catalog PATH] [--genome-catalog PATH] [--allow-draft] [--allow-deprecated] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_sets promoter-cohort",
+            "genesets promoter-cohort",
+            "gene-sets promoter_cohort"
+         ],
+         "engine_operations": [
+            "BuildGeneSetPromoterCohort"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-sets promoter-cohort",
+         "summary": "Build strand-aware promoter windows for a resolved gene set using the shared promoter/TSS resolver and default 1000 bp upstream / 200 bp downstream geometry.",
+         "usage": "gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_sets produce direct-list",
+            "genesets produce direct-list",
+            "gene-sets produce direct_list"
+         ],
+         "engine_operations": [
+            "ProduceGeneSetDirectList"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-sets produce direct-list",
+         "summary": "Produce a gene-set resolution report from a local direct gene-list JSON/TSV cache, preserving provider/cache/query provenance before resolving members through the existing explicit-member resolver.",
+         "usage": "gene-sets produce direct-list --cache CACHE.json_or_tsv [--query LIST_ID] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_sets produce ontology-assignment",
+            "genesets produce ontology-assignment",
+            "gene-sets produce ontology_assignment"
+         ],
+         "engine_operations": [
+            "ProduceGeneSetOntologyAssignment"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-sets produce ontology-assignment",
+         "summary": "Produce a gene-set resolution report from a local ontology assignment JSON/TSV cache, selecting members by term and evidence/filter metadata before resolving them through the existing explicit-member resolver.",
+         "usage": "gene-sets produce ontology-assignment --cache CACHE.json_or_tsv --term GO:NNNNNNN [--ontology-namespace GO] [--evidence-code CODE] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_sets produce co-regulated",
+            "genesets produce co-regulated",
+            "gene-sets produce co_regulated",
+            "gene-sets produce co-regulated-cohort"
+         ],
+         "engine_operations": [
+            "ProduceGeneSetCoRegulatedCohort"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-sets produce co-regulated",
+         "summary": "Produce a gene-set resolution report from a local evidence-derived cohort cache, applying explicit dataset/contrast, score threshold, and direction rules while preserving a declared relationship expectation.",
+         "usage": "gene-sets produce co-regulated --cache CACHE.json_or_tsv --dataset DATASET_ID --contrast LABEL --score METHOD --threshold RULE --direction both|positive|negative [--relationship co-regulated|anti-co-regulated|manual] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "ortholog resolve-promoter-cohort",
+            "orthologs promoter-cohort"
+         ],
+         "engine_operations": [
+            "ResolveOrthologPromoterCohort"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "orthologs resolve-promoter-cohort",
+         "summary": "Resolve an offline local ortholog mapping resource into strand-aware cross-species promoter windows using prepared genome catalogs.",
+         "usage": "orthologs resolve-promoter-cohort --anchor-species SPECIES --anchor-genome GENOME_ID --anchor-gene QUERY --target-species SPECIES [--target-species SPECIES ...] [--target-genome SPECIES=GENOME_ID] [--transcript SPECIES=TRANSCRIPT_ID] --orthologs ORTHOLOG_RESOURCE.json [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--ambiguity-policy reject|first] [--catalog GENOMES.json] [--cache-dir PATH] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "ortholog promoter-comparison",
+            "orthologs compare-promoters"
+         ],
+         "engine_operations": [
+            "SummarizeOrthologPromoterComparison"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "orthologs promoter-comparison",
+         "summary": "Compare a resolved ortholog promoter cohort across sequence identity, TFBS score-track similarity, optional expression rows, and explicit CUT&RUN comparability states.",
+         "usage": "orthologs promoter-comparison --cohort COHORT.json --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--score-kind KIND] [--allow-negative] [--relationship manual|co-regulated|anti-co-regulated] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset-id ID] [--cutrun-read-report-id ID] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "resources publication-datasets"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources list-publication-datasets",
+         "summary": "List publication-associated external datasets and declared download files from the GENtle resource catalog.",
+         "usage": "resources list-publication-datasets [--filter TEXT] [--catalog PATH] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "resources publication-dataset-status"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources status-publication-dataset",
+         "summary": "Inspect local manifest/cache status for one publication-associated dataset accession.",
+         "usage": "resources status-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources prepare-publication-dataset",
+         "summary": "Prepare a manifest, TSV, and download script for one publication-associated dataset, with optional category filtering and explicit opt-in raw-file download.",
+         "usage": "resources prepare-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH] [--download-files] [--max-files N] [--category NAME|--categories CSV]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "InspectJasparEntry"
          ],
          "interfaces": [
@@ -1442,6 +2005,116 @@
          "path": "resources inspect-jaspar",
          "summary": "Inspect one local JASPAR entry with matrix/logo payloads, multiple score distributions, and optional remote species metadata.",
          "usage": "resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services status",
+         "summary": "Inspect combined GENtle service readiness for references, helpers, resources, and external-service providers.",
+         "usage": "services status"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services providers list",
+         "summary": "List external-service providers and their deterministic capability catalog.",
+         "usage": "services providers list"
+      },
+      {
+         "aliases": [
+            "services providers validate"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services providers doctor",
+         "summary": "Validate overlay-discovered external-service provider config catalogs and report source provenance.",
+         "usage": "services providers doctor [--catalog PATH] [--output PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services delivery-route",
+         "summary": "Classify a provider-neutral external-service delivery-route request and return recommended handoff candidates.",
+         "usage": "services delivery-route REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services route-project-source",
+         "summary": "Build and classify an external-service delivery-route request from a GENtle project object such as a sequence, oligo order form, or primer report rows.",
+         "usage": "services route-project-source --kind sequence|oligo-form|primer-report-rows [--seq-id ID] [--range START..END] [--as sequence|construct-output] [--form-id ID] [--report-id ID] [--pair-rank N[,N...]]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services project-preflight",
+         "summary": "Validate one vendor-neutral external-service request against the active provider config catalog.",
+         "usage": "services project-preflight REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services project-quote",
+         "summary": "Build a service-ready external handoff bundle for a preflightable provider request without submitting an order.",
+         "usage": "services project-quote REQUEST_JSON_OR_@FILE [--output-dir DIR]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services handoff",
+         "summary": "Build a chat/agent handoff report with readiness rows, suggested setup actions, blocked actions, and preferred artifacts.",
+         "usage": "services handoff [--scope NAME] [--output PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services guide",
+         "summary": "Build a compact bench-user guide for readiness, gene context, TFBS, cloning, isoforms, and follow-up navigation.",
+         "usage": "services guide [--channel telegram] [--section SECTION] [--gene SYMBOL]"
       },
       {
          "aliases": [],
@@ -1546,6 +2219,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "genomes prepare",
@@ -1644,6 +2318,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "genomes blast-track",
@@ -1658,11 +2333,12 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "genomes extract-region",
          "summary": "Extract genomic interval into a project sequence (default annotation_scope=core).",
-         "usage": "genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+         "usage": "genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -1672,11 +2348,26 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "genomes extract-gene",
          "summary": "Extract a named gene interval into a project sequence.",
-         "usage": "genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+         "usage": "genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtractGenomePromoterSlice"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes extract-promoter",
+         "summary": "Extract a transcript-oriented promoter slice into a project sequence.",
+         "usage": "genomes extract-promoter GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -1847,6 +2538,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "helpers prepare",
@@ -1945,6 +2637,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "helpers blast-track",
@@ -1959,11 +2652,12 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "helpers extract-region",
          "summary": "Extract helper-genome interval into a project sequence (default annotation_scope=core).",
-         "usage": "helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+         "usage": "helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -1973,11 +2667,26 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "helpers extract-gene",
          "summary": "Extract helper-gene interval into a project sequence.",
-         "usage": "helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+         "usage": "helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtractGenomePromoterSlice"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers extract-promoter",
+         "summary": "Extract a helper promoter slice into a project sequence.",
+         "usage": "helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -2134,6 +2843,22 @@
          "usage": "cutrun inspect-regulatory-support SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path OUTPUT.json]"
       },
       {
+         "aliases": [
+            "cutrun gene_set_regulatory_support"
+         ],
+         "engine_operations": [
+            "InspectCutRunGeneSetRegulatorySupport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun gene-set-regulatory-support",
+         "summary": "Score prepared CUT&RUN datasets and saved read reports against a gene-set promoter cohort while reporting evaluated and unevaluated members separately.",
+         "usage": "cutrun gene-set-regulatory-support GENOME_ID [--promoter-cohort COHORT.json|--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN] [--relationship manual|co-regulated|anti-co-regulated] [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--upstream-bp N] [--downstream-bp N] [--path OUTPUT.json]"
+      },
+      {
          "aliases": [],
          "engine_operations": [
             "ImportGenomeBedTrack"
@@ -2141,6 +2866,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "tracks import-bed",
@@ -2155,6 +2881,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "tracks import-bigwig",
@@ -2169,11 +2896,151 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "tracks import-vcf",
          "summary": "Import VCF variants aligned to an anchored sequence.",
          "usage": "tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]"
+      },
+      {
+         "aliases": [
+            "arrays inspect-track"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrays inspect-microarray-track",
+         "summary": "Inspect a prepared microarray track manifest without changing state.",
+         "usage": "arrays inspect-microarray-track MANIFEST"
+      },
+      {
+         "aliases": [
+            "arrays inspect-probe-regions-output",
+            "arrays inspect-probe-output"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrays inspect-probe-region-output",
+         "summary": "Inspect explicit probe-region helper output without changing state.",
+         "usage": "arrays inspect-probe-region-output OUTPUT_DIR"
+      },
+      {
+         "aliases": [
+            "arrays convert-apt-probe-region-output"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrays import-apt-probe-region-output",
+         "summary": "Convert explicit APT probe-region summary and annotation tables into inspectable GENtle helper output.",
+         "usage": "arrays import-apt-probe-region-output SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--metadata PATH] [--condition-column NAME] [--sample-column NAME] [--probe-intensity PATH] [--probe-id-column NAME] [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]"
+      },
+      {
+         "aliases": [
+            "arrays plot-probe-region-output",
+            "arrays plot-probe-region-output-svg"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrays render-probe-region-output-svg",
+         "summary": "Render completed probe-region helper output as a deterministic native SVG.",
+         "usage": "arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ProjectProbeRegionOutput"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrays project-probe-region-output",
+         "summary": "Project selected probe-region helper output rows into genome-anchored array features.",
+         "usage": "arrays project-probe-region-output SEQ_ID OUTPUT_DIR [--contrasts CSV] [--level probe_region|pm_probe] [--min-abs-logfc N] [--max-features N] [--clear-existing]"
+      },
+      {
+         "aliases": [
+            "arrays project-track"
+         ],
+         "engine_operations": [
+            "ProjectMicroarrayTrack"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrays project-microarray-track",
+         "summary": "Project verified genome-anchored microarray contrast tracks onto an anchored sequence.",
+         "usage": "arrays project-microarray-track SEQ_ID MANIFEST [--contrasts CSV] [--level probeset] [--min-abs-logfc N] [--max-adj-p N] [--max-features N] [--clear-existing]"
+      },
+      {
+         "aliases": [
+            "arrays probe-region-plan"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrays probe-regions",
+         "summary": "Preflight chromosome-ordered Affymetrix CEL probe/probeset-region inspection without running summarization.",
+         "usage": "arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "mirna explain-seed",
+         "summary": "Resolve a microRNA mature sequence and derive canonical reverse-complement seed-site motifs.",
+         "usage": "mirna explain-seed MIRNA [--mature-sequence SEQ] [--format json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "mirna catalog-show",
+         "summary": "Show a GENtle-backed microRNA catalog record, including identifiers and source notes.",
+         "usage": "mirna catalog-show MIRNA"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "mirna scan-target",
+         "summary": "Scan annotated transcript regions for exact canonical microRNA seed-site candidates.",
+         "usage": "mirna scan-target MIRNA TARGET [--mature-sequence SEQ] [--transcript-filter TEXT] [--regions CSV] [--seed-classes CSV] [--boundary-flank-bp N] [--species-note TEXT] [--evidence-note TEXT] [--format json]"
       },
       {
          "aliases": [],
@@ -2389,6 +3256,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "primers design",
@@ -2403,6 +3271,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "primers design-qpcr",
@@ -2421,7 +3290,7 @@
          ],
          "path": "primers test-cdna-pcr",
          "summary": "Test supplied PCR primers against transcript-derived cDNA templates for one splicing group and optionally export a transcript-map SVG.",
-         "usage": "primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+         "usage": "primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]..."
       },
       {
          "aliases": [],
@@ -2435,7 +3304,7 @@
          ],
          "path": "primers test-cdna-qpcr",
          "summary": "Test supplied qPCR primers and probe against transcript-derived cDNA templates for one splicing group and optionally export a transcript-map SVG.",
-         "usage": "primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+         "usage": "primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]..."
       },
       {
          "aliases": [
@@ -2675,7 +3544,7 @@
             "cli-direct"
          ],
          "path": "features repeat-overlaps",
-         "summary": "Project prepared UCSC rmsk intervals onto one genome-anchored sequence and report local overlap coordinates.",
+         "summary": "Project prepared UCSC rmsk intervals onto one genome-anchored sequence and report local overlap coordinates plus neutral coverage/class metrics.",
          "usage": "features repeat-overlaps SEQ_ID --index RMSK_INTERVAL_INDEX.json [--range START..END] [--limit N] [--path FILE.json]"
       },
       {
@@ -2733,7 +3602,7 @@
          ],
          "path": "features tfbs-score-tracks-svg",
          "summary": "Render one stacked SVG plot of continuous TFBS/PSSM score tracks over a selected sequence span.",
-         "usage": "features tfbs-score-tracks-svg (SEQ_ID OUTPUT.svg|--sequence-text DNA --output OUTPUT.svg) --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--topology linear|circular] [--id-hint TEXT] [--score-kind llr_bits|llr_quantile|true_log_odds_bits|true_log_odds_quantile] [--allow-negative]"
+         "usage": "features tfbs-score-tracks-svg (SEQ_ID OUTPUT.svg|--sequence-text DNA --output OUTPUT.svg) --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--topology linear|circular] [--id-hint TEXT] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]"
       },
       {
          "aliases": [],
@@ -2800,6 +3669,36 @@
          "path": "transcripts derive",
          "summary": "Derive transcript/cDNA sequences from mRNA or transcript features, optionally constrained by splicing scope.",
          "usage": "transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PlanExonSkippedIsoform"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "transcripts exon-skip-plan",
+         "summary": "Build and store an inspectable plan for exon-skipped isoform creation.",
+         "usage": "transcripts exon-skip-plan SEQ_ID --feature-id N [--skip exon_2|START..END ...] [--overlap START..END ...] [--length-mod3 0|1|2] [--coding-mod3 0|1|2] [--coding-context utr-only|cds-only|mixed-utr-cds] [--phase-entry codon-boundary|split-codon|split-codon-1|split-codon-2|unavailable] [--feature-query-json JSON] [--plan-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MaterializeExonSkippedIsoform"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "transcripts exon-skip-materialize",
+         "summary": "Materialize a stored exon-skip plan into a genomic annotation product and retained-exon cDNA, optionally returning GenBank/FASTA/protein payloads.",
+         "usage": "transcripts exon-skip-materialize PLAN_ID [--candidate-id ID ...] [--output-prefix PREFIX] [--return genbank|cdna_fasta|amino_acid_sequence|amino_acid_fasta ...]"
       },
       {
          "aliases": [
@@ -2882,8 +3781,8 @@
             "cli-direct"
          ],
          "path": "align compute",
-         "summary": "Compute one deterministic pairwise local/global sequence alignment report.",
-         "usage": "align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
+         "summary": "Compute one deterministic pairwise local/global sequence alignment report from stored or inline ASCII operands.",
+         "usage": "align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--query-range START..END] [--target-range START..END] [--query-sequence-text DNA] [--target-sequence-text DNA] [--query-id-hint TEXT] [--target-id-hint TEXT] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
       },
       {
          "aliases": [
@@ -2943,7 +3842,8 @@
          ],
          "interfaces": [
             "cli-shell",
-            "gui-shell"
+            "gui-shell",
+            "gui-menu"
          ],
          "path": "seq-confirm run",
          "summary": "Run called-read and/or trace-aware construct confirmation against the expected sequence, optionally with baseline context for intended-edit classification.",
@@ -3098,6 +3998,209 @@
          "usage": "reverse-translate export-report REPORT_ID OUTPUT.json"
       },
       {
+         "aliases": [
+            "construct_reasoning build-protein-dna-handoff",
+            "constructreasoning build-protein-dna-handoff",
+            "construct-reasoning build-protein-handoff"
+         ],
+         "engine_operations": [
+            "BuildProteinToDnaHandoffReasoning"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "construct-reasoning build-protein-dna-handoff",
+         "summary": "Build and persist a construct-reasoning graph that ranks protein-to-DNA handoff candidates from transcript-native, mapped-feature, and synthetic reverse-translation evidence.",
+         "usage": "construct-reasoning build-protein-dna-handoff SEQ_ID PROTEIN_SEQ_ID [--transcript TRANSCRIPT_ID] [--projection-id ID] [--ensembl-entry ID] [--feature-query TEXT] [--ranking-goal balanced_provenance|native_fidelity|expression_optimized] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N] [--objective-id ID] [--graph-id ID]"
+      },
+      {
+         "aliases": [
+            "construct_reasoning list-graphs",
+            "constructreasoning list-graphs"
+         ],
+         "engine_operations": [
+            "ListConstructReasoningGraphs"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "construct-reasoning list-graphs",
+         "summary": "List persisted construct-reasoning graphs with compact summary rows.",
+         "usage": "construct-reasoning list-graphs [SEQ_ID|--seq-id SEQ_ID]"
+      },
+      {
+         "aliases": [
+            "construct_reasoning show-graph",
+            "constructreasoning show-graph"
+         ],
+         "engine_operations": [
+            "ShowConstructReasoningGraph"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "construct-reasoning show-graph",
+         "summary": "Show one persisted construct-reasoning graph plus compact summary details.",
+         "usage": "construct-reasoning show-graph GRAPH_ID"
+      },
+      {
+         "aliases": [
+            "construct_reasoning list-inspection-actions",
+            "constructreasoning list-inspection-actions",
+            "construct-reasoning list-actions"
+         ],
+         "engine_operations": [
+            "ListConstructReasoningInspectionActions"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "construct-reasoning list-inspection-actions",
+         "summary": "List portable recommended inspection actions from one persisted construct-reasoning graph, optionally scoped to one fact, annotation, or summary row.",
+         "usage": "construct-reasoning list-inspection-actions GRAPH_ID [--fact-id ID] [--annotation-id ID] [--summary-id ID]"
+      },
+      {
+         "aliases": [
+            "construct_reasoning run-inspection-action",
+            "constructreasoning run-inspection-action",
+            "construct-reasoning compute-inspection-action-dotplot",
+            "construct-reasoning dotplot-action"
+         ],
+         "engine_operations": [
+            "ComputeDotplot",
+            "RenderDotplotSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "construct-reasoning run-inspection-action",
+         "summary": "Resolve one recommended construct-reasoning inspection action by action_id, compute its dotplot through the shared operation path, and optionally render the result as SVG.",
+         "usage": "construct-reasoning run-inspection-action GRAPH_ID ACTION_ID [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID] [--render-svg OUTPUT.svg]"
+      },
+      {
+         "aliases": [
+            "construct_reasoning set-annotation-status",
+            "constructreasoning set-annotation-status"
+         ],
+         "engine_operations": [
+            "SetConstructReasoningAnnotationStatus"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "construct-reasoning set-annotation-status",
+         "summary": "Update one persisted construct-reasoning annotation candidate to draft, accepted, rejected, or locked.",
+         "usage": "construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID draft|accepted|rejected|locked"
+      },
+      {
+         "aliases": [
+            "construct_reasoning write-annotation",
+            "constructreasoning write-annotation"
+         ],
+         "engine_operations": [
+            "ConstructReasoningWriteAnnotation"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "construct-reasoning write-annotation",
+         "summary": "Materialize one accepted or locked construct-reasoning annotation candidate as an ordinary sequence feature.",
+         "usage": "construct-reasoning write-annotation GRAPH_ID ANNOTATION_ID"
+      },
+      {
+         "aliases": [
+            "construct_reasoning export-graph",
+            "constructreasoning export-graph"
+         ],
+         "engine_operations": [
+            "ExportConstructReasoningGraph"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "construct-reasoning export-graph",
+         "summary": "Export one persisted construct-reasoning graph as pretty-printed JSON.",
+         "usage": "construct-reasoning export-graph GRAPH_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ReadAcquireStatus"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reads acquire status",
+         "summary": "Inspect shared SRA read-acquisition status for every row in a manifest.",
+         "usage": "reads acquire status MANIFEST.tsv --cache-dir DIR --work-dir DIR"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ReadAcquirePrepare"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reads acquire prepare",
+         "summary": "Prepare SRA-backed reads with the external SRA Toolkit and GENtle-owned logs/status.",
+         "usage": "reads acquire prepare MANIFEST.tsv --cache-dir DIR --work-dir DIR [--analysis-format fasta|fastq] [--read-layout single_end|paired_end|split_spot] [--threads N] [--max-size SIZE] [--min-free-gb N] [--drop-intermediate-fastq] [--continue-on-error]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ReadAcquireInspect"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reads acquire inspect",
+         "summary": "Inspect one SRA run's shared acquisition cache/work status.",
+         "usage": "reads acquire inspect RUN_ACCESSION --cache-dir DIR --work-dir DIR"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ReadAcquireCancel"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reads acquire cancel",
+         "summary": "Request cooperative cancellation of one running SRA read acquisition.",
+         "usage": "reads acquire cancel RUN_ACCESSION --cache-dir DIR --work-dir DIR"
+      },
+      {
          "aliases": [],
          "engine_operations": [
             "InterpretRnaReads"
@@ -3109,7 +4212,7 @@
          ],
          "path": "rna-reads interpret",
          "summary": "Interpret RNA reads (Nanopore cDNA phase-1 profile) against splicing-derived transcript templates.",
-         "usage": "rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+         "usage": "rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
       },
       {
          "aliases": [],
@@ -3123,7 +4226,7 @@
          ],
          "path": "rna-reads batch-map",
          "summary": "Run manifest-driven RNA-read interpretation, alignment refresh, gene-support, isoform, and concatemer summaries for one or more samples.",
-         "usage": "rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--transcript-fasta PATH]... [--transcript-index PATH]..."
+         "usage": "rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--prepare-sra] [--read-cache-dir DIR] [--read-work-dir DIR] [--drop-intermediate-fastq] [--transcript-fasta PATH]... [--transcript-index PATH]..."
       },
       {
          "aliases": [],
@@ -3137,7 +4240,21 @@
          ],
          "path": "rna-reads align-report",
          "summary": "Run retained-hit alignment phase and refresh report mappings/support summaries.",
-         "usage": "rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+         "usage": "rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PreflightRnaReadIsoforms"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads preflight-isoforms",
+         "summary": "Preflight target RNA-read isoform seed support against explicit control transcript variants.",
+         "usage": "rna-reads preflight-isoforms SEQ_ID FEATURE_ID [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--positive-transcript-fasta PATH ...] [--must-pass-transcript-fasta PATH ...] [--control-transcript-fasta PATH ...] [--optimize-parameters] [--max-control-match-probability F] [seed filter options]"
       },
       {
          "aliases": [],
@@ -3162,6 +4279,18 @@
          "path": "rna-reads show-report",
          "summary": "Inspect one persisted RNA-read interpretation report by ID.",
          "usage": "rna-reads show-report REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads show-alignment",
+         "summary": "Inspect one retained RNA-read alignment row by stored record index.",
+         "usage": "rna-reads show-alignment REPORT_ID RECORD_INDEX"
       },
       {
          "aliases": [],
@@ -3201,7 +4330,45 @@
          ],
          "path": "rna-reads inspect-alignments",
          "summary": "Inspect ranked aligned hits from one RNA-read report.",
-         "usage": "rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k]"
+         "usage": "rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads inspect-concatemers",
+         "summary": "Inspect candidate concatenemer/split-read evidence from one RNA-read report.",
+         "usage": "rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]..."
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads build-transcript-index",
+         "summary": "Build a reusable transcript FASTA k-mer index for RNA-read concatemer inspection.",
+         "usage": "rna-reads build-transcript-index OUTPUT.json [--kmer-len N] --transcript-fasta PATH [--transcript-fasta PATH ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MaterializeRnaReadHitSequences"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads materialize-hits",
+         "summary": "Materialize selected RNA-read hit sequences from a saved report.",
+         "usage": "rna-reads materialize-hits REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]"
       },
       {
          "aliases": [],
@@ -3229,7 +4396,7 @@
          ],
          "path": "rna-reads export-hits-fasta",
          "summary": "Export selected interpreted RNA-read hit sequences to FASTA.",
-         "usage": "rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]"
+         "usage": "rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]"
       },
       {
          "aliases": [],
@@ -3248,6 +4415,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ExportRnaReadTargetQuality"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-target-quality",
+         "summary": "Export per-target RNA-read support quality summaries to SVG or JSON.",
+         "usage": "rna-reads export-target-quality REPORT_ID OUTPUT.{svg|json} --gene GENE_ID [--gene GENE_ID ...] [--complete-rule near|strict|exact]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "ExportRnaReadExonPathsTsv"
          ],
          "interfaces": [
@@ -3257,7 +4438,7 @@
          ],
          "path": "rna-reads export-paths-tsv",
          "summary": "Export per-read exon-path rows from one RNA-read report.",
-         "usage": "rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+         "usage": "rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]"
       },
       {
          "aliases": [],
@@ -3271,7 +4452,7 @@
          ],
          "path": "rna-reads export-abundance-tsv",
          "summary": "Export exon/junction abundance tables from one RNA-read report.",
-         "usage": "rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+         "usage": "rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]"
       },
       {
          "aliases": [],
@@ -3285,7 +4466,7 @@
          ],
          "path": "rna-reads export-score-density-svg",
          "summary": "Export RNA-read seed-hit score-density chart to SVG.",
-         "usage": "rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]"
+         "usage": "rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]"
       },
       {
          "aliases": [],
@@ -3299,7 +4480,21 @@
          ],
          "path": "rna-reads export-alignments-tsv",
          "summary": "Export ranked RNA-read alignment rows to TSV.",
-         "usage": "rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N]"
+         "usage": "rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadIsoformTriageTsv"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-isoform-triage-tsv",
+         "summary": "Export conservative known-isoform triage bins for RNA-read rows to TSV.",
+         "usage": "rna-reads export-isoform-triage-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT] [--min-identity F] [--min-query-coverage F] [--min-confirmed-transition-fraction F] [--max-secondary-mappings N]"
       },
       {
          "aliases": [],
@@ -3648,6 +4843,30 @@
          "engine_operations": [],
          "interfaces": [
             "cli-shell",
+            "gui-shell"
+         ],
+         "path": "planning consult cloning",
+         "summary": "Return a read-only cloning strategy and vector-choice consultation using the effective local planning profile, helper/vector catalog, host catalog, and routine estimates.",
+         "usage": "planning consult cloning [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]"
+      },
+      {
+         "aliases": [
+            "planning protein_expression_handoff"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "planning protein-expression-handoff",
+         "summary": "Return a read-only protein-expression handoff for high-yield requests, including chassis/route candidates, missing questions, and a GeneArt preflight scaffold.",
+         "usage": "planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
             "gui-shell",
             "cli-direct"
          ],
@@ -3890,6 +5109,19 @@
          "path": "set-param",
          "summary": "Set engine/UI parameter via JSON value.",
          "usage": "set-param NAME JSON_VALUE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetDisplayVisibility"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "display",
+         "summary": "Toggle shared display visibility targets for sequence-window feature layers and panels.",
+         "usage": "display show TARGET | display hide TARGET | display visibility TARGET on|off"
       },
       {
          "aliases": [],
@@ -4765,6 +5997,7 @@
       "cli-direct",
       "cli-shell",
       "gui-shell",
+      "gui-menu",
       "js",
       "lua"
    ],

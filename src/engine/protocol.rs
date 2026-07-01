@@ -17,16 +17,21 @@ use std::collections::HashMap;
 pub use gentle_protocol::{
     ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_SUMMARY_SCHEMA,
     ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA, AdapterCaptureProtectionMode, AdapterCaptureStyle,
-    AdapterRestrictionCapturePlan, AnnotationCandidate, AnnotationCandidateSummary,
-    AnnotationCandidateWriteback, AttractPwmMappingPolicy, AttractRegionClass,
-    AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow, AttractSplicingEvidencePolicySummary,
-    AttractSplicingEvidenceSettings, AttractSplicingEvidenceSummaryRow,
-    AttractSplicingEvidenceView, CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA,
-    CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA, Capabilities,
-    ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore,
-    ConstructRole, ContainerId, ContainerKind, CutRunAlignConfig, CutRunCatalogEntry,
-    CutRunCatalogListEntry, CutRunCoverageKind, CutRunDatasetListReport,
-    CutRunDatasetProjectionReport, CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
+    AdapterRestrictionCapturePlan, AnchorBoundary, AnchorDirection, AnnotationCandidate,
+    AnnotationCandidateSummary, AnnotationCandidateWriteback, AttractPwmMappingPolicy,
+    AttractRegionClass, AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow,
+    AttractSplicingEvidencePolicySummary, AttractSplicingEvidenceSettings,
+    AttractSplicingEvidenceSummaryRow, AttractSplicingEvidenceView, CONSTRUCT_CANDIDATE_SCHEMA,
+    CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA,
+    CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
+    CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
+    CandidateSetOperator, CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, Capabilities,
+    CdnaAssayMaterializedProductRow, CdnaAssayProductGelBandRow, CdnaAssayProductMaterialization,
+    CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, ConstructCandidate,
+    ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore, ConstructRole,
+    ContainerId, ContainerKind, CutRunAlignConfig, CutRunCatalogEntry, CutRunCatalogListEntry,
+    CutRunCoverageKind, CutRunDatasetListReport, CutRunDatasetProjectionReport,
+    CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
     CutRunMotifAbsentOccupancyInterpretation, CutRunMotifAbsentSupportWindow,
     CutRunMotifContextHit, CutRunMotifContextScope, CutRunMotifContextSummaryRow,
     CutRunPreparedAssetManifest, CutRunPreparedAssetStatus, CutRunPreparedManifest,
@@ -40,16 +45,53 @@ pub use gentle_protocol::{
     DotplotMode, DotplotOverlayAnchorExon, DotplotOverlayAnchorExonRef,
     DotplotOverlayAnchorSeriesSupport, DotplotOverlayQuerySpec, DotplotOverlayResolvedAnchorSeries,
     DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotReferenceAnnotationInterval,
-    DotplotReferenceAnnotationTrack, DotplotView, DotplotViewSummary, EditableStatus, EngineError,
-    ErrorCode, EvidenceClass, EvidenceScope, FeatureBedCoordinateMode, FlexibilityModel,
-    GenomeTrackImportProgress, HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile,
-    HostLifecycleRole, HostProfileCatalog, HostProfileRecord, HostRouteStep, PairwiseAlignmentMode,
-    ProteinResidueGenomicCoordinateBase, ProteinResidueGenomicCoordinateMatch,
-    ProteinResidueGenomicCoordinateReport, ProteinToDnaHandoffCandidate,
-    ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
-    RNA_READ_BATCH_MAP_REPORT_SCHEMA, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA, RnaReadAlignConfig,
-    RnaReadAlignmentBackend, RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport,
-    RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+    DotplotReferenceAnnotationTrack, DotplotView, DotplotViewSummary,
+    EXON_SKIP_MATERIALIZATION_SCHEMA, EXON_SKIP_SELECTION_PLAN_SCHEMA, EditableStatus, EngineError,
+    ErrorCode, EvidenceClass, EvidenceScope, ExonSkipCandidateExon, ExonSkipMaterializationReport,
+    ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion, ExonSkipSelectionPlan,
+    FeatureBedCoordinateMode, FlexibilityModel, GENE_SET_CO_REGULATED_CACHE_SCHEMA,
+    GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
+    GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
+    GENE_SET_RESOLUTION_SCHEMA, GeneSetCoRegulatedProducerMetadata, GeneSetCohortRelationship,
+    GeneSetCohortRelationshipFlag, GeneSetCutRunEvaluationState, GeneSetCutRunMemberSupport,
+    GeneSetCutRunRegulatorySupportReport, GeneSetCutRunSupportAggregate, GeneSetProducerFilter,
+    GeneSetProducerKind, GeneSetProducerProvenance, GeneSetProducerQueryMetadata,
+    GeneSetPromoterCohortReport, GeneSetPromoterWindow, GeneSetProvenanceRow,
+    GeneSetRandomProvenance, GeneSetRequest, GeneSetResolutionReport,
+    GeneSetResolutionReviewStatus, GeneSetResolvedMember, GeneSetUnresolvedMember,
+    GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress,
+    GenomeTrackSource, GenomeTrackSubscription, HOST_PROFILE_CATALOG_SCHEMA,
+    HelperConstructProfile, HostLifecycleRole, HostProfileCatalog, HostProfileRecord,
+    HostRouteStep, ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA,
+    ORTHOLOG_RESOURCE_SCHEMA, OrthologAmbiguityPolicy, OrthologCutRunSupportRow,
+    OrthologCutRunSupportStatus, OrthologExpressionAssignment, OrthologMappingRow,
+    OrthologPairwiseTfbsSimilarity, OrthologPromoterCohortReport, OrthologPromoterCohortRequest,
+    OrthologPromoterComparisonReport, OrthologPromoterRole, OrthologPromoterRow, OrthologResource,
+    OrthologSequenceSimilarityRow, OrthologSpeciesAlias, OrthologTfbsPeakSummary,
+    OrthologTfbsSummaryRow, OrthologUnresolvedRow, PairwiseAlignmentMode, PortBindingStatus,
+    PreparedCacheCleanupMode, PreparedCacheCleanupRequest, PrimerDesignBackend,
+    PrimerSpecificityCheckMode, PrimerSpecificityPolicy, ProteinResidueGenomicCoordinateBase,
+    ProteinResidueGenomicCoordinateMatch, ProteinResidueGenomicCoordinateReport,
+    ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal,
+    ProteinToDnaHandoffStrategy, ProtocolCartoonKind, QpcrTranscriptSpecificityEvidence,
+    QpcrTranscriptTargetingMode, READ_ACQUISITION_REPORT_SCHEMA, REPORTER_CATALOG_REPORT_SCHEMA,
+    REPORTER_CATALOG_SCHEMA, REPORTER_CONSTRUCT_HANDOFF_SCHEMA, REPORTER_CORPUS_EXPORT_SCHEMA,
+    REPORTER_RECOMMENDATION_SCHEMA, RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA,
+    RNA_READ_BATCH_MAP_REPORT_SCHEMA, RNA_READ_GENE_SCREEN_SUMMARY_SCHEMA,
+    RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA, ReadAcquisitionAnalysisFormat,
+    ReadAcquisitionCommandProvenance, ReadAcquisitionManifestRow, ReadAcquisitionOutputPath,
+    ReadAcquisitionReadLayout, ReadAcquisitionReadLengthStats, ReadAcquisitionReport,
+    ReadAcquisitionRunReport, RenderSvgMode, ReporterAnnotatedRecord, ReporterBackboneResolution,
+    ReporterBackboneResolutionStatus, ReporterCatalog, ReporterCatalogReport,
+    ReporterComputedAnnotation, ReporterConstraints, ReporterConstructHandoffCommand,
+    ReporterConstructHandoffPlan, ReporterConstructHandoffProvenance, ReporterConstructPortBinding,
+    ReporterConstructSelectedFragment, ReporterConstructSelectedReporter, ReporterCorpusExport,
+    ReporterCorpusExportFormat, ReporterPreferenceWeights, ReporterQuarantinedRecord,
+    ReporterRecommendation, ReporterRecommendationResult, ReporterRecord,
+    ReporterRejectedCandidate, ReporterSourceRef, ReporterSpectralProfile,
+    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadAlignmentBackend,
+    RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport, RnaReadAlignmentEffect,
+    RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
     RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
     RnaReadAlignmentInspectionSubsetSpec, RnaReadAlignmentMode, RnaReadAlignmentTsvExport,
     RnaReadBatchConcatemerPartnerRow, RnaReadBatchIsoformSupportRow, RnaReadBatchMapReport,
@@ -60,7 +102,10 @@ pub use gentle_protocol::{
     RnaReadConcatemerSuspicionRow, RnaReadExonAbundanceExport, RnaReadExonPathsExport,
     RnaReadExonSupportFrequency, RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
     RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
-    RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadJunctionSupportFrequency,
+    RnaReadInterpretationReportSummary, RnaReadIsoformPreflightControlSummary,
+    RnaReadIsoformPreflightReport, RnaReadIsoformPreflightScore,
+    RnaReadIsoformPreflightThresholdRecommendation, RnaReadIsoformSupportRow,
+    RnaReadIsoformTriageBin, RnaReadIsoformTriageTsvExport, RnaReadJunctionSupportFrequency,
     RnaReadMappedIsoformSupportRow, RnaReadMappedSupportExonAttribution,
     RnaReadMappedSupportJunctionAttribution, RnaReadMappingHit, RnaReadOriginCandidateContribution,
     RnaReadOriginClass, RnaReadOriginMode, RnaReadPairwiseAlignmentDetail, RnaReadReportMode,
@@ -68,22 +113,24 @@ pub use gentle_protocol::{
     RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, RnaReadSeedHistogramBin,
     RnaReadStrandAssignmentDiagnostics, RnaReadTopHitPreview, RnaReadTranscriptCatalogIndex,
     RnaReadTranscriptCatalogTemplateRecord, RnaReadTransitionSupportRow, RnaSeedHashCatalogEntry,
-    RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport, SequenceFeatureBedExportReport,
-    SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureQueryResult,
-    SequenceFeatureQueryRow, SequenceFeatureRangeRelation, SequenceFeatureSortBy,
-    SequenceFeatureStrandFilter, SequencingPrimerOrientation, SequencingPrimerOverlayReport,
-    SequencingPrimerOverlaySuggestion, SequencingPrimerProblemGuidanceRow,
-    SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingTraceChannelData,
-    SequencingTraceChannelSummary, SequencingTraceFormat, SequencingTraceImportReport,
-    SequencingTraceRecord, SequencingTraceSummary, SharedAssetActivityStatus, SplicingScopePreset,
-    TfbsProgress, TranscriptProteinDerivation, TranscriptProteinDerivationMode,
+    RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport, SequenceAnchor,
+    SequenceFeatureBedExportReport, SequenceFeatureQualifierFilter, SequenceFeatureQuery,
+    SequenceFeatureQueryResult, SequenceFeatureQueryRow, SequenceFeatureRangeRelation,
+    SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequencingPrimerOrientation,
+    SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
+    SequencingPrimerProblemGuidanceRow, SequencingPrimerProblemKind, SequencingPrimerProposalRow,
+    SequencingTraceChannelData, SequencingTraceChannelSummary, SequencingTraceFormat,
+    SequencingTraceImportReport, SequencingTraceRecord, SequencingTraceSummary,
+    SharedAssetActivityStatus, SplicingScopePreset, TfThresholdOverride, TfbsProgress,
+    TranscriptProteinDerivation, TranscriptProteinDerivationMode,
     TranscriptProteinTranslationTableSource, TranslationSpeedMark, TranslationSpeedProfile,
     TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
     UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
     UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
     UniprotFeatureCodingDnaSegment,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 use crate::enzymes::default_preferred_restriction_enzyme_names;
@@ -91,7 +138,7 @@ use crate::genomes::BlastExternalBinaryPreflightReport;
 
 use super::{
     CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PrepareGenomeProgress,
-    ProtocolCartoonTemplateBindings, RunId, SeqId, TfThresholdOverride,
+    ProtocolCartoonTemplateBindings, RunId, SeqId,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -155,6 +202,45 @@ impl RnaReadGeneSupportAuditCohortFilter {
             Self::Rejected => "rejected",
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentDisplayBatchEntry {
+    pub record_index: usize,
+    pub header_id: String,
+    pub alignment: RnaReadAlignmentDisplay,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentDisplayBatchSkippedRecord {
+    pub record_index: usize,
+    pub header_id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentDisplayBatch {
+    pub schema: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub seed_feature_id: usize,
+    pub requested_gene_ids: Vec<String>,
+    pub matched_gene_ids: Vec<String>,
+    pub missing_gene_ids: Vec<String>,
+    pub selection_mode: String,
+    #[serde(default)]
+    pub cohort_filter: RnaReadGeneSupportAuditCohortFilter,
+    #[serde(default)]
+    pub complete_rule: RnaReadGeneSupportCompleteRule,
+    pub selected_record_indices: Vec<usize>,
+    pub limit: Option<usize>,
+    pub entry_count: usize,
+    pub skipped_record_indices: Vec<usize>,
+    pub skipped_records: Vec<RnaReadAlignmentDisplayBatchSkippedRecord>,
+    pub entries: Vec<RnaReadAlignmentDisplayBatchEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1072,11 +1158,159 @@ pub struct MultiGenePromoterTfbsReport {
     pub motifs_requested: Vec<String>,
     #[serde(default)]
     pub gene_queries_requested: Vec<PromoterTfbsGeneQuery>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set: Option<GeneSetRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set_resolution: Option<GeneSetResolutionReport>,
     pub returned_gene_count: usize,
     #[serde(default)]
     pub genes: Vec<MultiGenePromoterTfbsGeneReport>,
     #[serde(default)]
     pub summary_rows: Vec<MultiGenePromoterTfbsSummaryRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// First-slice cohort relationship for promoter comparison.
+pub enum PromoterCohortKind {
+    #[default]
+    Manual,
+    CoRegulated,
+    AntiCoRegulated,
+}
+
+impl PromoterCohortKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Manual => "manual",
+            Self::CoRegulated => "co_regulated",
+            Self::AntiCoRegulated => "anti_co_regulated",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One promoter window resolved for a promoter cohort comparison.
+pub struct PromoterCohortResolvedWindow {
+    pub gene_label: String,
+    pub gene_query: String,
+    pub transcript_id: String,
+    pub chromosome: String,
+    pub strand: String,
+    pub promoter_start_1based: usize,
+    pub promoter_end_1based: usize,
+    pub promoter_length_bp: usize,
+    pub tss_1based: usize,
+    pub tss_position_0based: usize,
+    pub sequence_orientation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One pairwise promoter similarity row derived from shared TFBS score tracks.
+pub struct PromoterCohortPairwiseSimilarity {
+    pub left_gene_label: String,
+    pub right_gene_label: String,
+    pub shared_motif_count: usize,
+    pub mean_raw_pearson: f64,
+    pub mean_smoothed_spearman: f64,
+    #[serde(default)]
+    pub motif_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Non-blocking flag comparing available promoter evidence with the declared
+/// cohort relationship expectation.
+pub struct PromoterCohortRelationshipFlag {
+    pub flag_kind: String,
+    pub evidence_kind: String,
+    #[serde(default)]
+    pub gene_labels: Vec<String>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Summary of a motif peak that is shared across or specific to cohort members.
+pub struct PromoterCohortTfbsPeakSummary {
+    pub tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tf_name: Option<String>,
+    pub promoter_count: usize,
+    #[serde(default)]
+    pub gene_labels: Vec<String>,
+    pub max_score: f64,
+    #[serde(default)]
+    pub peak_positions_promoter_relative_bp: Vec<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Expression metadata echoed into a promoter cohort comparison.
+pub struct PromoterCohortExpressionAssociation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
+    pub value: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    pub source: String,
+    pub association_note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Engine-owned first-slice promoter cohort comparison.
+pub struct PromoterCohortComparisonReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub cohort_label: String,
+    pub cohort_kind: PromoterCohortKind,
+    pub genome_id: String,
+    #[serde(default)]
+    pub source_seq_ids: Vec<String>,
+    pub upstream_bp: usize,
+    pub downstream_bp: usize,
+    pub score_kind: TfbsScoreTrackValueKind,
+    pub clip_negative: bool,
+    #[serde(default)]
+    pub motifs_requested: Vec<String>,
+    #[serde(default)]
+    pub gene_queries_requested: Vec<PromoterTfbsGeneQuery>,
+    pub resolved_promoter_count: usize,
+    #[serde(default)]
+    pub resolved_promoter_windows: Vec<PromoterCohortResolvedWindow>,
+    #[serde(default)]
+    pub tfbs_score_track_summaries: Vec<MultiGenePromoterTfbsSummaryRow>,
+    #[serde(default)]
+    pub pairwise_similarity: Vec<PromoterCohortPairwiseSimilarity>,
+    #[serde(default)]
+    pub relationship_flags: Vec<PromoterCohortRelationshipFlag>,
+    #[serde(default)]
+    pub shared_tfbs_peaks: Vec<PromoterCohortTfbsPeakSummary>,
+    #[serde(default)]
+    pub cohort_specific_tfbs_peaks: Vec<PromoterCohortTfbsPeakSummary>,
+    #[serde(default)]
+    pub expression_associations: Vec<PromoterCohortExpressionAssociation>,
+    #[serde(default)]
+    pub cutrun_dataset_ids: Vec<String>,
+    #[serde(default)]
+    pub cutrun_read_report_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multi_gene_promoter_tfbs: Option<MultiGenePromoterTfbsReport>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }
@@ -1166,6 +1400,17 @@ pub struct SequenceRepeatOverlapRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Aggregate repeat-overlap metrics for one class/family/alias bucket.
+pub struct RepeatOverlapSummaryRow {
+    pub rep_class: String,
+    pub rep_family: String,
+    pub normalized_alias: String,
+    pub repeat_count: usize,
+    pub overlap_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Repeat-overlap lookup over one genome-anchored sequence and prepared rmsk index.
 pub struct SequenceRepeatOverlapReport {
     pub schema: String,
@@ -1181,8 +1426,16 @@ pub struct SequenceRepeatOverlapReport {
     pub query_start_0based: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_end_0based_exclusive: Option<usize>,
+    pub query_length_bp: usize,
     pub matched_repeat_count: usize,
     pub returned_repeat_count: usize,
+    pub total_overlap_bp: usize,
+    pub covered_query_bp: usize,
+    pub coverage_fraction: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nearest_repeat_distance_bp: Option<usize>,
+    #[serde(default)]
+    pub class_summaries: Vec<RepeatOverlapSummaryRow>,
     #[serde(default)]
     pub rows: Vec<SequenceRepeatOverlapRow>,
     #[serde(default)]
@@ -1387,7 +1640,9 @@ pub struct WindowCohortTfbsReport {
     pub warnings: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Default,
+)]
 #[serde(rename_all = "snake_case")]
 /// Topology hint for inline sequence operands used by state-optional scans.
 pub enum InlineSequenceTopology {
@@ -1469,6 +1724,8 @@ pub struct RestrictionSiteScanHit {
 /// stored `seq_id` or inline ASCII DNA input.
 pub struct RestrictionSiteScanReport {
     pub schema: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub report_id: String,
     pub target_kind: String,
     pub target_label: String,
     pub source_sequence_length_bp: usize,
@@ -1496,6 +1753,610 @@ pub struct RestrictionSiteScanReport {
     pub path: Option<String>,
     #[serde(default)]
     pub rows: Vec<RestrictionSiteScanHit>,
+}
+
+pub const PROJECT_FACT_GRAPH_SCHEMA: &str = "gentle.project_fact_graph.v1";
+pub const FACT_EXPRESSION_SCHEMA: &str = "gentle.fact_expression.v1";
+pub const FACT_EVALUATION_SCHEMA: &str = "gentle.fact_evaluation.v1";
+
+fn project_fact_graph_schema() -> String {
+    PROJECT_FACT_GRAPH_SCHEMA.to_string()
+}
+
+fn fact_evaluation_schema() -> String {
+    FACT_EVALUATION_SCHEMA.to_string()
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "snake_case")]
+/// Top-level project object class addressed by a fact atom.
+pub enum FactSubjectKind {
+    Sequence,
+    Report,
+    Container,
+    Ui,
+    Other,
+}
+
+impl FactSubjectKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sequence => "sequence",
+            Self::Report => "report",
+            Self::Container => "container",
+            Self::Ui => "ui",
+            Self::Other => "other",
+        }
+    }
+}
+
+fn project_fact_domain_default() -> ProjectFactDomain {
+    ProjectFactDomain::Project
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "snake_case")]
+/// High-level state domain addressed by a fact.
+pub enum ProjectFactDomain {
+    Project,
+    View,
+    Host,
+    Config,
+}
+
+impl ProjectFactDomain {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Project => "project",
+            Self::View => "view",
+            Self::Host => "host",
+            Self::Config => "config",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// World assumption used when evaluating a known project fact type.
+pub enum ProjectFactWorld {
+    ClosedWorld,
+    OpenWorld,
+}
+
+impl ProjectFactWorld {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ClosedWorld => "closed_world",
+            Self::OpenWorld => "open_world",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+/// Registry entry for one controlled project-fact vocabulary item.
+pub struct ProjectFactTypeSpec {
+    pub name: &'static str,
+    pub domain: ProjectFactDomain,
+    pub world: ProjectFactWorld,
+    pub requires_basis: bool,
+    pub subject_kind: FactSubjectKind,
+    pub description: &'static str,
+}
+
+const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
+    ProjectFactTypeSpec {
+        name: "sequence.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "A sequence with this id is loaded in the current project state.",
+    },
+    ProjectFactTypeSpec {
+        name: "sequence.kind",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "Loaded sequence molecule class; use equals \"dna\", \"rna\", or \"protein\".",
+    },
+    ProjectFactTypeSpec {
+        name: "sequence.length",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "Loaded sequence length in residues/bases; use compare for numeric predicates.",
+    },
+    ProjectFactTypeSpec {
+        name: "sequence.circular",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "Whether the loaded sequence is circular.",
+    },
+    ProjectFactTypeSpec {
+        name: "report.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::OpenWorld,
+        requires_basis: true,
+        subject_kind: FactSubjectKind::Report,
+        description: "An explicit proof/report artifact is available as evidence.",
+    },
+    ProjectFactTypeSpec {
+        name: "dotplot.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A stored dotplot analysis payload with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "flexibility_track.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A stored sequence-flexibility track payload with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "candidate_set.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted candidate-window set with this name exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "isoform_panel.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A curated isoform-panel id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "isoform_panel.seq_id",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A curated isoform-panel id is bound to the loaded sequence id stored as the scalar value.",
+    },
+    ProjectFactTypeSpec {
+        name: "exon_skip_plan.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted exon-skip selection plan with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "container.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted wet-lab container or pool with this id exists in current project state.",
+    },
+    ProjectFactTypeSpec {
+        name: "arrangement.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted lane/plate arrangement with this id exists in current project state.",
+    },
+    ProjectFactTypeSpec {
+        name: "rack.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted physical rack layout with this id exists in current project state.",
+    },
+    ProjectFactTypeSpec {
+        name: "workflow_macro_template.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted workflow macro template with this name exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "candidate_macro_template.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted candidate-window macro template with this name exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "macro_instance.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A recorded workflow macro-instance lineage row with this id exists in current project state.",
+    },
+    ProjectFactTypeSpec {
+        name: "construct_reasoning_graph.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted construct-reasoning graph with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "sequencing_trace.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted sequencing trace evidence record with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "uniprot_entry.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A stored UniProt entry with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "uniprot_projection.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A stored UniProt-to-sequence genome projection with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "ensembl_gene_entry.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A stored Ensembl gene entry with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "ensembl_protein_entry.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A stored Ensembl protein entry with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "guide_set.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted guide-design set with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "guide_oligo_set.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted guide-oligo set with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "guide_filter_report.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted practical guide-filter report exists for this guide-set id.",
+    },
+    ProjectFactTypeSpec {
+        name: "restriction_site.present",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::OpenWorld,
+        requires_basis: true,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "A restriction-site scan report proves at least one matching enzyme site in the requested range.",
+    },
+    ProjectFactTypeSpec {
+        name: "restriction_site.absent",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::OpenWorld,
+        requires_basis: true,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "A covering restriction-site scan report proves zero matching enzyme sites in the requested range.",
+    },
+    ProjectFactTypeSpec {
+        name: "ui.host_available",
+        domain: ProjectFactDomain::View,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Ui,
+        description: "The current adapter can ask the user to perform GUI-hosted actions such as picking a file.",
+    },
+    ProjectFactTypeSpec {
+        name: "view.selection",
+        domain: ProjectFactDomain::View,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "A GUI/view session has a selected range or inspection focus for this sequence.",
+    },
+    ProjectFactTypeSpec {
+        name: "view.viewport",
+        domain: ProjectFactDomain::View,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Ui,
+        description: "A GUI/view session has a deterministic visible sequence-window viewport.",
+    },
+    ProjectFactTypeSpec {
+        name: "view.visible_tracks",
+        domain: ProjectFactDomain::View,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Ui,
+        description: "A GUI/view session has explicit visible feature/display tracks.",
+    },
+    ProjectFactTypeSpec {
+        name: "host.tool_available",
+        domain: ProjectFactDomain::Host,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A named local executable or host service has been deterministically probed as available.",
+    },
+    ProjectFactTypeSpec {
+        name: "artifact.written",
+        domain: ProjectFactDomain::Host,
+        world: ProjectFactWorld::OpenWorld,
+        requires_basis: true,
+        subject_kind: FactSubjectKind::Other,
+        description: "An external file or handoff artifact was written outside saved project state.",
+    },
+    ProjectFactTypeSpec {
+        name: "config.param",
+        domain: ProjectFactDomain::Config,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "An engine-owned configuration parameter is set to the supplied JSON value; the subject id is the parameter name.",
+    },
+];
+
+pub fn project_fact_type_specs() -> &'static [ProjectFactTypeSpec] {
+    PROJECT_FACT_TYPE_SPECS
+}
+
+pub fn project_fact_type_spec(name: &str) -> Option<&'static ProjectFactTypeSpec> {
+    PROJECT_FACT_TYPE_SPECS
+        .iter()
+        .find(|spec| spec.name == name)
+}
+
+pub fn project_fact_registry_prompt_block() -> String {
+    let mut lines = vec![
+        format!("Known project fact vocabulary ({FACT_EXPRESSION_SCHEMA}):"),
+        "Use only these fact names in precondition_expr/expected_effects unless you are deliberately asking GENtle to treat a future fact as unknown.".to_string(),
+    ];
+    for spec in PROJECT_FACT_TYPE_SPECS {
+        lines.push(format!(
+            "- {}: domain={}; subject_kind={}; world={}; requires_basis={}; {}",
+            spec.name,
+            spec.domain.as_str(),
+            spec.subject_kind.as_str(),
+            spec.world.as_str(),
+            spec.requires_basis,
+            spec.description
+        ));
+    }
+    lines.join("\n")
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Stable subject reference shared by projected facts and fact expressions.
+pub struct FactSubject {
+    pub kind: FactSubjectKind,
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+/// Coordinate scope covered or required by a project fact.
+///
+/// Deserialization also accepts the legacy string `"whole_sequence"` as sugar
+/// for `{"kind":"whole_sequence"}`.
+pub enum FactRange {
+    WholeSequence,
+    Span {
+        start_0based: usize,
+        end_0based_exclusive: usize,
+        #[serde(default)]
+        topology: InlineSequenceTopology,
+    },
+}
+
+impl Default for FactRange {
+    fn default() -> Self {
+        Self::WholeSequence
+    }
+}
+
+impl<'de> Deserialize<'de> for FactRange {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        if let Some(text) = value.as_str()
+            && text == "whole_sequence"
+        {
+            return Ok(Self::WholeSequence);
+        }
+        #[derive(Deserialize)]
+        #[serde(tag = "kind", rename_all = "snake_case")]
+        enum Helper {
+            WholeSequence,
+            Span {
+                start_0based: usize,
+                end_0based_exclusive: usize,
+                #[serde(default)]
+                topology: InlineSequenceTopology,
+            },
+        }
+        match Helper::deserialize(value).map_err(serde::de::Error::custom)? {
+            Helper::WholeSequence => Ok(Self::WholeSequence),
+            Helper::Span {
+                start_0based,
+                end_0based_exclusive,
+                topology,
+            } => Ok(Self::Span {
+                start_0based,
+                end_0based_exclusive,
+                topology,
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// Evidence pointer that turns an open-world observation into a proof-backed
+/// fact.
+pub struct FactBasis {
+    pub report_id: String,
+    pub report_kind: String,
+    pub evidence_class: EvidenceClass,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+}
+
+impl Default for FactBasis {
+    fn default() -> Self {
+        Self {
+            report_id: String::new(),
+            report_kind: String::new(),
+            evidence_class: EvidenceClass::HardFact,
+            op_id: None,
+            run_id: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// One ground fact projected from project state or explicit evidence.
+pub struct ProjectFact {
+    pub fact: String,
+    #[serde(default = "project_fact_domain_default")]
+    pub domain: ProjectFactDomain,
+    pub subject: FactSubject,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enzyme: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<FactRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub basis: Option<FactBasis>,
+}
+
+impl Default for ProjectFact {
+    fn default() -> Self {
+        Self {
+            fact: String::new(),
+            domain: ProjectFactDomain::Project,
+            subject: FactSubject {
+                kind: FactSubjectKind::Other,
+                id: String::new(),
+            },
+            enzyme: None,
+            range: None,
+            value: None,
+            basis: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+/// Deterministic projection of current project state plus supplied proof
+/// evidence into controlled-vocabulary facts.
+pub struct ProjectFactGraph {
+    #[serde(default = "project_fact_graph_schema")]
+    pub schema: String,
+    pub facts: Vec<ProjectFact>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+/// Atomic fact pattern used inside a fact expression.
+pub struct FactAtom {
+    pub fact: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<FactSubject>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enzyme: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<FactRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equals: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compare: Option<FactComparison>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// Numeric comparison predicate for scalar fact values.
+pub struct FactComparison {
+    pub op: String,
+    pub value: Value,
+}
+
+impl Default for FactComparison {
+    fn default() -> Self {
+        Self {
+            op: "eq".to_string(),
+            value: Value::Null,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+/// Boolean fact-expression tree. Evaluation uses three-valued Kleene logic.
+pub enum FactExpression {
+    All { all: Vec<FactExpression> },
+    Any { any: Vec<FactExpression> },
+    Not { not: Box<FactExpression> },
+    Atom(FactAtom),
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Three-valued fact-expression result.
+pub enum FactTruth {
+    #[default]
+    Unknown,
+    Satisfied,
+    Unsatisfied,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+/// Deterministic result of evaluating one fact expression against a fact graph.
+pub struct FactEvaluationResult {
+    #[serde(default = "fact_evaluation_schema")]
+    pub schema: String,
+    pub truth: FactTruth,
+    pub unmet_atoms: Vec<FactAtom>,
+    pub unknown_atoms: Vec<FactAtom>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -2307,6 +3168,264 @@ pub struct PromoterEvidenceMatrixReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Compact evidence signature used to compare promoter candidates across
+/// transcript/isoform-derived promoter windows.
+pub struct IsoformPromoterEvidenceSignature {
+    pub signature_id: String,
+    pub kind: String,
+    pub source: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_0based_exclusive: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One promoter group in an isoform-aware comparison for a single gene.
+pub struct IsoformPromoterComparisonGroup {
+    pub group_id: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_id: Option<String>,
+    pub strand: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_tss_local_0based: Option<usize>,
+    pub transcript_count: usize,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub transcript_labels: Vec<String>,
+    #[serde(default)]
+    pub evidence_kind_counts: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub evidence_signatures: Vec<IsoformPromoterEvidenceSignature>,
+    #[serde(default)]
+    pub common_evidence_signatures: Vec<IsoformPromoterEvidenceSignature>,
+    #[serde(default)]
+    pub unique_evidence_signatures: Vec<IsoformPromoterEvidenceSignature>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One evidence signature that differs between isoform-derived promoter groups.
+pub struct IsoformPromoterDifferentialEvidence {
+    pub signature: IsoformPromoterEvidenceSignature,
+    #[serde(default)]
+    pub present_group_ids: Vec<String>,
+    #[serde(default)]
+    pub absent_group_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Engine-owned comparison of common and differential promoter-region evidence
+/// between isoforms of one gene.
+pub struct IsoformPromoterComparisonReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub sequence_length_bp: usize,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label_filter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id_filter: Option<String>,
+    pub promoter_upstream_bp: usize,
+    pub promoter_downstream_bp: usize,
+    pub transcript_window_count: usize,
+    pub promoter_group_count: usize,
+    pub comparison_evidence_item_count: usize,
+    #[serde(default)]
+    pub comparison_evidence_kinds_observed: Vec<String>,
+    #[serde(default)]
+    pub groups: Vec<IsoformPromoterComparisonGroup>,
+    #[serde(default)]
+    pub common_evidence_signatures: Vec<IsoformPromoterEvidenceSignature>,
+    #[serde(default)]
+    pub differential_evidence: Vec<IsoformPromoterDifferentialEvidence>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// User- or workflow-supplied expression evidence row that can be attached to
+/// promoter candidates without making GENtle own a particular RNA-seq pipeline.
+pub struct PromoterExpressionEvidenceInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
+    pub value: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One expression evidence row after it has been assigned to a promoter group.
+pub struct PromoterExpressionEvidenceRecord {
+    pub evidence_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
+    pub value: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_path: Option<String>,
+    #[serde(default)]
+    pub matched_by: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Expression evidence summarized for one promoter candidate.
+pub struct PromoterExpressionEvidenceRow {
+    pub promoter_group_id: String,
+    pub label: String,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub transcript_labels: Vec<String>,
+    pub expression_record_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    #[serde(default)]
+    pub sample_ids: Vec<String>,
+    #[serde(default)]
+    pub conditions: Vec<String>,
+    #[serde(default)]
+    pub records: Vec<PromoterExpressionEvidenceRecord>,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Engine-owned bridge between promoter candidates and expression-level
+/// evidence supplied by workflows, RNA-read reports, or external artifacts.
+pub struct PromoterExpressionEvidenceReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub sequence_length_bp: usize,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label_filter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id_filter: Option<String>,
+    pub promoter_upstream_bp: usize,
+    pub promoter_downstream_bp: usize,
+    pub promoter_group_count: usize,
+    pub supplied_expression_record_count: usize,
+    pub assigned_expression_record_count: usize,
+    pub expression_source_label: String,
+    #[serde(default)]
+    pub rows: Vec<PromoterExpressionEvidenceRow>,
+    #[serde(default)]
+    pub unassigned_expression_records: Vec<PromoterExpressionEvidenceInput>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One component artifact in a promoter-design handoff index.
+pub struct PromoterArtifactManifestEntry {
+    pub artifact_id: String,
+    pub artifact_kind: String,
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_use: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One resolved component artifact row in a promoter-design handoff index.
+pub struct PromoterArtifactManifestResolvedEntry {
+    pub artifact_id: String,
+    pub artifact_kind: String,
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_use: Option<String>,
+    pub required: bool,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Lightweight index of promoter-design component artifacts. This is not a
+/// narrative dossier; downstream tools can choose their own ordering/story.
+pub struct PromoterArtifactManifestReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label_filter: Option<String>,
+    pub artifact_count: usize,
+    pub present_artifact_count: usize,
+    pub missing_required_artifact_count: usize,
+    #[serde(default)]
+    pub artifacts: Vec<PromoterArtifactManifestResolvedEntry>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// One overlapping annotation/evidence row surfaced in a variant-promoter
 /// context report.
 pub struct VariantPromoterContextEvidenceRow {
@@ -3006,6 +4125,7 @@ pub enum DisplayTarget {
     GeneFeatures,
     MrnaFeatures,
     RepeatFeatures,
+    ArrayFeatures,
     ConstructReasoningOverlay,
     Tfbs,
     RestrictionEnzymes,
@@ -3102,6 +4222,8 @@ pub struct DisplaySettings {
     pub show_mrna_features: bool,
     #[serde(default = "DisplaySettings::default_show_repeat_features")]
     pub show_repeat_features: bool,
+    #[serde(default = "DisplaySettings::default_show_array_features")]
+    pub show_array_features: bool,
     #[serde(default = "DisplaySettings::default_show_construct_reasoning_overlay")]
     pub show_construct_reasoning_overlay: bool,
     pub show_tfbs: bool,
@@ -3165,6 +4287,10 @@ impl DisplaySettings {
         true
     }
 
+    pub const fn default_show_array_features() -> bool {
+        true
+    }
+
     pub const fn default_show_construct_reasoning_overlay() -> bool {
         true
     }
@@ -3207,6 +4333,7 @@ impl Default for DisplaySettings {
             show_gene_features: true,
             show_mrna_features: true,
             show_repeat_features: Self::default_show_repeat_features(),
+            show_array_features: Self::default_show_array_features(),
             show_construct_reasoning_overlay: Self::default_show_construct_reasoning_overlay(),
             show_tfbs: false,
             regulatory_tracks_near_baseline: false,
@@ -3297,9 +4424,13 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protein_residue_genomic_coordinates: Option<ProteinResidueGenomicCoordinateReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exon_skip_selection_plan: Option<ExonSkipSelectionPlan>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exon_skip_materialization: Option<ExonSkipMaterializationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cdna_assay_test_report: Option<Box<CdnaAssayTestReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cdna_assay_product_materialization: Option<CdnaAssayProductMaterialization>,
+    pub cdna_assay_product_materialization: Option<Box<CdnaAssayProductMaterialization>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_qpcr_panel: Option<Box<TranscriptQpcrPanelReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3331,6 +4462,24 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cutrun_regulatory_support: Option<CutRunRegulatorySupportReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set_resolution: Option<GeneSetResolutionReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set_promoter_cohort: Option<GeneSetPromoterCohortReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set_cutrun_regulatory_support: Option<GeneSetCutRunRegulatorySupportReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ortholog_promoter_cohort: Option<OrthologPromoterCohortReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ortholog_promoter_comparison: Option<OrthologPromoterComparisonReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_acquisition_report: Option<ReadAcquisitionReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub microarray_projection: Option<MicroarrayProjectionReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_region_evidence_interpretation: Option<ProbeRegionEvidenceInterpretationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genome_coordinate_projection: Option<GenomeCoordinateProjectionReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_gene_support_summary: Option<RnaReadGeneSupportSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_gene_support_audit: Option<RnaReadGeneSupportAudit>,
@@ -3339,6 +4488,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_batch_map_report: Option<RnaReadBatchMapReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_read_isoform_preflight: Option<RnaReadIsoformPreflightReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_region_summary: Option<TfbsRegionSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
@@ -3346,6 +4497,8 @@ pub struct OpResult {
     pub tfbs_track_similarity: Option<TfbsTrackSimilarityReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub multi_gene_promoter_tfbs: Option<MultiGenePromoterTfbsReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_cohort_comparison: Option<PromoterCohortComparisonReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_annotation_query: Option<RepeatAnnotationQueryReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3382,11 +4535,621 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_evidence_matrix: Option<PromoterEvidenceMatrixReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isoform_promoter_comparison: Option<IsoformPromoterComparisonReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_expression_evidence: Option<PromoterExpressionEvidenceReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_artifact_manifest: Option<PromoterArtifactManifestReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_candidates: Option<PromoterReporterCandidateSet>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_catalog: Option<ReporterCatalogReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_recommendation: Option<ReporterRecommendationResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_corpus_export: Option<ReporterCorpusExport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_construct_handoff: Option<ReporterConstructHandoffPlan>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uniprot_projection_audit: Option<Box<UniprotProjectionAuditReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uniprot_projection_audit_parity: Option<Box<UniprotProjectionAuditParityReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lab_assistant_instructions: Option<Box<LabAssistantInstructionsExport>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Compact manifest for genome-anchored microarray projection tracks.
+///
+/// The manifest is intentionally small: it records the coordinate contract and
+/// points at per-contrast TSVs so projection can stream only intervals
+/// overlapping the current sequence anchor.
+pub struct MicroarrayTrackManifest {
+    pub schema: String,
+    #[serde(alias = "dataset_id")]
+    pub dataset: String,
+    pub platform: String,
+    #[serde(alias = "normalization_method")]
+    pub normalization: String,
+    pub coordinate_system: String,
+    pub supported_genome_ids: Vec<String>,
+    pub contrast_order: Vec<String>,
+    #[serde(alias = "tracks")]
+    pub contrasts: Vec<MicroarrayTrackContrast>,
+    #[serde(default, alias = "projection_maps")]
+    pub coordinate_projections: Vec<GenomeCoordinateProjectionSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One per-contrast projected TSV entry in a microarray track manifest.
+pub struct MicroarrayTrackContrast {
+    #[serde(alias = "name")]
+    pub contrast: String,
+    pub level: String,
+    #[serde(alias = "tsv_path")]
+    pub path: String,
+    pub row_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Request contract for chromosome-ordered Affymetrix probe/probeset planning.
+pub struct ProbeRegionRequest {
+    pub cel_paths: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dataset: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata_path: Option<String>,
+    pub genes: Vec<String>,
+    pub loci: Vec<String>,
+    pub transcript_cluster_ids: Vec<String>,
+    pub probeset_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_library_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block_column: Option<String>,
+    pub paired_by_replicate_suffix: bool,
+    pub plot: bool,
+    pub normalization: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Selector summary separated from the original request for GUI-friendly display.
+pub struct ProbeRegionSelectorPlan {
+    pub genes: Vec<String>,
+    pub loci: Vec<String>,
+    pub transcript_cluster_ids: Vec<String>,
+    pub probeset_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Filesystem status for one CEL, metadata, annotation, output, or cache path.
+pub struct ProbeRegionFileStatus {
+    pub path: String,
+    pub role: String,
+    pub exists: bool,
+    pub is_file: bool,
+    pub is_dir: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_unix_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Resolved annotation/library source for a planned Affymetrix probe-region run.
+pub struct ProbeRegionAnnotationSourcePlan {
+    pub path: Option<ProbeRegionFileStatus>,
+    pub source_kind: String,
+    pub usable: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub vendor_support_files: Vec<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_r_package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Platform/backend plan derived from user input and known Affymetrix mappings.
+pub struct ProbeRegionPlatformPlan {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested: Option<String>,
+    pub normalized: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub species: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub genome_builds: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub backend_kinds: Vec<String>,
+    pub backend_hint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bioconductor_package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdf_package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staging_directory: Option<String>,
+    pub confidence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Dependency check row for non-downloading preflight of local analysis tools.
+pub struct ProbeRegionDependencyCheck {
+    pub name: String,
+    pub kind: String,
+    pub required: bool,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Per-condition sample count parsed from optional CEL sample metadata.
+pub struct ProbeRegionConditionSummary {
+    pub condition: String,
+    pub sample_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Metadata table preview used for sample grouping and default contrast planning.
+pub struct ProbeRegionMetadataPlan {
+    pub status: String,
+    pub delimiter: String,
+    pub columns: Vec<String>,
+    pub row_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block_column: Option<String>,
+    pub sample_count: usize,
+    pub conditions: Vec<ProbeRegionConditionSummary>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Planned default comparison between two metadata-defined conditions.
+pub struct ProbeRegionContrastPlan {
+    pub contrast: String,
+    pub numerator_condition: String,
+    pub denominator_condition: String,
+    pub numerator_sample_count: usize,
+    pub denominator_sample_count: usize,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Candidate execution backend and the local inputs it still needs.
+pub struct ProbeRegionBackendCandidate {
+    pub backend: String,
+    pub status: String,
+    pub required_inputs: Vec<String>,
+    pub missing: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub helper_script: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Stage-one preflight plan for a future Affymetrix probe-region execution.
+pub struct ProbeRegionPlan {
+    pub schema: String,
+    pub stage: String,
+    pub implementation_status: String,
+    pub input_mode: String,
+    pub request: ProbeRegionRequest,
+    pub selectors: ProbeRegionSelectorPlan,
+    pub cel_files: Vec<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata_plan: Option<ProbeRegionMetadataPlan>,
+    pub annotation_source: ProbeRegionAnnotationSourcePlan,
+    pub platform: ProbeRegionPlatformPlan,
+    pub dependencies: Vec<ProbeRegionDependencyCheck>,
+    pub backend_candidates: Vec<ProbeRegionBackendCandidate>,
+    pub contrasts: Vec<ProbeRegionContrastPlan>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_dir_status: Option<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir_status: Option<ProbeRegionFileStatus>,
+    pub planned_outputs: Vec<String>,
+    pub cache_compatibility_keys: Vec<String>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    pub preflight_ok: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Explicit external-backend execution report for a persisted probe-region plan.
+pub struct ProbeRegionBackendRunReport {
+    pub schema: String,
+    pub plan_path: String,
+    pub backend: String,
+    pub command: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_dir: Option<String>,
+    pub allow_external_execution: bool,
+    pub executed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inspection: Option<ProbeRegionOutputInspection>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One chromosome-ordered preview row from a completed probe-region output table.
+pub struct ProbeRegionOutputPreviewRow {
+    pub chromosome: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_1based: Option<usize>,
+    pub probeset_or_region_id: String,
+    pub transcript_cluster_id: String,
+    pub gene_symbol: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Read-only inspection of a completed `probe_regions_oligo.R` output folder.
+pub struct ProbeRegionOutputInspection {
+    pub schema: String,
+    pub output_dir: String,
+    pub usable: bool,
+    pub region_table: ProbeRegionFileStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_table: Option<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_table: Option<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub normalized_matrix_manifest: Option<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform_package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub normalization: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinate_system: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genome_build: Option<String>,
+    #[serde(default, alias = "projection_maps")]
+    pub coordinate_projections: Vec<GenomeCoordinateProjectionSpec>,
+    pub projection_ready: bool,
+    pub projection_blockers: Vec<String>,
+    pub target_levels: Vec<String>,
+    pub artifact_paths: Vec<String>,
+    pub row_count: usize,
+    pub column_count: usize,
+    pub probe_row_count: usize,
+    pub probe_parent_feature_count: usize,
+    pub feature_count: usize,
+    pub transcript_cluster_count: usize,
+    pub chromosome_count: usize,
+    pub chromosomes: Vec<String>,
+    pub gene_symbols: Vec<String>,
+    pub sample_columns: Vec<String>,
+    pub condition_summary_columns: Vec<String>,
+    pub logfc_columns: Vec<String>,
+    pub preview_rows: Vec<ProbeRegionOutputPreviewRow>,
+    pub required_columns_missing: Vec<String>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Deterministic SVG export summary for inspected probe-region output.
+pub struct ProbeRegionOutputSvgExport {
+    pub schema: String,
+    pub output_dir: String,
+    pub svg_path: String,
+    pub row_count: usize,
+    pub intensity_track_count: usize,
+    pub logfc_track_count: usize,
+    pub chromosome_count: usize,
+    pub projection_ready: bool,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Deterministic SVG export summary for a probe-region evidence interpretation report.
+pub struct ProbeRegionEvidenceSvgExport {
+    pub schema: String,
+    pub report_path: String,
+    pub svg_path: String,
+    pub evidence_row_count: usize,
+    pub transcript_count: usize,
+    pub parent_feature_count: usize,
+    pub junction_span_count: usize,
+    pub ambiguity_tags: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Deterministic import report for explicit APT output plus annotation tables.
+pub struct ProbeRegionAptImportReport {
+    pub schema: String,
+    pub apt_summary_path: String,
+    pub annotation_path: String,
+    pub output_dir: String,
+    pub platform: String,
+    pub normalization: String,
+    pub coordinate_system: String,
+    pub genome_build: String,
+    pub summary_row_count: usize,
+    pub annotation_row_count: usize,
+    pub written_row_count: usize,
+    pub missing_annotation_count: usize,
+    pub skipped_invalid_count: usize,
+    pub probe_row_count: usize,
+    pub sample_columns: Vec<String>,
+    pub probe_intensity_path: Option<String>,
+    pub probe_intensity_source: Option<String>,
+    pub probe_intensity_sample_columns: Vec<String>,
+    pub missing_probe_intensity_count: usize,
+    pub metadata_path: Option<String>,
+    pub condition_column: Option<String>,
+    pub sample_column: Option<String>,
+    pub condition_columns: Vec<String>,
+    pub logfc_columns: Vec<String>,
+    pub warnings: Vec<String>,
+    pub inspection: ProbeRegionOutputInspection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Ambiguity-preserving interpretation of projected probe-region evidence.
+///
+/// This report deliberately stops short of isoform support claims. It compares
+/// already-projected array features with transcript/exon geometry and records
+/// compatibility, constraints, and unresolved ambiguity for downstream review.
+pub struct ProbeRegionEvidenceInterpretationReport {
+    pub schema: String,
+    pub seq_id: SeqId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    pub level: String,
+    pub coordinate_frame: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinate_system: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinate_chromosome: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_abs_logfc: Option<f64>,
+    pub array_feature_count: usize,
+    pub transcript_count: usize,
+    pub evidence_rows: Vec<ProbeRegionEvidenceMappingRow>,
+    pub transcript_rows: Vec<ProbeRegionEvidenceTranscriptRow>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One projected array feature interpreted against transcript/exon geometry.
+pub struct ProbeRegionEvidenceMappingRow {
+    pub evidence_id: String,
+    pub level: String,
+    pub feature_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_feature_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intensity_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chromosome: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logfc: Option<f64>,
+    pub overlapping_transcript_ids: Vec<String>,
+    pub overlapping_exon_count: usize,
+    pub transcript_mappings: Vec<ProbeRegionEvidenceTranscriptMapping>,
+    pub mapping_status: String,
+    pub ambiguity_tags: Vec<String>,
+    pub relationship: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Coordinate-normalized geometry mapping for one projected array evidence row.
+pub struct ProbeRegionEvidenceTranscriptMapping {
+    pub transcript_id: String,
+    pub coordinate_frame: String,
+    pub mapping_kind: String,
+    pub geometry_score: f64,
+    pub geometry_score_class: String,
+    pub score_basis: Vec<String>,
+    pub exon_ordinals: Vec<usize>,
+    pub exon_ranges_1based: Vec<String>,
+    pub local_exon_ranges_1based: Vec<String>,
+    pub junction_spans: Vec<ProbeRegionEvidenceJunctionSpan>,
+    pub overlap_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One exon-exon boundary spanned by a projected array evidence interval.
+///
+/// The `genomic_*` fields are the report coordinate-frame values used for
+/// rendering. When the report frame is local, the optional `local_*` fields
+/// preserve the same source coordinates explicitly.
+pub struct ProbeRegionEvidenceJunctionSpan {
+    pub from_exon_ordinal: usize,
+    pub to_exon_ordinal: usize,
+    pub genomic_start_1based: usize,
+    pub genomic_end_1based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_end_1based: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Per-transcript view of projected array evidence geometry.
+pub struct ProbeRegionEvidenceTranscriptRow {
+    pub transcript_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+    pub exon_count: usize,
+    pub compatible_evidence_count: usize,
+    pub constraining_evidence_count: usize,
+    pub shared_evidence_count: usize,
+    pub unique_evidence_count: usize,
+    pub unmapped_evidence_count: usize,
+    pub compatible_geometry_score: f64,
+    pub shared_geometry_score: f64,
+    pub unique_geometry_score: f64,
+    pub constraining_geometry_score: f64,
+    pub review_status: String,
+    pub relationship_summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Describes an explicit coordinate-projection map between two genome builds.
+pub struct GenomeCoordinateProjectionSpec {
+    pub source_genome_id: String,
+    pub target_genome_id: String,
+    pub method: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One projected interval emitted by the shared genome-coordinate projection path.
+pub struct GenomeCoordinateProjectionInterval {
+    pub source_chrom: String,
+    pub source_start_1based: usize,
+    pub source_end_1based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_strand: Option<String>,
+    pub target_chrom: String,
+    pub target_start_1based: usize,
+    pub target_end_1based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_strand: Option<String>,
+    pub method: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Structured result emitted by genome-coordinate interval projection.
+pub struct GenomeCoordinateProjectionReport {
+    pub schema: String,
+    pub source_genome_id: String,
+    pub target_genome_id: String,
+    pub projection_path: String,
+    pub method: String,
+    pub input_chrom: String,
+    pub input_start_1based: usize,
+    pub input_end_1based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_strand: Option<String>,
+    pub mapped: bool,
+    #[serde(default)]
+    pub intervals: Vec<GenomeCoordinateProjectionInterval>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Structured result emitted by `ProjectMicroarrayTrack`.
+pub struct MicroarrayProjectionReport {
+    pub schema: String,
+    pub seq_id: SeqId,
+    pub manifest_path: String,
+    pub dataset: String,
+    pub platform: String,
+    pub normalization: String,
+    pub coordinate_system: String,
+    pub coordinate_projection_used: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinate_projection_method: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinate_projection_path: Option<String>,
+    pub anchor_genome_id: String,
+    pub anchor_chromosome: String,
+    pub anchor_start_1based: usize,
+    pub anchor_end_1based: usize,
+    pub anchor_strand: String,
+    pub requested_contrasts: Vec<String>,
+    pub projected_contrasts: Vec<String>,
+    pub level: String,
+    pub parsed_rows: usize,
+    pub imported_features: usize,
+    pub skipped_rows: usize,
+    pub skipped_invalid: usize,
+    pub skipped_wrong_chromosome: usize,
+    pub skipped_non_overlap: usize,
+    pub skipped_filter: usize,
+    pub skipped_projection_unmapped: usize,
+    pub truncated_at_limit: bool,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3489,6 +5252,7 @@ pub enum OperationProgress {
     GenomePrepare(PrepareGenomeProgress),
     GenomeTrackImport(GenomeTrackImportProgress),
     DbSnpFetch(DbSnpFetchProgress),
+    ReadAcquisition(SharedAssetActivityStatus),
     RnaReadInterpret(RnaReadInterpretProgress),
 }
 
@@ -3498,6 +5262,28 @@ pub struct OperationRecord {
     pub run_id: RunId,
     pub op: Operation,
     pub result: OpResult,
+}
+
+/// Compact one-row summary for a history transition exposed to adapters.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct EngineHistoryTransitionSummary {
+    pub op_id: OpId,
+    pub run_id: RunId,
+    pub operation: String,
+}
+
+/// Session-local undo/redo availability summary.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct EngineHistorySummary {
+    pub schema: String,
+    pub undo_count: usize,
+    pub redo_count: usize,
+    pub history_limit: usize,
+    pub operation_log_count: usize,
+    pub next_undo: Option<EngineHistoryTransitionSummary>,
+    pub next_redo: Option<EngineHistoryTransitionSummary>,
 }
 
 /// Compact sequence row used by state-summary style adapter surfaces.
@@ -3619,55 +5405,6 @@ pub enum GenomeAnchorPreparedFallbackPolicy {
     AlwaysExplicit,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-/// Strand-contextual anchor extension side.
-///
-/// Interpretation is biological 5'/3' relative to anchor strand, not absolute
-/// genomic coordinate direction.
-pub enum GenomeAnchorSide {
-    FivePrime,
-    ThreePrime,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-/// Annotation projection policy for `ExtractGenomeRegion`.
-pub enum GenomeAnnotationScope {
-    None,
-    Core,
-    Full,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Interval policy for `ExtractGenomeGene`.
-pub enum GenomeGeneExtractMode {
-    #[default]
-    Gene,
-    CodingWithPromoter,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum GenomeTrackSource {
-    #[default]
-    Bed,
-    BigWig,
-    Vcf,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct GenomeTrackSubscription {
-    pub source: GenomeTrackSource,
-    pub path: String,
-    pub track_name: Option<String>,
-    pub min_score: Option<f64>,
-    pub max_score: Option<f64>,
-    pub clear_existing: bool,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GenomeTrackSyncReport {
     pub subscriptions_considered: usize,
@@ -3691,24 +5428,9 @@ pub enum ExportFormat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RenderSvgMode {
-    Linear,
-    Circular,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PrimerLibraryMode {
     Enumerate,
     Sample,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum PrimerDesignBackend {
-    #[default]
-    Auto,
-    Internal,
-    Primer3,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3821,27 +5543,6 @@ pub struct PrimerDesignPairRecord {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
-/// Whether primer specificity should merely be reported or enforced by a
-/// design operation.
-pub enum PrimerSpecificityCheckMode {
-    #[default]
-    None,
-    ReportOnly,
-    RequirePass,
-}
-
-impl PrimerSpecificityCheckMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::ReportOnly => "report_only",
-            Self::RequirePass => "require_pass",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
 /// Explicit exon-junction placement preference for transcript-aware
 /// PCR/qPCR designs.
 pub enum PrimerExonJunctionPolicy {
@@ -3861,49 +5562,12 @@ pub enum PrimerIntronSeparationPolicy {
     MustSeparateByIntron,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-/// Local BLAST specificity policy shared by standalone confirmation and future
-/// design-time filtering.
-pub struct PrimerSpecificityPolicy {
-    pub specificity_check: PrimerSpecificityCheckMode,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub specificity_target_genome_id: Option<String>,
-    pub max_target_amplicon_bp: usize,
-    pub min_primer_coverage_fraction: f64,
-    pub max_3prime_mismatches: usize,
-    pub three_prime_window_bp: usize,
-    pub min_total_mismatches_to_unintended_target: usize,
-    pub allow_same_gene_splice_variants: bool,
-    pub max_hits_per_primer: usize,
-    pub avoid_known_variants: bool,
-    pub avoid_rmsk_repeats: bool,
-    pub avoid_low_complexity: bool,
-}
-
-impl Default for PrimerSpecificityPolicy {
-    fn default() -> Self {
-        Self {
-            specificity_check: PrimerSpecificityCheckMode::ReportOnly,
-            specificity_target_genome_id: None,
-            max_target_amplicon_bp: 4_000,
-            min_primer_coverage_fraction: 0.80,
-            max_3prime_mismatches: 0,
-            three_prime_window_bp: 5,
-            min_total_mismatches_to_unintended_target: 2,
-            allow_same_gene_splice_variants: false,
-            max_hits_per_primer: 500,
-            avoid_known_variants: false,
-            avoid_rmsk_repeats: false,
-            avoid_low_complexity: false,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 /// Primer role in a specificity-confirmation run.
+#[derive(Default)]
 pub enum PrimerSpecificityPrimerRole {
+    #[default]
     Forward,
     Reverse,
 }
@@ -3917,16 +5581,12 @@ impl PrimerSpecificityPrimerRole {
     }
 }
 
-impl Default for PrimerSpecificityPrimerRole {
-    fn default() -> Self {
-        Self::Forward
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 /// Pairing class inspected for Primer-BLAST-style warnings.
+#[derive(Default)]
 pub enum PrimerSpecificityAmpliconKind {
+    #[default]
     ForwardReverse,
     ForwardForward,
     ReverseReverse,
@@ -3939,12 +5599,6 @@ impl PrimerSpecificityAmpliconKind {
             Self::ForwardForward => "forward_forward",
             Self::ReverseReverse => "reverse_reverse",
         }
-    }
-}
-
-impl Default for PrimerSpecificityAmpliconKind {
-    fn default() -> Self {
-        Self::ForwardReverse
     }
 }
 
@@ -4336,21 +5990,143 @@ pub struct PrimerDesignReportSummary {
     pub backend_used: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum RestrictionCloningPcrHandoffMode {
-    #[default]
-    SingleSite,
-    DirectedPair,
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Source trace for one oligo-order line item.
+pub struct OligoOrderLineProvenance {
+    pub source_kind: String,
+    pub report_id: String,
+    pub report_schema: String,
+    pub template: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_rank: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assay_rank: Option<usize>,
+    pub role: String,
+    #[serde(default)]
+    pub source_coordinates_0based: Vec<SequenceRange0Based>,
 }
 
-impl RestrictionCloningPcrHandoffMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::SingleSite => "single_site",
-            Self::DirectedPair => "directed_pair",
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One preserved procurement row in an oligo order form.
+pub struct OligoOrderLineItem {
+    pub line_id: String,
+    pub line_no: usize,
+    pub name: String,
+    pub role: String,
+    pub sequence_5_to_3: String,
+    pub length_nt: usize,
+    #[serde(default)]
+    pub modifications: Vec<String>,
+    pub scale: String,
+    pub purification: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    pub provenance: OligoOrderLineProvenance,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Exact procurement duplicate group. Creation never collapses these rows.
+pub struct OligoOrderDuplicateGroup {
+    pub group_id: String,
+    #[serde(default)]
+    pub line_ids: Vec<String>,
+    pub sequence_5_to_3: String,
+    #[serde(default)]
+    pub modifications: Vec<String>,
+    pub scale: String,
+    pub purification: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Same-sequence reuse group across different procurement settings.
+pub struct OligoOrderSequenceReuseGroup {
+    pub group_id: String,
+    #[serde(default)]
+    pub line_ids: Vec<String>,
+    pub sequence_5_to_3: String,
+    #[serde(default)]
+    pub procurement_tuple_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Explicit duplicate-review status for one order form.
+pub struct OligoOrderDuplicateReview {
+    pub status: String,
+    pub default_action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_at_unix_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// First-class, reviewable batch artifact for planned oligo procurement.
+pub struct OligoOrderForm {
+    pub schema: String,
+    pub form_id: String,
+    #[serde(default)]
+    pub target_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_note: Option<String>,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+    #[serde(default)]
+    pub line_items: Vec<OligoOrderLineItem>,
+    #[serde(default)]
+    pub duplicate_groups: Vec<OligoOrderDuplicateGroup>,
+    #[serde(default)]
+    pub sequence_reuse_groups: Vec<OligoOrderSequenceReuseGroup>,
+    pub duplicate_review: OligoOrderDuplicateReview,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Compact list row for persisted oligo order forms.
+pub struct OligoOrderFormSummary {
+    pub form_id: String,
+    #[serde(default)]
+    pub target_label: String,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+    pub line_count: usize,
+    pub duplicate_group_count: usize,
+    pub sequence_reuse_group_count: usize,
+    pub duplicate_review_status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Generic JSON creation payload for a persisted oligo order form.
+pub struct OligoOrderFormCreateRequest {
+    pub schema: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub form_id: Option<String>,
+    #[serde(default)]
+    pub target_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_note: Option<String>,
+    #[serde(default)]
+    pub line_items: Vec<OligoOrderLineItem>,
+    #[serde(default)]
+    pub scale: String,
+    #[serde(default)]
+    pub purification: String,
+    #[serde(default)]
+    pub modifications: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -4928,90 +6704,6 @@ pub struct QpcrAssayRuleFlags {
     pub probe_tm_delta_in_range: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-/// Transcript-aware qPCR design intent for splicing-driven assays.
-pub enum QpcrTranscriptTargetingMode {
-    SharedGene,
-    DistinguishTranscript,
-}
-
-impl Default for QpcrTranscriptTargetingMode {
-    fn default() -> Self {
-        Self::SharedGene
-    }
-}
-
-impl QpcrTranscriptTargetingMode {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::SharedGene => "shared_gene",
-            Self::DistinguishTranscript => "distinguish_transcript",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Which transcript-specific evidence kind a transcript-distinguishing qPCR
-/// assay must satisfy.
-pub enum QpcrTranscriptSpecificityEvidence {
-    #[default]
-    JunctionOnly,
-    UniqueExonOrChain,
-    EitherPreferJunction,
-}
-
-impl QpcrTranscriptSpecificityEvidence {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::JunctionOnly => "junction_only",
-            Self::UniqueExonOrChain => "unique_exon_or_chain",
-            Self::EitherPreferJunction => "either_prefer_junction",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-/// Transcript-row ordering policy for cDNA PCR/qPCR transcript maps.
-pub enum CdnaAssayTranscriptOrder {
-    #[default]
-    TranscriptId,
-    GenomicFirstExon,
-    GenomicLastExon,
-    AntisenseFirstExon,
-}
-
-impl CdnaAssayTranscriptOrder {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::TranscriptId => "transcript_id",
-            Self::GenomicFirstExon => "genomic_first_exon",
-            Self::GenomicLastExon => "genomic_last_exon",
-            Self::AntisenseFirstExon => "antisense_first_exon",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-/// Coordinate system used by the portable cDNA PCR/qPCR transcript map.
-pub enum CdnaAssayTranscriptMapCoordinateMode {
-    #[default]
-    Cdna,
-    GenomicAligned,
-}
-
-impl CdnaAssayTranscriptMapCoordinateMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Cdna => "cdna",
-            Self::GenomicAligned => "genomic_aligned",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Exact source-template interval used by a transcript-aware primer or amplicon.
@@ -5200,31 +6892,6 @@ pub struct CdnaAssayTestReport {
     pub transcript_results: Vec<CdnaAssayTranscriptResult>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_map: Option<CdnaAssayTranscriptMap>,
-    #[serde(default)]
-    pub warnings: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-/// Summary of optional cDNA PCR/qPCR product materialization into concrete
-/// GENtle sequence entries and a wet-lab-style product container.
-pub struct CdnaAssayProductMaterialization {
-    pub schema: String,
-    pub assay_kind: String,
-    pub source_seq_id: String,
-    pub source_feature_id: usize,
-    pub group_label: String,
-    pub product_count: usize,
-    #[serde(default)]
-    pub product_seq_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub container_id: Option<ContainerId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub container_kind: Option<ContainerKind>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub product_gel_svg_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub product_output_prefix: Option<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }
@@ -5885,6 +7552,7 @@ pub struct PlanningProfile {
 /// Optimization weights and hard guardrails used by planning estimates.
 pub struct PlanningObjective {
     pub schema: String,
+    pub biological_intent: Option<String>,
     pub weight_time: f64,
     pub weight_cost: f64,
     pub weight_local_fit: f64,
@@ -5908,6 +7576,265 @@ pub struct PlanningEstimate {
     pub passes_guardrails: bool,
     pub guardrail_failures: Vec<String>,
     pub explanation: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Read-only cloning strategy and helper/vector planning consultation.
+pub struct PlanningCloningConsultation {
+    pub schema: String,
+    pub profile_scope: String,
+    pub seq_id: Option<String>,
+    pub biological_intent: String,
+    pub objective_summary: serde_json::Value,
+    pub local_profile_summary: serde_json::Value,
+    pub available_helper_vectors: Vec<PlanningCloningHelperVectorSummary>,
+    pub available_host_profiles: Vec<PlanningCloningHostProfileSummary>,
+    pub strategy_candidates: Vec<PlanningCloningStrategyCandidate>,
+    pub vector_candidates: Vec<PlanningCloningVectorCandidate>,
+    pub missing_questions: Vec<PlanningCloningMissingQuestion>,
+    pub local_constraints: Vec<PlanningCloningLocalConstraint>,
+    pub warnings: Vec<String>,
+    pub suggested_next_actions: Vec<PlanningCloningSuggestedNextAction>,
+    pub suggested_sync_payload: Option<serde_json::Value>,
+    pub text_report: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Best routine candidate for one cloning routine family.
+pub struct PlanningCloningStrategyCandidate {
+    pub rank: usize,
+    pub family: String,
+    pub routine_id: String,
+    pub title: String,
+    pub status: String,
+    pub summary: Option<String>,
+    pub estimate: PlanningEstimate,
+    pub rationale: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Helper/vector catalog row exposed to cloning consultation clients.
+pub struct PlanningCloningHelperVectorSummary {
+    pub helper_id: String,
+    pub description: Option<String>,
+    pub summary: Option<String>,
+    pub helper_kind: Option<String>,
+    pub host_systems: Vec<String>,
+    pub structured_tags: Vec<String>,
+    pub offered_functions: Vec<String>,
+    pub routine_family_hints: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Host/strain catalog row exposed to cloning consultation clients.
+pub struct PlanningCloningHostProfileSummary {
+    pub profile_id: String,
+    pub species: String,
+    pub strain: String,
+    pub aliases: Vec<String>,
+    pub genotype_tags: Vec<String>,
+    pub phenotype_tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Ranked helper/vector candidate based only on structured catalog fields.
+pub struct PlanningCloningVectorCandidate {
+    pub rank: usize,
+    pub helper_id: String,
+    pub score: f64,
+    pub helper_kind: Option<String>,
+    pub host_systems: Vec<String>,
+    pub routine_family_hints: Vec<String>,
+    pub rationale: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Stable follow-up question for underspecified cloning planning requests.
+pub struct PlanningCloningMissingQuestion {
+    pub question_id: String,
+    pub prompt: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Local infrastructure note that affects strategy/vector planning confidence.
+pub struct PlanningCloningLocalConstraint {
+    pub constraint_id: String,
+    pub status: String,
+    pub summary: String,
+    pub details: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Safe next action suggested by a cloning consultation.
+pub struct PlanningCloningSuggestedNextAction {
+    pub action_id: String,
+    pub label: String,
+    pub shell_line: String,
+    pub rationale: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Read-only protein-expression planning handoff for underspecified yield requests.
+pub struct ProteinExpressionHandoffReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    pub status: String,
+    pub biological_intent: String,
+    pub product_definition: ProteinExpressionProductDefinition,
+    pub product_readiness: ProteinExpressionProductReadiness,
+    pub sequence_context: Option<ProteinExpressionSequenceContext>,
+    pub cds_assessment: ProteinExpressionCdsAssessment,
+    pub tag_assessment: ProteinExpressionTagAssessment,
+    pub host_chassis_candidates: Vec<ProteinExpressionHostChassisCandidate>,
+    pub vector_route_candidates: Vec<ProteinExpressionVectorRouteCandidate>,
+    pub missing_questions: Vec<PlanningCloningMissingQuestion>,
+    pub service_handoff_candidates: Vec<ProteinExpressionServiceHandoffCandidate>,
+    pub warnings: Vec<String>,
+    pub suggested_next_actions: Vec<PlanningCloningSuggestedNextAction>,
+    pub text_report: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Product context supplied to a protein-expression handoff.
+pub struct ProteinExpressionProductDefinition {
+    pub seq_id: Option<String>,
+    pub sequence_present: bool,
+    pub sequence_name: Option<String>,
+    pub length_bp: Option<usize>,
+    pub feature_count: Option<usize>,
+    pub readiness: ProteinExpressionProductReadiness,
+    pub product_metric: String,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Readiness summary for deciding whether a product can enter expression review.
+pub struct ProteinExpressionProductReadiness {
+    pub status: String,
+    pub usable_sequence_context: bool,
+    pub usable_cds_context: bool,
+    pub translation_possible: bool,
+    pub review_gate: String,
+    pub blockers: Vec<String>,
+    pub review_notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Sequence-level context consumed by a read-only protein-expression handoff.
+pub struct ProteinExpressionSequenceContext {
+    pub seq_id: Option<String>,
+    pub sequence_name: Option<String>,
+    pub molecule_type: Option<String>,
+    pub nucleotide_length: Option<usize>,
+    pub protein_length_aa: Option<usize>,
+    pub feature_count: usize,
+    pub gc_percent: Option<f64>,
+    pub gc_window_bp: Option<usize>,
+    pub gc_min_percent: Option<f64>,
+    pub gc_max_percent: Option<f64>,
+    pub ambiguous_base_count: usize,
+    pub ambiguous_bases: Vec<String>,
+    pub annotation_summaries: Vec<ProteinExpressionFeatureSummary>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Compact annotation row relevant to protein-expression handoff review.
+pub struct ProteinExpressionFeatureSummary {
+    pub feature_id: usize,
+    pub kind: String,
+    pub label: Option<String>,
+    pub start_0based: Option<usize>,
+    pub end_0based_exclusive: Option<usize>,
+    pub strand: Option<String>,
+    pub length_nt: Option<usize>,
+    pub selected_qualifiers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Read-only CDS/ORF sanity assessment for a protein-expression product.
+pub struct ProteinExpressionCdsAssessment {
+    pub context_source: String,
+    pub plausible_cds: bool,
+    pub translation_possible: bool,
+    pub nucleotide_length: Option<usize>,
+    pub protein_length_aa: Option<usize>,
+    pub codon_count: Option<usize>,
+    pub translation_table: Option<usize>,
+    pub start_codon: Option<String>,
+    pub stop_codon: Option<String>,
+    pub starts_with_atg: Option<bool>,
+    pub has_terminal_stop: Option<bool>,
+    pub has_internal_stops: bool,
+    pub internal_stop_count: usize,
+    pub ambiguous_codon_count: usize,
+    pub length_multiple_of_three: Option<bool>,
+    pub annotated_cds_features: Vec<ProteinExpressionFeatureSummary>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Read-only tag/signalling annotation context for protein-expression review.
+pub struct ProteinExpressionTagAssessment {
+    pub annotated_tag_count: usize,
+    pub annotated_signal_peptide_count: usize,
+    pub annotated_tags: Vec<ProteinExpressionFeatureSummary>,
+    pub tag_policy_known: bool,
+    pub missing_inputs: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Candidate expression chassis row.
+pub struct ProteinExpressionHostChassisCandidate {
+    pub rank: usize,
+    pub chassis_id: String,
+    pub label: String,
+    pub status: String,
+    pub rationale: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Candidate construct/vector route row.
+pub struct ProteinExpressionVectorRouteCandidate {
+    pub rank: usize,
+    pub route_id: String,
+    pub label: String,
+    pub status: String,
+    pub rationale: Vec<String>,
+    pub missing_inputs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Provider-neutral service handoff preview row.
+pub struct ProteinExpressionServiceHandoffCandidate {
+    pub provider: String,
+    pub service_kind: String,
+    pub status: String,
+    pub example_request_path: String,
+    pub draft_request_preview: serde_json::Value,
+    pub shell_line: String,
+    pub rationale: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -6013,15 +7940,6 @@ pub struct CandidateMacroTemplate {
     pub updated_at_unix_ms: u128,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-/// One typed parameter exposed by a candidate macro template.
-pub struct CandidateMacroTemplateParam {
-    pub name: String,
-    pub default_value: Option<String>,
-    pub required: bool,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Listing row for one candidate macro template.
 pub struct CandidateMacroTemplateSummary {
@@ -6109,6 +8027,80 @@ pub struct IsoformPanelCurationInfo {
     pub notes: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// One upstream or local source record that supports a curated isoform panel.
+pub struct IsoformPanelEvidenceRecord {
+    pub evidence_id: String,
+    pub source_type: String,
+    pub accession: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub sequence_path: Option<String>,
+    #[serde(default)]
+    pub sequence_length_bp: Option<usize>,
+    #[serde(default)]
+    pub sequence_sha256: Option<String>,
+    #[serde(default)]
+    pub cds_start_1based: Option<usize>,
+    #[serde(default)]
+    pub cds_end_1based: Option<usize>,
+    #[serde(default)]
+    pub retrieved_on: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// Small key/value metric attached to one curated isoform-panel evaluation row.
+pub struct IsoformPanelEvaluationMetric {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// One comparison row inside a curated isoform-panel evaluation.
+pub struct IsoformPanelEvaluationRow {
+    #[serde(default)]
+    pub isoform_id: Option<String>,
+    #[serde(default)]
+    pub evidence_id: Option<String>,
+    #[serde(default)]
+    pub compared_to: Option<String>,
+    pub status: String,
+    pub summary: String,
+    #[serde(default)]
+    pub metrics: Vec<IsoformPanelEvaluationMetric>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// A stored curation/comparison note for a panel, such as ENA-vs-Ensembl checks.
+pub struct IsoformPanelEvaluationRecord {
+    pub evaluation_id: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub created_on: Option<String>,
+    #[serde(default)]
+    pub method: Option<String>,
+    pub status: String,
+    pub summary: String,
+    #[serde(default)]
+    pub source_evidence_ids: Vec<String>,
+    #[serde(default)]
+    pub isoform_ids: Vec<String>,
+    #[serde(default)]
+    pub rows: Vec<IsoformPanelEvaluationRow>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum IsoformTranscriptGeometryMode {
@@ -6156,6 +8148,10 @@ pub struct IsoformPanelResource {
     #[serde(default)]
     pub curation: Option<IsoformPanelCurationInfo>,
     #[serde(default)]
+    pub evidence: Vec<IsoformPanelEvidenceRecord>,
+    #[serde(default)]
+    pub evaluations: Vec<IsoformPanelEvaluationRecord>,
+    #[serde(default)]
     pub isoforms: Vec<IsoformPanelIsoformSpec>,
 }
 
@@ -6201,36 +8197,16 @@ pub struct IsoformPanelValidationReport {
     pub curation_source_kind: Option<String>,
     #[serde(default)]
     pub curated_isoform_count: usize,
+    #[serde(default)]
+    pub evidence_count: usize,
+    #[serde(default)]
+    pub evaluation_count: usize,
+    #[serde(default)]
+    pub evaluation_row_count: usize,
     pub issue_count: usize,
     pub status: String,
     pub isoforms: Vec<IsoformPanelValidationIsoformSummary>,
     pub issues: Vec<IsoformPanelValidationIssue>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum AnchorBoundary {
-    Start,
-    End,
-    Middle,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AnchorDirection {
-    Upstream,
-    Downstream,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum SequenceAnchor {
-    Position {
-        zero_based: usize,
-    },
-    FeatureBoundary {
-        feature_kind: Option<String>,
-        feature_label: Option<String>,
-        boundary: AnchorBoundary,
-        occurrence: Option<usize>,
-    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -6287,6 +8263,106 @@ pub struct ProcessRunBundleOutputs {
     pub created_container_ids: Vec<String>,
     pub created_arrangement_ids: Vec<String>,
     pub exported_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct LabAssistantMaterialRow {
+    pub material_id: String,
+    pub display_name: String,
+    pub kind: String,
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topology: Option<String>,
+    #[serde(default)]
+    pub members: Vec<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct LabAssistantInstructionSection {
+    pub heading: String,
+    pub steps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LabAssistantInstructionsFormat {
+    #[default]
+    Markdown,
+    Odt,
+    Docx,
+}
+
+impl LabAssistantInstructionsFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Markdown => "markdown",
+            Self::Odt => "odt",
+            Self::Docx => "docx",
+        }
+    }
+
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Markdown => "md",
+            Self::Odt => "odt",
+            Self::Docx => "docx",
+        }
+    }
+
+    pub fn from_token(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "markdown" | "md" => Some(Self::Markdown),
+            "odt" | "opendocument" | "open_document" => Some(Self::Odt),
+            "docx" | "word" => Some(Self::Docx),
+            _ => None,
+        }
+    }
+
+    pub fn infer_from_path(path: &str) -> Self {
+        let extension = std::path::Path::new(path)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        Self::from_token(extension).unwrap_or(Self::Markdown)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct LabAssistantVisualRow {
+    pub visual_id: String,
+    pub label: String,
+    pub format: String,
+    pub source: String,
+    pub width_px: usize,
+    pub height_px: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct LabAssistantInstructionsExport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    pub title: String,
+    pub audience: String,
+    pub output_path: String,
+    pub output_format: LabAssistantInstructionsFormat,
+    pub run_id_filter: Option<String>,
+    pub selected_record_count: usize,
+    pub material_rows: Vec<LabAssistantMaterialRow>,
+    pub step_sections: Vec<LabAssistantInstructionSection>,
+    pub embedded_visuals: Vec<LabAssistantVisualRow>,
+    pub checkpoint_lines: Vec<String>,
+    pub safety_lines: Vec<String>,
+    pub record_keeping_lines: Vec<String>,
+    pub warning_lines: Vec<String>,
+    pub summary_lines: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -6369,6 +8445,7 @@ pub struct RoutineDecisionTraceStore {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct ProcessRunBundleConstructReasoningSummary {
     pub seq_id: String,
     pub graph_id: String,
@@ -6387,30 +8464,6 @@ pub struct ProcessRunBundleConstructReasoningSummary {
     pub suggested_variant_assay_ids: Vec<String>,
     pub summary_lines: Vec<String>,
     pub warning_lines: Vec<String>,
-}
-
-impl Default for ProcessRunBundleConstructReasoningSummary {
-    fn default() -> Self {
-        Self {
-            seq_id: String::new(),
-            graph_id: String::new(),
-            objective_id: String::new(),
-            objective_title: String::new(),
-            objective_goal: String::new(),
-            fact_types: vec![],
-            decision_types: vec![],
-            fact_statuses: BTreeMap::new(),
-            host_profile_ids: vec![],
-            helper_profile_id: None,
-            medium_conditions: vec![],
-            growth_condition_signals: vec![],
-            supported_selection_rule_ids: vec![],
-            variant_effect_tags: vec![],
-            suggested_variant_assay_ids: vec![],
-            summary_lines: vec![],
-            warning_lines: vec![],
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

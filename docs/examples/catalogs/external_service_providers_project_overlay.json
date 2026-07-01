@@ -1,0 +1,106 @@
+{
+  "schema": "gentle.external_service_provider_config.v1",
+  "summary_lines": [
+    "Example project-local external-service provider override. Place under .gentle/catalogs/external_service_providers.d/ in a real project."
+  ],
+  "providers": [
+    {
+      "provider": "metabion",
+      "display_name": "metabion project policy",
+      "support_status": "wop_email_excel_handoff_ready",
+      "website_url": "https://www.metabion.com/",
+      "dashboard_url": "https://wop.metabion.com/wop/",
+      "capabilities": [
+        {
+          "service_kind": "dna_oligo_single_tube",
+          "track": "dna",
+          "display_name": "metabion DNA oligo single tube",
+          "quote_handoff_supported": true,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [
+            "wop_handoff",
+            "email_excel_handoff"
+          ],
+          "status_tracking": "manual_or_imported_status",
+          "artifact_kinds": [
+            "redacted_request_json",
+            "normalized_line_items_json",
+            "normalized_line_items_csv",
+            "email_draft_markdown",
+            "guided_wop_checklist"
+          ],
+          "notes": [
+            "Example override keeps submission non-mutating and allows local lab defaults."
+          ]
+        }
+      ],
+      "channels": [
+        {
+          "channel": "wop",
+          "display_name": "metabion Web Order Portal",
+          "url": "https://wop.metabion.com/wop/",
+          "notes": [
+            "Manual quote creation only; no WOP scraping or submission."
+          ]
+        },
+        {
+          "channel": "email_excel",
+          "display_name": "Lab-approved metabion email handoff",
+          "email": "oligo@metabion.com",
+          "url": "https://www.metabion.com/knowledge-hub/downloads/order-forms",
+          "notes": [
+            "Attach the current vendor Excel form after human review."
+          ]
+        }
+      ],
+      "product_templates": [
+        {
+          "service_kind": "dna_oligo_single_tube",
+          "product_name": "DNA Oligo single tube",
+          "channel": "email_excel",
+          "template_url": "https://www.metabion.com/knowledge-hub/downloads/order-forms",
+          "template_format": "xlsx",
+          "field_map": {
+            "name": "Name of the oligo/s",
+            "sequence": "Sequence of the oligo/s in 5'-3' orientation",
+            "yield_range": "Yield range",
+            "purification": "Purification required",
+            "delivery_form": "Delivery form"
+          }
+        }
+      ],
+      "validation_rules": [
+        {
+          "service_kind": "dna_oligo_single_tube",
+          "required_source_fields": [
+            "sequence",
+            "sequence_text",
+            "dna_sequence",
+            "oligos",
+            "line_items"
+          ],
+          "required_followup": [
+            "Apply the local lab's oligo naming convention before handoff."
+          ]
+        }
+      ],
+      "default_delivery_hints": [
+        "Project policy example: prefer dry delivery unless explicitly overridden."
+      ],
+      "default_purification_hints": [
+        "Project policy example: confirm desalted vs HPLC per oligo purpose."
+      ],
+      "default_qc_hints": [
+        "Project policy example: vendor default QC unless the requester requires additional documentation."
+      ],
+      "required_followup": [
+        "No vendor order was submitted by GENtle.",
+        "PO/account/shipping/billing details stay outside GENtle project state."
+      ],
+      "warnings": [
+        "Example file only; review vendor URLs and local procurement policy before use."
+      ]
+    }
+  ]
+}

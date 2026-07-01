@@ -1,0 +1,23 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "protein_expression_handoff_cli",
+  "title": "Plan a High-Yield Protein-Expression Handoff",
+  "catalog": {
+    "order": 14,
+    "path": "docs/tutorial/09-03_protein_expression_handoff_cli.md",
+    "type": "cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "cli_first",
+      "agent_users",
+      "clawbio",
+      "cloning_planning",
+      "protein_workflows",
+      "synthetic_biology"
+    ],
+    "notes": "CLI/agent walkthrough for turning an underspecified high-yield protein-production request into a read-only GENtle handoff report with explicit chassis, route, missing-question, and GeneArt preflight scaffolding.",
+    "group": "09",
+    "group_position": 3
+  }
+}

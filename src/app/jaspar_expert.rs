@@ -244,51 +244,51 @@ impl GENtleApp {
         match result {
             Ok(result) => {
                 self.jaspar_expert_view = result.jaspar_entry_expert_view;
-                if let Some(view) = self.jaspar_expert_view.as_ref() {
-                    if let Some(remote_metadata) = view.remote_metadata.clone() {
-                        let mut row = self
-                            .jaspar_catalog_report
-                            .as_ref()
-                            .and_then(|report| {
-                                report
-                                    .rows
-                                    .iter()
-                                    .find(|row| row.motif_id == view.motif_id)
-                                    .cloned()
-                            })
-                            .unwrap_or(JasparCatalogRow {
-                                motif_id: view.motif_id.clone(),
-                                motif_name: view.motif_name.clone(),
-                                consensus_iupac: view.consensus_iupac.clone(),
-                                motif_length_bp: view.motif_length_bp,
-                                remote_summary: None,
-                            });
-                        row.remote_summary = Some(GentleEngine::jaspar_remote_metadata_summary(
-                            &remote_metadata,
-                        ));
-                        let base =
-                            self.jaspar_catalog_report
-                                .as_ref()
+                if let Some(view) = self.jaspar_expert_view.as_ref()
+                    && let Some(remote_metadata) = view.remote_metadata.clone()
+                {
+                    let mut row = self
+                        .jaspar_catalog_report
+                        .as_ref()
+                        .and_then(|report| {
+                            report
+                                .rows
+                                .iter()
+                                .find(|row| row.motif_id == view.motif_id)
                                 .cloned()
-                                .unwrap_or_else(|| JasparCatalogReport {
-                                    schema: "gentle.jaspar_catalog.v1".to_string(),
-                                    generated_at_unix_ms: 0,
-                                    op_id: None,
-                                    run_id: None,
-                                    filter: None,
-                                    limit: None,
-                                    include_remote_metadata: true,
-                                    registry_entry_count: tf_motifs::list_motif_summaries().len(),
-                                    returned_entry_count: 0,
-                                    rows: self.jaspar_catalog_rows_local_fallback(),
-                                    warnings: vec![],
-                                });
-                        self.merge_jaspar_catalog_report(JasparCatalogReport {
-                            rows: vec![row],
-                            returned_entry_count: 1,
-                            ..base
+                        })
+                        .unwrap_or(JasparCatalogRow {
+                            motif_id: view.motif_id.clone(),
+                            motif_name: view.motif_name.clone(),
+                            consensus_iupac: view.consensus_iupac.clone(),
+                            motif_length_bp: view.motif_length_bp,
+                            remote_summary: None,
                         });
-                    }
+                    row.remote_summary = Some(GentleEngine::jaspar_remote_metadata_summary(
+                        &remote_metadata,
+                    ));
+                    let base = self
+                        .jaspar_catalog_report
+                        .as_ref()
+                        .cloned()
+                        .unwrap_or_else(|| JasparCatalogReport {
+                            schema: "gentle.jaspar_catalog.v1".to_string(),
+                            generated_at_unix_ms: 0,
+                            op_id: None,
+                            run_id: None,
+                            filter: None,
+                            limit: None,
+                            include_remote_metadata: true,
+                            registry_entry_count: tf_motifs::list_motif_summaries().len(),
+                            returned_entry_count: 0,
+                            rows: self.jaspar_catalog_rows_local_fallback(),
+                            warnings: vec![],
+                        });
+                    self.merge_jaspar_catalog_report(JasparCatalogReport {
+                        rows: vec![row],
+                        returned_entry_count: 1,
+                        ..base
+                    });
                 }
                 let mut status_parts = vec![];
                 if !result.messages.is_empty() {
@@ -335,7 +335,7 @@ impl GENtleApp {
         painter.rect_stroke(
             rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(90)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(90)),
             egui::StrokeKind::Inside,
         );
         painter.line_segment(
@@ -343,14 +343,14 @@ impl GENtleApp {
                 egui::pos2(left, baseline),
                 egui::pos2(rect.right() - 8.0, baseline),
             ],
-            egui::Stroke::new(1.0, egui::Color32::LIGHT_GRAY),
+            egui::Stroke::new(1.0_f32, egui::Color32::LIGHT_GRAY),
         );
         painter.line_segment(
             [
                 egui::pos2(left, baseline),
                 egui::pos2(left, rect.top() + 8.0),
             ],
-            egui::Stroke::new(1.0, egui::Color32::LIGHT_GRAY),
+            egui::Stroke::new(1.0_f32, egui::Color32::LIGHT_GRAY),
         );
         painter.text(
             egui::pos2(rect.left() + 10.0, baseline),
@@ -420,7 +420,7 @@ impl GENtleApp {
         painter.rect_stroke(
             rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(90)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(90)),
             egui::StrokeKind::Inside,
         );
         painter.line_segment(
@@ -428,14 +428,14 @@ impl GENtleApp {
                 egui::pos2(plot_rect.left(), plot_rect.bottom()),
                 egui::pos2(plot_rect.right(), plot_rect.bottom()),
             ],
-            egui::Stroke::new(1.0, egui::Color32::LIGHT_GRAY),
+            egui::Stroke::new(1.0_f32, egui::Color32::LIGHT_GRAY),
         );
         painter.line_segment(
             [
                 egui::pos2(plot_rect.left(), plot_rect.top()),
                 egui::pos2(plot_rect.left(), plot_rect.bottom()),
             ],
-            egui::Stroke::new(1.0, egui::Color32::LIGHT_GRAY),
+            egui::Stroke::new(1.0_f32, egui::Color32::LIGHT_GRAY),
         );
         if !panel.histogram_bins.is_empty() {
             let bar_width = plot_rect.width() / panel.histogram_bins.len() as f32;
@@ -558,14 +558,17 @@ impl GENtleApp {
         }
 
         let mut open = self.show_jaspar_expert_dialog;
-        egui::Window::new("JASPAR Expert")
-            .open(&mut open)
-            .resizable(true)
-            .default_size(egui::Vec2::new(1280.0, 900.0))
-            .min_size(egui::Vec2::new(920.0, 640.0))
-            .show(ctx, |ui| {
-                ui.label("Inspect local JASPAR entries through GENtle’s own matrix/scoring path, with optional remote species metadata from the JASPAR REST API.");
-                ui.horizontal(|ui| {
+        let viewport_id = Self::jaspar_expert_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            "JASPAR Expert",
+            egui::Id::new(("jaspar_expert_hosted_window", viewport_id)),
+            viewport_id,
+            egui::Vec2::new(1280.0, 900.0),
+            egui::Vec2::new(920.0, 640.0),
+        );
+        crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+            ui.label("Inspect local JASPAR entries through GENtle’s own matrix/scoring path, with optional remote species metadata from the JASPAR REST API.");
+            ui.horizontal(|ui| {
                     ui.label("Filter");
                     ui.text_edit_singleline(&mut self.jaspar_expert_filter);
                     ui.separator();
@@ -599,11 +602,11 @@ impl GENtleApp {
                         self.refresh_jaspar_expert_view();
                     }
                 });
-                if !self.jaspar_expert_status.trim().is_empty() {
-                    ui.small(self.jaspar_expert_status.clone());
-                }
-                ui.separator();
-                ui.columns(2, |columns| {
+            if !self.jaspar_expert_status.trim().is_empty() {
+                ui.small(self.jaspar_expert_status.clone());
+            }
+            ui.separator();
+            ui.columns(2, |columns| {
                     columns[0].vertical(|ui| {
                         let total_entries = self
                             .jaspar_catalog_report
@@ -670,15 +673,14 @@ impl GENtleApp {
                                             ui.end_row();
                                         }
                                     });
-                                if let Some(report) = self.jaspar_catalog_report.as_ref() {
-                                    if !report.warnings.is_empty() {
+                                if let Some(report) = self.jaspar_catalog_report.as_ref()
+                                    && !report.warnings.is_empty() {
                                         ui.separator();
                                         ui.small(format!(
                                             "Catalog warnings: {}",
                                             report.warnings.join(" | ")
                                         ));
                                     }
-                                }
                             });
                     });
                     columns[1].vertical(|ui| {
@@ -872,7 +874,9 @@ impl GENtleApp {
                         }
                     });
                 });
-            });
+        });
+        self.clear_viewport_foreground_request_after_render(viewport_id);
+        self.finalize_viewport_open_probe(viewport_id, "JASPAR Expert");
         self.show_jaspar_expert_dialog = open;
     }
 }
@@ -882,8 +886,16 @@ mod tests {
     use super::GENtleApp;
     use crate::engine::GentleEngine;
 
+    fn lock_jaspar_registry_for_test() -> std::sync::MutexGuard<'static, ()> {
+        crate::tf_motifs::test_registry_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     #[test]
     fn open_jaspar_expert_dialog_seeds_default_selection() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let mut app = GENtleApp::default();
         app.jaspar_expert_selected_motif_id.clear();
         app.open_jaspar_expert_dialog();
@@ -893,6 +905,8 @@ mod tests {
 
     #[test]
     fn refresh_jaspar_expert_view_loads_selected_entry() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let mut app = GENtleApp::default();
         app.jaspar_expert_selected_motif_id = "SP1".to_string();
         app.jaspar_expert_random_length_bp = "512".to_string();
@@ -909,6 +923,8 @@ mod tests {
 
     #[test]
     fn native_request_opens_jaspar_expert_for_requested_motif() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let mut app = GENtleApp::default();
         crate::app::request_open_jaspar_expert_for_motif_from_native_menu("MA0079.5");
         app.consume_native_jaspar_expert_request();
@@ -918,6 +934,8 @@ mod tests {
 
     #[test]
     fn refresh_jaspar_catalog_loads_local_rows() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let mut app = GENtleApp::default();
         app.refresh_jaspar_catalog(true, false);
         let report = app
@@ -935,6 +953,8 @@ mod tests {
 
     #[test]
     fn jaspar_panel_interpretation_reports_extremes_and_hit_rate() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let engine = GentleEngine::new();
         let view = engine
             .inspect_jaspar_entry("SP1", 512, 7, false, false)
@@ -948,6 +968,8 @@ mod tests {
 
     #[test]
     fn jaspar_expert_overview_rows_report_consensus_and_background() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let engine = GentleEngine::new();
         let view = engine
             .inspect_jaspar_entry("SP1", 512, 7, false, false)

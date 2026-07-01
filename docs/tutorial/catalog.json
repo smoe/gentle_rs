@@ -1,10 +1,10 @@
 {
-  "schema": "gentle.tutorial_catalog.v1",
+  "schema": "gentle.tutorial_catalog.v2",
   "description": "Canonical human/machine-readable discovery catalog for GENtle tutorials. Source units generate both this discovery catalog and the executable tutorial runtime manifest.",
   "entry_page": "docs/tutorial/README.md",
   "generated_runtime": {
     "manifest_path": "docs/tutorial/manifest.json",
-    "manifest_schema": "gentle.tutorial_manifest.v1",
+    "manifest_schema": "gentle.tutorial_manifest.v2",
     "generated_readme": "docs/tutorial/generated/README.md",
     "generation_report": "docs/tutorial/generated/report.json"
   },
@@ -13,6 +13,9 @@
       "id": "generated_hub",
       "title": "GENtle Tutorial (Generated)",
       "path": "docs/tutorial/generated/README.md",
+      "group": "01",
+      "group_label": "Getting Started & Interfaces",
+      "group_order": 1,
       "type": "executable_collection",
       "status": "generated+checked",
       "source": "generated_from_tutorial_sources",
@@ -21,12 +24,20 @@
         "cli_first",
         "contributors"
       ],
-      "notes": "Generated from docs/tutorial/sources plus executable workflows; validated by tutorial-check."
+      "notes": "Generated from docs/tutorial/sources plus executable workflows; validated by tutorial-check.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "vkorc1_warfarin_promoter_luciferase_gui",
       "title": "VKORC1 / rs9923231 PGx Alert -> Mammalian Luciferase Reporter (GUI Tutorial with Matching CLI Commands)",
-      "path": "docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md",
+      "path": "docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 4,
+      "decimal_id": "08.04",
       "type": "gui_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
@@ -35,12 +46,20 @@
         "cloning_planning",
         "pharmacogenomics"
       ],
-      "notes": "Hand-written GUI-first tutorial for turning the VKORC1/rs9923231 pharmacogenomic alert into one mammalian promoter-reporter planning workflow with explicit engine and CLI mapping."
+      "notes": "Hand-written GUI-first tutorial for turning the VKORC1/rs9923231 pharmacogenomic alert into one mammalian promoter-reporter planning workflow with explicit engine and CLI mapping.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "tp73_cdna_genomic_dotplot_gui",
       "title": "Retrieve a cDNA and Compare It Against the Genomic Sequence (Dotplot Tutorial)",
-      "path": "docs/tutorial/two_sequence_dotplot_gui.md",
+      "path": "docs/tutorial/02-03_tp73_cdna_genomic_dotplot_gui.md",
+      "group": "02",
+      "group_label": "Sequence Basics & Lineage",
+      "group_order": 2,
+      "group_position": 3,
+      "decimal_id": "02.03",
       "type": "gui_walkthrough",
       "status": "manual",
       "source": "hand_written_markdown",
@@ -49,12 +68,29 @@
         "sequence_analysis",
         "visual_learning"
       ],
-      "notes": "Screenshot-backed manual tutorial for cDNA-vs-genomic comparison."
+      "notes": "Screenshot-backed manual tutorial for cDNA-vs-genomic comparison.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tutorial_cdna_genomic_07_dotplot_window.png",
+          "caption": "Dotplot workspace after loading TP73 cDNA and genomic sequence.",
+          "illustrates_step": 4,
+          "capture_date": "2026-03-20"
+        }
+      ]
     },
     {
       "id": "gibson_specialist_testing_gui",
       "title": "Gibson Specialist Testing Tutorial",
-      "path": "docs/tutorial/gibson_specialist_testing_gui.md",
+      "path": "docs/tutorial/03-05_gibson_specialist_testing_gui.md",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 5,
+      "decimal_id": "03.05",
       "type": "gui_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
@@ -63,12 +99,20 @@
         "cloning_planning",
         "contributors"
       ],
-      "notes": "Hands-on test script for the destination-first Gibson specialist with shared CLI parity."
+      "notes": "Hands-on test script for the destination-first Gibson specialist with shared CLI parity.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "gibson_arrangements_gui",
       "title": "Gibson Arrangements Tutorial",
-      "path": "docs/tutorial/gibson_arrangements_gui.md",
+      "path": "docs/tutorial/03-07_gibson_arrangements_gui.md",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 7,
+      "decimal_id": "03.07",
       "type": "gui_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
@@ -77,12 +121,20 @@
         "cloning_planning",
         "contributors"
       ],
-      "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export."
+      "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "gibson_physical_rack_gui",
       "title": "Gibson Physical Rack Tutorial",
-      "path": "docs/tutorial/gibson_physical_rack_gui.md",
+      "path": "docs/tutorial/03-08_gibson_physical_rack_gui.md",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 8,
+      "decimal_id": "03.08",
       "type": "gui_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
@@ -91,12 +143,20 @@
         "cloning_planning",
         "contributors"
       ],
-      "notes": "Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, README-grade isometric SVG, carrier labels, and OpenSCAD export."
+      "notes": "Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, README-grade isometric SVG, carrier labels, and OpenSCAD export.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "sequencing_confirmation_trace_cli",
       "title": "Confirm a Construct from an Imported Sequencing Trace (CLI Tutorial)",
-      "path": "docs/tutorial/sequencing_confirmation_trace_cli.md",
+      "path": "docs/tutorial/10-01_sequencing_confirmation_trace_cli.md",
+      "group": "10",
+      "group_label": "Sequencing Confirmation & QC",
+      "group_order": 10,
+      "group_position": 1,
+      "decimal_id": "10.01",
       "type": "cli_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
@@ -105,12 +165,20 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export."
+      "notes": "Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "sequencing_confirmation_gui",
       "title": "Inspect an Imported Sequencing Trace and Confirm a Construct (GUI Tutorial)",
-      "path": "docs/tutorial/sequencing_confirmation_gui.md",
+      "path": "docs/tutorial/10-02_sequencing_confirmation_gui.md",
+      "group": "10",
+      "group_label": "Sequencing Confirmation & QC",
+      "group_order": 10,
+      "group_position": 2,
+      "decimal_id": "10.02",
       "type": "gui_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
@@ -119,12 +187,20 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen."
+      "notes": "GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "rna_read_batch_gene_support_cli",
       "title": "Batch-Compare cDNA FASTA.GZ Samples for One Target Gene (CLI Tutorial)",
-      "path": "docs/tutorial/rna_read_batch_gene_support_cli.md",
+      "path": "docs/tutorial/07-01_rna_read_batch_gene_support_cli.md",
+      "group": "07",
+      "group_label": "RNA Reads, Splicing & Expression",
+      "group_order": 7,
+      "group_position": 1,
+      "decimal_id": "07.01",
       "type": "cli_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
@@ -133,12 +209,18 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, and exporting one target-gene cohort sample sheet."
+      "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, and exporting one target-gene cohort sample sheet.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "tutorial_landscape_overview",
       "title": "GENtle Tutorial Landscape Overview",
       "path": "docs/tutorial/landscape_overview.md",
+      "group": "01",
+      "group_label": "Getting Started & Interfaces",
+      "group_order": 1,
       "type": "operational_reference",
       "status": "manual/reference",
       "source": "hand_written_markdown",
@@ -147,12 +229,20 @@
         "cli_first",
         "gui_first"
       ],
-      "notes": "Graphical overview of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity."
+      "notes": "Graphical overview of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "agent_interfaces",
-      "title": "GENtle Agent Interfaces Tutorial",
-      "path": "docs/agent_interfaces_tutorial.md",
+      "title": "GENtle Agent Assistant and Agent Interfaces Tutorial",
+      "path": "docs/tutorial/01-01_agent_interfaces.md",
+      "group": "01",
+      "group_label": "Getting Started & Interfaces",
+      "group_order": 1,
+      "group_position": 1,
+      "decimal_id": "01.01",
       "type": "operational_reference",
       "status": "manual/reference",
       "source": "hand_written_markdown",
@@ -162,12 +252,93 @@
         "mcp_users",
         "contributors"
       ],
-      "notes": "Conceptual and operational guide for GUI assistant, CLI/shared shell, MCP, and external coding agents."
+      "notes": "Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "metabion_external_service_handoff_gui_cli",
+      "title": "Prepare a Metabion Handoff from Shared External-Service Contracts",
+      "path": "docs/tutorial/09-01_metabion_external_service_handoff_gui_cli.md",
+      "group": "09",
+      "group_label": "External Services & Handoffs",
+      "group_order": 9,
+      "group_position": 1,
+      "decimal_id": "09.01",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "agent_users",
+        "cloning_planning"
+      ],
+      "notes": "Safe handoff rehearsal for Metabion oligo and m-block requests through the shared provider catalog, preflight, and quote bundle contracts; no vendor submission.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "geneart_external_service_handoff_gui_cli",
+      "title": "Prepare a GeneArt Handoff from Shared External-Service Contracts",
+      "path": "docs/tutorial/09-02_geneart_external_service_handoff_gui_cli.md",
+      "group": "09",
+      "group_label": "External Services & Handoffs",
+      "group_order": 9,
+      "group_position": 2,
+      "decimal_id": "09.02",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "agent_users",
+        "clawbio",
+        "cloning_planning",
+        "protein_workflows"
+      ],
+      "notes": "Safe GeneArt cloned-gene and protein-expression quote-handoff rehearsal through the shared provider catalog, preflight, quote bundle, and return_spec contracts; no vendor submission.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "protein_expression_handoff_cli",
+      "title": "Plan a High-Yield Protein-Expression Handoff",
+      "path": "docs/tutorial/09-03_protein_expression_handoff_cli.md",
+      "group": "09",
+      "group_label": "External Services & Handoffs",
+      "group_order": 9,
+      "group_position": 3,
+      "decimal_id": "09.03",
+      "type": "cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "cli_first",
+        "agent_users",
+        "clawbio",
+        "cloning_planning",
+        "protein_workflows",
+        "synthetic_biology"
+      ],
+      "notes": "CLI/agent walkthrough for turning an underspecified high-yield protein-production request into a read-only GENtle handoff report with explicit chassis, route, missing-question, and GeneArt preflight scaffolding.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "simple_pcr_selection_gui",
       "title": "Simple PCR From a Selected Core Region",
-      "path": "docs/tutorial/simple_pcr_selection_gui.md",
+      "path": "docs/tutorial/04-01_simple_pcr_selection_gui.md",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 1,
+      "decimal_id": "04.01",
       "type": "gui_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
@@ -176,12 +347,20 @@
         "new_users",
         "primer_design"
       ],
-      "notes": "Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length."
+      "notes": "Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "protein_transcript_native_expert_gui",
       "title": "Transcript-Native Protein Expert Sanity Check",
-      "path": "docs/tutorial/protein_transcript_native_expert_gui.md",
+      "path": "docs/tutorial/06-02_protein_transcript_native_expert_gui.md",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 2,
+      "decimal_id": "06.02",
       "type": "gui_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
@@ -190,12 +369,20 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "Local-first manual check for transcript-native Protein Expert opening, provenance visibility, and derived-only SVG export."
+      "notes": "Local-first manual check for transcript-native Protein Expert opening, provenance visibility, and derived-only SVG export.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "protein_reverse_translation_gui",
       "title": "Reverse Translate an Imported Protein and Audit the Result",
-      "path": "docs/tutorial/protein_reverse_translation_gui.md",
+      "path": "docs/tutorial/06-01_protein_reverse_translation_gui.md",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 1,
+      "decimal_id": "06.01",
       "type": "gui_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
@@ -204,12 +391,20 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "GUI-first manual check for Ensembl protein import, reverse translation, provenance inspection, and lineage reopen."
+      "notes": "GUI-first manual check for Ensembl protein import, reverse translation, provenance inspection, and lineage reopen.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "vkorc1_variant_followup_expert_gui",
       "title": "Promoter Design for VKORC1 / rs9923231",
-      "path": "docs/tutorial/vkorc1_variant_followup_expert_gui.md",
+      "path": "docs/tutorial/08-02_vkorc1_variant_followup_expert_gui.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 2,
+      "decimal_id": "08.02",
       "type": "gui_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
@@ -218,12 +413,20 @@
         "cloning_planning",
         "pharmacogenomics"
       ],
-      "notes": "Shortest GUI path for the current ClawBio-facing story: start from the dbSNP marker, drive the dedicated Promoter design window, and export one portable promoter-reporter handoff bundle."
+      "notes": "Shortest GUI path for the current ClawBio-facing story: start from the dbSNP marker, drive the dedicated Promoter design window, and export one portable promoter-reporter handoff bundle.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "tp73_uniprot_projection_audit_cli",
       "title": "Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)",
-      "path": "docs/tutorial/tp73_uniprot_projection_audit_cli.md",
+      "path": "docs/tutorial/06-05_tp73_uniprot_projection_audit_cli.md",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 5,
+      "decimal_id": "06.05",
       "type": "cli_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
@@ -233,12 +436,20 @@
         "agent_users",
         "contributors"
       ],
-      "notes": "CLI-first walkthrough for the integrated TP73 UniProt/Ensembl projection audit, the reusable low-level primitives, parity comparison, and the unsent maintainer-email draft."
+      "notes": "CLI-first walkthrough for the integrated TP73 UniProt/Ensembl projection audit, the reusable low-level primitives, parity comparison, and the unsent maintainer-email draft.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "qpcr_exon_junctions_gui",
       "title": "qPCR Across Exon Junctions",
-      "path": "docs/tutorial/qpcr_exon_junctions_gui.md",
+      "path": "docs/tutorial/04-03_qpcr_exon_junctions_gui.md",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 3,
+      "decimal_id": "04.03",
       "type": "gui_walkthrough",
       "status": "manual/hybrid",
       "source": "hand_written_markdown",
@@ -248,7 +459,556 @@
         "primer_design",
         "contributors"
       ],
-      "notes": "GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including junction-only transcript evidence and shared-shell parity commands."
+      "notes": "GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including junction-only transcript evidence and shared-shell parity commands.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "load_branch_reverse_complement_pgex_fasta",
+      "title": "Load FASTA, branch, and reverse-complement",
+      "path": "docs/tutorial/generated/chapters/02-01_load_branch_reverse_complement_pgex_fasta.md",
+      "group": "02",
+      "group_label": "Sequence Basics & Lineage",
+      "group_order": 2,
+      "group_position": 1,
+      "decimal_id": "02.01",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "new_users",
+        "cli_first",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "review_status": "human_reviewed",
+      "human_reviewed_at": "2026-05-18",
+      "human_reviewer": "smoe",
+      "review_stale": true,
+      "review_stale_reason": "source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "find_and_extend_genomic_target_local_catalog",
+      "title": "Find and extend the right genomic target (local catalog)",
+      "path": "docs/tutorial/generated/chapters/05-01_find_and_extend_genomic_target_local_catalog.md",
+      "group": "05",
+      "group_label": "Genome Context & Coordinates",
+      "group_order": 5,
+      "group_position": 1,
+      "decimal_id": "05.01",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "new_users",
+        "gui_first",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "load_and_digest_pgex",
+      "title": "Load pGEX and digest with BamHI/EcoRI",
+      "path": "docs/tutorial/generated/chapters/03-01_load_and_digest_pgex.md",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 1,
+      "decimal_id": "03.01",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "new_users",
+        "cloning_planning",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "gibson_two_fragment_overlap_preview",
+      "title": "Gibson two-fragment overlap planning baseline",
+      "path": "docs/tutorial/generated/chapters/03-03_gibson_two_fragment_overlap_preview.md",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 3,
+      "decimal_id": "03.03",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "cloning_planning",
+        "gui_first",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "guides_filter_and_generate_oligos",
+      "title": "Guide practical filtering and oligo generation",
+      "path": "docs/tutorial/generated/chapters/04-04_guides_filter_and_generate_oligos.md",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 4,
+      "decimal_id": "04.04",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "cloning_planning",
+        "cli_first",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "digest_ligation_extract_region_minimal",
+      "title": "Digest -> Ligation -> ExtractRegion minimal slice",
+      "path": "docs/tutorial/generated/chapters/03-02_digest_ligation_extract_region_minimal.md",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 2,
+      "decimal_id": "03.02",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "cloning_planning",
+        "cli_first",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "guides_export_csv_and_protocol",
+      "title": "Guide oligo export (CSV + protocol)",
+      "path": "docs/tutorial/generated/chapters/04-05_guides_export_csv_and_protocol.md",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 5,
+      "decimal_id": "04.05",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "cli_first",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "contribute_to_gentle_development",
+      "title": "Contribute to GENtle development",
+      "path": "docs/tutorial/generated/chapters/01-02_contribute_to_gentle_development.md",
+      "group": "01",
+      "group_label": "Getting Started & Interfaces",
+      "group_order": 1,
+      "group_position": 2,
+      "decimal_id": "01.02",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "prepare_reference_genome_online",
+      "title": "Prepare a reference genome cache (online)",
+      "path": "docs/tutorial/generated/chapters/05-02_prepare_reference_genome_online.md",
+      "group": "05",
+      "group_label": "Genome Context & Coordinates",
+      "group_order": 5,
+      "group_position": 2,
+      "decimal_id": "05.02",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "online_workflows",
+        "genome_catalog_targeting",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "tp53_isoform_architecture_online",
+      "title": "TP53 isoform architecture expert panel (online)",
+      "path": "docs/tutorial/generated/chapters/06-03_tp53_isoform_architecture_online.md",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 3,
+      "decimal_id": "06.03",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "online_workflows",
+        "sequence_analysis",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "tp63_anchor_extension_online",
+      "title": "Retrieve TP63 and extend the displayed region by +/-2 kb (online)",
+      "path": "docs/tutorial/generated/chapters/05-03_tp63_anchor_extension_online.md",
+      "group": "05",
+      "group_label": "Genome Context & Coordinates",
+      "group_order": 5,
+      "group_position": 3,
+      "decimal_id": "05.03",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "online_workflows",
+        "genome_catalog_targeting",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "tp53_multi_gene_sparse_mapping_online",
+      "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
+      "path": "docs/tutorial/generated/chapters/07-02_tp53_multi_gene_sparse_mapping_online.md",
+      "group": "07",
+      "group_label": "RNA Reads, Splicing & Expression",
+      "group_order": 7,
+      "group_position": 2,
+      "decimal_id": "07.02",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "online_workflows",
+        "sequence_analysis",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "pcr_selection_batch_primer_pairs_offline",
+      "title": "Selection-first PCR batch primer design (offline)",
+      "path": "docs/tutorial/generated/chapters/04-02_pcr_selection_batch_primer_pairs_offline.md",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 2,
+      "decimal_id": "04.02",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "primer_design",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "tp73_cdna_genomic_dotplot_online",
+      "title": "Compare TP73 cDNA against TP73 genomic context via dotplot (online)",
+      "path": "docs/tutorial/generated/chapters/02-04_tp73_cdna_genomic_dotplot_online.md",
+      "group": "02",
+      "group_label": "Sequence Basics & Lineage",
+      "group_order": 2,
+      "group_position": 4,
+      "decimal_id": "02.04",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "online_workflows",
+        "sequence_analysis",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "gibson_specialist_testing_baseline",
+      "title": "Gibson Specialist Starter Project (offline)",
+      "path": "docs/tutorial/generated/chapters/03-04_gibson_specialist_testing_baseline.md",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 4,
+      "decimal_id": "03.04",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "cloning_planning",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "gibson_arrangements_baseline",
+      "title": "Gibson Arrangements Starter Project (offline)",
+      "path": "docs/tutorial/generated/chapters/03-06_gibson_arrangements_baseline.md",
+      "group": "03",
+      "group_label": "Cloning & Assembly",
+      "group_order": 3,
+      "group_position": 6,
+      "decimal_id": "03.06",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "cloning_planning",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "tp53_uniprot_projection_online",
+      "title": "TP53 UniProt domain mapping and feature-coding DNA query (online)",
+      "path": "docs/tutorial/generated/chapters/06-04_tp53_uniprot_projection_online.md",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 4,
+      "decimal_id": "06.04",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "online_workflows",
+        "protein_workflows",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "promoter_design_artifact_slice_offline",
+      "title": "Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)",
+      "path": "docs/tutorial/generated/chapters/08-03_promoter_design_artifact_slice_offline.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 3,
+      "decimal_id": "08.03",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "cloning_planning",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "review_status": "human_reviewed",
+      "human_reviewed_at": "2026-05-18",
+      "human_reviewer": "smoe",
+      "review_stale": true,
+      "review_stale_reason": "source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg",
+          "caption": "TFBS score tracks across the synthetic TP73 promoter slice.",
+          "illustrates_step": 8,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ]
+    },
+    {
+      "id": "reporter_construct_handoff_cli",
+      "title": "Plan a Reporter Construct Handoff from a Saved Candidate Set",
+      "path": "docs/tutorial/08-05_reporter_construct_handoff_cli.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 5,
+      "decimal_id": "08.05",
+      "type": "cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "cli_first",
+        "agent_users",
+        "cloning_planning",
+        "synthetic_biology"
+      ],
+      "notes": "CLI/agent walkthrough for turning a saved promoter-reporter candidate set into a read-only luciferase macro handoff plan with typed readiness and explicit follow-up commands.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "stateless_sequence_inspection_gui_cli",
+      "title": "Stateless Sequence Inspection Tutorial",
+      "path": "docs/tutorial/02-02_stateless_sequence_inspection_gui_cli.md",
+      "group": "02",
+      "group_label": "Sequence Basics & Lineage",
+      "group_order": 2,
+      "group_position": 2,
+      "decimal_id": "02.02",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "clawbio",
+        "sequence_analysis"
+      ],
+      "notes": "Parity walkthrough for direct restriction-site, TFBS hit, and TFBS score-track inspection from pasted or local DNA without first creating project state.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "tfbs_similarity_ranking_gui",
+      "title": "TFBS Similarity Ranking Tutorial",
+      "path": "docs/tutorial/08-01_tfbs_similarity_ranking_gui.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 1,
+      "decimal_id": "08.01",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "sequence_analysis",
+        "regulatory_analysis",
+        "clawbio"
+      ],
+      "notes": "GUI sign-off tutorial for ranking candidate transcription-factor motifs against one anchor motif over the same DNA span, with JSON export and workflow/ClawBio replay links.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "promoter_motif_control_comparison",
+      "title": "Promoter Motif Control-Set Comparison Tutorial",
+      "path": "docs/tutorial/08-06_promoter_motif_control_comparison.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 6,
+      "decimal_id": "08.06",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "regulatory_analysis",
+        "contributors"
+      ],
+      "notes": "Promoter-region interpretation tutorial for common motif search, foreground-vs-control motif review, and conservative over-/under-representation screening of motif signals and motif co-occurrence.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "promoter_gene_set_ortholog_cohort_offline",
+      "title": "Promoter Cohorts With Gene-Set and Ortholog Relationship Flags",
+      "path": "docs/tutorial/generated/chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 7,
+      "decimal_id": "08.07",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "regulatory_analysis",
+        "contributors"
+      ],
+      "notes": "Machine-checked offline chapter for declared promoter-cohort relationships, unexpected-divergence flags, and local ortholog promoter cohorts.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "gene_set_ortholog_promoter_cohorts_offline",
+      "title": "Gene-Set and Ortholog Promoter Cohorts (Offline Synthetic TP73 Demo)",
+      "path": "docs/tutorial/generated/chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 8,
+      "decimal_id": "08.08",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "cli_first",
+        "regulatory_analysis",
+        "contributors"
+      ],
+      "notes": "Machine-checked generated chapter for offline gene-set and ortholog promoter cohort relationship flags.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-06-25"
     }
   ]
 }

@@ -1,0 +1,390 @@
+{
+  "schema": "gentle.publication_datasets.v1",
+  "publication": {
+    "id": "rostock_p73_multimodal_2026",
+    "title": "Integrative Multimodal Profiling of TAp73 and DNp73 Reveals Isoform-Specific Transcriptomic Coregulator Landscapes in Cancer Programs",
+    "doi": "10.3390/biom16010063",
+    "article_url": "https://www.mdpi.com/2218-273X/16/1/63",
+    "code_url": "https://github.com/IEGT/jaspar-mapping",
+    "authors": [
+      "Steffen Möller",
+      "Alf Spitschak",
+      "Nico Murr",
+      "Brigitte M. Pützer"
+    ]
+  },
+  "datasets": [
+    {
+      "dataset_id": "rostock_p73_clariomd_e_mtab_14704",
+      "accession": "E-MTAB-14704",
+      "repository": "ArrayExpress/BioStudies",
+      "assay_kind": "Affymetrix Clariom D transcriptome microarray",
+      "title": "SK-Mel-29 p73 isoform Clariom D transcriptome data",
+      "description": "Affymetrix Clariom D CEL files and MAGE-TAB metadata for SK-Mel-29 AdGFP, AdTAp73alpha, and AdDNp73beta transcriptome profiling.",
+      "landing_url": "https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14704",
+      "api_url": "https://www.ebi.ac.uk/biostudies/api/v1/studies/E-MTAB-14704",
+      "file_listing_url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/",
+      "notes": [
+        "Public BioStudies FTP directory verified on 2026-05-03.",
+        "The BioStudies study API returned an EBI 500 page during local verification; the FTP directory is therefore the deterministic download source in this catalog."
+      ],
+      "files": [
+        {
+          "file_name": "E-MTAB-14704.idf.txt",
+          "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/E-MTAB-14704.idf.txt",
+          "category": "metadata",
+          "size_label": "2.5K"
+        },
+        {
+          "file_name": "E-MTAB-14704.sdrf.txt",
+          "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/E-MTAB-14704.sdrf.txt",
+          "category": "metadata",
+          "size_label": "3.4K"
+        },
+        {
+          "file_name": "P_SKMel29_AdDNp73beta_1.CEL",
+          "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdDNp73beta_1.CEL",
+          "category": "raw_microarray",
+          "size_label": "66M"
+        },
+        {
+          "file_name": "P_SKMel29_AdDNp73beta_2.CEL",
+          "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdDNp73beta_2.CEL",
+          "category": "raw_microarray",
+          "size_label": "66M"
+        },
+        {
+          "file_name": "P_SKMel29_AdDNp73beta_3.CEL",
+          "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdDNp73beta_3.CEL",
+          "category": "raw_microarray",
+          "size_label": "66M"
+        },
+        {
+          "file_name": "P_SKMel29_AdGFP_1.CEL",
+          "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdGFP_1.CEL",
+          "category": "raw_microarray",
+          "size_label": "66M"
+        },
+        {
+          "file_name": "P_SKMel29_AdGFP_2.CEL",
+          "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdGFP_2.CEL",
+          "category": "raw_microarray",
+          "size_label": "66M"
+        },
+        {
+          "file_name": "P_SKMel29_AdGFP_3.CEL",
+          "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdGFP_3.CEL",
+          "category": "raw_microarray",
+          "size_label": "66M"
+        },
+        {
+          "file_name": "P_SKMel29_AdTAp73alpha_1.CEL",
+          "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdTAp73alpha_1.CEL",
+          "category": "raw_microarray",
+          "size_label": "66M"
+        },
+        {
+          "file_name": "P_SKMel29_AdTAp73alpha_2.CEL",
+          "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdTAp73alpha_2.CEL",
+          "category": "raw_microarray",
+          "size_label": "66M"
+        },
+        {
+          "file_name": "P_SKMel29_AdTAp73alpha_3.CEL",
+          "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdTAp73alpha_3.CEL",
+          "category": "raw_microarray",
+          "size_label": "66M"
+        }
+      ]
+    },
+    {
+      "dataset_id": "rostock_p73_cutrun_e_mtab_15709",
+      "accession": "E-MTAB-15709",
+      "repository": "ArrayExpress/BioStudies",
+      "assay_kind": "CUT&RUN sequencing",
+      "title": "SK-Mel-29 p73 isoform CUT&RUN sequencing data",
+      "description": "CUT&RUN sequencing data for SK-Mel-29 cells expressing TAp73alpha, DNp73beta, or control, associated with the p73 multimodal profiling study.",
+      "landing_url": "https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-15709",
+      "api_url": "https://www.ebi.ac.uk/ena/portal/api/filereport?accession=PRJEB100610&result=read_run&format=json",
+      "file_listing_url": "https://www.ebi.ac.uk/ena/portal/api/filereport?accession=PRJEB100610&result=read_run&fields=run_accession,experiment_accession,sample_alias,library_layout,fastq_ftp,fastq_bytes,fastq_md5&format=tsv",
+      "notes": [
+        "The publication records E-MTAB-15709 as the CUT&RUN ArrayExpress accession.",
+        "NCBI SRA E-utilities resolved E-MTAB-15709 to ERP182066/PRJEB100610 and twelve public paired-end runs on 2026-05-05.",
+        "ENA Portal API exposed concrete paired FASTQ URLs, byte counts, and MD5 checksums on 2026-05-05; GENtle records the download URLs but keeps full CUT&RUN acquisition explicit because the payload is multi-GB."
+      ],
+      "files": [
+        {
+          "file_name": "ERR15695857_1.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/057/ERR15695857/ERR15695857_1.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "591M",
+          "size_bytes": 591249078,
+          "checksum_md5": "9bf39f108c617747d99479ad3162a6e1"
+        },
+        {
+          "file_name": "ERR15695857_2.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/057/ERR15695857/ERR15695857_2.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "612M",
+          "size_bytes": 612347258,
+          "checksum_md5": "9bc090058e78801e55449e46be70f5b3"
+        },
+        {
+          "file_name": "ERR15695855_1.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/055/ERR15695855/ERR15695855_1.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "628M",
+          "size_bytes": 628012125,
+          "checksum_md5": "6dcd3848d325115a99c6451fa322bf63"
+        },
+        {
+          "file_name": "ERR15695855_2.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/055/ERR15695855/ERR15695855_2.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "646M",
+          "size_bytes": 645979529,
+          "checksum_md5": "bb765e2bc856ba46ad0dcfda3d4a00b9"
+        },
+        {
+          "file_name": "ERR15695856_1.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/056/ERR15695856/ERR15695856_1.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "562M",
+          "size_bytes": 561939584,
+          "checksum_md5": "c614d709a0ce26a1ca9a5aa99f8f02af"
+        },
+        {
+          "file_name": "ERR15695856_2.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/056/ERR15695856/ERR15695856_2.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "571M",
+          "size_bytes": 570726652,
+          "checksum_md5": "d21750204769eaa55739a5066cfa4857"
+        },
+        {
+          "file_name": "ERR15695854_1.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/054/ERR15695854/ERR15695854_1.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "479M",
+          "size_bytes": 479304832,
+          "checksum_md5": "00db2d8d40a3f5a01cebc6e3dc15df25"
+        },
+        {
+          "file_name": "ERR15695854_2.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/054/ERR15695854/ERR15695854_2.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "487M",
+          "size_bytes": 487084234,
+          "checksum_md5": "2b09d6077f093813f437019724198f8c"
+        },
+        {
+          "file_name": "ERR15695852_1.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/052/ERR15695852/ERR15695852_1.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "575M",
+          "size_bytes": 574598631,
+          "checksum_md5": "5bf17c6d4dc196f8d4e6478bd7897e13"
+        },
+        {
+          "file_name": "ERR15695852_2.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/052/ERR15695852/ERR15695852_2.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "586M",
+          "size_bytes": 586123551,
+          "checksum_md5": "cfc481fc95b1b52e4cf61609ad3ae6a7"
+        },
+        {
+          "file_name": "ERR15695853_1.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/053/ERR15695853/ERR15695853_1.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "538M",
+          "size_bytes": 538065978,
+          "checksum_md5": "1730276a7ede5739fb00e9288d92d2cc"
+        },
+        {
+          "file_name": "ERR15695853_2.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/053/ERR15695853/ERR15695853_2.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "549M",
+          "size_bytes": 549147756,
+          "checksum_md5": "82c4fd8968f99dc118169f9ba2d76a67"
+        },
+        {
+          "file_name": "ERR15695860_1.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/060/ERR15695860/ERR15695860_1.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "551M",
+          "size_bytes": 551080498,
+          "checksum_md5": "3cbed19d13548b7c737aa70066e2423f"
+        },
+        {
+          "file_name": "ERR15695860_2.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/060/ERR15695860/ERR15695860_2.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "573M",
+          "size_bytes": 573307451,
+          "checksum_md5": "20adc7e1c5173c9a8da3c861d8b7b70a"
+        },
+        {
+          "file_name": "ERR15695858_1.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/058/ERR15695858/ERR15695858_1.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "685M",
+          "size_bytes": 684643378,
+          "checksum_md5": "b7568a89f8bcc4a5dfa815bdbfb872cb"
+        },
+        {
+          "file_name": "ERR15695858_2.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/058/ERR15695858/ERR15695858_2.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "712M",
+          "size_bytes": 712348044,
+          "checksum_md5": "74592ff0a9a9f8048ecf1042ab06d681"
+        },
+        {
+          "file_name": "ERR15695859_1.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/059/ERR15695859/ERR15695859_1.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "654M",
+          "size_bytes": 653837270,
+          "checksum_md5": "cc1d05d27ff67698fdd82aa6561051e2"
+        },
+        {
+          "file_name": "ERR15695859_2.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/059/ERR15695859/ERR15695859_2.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "685M",
+          "size_bytes": 684627974,
+          "checksum_md5": "e5a6b05ae1d5f5c27d94e8cbcc173dd9"
+        },
+        {
+          "file_name": "ERR15695851_1.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/051/ERR15695851/ERR15695851_1.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "587M",
+          "size_bytes": 587479370,
+          "checksum_md5": "30b5c7f6488ea4b7105ee37c95cb5d33"
+        },
+        {
+          "file_name": "ERR15695851_2.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/051/ERR15695851/ERR15695851_2.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "613M",
+          "size_bytes": 612549726,
+          "checksum_md5": "36322957cee39d5919e1bf66a1aba256"
+        },
+        {
+          "file_name": "ERR15695849_1.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/049/ERR15695849/ERR15695849_1.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "615M",
+          "size_bytes": 614533988,
+          "checksum_md5": "0c8b80e31436e93b1a66774053df5a41"
+        },
+        {
+          "file_name": "ERR15695849_2.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/049/ERR15695849/ERR15695849_2.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "645M",
+          "size_bytes": 645193844,
+          "checksum_md5": "4afcd0686ed595980b50aa44f6c9b886"
+        },
+        {
+          "file_name": "ERR15695850_1.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/050/ERR15695850/ERR15695850_1.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "611M",
+          "size_bytes": 610569864,
+          "checksum_md5": "21ea1724783be0dde5bd3290c00d5d0c"
+        },
+        {
+          "file_name": "ERR15695850_2.fastq.gz",
+          "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/050/ERR15695850/ERR15695850_2.fastq.gz",
+          "category": "raw_cutrun_fastq",
+          "size_label": "640M",
+          "size_bytes": 640063808,
+          "checksum_md5": "f5bd3d3957e60d6a7d1079b0bb4461c6"
+        }
+      ]
+    },
+    {
+      "dataset_id": "rostock_p73_proteomics_pxd058816",
+      "accession": "PXD058816",
+      "repository": "PRIDE",
+      "assay_kind": "Co-IP LC-MS/MS proteomics",
+      "title": "Characterization of TAp73alpha protein interaction partners",
+      "description": "PRIDE raw and search-output files for Co-IP/MS characterization of TAp73alpha protein interaction partners.",
+      "landing_url": "https://www.ebi.ac.uk/pride/archive/projects/PXD058816",
+      "api_url": "https://www.ebi.ac.uk/pride/ws/archive/v2/projects/PXD058816",
+      "file_listing_url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/",
+      "notes": [
+        "Public PRIDE FTP directory and PRIDE v2 project/files API verified on 2026-05-03.",
+        "Raw files are large; use the prepared download script or --download-files deliberately."
+      ],
+      "files": [
+        {
+          "file_name": "190607_HFx_UL_BMFZ_Ctrl_1.msf",
+          "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_1.msf",
+          "category": "search_output",
+          "size_label": "928M"
+        },
+        {
+          "file_name": "190607_HFx_UL_BMFZ_Ctrl_1.raw",
+          "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_1.raw",
+          "category": "raw_mass_spectrometry",
+          "size_label": "2.5G"
+        },
+        {
+          "file_name": "190607_HFx_UL_BMFZ_Ctrl_2.msf",
+          "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_2.msf",
+          "category": "search_output",
+          "size_label": "754M",
+          "size_bytes": 790822912
+        },
+        {
+          "file_name": "190607_HFx_UL_BMFZ_Ctrl_2.raw",
+          "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_2.raw",
+          "category": "raw_mass_spectrometry",
+          "size_label": "2.2G"
+        },
+        {
+          "file_name": "190607_HFx_UL_BMFZ_TAp73_1.msf",
+          "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_1.msf",
+          "category": "search_output",
+          "size_label": "904M"
+        },
+        {
+          "file_name": "190607_HFx_UL_BMFZ_TAp73_1.raw",
+          "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_1.raw",
+          "category": "raw_mass_spectrometry",
+          "size_label": "2.5G"
+        },
+        {
+          "file_name": "190607_HFx_UL_BMFZ_TAp73_2.msf",
+          "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_2.msf",
+          "category": "search_output",
+          "size_label": "1.0G",
+          "size_bytes": 1113673728
+        },
+        {
+          "file_name": "190607_HFx_UL_BMFZ_TAp73_2.raw",
+          "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_2.raw",
+          "category": "raw_mass_spectrometry",
+          "size_label": "2.8G"
+        },
+        {
+          "file_name": "Human_uniprot_01_2017.fasta",
+          "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/Human_uniprot_01_2017.fasta",
+          "category": "reference_database",
+          "size_label": "13M"
+        },
+        {
+          "file_name": "checksum.txt",
+          "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/checksum.txt",
+          "category": "checksum",
+          "size_label": "1.2K"
+        }
+      ]
+    }
+  ]
+}
