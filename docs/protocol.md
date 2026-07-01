@@ -2732,6 +2732,9 @@ Microarray track projection notes:
   transcript/exon-geometry constraint visualization: it does not synthesize
   non-overlapped exons, reconstruct full gene models, infer isoform support,
   assess probe sequence specificity, or decide multi-hit status.
+  The GUI Splicing Expert consumes the same `junction_spans[]` rows to surface
+  junction-targeting array probes as review-only evidence next to transcript
+  geometry.
 - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR` projects selected or
   all `log2FC_*` helper-output rows into the existing genome-anchored array
   feature model (`gentle_array_*` qualifiers and

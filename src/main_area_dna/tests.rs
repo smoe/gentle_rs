@@ -4801,6 +4801,7 @@ fn splicing_expert_array_probe_geometry_rows_include_exon_overlap_probes() {
         .expect("exon-overlap PM probe row");
     assert!(exon_row.tooltip.contains("probe overlaps exon 1"));
     assert_eq!(exon_row.level, "pm_probe");
+    assert_eq!(exon_row.evidence_kind, "exon-overlap probe");
     assert_ne!(exon_row.parent_feature_id, exon_row.feature_id);
 }
 
@@ -4819,16 +4820,38 @@ fn splicing_expert_array_probe_geometry_rows_include_junction_probe_labels() {
                 .any(|label| label.contains("exon 1-exon 2 junction"))
         })
         .expect("junction-spanning PM probe row");
+    assert_eq!(junction_row.evidence_kind, "junction-spanning probe");
     assert!(
         junction_row
             .tooltip
             .contains("probe spans exon 1-exon 2 junction")
+    );
+    assert!(
+        junction_row
+            .tooltip
+            .contains("junction-spanning array probe")
     );
     assert!(junction_row.parent_mixes_transcript_features);
     assert!(
         junction_row
             .tooltip
             .contains("parent probeset contains probes across multiple transcript features")
+    );
+}
+
+#[test]
+fn splicing_expert_array_probe_geometry_summary_counts_junction_rows() {
+    let (_area, view, report) =
+        make_tp73_probe_region_validation_area_with_splicing_view_and_report();
+
+    let rows = MainAreaDna::array_probe_geometry_rows_for_splicing_view(&report, &view);
+    let summary = MainAreaDna::array_probe_geometry_summary_text(&rows);
+
+    assert!(summary.contains("junction-spanning row(s)"));
+    assert!(summary.contains("exon-overlap/other row(s)"));
+    assert!(
+        rows.iter()
+            .any(|row| row.evidence_kind == "junction-spanning probe")
     );
 }
 
@@ -13371,6 +13394,7 @@ fn tooltip_help_splicing_expert_window_mentions_transcripts_and_rna_reads() {
     assert!(help.contains("transcript"));
     assert!(help.contains("primer/qPCR"));
     assert!(help.contains("RNA-read evidence"));
+    assert!(help.contains("junction-spanning array probe"));
 }
 
 #[test]

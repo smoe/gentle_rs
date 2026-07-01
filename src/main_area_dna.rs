@@ -1054,6 +1054,8 @@ struct ArrayProbeGeometryUiRow {
     transcript_id: String,
     level: String,
     intensity_source: String,
+    evidence_kind: String,
+    logfc: Option<f64>,
     coordinate_label: String,
     mapping_kind: String,
     mapping_status: String,
@@ -16195,6 +16197,8 @@ impl MainAreaDna {
         let mapping_kind = mapping
             .map(|mapping| mapping.mapping_kind.clone())
             .unwrap_or_else(|| "unresolved".to_string());
+        let evidence_kind =
+            Self::array_probe_geometry_evidence_kind(&junction_labels, &exon_labels, &mapping_kind);
         let parent_feature_id = evidence
             .parent_feature_id
             .clone()
@@ -16217,6 +16221,8 @@ impl MainAreaDna {
                 .intensity_source
                 .clone()
                 .unwrap_or_else(|| "summary".to_string()),
+            evidence_kind,
+            logfc: evidence.logfc,
             coordinate_label,
             mapping_kind,
             mapping_status: evidence.mapping_status.clone(),
@@ -16228,6 +16234,38 @@ impl MainAreaDna {
             parent_mixes_transcript_features,
             tooltip,
         }
+    }
+
+    fn array_probe_geometry_evidence_kind(
+        junction_labels: &[String],
+        exon_labels: &[String],
+        mapping_kind: &str,
+    ) -> String {
+        if !junction_labels.is_empty() {
+            "junction-spanning probe".to_string()
+        } else if !exon_labels.is_empty() {
+            "exon-overlap probe".to_string()
+        } else if mapping_kind.contains("transcript_span") {
+            "transcript-span probe".to_string()
+        } else {
+            "unresolved probe".to_string()
+        }
+    }
+
+    fn array_probe_geometry_summary_text(rows: &[ArrayProbeGeometryUiRow]) -> String {
+        let junction_rows = rows
+            .iter()
+            .filter(|row| !row.junction_labels.is_empty())
+            .count();
+        let exon_or_other_rows = rows.len().saturating_sub(junction_rows);
+        let parent_count = rows
+            .iter()
+            .map(|row| row.parent_feature_id.as_str())
+            .collect::<BTreeSet<_>>()
+            .len();
+        format!(
+            "{junction_rows} junction-spanning row(s); {exon_or_other_rows} exon-overlap/other row(s); {parent_count} parent probeset(s)"
+        )
     }
 
     fn array_probe_geometry_exon_labels(
@@ -16305,6 +16343,17 @@ impl MainAreaDna {
         }
         for label in junction_labels {
             lines.push(format!("probe spans {label}"));
+        }
+        if !junction_labels.is_empty() {
+            lines.push(
+                "junction-spanning array probe: useful for design review, but still not direct splice-read support."
+                    .to_string(),
+            );
+        }
+        if let Some(logfc) = evidence.logfc
+            && logfc.is_finite()
+        {
+            lines.push(format!("logFC: {logfc:.3}"));
         }
         if parent_mixes_transcript_features {
             lines.push(
@@ -24142,7 +24191,7 @@ impl MainAreaDna {
     }
 
     fn splicing_expert_window_help_text() -> &'static str {
-        "This window explains one splicing group through five complementary views:\n- annotation-derived transcript and exon structure\n- splice-site donor/acceptor motif classes for the annotated introns\n- conservative acceptor-proximal intron heuristics (branchpoint-like adenines and polypyrimidine-rich tracts)\n- array probe geometry constraints from loaded probe-region reports\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels driven by saved mapping reports for this locus\n\nUse the transcript selector for transcript-level actions. Array probe geometry is review-only design/alignment evidence; RNA-read runs and workflow controls live in the dedicated RNA-read Mapping workspace. The Splicing Expert stays annotation-first and report-viewer-first."
+        "This window explains one splicing group through five complementary views:\n- annotation-derived transcript and exon structure\n- splice-site donor/acceptor motif classes for the annotated introns\n- conservative acceptor-proximal intron heuristics (branchpoint-like adenines and polypyrimidine-rich tracts)\n- array probe geometry constraints from loaded probe-region reports, including junction-spanning array probe rows when a report spans annotated exon-exon boundaries\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels driven by saved mapping reports for this locus\n\nUse the transcript selector for transcript-level actions. Array probe geometry is review-only design/alignment evidence; RNA-read runs and workflow controls live in the dedicated RNA-read Mapping workspace. The Splicing Expert stays annotation-first and report-viewer-first."
     }
 
     fn rna_read_mapping_parameter_section_title() -> &'static str {

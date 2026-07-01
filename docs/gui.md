@@ -894,6 +894,8 @@ Feature tree grouping:
     splicing locus
   - lists exon-overlap PM probes, exon-exon junction-spanning probes, parent
     probeset grouping, and ambiguity/unresolved mapping tags
+  - promotes junction-spanning probe rows into a compact
+    `Junction-targeting array probes` preview before the full geometry table
   - this is a review-only array design/alignment constraint layer, separate
     from RNA-read evidence; it does not infer isoform support by itself
 - The Splicing Expert now also includes an `ATtRACT / RBP evidence` section:

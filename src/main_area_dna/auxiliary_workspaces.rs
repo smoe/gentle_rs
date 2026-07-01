@@ -5958,10 +5958,117 @@ impl MainAreaDna {
                 report.array_feature_count,
                 report.level
             ));
+            ui.small(Self::array_probe_geometry_summary_text(&rows));
             if let Some(gene) = report.gene_label.as_deref() {
                 ui.small(format!("gene {gene}"));
             }
         });
+        let junction_rows = rows
+            .iter()
+            .filter(|row| !row.junction_labels.is_empty())
+            .collect::<Vec<_>>();
+        if !junction_rows.is_empty() {
+            ui.add_space(3.0);
+            ui.label(
+                egui::RichText::new("Junction-targeting array probes")
+                    .strong()
+                    .size(self.feature_details_font_size()),
+            );
+            ui.small(
+                egui::RichText::new(
+                    "These rows span annotated exon-exon boundaries in the probe-region report. Treat them as array design/alignment evidence, not as observed splice-junction reads.",
+                )
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            egui::Grid::new((
+                "splicing_array_probe_geometry_junction_grid",
+                id_namespace,
+                view.seq_id.as_str(),
+                view.target_feature_id,
+            ))
+            .striped(true)
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new("transcript").monospace().strong());
+                ui.label(egui::RichText::new("probe").monospace().strong());
+                ui.label(egui::RichText::new("parent").monospace().strong());
+                ui.label(egui::RichText::new("junction").strong());
+                ui.label(egui::RichText::new("logFC").strong());
+                ui.label(egui::RichText::new("status").strong());
+                ui.end_row();
+                for row in junction_rows.iter().take(12) {
+                    ui.label(
+                        egui::RichText::new(row.transcript_id.as_str())
+                            .monospace()
+                            .size(9.0),
+                    )
+                    .on_hover_text(row.tooltip.as_str());
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} {}",
+                            row.feature_id,
+                            if row.intensity_source == "probe_level_input" {
+                                "PM"
+                            } else {
+                                "summary"
+                            }
+                        ))
+                        .monospace()
+                        .size(9.0),
+                    )
+                    .on_hover_text(row.tooltip.as_str());
+                    ui.label(
+                        egui::RichText::new(row.parent_feature_id.as_str())
+                            .monospace()
+                            .size(9.0)
+                            .color(if row.parent_mixes_transcript_features {
+                                egui::Color32::from_rgb(146, 64, 14)
+                            } else {
+                                egui::Color32::from_rgb(71, 85, 105)
+                            }),
+                    )
+                    .on_hover_text(row.tooltip.as_str());
+                    ui.label(
+                        egui::RichText::new(row.junction_labels.join(", "))
+                            .size(9.0)
+                            .color(egui::Color32::from_rgb(124, 58, 237)),
+                    )
+                    .on_hover_text(row.tooltip.as_str());
+                    ui.label(
+                        egui::RichText::new(
+                            row.logfc
+                                .filter(|value| value.is_finite())
+                                .map(|value| format!("{value:.3}"))
+                                .unwrap_or_else(|| "-".to_string()),
+                        )
+                        .monospace()
+                        .size(9.0),
+                    )
+                    .on_hover_text(row.tooltip.as_str());
+                    ui.label(
+                        egui::RichText::new(row.mapping_status.as_str())
+                            .size(9.0)
+                            .color(
+                                if row.unresolved_tags.is_empty()
+                                    && row.mapping_status != "unmapped"
+                                {
+                                    egui::Color32::from_rgb(22, 101, 52)
+                                } else {
+                                    egui::Color32::from_rgb(180, 83, 9)
+                                },
+                            ),
+                    )
+                    .on_hover_text(row.tooltip.as_str());
+                    ui.end_row();
+                }
+            });
+            if junction_rows.len() > 12 {
+                ui.small(format!(
+                    "{} additional junction-spanning array probe row(s) hidden in this preview",
+                    junction_rows.len() - 12
+                ));
+            }
+            ui.add_space(4.0);
+        }
         egui::ScrollArea::horizontal()
             .id_salt((
                 "splicing_array_probe_geometry_scroll",
@@ -5980,6 +6087,7 @@ impl MainAreaDna {
                 .show(ui, |ui| {
                     ui.label(egui::RichText::new("transcript").monospace().strong());
                     ui.label(egui::RichText::new("probe").monospace().strong());
+                    ui.label(egui::RichText::new("kind").strong());
                     ui.label(egui::RichText::new("parent").monospace().strong());
                     ui.label(egui::RichText::new("interval").monospace().strong());
                     ui.label(egui::RichText::new("geometry").strong());
@@ -6019,6 +6127,16 @@ impl MainAreaDna {
                                     egui::Color32::from_rgb(71, 85, 105)
                                 },
                             ),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.label(
+                            egui::RichText::new(row.evidence_kind.as_str())
+                                .size(9.0)
+                                .color(if row.junction_labels.is_empty() {
+                                    egui::Color32::from_rgb(71, 85, 105)
+                                } else {
+                                    egui::Color32::from_rgb(124, 58, 237)
+                                }),
                         )
                         .on_hover_text(row.tooltip.as_str());
                         ui.label(

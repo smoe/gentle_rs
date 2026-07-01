@@ -6210,6 +6210,9 @@ Notes:
   overlaps, report-provided junction spans, parent probeset spans, and PM probe
   intervals. It draws only geometry present in the report and remains a
   review-only constraint view, not an isoform-support call.
+  The same report is what the GUI Splicing Expert uses to label
+  junction-spanning array probes, so CLI-generated reports are the parity path
+  for checking those rows outside the GUI.
 - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR` projects selected or
   all `log2FC_*` helper-output rows into genome-anchored array features when
   the helper output's declared `coordinate_system` or `genome_build` directly
