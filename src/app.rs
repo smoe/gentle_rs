@@ -15827,7 +15827,7 @@ Error: `{err}`"
             });
             ui.menu_button(self.tr("menu.genome"), |ui| {
                 if ui
-                    .button("Prepare Reference Genome...")
+                    .button(self.tr("menu.genome.prepare_reference"))
                     .on_hover_text(
                         "Download/index a reference genome for local extraction and BLAST",
                     )
@@ -15837,7 +15837,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Prepared References...")
+                    .button(self.tr("menu.genome.prepared_references"))
                     .on_hover_text("Inspect prepared reference/helper genome installations")
                     .clicked()
                 {
@@ -15845,7 +15845,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Clear Caches...")
+                    .button(self.tr("menu.genome.clear_caches"))
                     .on_hover_text(
                         "Inspect and conservatively remove prepared genome/helper cache artifacts",
                     )
@@ -15855,7 +15855,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Retrieve Genomic Sequence...")
+                    .button(self.tr("menu.genome.retrieve_genomic"))
                     .on_hover_text(
                         "Extract anchored region/gene sequence from a prepared reference",
                     )
@@ -15865,7 +15865,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("BLAST Genome Sequence...")
+                    .button(self.tr("menu.genome.blast_genome"))
                     .on_hover_text("Run BLAST against prepared reference genome indices")
                     .clicked()
                 {
@@ -15873,7 +15873,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Import Genome Track...")
+                    .button(self.tr("menu.genome.import_track"))
                     .on_hover_text("Import BED/BigWig/VCF tracks onto anchored sequences")
                     .clicked()
                 {
@@ -15882,7 +15882,7 @@ Error: `{err}`"
                 }
                 ui.separator();
                 if ui
-                    .button("Prepare Helper Genome...")
+                    .button(self.tr("menu.genome.prepare_helper"))
                     .on_hover_text("Prepare helper catalog genomes for extraction and BLAST")
                     .clicked()
                 {
@@ -15890,7 +15890,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Retrieve Helper Sequence...")
+                    .button(self.tr("menu.genome.retrieve_helper"))
                     .on_hover_text("Extract sequence from prepared helper genomes")
                     .clicked()
                 {
@@ -15898,7 +15898,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("BLAST Helper Sequence...")
+                    .button(self.tr("menu.genome.blast_helper"))
                     .on_hover_text("Run BLAST against prepared helper genome indices")
                     .clicked()
                 {
@@ -15908,7 +15908,7 @@ Error: `{err}`"
             });
             ui.menu_button(self.tr("menu.patterns"), |ui| {
                 if ui
-                    .button("Import Pattern File...")
+                    .button(self.tr("menu.patterns.import_file"))
                     .on_hover_text("Import workflow macro templates from one JSON pattern file")
                     .clicked()
                 {
@@ -15916,7 +15916,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Import Pattern Folder...")
+                    .button(self.tr("menu.patterns.import_folder"))
                     .on_hover_text(
                         "Import workflow macro templates from all JSON files in one folder tree",
                     )
@@ -15926,7 +15926,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Import Built-in Legacy Pack")
+                    .button(self.tr("menu.patterns.import_legacy_pack"))
                     .on_hover_text("Import templates from assets/cloning_patterns.json")
                     .clicked()
                 {
@@ -15941,10 +15941,13 @@ Error: `{err}`"
                 match Self::collect_cloning_pattern_catalog_entries(catalog_root) {
                     Ok(entries) => {
                         if entries.is_empty() {
-                            ui.add_enabled(false, egui::Button::new("Catalog is empty"));
+                            ui.add_enabled(
+                                false,
+                                egui::Button::new(self.tr("menu.patterns.catalog_empty")),
+                            );
                         } else {
                             if ui
-                                .button("Import Full Catalog")
+                                .button(self.tr("menu.patterns.import_full_catalog"))
                                 .on_hover_text(format!(
                                     "Import all catalog templates from {}",
                                     catalog_root.display()
@@ -15957,7 +15960,7 @@ Error: `{err}`"
                                 ui.close();
                             }
                             ui.separator();
-                            ui.small("Catalog hierarchy");
+                            ui.small(self.tr("menu.patterns.catalog_hierarchy"));
                             let mut selected_path: Option<String> = None;
                             Self::render_cloning_pattern_catalog_menu_entries(
                                 ui,
@@ -15971,14 +15974,17 @@ Error: `{err}`"
                         }
                     }
                     Err(err) => {
-                        ui.add_enabled(false, egui::Button::new("Catalog unavailable"));
+                        ui.add_enabled(
+                            false,
+                            egui::Button::new(self.tr("menu.patterns.catalog_unavailable")),
+                        );
                         ui.small(err);
                     }
                 }
 
                 ui.separator();
                 if ui
-                    .button("Gibson...")
+                    .button(self.tr("menu.patterns.gibson"))
                     .on_hover_text(
                         "Open destination-first Gibson specialist window with overlap, primer, and cartoon preview",
                     )
@@ -15988,7 +15994,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("PCR Designer...")
+                    .button(self.tr("menu.patterns.pcr_designer"))
                     .on_hover_text(
                         "Open paint-first pair-PCR specialist window (ROI + primer windows + queue)",
                     )
@@ -15998,7 +16004,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Sequencing Confirmation...")
+                    .button(self.tr("menu.patterns.sequencing_confirmation"))
                     .on_hover_text(
                         "Open construct-confirmation specialist window for called sequencing reads",
                     )
@@ -16008,7 +16014,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("microRNA Target Scan...")
+                    .button(self.tr("menu.patterns.mirna_target_scan"))
                     .on_hover_text(
                         "Scan transcript annotations for microRNA seed candidates and inspect graphical pairing evidence",
                     )
@@ -16018,7 +16024,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Routine Assistant...")
+                    .button(self.tr("menu.patterns.routine_assistant"))
                     .on_hover_text(
                         "Open staged routine-selection workflow (goal, compare, parameters, preflight, run, export)",
                     )
@@ -16028,7 +16034,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Planning...")
+                    .button(self.tr("menu.patterns.planning"))
                     .on_hover_text(
                         "Open planning profiles/objective editor and suggestion resolution view",
                     )
@@ -16038,11 +16044,14 @@ Error: `{err}`"
                     ui.close();
                 }
                 ui.separator();
-                ui.small("Routine catalog");
+                ui.small(self.tr("menu.patterns.routine_catalog"));
                 match self.list_cloning_routines(None, None, None) {
                     Ok(mut routines) => {
                         if routines.is_empty() {
-                            ui.add_enabled(false, egui::Button::new("No routines found"));
+                            ui.add_enabled(
+                                false,
+                                egui::Button::new(self.tr("menu.patterns.no_routines")),
+                            );
                         } else {
                             routines.sort_by(|left, right| {
                                 left.family
@@ -16055,7 +16064,7 @@ Error: `{err}`"
                                     )
                             });
                             if ui
-                                .button("Show Routine Catalog Summary")
+                                .button(self.tr("menu.patterns.show_routine_catalog_summary"))
                                 .on_hover_text(
                                     "Show current routine catalog location and routine count",
                                 )
@@ -16086,7 +16095,7 @@ Error: `{err}`"
                                     .push(routine);
                             }
 
-                            ui.menu_button("Browse by Family", |ui| {
+                            ui.menu_button(self.tr("menu.patterns.browse_by_family"), |ui| {
                                 for (family, rows) in &by_family {
                                     ui.menu_button(format!("{family} ({})", rows.len()), |ui| {
                                         Self::render_cloning_routine_menu_entries(
@@ -16098,7 +16107,7 @@ Error: `{err}`"
                                     });
                                 }
                             });
-                            ui.menu_button("Browse by Status", |ui| {
+                            ui.menu_button(self.tr("menu.patterns.browse_by_status"), |ui| {
                                 for (status, rows) in &by_status {
                                     ui.menu_button(format!("{status} ({})", rows.len()), |ui| {
                                         Self::render_cloning_routine_menu_entries(
@@ -16124,14 +16133,17 @@ Error: `{err}`"
                         }
                     }
                     Err(err) => {
-                        ui.add_enabled(false, egui::Button::new("Routine catalog unavailable"));
+                        ui.add_enabled(
+                            false,
+                            egui::Button::new(self.tr("menu.patterns.routine_catalog_unavailable")),
+                        );
                         ui.small(err);
                     }
                 }
             });
             ui.menu_button(self.tr("menu.services"), |ui| {
                 if ui
-                    .button("External Services...")
+                    .button(self.tr("menu.services.external_services"))
                     .on_hover_text(
                         "Inspect provider catalog, validate service requests, and prepare quote handoff bundles",
                     )
@@ -16141,14 +16153,14 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("ClawBio...")
+                    .button(self.tr("menu.services.clawbio"))
                     .on_hover_text("Send the current sequence/selection context to ClawBio")
                     .clicked()
                 {
                     self.open_clawbio_dialog();
                     ui.close();
                 }
-                ui.small("Shared shell routes: services providers/preflight/quote");
+                ui.small(self.tr("menu.services.shared_shell_routes"));
             });
             ui.menu_button(self.tr("menu.windows"), |ui| {
                 let jobs_panel_resp = self.track_hover_status(
