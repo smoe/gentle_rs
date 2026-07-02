@@ -12,6 +12,15 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-02
+
+- Split genome-prepare transcript indexing progress from gene indexing. Tabular
+  annotation prepares now report `index_transcripts` /
+  `reuse_transcript_index` with the `Transcript Index` step, while gene-index
+  progress remains `index_genes` / `reuse_gene_index`. Existing-manifest
+  prepares also report a phase-only `verify_checksums` heartbeat before source
+  checksum verification.
+
 ## 2026-06-28
 
 - Projected built-in shell help from the shared protocol capability registry.

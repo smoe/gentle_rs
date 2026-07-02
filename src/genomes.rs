@@ -2597,6 +2597,7 @@ pub enum PrepareGenomeStepId {
     Annotation,
     FastaIndex,
     GeneIndex,
+    TranscriptIndex,
     BlastIndex,
 }
 
@@ -2608,6 +2609,7 @@ impl PrepareGenomeStepId {
             Self::Annotation => "Annotation",
             Self::FastaIndex => "FASTA Index",
             Self::GeneIndex => "Gene Index",
+            Self::TranscriptIndex => "Transcript Index",
             Self::BlastIndex => "BLAST Index",
         }
     }
@@ -4796,6 +4798,14 @@ impl GenomeCatalog {
             },
             true,
         ));
+        if !is_genbank_annotation_path(&annotation_path) && !is_xml_annotation_path(&annotation_path)
+        {
+            steps.push(build_prepare_genome_plan_step(
+                PrepareGenomeStepId::TranscriptIndex,
+                "Build or reuse the transcript index from the prepared tabular annotation",
+                true,
+            ));
+        }
         steps.push(build_prepare_genome_plan_step(
             PrepareGenomeStepId::BlastIndex,
             if blast_index_reused {
@@ -5015,6 +5025,21 @@ impl GenomeCatalog {
                 if reindex_from_cached_files || force_refresh_from_sources {
                     // Fall through to the rebuild path below.
                 } else {
+                    // Checksum verification covers both source artifacts before
+                    // the prepare flow knows which later checklist row will do
+                    // work. Keep it phase-only rather than assigning it to a
+                    // sequence or annotation step.
+                    forward_prepare_progress(
+                        on_progress,
+                        prepare_genome_progress(
+                            genome_id,
+                            "verify_checksums",
+                            "manifest",
+                            0,
+                            None,
+                            None,
+                        ),
+                    )?;
                     let checksum_changed = ensure_manifest_checksums(&mut manifest)?;
                     let mut warnings: Vec<String> = vec![];
                     if let Some(warning) = cached_source_drift_warning.clone() {
@@ -5133,7 +5158,7 @@ impl GenomeCatalog {
                             |done, total| {
                                 on_progress(prepare_genome_progress(
                                     genome_id,
-                                    "index_genes",
+                                    "index_transcripts",
                                     canonical_or_display(annotation_path),
                                     done,
                                     total,
@@ -5547,7 +5572,7 @@ impl GenomeCatalog {
                         on_progress,
                         prepare_genome_progress(
                             genome_id,
-                            "reuse_gene_index",
+                            "reuse_transcript_index",
                             canonical_or_display(transcript_index_path),
                             bytes,
                             Some(bytes),
@@ -5561,7 +5586,7 @@ impl GenomeCatalog {
                         |done, total| {
                             on_progress(prepare_genome_progress(
                                 genome_id,
-                                "index_genes",
+                                "index_transcripts",
                                 canonical_or_display(&annotation_path),
                                 done,
                                 total,
@@ -7659,6 +7684,9 @@ pub fn prepare_genome_step_id_for_phase(phase: &str) -> Option<PrepareGenomeStep
         "download_annotation" | "reuse_annotation" => Some(PrepareGenomeStepId::Annotation),
         "index_fasta" => Some(PrepareGenomeStepId::FastaIndex),
         "index_genes" | "reuse_gene_index" => Some(PrepareGenomeStepId::GeneIndex),
+        "index_transcripts" | "reuse_transcript_index" => {
+            Some(PrepareGenomeStepId::TranscriptIndex)
+        }
         "index_blast" => Some(PrepareGenomeStepId::BlastIndex),
         "reset_indexes" => Some(PrepareGenomeStepId::ResetIndexes),
         _ => None,
@@ -12871,6 +12899,7 @@ mod tests {
                 PrepareGenomeStepId::Annotation,
                 PrepareGenomeStepId::FastaIndex,
                 PrepareGenomeStepId::GeneIndex,
+                PrepareGenomeStepId::TranscriptIndex,
                 PrepareGenomeStepId::BlastIndex,
             ]
         );
@@ -12988,6 +13017,62 @@ mod tests {
             "__gentle_makeblastdb_missing_for_test__",
         );
 
+        let mut rows: Vec<(String, Option<PrepareGenomeStepId>, Option<String>)> = vec![];
+        catalog
+            .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
+                rows.push((progress.phase, progress.step_id, progress.step_label));
+                true
+            })
+            .unwrap();
+
+        assert!(rows.iter().any(|(phase, step_id, _)| {
+            phase == "download_sequence" && *step_id == Some(PrepareGenomeStepId::Sequence)
+        }));
+        assert!(rows.iter().any(|(phase, step_id, _)| {
+            phase == "download_annotation" && *step_id == Some(PrepareGenomeStepId::Annotation)
+        }));
+        assert!(rows.iter().any(|(phase, step_id, _)| {
+            phase == "index_fasta" && *step_id == Some(PrepareGenomeStepId::FastaIndex)
+        }));
+        assert!(rows.iter().any(|(phase, step_id, label)| {
+            phase == "index_genes" && *step_id == Some(PrepareGenomeStepId::GeneIndex)
+                && label.as_deref() == Some("Gene Index")
+        }));
+        assert!(rows.iter().any(|(phase, step_id, label)| {
+            phase == "index_transcripts"
+                && *step_id == Some(PrepareGenomeStepId::TranscriptIndex)
+                && label.as_deref() == Some("Transcript Index")
+        }));
+        assert!(rows.iter().any(|(phase, step_id, _)| {
+            phase == "index_blast" && *step_id == Some(PrepareGenomeStepId::BlastIndex)
+        }));
+        assert!(
+            rows.iter()
+                .any(|(phase, step_id, _)| phase == "ready" && step_id.is_none())
+        );
+    }
+
+    #[test]
+    fn test_prepare_existing_manifest_reports_checksum_verification_phase() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        let cache_dir = root.join("cache");
+        fs::write(&fasta, ">chr1\nACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .unwrap();
+        let catalog = write_toy_prepare_catalog(root, &fasta, &ann, &cache_dir);
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+
+        catalog.prepare_genome_once("ToyGenome").unwrap();
+
         let mut rows: Vec<(String, Option<PrepareGenomeStepId>)> = vec![];
         catalog
             .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
@@ -12996,25 +13081,8 @@ mod tests {
             })
             .unwrap();
 
-        assert!(rows.iter().any(|(phase, step_id)| {
-            phase == "download_sequence" && *step_id == Some(PrepareGenomeStepId::Sequence)
-        }));
-        assert!(rows.iter().any(|(phase, step_id)| {
-            phase == "download_annotation" && *step_id == Some(PrepareGenomeStepId::Annotation)
-        }));
-        assert!(rows.iter().any(|(phase, step_id)| {
-            phase == "index_fasta" && *step_id == Some(PrepareGenomeStepId::FastaIndex)
-        }));
-        assert!(rows.iter().any(|(phase, step_id)| {
-            phase == "index_genes" && *step_id == Some(PrepareGenomeStepId::GeneIndex)
-        }));
-        assert!(rows.iter().any(|(phase, step_id)| {
-            phase == "index_blast" && *step_id == Some(PrepareGenomeStepId::BlastIndex)
-        }));
-        assert!(
-            rows.iter()
-                .any(|(phase, step_id)| phase == "ready" && step_id.is_none())
-        );
+        assert_eq!(rows.first().map(|(phase, _)| phase.as_str()), Some("verify_checksums"));
+        assert_eq!(rows.first().and_then(|(_, step_id)| *step_id), None);
     }
 
     #[test]
@@ -13163,9 +13231,11 @@ mod tests {
         assert!(phases.iter().any(|phase| phase == "reuse_sequence"));
         assert!(phases.iter().any(|phase| phase == "reuse_annotation"));
         assert!(phases.iter().any(|phase| phase == "reuse_gene_index"));
+        assert!(phases.iter().any(|phase| phase == "reuse_transcript_index"));
         assert!(!phases.iter().any(|phase| phase == "download_sequence"));
         assert!(!phases.iter().any(|phase| phase == "download_annotation"));
         assert!(!phases.iter().any(|phase| phase == "index_genes"));
+        assert!(!phases.iter().any(|phase| phase == "index_transcripts"));
         assert!(
             report.annotation_parse_report.is_none(),
             "existing gene index should avoid reparsing annotation"
@@ -13237,9 +13307,11 @@ mod tests {
         assert!(phases.iter().any(|phase| phase == "download_sequence"));
         assert!(phases.iter().any(|phase| phase == "download_annotation"));
         assert!(phases.iter().any(|phase| phase == "index_genes"));
+        assert!(phases.iter().any(|phase| phase == "index_transcripts"));
         assert!(!phases.iter().any(|phase| phase == "reuse_sequence"));
         assert!(!phases.iter().any(|phase| phase == "reuse_annotation"));
         assert!(!phases.iter().any(|phase| phase == "reuse_gene_index"));
+        assert!(!phases.iter().any(|phase| phase == "reuse_transcript_index"));
 
         let chr17 = catalog
             .get_sequence_region_with_cache("ToyGenome", "17", 1, 4, None)
@@ -13321,9 +13393,11 @@ mod tests {
         assert!(phases.iter().any(|phase| phase == "reuse_annotation"));
         assert!(phases.iter().any(|phase| phase == "index_fasta"));
         assert!(phases.iter().any(|phase| phase == "index_genes"));
+        assert!(phases.iter().any(|phase| phase == "index_transcripts"));
         assert!(!phases.iter().any(|phase| phase == "download_sequence"));
         assert!(!phases.iter().any(|phase| phase == "download_annotation"));
         assert!(!phases.iter().any(|phase| phase == "reuse_gene_index"));
+        assert!(!phases.iter().any(|phase| phase == "reuse_transcript_index"));
 
         assert_eq!(
             catalog

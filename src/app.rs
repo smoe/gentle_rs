@@ -10932,16 +10932,14 @@ Error: `{err}`"
                     inspection.fasta_index_ready,
                     Some(inspection.fasta_index_path.clone()),
                 ),
-                (PrepareGenomeStepId::GeneIndex, Some(inspection)) => {
-                    let transcript_required = inspection.transcript_index_path.is_some();
-                    let completed = inspection.gene_index_ready
-                        && (!transcript_required || inspection.transcript_index_ready);
-                    let detail = inspection
-                        .transcript_index_path
-                        .clone()
-                        .unwrap_or_else(|| inspection.gene_index_path.clone());
-                    (completed, Some(detail))
-                }
+                (PrepareGenomeStepId::GeneIndex, Some(inspection)) => (
+                    inspection.gene_index_ready,
+                    Some(inspection.gene_index_path.clone()),
+                ),
+                (PrepareGenomeStepId::TranscriptIndex, Some(inspection)) => (
+                    inspection.transcript_index_ready,
+                    inspection.transcript_index_path.clone(),
+                ),
                 (PrepareGenomeStepId::BlastIndex, Some(inspection)) => (
                     inspection.blast_index_ready,
                     inspection.blast_db_prefix.clone(),

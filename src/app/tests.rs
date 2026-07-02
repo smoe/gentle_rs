@@ -9643,6 +9643,7 @@ fn prepare_dialog_scroll_area_keeps_long_checklist_reachable_on_small_viewport()
         PrepareGenomeStepId::Annotation,
         PrepareGenomeStepId::FastaIndex,
         PrepareGenomeStepId::GeneIndex,
+        PrepareGenomeStepId::TranscriptIndex,
         PrepareGenomeStepId::BlastIndex,
     ])));
     for (idx, step) in app.genome_prepare_steps.iter_mut().enumerate() {
@@ -10932,7 +10933,7 @@ fn start_prepare_reference_genome_with_mode_initializes_prepare_steps_immediatel
 
     app.start_prepare_reference_genome_with_mode(GenomePrepareLaunchMode::Prepare);
 
-    assert_eq!(app.genome_prepare_steps.len(), 5);
+    assert_eq!(app.genome_prepare_steps.len(), 6);
     assert_eq!(
         app.genome_prepare_steps
             .iter()
@@ -10943,6 +10944,7 @@ fn start_prepare_reference_genome_with_mode_initializes_prepare_steps_immediatel
             PrepareGenomeStepId::Annotation,
             PrepareGenomeStepId::FastaIndex,
             PrepareGenomeStepId::GeneIndex,
+            PrepareGenomeStepId::TranscriptIndex,
             PrepareGenomeStepId::BlastIndex,
         ]
     );
@@ -10992,6 +10994,7 @@ fn apply_prepared_genome_inspection_marks_existing_outputs_complete() {
         PrepareGenomeStepId::Annotation,
         PrepareGenomeStepId::FastaIndex,
         PrepareGenomeStepId::GeneIndex,
+        PrepareGenomeStepId::TranscriptIndex,
         PrepareGenomeStepId::BlastIndex,
     ])));
 
@@ -11010,6 +11013,7 @@ fn apply_prepared_genome_inspection_marks_existing_outputs_complete() {
             PrepareGenomeUiStepStatus::Completed,
             PrepareGenomeUiStepStatus::Completed,
             PrepareGenomeUiStepStatus::Completed,
+            PrepareGenomeUiStepStatus::Completed,
         ]
     );
     assert_eq!(
@@ -11018,6 +11022,10 @@ fn apply_prepared_genome_inspection_marks_existing_outputs_complete() {
     );
     assert_eq!(
         app.genome_prepare_steps[4].detail,
+        "/tmp/toy_install/genes.json"
+    );
+    assert_eq!(
+        app.genome_prepare_steps[5].detail,
         "/tmp/toy_install/transcripts.json"
     );
 }
