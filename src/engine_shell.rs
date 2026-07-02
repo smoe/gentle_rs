@@ -18302,6 +18302,19 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("introspect runtime")
         }),
         json!({
+            "id": "runtime_status",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Return the process-local live runtime activity stack through the MCP tool route.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("runtime_status")
+        }),
+        json!({
             "id": "sequence create",
             "kind": "operation",
             "mutating": "true",

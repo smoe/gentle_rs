@@ -96,6 +96,22 @@ fn internet_access_available() -> bool {
     })
 }
 
+fn transient_live_service_error(err: &EngineError) -> bool {
+    if err.code == ErrorCode::Io {
+        return true;
+    }
+    err.code == ErrorCode::NotFound
+        && [
+            "HTTP status 429",
+            "HTTP status 500",
+            "HTTP status 502",
+            "HTTP status 503",
+            "HTTP status 504",
+        ]
+        .iter()
+        .any(|needle| err.message.contains(needle))
+}
+
 fn seq(s: &str) -> DNAsequence {
     DNAsequence::from_sequence(s).unwrap()
 }
@@ -11994,7 +12010,7 @@ fn test_fetch_ensembl_gene_live_tp53_skips_without_internet() {
         entry_id: Some("tp53_live".to_string()),
     }) {
         Ok(result) => result,
-        Err(err) if err.code == ErrorCode::Io => {
+        Err(err) if transient_live_service_error(&err) => {
             eprintln!("Skipping live Ensembl gene fetch test after request failure: {err:?}");
             return;
         }
