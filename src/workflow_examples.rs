@@ -5687,9 +5687,12 @@ mod tests {
         assert!(linear_svg.contains("data-gentle-role=\"linear-evidence-legend-panel\""));
         assert!(linear_svg.contains("kinked arrow marks transcription start site"));
         assert!(linear_svg.contains("TFBS motif hits: thin green blocks"));
-        assert!(linear_svg.contains("External evidence tracks: grey bars"));
+        assert!(
+            linear_svg.contains("External evidence tracks: BED/other imported evidence is grey")
+        );
         assert!(linear_svg.contains("Array E-MTAB-14704 AdTAp73alpha-AdGFP"));
-        assert!(linear_svg.contains("BED TP73 CUT&amp;RUN proof BED"));
+        assert!(linear_svg.contains("BED TP73 CUT&amp;RUN proof"));
+        assert!(linear_svg.contains("BED (tp73_cutrun_demo.bed) x2"));
         assert!(linear_svg.contains("Provenance: sequence NC_000001"));
         assert!(linear_svg.contains("data-gentle-role=\"linear-transcription-start-halo\""));
 

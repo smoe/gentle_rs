@@ -24376,7 +24376,7 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
         .expect("introspect capabilities descriptor");
     assert_eq!(
         introspect_capabilities["registry"]["usage"].as_str(),
-        Some("introspect capabilities [--kind KIND]")
+        Some("introspect capabilities [--kind operation|view_intent|host_config]")
     );
     assert!(
         introspect_capabilities["registry"]["interfaces"]

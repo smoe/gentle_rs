@@ -177,7 +177,7 @@
          ],
          "path": "introspect capabilities",
          "summary": "Inspect annotated capability metadata and fact-readiness contracts.",
-         "usage": "introspect capabilities [--kind KIND]"
+         "usage": "introspect capabilities [--kind operation|view_intent|host_config]"
       },
       {
          "aliases": [],
