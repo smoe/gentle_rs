@@ -45,6 +45,7 @@ use gentle::{
         default_catalog_discovery_token, default_helper_semantics_vocabulary_discovery_label,
     },
     resource_status::resource_catalog_status,
+    runtime_status,
     service_readiness::service_readiness_status,
 };
 use gentle_protocol::{EngineError, ErrorCode};
@@ -1028,6 +1029,9 @@ fn genome_gene_matches_filter(
 }
 
 fn main() {
+    if let Err(error) = runtime_status::install_sigusr1_stderr_dump_thread() {
+        eprintln!("Warning: could not install SIGUSR1 runtime-status diagnostics: {error}");
+    }
     if let Err(e) = run() {
         eprintln!("{}", cli_error_payload(&e));
         std::process::exit(1);

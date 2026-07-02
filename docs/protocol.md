@@ -3511,6 +3511,7 @@ external coding agent runtime, see:
   - current tools:
     - `capabilities`
     - `state_summary`
+    - `runtime_status`
     - `restriction_site_detail` (shared restriction-site expert detail record)
     - `exon_skip_plan` (shared `transcripts exon-skip-plan` contract)
     - `exon_skip_materialize` (shared `transcripts exon-skip-materialize`
@@ -3544,6 +3545,14 @@ external coding agent runtime, see:
     - `tools/call.arguments` must be a JSON object
 
 MCP query/introspection tool contracts (current):
+
+- `runtime_status`
+  - arguments: none
+  - behavior:
+    - returns `gentle.runtime_status.v1`, the process-local live runtime
+      activity stack for this MCP process
+    - mirrors shared shell `introspect runtime`; it is in-memory only and does
+      not write a status file
 
 - `agent_systems`
   - arguments:
@@ -4776,9 +4785,29 @@ Shared-shell routes:
     The payload labels this as
     `annotation_scope: "registry_with_fact_annotated_slice"`.
   - The top-level `introspect facts`, `introspect capabilities`,
-    `introspect readiness`, `introspect verify-effects`, and `introspect all`
+    `introspect readiness`, `introspect verify-effects`, `introspect runtime`,
+    and `introspect all`
     shell routes are also fact-annotated as read-only self-description/status
     routes with no project-state preconditions.
+- `introspect runtime`
+  - Returns `gentle.runtime_status.v1`, a process-local live activity stack.
+  - This route is intentionally in-memory only. It does not write a status file
+    and it is not a historical job log; active frames disappear when the scoped
+    work guard exits.
+  - Shell command dispatch pushes a `shell_command` frame while the command is
+    running. Genome preparation also pushes a nested `resource_prepare` frame
+    and mirrors its current phase/progress fields.
+  - GUI background jobs such as reference preparation, tutorial-project
+    opening, track import, BLAST, dbSNP fetch, Agent Assistant requests, model
+    discovery, and ClawBio runs own live frames while their task records are
+    active.
+  - MCP exposes the same snapshot as the `runtime_status` tool for the MCP
+    server process. A standalone `gentle_mcp` process cannot see unsaved GUI
+    process-local frames unless a future explicit cross-process bridge is
+    added.
+  - On Unix, `gentle`, `gentle_cli`, and `gentle_mcp` install a SIGUSR1 waiter
+    thread at startup. Sending SIGUSR1 prints the same runtime snapshot to
+    STDERR; it does not create or update any file.
 - `introspect readiness [CAPABILITY_ID] [--arg NAME=VALUE ...] [--seq-id SEQ_ID] [--readiness ready|blocked|unknown] [--evidence SCAN.json ...] [--ui-host true|false]`
   - Returns `gentle.introspection.v1` route `readiness`.
   - `--seq-id` is shorthand for `--arg SEQ_ID=...` and asks about

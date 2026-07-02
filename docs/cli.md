@@ -1455,6 +1455,7 @@ Current tools:
 
 - `capabilities`
 - `state_summary`
+- `runtime_status`
 - `restriction_site_detail` (shared restriction-site expert detail record,
   including `tooltip_lines[]`)
 - `exon_skip_plan` (shared `transcripts exon-skip-plan` contract)
@@ -1645,6 +1646,12 @@ Minimum MCP JSON-RPC flow:
 `ui_intents` arguments:
 
 - optional: `state_path` (accepted for API symmetry)
+
+`runtime_status` arguments:
+
+- none
+- returns the same `gentle.runtime_status.v1` process-local live activity
+  stack as `introspect runtime`, tagged for the MCP process
 
 MCP tool result envelope behavior:
 
@@ -2095,10 +2102,21 @@ Shared shell command:
         for the validated introspection slice; registry-only rows remain
         discoverable but do not invent preconditions
       - the top-level `introspect facts`, `introspect capabilities`,
-        `introspect readiness`, `introspect verify-effects`, and
-        `introspect all` shell routes are themselves fact-annotated as
+        `introspect readiness`, `introspect verify-effects`,
+        `introspect runtime`, and `introspect all` shell routes are themselves
+        fact-annotated as
         read-only self-description/status routes with no project-state
         preconditions
+    - `introspect runtime`
+      - returns `gentle.runtime_status.v1`, the process-local live activity
+        stack for the current GENtle process
+      - active shell commands appear as `shell_command` frames; genome
+        preparation additionally mirrors current prepare phase/progress as a
+        `resource_prepare` frame
+      - this is in-memory only: no status file is written, and completed frames
+        drop out of the stack rather than becoming a history log
+      - on Unix, sending SIGUSR1 to `gentle`, `gentle_cli`, or `gentle_mcp`
+        prints the same snapshot to STDERR
     - `introspect readiness [CAPABILITY_ID] [--arg NAME=VALUE ...] [--seq-id SEQ_ID] [--readiness ready|blocked|unknown] [--evidence SCAN.json ...] [--ui-host true|false]`
       - evaluates bound or unbound capability readiness through the shared fact
         evaluator; unbound templated args report `unknown`

@@ -59,6 +59,17 @@ cargo run --bin gentle
 cargo run --bin gentle -- path/to/project.gentle.json
 ```
 
+Runtime status diagnostics:
+
+- On Unix, a running `gentle` process listens for SIGUSR1 and prints the
+  process-local live activity stack to STDERR. Launch from a terminal if you
+  want to see this diagnostic dump.
+- The same in-memory snapshot is available through shared shell
+  `introspect runtime`. It reports active scoped frames such as the current
+  shell command, genome-preparation phase/progress, and GUI background jobs
+  that are visible in the Background Jobs panel; it does not write a status
+  file and it is not a historical job log.
+
 The GUI opens an empty project unless a project path is passed on startup.
 
 Example startup window:

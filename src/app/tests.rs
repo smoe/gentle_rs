@@ -94,6 +94,14 @@ use std::{
 };
 use tempfile::tempdir;
 
+fn test_runtime_frame(label: &str) -> crate::runtime_status::RuntimeStatusGuard {
+    crate::runtime_status::runtime_status_registry().push_with_detail(
+        crate::runtime_status::RuntimeStatusFrameKind::BackgroundJob,
+        format!("test background job: {label}"),
+        None,
+    )
+}
+
 #[test]
 fn splash_screen_is_visible_for_fresh_app() {
     let app = GENtleApp::default();
@@ -9933,6 +9941,7 @@ fn tutorial_project_progress_updates_status_and_task_title() {
         job_id: 7,
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(false)),
+        runtime_frame: test_runtime_frame("tutorial-progress"),
         chapter_id: "tp73_old".to_string(),
         chapter_title: "tp73_old".to_string(),
         receiver: rx2,
@@ -9986,6 +9995,7 @@ fn request_tutorial_project_task_cancel_is_idempotent() {
         job_id: 19,
         started: Instant::now(),
         cancel_requested: cancel_requested.clone(),
+        runtime_frame: test_runtime_frame("tutorial-cancel"),
         chapter_id: "tp73_audit".to_string(),
         chapter_title: "TP73 Audit Tutorial".to_string(),
         receiver: rx,
@@ -10029,6 +10039,7 @@ fn tutorial_project_completion_honors_cancel_without_opening_project() {
         job_id: 31,
         started: Instant::now(),
         cancel_requested: cancel_requested.clone(),
+        runtime_frame: test_runtime_frame("tutorial-complete"),
         chapter_id: "tp73_audit".to_string(),
         chapter_title: "TP73 Audit Tutorial".to_string(),
         receiver: rx,
@@ -10701,6 +10712,7 @@ fn poll_dbsnp_fetch_task_updates_runtime_status_from_worker_messages() {
     let (tx, rx) = mpsc::channel::<DbSnpFetchTaskMessage>();
     app.dbsnp_fetch_task = Some(DbSnpFetchTask {
         started: Instant::now(),
+        runtime_frame: test_runtime_frame("dbsnp-fetch"),
         receiver: rx,
     });
     tx.send(DbSnpFetchTaskMessage::Progress(DbSnpFetchProgress {
@@ -10717,6 +10729,21 @@ fn poll_dbsnp_fetch_task_updates_runtime_status_from_worker_messages() {
         app.dbsnp_status.contains("Waiting for dbSNP response"),
         "status was: {}",
         app.dbsnp_status
+    );
+    let snapshot =
+        crate::runtime_status::runtime_status_snapshot(crate::runtime_status::RuntimeStatusTrigger::Test);
+    let frame = snapshot
+        .frames
+        .iter()
+        .find(|frame| frame.label == "test background job: dbsnp-fetch")
+        .expect("dbSNP runtime frame");
+    assert_eq!(frame.phase.as_deref(), Some("WaitResponse"));
+    assert!(
+        frame
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Waiting for dbSNP response")
     );
     assert!(app.dbsnp_fetch_task.is_some());
 }
@@ -10866,6 +10893,7 @@ fn request_prepare_cancel_is_idempotent() {
         job_id: 42,
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(false)),
+        runtime_frame: test_runtime_frame("prepare-cancel"),
         timeout_seconds: None,
         mode: GenomePrepareLaunchMode::Prepare,
         genome_id: "ToyGenome".to_string(),
@@ -11241,6 +11269,7 @@ fn request_blast_cancel_is_idempotent() {
         job_id: 43,
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(false)),
+        runtime_frame: test_runtime_frame("blast-cancel"),
         receiver: rx,
     });
 
@@ -11273,6 +11302,7 @@ fn request_agent_cancel_stops_waiting_and_logs_event() {
     app.agent_task = Some(AgentAskTask {
         job_id: 44,
         started: Instant::now() - Duration::from_secs(2),
+        runtime_frame: test_runtime_frame("agent-cancel"),
         receiver: rx,
     });
 
@@ -11312,6 +11342,7 @@ fn poll_agent_assistant_task_updates_phase_status() {
     app.agent_task = Some(AgentAskTask {
         job_id: 45,
         started: Instant::now(),
+        runtime_frame: test_runtime_frame("agent-status"),
         receiver: rx,
     });
     tx.send(AgentAskTaskMessage::Status {
@@ -11338,6 +11369,7 @@ fn poll_prepare_ignores_stale_job_messages() {
         job_id: 7,
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(false)),
+        runtime_frame: test_runtime_frame("prepare-stale"),
         timeout_seconds: None,
         mode: GenomePrepareLaunchMode::Prepare,
         genome_id: "ToyGenome".to_string(),
@@ -11391,6 +11423,7 @@ fn poll_prepare_uses_cancel_request_signal_for_failure_classification() {
         job_id: 52,
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(true)),
+        runtime_frame: test_runtime_frame("prepare-cancel-failure"),
         timeout_seconds: Some(600),
         mode: GenomePrepareLaunchMode::Prepare,
         genome_id: "ToyGenome".to_string(),
@@ -11429,6 +11462,7 @@ fn poll_prepare_timebox_overrides_cancel_wording_for_worker_failure() {
         job_id: 53,
         started: Instant::now() - Duration::from_secs(3),
         cancel_requested: Arc::new(AtomicBool::new(false)),
+        runtime_frame: test_runtime_frame("prepare-timebox"),
         timeout_seconds: Some(1),
         mode: GenomePrepareLaunchMode::Prepare,
         genome_id: "ToyGenome".to_string(),
@@ -11467,6 +11501,7 @@ fn poll_prepare_captures_reinstall_recovery_for_inconsistent_reindex_failure() {
         job_id: 153,
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(false)),
+        runtime_frame: test_runtime_frame("prepare-recovery"),
         timeout_seconds: None,
         mode: GenomePrepareLaunchMode::ReindexCachedFiles,
         genome_id: "Caenorhabditis elegans WBcel235 Ensembl 115".to_string(),
@@ -11529,6 +11564,7 @@ fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
         job_id: 54,
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(true)),
+        runtime_frame: test_runtime_frame("prepare-success-after-cancel"),
         timeout_seconds: None,
         mode: GenomePrepareLaunchMode::Prepare,
         genome_id: "ToyGenome".to_string(),
@@ -11657,6 +11693,7 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
         job_id: 91,
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(false)),
+        runtime_frame: test_runtime_frame("track-refresh-changed"),
         receiver: rx,
     });
     tx.send(GenomeTrackImportTaskMessage::Done {
@@ -11764,6 +11801,7 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
         job_id: 92,
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(false)),
+        runtime_frame: test_runtime_frame("track-refresh-all"),
         receiver: rx,
     });
     tx.send(GenomeTrackImportTaskMessage::Done {
@@ -12062,6 +12100,7 @@ fn poll_blast_task_updates_runtime_status_from_worker_messages() {
         job_id: 71,
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(false)),
+        runtime_frame: test_runtime_frame("blast-status"),
         receiver: rx,
     });
     tx.send(GenomeBlastTaskMessage::Status {
@@ -12076,6 +12115,21 @@ fn poll_blast_task_updates_runtime_status_from_worker_messages() {
         app.genome_blast_status.contains("running"),
         "status was: {}",
         app.genome_blast_status
+    );
+    let snapshot =
+        crate::runtime_status::runtime_status_snapshot(crate::runtime_status::RuntimeStatusTrigger::Test);
+    let frame = snapshot
+        .frames
+        .iter()
+        .find(|frame| frame.label == "test background job: blast-status")
+        .expect("BLAST runtime frame");
+    assert_eq!(frame.phase.as_deref(), Some("blast_status"));
+    assert!(
+        frame
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("BLAST query 'q1' running")
     );
     assert!(app.genome_blast_task.is_some());
 }

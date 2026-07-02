@@ -198,6 +198,7 @@ use crate::{
         resolve_protocol_cartoon_template_with_bindings,
     },
     resource_sync,
+    runtime_status::{RuntimeStatusFrameKind, RuntimeStatusGuard, runtime_status_registry},
     scroll_input_policy::{self, WheelIntent, ZoomDirection},
     shell_docs::{
         shell_help_markdown as render_shell_help_markdown,
@@ -1251,6 +1252,10 @@ impl BackgroundJobKind {
             Self::AgentAssist => "AgentAssist",
         }
     }
+
+    fn runtime_label(self, job_id: u64) -> String {
+        format!("{} #{job_id}", self.label())
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1545,6 +1550,7 @@ struct GenomePrepareTask {
     job_id: u64,
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
+    runtime_frame: RuntimeStatusGuard,
     timeout_seconds: Option<u64>,
     mode: GenomePrepareLaunchMode,
     genome_id: String,
@@ -1558,6 +1564,7 @@ struct TutorialProjectTask {
     job_id: u64,
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
+    runtime_frame: RuntimeStatusGuard,
     chapter_id: String,
     chapter_title: String,
     receiver: mpsc::Receiver<TutorialProjectTaskMessage>,
@@ -1693,6 +1700,7 @@ struct GenomeTrackImportTask {
     job_id: u64,
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
+    runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<GenomeTrackImportTaskMessage>,
 }
 
@@ -1709,6 +1717,7 @@ enum GenomeTrackImportTaskMessage {
 
 struct DbSnpFetchTask {
     started: Instant,
+    runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<DbSnpFetchTaskMessage>,
 }
 
@@ -1785,6 +1794,7 @@ struct GenomeBlastTask {
     job_id: u64,
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
+    runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<GenomeBlastTaskMessage>,
 }
 
@@ -1821,6 +1831,7 @@ struct GenomeBlastBatchResult {
 struct AgentAskTask {
     job_id: u64,
     started: Instant,
+    runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<AgentAskTaskMessage>,
 }
 
@@ -1838,6 +1849,7 @@ enum AgentAskTaskMessage {
 struct AgentModelDiscoveryTask {
     started: Instant,
     source_key: String,
+    runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<AgentModelDiscoveryTaskMessage>,
 }
 
@@ -4720,6 +4732,33 @@ Error: `{err}`"
         self.persist_background_job_history_to_state();
     }
 
+    fn push_runtime_background_job_frame(
+        kind: BackgroundJobKind,
+        job_id: u64,
+        detail: impl Into<String>,
+    ) -> RuntimeStatusGuard {
+        let frame = runtime_status_registry().push_with_detail(
+            RuntimeStatusFrameKind::BackgroundJob,
+            kind.runtime_label(job_id),
+            Some(detail.into()),
+        );
+        frame.update_phase("queued");
+        frame
+    }
+
+    fn push_runtime_external_tool_frame(
+        label: impl Into<String>,
+        detail: impl Into<String>,
+    ) -> RuntimeStatusGuard {
+        let frame = runtime_status_registry().push_with_detail(
+            RuntimeStatusFrameKind::ExternalTool,
+            label,
+            Some(detail.into()),
+        );
+        frame.update_phase("queued");
+        frame
+    }
+
     fn request_prepare_task_cancel(&mut self, origin: &str) {
         let Some((job_id, already_requested)) = self.genome_prepare_task.as_ref().map(|task| {
             (
@@ -7194,10 +7233,16 @@ Error: `{err}`"
                 chapter_id_owned
             ),
         );
+        let runtime_frame = Self::push_runtime_background_job_frame(
+            BackgroundJobKind::OpenTutorialProject,
+            job_id,
+            format!("opening tutorial chapter '{chapter_id_owned}'"),
+        );
         self.tutorial_project_task = Some(TutorialProjectTask {
             job_id,
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
+            runtime_frame,
             chapter_id: chapter_id_owned.clone(),
             chapter_title: chapter_id_owned.clone(),
             receiver: rx,
@@ -9516,10 +9561,16 @@ Error: `{err}`"
                 source_label, path_label, seq_id
             ),
         );
+        let runtime_frame = Self::push_runtime_background_job_frame(
+            BackgroundJobKind::TrackImport,
+            job_id,
+            format!("{source_label} '{path_label}' -> {seq_id}"),
+        );
         self.genome_track_import_task = Some(GenomeTrackImportTask {
             job_id,
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
+            runtime_frame,
             receiver: rx,
         });
 
@@ -10724,6 +10775,8 @@ Error: `{err}`"
                 match task.receiver.try_recv() {
                     Ok(DbSnpFetchTaskMessage::Progress(progress)) => {
                         self.dbsnp_status = Self::format_dbsnp_progress_status(&progress);
+                        task.runtime_frame.update_phase(format!("{:?}", progress.stage));
+                        task.runtime_frame.update_detail(progress.detail.clone());
                     }
                     Ok(DbSnpFetchTaskMessage::Done(result)) => {
                         done = Some(result);
@@ -11331,10 +11384,16 @@ Error: `{err}`"
                 genome_id, makeblastdb_preflight
             ),
         );
+        let runtime_frame = Self::push_runtime_background_job_frame(
+            BackgroundJobKind::PrepareGenome,
+            job_id,
+            format!("{action_summary}: {genome_id}"),
+        );
         self.genome_prepare_task = Some(GenomePrepareTask {
             job_id,
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
+            runtime_frame,
             timeout_seconds,
             mode,
             genome_id: genome_id.clone(),
@@ -11565,6 +11624,15 @@ Error: `{err}`"
                     ""
                 }
             );
+            if let Some(task) = self.genome_prepare_task.as_ref() {
+                task.runtime_frame.update_from_progress(
+                    progress.phase.clone(),
+                    progress.item.clone(),
+                    progress.bytes_done,
+                    progress.bytes_total,
+                    progress.percent,
+                );
+            }
         }
         for stale_job_id in stale_job_ids {
             self.push_job_event(
@@ -11723,6 +11791,13 @@ Error: `{err}`"
             }
             self.app_status = self.tutorial_project_status.clone();
             if let Some(task) = self.tutorial_project_task.as_mut() {
+                task.runtime_frame.update_from_progress(
+                    progress.phase.clone(),
+                    progress.item.clone(),
+                    0,
+                    None,
+                    progress.percent.map(|value| value as f64),
+                );
                 task.chapter_id = progress.chapter_id.clone();
                 task.chapter_title = progress.chapter_title.clone();
             }
@@ -11897,6 +11972,20 @@ Error: `{err}`"
                             } else {
                                 ""
                             }
+                        );
+                        task.runtime_frame.update_from_progress(
+                            "import_track",
+                            format!(
+                                "{} -> {}; parsed={}, imported={}, skipped={}",
+                                progress.source,
+                                progress.seq_id,
+                                progress.parsed_records,
+                                progress.imported_features,
+                                progress.skipped_records
+                            ),
+                            progress.imported_features as u64,
+                            Some(progress.parsed_records as u64),
+                            None,
                         );
                     }
                     Ok(GenomeTrackImportTaskMessage::Done { job_id, result }) => {
@@ -12336,10 +12425,19 @@ Error: `{err}`"
                 makeblastdb_preflight
             ),
         );
+        let runtime_frame = Self::push_runtime_background_job_frame(
+            BackgroundJobKind::BlastGenome,
+            job_id,
+            format!(
+                "genome='{}', queries={}, task='{}'",
+                genome_id, total_queries, resolved_preview.task
+            ),
+        );
         self.genome_blast_task = Some(GenomeBlastTask {
             job_id,
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
+            runtime_frame,
             receiver: rx,
         });
         std::thread::spawn(move || {
@@ -12555,6 +12653,13 @@ Error: `{err}`"
                             "{done_queries} / {total_queries} ({current_query_label}){}",
                             if canceling { " [cancel requested]" } else { "" }
                         );
+                        task.runtime_frame.update_from_progress(
+                            "blast_queries",
+                            current_query_label,
+                            done_queries as u64,
+                            Some(total_queries as u64),
+                            Some(fraction as f64 * 100.0),
+                        );
                     }
                     Ok(GenomeBlastTaskMessage::Status { job_id, status }) => {
                         if job_id != active_job_id {
@@ -12563,6 +12668,8 @@ Error: `{err}`"
                             }
                             continue;
                         }
+                        task.runtime_frame.update_phase("blast_status");
+                        task.runtime_frame.update_detail(status.clone());
                         self.genome_blast_status = status;
                     }
                     Ok(GenomeBlastTaskMessage::Done { job_id, result }) => {

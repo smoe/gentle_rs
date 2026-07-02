@@ -9,7 +9,7 @@ use gentle::{
     },
     app,
     cli_support::{SingleProjectCliOptions, parse_single_project_cli_args},
-    gui_profiler,
+    gui_profiler, runtime_status,
 };
 use std::{
     backtrace::Backtrace,
@@ -173,6 +173,9 @@ fn main() -> eframe::Result<()> {
     install_panic_logging();
     gui_profiler::init_from_env();
     configure_macos_process_name();
+    if let Err(error) = runtime_status::install_sigusr1_stderr_dump_thread() {
+        eprintln!("Warning: could not install SIGUSR1 runtime-status diagnostics: {error}");
+    }
 
     let args: Vec<String> = env::args().skip(1).collect();
     let cli = match parse_single_project_cli_args(&args, SingleProjectCliOptions::gui()) {

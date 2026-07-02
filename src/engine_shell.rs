@@ -116,7 +116,12 @@ use crate::{
     gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
     mirna::{self, MirnaRegionClass, MirnaSeedClass, MirnaTargetScanRequest},
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
-    publication_resources, resource_status, resource_sync, service_readiness,
+    publication_resources, resource_status, resource_sync,
+    runtime_status::{
+        RuntimeStatusFrameKind, RuntimeStatusTrigger, runtime_status_registry,
+        runtime_status_snapshot,
+    },
+    service_readiness,
     shell_docs::{
         HelpOutputFormat, shell_help_json as render_shell_help_json,
         shell_help_markdown as render_shell_help_markdown,
@@ -537,6 +542,7 @@ pub enum ShellCommand {
         evidence_paths: Vec<String>,
         ui_host_available: bool,
     },
+    IntrospectRuntime,
     HistoryStatus,
     HistoryUndo,
     HistoryRedo,
@@ -6478,6 +6484,9 @@ impl ShellCommand {
                 evidence_paths.len(),
                 ui_host_available
             ),
+            Self::IntrospectRuntime => {
+                "introspect runtime status for this GENtle process".to_string()
+            }
             Self::HistoryStatus => "show session-local undo/redo history status".to_string(),
             Self::HistoryUndo => "undo the most recent operation-level state change".to_string(),
             Self::HistoryRedo => {
@@ -14209,7 +14218,7 @@ fn parse_introspection_arg_binding(raw: &str) -> Result<(String, String), String
 fn parse_introspect_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "introspect requires a subcommand: facts, capabilities, readiness, verify-effects, or all".to_string(),
+            "introspect requires a subcommand: facts, capabilities, readiness, verify-effects, runtime, or all".to_string(),
         );
     }
     match tokens[1].as_str() {
@@ -14481,8 +14490,14 @@ fn parse_introspect_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 ui_host_available,
             })
         }
+        "runtime" => {
+            if tokens.len() != 2 {
+                return Err("introspect runtime does not accept options".to_string());
+            }
+            Ok(ShellCommand::IntrospectRuntime)
+        }
         other => Err(format!(
-            "Unknown introspect subcommand '{other}' (expected facts, capabilities, readiness, verify-effects, or all)"
+            "Unknown introspect subcommand '{other}' (expected facts, capabilities, readiness, verify-effects, runtime, or all)"
         )),
     }
 }
@@ -14705,9 +14720,7 @@ fn introspection_project_graph(
             kind: FactSubjectKind::Other,
             id: "max_fragments_per_container".to_string(),
         },
-        value: Some(json!(
-            engine.state().parameters.max_fragments_per_container
-        )),
+        value: Some(json!(engine.state().parameters.max_fragments_per_container)),
         ..ProjectFact::default()
     });
     graph
@@ -18274,6 +18287,19 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Return facts, capabilities, and unbound readiness in one aggregate introspection payload.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("introspect all")
+        }),
+        json!({
+            "id": "introspect runtime",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Return the process-local live runtime activity stack for shell, background, agent, and MCP work in this GENtle process.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("introspect runtime")
         }),
         json!({
             "id": "sequence create",
@@ -42180,6 +42206,11 @@ fn execute_agent_meta_command(
             state_changed: false,
             output: introspection_capabilities_payload(kind_filter.as_deref()),
         }),
+        ShellCommand::IntrospectRuntime => Ok(ShellRunResult {
+            state_changed: false,
+            output: serde_json::to_value(runtime_status_snapshot(RuntimeStatusTrigger::Shell))
+                .map_err(|e| format!("Could not serialize runtime status: {e}"))?,
+        }),
         ShellCommand::IntrospectReadiness {
             capability_id,
             args,
@@ -54377,6 +54408,26 @@ fn execute_shell_command_with_options_dispatch(
     command: &ShellCommand,
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
+    let preview = command.preview();
+    let frame = runtime_status_registry().push_with_detail(
+        RuntimeStatusFrameKind::ShellCommand,
+        "shared shell command",
+        Some(preview.clone()),
+    );
+    frame.update_phase("dispatch");
+    let result = execute_shell_command_with_options_dispatch_inner(engine, command, options);
+    if let Err(error) = &result {
+        frame.fail(error);
+    }
+    result
+}
+
+#[inline(never)]
+fn execute_shell_command_with_options_dispatch_inner(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
     if matches!(command, ShellCommand::Help { .. }) {
         return execute_help_command(engine, command);
     }
@@ -54479,6 +54530,7 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::IntrospectCapabilities { .. }
             | ShellCommand::IntrospectReadiness { .. }
             | ShellCommand::IntrospectVerifyEffects { .. }
+            | ShellCommand::IntrospectRuntime
             | ShellCommand::IntrospectAll { .. }
     ) {
         return execute_agent_meta_command(engine, command);
@@ -55012,6 +55064,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::IntrospectCapabilities { .. }
         | ShellCommand::IntrospectReadiness { .. }
         | ShellCommand::IntrospectVerifyEffects { .. }
+        | ShellCommand::IntrospectRuntime
         | ShellCommand::IntrospectAll { .. } => execute_agent_meta_command(engine, command)?,
         ShellCommand::HistoryStatus | ShellCommand::HistoryUndo | ShellCommand::HistoryRedo => {
             execute_history_command(engine, command)?

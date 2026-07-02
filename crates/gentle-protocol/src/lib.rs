@@ -5136,6 +5136,12 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
         CapabilityMutation::ReadOnly,
     ),
     (
+        "runtime_status",
+        "Runtime Status",
+        "Return the process-local live runtime activity stack for this GENtle process.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
         "exon_skip_plan",
         "Exon Skip Plan",
         "Build and persist an inspectable exon-skip selection plan through the shared `transcripts exon-skip-plan` shell contract.",

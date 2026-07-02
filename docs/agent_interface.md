@@ -197,6 +197,7 @@ Current MCP tool families include:
 - engine/state/help tools:
   - `capabilities`
   - `state_summary`
+  - `runtime_status`
   - `op` (requires `confirm=true`)
   - `workflow` (requires `confirm=true`)
   - `help`
@@ -240,6 +241,9 @@ Key properties:
 
 - MCP tools are thin wrappers over existing shared engine/shell paths
 - no MCP-only biology logic branch
+- `runtime_status` returns the same in-memory `gentle.runtime_status.v1`
+  activity stack as `introspect runtime` for the MCP process; it does not
+  create status files or see another process's unsaved GUI-local frames
 - `tools/list` descriptors expose `mutating: false`, `mutating: true`, or
   `mutating: "external"` so agents can apply their own safety boundary before
   calling a route

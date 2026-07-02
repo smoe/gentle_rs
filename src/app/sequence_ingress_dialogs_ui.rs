@@ -309,8 +309,13 @@ impl GENtleApp {
             "Starting dbSNP fetch for '{}' against '{}'",
             rs_id, genome_id
         );
+        let runtime_frame = Self::push_runtime_external_tool_frame(
+            "dbSNP fetch",
+            format!("{} against {}", rs_id, genome_id),
+        );
         self.dbsnp_fetch_task = Some(DbSnpFetchTask {
             started: Instant::now(),
+            runtime_frame,
             receiver: rx,
         });
         std::thread::spawn(move || {

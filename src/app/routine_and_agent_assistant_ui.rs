@@ -978,9 +978,14 @@ impl GENtleApp {
         let catalog_path = self.agent_catalog_path.trim().to_string();
         let system_id = system.id.clone();
         let (tx, rx) = mpsc::channel::<AgentModelDiscoveryTaskMessage>();
+        let runtime_frame = Self::push_runtime_external_tool_frame(
+            "agent model discovery",
+            format!("{} at {}", system_id, base_url),
+        );
         self.agent_model_discovery_task = Some(AgentModelDiscoveryTask {
             started: Instant::now(),
             source_key: source_key.clone(),
+            runtime_frame,
             receiver: rx,
         });
         std::thread::spawn(move || {
@@ -1157,9 +1162,15 @@ impl GENtleApp {
             Some(job_id),
             format!("Agent request started for system '{}'", system_id),
         );
+        let runtime_frame = Self::push_runtime_background_job_frame(
+            BackgroundJobKind::AgentAssist,
+            job_id,
+            format!("agent system '{system_id}'"),
+        );
         self.agent_task = Some(AgentAskTask {
             job_id,
             started: Instant::now(),
+            runtime_frame,
             receiver: rx,
         });
         std::thread::spawn(move || {
@@ -1894,6 +1905,8 @@ impl GENtleApp {
                 match task.receiver.try_recv() {
                     Ok(AgentAskTaskMessage::Status { job_id, message }) => {
                         if job_id == task.job_id {
+                            task.runtime_frame.update_phase("agent_status");
+                            task.runtime_frame.update_detail(message.clone());
                             latest_status = Some((message, task.started.elapsed().as_secs_f64()));
                         }
                     }
@@ -1970,7 +1983,9 @@ impl GENtleApp {
                 Ok(AgentModelDiscoveryTaskMessage::Done { source_key, result }) => {
                     done = Some((source_key, result));
                 }
-                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Empty) => {
+                    task.runtime_frame.update_phase("waiting_for_models");
+                }
                 Err(mpsc::TryRecvError::Disconnected) => {
                     done = Some((
                         task.source_key.clone(),
