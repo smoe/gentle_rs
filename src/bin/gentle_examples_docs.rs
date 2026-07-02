@@ -14,8 +14,10 @@ use serde_json::json;
 use std::{
     env, fs,
     path::{Path, PathBuf},
-    process,
+    process, thread,
 };
+
+const EXAMPLES_DOCS_EXPANDED_STACK_SIZE: usize = 32 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
@@ -447,21 +449,7 @@ fn run_parity_matrix_check_mode(output_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn main() {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let parsed = match parse_args(&args) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("{e}");
-            usage();
-            process::exit(1);
-        }
-    };
-    if parsed.show_help {
-        usage();
-        return;
-    }
-
+fn run_selected_mode(parsed: CliArgs) -> Result<(), String> {
     let source_dir = PathBuf::from(parsed.source_dir);
     let example_output = PathBuf::from(parsed.example_output_dir);
     let tutorial_catalog = PathBuf::from(parsed.tutorial_catalog);
@@ -473,7 +461,7 @@ fn main() {
     let repo_root = PathBuf::from(parsed.repo_root);
     let svg_input = PathBuf::from(parsed.svg_input);
     let png_output = PathBuf::from(parsed.png_output);
-    let result = match parsed.mode {
+    match parsed.mode {
         Mode::ExampleGenerate => run_generate_mode(&source_dir, &example_output),
         Mode::ExampleCheck => run_check_mode(&source_dir),
         Mode::SvgPng => run_svg_png_mode(
@@ -516,7 +504,41 @@ fn main() {
         ),
         Mode::ParityMatrixGenerate => run_parity_matrix_generate_mode(&parity_matrix_output),
         Mode::ParityMatrixCheck => run_parity_matrix_check_mode(&parity_matrix_output),
+    }
+}
+
+fn run_selected_mode_on_expanded_stack(parsed: CliArgs) -> Result<(), String> {
+    let worker = thread::Builder::new()
+        .name("gentle-examples-docs".to_string())
+        .stack_size(EXAMPLES_DOCS_EXPANDED_STACK_SIZE)
+        .spawn(move || run_selected_mode(parsed))
+        .map_err(|error| format!("Could not start gentle_examples_docs worker thread: {error}"))?;
+    worker.join().map_err(|panic_payload| {
+        let message = panic_payload
+            .downcast_ref::<&str>()
+            .map(|value| (*value).to_string())
+            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic payload".to_string());
+        format!("gentle_examples_docs worker thread panicked: {message}")
+    })?
+}
+
+fn main() {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let parsed = match parse_args(&args) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("{e}");
+            usage();
+            process::exit(1);
+        }
     };
+    if parsed.show_help {
+        usage();
+        return;
+    }
+
+    let result = run_selected_mode_on_expanded_stack(parsed);
     if let Err(e) = result {
         eprintln!("{e}");
         process::exit(1);
