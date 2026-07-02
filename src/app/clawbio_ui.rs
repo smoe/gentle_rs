@@ -35,6 +35,7 @@ impl Default for ClawBioPanelState {
 struct ClawBioTask {
     started: Instant,
     cancel: CancelToken,
+    runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<Result<ClawBioResultView, String>>,
 }
 
@@ -64,6 +65,7 @@ impl GENtleApp {
             match task.receiver.try_recv() {
                 Ok(result) => finished = Some(result),
                 Err(mpsc::TryRecvError::Empty) => {
+                    task.runtime_frame.update_phase("waiting_for_clawbio");
                     ctx.request_repaint_after(CLAWBIO_POLL_INTERVAL);
                 }
                 Err(mpsc::TryRecvError::Disconnected) => {
@@ -257,9 +259,14 @@ impl GENtleApp {
         let (tx, rx) = mpsc::channel();
         let cancel = CancelToken::default();
         run_clawbio_on_worker(Box::new(SubprocessTransport), spec, cancel.clone(), tx);
+        let runtime_frame = Self::push_runtime_external_tool_frame(
+            "ClawBio run",
+            format!("skill={}", self.effective_clawbio_skill_alias()),
+        );
         self.clawbio_panel.task = Some(ClawBioTask {
             started: Instant::now(),
             cancel,
+            runtime_frame,
             receiver: rx,
         });
         self.clawbio_panel.status = "Running ClawBio...".to_string();

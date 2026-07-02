@@ -131,6 +131,18 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "introspect runtime",
+         "summary": "Return the process-local live runtime activity stack for the current GENtle process.",
+         "usage": "introspect runtime"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "history status",
          "summary": "Inspect session-local multi-level undo/redo availability.",
          "usage": "history status"
@@ -211,6 +223,17 @@
          "path": "introspect all",
          "summary": "Emit the complete deterministic introspection bundle for adapters and agents.",
          "usage": "introspect all [--ui-host true|false] [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "introspect runtime",
+         "summary": "Inspect the live process-local activity stack for the current GENtle process.",
+         "usage": "introspect runtime"
       },
       {
          "aliases": [],

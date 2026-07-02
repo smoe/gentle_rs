@@ -37,6 +37,7 @@ use crate::ensembl_gene::{
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
 };
+use crate::runtime_status::{RuntimeStatusFrameKind, runtime_status_registry};
 use crate::test_support::{
     decision_trace_fixture_state, decision_trace_with_construct_reasoning_fixture_state,
     write_demo_pool_json, write_demo_workflow_json, write_demo_workflow_with_shebang,
@@ -23900,6 +23901,7 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "introspect readiness",
         "introspect verify-effects",
         "introspect all",
+        "introspect runtime",
         "display",
         "ui intents",
         "ui_intents",
@@ -24184,6 +24186,35 @@ fn execute_introspect_facts_groups_domains_and_projects_headless_host_fact() {
 }
 
 #[test]
+fn parse_and_execute_introspect_runtime_reports_active_frames() {
+    let _guard = runtime_status_registry().push_with_detail(
+        RuntimeStatusFrameKind::BackgroundJob,
+        "test background job",
+        Some("unit-test heartbeat".to_string()),
+    );
+    let mut engine = GentleEngine::default();
+
+    let cmd = parse_shell_line("introspect runtime").expect("parse introspect runtime");
+    let out = execute_shell_command(&mut engine, &cmd).expect("execute introspect runtime");
+
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some(crate::runtime_status::RUNTIME_STATUS_SCHEMA)
+    );
+    assert_eq!(out.output["trigger"].as_str(), Some("shell"));
+    let frames = out.output["frames"].as_array().expect("runtime frames");
+    assert!(frames.iter().any(|frame| {
+        frame["label"].as_str() == Some("test background job")
+            && frame["detail"].as_str() == Some("unit-test heartbeat")
+    }));
+    assert!(frames.iter().any(|frame| {
+        frame["kind"].as_str() == Some("shell_command")
+            && frame["label"].as_str() == Some("shared shell command")
+    }));
+}
+
+#[test]
 fn execute_introspect_facts_filters_by_sequence_subject() {
     let mut state = ProjectState::default();
     state.sequences.insert(
@@ -24358,6 +24389,7 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
         "introspect readiness",
         "introspect verify-effects",
         "introspect all",
+        "introspect runtime",
     ] {
         assert!(
             capabilities.iter().any(|descriptor| {

@@ -14,6 +14,11 @@ Maintenance rule:
 
 ## 2026-07-02
 
+- Added an in-memory runtime activity stack exposed through
+  `introspect runtime`, MCP `runtime_status`, and Unix SIGUSR1 STDERR dumps.
+  Shared-shell dispatch, Agent Assistant requests, genome preparation, and GUI
+  background jobs now mirror current phase/progress without writing a status
+  file.
 - Split genome-prepare transcript indexing progress from gene indexing. Tabular
   annotation prepares now report `index_transcripts` /
   `reuse_transcript_index` with the `Transcript Index` step, while gene-index

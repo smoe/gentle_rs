@@ -1,6 +1,9 @@
 //! Agent-assistant bridge models, transports, and execution guardrails.
 
-use crate::engine::EngineStateSummary;
+use crate::{
+    engine::EngineStateSummary,
+    runtime_status::{RuntimeStatusFrameKind, runtime_status_registry},
+};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -36,6 +39,7 @@ Suggested command contract:
 - suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
 - GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /open; /import; /open sequence-window SEQ_ID; /close sequence-window SEQ_ID; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /features restriction-scan SEQ_ID [--enzyme NAME]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--id ID] [--no-open]; /fetch ensembl-gene QUERY [--species NAME] [--id ID] [--no-open]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
 - /list reports GENtle's current project state and loaded sequence/project records. It does not list operating-system files or folders.
+- Runtime status rule: if the user asks what GENtle is doing now, suggest introspect runtime. It returns the process-local live activity stack and does not read or write status files.
 - Window-management safety rule: close, hide, dismiss, focus, and open viewer-window requests are GUI intents, not project mutations. Never suggest deleting, removing, discarding, or clearing a sequence record to close a DNA sequence viewer. For catalogued dialogs/tools, use ui open TARGET, ui focus TARGET, or ui close TARGET. For a loaded sequence id such as fus_live, suggest ui open sequence-window fus_live, ui focus sequence-window fus_live, ui close sequence-window fus_live, /open sequence-window fus_live, or /close sequence-window fus_live. Use /delete, /remove, or lineage removal only when the user explicitly asks to delete project data.
 - Selection/display rule: to control a DNA viewer selection, use ui selection sequence-window SEQ_ID --range START..END (0-based, end-exclusive) or ui selection sequence-window SEQ_ID to inspect the current selection. To toggle feature display classes, use display show TARGET or display hide TARGET with targets such as features, gene-features, mrna-features, cds-features, repeat-features, array-features, tfbs, restriction-enzymes, gc-contents, open-reading-frames, and methylation-sites.
 - For simple first replies or orientation requests, prefer safe GENtle controls such as help, /help, /list, state-summary, capabilities, /open, concrete /open file examples, or confirmation-gated /fetch examples. Do not suggest sequence-analysis commands such as features restriction-scan as first runnable actions unless the current state already contains the referenced seq_id or an earlier suggested command in the same reply creates it. Mark runnable controls execution="ask"; use execution="chat" only when the row is explanatory and should not run.
@@ -2718,6 +2722,12 @@ pub fn invoke_agent_support_with_env_overrides(
     let start = std::time::Instant::now();
     let runtime = resolve_agent_runtime_config(&system);
     let attempt_limit = effective_attempt_limit(&runtime);
+    let agent_frame = runtime_status_registry().push_with_detail(
+        RuntimeStatusFrameKind::AgentRequest,
+        format!("agent request {}", system.id),
+        Some(format!("transport={}", system.transport.as_str())),
+    );
+    agent_frame.update_phase("invoke");
 
     let outcome = match system.transport {
         AgentSystemTransport::BuiltinEcho => {

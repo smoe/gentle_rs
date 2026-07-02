@@ -19,6 +19,7 @@ use crate::{
         default_catalog_discovery_label, default_catalog_discovery_token,
         default_helper_semantics_vocabulary_discovery_label,
     },
+    runtime_status::{RuntimeStatusTrigger, runtime_status_snapshot},
     shell_docs::{
         shell_help_json, shell_help_markdown, shell_help_text, shell_topic_help_json,
         shell_topic_help_markdown, shell_topic_help_text,
@@ -829,6 +830,16 @@ fn tool_list() -> Value {
     ]);
     if let Some(items) = tools.as_array_mut() {
         items.push(json!({
+            "name": "runtime_status",
+            "title": "Runtime Status",
+            "description": "Return the process-local live runtime activity stack for this GENtle MCP process.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        }));
+        items.push(json!({
             "name": "construct_reasoning_inspection_actions",
             "title": "Construct Reasoning Inspection Actions",
             "description": "Return recommended inspection actions from one stored construct-reasoning graph through the shared `construct-reasoning list-inspection-actions` shell contract.",
@@ -1198,6 +1209,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
     match name {
         "capabilities" => &["capabilities"],
         "state_summary" => &["state-summary"],
+        "runtime_status" => &["introspect runtime"],
         "agent_systems" => &["agents list"],
         "agent_preflight" => &["agents preflight"],
         "agent_models" => &["agents discover-models"],
@@ -3117,6 +3129,24 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
                 ),
             }
         }
+        "runtime_status" => {
+            if params
+                .arguments
+                .as_object()
+                .is_some_and(|args| !args.is_empty())
+            {
+                tool_result_text(
+                    "runtime_status does not accept arguments".to_string(),
+                    "text",
+                    true,
+                )
+            } else {
+                tool_result_json(
+                    json!(runtime_status_snapshot(RuntimeStatusTrigger::Mcp)),
+                    false,
+                )
+            }
+        }
         "restriction_site_detail" => {
             restriction_site_detail_tool_result(default_state_path, &params.arguments)
         }
@@ -3670,6 +3700,20 @@ mod tests {
             .map(|value| value.as_str().expect("enum string").to_string())
             .collect::<Vec<_>>();
         assert_eq!(actual_actions, vec!["open", "focus", "close"]);
+    }
+
+    #[test]
+    fn mcp_runtime_status_returns_process_local_snapshot() {
+        let response = run_tool(DEFAULT_MCP_STATE_PATH, "runtime_status", json!({}));
+        let structured = &response["result"]["structuredContent"];
+
+        assert_eq!(
+            structured["schema"].as_str(),
+            Some(crate::runtime_status::RUNTIME_STATUS_SCHEMA)
+        );
+        assert_eq!(structured["trigger"].as_str(), Some("mcp"));
+        assert!(structured["frames"].as_array().is_some());
+        assert!(structured["summary_lines"].as_array().is_some());
     }
 
     #[test]

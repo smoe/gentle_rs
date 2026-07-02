@@ -39,6 +39,7 @@
 
 use crate::feature_location::feature_is_reverse;
 use crate::ncbi_genbank_xml::{NcbiXmlDialect, parse_gbseq_xml_file_with_dialect};
+use crate::runtime_status::{RuntimeStatusFrameKind, runtime_status_registry};
 use flate2::read::MultiGzDecoder;
 pub use gentle_protocol::{PreparedCacheCleanupMode, PreparedCacheCleanupRequest};
 use regex::Regex;
@@ -4798,7 +4799,8 @@ impl GenomeCatalog {
             },
             true,
         ));
-        if !is_genbank_annotation_path(&annotation_path) && !is_xml_annotation_path(&annotation_path)
+        if !is_genbank_annotation_path(&annotation_path)
+            && !is_xml_annotation_path(&annotation_path)
         {
             steps.push(build_prepare_genome_plan_step(
                 PrepareGenomeStepId::TranscriptIndex,
@@ -5014,7 +5016,22 @@ impl GenomeCatalog {
                     ));
                 }
             };
+        let runtime_frame = runtime_status_registry().push_with_detail(
+            RuntimeStatusFrameKind::ResourcePrepare,
+            format!("prepare genome {genome_id}"),
+            Some(format!("mode={}", mode.label())),
+        );
         let mut tracked_on_progress = |progress: PrepareGenomeProgress| -> bool {
+            runtime_frame.update_from_progress(
+                progress.phase.clone(),
+                progress
+                    .step_label
+                    .clone()
+                    .unwrap_or_else(|| progress.item.clone()),
+                progress.bytes_done,
+                progress.bytes_total,
+                progress.percent,
+            );
             activity_tracker.update_progress(&progress);
             on_progress(progress)
         };
@@ -5700,7 +5717,14 @@ impl GenomeCatalog {
 
         match &result {
             Ok(_) => activity_tracker.finish_success(),
-            Err(error) => activity_tracker.finish_failure(error),
+            Err(error) => {
+                if is_prepare_cancelled_error(error) {
+                    runtime_frame.cancel(error);
+                } else {
+                    runtime_frame.fail(error);
+                }
+                activity_tracker.finish_failure(error);
+            }
         }
         result
     }
@@ -13035,7 +13059,8 @@ mod tests {
             phase == "index_fasta" && *step_id == Some(PrepareGenomeStepId::FastaIndex)
         }));
         assert!(rows.iter().any(|(phase, step_id, label)| {
-            phase == "index_genes" && *step_id == Some(PrepareGenomeStepId::GeneIndex)
+            phase == "index_genes"
+                && *step_id == Some(PrepareGenomeStepId::GeneIndex)
                 && label.as_deref() == Some("Gene Index")
         }));
         assert!(rows.iter().any(|(phase, step_id, label)| {
@@ -13081,7 +13106,10 @@ mod tests {
             })
             .unwrap();
 
-        assert_eq!(rows.first().map(|(phase, _)| phase.as_str()), Some("verify_checksums"));
+        assert_eq!(
+            rows.first().map(|(phase, _)| phase.as_str()),
+            Some("verify_checksums")
+        );
         assert_eq!(rows.first().and_then(|(_, step_id)| *step_id), None);
     }
 
