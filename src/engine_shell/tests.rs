@@ -24204,6 +24204,8 @@ fn parse_and_execute_introspect_runtime_reports_active_frames() {
     );
     assert_eq!(out.output["trigger"].as_str(), Some("shell"));
     let frames = out.output["frames"].as_array().expect("runtime frames");
+    assert!(out.output["activities"].as_array().is_some());
+    assert!(out.output["observability_notes"].as_array().is_some());
     assert!(frames.iter().any(|frame| {
         frame["label"].as_str() == Some("test background job")
             && frame["detail"].as_str() == Some("unit-test heartbeat")
@@ -24212,6 +24214,56 @@ fn parse_and_execute_introspect_runtime_reports_active_frames() {
         frame["kind"].as_str() == Some("shell_command")
             && frame["label"].as_str() == Some("shared shell command")
     }));
+}
+
+#[test]
+fn runtime_status_prepare_activity_mapping_marks_cross_process_activity() {
+    let owner_pid = std::process::id().saturating_add(10);
+    let status = PrepareGenomeActivityStatus {
+        genome_id: "ToyGenome".to_string(),
+        status_path: "/tmp/toy/.prepare_activity.json".to_string(),
+        lock_path: Some("/tmp/toy/.prepare_activity.lock".to_string()),
+        lifecycle_status: "running".to_string(),
+        prepare_mode: "prepare".to_string(),
+        phase: Some("index_transcripts".to_string()),
+        item: Some("Transcript Index".to_string()),
+        bytes_done: 12,
+        bytes_total: Some(24),
+        percent: Some(50.0),
+        step_id: None,
+        step_label: Some("Transcript Index".to_string()),
+        started_at_unix_ms: 100,
+        updated_at_unix_ms: 200,
+        finished_at_unix_ms: None,
+        last_error: None,
+        owner_pid: Some(owner_pid),
+    };
+
+    let activity = runtime_activity_from_prepare_genome(&status, false);
+
+    assert_eq!(activity.activity_id, "prepare-genome:reference:ToyGenome");
+    assert_eq!(
+        activity.source,
+        crate::runtime_status::RuntimeStatusActivitySource::PrepareGenome
+    );
+    assert_eq!(
+        activity.scope,
+        crate::runtime_status::RuntimeStatusActivityScope::PersistedActivity
+    );
+    assert_eq!(
+        activity.observation,
+        crate::runtime_status::RuntimeStatusActivityObservation::CrossProcess
+    );
+    assert_eq!(activity.phase.as_deref(), Some("index_transcripts"));
+    assert_eq!(activity.detail.as_deref(), Some("Transcript Index"));
+    assert_eq!(activity.progress_percent, Some(50.0));
+    assert_eq!(activity.bytes_done, Some(12));
+    assert_eq!(activity.bytes_total, Some(24));
+    assert_eq!(activity.origin_process_id, Some(owner_pid));
+    assert_eq!(
+        activity.source_path.as_deref(),
+        Some("/tmp/toy/.prepare_activity.json")
+    );
 }
 
 #[test]

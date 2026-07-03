@@ -19,6 +19,11 @@ Maintenance rule:
   Shared-shell dispatch, Agent Assistant requests, genome preparation, and GUI
   background jobs now mirror current phase/progress without writing a status
   file.
+- Extended `gentle.runtime_status.v1` with observed `activities[]` sourced
+  from existing genome-prepare, CUT&RUN shared-asset, and BLAST async ledgers,
+  with explicit process-local/cross-process/stale labelling.
+- Added a compact GUI status-bar runtime indicator while live process-local
+  runtime frames are active.
 - Split genome-prepare transcript indexing progress from gene indexing. Tabular
   annotation prepares now report `index_transcripts` /
   `reuse_transcript_index` with the `Transcript Index` step, while gene-index

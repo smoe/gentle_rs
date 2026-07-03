@@ -13,13 +13,13 @@ use crate::{
     },
     engine_shell::{
         ShellExecutionOptions, UiIntentAction, UiIntentTarget, execute_shell_command_with_options,
-        parse_shell_tokens,
+        parse_shell_tokens, runtime_status_payload_with_observed_activities,
     },
     genomes::{
         default_catalog_discovery_label, default_catalog_discovery_token,
         default_helper_semantics_vocabulary_discovery_label,
     },
-    runtime_status::{RuntimeStatusTrigger, runtime_status_snapshot},
+    runtime_status::RuntimeStatusTrigger,
     shell_docs::{
         shell_help_json, shell_help_markdown, shell_help_text, shell_topic_help_json,
         shell_topic_help_markdown, shell_topic_help_text,
@@ -832,10 +832,15 @@ fn tool_list() -> Value {
         items.push(json!({
             "name": "runtime_status",
             "title": "Runtime Status",
-            "description": "Return the process-local live runtime activity stack for this GENtle MCP process.",
+            "description": "Return runtime status for this GENtle MCP process plus observable persisted/project activity records from the selected state.",
             "inputSchema": {
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path used to inspect project-backed async registries such as BLAST."
+                    }
+                },
                 "additionalProperties": false
             }
         }));
@@ -3130,21 +3135,42 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
             }
         }
         "runtime_status" => {
-            if params
-                .arguments
-                .as_object()
-                .is_some_and(|args| !args.is_empty())
-            {
-                tool_result_text(
-                    "runtime_status does not accept arguments".to_string(),
-                    "text",
-                    true,
-                )
+            let args = params.arguments.as_object().cloned().unwrap_or_default();
+            if args.keys().any(|key| key != "state_path") {
+                tool_result_text("runtime_status accepts only state_path".to_string(), "text", true)
             } else {
-                tool_result_json(
-                    json!(runtime_status_snapshot(RuntimeStatusTrigger::Mcp)),
-                    false,
-                )
+                let state_path = state_path_from_args(default_state_path, &args);
+                match load_state(&state_path) {
+                    Ok(state) => {
+                        let mut engine = GentleEngine::from_state(state);
+                        match runtime_status_payload_with_observed_activities(
+                            &mut engine,
+                            RuntimeStatusTrigger::Mcp,
+                        ) {
+                            Ok((output, state_changed)) => {
+                                if state_changed {
+                                    if let Err(err) = engine.state().save_to_path(&state_path) {
+                                        return tool_result_json(
+                                            json!({ "state_path": state_path, "error": err }),
+                                            true,
+                                        );
+                                    }
+                                }
+                                tool_result_json(output, false)
+                            }
+                            Err(err) => tool_result_text(
+                                format!("Could not inspect runtime status: {err}"),
+                                "text",
+                                true,
+                            ),
+                        }
+                    }
+                    Err(err) => tool_result_text(
+                        format!("Could not load state from '{state_path}': {err}"),
+                        "text",
+                        true,
+                    ),
+                }
             }
         }
         "restriction_site_detail" => {
@@ -3713,6 +3739,8 @@ mod tests {
         );
         assert_eq!(structured["trigger"].as_str(), Some("mcp"));
         assert!(structured["frames"].as_array().is_some());
+        assert!(structured["activities"].as_array().is_some());
+        assert!(structured["observability_notes"].as_array().is_some());
         assert!(structured["summary_lines"].as_array().is_some());
     }
 

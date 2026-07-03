@@ -5138,7 +5138,7 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
     (
         "runtime_status",
         "Runtime Status",
-        "Return the process-local live runtime activity stack for this GENtle process.",
+        "Return process-local live frames plus observed persisted/project activity records for this GENtle process.",
         CapabilityMutation::ReadOnly,
     ),
     (
