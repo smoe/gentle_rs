@@ -11,6 +11,7 @@ use crate::{
         list_motif_summaries as list_attract_motif_summaries, snapshot_fingerprint_from_text,
     },
     enzymes::load_restriction_enzymes_from_json_text,
+    external_checksums::{LegacySha1ToolStatus, legacy_sha1_tool_status},
     publication_resources::{
         PublicationResourceCollectionStatus, publication_resource_collection_status,
     },
@@ -53,6 +54,7 @@ pub struct ResourceCatalogReport {
     pub attract: AttractResourceStatus,
     pub publication_datasets: PublicationResourceCollectionStatus,
     pub ucsc_rmsk: UcscRmskResourceStatus,
+    pub legacy_sha1: LegacySha1ToolStatus,
     pub vienna_rna: ExternalToolResourceStatus,
     pub rnapkin: ExternalToolResourceStatus,
 }
@@ -710,6 +712,7 @@ pub fn resource_catalog_status() -> ResourceCatalogReport {
         attract: attract_status(),
         publication_datasets: publication_resource_collection_status(),
         ucsc_rmsk: ucsc_rmsk_status(),
+        legacy_sha1: legacy_sha1_tool_status(),
         vienna_rna: vienna_rna_status(),
         rnapkin: rnapkin_status(),
     }

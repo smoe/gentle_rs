@@ -529,7 +529,8 @@ Computational artifact provenance rule:
   external-download verification. If SHA-1 is the only available upstream
   checksum, GENtle delegates to platform tools; without such a tool the file is
   recorded as not SHA-1 verified and relies only on basic corruption/parse
-  checks.
+  checks. `GENTLE_SHA1_TOOL` can override tool discovery, and
+  `GENTLE_DISABLE_LEGACY_SHA1=1` disables legacy SHA-1 checks explicitly.
 - If the output is persisted and sample-relevant, it should project as a
   graph-visible analysis artifact node rather than living only in a hidden
   metadata store.

@@ -967,7 +967,7 @@ fn file_size_bytes(path: &Path) -> Result<u64, EngineError> {
 fn checksum_sha1(path: &Path) -> Result<String, EngineError> {
     match crate::external_checksums::compute_sha1_with_external_tool(path) {
         Ok(digest) => Ok(format!("sha1:{}", digest.value)),
-        Err(error) if error.is_tool_unavailable() => {
+        Err(error) if error.allows_unverified_fallback() => {
             Ok("sha1:unverified-tool-unavailable".to_string())
         }
         Err(error) => Err(EngineError {

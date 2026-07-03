@@ -289,6 +289,11 @@ Tabs:
   - Validate executable availability/version from within the UI.
   - `RNAfold` is resolved by the shared RNA-structure engine path through
     `GENTLE_RNAFOLD_BIN` or `PATH`.
+  - Legacy SHA-1 download verification is resolved by the shared resource
+    status path through `GENTLE_SHA1_TOOL` or `PATH`; set
+    `GENTLE_DISABLE_LEGACY_SHA1=1` to skip it intentionally. GENtle reports
+    availability in `resources status` and in relevant prepare warnings rather
+    than showing a startup warning.
 - `Graphics`
   - Configure project-level display visibility defaults (panels, feature layers, overlays).
   - Configure sequence text-panel max length (`Sequence panel max text length`, default `200000 bp`, `0=unlimited`).

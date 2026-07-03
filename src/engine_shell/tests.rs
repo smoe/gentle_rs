@@ -28666,6 +28666,20 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
         out.output["rnapkin"]["env_var"].as_str(),
         Some("GENTLE_RNAPKIN_BIN")
     );
+    assert_eq!(
+        out.output["legacy_sha1"]["resource_id"].as_str(),
+        Some("legacy_sha1")
+    );
+    assert_eq!(
+        out.output["legacy_sha1"]["env_var"].as_str(),
+        Some("GENTLE_SHA1_TOOL")
+    );
+    assert_eq!(
+        out.output["legacy_sha1"]["disable_env_var"].as_str(),
+        Some("GENTLE_DISABLE_LEGACY_SHA1")
+    );
+    assert!(out.output["legacy_sha1"]["support_status"].as_str().is_some());
+    assert!(out.output["legacy_sha1"]["available"].as_bool().is_some());
 }
 
 #[test]

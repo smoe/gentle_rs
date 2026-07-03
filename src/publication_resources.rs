@@ -315,6 +315,17 @@ pub fn prepare_publication_dataset(
     let skipped_file_count = files.iter().filter(|row| row.skipped).count();
     let failed_file_count = files.iter().filter(|row| row.error.is_some()).count();
     let mut warnings = unresolved_dataset_warnings(&entry);
+    if download_files
+        && downloaded_file_count > 0
+        && files
+            .iter()
+            .any(|row| row.downloaded && row.checksum_sha1.is_none())
+        && let Some(warning) = crate::external_checksums::legacy_sha1_unverified_warning(
+            "downloaded publication-resource files",
+        )
+    {
+        warnings.push(warning);
+    }
     if !download_files && !planned_files.is_empty() {
         warnings.push(
             "No bytes were downloaded; rerun with --download-files or execute download.sh to fetch the declared files.".to_string(),
@@ -766,7 +777,7 @@ fn download_publication_file(
     row.checksum_sha1 =
         match crate::external_checksums::compute_sha1_with_external_tool(&destination) {
             Ok(digest) => Some(digest.value),
-            Err(error) if error.is_tool_unavailable() => None,
+            Err(error) if error.allows_unverified_fallback() => None,
             Err(error) => {
                 return Err(format!(
                     "Could not compute legacy SHA-1 for publication-resource file '{}': {error}",

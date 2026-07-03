@@ -5084,6 +5084,13 @@ impl GenomeCatalog {
                     )?;
                     let checksum_changed = ensure_manifest_checksums(&mut manifest)?;
                     let mut warnings: Vec<String> = vec![];
+                    if let Some(warning) =
+                        crate::external_checksums::legacy_sha1_unverified_warning(
+                            "prepared genome sequence/annotation reuse",
+                        )
+                    {
+                        warnings.push(warning);
+                    }
                     if let Some(warning) = cached_source_drift_warning.clone() {
                         warnings.push(warning);
                     }
@@ -5706,6 +5713,11 @@ impl GenomeCatalog {
             )?;
 
             let mut warnings = blast_outcome.warnings;
+            if let Some(warning) = crate::external_checksums::legacy_sha1_unverified_warning(
+                "prepared genome sequence/annotation manifest",
+            ) {
+                warnings.push(warning);
+            }
             if let Some(warning) = cached_source_drift_warning {
                 warnings.push(warning);
             }
@@ -7817,7 +7829,7 @@ fn summarize_annotation_parse_warnings(report: &AnnotationParseReport) -> Vec<St
 fn compute_file_sha1(path: &Path) -> Result<Option<String>, String> {
     match crate::external_checksums::compute_sha1_with_external_tool(path) {
         Ok(digest) => Ok(Some(digest.value)),
-        Err(error) if error.is_tool_unavailable() => Ok(None),
+        Err(error) if error.allows_unverified_fallback() => Ok(None),
         Err(error) => Err(format!(
             "Could not compute legacy SHA-1 for genome file '{}': {error}",
             path.display()

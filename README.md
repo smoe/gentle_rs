@@ -47,6 +47,27 @@ Agents working directly in a checkout should use the short in-tree loop in
 For Claude-specific internal and external agent scenarios, see
 [`docs/quickstart_claude.md`](docs/quickstart_claude.md).
 
+## Optional External Tools
+
+Most GENtle workflows run without optional command-line helpers, but several
+advanced or compatibility paths can use them when present:
+
+- BLAST+: `makeblastdb` and `blastn` for prepared-genome indexing/search.
+- ViennaRNA/RNAPKIN: `RNAfold` and `rnapkin` for RNA-structure calculation and
+  rendering.
+- BigWig conversion: `bigWigToBedGraph` for BigWig track import.
+- Legacy SHA-1 verification: `sha1sum` or `shasum -a 1` on Unix-like systems,
+  and Windows `certutil` on Windows. This is used only when an upstream
+  download/manifest still exposes SHA-1 fields. GENtle skips SHA-1 verification
+  when no external tool is available and still relies on basic size, gzip, and
+  parser checks where applicable.
+
+Executable overrides can be supplied through environment variables such as
+`GENTLE_MAKEBLASTDB_BIN`, `GENTLE_BLASTN_BIN`, `GENTLE_RNAFOLD_BIN`,
+`GENTLE_RNAPKIN_BIN`, `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`, and
+`GENTLE_SHA1_TOOL`. Set `GENTLE_DISABLE_LEGACY_SHA1=1` to skip legacy SHA-1
+checks intentionally.
+
 ## What To Trust Today
 
 Use this as a task-oriented confidence map rather than assuming every visible

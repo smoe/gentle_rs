@@ -12,6 +12,13 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-03
+
+- Delegated legacy SHA-1 download verification to external platform tools,
+  exposed `legacy_sha1` in resource status, and documented
+  `GENTLE_SHA1_TOOL` / `GENTLE_DISABLE_LEGACY_SHA1` for optional verification
+  control.
+
 ## 2026-07-02
 
 - Added an in-memory runtime activity stack exposed through

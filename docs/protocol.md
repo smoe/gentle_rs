@@ -1440,11 +1440,23 @@ Resource fields:
   - resolves `GENTLE_RNAPKIN_BIN`, then `rnapkin` on `PATH`
   - version probe: `rnapkin --version`, falling back to `rnapkin -V`
   - used to render RNAfold structure input as SVG/PNG
+- `legacy_sha1`
+  - display name: `Legacy SHA-1 verification tool`
+  - resolves `GENTLE_SHA1_TOOL` first, then platform defaults
+    (`sha1sum`, `shasum -a 1`, and Windows `certutil`)
+  - `GENTLE_DISABLE_LEGACY_SHA1=1` reports `support_status=disabled`
+  - used only for legacy upstream download/manifest SHA-1 fields; if missing
+    or disabled, SHA-1 verification is skipped and basic corruption, size,
+    gzip, or parser checks are the remaining safeguards
 
-Each executable resource reports `support_status`, `available`,
+Most executable resources report `support_status`, `available`,
 `resolved_executable`, `version_command`, optional `version_output`, optional
 `error`, and explanatory `notes[]`. In service handoff/readiness views these
 appear as `external_tool:*` rows rather than as normalized data-snapshot rows.
+The `legacy_sha1` row is a compatibility verifier rather than a versioned
+program dependency; it reports `env_var`, `disable_env_var`,
+`resolved_executable`, `tool_kind`, `probe_digest`, `available`, `error`, and
+`notes[]`.
 
 ## External service contracts
 

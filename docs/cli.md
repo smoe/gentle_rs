@@ -4276,6 +4276,13 @@ Tutorial companion:
       `rnapkin --version` / `rnapkin -V`
     - these are executable tool resources, not normalized data snapshots;
       GENtle uses ViennaRNA/RNAfold for folding and rnapkin for rendering
+  - Legacy SHA-1 verification is reported as `legacy_sha1`:
+    - resolves `GENTLE_SHA1_TOOL` first, then platform defaults
+      (`sha1sum`, `shasum -a 1`, and Windows `certutil`)
+    - set `GENTLE_DISABLE_LEGACY_SHA1=1` to skip SHA-1 checks intentionally
+    - missing tools do not block downloads by themselves; GENtle reports that
+      SHA-1 verification was skipped and relies on size/gzip/parser checks
+      where applicable
 - `resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]`
   - Parses REBASE/Bairoch-style records (`withrefm`) into GENtle restriction-enzyme JSON.
   - `INPUT` may be a local file path or an `https://...` URL.
@@ -6164,6 +6171,9 @@ Notes:
 - BLAST executable overrides:
   - `GENTLE_MAKEBLASTDB_BIN` (default: `makeblastdb`)
   - `GENTLE_BLASTN_BIN` (default: `blastn`)
+- Legacy SHA-1 verification override:
+  - `GENTLE_SHA1_TOOL` (optional explicit `sha1sum`/`shasum`/`certutil` path)
+  - `GENTLE_DISABLE_LEGACY_SHA1=1` to disable legacy SHA-1 verification
 - When BLAST hits are imported as features (`ImportBlastHitsTrack` /
   shell `genomes|helpers blast-track`), operation payload now includes
   `blast_provenance` with invocation details (`blastn_executable`, `blast_db_prefix`,
