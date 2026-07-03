@@ -16787,7 +16787,9 @@ fn candidate_set_delete_descriptor(id: &str, description: &str) -> Value {
         "reads": [
             {"fact": "candidate_set.exists", "subject": {"arg": "SET_NAME"}}
         ],
-        "effects": [],
+        "effects": [
+            closed_world_absence_effect("candidate_set.exists", "SET_NAME")
+        ],
         "precondition_expr": {
             "all": [
                 {"fact": "candidate_set.exists", "subject": {"arg": "SET_NAME"}}
@@ -16796,6 +16798,16 @@ fn candidate_set_delete_descriptor(id: &str, description: &str) -> Value {
         "description": description,
         "annotation_status": "fact_annotated",
         "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn closed_world_absence_effect(fact: &str, arg: &str) -> Value {
+    json!({
+        "not": {
+            "fact": fact,
+            "subject": {"arg": arg}
+        },
+        "effect_kind": "must_on_success"
     })
 }
 
@@ -16877,7 +16889,9 @@ fn guide_set_delete_descriptor(id: &str, description: &str) -> Value {
         "reads": [
             {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
         ],
-        "effects": [],
+        "effects": [
+            closed_world_absence_effect("guide_set.exists", "GUIDE_SET_ID")
+        ],
         "precondition_expr": {
             "all": [
                 {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
@@ -17745,6 +17759,32 @@ fn workflow_macro_template_descriptor(
     })
 }
 
+fn workflow_macro_template_delete_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            persisted_other_arg("TEMPLATE_NAME", true, "persisted workflow macro template name to delete")
+        ],
+        "reads": [
+            {"fact": "workflow_macro_template.exists", "subject": {"arg": "TEMPLATE_NAME"}}
+        ],
+        "effects": [
+            closed_world_absence_effect("workflow_macro_template.exists", "TEMPLATE_NAME")
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "workflow_macro_template.exists", "subject": {"arg": "TEMPLATE_NAME"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn workflow_macro_template_import_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -17857,6 +17897,32 @@ fn candidate_macro_template_descriptor(
             json!({"all": [
                 {"fact": "candidate_macro_template.exists", "subject": {"arg": "TEMPLATE_NAME"}}
             ]})
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn candidate_macro_template_delete_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            persisted_other_arg("TEMPLATE_NAME", true, "persisted candidate macro template name to delete")
+        ],
+        "reads": [
+            {"fact": "candidate_macro_template.exists", "subject": {"arg": "TEMPLATE_NAME"}}
+        ],
+        "effects": [
+            closed_world_absence_effect("candidate_macro_template.exists", "TEMPLATE_NAME")
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "candidate_macro_template.exists", "subject": {"arg": "TEMPLATE_NAME"}}
+            ]
         },
         "description": description,
         "annotation_status": "fact_annotated",
@@ -20158,7 +20224,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         ),
         candidate_set_delete_descriptor(
             "candidates delete",
-            "Delete one persisted candidate set; deletion has no positive hard effect until absence effects are modeled.",
+            "Delete one persisted candidate set and verify that the closed-world candidate-set fact is absent.",
         ),
         candidate_set_delete_descriptor(
             "DeleteCandidateSet",
@@ -20239,7 +20305,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         ),
         guide_set_delete_descriptor(
             "guides delete",
-            "Delete one persisted guide set; deletion has no positive hard effect until absence effects are modeled.",
+            "Delete one persisted guide set and verify that the closed-world guide-set fact is absent.",
         ),
         guide_set_delete_descriptor(
             "DeleteGuideSet",
@@ -23574,17 +23640,13 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             true,
             true,
         ),
-        candidate_macro_template_descriptor(
+        candidate_macro_template_delete_descriptor(
             "candidates template-delete",
             "Delete one persisted candidate macro template by name.",
-            true,
-            false,
         ),
-        candidate_macro_template_descriptor(
+        candidate_macro_template_delete_descriptor(
             "DeleteCandidateMacroTemplate",
             "Delete a candidate macro template through the shared engine operation.",
-            true,
-            false,
         ),
         candidate_macro_template_descriptor(
             "candidates template-run",
@@ -23629,17 +23691,13 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             true,
             true,
         ),
-        workflow_macro_template_descriptor(
+        workflow_macro_template_delete_descriptor(
             "macros template-delete",
             "Delete one persisted workflow macro template by name.",
-            true,
-            false,
         ),
-        workflow_macro_template_descriptor(
+        workflow_macro_template_delete_descriptor(
             "DeleteWorkflowMacroTemplate",
             "Delete a workflow macro template through the shared engine operation.",
-            true,
-            false,
         ),
         workflow_macro_template_import_descriptor(
             "macros template-import",
@@ -26193,21 +26251,22 @@ fn introspection_verify_effects_payload(
             "evaluation_unknown_atoms": [],
         });
     }
-    let mut expression_atoms = vec![];
+    let mut effect_expressions = vec![];
     let mut unknown_atoms = vec![];
     for atom in &atoms {
-        match instantiate_introspection_atom(atom, args) {
-            Ok(instantiated) => expression_atoms.push(FactExpression::Atom(instantiated)),
-            Err(_) => unknown_atoms.push(fact_atom_label(atom)),
+        if let Some(expression) =
+            instantiate_introspection_expression(atom, args, &mut unknown_atoms)
+        {
+            effect_expressions.push(expression);
         }
     }
     let graph = introspection_project_graph(engine, evidence, ui_host_available);
-    let evaluation = if expression_atoms.is_empty() {
+    let evaluation = if effect_expressions.is_empty() {
         None
     } else {
         Some(GentleEngine::evaluate_fact_expression_against_graph(
             &FactExpression::All {
-                all: expression_atoms,
+                all: effect_expressions,
             },
             &graph,
         ))

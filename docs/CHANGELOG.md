@@ -146,8 +146,8 @@ Maintenance rule:
 - Added closed-world `candidate_set.exists` introspection for persisted
   candidate-window sets and fact-aware readiness/effect descriptors for
   candidate generation, show/metrics, score, filter, top-k, Pareto, set algebra,
-  and delete routes. Delete rows are readiness-gated but do not yet claim a
-  positive hard absence effect.
+  and delete routes. Delete rows are readiness-gated and verify closed-world
+  absence after successful deletion.
 - Added closed-world `guide_set.exists`, `guide_filter_report.exists`, and
   `guide_oligo_set.exists` introspection for guide-design workflows, including
   fact-aware descriptors for guide-set upsert/show/filter/delete, oligo
@@ -343,6 +343,9 @@ Maintenance rule:
   metadata-backed BLAST option parameters, and accepted `set-param` aliases, so
   Agent/MCP readiness and effect checks can reason about display configuration
   with the same closed-world facts as engine parameters.
+- Added closed-world absence effect verification for candidate-set, guide-set,
+  workflow macro-template, and candidate macro-template delete routes using
+  `not(...exists)` hard effects.
 - Added `report.exists` fact projection for persisted CUT&RUN read and RNA-read
   interpretation reports, plus fact-aware readiness introspection for
   `cutrun show-read-report`, `cutrun export-coverage`,

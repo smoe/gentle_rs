@@ -20693,6 +20693,54 @@ fn execute_introspect_readiness_and_effects_cover_candidate_sets() {
         fact["fact"].as_str() == Some("candidate_set.exists")
             && fact["subject"]["id"].as_str() == Some("top")
     }));
+
+    let delete_before =
+        parse_shell_line("introspect verify-effects candidates delete --arg SET_NAME=cand")
+            .expect("parse candidate delete verify before");
+    let delete_before =
+        execute_shell_command(&mut engine, &delete_before).expect("execute delete verify before");
+    assert_eq!(delete_before.output["verified"].as_bool(), Some(false));
+    assert_eq!(delete_before.output["status"].as_str(), Some("failed"));
+    assert_eq!(
+        delete_before.output["must_on_success_effects"][0]["not"]["fact"].as_str(),
+        Some("candidate_set.exists")
+    );
+
+    let candidate_absence_expr: FactExpression = serde_json::from_value(serde_json::json!({
+        "not": {
+            "fact": "candidate_set.exists",
+            "subject": {"kind": "other", "id": "cand"}
+        }
+    }))
+    .expect("candidate absence expression");
+    assert_eq!(
+        engine
+            .evaluate_fact_expression(&candidate_absence_expr, &[])
+            .truth,
+        FactTruth::Unsatisfied
+    );
+
+    let deleted = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CandidatesDelete {
+            set_name: "cand".to_string(),
+        },
+    )
+    .expect("delete candidate set");
+    assert!(deleted.state_changed);
+    let delete_after =
+        parse_shell_line("introspect verify-effects candidates delete --arg SET_NAME=cand")
+            .expect("parse candidate delete verify after");
+    let delete_after =
+        execute_shell_command(&mut engine, &delete_after).expect("execute delete verify after");
+    assert_eq!(delete_after.output["verified"].as_bool(), Some(true));
+    assert_eq!(delete_after.output["status"].as_str(), Some("verified"));
+    assert_eq!(
+        engine
+            .evaluate_fact_expression(&candidate_absence_expr, &[])
+            .truth,
+        FactTruth::Satisfied
+    );
 }
 
 #[test]
@@ -20856,6 +20904,93 @@ fn execute_introspect_readiness_and_effects_cover_macro_templates() {
             && fact["subject"]["id"].as_str() == Some(macro_instance_id.as_str())
             && fact["value"]["expanded_op_count"].as_u64().unwrap_or(0) > 0
     }));
+
+    let candidate_delete_before = parse_shell_line(
+        "introspect verify-effects candidates template-delete --arg TEMPLATE_NAME=scan",
+    )
+    .expect("parse candidate template delete verify before");
+    let candidate_delete_before =
+        execute_shell_command(&mut engine, &candidate_delete_before)
+            .expect("execute candidate template delete verify before");
+    assert_eq!(
+        candidate_delete_before.output["verified"].as_bool(),
+        Some(false)
+    );
+    assert_eq!(
+        candidate_delete_before.output["must_on_success_effects"][0]["not"]["fact"].as_str(),
+        Some("candidate_macro_template.exists")
+    );
+    let candidate_deleted = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CandidatesTemplateDelete {
+            name: "scan".to_string(),
+        },
+    )
+    .expect("delete candidate template");
+    assert!(candidate_deleted.state_changed);
+    let candidate_delete_after = parse_shell_line(
+        "introspect verify-effects candidates template-delete --arg TEMPLATE_NAME=scan",
+    )
+    .expect("parse candidate template delete verify after");
+    let candidate_delete_after =
+        execute_shell_command(&mut engine, &candidate_delete_after)
+            .expect("execute candidate template delete verify after");
+    assert_eq!(
+        candidate_delete_after.output["verified"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        candidate_delete_after.output["status"].as_str(),
+        Some("verified")
+    );
+
+    let workflow_delete_before =
+        parse_shell_line("introspect verify-effects macros template-delete --arg TEMPLATE_NAME=clone")
+            .expect("parse workflow template delete verify before");
+    let workflow_delete_before =
+        execute_shell_command(&mut engine, &workflow_delete_before)
+            .expect("execute workflow template delete verify before");
+    assert_eq!(
+        workflow_delete_before.output["verified"].as_bool(),
+        Some(false)
+    );
+    assert_eq!(
+        workflow_delete_before.output["must_on_success_effects"][0]["not"]["fact"].as_str(),
+        Some("workflow_macro_template.exists")
+    );
+    let workflow_deleted = execute_shell_command(
+        &mut engine,
+        &ShellCommand::MacrosTemplateDelete {
+            name: "clone".to_string(),
+        },
+    )
+    .expect("delete workflow template");
+    assert!(workflow_deleted.state_changed);
+    let workflow_delete_after =
+        parse_shell_line("introspect verify-effects macros template-delete --arg TEMPLATE_NAME=clone")
+            .expect("parse workflow template delete verify after");
+    let workflow_delete_after =
+        execute_shell_command(&mut engine, &workflow_delete_after)
+            .expect("execute workflow template delete verify after");
+    assert_eq!(
+        workflow_delete_after.output["verified"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        workflow_delete_after.output["status"].as_str(),
+        Some("verified")
+    );
+
+    let workflow_missing =
+        parse_shell_line("introspect readiness macros template-run --arg TEMPLATE_NAME=clone")
+            .expect("parse deleted workflow template-run readiness");
+    let workflow_missing =
+        execute_shell_command(&mut engine, &workflow_missing)
+            .expect("execute deleted workflow readiness");
+    assert_eq!(
+        workflow_missing.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
 }
 
 #[test]
@@ -21026,6 +21161,33 @@ fn execute_introspect_readiness_and_effects_cover_guide_sets() {
         fact["fact"].as_str() == Some("guide_oligo_set.exists")
             && fact["subject"]["id"].as_str() == Some("tp73_oligos")
     }));
+
+    let delete_before =
+        parse_shell_line("introspect verify-effects guides delete --arg GUIDE_SET_ID=tp73_guides")
+            .expect("parse guide delete verify before");
+    let delete_before =
+        execute_shell_command(&mut engine, &delete_before).expect("execute guide delete before");
+    assert_eq!(delete_before.output["verified"].as_bool(), Some(false));
+    assert_eq!(
+        delete_before.output["must_on_success_effects"][0]["not"]["fact"].as_str(),
+        Some("guide_set.exists")
+    );
+
+    let deleted = execute_shell_command(
+        &mut engine,
+        &ShellCommand::GuidesDelete {
+            guide_set_id: "tp73_guides".to_string(),
+        },
+    )
+    .expect("delete guide set");
+    assert!(deleted.state_changed);
+    let delete_after =
+        parse_shell_line("introspect verify-effects guides delete --arg GUIDE_SET_ID=tp73_guides")
+            .expect("parse guide delete verify after");
+    let delete_after =
+        execute_shell_command(&mut engine, &delete_after).expect("execute guide delete after");
+    assert_eq!(delete_after.output["verified"].as_bool(), Some(true));
+    assert_eq!(delete_after.output["status"].as_str(), Some("verified"));
 }
 
 #[test]
@@ -24812,6 +24974,20 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             "{id} should declare candidate-set readiness"
         );
     }
+    for id in ["candidates delete", "DeleteCandidateSet"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["effects"][0]["not"]["fact"].as_str()
+                        == Some("candidate_set.exists")
+                    && descriptor["effects"][0]["not"]["subject"]["arg"].as_str()
+                        == Some("SET_NAME")
+                    && descriptor["effects"][0]["effect_kind"].as_str()
+                        == Some("must_on_success")
+            }),
+            "{id} should declare candidate-set absence after delete"
+        );
+    }
     for id in [
         "candidates filter",
         "FilterCandidateSet",
@@ -24872,6 +25048,20 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
                     && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("GUIDE_SET_ID")
             }),
             "{id} should declare guide-set readiness"
+        );
+    }
+    for id in ["guides delete", "DeleteGuideSet"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["effects"][0]["not"]["fact"].as_str()
+                        == Some("guide_set.exists")
+                    && descriptor["effects"][0]["not"]["subject"]["arg"].as_str()
+                        == Some("GUIDE_SET_ID")
+                    && descriptor["effects"][0]["effect_kind"].as_str()
+                        == Some("must_on_success")
+            }),
+            "{id} should declare guide-set absence after delete"
         );
     }
     for id in ["guides filter", "FilterGuidesPractical"] {

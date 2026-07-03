@@ -4612,16 +4612,18 @@ restriction-site scan evidence:
   Candidate generation requires `sequence.exists(SEQ_ID)` and verifies the
   named set. Show/metrics/score/delete routes require the set fact;
   filter/top-k/pareto/set-op routes require input set facts and verify the
-  named output set. Delete rows intentionally declare no hard positive effect
-  until absence/negative effects are modeled.
+  named output set. Delete rows verify a hard `not(candidate_set.exists)` effect
+  after successful deletion, using the same closed-world fact evaluator as
+  readiness.
 - Guide-design routes project closed-world `guide_set.exists(GUIDE_SET_ID)`,
   `guide_filter_report.exists(GUIDE_SET_ID)`, and
   `guide_oligo_set.exists(OLIGO_SET_ID)` facts from persisted guide metadata.
   Upsert verifies the guide-set fact; practical filtering verifies the filter
   report and, when an output id is supplied, the filtered guide set; oligo
-  generation verifies the oligo-set fact. Guide CSV/FASTA/protocol exports use
-  `artifact.written` external handoff effects rather than local project-state
-  mutations.
+  generation verifies the oligo-set fact. Guide deletes verify a hard
+  `not(guide_set.exists)` effect after successful deletion. Guide
+  CSV/FASTA/protocol exports use `artifact.written` external handoff effects
+  rather than local project-state mutations.
 - Wet-lab container authoring routes project closed-world
   `container.exists(CONTAINER_ID)`, `arrangement.exists(ARRANGEMENT_ID)`, and
   `rack.exists(RACK_ID)` facts from persisted project state. Container
@@ -4655,8 +4657,9 @@ restriction-site scan evidence:
   `macro_instance.exists(MACRO_INSTANCE_ID)` facts from persisted project
   metadata and lineage state. Candidate/workflow template upsert verifies the
   corresponding template fact. Template show/delete/run routes require the
-  corresponding template fact; deletes do not yet declare a positive absence
-  effect. Workflow template runs may record a macro-instance lineage row, and
+  corresponding template fact; template deletes verify a hard
+  `not(..._macro_template.exists)` effect after successful deletion. Workflow
+  template runs may record a macro-instance lineage row, and
   `macros instance-show` requires the `macro_instance.exists` fact.
 - Protein/gene metadata routes project closed-world
   `uniprot_entry.exists(ENTRY_ID)`,

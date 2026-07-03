@@ -531,7 +531,9 @@ Not all effects are guaranteed. Each effect carries an `effect_kind`:
 - `must_on_success` — the effect must hold if the command succeeds. **Only these
   are asserted by post-run verification** through
   `introspect verify-effects`. The verifier evaluates declared hard effects
-  against the current fact graph plus supplied evidence.
+  against the current fact graph plus supplied evidence. Hard effects may be
+  full fact expressions; delete routes use `not(...)` over closed-world
+  `*.exists` facts to assert absence after successful deletion.
 - `may_on_success` — conditional/optional; not asserted.
 - `external_handoff` — an external/provider action, not a local state change.
   Aligns with the existing `mutating: "external"` posture.
