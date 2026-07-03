@@ -5349,6 +5349,7 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "construct-reasoning show-graph",
     "construct-reasoning set-annotation-status",
     "construct-reasoning write-annotation",
+    "introspect runtime",
     "ui intents",
     "ui open",
     "ui focus",
