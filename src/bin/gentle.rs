@@ -26,9 +26,7 @@ fn configure_macos_process_name() {
     use objc2_foundation::{NSProcessInfo, ns_string};
     // Winit builds the macOS app menu title from NSProcessInfo::processName.
     // Set it early so the native menu shows "About GENtle" instead of "About gentle".
-    unsafe {
-        NSProcessInfo::processInfo().setProcessName(ns_string!("GENtle"));
-    }
+    NSProcessInfo::processInfo().setProcessName(ns_string!("GENtle"));
 }
 
 #[cfg(not(target_os = "macos"))]

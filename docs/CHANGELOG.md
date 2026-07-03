@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-07-03
 
+- Updated the direct macOS Objective-C bridge dependencies to the current
+  `objc2` 0.6 / `objc2-app-kit` 0.3 / `objc2-foundation` 0.3 stack, migrated
+  the native menu bridge to the new class-definition API, and kept the lockfile
+  refresh for `num-bigint` and `rustc-hash`.
 - Delegated legacy SHA-1 download verification to external platform tools,
   exposed `legacy_sha1` in resource status, and documented
   `GENTLE_SHA1_TOOL` / `GENTLE_DISABLE_LEGACY_SHA1` for optional verification

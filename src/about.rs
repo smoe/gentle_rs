@@ -13,16 +13,14 @@ pub fn version_cli_text() -> String {
 
 #[cfg(target_os = "macos")]
 pub fn show_native_about_panel() -> bool {
+    use objc2::MainThreadMarker;
     use objc2_app_kit::NSApplication;
-    use objc2_foundation::MainThreadMarker;
 
     let Some(mtm) = MainThreadMarker::new() else {
         return false;
     };
     let app = NSApplication::sharedApplication(mtm);
-    unsafe {
-        app.orderFrontStandardAboutPanel(None);
-    }
+    app.orderFrontStandardAboutPanel(None);
     true
 }
 
@@ -82,9 +80,9 @@ mod macos_native_help_menu {
     use crate::app;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
-    use objc2::{ClassType, DeclaredClass, declare_class, msg_send_id, mutability, sel};
+    use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
     use objc2_app_kit::NSApplication;
-    use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, ns_string};
+    use objc2_foundation::{NSObject, NSObjectProtocol, ns_string};
 
     static INSTALLED: AtomicBool = AtomicBool::new(false);
 
@@ -92,33 +90,27 @@ mod macos_native_help_menu {
         static HELP_MENU_TARGET: RefCell<Option<Retained<HelpMenuTarget>>> = const { RefCell::new(None) };
     }
 
-    declare_class!(
+    define_class!(
+        #[unsafe(super(NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "GENtleHelpMenuTarget"]
+        #[ivars = ()]
         struct HelpMenuTarget;
 
-        unsafe impl ClassType for HelpMenuTarget {
-            type Super = NSObject;
-            type Mutability = mutability::MainThreadOnly;
-            const NAME: &'static str = "GENtleHelpMenuTarget";
-        }
-
-        impl DeclaredClass for HelpMenuTarget {
-            type Ivars = ();
-        }
-
-        unsafe impl NSObjectProtocol for HelpMenuTarget {}
-        unsafe impl HelpMenuTarget {
-            #[method(openGentleHelp:)]
+        impl HelpMenuTarget {
+            #[unsafe(method(openGentleHelp:))]
             fn open_gentle_help(&self, _sender: Option<&AnyObject>) {
                 app::request_open_help_from_native_menu();
             }
         }
+
+        unsafe impl NSObjectProtocol for HelpMenuTarget {}
     );
 
     impl HelpMenuTarget {
         fn new(mtm: MainThreadMarker) -> Retained<Self> {
-            let this = mtm.alloc();
-            let this = this.set_ivars(());
-            unsafe { msg_send_id![super(this), init] }
+            let this = Self::alloc(mtm).set_ivars(());
+            unsafe { msg_send![super(this), init] }
         }
     }
 
@@ -131,18 +123,18 @@ mod macos_native_help_menu {
             return;
         };
         let app = NSApplication::sharedApplication(mtm);
-        let Some(main_menu) = (unsafe { app.mainMenu() }) else {
+        let Some(main_menu) = app.mainMenu() else {
             return;
         };
-        let Some(app_menu_item) = (unsafe { main_menu.itemAtIndex(0) }) else {
+        let Some(app_menu_item) = main_menu.itemAtIndex(0) else {
             return;
         };
-        let Some(app_menu) = (unsafe { app_menu_item.submenu() }) else {
+        let Some(app_menu) = app_menu_item.submenu() else {
             return;
         };
 
         let item_title = ns_string!("GENtle Help...");
-        if unsafe { app_menu.indexOfItemWithTitle(item_title) } >= 0 {
+        if app_menu.indexOfItemWithTitle(item_title) >= 0 {
             INSTALLED.store(true, Ordering::Relaxed);
             return;
         }
@@ -177,9 +169,9 @@ mod macos_native_settings_menu {
     use crate::app;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
-    use objc2::{ClassType, DeclaredClass, declare_class, msg_send_id, mutability, sel};
+    use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
     use objc2_app_kit::NSApplication;
-    use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, ns_string};
+    use objc2_foundation::{NSObject, NSObjectProtocol, ns_string};
 
     static INSTALLED: AtomicBool = AtomicBool::new(false);
 
@@ -187,33 +179,27 @@ mod macos_native_settings_menu {
         static SETTINGS_MENU_TARGET: RefCell<Option<Retained<SettingsMenuTarget>>> = const { RefCell::new(None) };
     }
 
-    declare_class!(
+    define_class!(
+        #[unsafe(super(NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "GENtleSettingsMenuTarget"]
+        #[ivars = ()]
         struct SettingsMenuTarget;
 
-        unsafe impl ClassType for SettingsMenuTarget {
-            type Super = NSObject;
-            type Mutability = mutability::MainThreadOnly;
-            const NAME: &'static str = "GENtleSettingsMenuTarget";
-        }
-
-        impl DeclaredClass for SettingsMenuTarget {
-            type Ivars = ();
-        }
-
-        unsafe impl NSObjectProtocol for SettingsMenuTarget {}
-        unsafe impl SettingsMenuTarget {
-            #[method(openGentleSettings:)]
+        impl SettingsMenuTarget {
+            #[unsafe(method(openGentleSettings:))]
             fn open_gentle_settings(&self, _sender: Option<&AnyObject>) {
                 app::request_open_settings_from_native_menu();
             }
         }
+
+        unsafe impl NSObjectProtocol for SettingsMenuTarget {}
     );
 
     impl SettingsMenuTarget {
         fn new(mtm: MainThreadMarker) -> Retained<Self> {
-            let this = mtm.alloc();
-            let this = this.set_ivars(());
-            unsafe { msg_send_id![super(this), init] }
+            let this = Self::alloc(mtm).set_ivars(());
+            unsafe { msg_send![super(this), init] }
         }
     }
 
@@ -226,18 +212,18 @@ mod macos_native_settings_menu {
             return;
         };
         let app = NSApplication::sharedApplication(mtm);
-        let Some(main_menu) = (unsafe { app.mainMenu() }) else {
+        let Some(main_menu) = app.mainMenu() else {
             return;
         };
-        let Some(app_menu_item) = (unsafe { main_menu.itemAtIndex(0) }) else {
+        let Some(app_menu_item) = main_menu.itemAtIndex(0) else {
             return;
         };
-        let Some(app_menu) = (unsafe { app_menu_item.submenu() }) else {
+        let Some(app_menu) = app_menu_item.submenu() else {
             return;
         };
 
         let item_title = ns_string!("GENtle Settings...");
-        if unsafe { app_menu.indexOfItemWithTitle(item_title) } >= 0 {
+        if app_menu.indexOfItemWithTitle(item_title) >= 0 {
             INSTALLED.store(true, Ordering::Relaxed);
             return;
         }
@@ -272,9 +258,9 @@ mod macos_native_windows_menu {
     use crate::app;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
-    use objc2::{ClassType, DeclaredClass, declare_class, msg_send, msg_send_id, mutability, sel};
+    use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
     use objc2_app_kit::{NSApplication, NSMenu};
-    use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, NSString, ns_string};
+    use objc2_foundation::{NSObject, NSObjectProtocol, NSString, ns_string};
 
     static INSTALLED: AtomicBool = AtomicBool::new(false);
 
@@ -282,27 +268,20 @@ mod macos_native_windows_menu {
         static WINDOWS_MENU_TARGET: RefCell<Option<Retained<WindowsMenuTarget>>> = const { RefCell::new(None) };
     }
 
-    declare_class!(
+    define_class!(
+        #[unsafe(super(NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "GENtleWindowsMenuTarget"]
+        #[ivars = ()]
         struct WindowsMenuTarget;
 
-        unsafe impl ClassType for WindowsMenuTarget {
-            type Super = NSObject;
-            type Mutability = mutability::MainThreadOnly;
-            const NAME: &'static str = "GENtleWindowsMenuTarget";
-        }
-
-        impl DeclaredClass for WindowsMenuTarget {
-            type Ivars = ();
-        }
-
-        unsafe impl NSObjectProtocol for WindowsMenuTarget {}
-        unsafe impl WindowsMenuTarget {
-            #[method(openGentleWindows:)]
+        impl WindowsMenuTarget {
+            #[unsafe(method(openGentleWindows:))]
             fn open_gentle_windows(&self, _sender: Option<&AnyObject>) {
                 app::request_open_windows_from_native_menu();
             }
 
-            #[method(focusGentleWindowEntry:)]
+            #[unsafe(method(focusGentleWindowEntry:))]
             fn focus_gentle_window_entry(&self, sender: Option<&AnyObject>) {
                 let Some(sender) = sender else {
                     app::request_open_windows_from_native_menu();
@@ -316,23 +295,24 @@ mod macos_native_windows_menu {
                 }
             }
         }
+
+        unsafe impl NSObjectProtocol for WindowsMenuTarget {}
     );
 
     impl WindowsMenuTarget {
         fn new(mtm: MainThreadMarker) -> Retained<Self> {
-            let this = mtm.alloc();
-            let this = this.set_ivars(());
-            unsafe { msg_send_id![super(this), init] }
+            let this = Self::alloc(mtm).set_ivars(());
+            unsafe { msg_send![super(this), init] }
         }
     }
 
     fn find_windows_item(window_menu: &NSMenu) -> Option<Retained<objc2_app_kit::NSMenuItem>> {
         let item_title = ns_string!("GENtle Open Windows…");
-        let index = unsafe { window_menu.indexOfItemWithTitle(item_title) };
+        let index = window_menu.indexOfItemWithTitle(item_title);
         if index < 0 {
             return None;
         }
-        unsafe { window_menu.itemAtIndex(index) }
+        window_menu.itemAtIndex(index)
     }
 
     fn try_update_existing_entry_states(
@@ -343,12 +323,12 @@ mod macos_native_windows_menu {
         if entries.is_empty() {
             return false;
         }
-        let item_count = unsafe { submenu.numberOfItems() };
+        let item_count = submenu.numberOfItems();
         if item_count < 0 || item_count as usize != entries.len() {
             return false;
         }
         for (idx, (key, _title)) in entries.iter().enumerate() {
-            let Some(item) = (unsafe { submenu.itemAtIndex(idx as isize) }) else {
+            let Some(item) = submenu.itemAtIndex(idx as isize) else {
                 return false;
             };
             let existing_tag: isize = unsafe { msg_send![&item, tag] };
@@ -357,14 +337,12 @@ mod macos_native_windows_menu {
             }
         }
         for (idx, (key, _title)) in entries.iter().enumerate() {
-            let Some(item) = (unsafe { submenu.itemAtIndex(idx as isize) }) else {
+            let Some(item) = submenu.itemAtIndex(idx as isize) else {
                 return false;
             };
-            unsafe {
-                let state_value: isize = if Some(*key) == active_key { 1 } else { 0 };
-                let _: () = msg_send![&item, setState: state_value];
-                item.setEnabled(true);
-            }
+            let state_value: isize = if Some(*key) == active_key { 1 } else { 0 };
+            let _: () = unsafe { msg_send![&item, setState: state_value] };
+            item.setEnabled(true);
         }
         true
     }
@@ -378,19 +356,18 @@ mod macos_native_windows_menu {
             return;
         };
         let app = NSApplication::sharedApplication(mtm);
-        let Some(main_menu) = (unsafe { app.mainMenu() }) else {
+        let Some(main_menu) = app.mainMenu() else {
             return;
         };
-        let Some(window_menu_item) = (unsafe { main_menu.itemWithTitle(ns_string!("Window")) })
-        else {
+        let Some(window_menu_item) = main_menu.itemWithTitle(ns_string!("Window")) else {
             return;
         };
-        let Some(window_menu) = (unsafe { window_menu_item.submenu() }) else {
+        let Some(window_menu) = window_menu_item.submenu() else {
             return;
         };
 
         let item_title = ns_string!("GENtle Open Windows…");
-        if unsafe { window_menu.indexOfItemWithTitle(item_title) } >= 0 {
+        if window_menu.indexOfItemWithTitle(item_title) >= 0 {
             INSTALLED.store(true, Ordering::Relaxed);
             return;
         }
@@ -419,33 +396,29 @@ mod macos_native_windows_menu {
             return;
         };
         let app = NSApplication::sharedApplication(mtm);
-        let Some(main_menu) = (unsafe { app.mainMenu() }) else {
+        let Some(main_menu) = app.mainMenu() else {
             return;
         };
-        let Some(window_menu_item) = (unsafe { main_menu.itemWithTitle(ns_string!("Window")) })
-        else {
+        let Some(window_menu_item) = main_menu.itemWithTitle(ns_string!("Window")) else {
             return;
         };
-        let Some(window_menu) = (unsafe { window_menu_item.submenu() }) else {
+        let Some(window_menu) = window_menu_item.submenu() else {
             return;
         };
         let Some(item) = find_windows_item(&window_menu) else {
             return;
         };
-        let submenu = if let Some(existing) = unsafe { item.submenu() } {
+        let submenu = if let Some(existing) = item.submenu() {
             existing
         } else {
-            let created =
-                unsafe { NSMenu::initWithTitle(mtm.alloc(), ns_string!("GENtle Open Windows")) };
+            let created = NSMenu::initWithTitle(mtm.alloc(), ns_string!("GENtle Open Windows"));
             item.setSubmenu(Some(&created));
             created
         };
         if try_update_existing_entry_states(&submenu, entries, active_key) {
             return;
         }
-        unsafe {
-            submenu.removeAllItems();
-        }
+        submenu.removeAllItems();
         if entries.is_empty() {
             let entry = unsafe {
                 submenu.addItemWithTitle_action_keyEquivalent(
@@ -454,9 +427,7 @@ mod macos_native_windows_menu {
                     ns_string!(""),
                 )
             };
-            unsafe {
-                entry.setEnabled(false);
-            }
+            entry.setEnabled(false);
             return;
         }
 
@@ -471,15 +442,13 @@ mod macos_native_windows_menu {
                     unsafe {
                         entry.setTarget(Some(target_obj));
                         entry.setAction(Some(sel!(focusGentleWindowEntry:)));
-                        entry.setTag(*key as isize);
-                        let state_value: isize = if Some(*key) == active_key { 1 } else { 0 };
-                        let _: () = msg_send![&entry, setState: state_value];
-                        entry.setEnabled(true);
                     }
+                    entry.setTag(*key as isize);
+                    let state_value: isize = if Some(*key) == active_key { 1 } else { 0 };
+                    let _: () = unsafe { msg_send![&entry, setState: state_value] };
+                    entry.setEnabled(true);
                 } else {
-                    unsafe {
-                        entry.setEnabled(false);
-                    }
+                    entry.setEnabled(false);
                 }
             });
         }
@@ -496,9 +465,9 @@ mod macos_native_app_windows_menu {
     use crate::app;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
-    use objc2::{ClassType, DeclaredClass, declare_class, msg_send, msg_send_id, mutability, sel};
+    use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
     use objc2_app_kit::{NSApplication, NSMenu};
-    use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, NSString, ns_string};
+    use objc2_foundation::{NSObject, NSObjectProtocol, NSString, ns_string};
 
     static INSTALLED: AtomicBool = AtomicBool::new(false);
 
@@ -506,27 +475,20 @@ mod macos_native_app_windows_menu {
         static APP_WINDOWS_MENU_TARGET: RefCell<Option<Retained<AppWindowsMenuTarget>>> = const { RefCell::new(None) };
     }
 
-    declare_class!(
+    define_class!(
+        #[unsafe(super(NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "GENtleAppWindowsMenuTarget"]
+        #[ivars = ()]
         struct AppWindowsMenuTarget;
 
-        unsafe impl ClassType for AppWindowsMenuTarget {
-            type Super = NSObject;
-            type Mutability = mutability::MainThreadOnly;
-            const NAME: &'static str = "GENtleAppWindowsMenuTarget";
-        }
-
-        impl DeclaredClass for AppWindowsMenuTarget {
-            type Ivars = ();
-        }
-
-        unsafe impl NSObjectProtocol for AppWindowsMenuTarget {}
-        unsafe impl AppWindowsMenuTarget {
-            #[method(openGentleWindowsFromAppMenu:)]
+        impl AppWindowsMenuTarget {
+            #[unsafe(method(openGentleWindowsFromAppMenu:))]
             fn open_gentle_windows_from_app_menu(&self, _sender: Option<&AnyObject>) {
                 app::request_open_windows_from_native_menu();
             }
 
-            #[method(focusGentleWindowEntryFromAppMenu:)]
+            #[unsafe(method(focusGentleWindowEntryFromAppMenu:))]
             fn focus_gentle_window_entry_from_app_menu(&self, sender: Option<&AnyObject>) {
                 let Some(sender) = sender else {
                     app::request_open_windows_from_native_menu();
@@ -540,23 +502,24 @@ mod macos_native_app_windows_menu {
                 }
             }
         }
+
+        unsafe impl NSObjectProtocol for AppWindowsMenuTarget {}
     );
 
     impl AppWindowsMenuTarget {
         fn new(mtm: MainThreadMarker) -> Retained<Self> {
-            let this = mtm.alloc();
-            let this = this.set_ivars(());
-            unsafe { msg_send_id![super(this), init] }
+            let this = Self::alloc(mtm).set_ivars(());
+            unsafe { msg_send![super(this), init] }
         }
     }
 
     fn find_app_windows_item(app_menu: &NSMenu) -> Option<Retained<objc2_app_kit::NSMenuItem>> {
         let item_title = ns_string!("GENtle Windows…");
-        let index = unsafe { app_menu.indexOfItemWithTitle(item_title) };
+        let index = app_menu.indexOfItemWithTitle(item_title);
         if index < 0 {
             return None;
         }
-        unsafe { app_menu.itemAtIndex(index) }
+        app_menu.itemAtIndex(index)
     }
 
     fn try_update_existing_entry_states(
@@ -567,12 +530,12 @@ mod macos_native_app_windows_menu {
         if entries.is_empty() {
             return false;
         }
-        let item_count = unsafe { submenu.numberOfItems() };
+        let item_count = submenu.numberOfItems();
         if item_count < 0 || item_count as usize != entries.len() {
             return false;
         }
         for (idx, (key, _title)) in entries.iter().enumerate() {
-            let Some(item) = (unsafe { submenu.itemAtIndex(idx as isize) }) else {
+            let Some(item) = submenu.itemAtIndex(idx as isize) else {
                 return false;
             };
             let existing_tag: isize = unsafe { msg_send![&item, tag] };
@@ -581,14 +544,12 @@ mod macos_native_app_windows_menu {
             }
         }
         for (idx, (key, _title)) in entries.iter().enumerate() {
-            let Some(item) = (unsafe { submenu.itemAtIndex(idx as isize) }) else {
+            let Some(item) = submenu.itemAtIndex(idx as isize) else {
                 return false;
             };
-            unsafe {
-                let state_value: isize = if Some(*key) == active_key { 1 } else { 0 };
-                let _: () = msg_send![&item, setState: state_value];
-                item.setEnabled(true);
-            }
+            let state_value: isize = if Some(*key) == active_key { 1 } else { 0 };
+            let _: () = unsafe { msg_send![&item, setState: state_value] };
+            item.setEnabled(true);
         }
         true
     }
@@ -602,18 +563,18 @@ mod macos_native_app_windows_menu {
             return;
         };
         let app = NSApplication::sharedApplication(mtm);
-        let Some(main_menu) = (unsafe { app.mainMenu() }) else {
+        let Some(main_menu) = app.mainMenu() else {
             return;
         };
-        let Some(app_menu_item) = (unsafe { main_menu.itemAtIndex(0) }) else {
+        let Some(app_menu_item) = main_menu.itemAtIndex(0) else {
             return;
         };
-        let Some(app_menu) = (unsafe { app_menu_item.submenu() }) else {
+        let Some(app_menu) = app_menu_item.submenu() else {
             return;
         };
 
         let item_title = ns_string!("GENtle Windows…");
-        if unsafe { app_menu.indexOfItemWithTitle(item_title) } >= 0 {
+        if app_menu.indexOfItemWithTitle(item_title) >= 0 {
             INSTALLED.store(true, Ordering::Relaxed);
             return;
         }
@@ -642,32 +603,29 @@ mod macos_native_app_windows_menu {
             return;
         };
         let app = NSApplication::sharedApplication(mtm);
-        let Some(main_menu) = (unsafe { app.mainMenu() }) else {
+        let Some(main_menu) = app.mainMenu() else {
             return;
         };
-        let Some(app_menu_item) = (unsafe { main_menu.itemAtIndex(0) }) else {
+        let Some(app_menu_item) = main_menu.itemAtIndex(0) else {
             return;
         };
-        let Some(app_menu) = (unsafe { app_menu_item.submenu() }) else {
+        let Some(app_menu) = app_menu_item.submenu() else {
             return;
         };
         let Some(item) = find_app_windows_item(&app_menu) else {
             return;
         };
-        let submenu = if let Some(existing) = unsafe { item.submenu() } {
+        let submenu = if let Some(existing) = item.submenu() {
             existing
         } else {
-            let created =
-                unsafe { NSMenu::initWithTitle(mtm.alloc(), ns_string!("GENtle Windows")) };
+            let created = NSMenu::initWithTitle(mtm.alloc(), ns_string!("GENtle Windows"));
             item.setSubmenu(Some(&created));
             created
         };
         if try_update_existing_entry_states(&submenu, entries, active_key) {
             return;
         }
-        unsafe {
-            submenu.removeAllItems();
-        }
+        submenu.removeAllItems();
         if entries.is_empty() {
             let entry = unsafe {
                 submenu.addItemWithTitle_action_keyEquivalent(
@@ -676,9 +634,7 @@ mod macos_native_app_windows_menu {
                     ns_string!(""),
                 )
             };
-            unsafe {
-                entry.setEnabled(false);
-            }
+            entry.setEnabled(false);
             return;
         }
 
@@ -693,15 +649,13 @@ mod macos_native_app_windows_menu {
                     unsafe {
                         entry.setTarget(Some(target_obj));
                         entry.setAction(Some(sel!(focusGentleWindowEntryFromAppMenu:)));
-                        entry.setTag(*key as isize);
-                        let state_value: isize = if Some(*key) == active_key { 1 } else { 0 };
-                        let _: () = msg_send![&entry, setState: state_value];
-                        entry.setEnabled(true);
                     }
+                    entry.setTag(*key as isize);
+                    let state_value: isize = if Some(*key) == active_key { 1 } else { 0 };
+                    let _: () = unsafe { msg_send![&entry, setState: state_value] };
+                    entry.setEnabled(true);
                 } else {
-                    unsafe {
-                        entry.setEnabled(false);
-                    }
+                    entry.setEnabled(false);
                 }
             });
         }
