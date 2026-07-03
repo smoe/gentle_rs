@@ -4707,10 +4707,12 @@ restriction-site scan evidence:
   without an artifact effect. Project readiness for those commands is still
   evaluated from their project inputs.
 - `config.param` is a config-domain closed-world fact for engine-owned
-  behavioral parameters. The subject kind is `other`, the subject id is the
-  parameter name, and the fact value is the current JSON value. The first
-  projection covers `EngineParameters`; display-only `set-param` aliases remain
-  execution-supported but are not yet all canonicalized as config facts.
+  behavioral parameters, persisted display settings, metadata-backed BLAST
+  option parameters, and accepted `set-param` compatibility aliases. The subject
+  kind is `other`, the subject id is the canonical parameter name or accepted
+  alias, and the fact value is the current JSON value. Alias facts intentionally
+  mirror their canonical stored value so readiness/effect checks can bind the
+  spelling used by a GUI, shell, MCP, or agent route.
 - Read-only sequence inspectors such as `rna-info`, `features query`, and
   `features tfbs-summary` use `sequence.exists` readiness and do not project
   persistent report effects. The raw `SummarizeTfbsRegion` and

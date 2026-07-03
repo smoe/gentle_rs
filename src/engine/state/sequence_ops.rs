@@ -89,6 +89,177 @@ fn sort_project_facts(facts: &mut Vec<ProjectFact>) {
     });
 }
 
+fn collect_config_param_values(
+    state: &ProjectState,
+) -> std::collections::BTreeMap<String, serde_json::Value> {
+    let mut values = std::collections::BTreeMap::<String, serde_json::Value>::new();
+    insert_serialized_config_object(&mut values, &state.parameters);
+    insert_serialized_config_object(&mut values, &state.display);
+    values.insert(
+        "blast_options_override".to_string(),
+        state
+            .metadata
+            .get("blast_options_override")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    );
+    values.insert(
+        "blast_options_defaults_path".to_string(),
+        state
+            .metadata
+            .get("blast_options_defaults_path")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    );
+    insert_config_param_aliases(&mut values);
+    values
+}
+
+fn insert_serialized_config_object(
+    values: &mut std::collections::BTreeMap<String, serde_json::Value>,
+    source: &impl serde::Serialize,
+) {
+    if let Ok(serde_json::Value::Object(object)) = serde_json::to_value(source) {
+        for (name, value) in object {
+            values.insert(name, value);
+        }
+    }
+}
+
+fn insert_config_param_aliases(values: &mut std::collections::BTreeMap<String, serde_json::Value>) {
+    const ALIASES: &[(&str, &[&str])] = &[
+        (
+            "genome_anchor_prepared_fallback_policy",
+            &["genome_anchor_fallback_mode", "genome_anchor_prepared_mode"],
+        ),
+        (
+            "require_verified_genome_anchor_for_extension",
+            &[
+                "strict_genome_anchor_verification",
+                "strict_anchor_verification",
+            ],
+        ),
+        ("primer_design_backend", &["primers_design_backend"]),
+        (
+            "primer3_executable",
+            &["primer3_backend_executable", "primer3_path"],
+        ),
+        ("feature_details_font_size", &["feature_detail_font_size"]),
+        (
+            "linear_external_feature_label_font_size",
+            &["linear_feature_label_font_size", "feature_label_font_size"],
+        ),
+        (
+            "linear_external_feature_label_background_opacity",
+            &[
+                "linear_feature_label_background_opacity",
+                "feature_label_background_opacity",
+            ],
+        ),
+        (
+            "reverse_strand_visual_opacity",
+            &[
+                "linear_reverse_strand_visual_opacity",
+                "linear_reverse_strand_letter_opacity",
+                "reverse_strand_letter_opacity",
+            ],
+        ),
+        (
+            "regulatory_feature_max_view_span_bp",
+            &["regulatory_max_view_span_bp", "regulatory_max_span_bp"],
+        ),
+        (
+            "sequence_panel_max_text_length_bp",
+            &[
+                "sequence_text_panel_max_length_bp",
+                "sequence_panel_max_length_bp",
+            ],
+        ),
+        (
+            "linear_sequence_base_text_max_view_span_bp",
+            &[
+                "linear_base_text_max_view_span_bp",
+                "sequence_base_text_max_view_span_bp",
+            ],
+        ),
+        ("gc_content_bin_size_bp", &["gc_bin_size_bp"]),
+        (
+            "linear_sequence_helical_max_view_span_bp",
+            &["linear_helical_max_view_span_bp"],
+        ),
+        (
+            "linear_sequence_condensed_max_view_span_bp",
+            &["linear_condensed_max_view_span_bp"],
+        ),
+        (
+            "linear_sequence_letter_layout_mode",
+            &["linear_helical_letter_layout_mode"],
+        ),
+        (
+            "linear_sequence_helical_phase_offset_bp",
+            &["linear_helical_phase_offset_bp"],
+        ),
+        (
+            "restriction_enzyme_display_mode",
+            &["restriction_display_mode"],
+        ),
+        (
+            "show_restriction_enzymes",
+            &["show_restriction_enzyme_sites"],
+        ),
+        (
+            "linear_show_sequence_bases",
+            &[
+                "linear_show_sequence_letters",
+                "show_linear_sequence_bases",
+                "show_linear_sequence_letters",
+            ],
+        ),
+        (
+            "linear_show_double_strand_bases",
+            &[
+                "linear_show_reverse_strand_bases",
+                "show_linear_double_strand_bases",
+                "show_linear_reverse_strand_bases",
+            ],
+        ),
+        (
+            "linear_helical_parallel_strands",
+            &["linear_sequence_helical_parallel_strands"],
+        ),
+        (
+            "linear_hide_backbone_when_sequence_bases_visible",
+            &["hide_linear_backbone_when_bases_visible"],
+        ),
+        (
+            "linear_reverse_strand_use_upside_down_letters",
+            &["linear_reverse_strand_upside_down_letters"],
+        ),
+        (
+            "vcf_display_required_info_keys",
+            &[
+                "vcf_display_required_info_keys_csv",
+                "vcf_display_required_info",
+            ],
+        ),
+        (
+            "preferred_restriction_enzymes",
+            &[
+                "preferred_restriction_enzymes_csv",
+                "restriction_preferred_enzymes",
+            ],
+        ),
+    ];
+    for (canonical, aliases) in ALIASES {
+        let Some(value) = values.get(*canonical).cloned() else {
+            continue;
+        };
+        for alias in *aliases {
+            values.insert((*alias).to_string(), value.clone());
+        }
+    }
+}
+
 fn fact_range_contains(proven: Option<&FactRange>, required: Option<&FactRange>) -> bool {
     match (proven, required) {
         (_, None) => true,
@@ -1079,18 +1250,14 @@ impl GentleEngine {
             });
         }
 
-        if let Ok(serde_json::Value::Object(parameters)) =
-            serde_json::to_value(&self.state.parameters)
-        {
-            for (name, value) in parameters {
-                facts.push(ProjectFact {
-                    fact: "config.param".to_string(),
-                    domain: ProjectFactDomain::Config,
-                    subject: fact_subject(FactSubjectKind::Other, name),
-                    value: Some(value),
-                    ..ProjectFact::default()
-                });
-            }
+        for (name, value) in collect_config_param_values(&self.state) {
+            facts.push(ProjectFact {
+                fact: "config.param".to_string(),
+                domain: ProjectFactDomain::Config,
+                subject: fact_subject(FactSubjectKind::Other, name),
+                value: Some(value),
+                ..ProjectFact::default()
+            });
         }
 
         facts.push(ProjectFact {

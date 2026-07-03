@@ -339,6 +339,10 @@ Maintenance rule:
   `seq-confirm export-support-tsv`.
 - Added fact-aware, no-precondition catalog readiness for
   `cutrun list-read-reports` and `rna-reads list-reports`.
+- Extended `config.param` fact projection to cover persisted display settings,
+  metadata-backed BLAST option parameters, and accepted `set-param` aliases, so
+  Agent/MCP readiness and effect checks can reason about display configuration
+  with the same closed-world facts as engine parameters.
 - Added `report.exists` fact projection for persisted CUT&RUN read and RNA-read
   interpretation reports, plus fact-aware readiness introspection for
   `cutrun show-read-report`, `cutrun export-coverage`,

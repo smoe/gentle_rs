@@ -26999,11 +26999,135 @@ fn execute_introspect_config_facts_and_set_param_effects() {
     let config_facts = facts.output["facts"]["config"]["facts"]
         .as_array()
         .expect("config facts");
+    for expected_display_param in [
+        "show_sequence_panel",
+        "show_linear_sequence_panel",
+        "sequence_panel_max_text_length_bp",
+        "auto_hide_sequence_panel_when_linear_bases_visible",
+        "show_map_panel",
+        "show_features",
+        "show_cds_features",
+        "show_gene_features",
+        "show_mrna_features",
+        "show_repeat_features",
+        "show_array_features",
+        "show_construct_reasoning_overlay",
+        "show_tfbs",
+        "regulatory_tracks_near_baseline",
+        "regulatory_feature_max_view_span_bp",
+        "tfbs_display_use_llr_bits",
+        "tfbs_display_min_llr_bits",
+        "tfbs_display_use_llr_quantile",
+        "tfbs_display_min_llr_quantile",
+        "tfbs_display_use_true_log_odds_bits",
+        "tfbs_display_min_true_log_odds_bits",
+        "tfbs_display_use_true_log_odds_quantile",
+        "tfbs_display_min_true_log_odds_quantile",
+        "vcf_display_show_snp",
+        "vcf_display_show_ins",
+        "vcf_display_show_del",
+        "vcf_display_show_sv",
+        "vcf_display_show_other",
+        "vcf_display_pass_only",
+        "vcf_display_use_min_qual",
+        "vcf_display_min_qual",
+        "vcf_display_use_max_qual",
+        "vcf_display_max_qual",
+        "vcf_display_required_info_keys",
+        "show_restriction_enzymes",
+        "restriction_enzyme_display_mode",
+        "preferred_restriction_enzymes",
+        "show_gc_contents",
+        "gc_content_bin_size_bp",
+        "show_open_reading_frames",
+        "show_methylation_sites",
+        "linear_view_start_bp",
+        "linear_view_span_bp",
+        "linear_view_vertical_offset_px",
+        "linear_show_sequence_bases",
+        "linear_sequence_base_text_max_view_span_bp",
+        "linear_sequence_helical_letters_enabled",
+        "linear_sequence_helical_max_view_span_bp",
+        "linear_sequence_condensed_max_view_span_bp",
+        "linear_sequence_letter_layout_mode",
+        "linear_sequence_helical_phase_offset_bp",
+        "linear_show_double_strand_bases",
+        "linear_helical_parallel_strands",
+        "linear_hide_backbone_when_sequence_bases_visible",
+        "linear_reverse_strand_use_upside_down_letters",
+        "reverse_strand_visual_opacity",
+        "feature_details_font_size",
+        "linear_external_feature_label_font_size",
+        "linear_external_feature_label_background_opacity",
+    ] {
+        assert!(
+            config_facts.iter().any(|fact| {
+                fact["fact"].as_str() == Some("config.param")
+                    && fact["subject"]["id"].as_str() == Some(expected_display_param)
+            }),
+            "missing display config.param fact for {expected_display_param}"
+        );
+    }
+    for expected_alias in [
+        "show_restriction_enzyme_sites",
+        "restriction_display_mode",
+        "linear_show_sequence_letters",
+        "show_linear_sequence_bases",
+        "show_linear_sequence_letters",
+        "linear_show_reverse_strand_bases",
+        "show_linear_double_strand_bases",
+        "show_linear_reverse_strand_bases",
+        "linear_sequence_helical_parallel_strands",
+        "hide_linear_backbone_when_bases_visible",
+        "linear_reverse_strand_upside_down_letters",
+        "vcf_display_required_info_keys_csv",
+        "vcf_display_required_info",
+        "preferred_restriction_enzymes_csv",
+        "restriction_preferred_enzymes",
+    ] {
+        assert!(
+            config_facts.iter().any(|fact| {
+                fact["fact"].as_str() == Some("config.param")
+                    && fact["subject"]["id"].as_str() == Some(expected_alias)
+            }),
+            "missing display alias config.param fact for {expected_alias}"
+        );
+    }
     assert!(config_facts.iter().any(|fact| {
         fact["fact"].as_str() == Some("config.param")
             && fact["domain"].as_str() == Some("config")
             && fact["subject"]["id"].as_str() == Some("max_fragments_per_container")
             && fact["value"].as_u64() == Some(80_000)
+    }));
+    assert!(config_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("config.param")
+            && fact["domain"].as_str() == Some("config")
+            && fact["subject"]["id"].as_str() == Some("show_tfbs")
+            && fact["value"].as_bool() == Some(false)
+    }));
+    assert!(config_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("config.param")
+            && fact["domain"].as_str() == Some("config")
+            && fact["subject"]["id"].as_str() == Some("show_restriction_enzyme_sites")
+            && fact["value"].as_bool() == Some(true)
+    }));
+    assert!(config_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("config.param")
+            && fact["domain"].as_str() == Some("config")
+            && fact["subject"]["id"].as_str() == Some("restriction_display_mode")
+            && fact["value"].as_str() == Some("preferred_and_unique")
+    }));
+    assert!(config_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("config.param")
+            && fact["domain"].as_str() == Some("config")
+            && fact["subject"]["id"].as_str() == Some("linear_show_sequence_letters")
+            && fact["value"].as_bool() == Some(true)
+    }));
+    assert!(config_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("config.param")
+            && fact["domain"].as_str() == Some("config")
+            && fact["subject"]["id"].as_str() == Some("blast_options_override")
+            && fact["value"].is_null()
     }));
 
     let ready =
@@ -27021,6 +27145,50 @@ fn execute_introspect_config_facts_and_set_param_effects() {
     let before = execute_shell_command(&mut engine, &before).expect("execute verify before");
     assert_eq!(before.output["verified"].as_bool(), Some(false));
     assert_eq!(before.output["status"].as_str(), Some("failed"));
+
+    let display_alias_before = parse_shell_line(
+        "introspect verify-effects set-param --arg PARAM_NAME=show_restriction_enzyme_sites --arg PARAM_VALUE=false",
+    )
+    .expect("parse display alias verify before");
+    let display_alias_before = execute_shell_command(&mut engine, &display_alias_before)
+        .expect("execute display alias verify before");
+    assert_eq!(
+        display_alias_before.output["verified"].as_bool(),
+        Some(false)
+    );
+
+    let set_display_alias = parse_shell_line("set-param show_restriction_enzyme_sites false")
+        .expect("parse display alias set-param");
+    let changed = execute_shell_command(&mut engine, &set_display_alias)
+        .expect("execute display alias set-param");
+    assert!(changed.state_changed);
+
+    let display_alias_after = parse_shell_line(
+        "introspect verify-effects set-param --arg PARAM_NAME=show_restriction_enzyme_sites --arg PARAM_VALUE=false",
+    )
+    .expect("parse display alias verify after");
+    let display_alias_after = execute_shell_command(&mut engine, &display_alias_after)
+        .expect("execute display alias verify after");
+    assert_eq!(display_alias_after.output["verified"].as_bool(), Some(true));
+    assert_eq!(
+        display_alias_after.output["status"].as_str(),
+        Some("verified")
+    );
+
+    let show_tfbs_expr: FactExpression = serde_json::from_value(serde_json::json!({
+        "fact": "config.param",
+        "subject": {"kind": "other", "id": "show_tfbs"},
+        "equals": true
+    }))
+    .expect("display config fact expression");
+    let before_expr = engine.evaluate_fact_expression(&show_tfbs_expr, &[]);
+    assert_eq!(before_expr.truth, FactTruth::Unsatisfied);
+
+    let set_show_tfbs = parse_shell_line("set-param show_tfbs true").expect("parse show_tfbs");
+    let changed = execute_shell_command(&mut engine, &set_show_tfbs).expect("execute show_tfbs");
+    assert!(changed.state_changed);
+    let after_expr = engine.evaluate_fact_expression(&show_tfbs_expr, &[]);
+    assert_eq!(after_expr.truth, FactTruth::Satisfied);
 
     let set_param =
         parse_shell_line("set-param max_fragments_per_container 12").expect("parse set-param");

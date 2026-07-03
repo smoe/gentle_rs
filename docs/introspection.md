@@ -602,7 +602,7 @@ Implemented fact domains include:
 | `guide_set.exists` | project | closed | no | persisted guide-design set; subject id is the guide-set id |
 | `guide_filter_report.exists` | project | closed | no | persisted practical guide-filter report; subject id is the guide-set id |
 | `guide_oligo_set.exists` | project | closed | no | persisted guide-oligo output set; subject id is the oligo-set id |
-| `config.param` | config | closed | no | engine-owned `SetParameter` values; subject id is the parameter name, `value` is the JSON value |
+| `config.param` | config | closed | no | engine/display `SetParameter` values; subject id is the parameter name or accepted alias, `value` is the JSON value |
 | `host.tool_available` | host | closed | no | e.g. primer3/blastn resolvable; see Reconciliation below |
 | `artifact.written` | host | open | yes | external file/handoff artifact written outside saved project state |
 
@@ -638,12 +638,16 @@ as project and view facts.
 
 The implemented config fact keeps the fact registry finite:
 `config.param` uses `subject.kind = "other"` and `subject.id = PARAM_NAME`
-instead of minting a new fact name for every parameter. The first projection is
-limited to `EngineParameters` (`max_fragments_per_container`,
-`require_verified_genome_anchor_for_extension`,
-`genome_anchor_prepared_fallback_policy`, `primer_design_backend`, and
-`primer3_executable`). Display-specific `set-param` aliases can be folded into
-the same pattern later when their canonical names are normalized.
+instead of minting a new fact name for every parameter. The projection covers
+engine-owned `EngineParameters`, persisted display settings, metadata-backed
+BLAST option parameters, and accepted compatibility aliases for the same stored
+values. Aliases project the same JSON value as their canonical parameter so
+bound readiness/effect checks can use either spelling.
+
+Compatibility-only display knobs that are accepted as deprecated no-ops remain
+observable through their stored display-setting defaults. They do not imply that
+setting the deprecated name changes renderer behavior; adaptive renderer state
+is still controlled by the canonical display parameters.
 
 `set-param` is fact-annotated as a `host_config` capability with no project
 preconditions and a `must_on_success` effect:
