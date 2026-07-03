@@ -49,6 +49,8 @@ pub mod ensembl_protein;
 pub mod enzymes;
 /// Shared exon length and coding-frame cue helpers.
 pub mod exon_frame;
+/// External platform-tool checksum helpers for legacy download verification.
+pub mod external_checksums;
 /// Overlay-discoverable external-service provider configuration catalogs.
 pub mod external_service_providers;
 /// Expert-view data contracts for feature-centric deep-inspection UIs.

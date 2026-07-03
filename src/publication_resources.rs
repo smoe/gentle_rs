@@ -6,7 +6,6 @@
 
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
-use sha1::{Digest, Sha1};
 use std::{
     collections::BTreeSet,
     fs,
@@ -738,7 +737,6 @@ fn download_publication_file(
             destination.display()
         )
     })?;
-    let mut hasher = Sha1::new();
     let mut buffer = [0u8; 64 * 1024];
     let mut bytes = 0u64;
     loop {
@@ -754,7 +752,6 @@ fn download_publication_file(
                 destination.display()
             )
         })?;
-        hasher.update(&buffer[..read]);
         bytes = bytes.saturating_add(read as u64);
     }
     output.flush().map_err(|e| {
@@ -766,7 +763,17 @@ fn download_publication_file(
     row.exists = true;
     row.local_size_bytes = Some(bytes);
     row.size_matches = row.expected_size_bytes.map(|expected| expected == bytes);
-    row.checksum_sha1 = Some(format!("{:x}", hasher.finalize()));
+    row.checksum_sha1 =
+        match crate::external_checksums::compute_sha1_with_external_tool(&destination) {
+            Ok(digest) => Some(digest.value),
+            Err(error) if error.is_tool_unavailable() => None,
+            Err(error) => {
+                return Err(format!(
+                    "Could not compute legacy SHA-1 for publication-resource file '{}': {error}",
+                    destination.display()
+                ));
+            }
+        };
     if let Some(expected) = row.expected_size_bytes
         && expected != bytes
     {

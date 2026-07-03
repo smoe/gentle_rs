@@ -15,7 +15,6 @@ use crate::genomes::{
     BUILTIN_ASSET_ROOT_ENV, GenomeChromosomeRecord, PROJECT_ROOT_ENV, SYSTEM_CONFIG_ROOT_ENV,
 };
 use reqwest::blocking::Client;
-use sha1::{Digest, Sha1};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 
@@ -966,33 +965,20 @@ fn file_size_bytes(path: &Path) -> Result<u64, EngineError> {
 }
 
 fn checksum_sha1(path: &Path) -> Result<String, EngineError> {
-    let mut file = File::open(path).map_err(|e| EngineError {
-        code: ErrorCode::Io,
-        message: format!(
-            "Could not open '{}' to compute checksum: {e}",
-            path.display()
-        ),
-
-        cause_chain: vec![],
-    })?;
-    let mut hasher = Sha1::new();
-    let mut buffer = [0u8; 16 * 1024];
-    loop {
-        let read = file.read(&mut buffer).map_err(|e| EngineError {
+    match crate::external_checksums::compute_sha1_with_external_tool(path) {
+        Ok(digest) => Ok(format!("sha1:{}", digest.value)),
+        Err(error) if error.is_tool_unavailable() => {
+            Ok("sha1:unverified-tool-unavailable".to_string())
+        }
+        Err(error) => Err(EngineError {
             code: ErrorCode::Io,
             message: format!(
-                "Could not read '{}' while computing checksum: {e}",
+                "Could not compute legacy SHA-1 for CUT&RUN asset '{}': {error}",
                 path.display()
             ),
-
             cause_chain: vec![],
-        })?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
+        }),
     }
-    Ok(format!("sha1:{:x}", hasher.finalize()))
 }
 
 impl GentleEngine {

@@ -5684,8 +5684,8 @@ impl GenomeCatalog {
                 annotation_source: manifest_annotation_source,
                 sequence_source_type: Some(manifest_sequence_source_type),
                 annotation_source_type: Some(manifest_annotation_source_type),
-                sequence_sha1: Some(compute_file_sha1(&sequence_path)?),
-                annotation_sha1: Some(compute_file_sha1(&annotation_path)?),
+                sequence_sha1: compute_file_sha1(&sequence_path)?,
+                annotation_sha1: compute_file_sha1(&annotation_path)?,
                 sequence_path: canonical_or_display(&sequence_path),
                 annotation_path: canonical_or_display(&annotation_path),
                 fasta_index_path: canonical_or_display(&fasta_index_path),
@@ -7814,28 +7814,15 @@ fn summarize_annotation_parse_warnings(report: &AnnotationParseReport) -> Vec<St
     warnings
 }
 
-fn compute_file_sha1(path: &Path) -> Result<String, String> {
-    let mut file = File::open(path).map_err(|e| {
-        format!(
-            "Could not open '{}' to compute checksum: {e}",
+fn compute_file_sha1(path: &Path) -> Result<Option<String>, String> {
+    match crate::external_checksums::compute_sha1_with_external_tool(path) {
+        Ok(digest) => Ok(Some(digest.value)),
+        Err(error) if error.is_tool_unavailable() => Ok(None),
+        Err(error) => Err(format!(
+            "Could not compute legacy SHA-1 for genome file '{}': {error}",
             path.display()
-        )
-    })?;
-    let mut hasher = Sha1::new();
-    let mut buf = [0u8; 64 * 1024];
-    loop {
-        let n = file.read(&mut buf).map_err(|e| {
-            format!(
-                "Could not read '{}' while computing checksum: {e}",
-                path.display()
-            )
-        })?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
+        )),
     }
-    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn ensure_manifest_file_checksum(
@@ -7846,6 +7833,9 @@ fn ensure_manifest_file_checksum(
     let actual = compute_file_sha1(path)?;
     match slot {
         Some(expected) => {
+            let Some(actual) = actual else {
+                return Ok(false);
+            };
             let expected_norm = expected.trim().to_ascii_lowercase();
             if expected_norm != actual {
                 return Err(format!(
@@ -7859,8 +7849,12 @@ fn ensure_manifest_file_checksum(
             Ok(false)
         }
         None => {
-            *slot = Some(actual);
-            Ok(true)
+            if let Some(actual) = actual {
+                *slot = Some(actual);
+                Ok(true)
+            } else {
+                Ok(false)
+            }
         }
     }
 }

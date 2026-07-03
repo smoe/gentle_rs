@@ -6127,7 +6127,8 @@ Notes:
 - During prepare, GENtle also attempts to create a BLAST nucleotide index
   (`makeblastdb`) under the genome install directory.
 - HTTP-based source downloads are resumable (Range requests with retry/backoff),
-  and completed installs persist SHA-1 checksums for sequence/annotation files.
+  and completed installs persist legacy SHA-1 fields for sequence/annotation
+  files only when a platform checksum tool is available.
 - A catalog entry can either define explicit URLs (`sequence_remote` /
   `annotations_remote`) or define `ncbi_assembly_accession` +
   `ncbi_assembly_name` to derive direct NCBI GenBank/RefSeq FTP downloads.

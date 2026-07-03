@@ -218,3 +218,17 @@ using the shared fact evaluator; unbound catalog readiness reports missing
 argument bindings as `unknown`. Host-domain availability facts must project
 from existing deterministic preflight/probe logic rather than creating a
 parallel detector.
+
+## DEC-025: Legacy SHA-1 Download Verification Uses External Tools
+
+Status: active
+
+GENtle must not use an in-process SHA-1 implementation to verify external
+downloads. If an upstream source or compatibility manifest still offers only a
+SHA-1-style integrity field, GENtle may delegate that legacy digest to platform
+tools such as `sha1sum`, `shasum -a 1`, or Windows `certutil`. If no suitable
+tool is available, the file is not SHA-1 verified; preparation may still rely on
+basic corruption checks such as successful gzip decompression, size checks, and
+parser validation. Existing SHA-1-shaped local provenance identifiers are
+compatibility fields and should be migrated separately to stronger identifiers
+without conflating that migration with download verification.

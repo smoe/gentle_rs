@@ -4686,8 +4686,9 @@ Notes:
   `Configuration -> External Applications`.
 - HTTP downloads support resume/retry behavior and continue from partial files
   when possible.
-- Manifest integrity fields (`sequence_sha1`, `annotation_sha1`) are captured
-  after successful preparation and shown in `Prepared References...`.
+- Manifest legacy integrity fields (`sequence_sha1`, `annotation_sha1`) are
+  captured after successful preparation and shown in `Prepared References...`
+  only when a platform checksum tool is available.
 - `start_1based` and `end_1based` fields are constrained to numeric input and
   up to 10 digits.
 - Extracted regions are added to project state and opened in sequence windows.

@@ -525,6 +525,11 @@ Computational artifact provenance rule:
     (path/accession/import id and checksum when practical)
   - generated timestamp
   - request/effective parameter summary or a pointer to the stored request
+- Legacy SHA-1 compatibility fields must not be computed in-process for
+  external-download verification. If SHA-1 is the only available upstream
+  checksum, GENtle delegates to platform tools; without such a tool the file is
+  recorded as not SHA-1 verified and relies only on basic corruption/parse
+  checks.
 - If the output is persisted and sample-relevant, it should project as a
   graph-visible analysis artifact node rather than living only in a hidden
   metadata store.
