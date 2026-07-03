@@ -731,7 +731,7 @@ pub(crate) fn show_central_panel<R>(
     panel: egui::CentralPanel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    host.with_panel_ui(|ui| panel.show_inside(ui, add_contents))
+    host.with_panel_ui(|ui| panel.show(ui, add_contents))
 }
 
 #[cfg(test)]
@@ -759,7 +759,7 @@ pub(crate) fn show_central_panel_inside<R>(
     panel: egui::CentralPanel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    panel.show_inside(ui, add_contents)
+    panel.show(ui, add_contents)
 }
 
 pub(crate) fn show_top_panel<R>(
@@ -768,7 +768,7 @@ pub(crate) fn show_top_panel<R>(
     panel: egui::Panel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    host.with_panel_ui(|ui| panel.show_inside(ui, add_contents))
+    host.with_panel_ui(|ui| panel.show(ui, add_contents))
 }
 
 pub(crate) fn show_top_panel_inside<R>(
@@ -776,7 +776,7 @@ pub(crate) fn show_top_panel_inside<R>(
     panel: egui::Panel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    panel.show_inside(ui, add_contents)
+    panel.show(ui, add_contents)
 }
 
 pub(crate) fn show_bottom_panel<R>(
@@ -785,7 +785,7 @@ pub(crate) fn show_bottom_panel<R>(
     panel: egui::Panel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    host.with_panel_ui(|ui| panel.show_inside(ui, add_contents))
+    host.with_panel_ui(|ui| panel.show(ui, add_contents))
 }
 
 pub(crate) fn show_bottom_panel_inside<R>(
@@ -793,7 +793,7 @@ pub(crate) fn show_bottom_panel_inside<R>(
     panel: egui::Panel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    panel.show_inside(ui, add_contents)
+    panel.show(ui, add_contents)
 }
 
 #[cfg(test)]

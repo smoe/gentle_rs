@@ -27,18 +27,19 @@ version = "0.1.0-internal.10"
 edition = "2024"
 
 [workspace.dependencies]
-anyhow = "=1.0.102"
-bio = "=4.0.0"
+anyhow = "=1.0.103"
+bio = "=4.0.1"
+egui = "=0.35.0"
 image = "=0.25.10"
-itertools = "=0.14.0"
+itertools = "=0.15.0"
 mlua = "=0.11.6"
 rayon = "=1.12.0"
-reqwest = "=0.13.3"
+reqwest = "=0.13.4"
 rfd = "=0.17.2"
-rustyline = "=18.0.0"
+rustyline = "=18.0.1"
 serde = { version = "=1.0.228", features = ["derive"] }
-serde_json = "=1.0.149"
-serde_with = "=3.20.0"
+serde_json = "=1.0.150"
+serde_with = "=3.21.0"
 svg = "=0.18.0"
 tempfile = "=3.27.0"
 
@@ -105,7 +106,7 @@ snapgene-reader = { path = "packages/snapgene-reader", features = ["gb-io"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
-quick-xml = { version = "0.37", features = ["serialize"] }
+quick-xml = { version = "=0.41.0", features = ["serialize"] }
 bio = { workspace = true }
 csv = "^1"
 itertools = { workspace = true }
@@ -114,7 +115,7 @@ svg = { workspace = true }
 rayon = { workspace = true }
 anyhow = { workspace = true }
 arboard = "=3.6.1"
-eframe = { version = "0.34.3", features = [
+eframe = { version = "=0.35.0", features = [
 	"accesskit",
 	"default_fonts",
 	"glow",
@@ -123,20 +124,20 @@ eframe = { version = "0.34.3", features = [
 	"x11",
 	"persistence",
 ] }
-egui_extras = { version = "0.34.3", features = ["all_loaders"] }
-egui_commonmark = { version = "0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"] }
+egui_extras = { version = "=0.35.0", features = ["all_loaders"] }
+egui_commonmark = { version = "=0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"] }
 image = { workspace = true, features = ["jpeg", "png"] }
-resvg = "0.45.1"
+resvg = "=0.47.0"
 rfd = { workspace = true }
 reqwest = { workspace = true, features = ["blocking", "json"] }
 tempfile = { workspace = true }
 flate2 = "1.0"
 memchr = "2"
 regex = "^1"
-pulldown-cmark = "0.12.2"
+pulldown-cmark = "=0.13.4"
 sha1 = "0.10"
-puffin = { version = "=0.19.1", optional = true }
-puffin_http = { version = "=0.16.1", optional = true }
+puffin = { version = "=0.20.0", optional = true }
+puffin_http = { version = "=0.17.0", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "=0.2.186"
