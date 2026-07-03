@@ -4414,6 +4414,31 @@ impl GenomeCatalog {
         inspect_prepare_activity_status_paths(&status_path, &lock_path)
     }
 
+    /// Inspect persisted prepare activity markers for every catalog entry.
+    ///
+    /// This is a read-only observation helper for runtime-status surfaces. It
+    /// reuses the existing per-install activity files and does not create a new
+    /// global activity ledger.
+    pub fn inspect_all_prepare_activity_statuses(
+        &self,
+        cache_dir_override: Option<&str>,
+    ) -> Result<Vec<PrepareGenomeActivityStatus>, String> {
+        let mut statuses = Vec::new();
+        for genome_id in self.list_genomes() {
+            if let Some(status) =
+                self.inspect_prepare_activity_status(&genome_id, cache_dir_override)?
+            {
+                statuses.push(status);
+            }
+        }
+        statuses.sort_by(|left, right| {
+            left.genome_id
+                .cmp(&right.genome_id)
+                .then(left.status_path.cmp(&right.status_path))
+        });
+        Ok(statuses)
+    }
+
     /// Inspect prepared-install metadata and filesystem state.
     ///
     /// Returns `Ok(None)` when no install manifest exists yet.

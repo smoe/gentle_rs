@@ -100,6 +100,56 @@ impl Default for RuntimeStatusFrameState {
     }
 }
 
+/// Source subsystem for an observed activity record.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeStatusActivitySource {
+    PrepareGenome,
+    CutrunSharedAsset,
+    BlastAsyncJob,
+    Other,
+}
+
+impl Default for RuntimeStatusActivitySource {
+    fn default() -> Self {
+        Self::Other
+    }
+}
+
+/// Where the activity observation came from.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeStatusActivityScope {
+    ProcessLocal,
+    PersistedActivity,
+    ProjectAsyncRegistry,
+}
+
+impl Default for RuntimeStatusActivityScope {
+    fn default() -> Self {
+        Self::ProcessLocal
+    }
+}
+
+/// Freshness/state class for an observed activity.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeStatusActivityObservation {
+    Live,
+    CrossProcess,
+    Completed,
+    Failed,
+    Cancelled,
+    Stale,
+    Unknown,
+}
+
+impl Default for RuntimeStatusActivityObservation {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
 /// One active activity frame in the process-local stack.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -139,6 +189,74 @@ impl Default for RuntimeStatusFrame {
     }
 }
 
+/// One observed activity from an existing persisted or project-backed ledger.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct RuntimeStatusActivity {
+    pub activity_id: String,
+    pub source: RuntimeStatusActivitySource,
+    pub scope: RuntimeStatusActivityScope,
+    pub label: String,
+    pub lifecycle_status: String,
+    pub observation: RuntimeStatusActivityObservation,
+    pub phase: Option<String>,
+    pub detail: Option<String>,
+    pub progress_percent: Option<f64>,
+    pub bytes_done: Option<u64>,
+    pub bytes_total: Option<u64>,
+    pub started_at_unix_ms: Option<u128>,
+    pub updated_at_unix_ms: Option<u128>,
+    pub finished_at_unix_ms: Option<u128>,
+    pub origin_process_id: Option<u32>,
+    pub source_path: Option<String>,
+    pub stale_reason: Option<String>,
+}
+
+impl RuntimeStatusActivity {
+    pub fn new(
+        source: RuntimeStatusActivitySource,
+        scope: RuntimeStatusActivityScope,
+        activity_id: impl Into<String>,
+        label: impl Into<String>,
+        lifecycle_status: impl Into<String>,
+    ) -> Self {
+        let lifecycle_status = lifecycle_status.into();
+        Self {
+            activity_id: activity_id.into(),
+            source,
+            scope,
+            label: label.into(),
+            observation: classify_activity_observation(&lifecycle_status),
+            lifecycle_status,
+            ..Self::default()
+        }
+    }
+}
+
+impl Default for RuntimeStatusActivity {
+    fn default() -> Self {
+        Self {
+            activity_id: String::new(),
+            source: RuntimeStatusActivitySource::Other,
+            scope: RuntimeStatusActivityScope::ProcessLocal,
+            label: String::new(),
+            lifecycle_status: String::new(),
+            observation: RuntimeStatusActivityObservation::Unknown,
+            phase: None,
+            detail: None,
+            progress_percent: None,
+            bytes_done: None,
+            bytes_total: None,
+            started_at_unix_ms: None,
+            updated_at_unix_ms: None,
+            finished_at_unix_ms: None,
+            origin_process_id: None,
+            source_path: None,
+            stale_reason: None,
+        }
+    }
+}
+
 /// Snapshot of the process-local runtime registry.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -149,6 +267,8 @@ pub struct RuntimeStatusSnapshot {
     pub process_label: String,
     pub trigger: RuntimeStatusTrigger,
     pub frames: Vec<RuntimeStatusFrame>,
+    pub activities: Vec<RuntimeStatusActivity>,
+    pub observability_notes: Vec<String>,
     pub summary_lines: Vec<String>,
 }
 
@@ -161,8 +281,30 @@ impl Default for RuntimeStatusSnapshot {
             process_label: String::new(),
             trigger: RuntimeStatusTrigger::Manual,
             frames: Vec::new(),
+            activities: Vec::new(),
+            observability_notes: Vec::new(),
             summary_lines: Vec::new(),
         }
+    }
+}
+
+impl RuntimeStatusSnapshot {
+    /// Attach observed activity records gathered from existing ledgers.
+    pub fn with_activities(
+        mut self,
+        mut activities: Vec<RuntimeStatusActivity>,
+        observability_notes: Vec<String>,
+    ) -> Self {
+        activities.sort_by(|left, right| {
+            format!("{:?}", left.source)
+                .cmp(&format!("{:?}", right.source))
+                .then(left.activity_id.cmp(&right.activity_id))
+                .then(left.label.cmp(&right.label))
+        });
+        self.activities = activities;
+        self.observability_notes = observability_notes;
+        self.summary_lines = runtime_summary_lines(&self.frames, &self.activities);
+        self
     }
 }
 
@@ -262,8 +404,10 @@ impl RuntimeStatusRegistry {
             process_id: process::id(),
             process_label: process_label(),
             trigger,
-            summary_lines: runtime_summary_lines(&frames),
+            summary_lines: runtime_summary_lines(&frames, &[]),
             frames,
+            activities: Vec::new(),
+            observability_notes: Vec::new(),
         }
     }
 }
@@ -395,6 +539,11 @@ pub fn runtime_status_snapshot_text(trigger: RuntimeStatusTrigger) -> String {
         out.push_str(line);
         out.push('\n');
     }
+    for note in &snapshot.observability_notes {
+        out.push_str("- note: ");
+        out.push_str(note);
+        out.push('\n');
+    }
     if snapshot.frames.is_empty() {
         out.push_str("- no active runtime frames in this process\n");
     } else {
@@ -424,6 +573,43 @@ pub fn runtime_status_snapshot_text(trigger: RuntimeStatusTrigger) -> String {
             }
             if let Some(thread) = &frame.thread {
                 out.push_str(&format!(" thread={thread}"));
+            }
+            out.push('\n');
+        }
+    }
+    if snapshot.activities.is_empty() {
+        out.push_str("- no observed persisted/project activity records\n");
+    } else {
+        for activity in &snapshot.activities {
+            out.push_str(&format!(
+                "- activity {} {:?}/{:?} observation={:?}",
+                activity.activity_id, activity.source, activity.scope, activity.observation
+            ));
+            out.push_str(&format!(" status={}", activity.lifecycle_status));
+            out.push_str(&format!(" label={}", activity.label));
+            if let Some(phase) = &activity.phase {
+                out.push_str(&format!(" phase={phase}"));
+            }
+            if let Some(progress) = activity.progress_percent {
+                out.push_str(&format!(" progress={progress:.1}%"));
+            }
+            if let Some(bytes_done) = activity.bytes_done {
+                out.push_str(&format!(" bytes_done={bytes_done}"));
+            }
+            if let Some(bytes_total) = activity.bytes_total {
+                out.push_str(&format!(" bytes_total={bytes_total}"));
+            }
+            if let Some(detail) = &activity.detail {
+                out.push_str(&format!(" detail={detail}"));
+            }
+            if let Some(pid) = activity.origin_process_id {
+                out.push_str(&format!(" owner_pid={pid}"));
+            }
+            if let Some(path) = &activity.source_path {
+                out.push_str(&format!(" source_path={path}"));
+            }
+            if let Some(reason) = &activity.stale_reason {
+                out.push_str(&format!(" stale_reason={reason}"));
             }
             out.push('\n');
         }
@@ -509,24 +695,61 @@ fn current_parent_frame_id() -> Option<String> {
     RUNTIME_FRAME_STACK.with(|stack| stack.borrow().last().cloned())
 }
 
-fn runtime_summary_lines(frames: &[RuntimeStatusFrame]) -> Vec<String> {
+fn runtime_summary_lines(
+    frames: &[RuntimeStatusFrame],
+    activities: &[RuntimeStatusActivity],
+) -> Vec<String> {
+    let mut lines = Vec::new();
     if frames.is_empty() {
-        return vec!["No active runtime frames in this process.".to_string()];
+        lines.push("No active runtime frames in this process.".to_string());
+    } else {
+        let mut by_kind = BTreeMap::<String, usize>::new();
+        for frame in frames {
+            *by_kind.entry(format!("{:?}", frame.kind)).or_default() += 1;
+        }
+        let kind_summary = by_kind
+            .into_iter()
+            .map(|(kind, count)| format!("{kind}={count}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!(
+            "{} active runtime frame(s): {}",
+            frames.len(),
+            kind_summary
+        ));
     }
-    let mut by_kind = BTreeMap::<String, usize>::new();
-    for frame in frames {
-        *by_kind.entry(format!("{:?}", frame.kind)).or_default() += 1;
+    if activities.is_empty() {
+        lines.push("No observed persisted/project activity records.".to_string());
+    } else {
+        let mut by_source = BTreeMap::<String, usize>::new();
+        for activity in activities {
+            *by_source
+                .entry(format!("{:?}", activity.source))
+                .or_default() += 1;
+        }
+        let activity_summary = by_source
+            .into_iter()
+            .map(|(source, count)| format!("{source}={count}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!(
+            "{} observed activity record(s): {}",
+            activities.len(),
+            activity_summary
+        ));
     }
-    let kind_summary = by_kind
-        .into_iter()
-        .map(|(kind, count)| format!("{kind}={count}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    vec![format!(
-        "{} active runtime frame(s): {}",
-        frames.len(),
-        kind_summary
-    )]
+    lines
+}
+
+fn classify_activity_observation(lifecycle_status: &str) -> RuntimeStatusActivityObservation {
+    match lifecycle_status.trim().to_ascii_lowercase().as_str() {
+        "running" | "queued" | "preparing" | "in_progress" => RuntimeStatusActivityObservation::Live,
+        "ready" | "completed" | "done" | "ok" => RuntimeStatusActivityObservation::Completed,
+        "failed" | "error" => RuntimeStatusActivityObservation::Failed,
+        "cancelled" | "canceled" => RuntimeStatusActivityObservation::Cancelled,
+        "stale" => RuntimeStatusActivityObservation::Stale,
+        _ => RuntimeStatusActivityObservation::Unknown,
+    }
 }
 
 fn process_label() -> String {
@@ -601,5 +824,41 @@ mod tests {
 
         assert!(text.contains("GENtle runtime status"));
         assert!(text.contains("runtime-test ask agent"));
+    }
+
+    #[test]
+    fn runtime_status_snapshot_can_attach_observed_activities_without_files() {
+        let activity = RuntimeStatusActivity::new(
+            RuntimeStatusActivitySource::PrepareGenome,
+            RuntimeStatusActivityScope::PersistedActivity,
+            "prepare-genome:reference:ToyGenome",
+            "Reference genome prepare: ToyGenome",
+            "running",
+        );
+
+        let snapshot = runtime_status_snapshot(RuntimeStatusTrigger::Test).with_activities(
+            vec![activity],
+            vec!["test observation note".to_string()],
+        );
+
+        assert_eq!(snapshot.activities.len(), 1);
+        assert_eq!(
+            snapshot.activities[0].observation,
+            RuntimeStatusActivityObservation::Live
+        );
+        assert!(
+            snapshot
+                .summary_lines
+                .iter()
+                .any(|line| line.contains("observed activity record"))
+        );
+        let text = {
+            let mut out = String::new();
+            for line in &snapshot.summary_lines {
+                out.push_str(line);
+            }
+            out
+        };
+        assert!(text.contains("PrepareGenome=1"));
     }
 }

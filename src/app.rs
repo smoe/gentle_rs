@@ -198,7 +198,10 @@ use crate::{
         resolve_protocol_cartoon_template_with_bindings,
     },
     resource_sync,
-    runtime_status::{RuntimeStatusFrameKind, RuntimeStatusGuard, runtime_status_registry},
+    runtime_status::{
+        RuntimeStatusFrameKind, RuntimeStatusGuard, RuntimeStatusTrigger, runtime_status_registry,
+        runtime_status_snapshot,
+    },
     scroll_input_policy::{self, WheelIntent, ZoomDirection},
     shell_docs::{
         shell_help_markdown as render_shell_help_markdown,
@@ -22547,6 +22550,7 @@ Error: `{err}`"
             .read()
             .map(|engine| engine.history_summary())
             .unwrap_or_default();
+        let runtime_snapshot = runtime_status_snapshot(RuntimeStatusTrigger::Manual);
         crate::egui_compat::show_bottom_panel(
             ctx,
             egui::Id::new("gentle_status_bar"),
@@ -22564,6 +22568,19 @@ Error: `{err}`"
                         "Undo {} / Redo {}",
                         history_summary.undo_count, history_summary.redo_count
                     ));
+                    if !runtime_snapshot.frames.is_empty() {
+                        ui.separator();
+                        let tooltip = runtime_snapshot.summary_lines.join("\n");
+                        ui.small(format!(
+                            "Runtime: {} active",
+                            runtime_snapshot.frames.len()
+                        ))
+                        .on_hover_text(if tooltip.trim().is_empty() {
+                            "Process-local runtime activity stack".to_string()
+                        } else {
+                            tooltip
+                        });
+                    }
                     if !self.app_status.trim().is_empty() {
                         ui.separator();
                         ui.small(self.app_status.clone());

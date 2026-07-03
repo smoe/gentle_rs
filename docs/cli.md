@@ -1649,9 +1649,11 @@ Minimum MCP JSON-RPC flow:
 
 `runtime_status` arguments:
 
-- none
-- returns the same `gentle.runtime_status.v1` process-local live activity
-  stack as `introspect runtime`, tagged for the MCP process
+- optional `state_path` (used to inspect project-backed async registries such
+  as BLAST jobs)
+- returns the same `gentle.runtime_status.v1` shape as `introspect runtime`,
+  tagged for the MCP process, with live `frames[]` plus observed
+  `activities[]`
 
 MCP tool result envelope behavior:
 
@@ -2108,15 +2110,20 @@ Shared shell command:
         read-only self-description/status routes with no project-state
         preconditions
     - `introspect runtime`
-      - returns `gentle.runtime_status.v1`, the process-local live activity
-        stack for the current GENtle process
+      - returns `gentle.runtime_status.v1`, with process-local live `frames[]`
+        for the current GENtle process plus observed `activities[]` from
+        existing persisted/project ledgers
       - active shell commands appear as `shell_command` frames; genome
         preparation additionally mirrors current prepare phase/progress as a
         `resource_prepare` frame
-      - this is in-memory only: no status file is written, and completed frames
-        drop out of the stack rather than becoming a history log
+      - observed activities include default-catalog genome prepare markers,
+        CUT&RUN shared-asset markers, and project-backed BLAST async jobs,
+        tagged as live, cross-process, completed, failed, cancelled, stale, or
+        unknown
+      - no runtime-status file is written; completed frames drop out of the
+        stack rather than becoming a history log
       - on Unix, sending SIGUSR1 to `gentle`, `gentle_cli`, or `gentle_mcp`
-        prints the same snapshot to STDERR
+        prints the process-local snapshot to STDERR
     - `introspect readiness [CAPABILITY_ID] [--arg NAME=VALUE ...] [--seq-id SEQ_ID] [--readiness ready|blocked|unknown] [--evidence SCAN.json ...] [--ui-host true|false]`
       - evaluates bound or unbound capability readiness through the shared fact
         evaluator; unbound templated args report `unknown`

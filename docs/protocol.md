@@ -3547,12 +3547,14 @@ external coding agent runtime, see:
 MCP query/introspection tool contracts (current):
 
 - `runtime_status`
-  - arguments: none
+  - arguments:
+    - optional `state_path`
   - behavior:
-    - returns `gentle.runtime_status.v1`, the process-local live runtime
-      activity stack for this MCP process
-    - mirrors shared shell `introspect runtime`; it is in-memory only and does
-      not write a status file
+    - returns `gentle.runtime_status.v1`, with process-local live `frames[]`
+      for the MCP process plus observed `activities[]` from existing
+      persisted/project activity ledgers
+    - mirrors shared shell `introspect runtime`; it does not write a
+      runtime-status file
 
 - `agent_systems`
   - arguments:
@@ -4790,10 +4792,11 @@ Shared-shell routes:
     shell routes are also fact-annotated as read-only self-description/status
     routes with no project-state preconditions.
 - `introspect runtime`
-  - Returns `gentle.runtime_status.v1`, a process-local live activity stack.
-  - This route is intentionally in-memory only. It does not write a status file
-    and it is not a historical job log; active frames disappear when the scoped
-    work guard exits.
+  - Returns `gentle.runtime_status.v1`, with process-local live `frames[]` and
+    best-effort observed `activities[]` from existing persisted/project
+    ledgers.
+  - This route does not write a runtime-status file and it is not a historical
+    job log; active frames disappear when the scoped work guard exits.
   - Shell command dispatch pushes a `shell_command` frame while the command is
     running. Genome preparation also pushes a nested `resource_prepare` frame
     and mirrors its current phase/progress fields.
@@ -4801,13 +4804,21 @@ Shared-shell routes:
     opening, track import, BLAST, dbSNP fetch, Agent Assistant requests, model
     discovery, and ClawBio runs own live frames while their task records are
     active.
+  - Observed `activities[]` reuse existing ledgers only: genome prepare
+    `.prepare_activity.json` markers from default reference/helper catalogs,
+    CUT&RUN shared-asset activity markers from default discovery, and
+    project-backed BLAST async jobs. Each activity is tagged with its source,
+    scope, lifecycle status, and observation class such as `live`,
+    `cross_process`, `completed`, `failed`, `cancelled`, `stale`, or
+    `unknown`.
   - MCP exposes the same snapshot as the `runtime_status` tool for the MCP
-    server process. A standalone `gentle_mcp` process cannot see unsaved GUI
-    process-local frames unless a future explicit cross-process bridge is
-    added.
+    server process and accepts optional `state_path` so project-backed async
+    registries can be inspected. A standalone `gentle_mcp` process cannot see
+    unsaved GUI process-local frames unless a future explicit cross-process
+    bridge is added; the snapshot says this in `observability_notes[]`.
   - On Unix, `gentle`, `gentle_cli`, and `gentle_mcp` install a SIGUSR1 waiter
-    thread at startup. Sending SIGUSR1 prints the same runtime snapshot to
-    STDERR; it does not create or update any file.
+    thread at startup. Sending SIGUSR1 prints the process-local runtime
+    snapshot to STDERR; it does not create or update any file.
 - `introspect readiness [CAPABILITY_ID] [--arg NAME=VALUE ...] [--seq-id SEQ_ID] [--readiness ready|blocked|unknown] [--evidence SCAN.json ...] [--ui-host true|false]`
   - Returns `gentle.introspection.v1` route `readiness`.
   - `--seq-id` is shorthand for `--arg SEQ_ID=...` and asks about

@@ -67,8 +67,13 @@ Runtime status diagnostics:
 - The same in-memory snapshot is available through shared shell
   `introspect runtime`. It reports active scoped frames such as the current
   shell command, genome-preparation phase/progress, and GUI background jobs
-  that are visible in the Background Jobs panel; it does not write a status
-  file and it is not a historical job log.
+  that are visible in the Background Jobs panel. The structured response also
+  includes observed activity records from existing ledgers such as genome
+  prepare markers, CUT&RUN shared-asset markers, and BLAST async jobs when
+  those ledgers are discoverable. GENtle does not write a separate
+  runtime-status file, and this is not a historical job log.
+- When live runtime frames exist in the GUI process, the bottom status bar
+  shows a compact `Runtime: N active` indicator with a hover summary.
 
 The GUI opens an empty project unless a project path is passed on startup.
 

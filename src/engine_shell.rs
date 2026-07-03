@@ -109,17 +109,19 @@ use crate::{
     gene_groups,
     genomes::{
         GenomeBlastReport, GenomeCatalog, GenomeCatalogListEntry, GenomeGeneRecord,
-        PreparedCacheCleanupMode, PreparedCacheCleanupRequest, configured_helper_genome_cache_dir,
-        configured_reference_genome_cache_dir, default_catalog_discovery_label,
-        default_catalog_discovery_token, default_helper_semantics_vocabulary_discovery_label,
+        PrepareGenomeActivityStatus, PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
+        configured_helper_genome_cache_dir, configured_reference_genome_cache_dir,
+        default_catalog_discovery_label, default_catalog_discovery_token,
+        default_helper_semantics_vocabulary_discovery_label,
     },
     gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
     mirna::{self, MirnaRegionClass, MirnaSeedClass, MirnaTargetScanRequest},
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
     publication_resources, resource_status, resource_sync,
     runtime_status::{
-        RuntimeStatusFrameKind, RuntimeStatusTrigger, runtime_status_registry,
-        runtime_status_snapshot,
+        RuntimeStatusActivity, RuntimeStatusActivityObservation, RuntimeStatusActivityScope,
+        RuntimeStatusActivitySource, RuntimeStatusFrameKind, RuntimeStatusTrigger,
+        runtime_status_registry, runtime_status_snapshot,
     },
     service_readiness,
     shell_docs::{
@@ -138,6 +140,7 @@ use gentle_protocol::{
     ExternalServiceDeliveryRouteRequest, ExternalServiceRequest,
     GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
     GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, capability_registry,
+    SharedAssetActivityStatus,
 };
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_app_kit::NSApplication;
@@ -13227,6 +13230,222 @@ fn collect_blast_async_job_snapshots(
             .then(a.job_id.cmp(&b.job_id))
     });
     statuses
+}
+
+pub(crate) fn runtime_status_payload_with_observed_activities(
+    engine: &mut GentleEngine,
+    trigger: RuntimeStatusTrigger,
+) -> Result<(Value, bool), String> {
+    let mut activities = Vec::new();
+    let mut notes = vec![
+        "frames are live and process-local; persisted/project activities are observations from existing ledgers".to_string(),
+        "out-of-process GUI live stacks are not visible without future IPC; stale/cross-process records are labelled explicitly".to_string(),
+    ];
+    collect_runtime_genome_prepare_activities(false, &mut activities, &mut notes);
+    collect_runtime_genome_prepare_activities(true, &mut activities, &mut notes);
+    collect_runtime_cutrun_activities(engine, &mut activities, &mut notes);
+    let blast_jobs = collect_runtime_blast_async_activities(engine)?;
+    activities.extend(blast_jobs.iter().map(runtime_activity_from_blast_async_job));
+    let snapshot = runtime_status_snapshot(trigger).with_activities(activities, notes);
+    Ok((
+        serde_json::to_value(snapshot)
+            .map_err(|e| format!("Could not serialize runtime status: {e}"))?,
+        false,
+    ))
+}
+
+fn collect_runtime_blast_async_activities(
+    engine: &mut GentleEngine,
+) -> Result<Vec<BlastAsyncJobStatus>, String> {
+    let mut jobs = BLAST_ASYNC_JOBS
+        .lock()
+        .map_err(|_| "Could not lock BLAST async job registry".to_string())?;
+    hydrate_blast_async_jobs_from_engine(&mut jobs, engine);
+    refresh_and_dispatch_blast_async_jobs_locked(&mut jobs);
+    if jobs.len() > BLAST_ASYNC_JOB_HISTORY_LIMIT {
+        prune_blast_async_jobs_locked(&mut jobs);
+    }
+    Ok(collect_blast_async_job_snapshots(&mut jobs, None))
+}
+
+fn collect_runtime_genome_prepare_activities(
+    helper_mode: bool,
+    activities: &mut Vec<RuntimeStatusActivity>,
+    notes: &mut Vec<String>,
+) {
+    let catalog = match GenomeCatalog::from_default_discovery(helper_mode) {
+        Ok(catalog) => catalog,
+        Err(err) => {
+            notes.push(format!(
+                "could not inspect {} genome prepare activities from default catalog discovery: {err}",
+                if helper_mode { "helper" } else { "reference" }
+            ));
+            return;
+        }
+    };
+    match catalog.inspect_all_prepare_activity_statuses(None) {
+        Ok(statuses) => {
+            activities.extend(
+                statuses
+                    .iter()
+                    .map(|status| runtime_activity_from_prepare_genome(status, helper_mode)),
+            );
+        }
+        Err(err) => notes.push(format!(
+            "could not inspect {} genome prepare activity status files: {err}",
+            if helper_mode { "helper" } else { "reference" }
+        )),
+    }
+}
+
+fn collect_runtime_cutrun_activities(
+    engine: &GentleEngine,
+    activities: &mut Vec<RuntimeStatusActivity>,
+    notes: &mut Vec<String>,
+) {
+    let datasets = match GentleEngine::list_cutrun_datasets(None, None) {
+        Ok(report) => report.datasets,
+        Err(err) => {
+            notes.push(format!(
+                "could not inspect CUT&RUN shared-asset activities from default catalog discovery: {}",
+                err.message
+            ));
+            return;
+        }
+    };
+    for row in datasets {
+        match engine.show_cutrun_dataset_status(&row.dataset_id, None, None) {
+            Ok(status) => {
+                if let Some(activity) = status.current_activity.as_ref() {
+                    activities.push(runtime_activity_from_cutrun_shared_asset(activity));
+                }
+            }
+            Err(err) => notes.push(format!(
+                "could not inspect CUT&RUN activity for '{}': {}",
+                row.dataset_id, err.message
+            )),
+        }
+    }
+}
+
+fn runtime_activity_from_prepare_genome(
+    status: &PrepareGenomeActivityStatus,
+    helper_mode: bool,
+) -> RuntimeStatusActivity {
+    let prepare_kind = if helper_mode { "helper" } else { "reference" };
+    let mut activity = RuntimeStatusActivity::new(
+        RuntimeStatusActivitySource::PrepareGenome,
+        RuntimeStatusActivityScope::PersistedActivity,
+        format!("prepare-genome:{prepare_kind}:{}", status.genome_id),
+        format!(
+            "{} genome prepare: {}",
+            if helper_mode { "Helper" } else { "Reference" },
+            status.genome_id
+        ),
+        status.lifecycle_status.clone(),
+    );
+    activity.observation = observed_activity_state(&status.lifecycle_status, status.owner_pid);
+    activity.phase = status.phase.clone();
+    activity.detail = status
+        .item
+        .clone()
+        .or_else(|| status.step_label.clone())
+        .or_else(|| Some(status.prepare_mode.clone()));
+    activity.progress_percent = status.percent;
+    activity.bytes_done = Some(status.bytes_done);
+    activity.bytes_total = status.bytes_total;
+    activity.started_at_unix_ms = Some(status.started_at_unix_ms);
+    activity.updated_at_unix_ms = Some(status.updated_at_unix_ms);
+    activity.finished_at_unix_ms = status.finished_at_unix_ms;
+    activity.origin_process_id = status.owner_pid;
+    activity.source_path = Some(status.status_path.clone());
+    activity.stale_reason = match status.lifecycle_status.as_str() {
+        "stale" | "failed" | "cancelled" => status.last_error.clone(),
+        _ => None,
+    };
+    activity
+}
+
+fn runtime_activity_from_cutrun_shared_asset(
+    status: &SharedAssetActivityStatus,
+) -> RuntimeStatusActivity {
+    let mut activity = RuntimeStatusActivity::new(
+        RuntimeStatusActivitySource::CutrunSharedAsset,
+        RuntimeStatusActivityScope::PersistedActivity,
+        format!("cutrun-shared-asset:{}", status.resource_key),
+        status.display_name.clone(),
+        status.lifecycle_status.clone(),
+    );
+    activity.observation = observed_activity_state(&status.lifecycle_status, status.owner_pid);
+    activity.phase = status.phase.clone();
+    activity.detail = status.item.clone();
+    activity.progress_percent = status.percent;
+    activity.bytes_done = Some(status.bytes_done);
+    activity.bytes_total = status.bytes_total;
+    activity.started_at_unix_ms = Some(status.started_at_unix_ms);
+    activity.updated_at_unix_ms = Some(status.updated_at_unix_ms);
+    activity.finished_at_unix_ms = status.finished_at_unix_ms;
+    activity.origin_process_id = status.owner_pid;
+    activity.source_path = Some(status.status_path.clone());
+    activity.stale_reason = match status.lifecycle_status.as_str() {
+        "stale" | "failed" | "cancelled" => status.last_error.clone(),
+        _ => None,
+    };
+    activity
+}
+
+fn runtime_activity_from_blast_async_job(status: &BlastAsyncJobStatus) -> RuntimeStatusActivity {
+    let mut activity = RuntimeStatusActivity::new(
+        RuntimeStatusActivitySource::BlastAsyncJob,
+        RuntimeStatusActivityScope::ProjectAsyncRegistry,
+        format!("blast-async:{}", status.job_id),
+        format!("BLAST async job {} ({})", status.job_id, status.genome_id),
+        status.state.clone(),
+    );
+    activity.phase = Some(status.task.clone());
+    activity.detail = Some(format!(
+        "genome={} helper_mode={} queries={}/{} max_hits={}",
+        status.genome_id,
+        status.helper_mode,
+        status.done_queries,
+        status.total_queries,
+        status.max_hits
+    ));
+    if status.total_queries > 0 {
+        activity.progress_percent = Some(
+            ((status.done_queries as f64 / status.total_queries as f64) * 100.0)
+                .clamp(0.0, 100.0),
+        );
+    }
+    activity.started_at_unix_ms = status.started_at_unix_ms;
+    activity.updated_at_unix_ms = Some(
+        status
+            .finished_at_unix_ms
+            .or(status.started_at_unix_ms)
+            .unwrap_or(status.created_at_unix_ms),
+    );
+    activity.finished_at_unix_ms = status.finished_at_unix_ms;
+    activity.stale_reason = status.error.clone();
+    activity
+}
+
+fn observed_activity_state(
+    lifecycle_status: &str,
+    owner_pid: Option<u32>,
+) -> RuntimeStatusActivityObservation {
+    if lifecycle_status.eq_ignore_ascii_case("running")
+        && owner_pid.is_some_and(|pid| pid != std::process::id())
+    {
+        return RuntimeStatusActivityObservation::CrossProcess;
+    }
+    match lifecycle_status.trim().to_ascii_lowercase().as_str() {
+        "running" | "queued" | "preparing" | "in_progress" => RuntimeStatusActivityObservation::Live,
+        "ready" | "completed" | "done" | "ok" => RuntimeStatusActivityObservation::Completed,
+        "failed" | "error" => RuntimeStatusActivityObservation::Failed,
+        "cancelled" | "canceled" => RuntimeStatusActivityObservation::Cancelled,
+        "stale" => RuntimeStatusActivityObservation::Stale,
+        _ => RuntimeStatusActivityObservation::Unknown,
+    }
 }
 
 fn get_blast_async_job_snapshot(
@@ -42219,11 +42438,14 @@ fn execute_agent_meta_command(
             state_changed: false,
             output: introspection_capabilities_payload(kind_filter.as_deref()),
         }),
-        ShellCommand::IntrospectRuntime => Ok(ShellRunResult {
-            state_changed: false,
-            output: serde_json::to_value(runtime_status_snapshot(RuntimeStatusTrigger::Shell))
-                .map_err(|e| format!("Could not serialize runtime status: {e}"))?,
-        }),
+        ShellCommand::IntrospectRuntime => {
+            let (output, state_changed) =
+                runtime_status_payload_with_observed_activities(engine, RuntimeStatusTrigger::Shell)?;
+            Ok(ShellRunResult {
+                state_changed,
+                output,
+            })
+        }
         ShellCommand::IntrospectReadiness {
             capability_id,
             args,
