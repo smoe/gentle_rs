@@ -34,7 +34,6 @@ use gentle_protocol::{
     AttractSplicingEvidenceView, IsoformExpressionMatrix, IsoformExpressionRow,
     SplicingIntronSignal,
 };
-use sha1::{Digest, Sha1};
 
 const DEFAULT_DBSNP_REFSNP_ENDPOINT: &str =
     "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/{refsnp_id}";
@@ -4049,7 +4048,7 @@ impl GentleEngine {
                 expected_len
             ));
         }
-        let sequence_sha1 = format!("{:x}", Sha1::digest(entry.sequence.as_bytes()));
+        let sequence_sha1 = crate::digest_utils::sha256_prefixed_str(&entry.sequence);
         self.append_genome_extraction_provenance(GenomeExtractionProvenance {
             seq_id: seq_id.clone(),
             recorded_at_unix_ms: Self::now_unix_ms(),

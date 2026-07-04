@@ -25,6 +25,7 @@
 use crate::{
     DNA_LADDERS, RNA_LADDERS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
+    digest_utils::short_sha256_id,
     dna_sequence::DNAsequence,
     ensembl_protein::EnsemblProteinEntry,
     enzymes::{
@@ -72,7 +73,6 @@ use rayon::join;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sha1::{Digest, Sha1};
 use std::{
     cell::Cell,
     cmp::Ordering,
@@ -11567,9 +11567,8 @@ impl GentleEngine {
         Self::normalize_oligo_sequence(&line.sequence_5_to_3)
     }
 
-    fn short_sha1_id(prefix: &str, raw: &str) -> String {
-        let digest = Sha1::digest(raw.as_bytes());
-        format!("{prefix}_{:x}", digest)[..(prefix.len() + 1 + 16)].to_string()
+    fn short_digest_id(prefix: &str, raw: &str) -> String {
+        short_sha256_id(prefix, raw)
     }
 
     fn deterministic_oligo_line_id(form_id: &str, line: &OligoOrderLineItem) -> String {
@@ -11588,11 +11587,11 @@ impl GentleEngine {
             provenance.role.trim(),
             Self::oligo_procurement_key(line)
         );
-        Self::short_sha1_id("oli", &raw)
+        Self::short_digest_id("oli", &raw)
     }
 
     fn deterministic_oligo_group_id(prefix: &str, form_id: &str, key: &str) -> String {
-        Self::short_sha1_id(prefix, &format!("{form_id}\n{key}"))
+        Self::short_digest_id(prefix, &format!("{form_id}\n{key}"))
     }
 
     fn finalize_oligo_order_form(

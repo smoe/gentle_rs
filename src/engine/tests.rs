@@ -35029,7 +35029,7 @@ fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_r
     assert!(
         view.active_resource_fingerprint
             .as_deref()
-            .map(|value| value.starts_with("sha1:"))
+            .map(|value| value.starts_with("sha256:"))
             .unwrap_or(false)
     );
     assert_eq!(view.summary_rows.len(), 2);
@@ -35119,7 +35119,7 @@ fn test_inspect_splicing_attract_evidence_falls_back_when_requested_species_miss
     assert!(
         view.active_resource_fingerprint
             .as_deref()
-            .map(|value| value.starts_with("sha1:"))
+            .map(|value| value.starts_with("sha256:"))
             .unwrap_or(false)
     );
     assert_eq!(view.hit_count, 1);

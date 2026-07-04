@@ -1,7 +1,6 @@
 //! Reporter catalog validation, recommendation, and corpus export operations.
 
 use super::*;
-use sha1::{Digest, Sha1};
 
 const DEFAULT_REPORTER_CATALOG_PATH: &str = "assets/reporter_catalog.json";
 const DEFAULT_REPORTER_RECOMMENDATION_LIMIT: usize = 5;
@@ -486,8 +485,15 @@ impl GentleEngine {
         } else if !Self::is_valid_reporter_sequence(&record.sequence) {
             reasons.push("invalid_sequence_characters".to_string());
         }
-        if record.sequence_sha1.trim().is_empty() {
-            reasons.push("missing_sequence_sha1".to_string());
+        if record.sequence_sha1.trim().is_empty()
+            && record
+                .sequence_sha256
+                .as_deref()
+                .unwrap_or_default()
+                .trim()
+                .is_empty()
+        {
+            reasons.push("missing_sequence_checksum".to_string());
         }
         if !record.license_status.starts_with("open") {
             reasons.push("unclear_or_unaccepted_license_status".to_string());
@@ -532,7 +538,16 @@ impl GentleEngine {
             .map(|stop| matches!(stop, b"TAA" | b"TAG" | b"TGA"))
             .unwrap_or(false);
         let multiple_of_three = sequence.len().is_multiple_of(3);
-        let checksum = format!("{:x}", Sha1::digest(record.sequence.as_bytes()));
+        let checksum_sha256 = crate::digest_utils::sha256_hex_str(&record.sequence);
+        let checksum_ok = if let Some(expected) = record
+            .sequence_sha256
+            .as_deref()
+            .and_then(Self::normalize_reporter_sha256_checksum)
+        {
+            expected == checksum_sha256
+        } else {
+            Self::looks_like_legacy_sha1_checksum(&record.sequence_sha1)
+        };
         let mut forbidden_motif_hits = Vec::new();
         for motif in forbidden_motifs {
             if Self::contains_motif_any_strand(sequence, motif)? {
@@ -546,9 +561,24 @@ impl GentleEngine {
             ends_with_stop,
             multiple_of_three,
             likely_complete_cds: starts_with_atg && multiple_of_three && ends_with_stop,
-            checksum_ok: checksum == record.sequence_sha1.to_ascii_lowercase(),
+            checksum_ok,
             forbidden_motif_hits,
         })
+    }
+
+    fn normalize_reporter_sha256_checksum(raw: &str) -> Option<String> {
+        let trimmed = raw.trim();
+        let value = trimmed.strip_prefix("sha256:").unwrap_or(trimmed);
+        if value.len() == 64 && value.as_bytes().iter().all(u8::is_ascii_hexdigit) {
+            Some(value.to_ascii_lowercase())
+        } else {
+            None
+        }
+    }
+
+    fn looks_like_legacy_sha1_checksum(raw: &str) -> bool {
+        let trimmed = raw.trim();
+        trimmed.len() == 40 && trimmed.as_bytes().iter().all(u8::is_ascii_hexdigit)
     }
 
     fn normalize_reporter_sequence(sequence: &str) -> String {
@@ -1129,7 +1159,8 @@ mod tests {
             id: id.to_string(),
             name: id.to_string(),
             reporter_class: "fluorescent_protein".to_string(),
-            sequence_sha1: format!("{:x}", Sha1::digest(sequence.as_bytes())),
+            sequence_sha1: String::new(),
+            sequence_sha256: Some(crate::digest_utils::sha256_hex_str(&sequence)),
             sequence,
             source_refs: vec![ReporterSourceRef {
                 source_id: "test".to_string(),
@@ -1199,7 +1230,7 @@ mod tests {
     #[test]
     fn reporter_annotation_reports_checksum_and_orf_sanity() {
         let mut record = test_record("r1", "ATGAAATAA");
-        record.sequence_sha1 = "bad".to_string();
+        record.sequence_sha256 = Some("bad".to_string());
         let annotation =
             GentleEngine::annotate_reporter_record(&record, &[]).expect("annotate reporter");
         assert_eq!(annotation.length_bp, 9);

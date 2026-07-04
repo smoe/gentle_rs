@@ -3127,6 +3127,9 @@ Sequencing-trace evidence notes:
   - validates the local reporter catalog, quarantines rows with missing
     sequence/provenance/license/safety gates, and adds deterministic sequence
     annotations such as length, GC, checksum, CDS sanity, and motif hits
+  - reporter records prefer `sequence_sha256`; `sequence_sha1` remains a
+    legacy compatibility field for older local catalogs and is not recomputed
+    in-process
 - `RecommendReporters { constraints, catalog_path?, limit?, path? }`
   - emits `gentle.reporter_recommendation.v1`
   - runs offline from the local catalog: hard constraints eliminate candidates

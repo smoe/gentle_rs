@@ -903,14 +903,14 @@ impl GentleEngine {
 
     pub(super) fn probe_region_input_fingerprint(path: &str, role: &str) -> serde_json::Value {
         let status = Self::probe_region_file_status(path, role);
-        let sha1 = if status.is_file
+        let sha256 = if status.is_file
             && status
                 .size_bytes
-                .is_some_and(|size| size <= PROBE_REGION_FINGERPRINT_SHA1_MAX_BYTES)
+                .is_some_and(|size| size <= PROBE_REGION_FINGERPRINT_DIGEST_MAX_BYTES)
         {
             std::fs::read(&status.path)
                 .ok()
-                .map(|bytes| format!("{:x}", Sha1::digest(&bytes)))
+                .map(|bytes| crate::digest_utils::sha256_prefixed_bytes(&bytes))
         } else {
             None
         };
@@ -921,7 +921,7 @@ impl GentleEngine {
             "is_file": status.is_file,
             "size_bytes": status.size_bytes,
             "modified_unix_seconds": status.modified_unix_seconds,
-            "sha1": sha1
+            "sha256": sha256
         })
     }
 

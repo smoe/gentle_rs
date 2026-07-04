@@ -73,6 +73,8 @@ pub struct ReporterRecord {
     pub reporter_class: String,
     pub sequence: String,
     pub sequence_sha1: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_sha256: Option<String>,
     pub source_refs: Vec<ReporterSourceRef>,
     pub license_status: String,
     pub provenance_note: String,

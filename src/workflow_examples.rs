@@ -2,11 +2,9 @@
 
 use crate::engine::{Engine, GentleEngine, Operation, OperationProgress, ProjectState, Workflow};
 use serde::{Deserialize, Serialize};
-use sha1::{Digest, Sha1};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
-    io::Read,
     path::{Path, PathBuf},
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
@@ -4305,21 +4303,9 @@ fn collect_regular_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
-fn sha1_file(path: &Path) -> Result<String, String> {
-    let mut file = fs::File::open(path)
-        .map_err(|e| format!("Could not open '{}' for checksum: {e}", display_path(path)))?;
-    let mut hasher = Sha1::new();
-    let mut buffer = [0u8; 8192];
-    loop {
-        let read = file
-            .read(&mut buffer)
-            .map_err(|e| format!("Could not read '{}' for checksum: {e}", display_path(path)))?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
+fn digest_file(path: &Path) -> Result<String, String> {
+    crate::digest_utils::sha256_file_hex(path)
+        .map_err(|e| format!("Could not read '{}' for checksum: {e}", display_path(path)))
 }
 
 fn checksum_map(root: &Path, exclude_names: &[&str]) -> Result<BTreeMap<String, String>, String> {
@@ -4336,7 +4322,7 @@ fn checksum_map(root: &Path, exclude_names: &[&str]) -> Result<BTreeMap<String, 
         if excluded {
             continue;
         }
-        checksums.insert(rel_str, sha1_file(&file)?);
+        checksums.insert(rel_str, digest_file(&file)?);
     }
     Ok(checksums)
 }

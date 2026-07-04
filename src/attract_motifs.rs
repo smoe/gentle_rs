@@ -8,7 +8,6 @@
 //! resource schema.
 
 use serde::{Deserialize, Serialize};
-use sha1::{Digest, Sha1};
 use std::{
     fs,
     sync::{LazyLock, RwLock},
@@ -239,7 +238,5 @@ pub fn snapshot_fingerprint_from_text(text: &str) -> Option<String> {
     if trimmed.is_empty() {
         return None;
     }
-    let mut hasher = Sha1::new();
-    hasher.update(trimmed.as_bytes());
-    Some(format!("sha1:{:x}", hasher.finalize()))
+    Some(crate::digest_utils::sha256_prefixed_str(trimmed))
 }

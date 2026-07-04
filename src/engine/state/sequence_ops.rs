@@ -1846,7 +1846,7 @@ impl GentleEngine {
             report.scan_topology.as_str(),
             enzymes.join(",")
         );
-        Self::short_sha1_id("rsr", &raw)
+        Self::short_digest_id("rsr", &raw)
     }
 
     pub fn evaluate_fact_expression_against_graph(

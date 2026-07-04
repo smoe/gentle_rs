@@ -2864,6 +2864,9 @@ Shared shell command:
       - recommendation JSON includes `biological_intent` so agent-facing
         synthetic-biology flows can route promoter, luciferase, fusion, live,
         and endpoint reporter requests without guessing from prose
+      - local reporter catalogs should provide `sequence_sha256`; legacy
+        `sequence_sha1` values are accepted for older catalogs but are not
+        recomputed by GENtle
     - `reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--catalog PATH] [--format json|jsonl]`
     - `reporters plan-handoff CANDIDATE_SET.json [--candidate-id ID] [--catalog PATH] [--backbone-seq-id ID] [--backbone-path PATH] [--reference-fragment-seq-id ID] [--alternate-fragment-seq-id ID] [--output-prefix PREFIX] [--output FILE.json]`
       - handoff JSON includes `biological_intent =

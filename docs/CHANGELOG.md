@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-04
+
+- Removed the in-process Rust `sha1` dependency. Local regenerated
+  fingerprints now use the shared SHA-256 helper, while legacy SHA-1 download
+  verification remains delegated to external platform tools.
+
 ## 2026-07-03
 
 - Updated the direct macOS Objective-C bridge dependencies to the current

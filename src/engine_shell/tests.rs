@@ -32915,7 +32915,11 @@ fn execute_helpers_vocabulary_doctor_reports_overlay_conflicts_and_provenance() 
             .as_array()
             .expect("fragments")
             .iter()
-            .all(|row| row["digest_sha1"].as_str().unwrap_or("").len() == 40)
+            .all(|row| {
+                row["digest_sha1"]
+                    .as_str()
+                    .is_some_and(|value| value.starts_with("sha256:") && value.len() == 71)
+            })
     );
     let issues = report["issues"].as_array().expect("issues");
     assert!(issues.iter().any(|row| {

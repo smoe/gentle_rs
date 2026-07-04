@@ -531,6 +531,10 @@ Computational artifact provenance rule:
   recorded as not SHA-1 verified and relies only on basic corruption/parse
   checks. `GENTLE_SHA1_TOOL` can override tool discovery, and
   `GENTLE_DISABLE_LEGACY_SHA1=1` disables legacy SHA-1 checks explicitly.
+- Legacy field names such as `*_sha1` may remain readable for persisted
+  compatibility, but regenerated local provenance fingerprints should carry an
+  algorithm-prefixed stronger digest, currently `sha256:<hex>`, and must not
+  reintroduce the Rust `sha1` crate.
 - If the output is persisted and sample-relevant, it should project as a
   graph-visible analysis artifact node rather than living only in a hidden
   metadata store.

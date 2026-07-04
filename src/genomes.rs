@@ -44,7 +44,6 @@ use flate2::read::MultiGzDecoder;
 pub use gentle_protocol::{PreparedCacheCleanupMode, PreparedCacheCleanupRequest};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use sha1::{Digest, Sha1};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
@@ -989,7 +988,7 @@ impl HelperConstructVocabularyDoctorInspector {
                 return;
             }
         };
-        let digest_sha1 = format!("{:x}", Sha1::digest(text.as_bytes()));
+        let digest_sha1 = crate::digest_utils::sha256_prefixed_str(&text);
         let parsed: HelperConstructVocabularyCatalog = match serde_json::from_str(&text) {
             Ok(parsed) => parsed,
             Err(err) => {
@@ -5084,11 +5083,9 @@ impl GenomeCatalog {
                     )?;
                     let checksum_changed = ensure_manifest_checksums(&mut manifest)?;
                     let mut warnings: Vec<String> = vec![];
-                    if let Some(warning) =
-                        crate::external_checksums::legacy_sha1_unverified_warning(
-                            "prepared genome sequence/annotation reuse",
-                        )
-                    {
+                    if let Some(warning) = crate::external_checksums::legacy_sha1_unverified_warning(
+                        "prepared genome sequence/annotation reuse",
+                    ) {
                         warnings.push(warning);
                     }
                     if let Some(warning) = cached_source_drift_warning.clone() {

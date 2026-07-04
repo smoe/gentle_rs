@@ -13,7 +13,6 @@ use gentle_protocol::{
     ExternalServiceProviderConfigSourceReport, ExternalServiceProviderRecord,
     ExternalServiceValidationRule,
 };
-use sha1::{Digest, Sha1};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -170,7 +169,7 @@ fn json_files_in_dir(path: &Path) -> Result<Vec<PathBuf>, String> {
 fn source_sha1(path: &Path) -> Option<String> {
     fs::read(path)
         .ok()
-        .map(|bytes| format!("{:x}", Sha1::digest(&bytes)))
+        .map(|bytes| crate::digest_utils::sha256_prefixed_bytes(&bytes))
 }
 
 fn validate_provider_config_catalog(

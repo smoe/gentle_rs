@@ -423,9 +423,9 @@ impl GentleEngine {
     ) -> Result<(), EngineError> {
         let path = output_dir.join(GLEN_PROVENANCE_FILE);
         let input_text = input_path.to_string_lossy();
-        let input_sha1 = std::fs::read(input_path)
+        let input_sha256 = std::fs::read(input_path)
             .ok()
-            .map(|bytes| format!("{:x}", Sha1::digest(&bytes)));
+            .map(|bytes| crate::digest_utils::sha256_prefixed_bytes(&bytes));
         let provenance = json!({
             "schema": GLEN_BACKEND_PROVENANCE_SCHEMA,
             "backend": "glen_exploratory_analysis_adapter",
@@ -445,7 +445,7 @@ impl GentleEngine {
                 {
                     "path": input_text.as_ref(),
                     "role": "glen_style_adapter_input",
-                    "sha1": input_sha1
+                    "sha256": input_sha256
                 }
             ],
             "tool_version_checks": [],

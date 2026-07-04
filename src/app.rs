@@ -242,7 +242,6 @@ use rack_workspace_ui::*;
 use regex::{Regex, RegexBuilder};
 use resvg::{self, tiny_skia, usvg};
 use serde::{Deserialize, Serialize};
-use sha1::{Digest, Sha1};
 
 const GUI_MANUAL_MD: &str = include_str!("../docs/gui.md");
 const CLI_MANUAL_MD: &str = include_str!("../docs/cli.md");
@@ -3848,10 +3847,8 @@ Error: `{err}`"
             .unwrap_or_default()
     }
 
-    fn sha1_hex(value: &str) -> String {
-        let mut hasher = Sha1::new();
-        hasher.update(value.as_bytes());
-        format!("{:x}", hasher.finalize())
+    fn digest_hex(value: &str) -> String {
+        crate::digest_utils::sha256_hex_str(value)
     }
 
     fn current_prepare_retry_arguments(&self) -> serde_json::Value {
@@ -3880,7 +3877,7 @@ Error: `{err}`"
                     "manual_query_sha1": if query.is_empty() {
                         None
                     } else {
-                        Some(Self::sha1_hex(query))
+                        Some(Self::digest_hex(query))
                     }
                 })
             }
@@ -3997,7 +3994,7 @@ Error: `{err}`"
             "prompt_sha1": if prompt.is_empty() {
                 None
             } else {
-                Some(Self::sha1_hex(prompt))
+                Some(Self::digest_hex(prompt))
             },
             "prompt_preview": prompt_preview,
             "base_url_override": self.agent_base_url_override.trim(),
@@ -10778,7 +10775,8 @@ Error: `{err}`"
                 match task.receiver.try_recv() {
                     Ok(DbSnpFetchTaskMessage::Progress(progress)) => {
                         self.dbsnp_status = Self::format_dbsnp_progress_status(&progress);
-                        task.runtime_frame.update_phase(format!("{:?}", progress.stage));
+                        task.runtime_frame
+                            .update_phase(format!("{:?}", progress.stage));
                         task.runtime_frame.update_detail(progress.detail.clone());
                     }
                     Ok(DbSnpFetchTaskMessage::Done(result)) => {
@@ -22571,15 +22569,12 @@ Error: `{err}`"
                     if !runtime_snapshot.frames.is_empty() {
                         ui.separator();
                         let tooltip = runtime_snapshot.summary_lines.join("\n");
-                        ui.small(format!(
-                            "Runtime: {} active",
-                            runtime_snapshot.frames.len()
-                        ))
-                        .on_hover_text(if tooltip.trim().is_empty() {
-                            "Process-local runtime activity stack".to_string()
-                        } else {
-                            tooltip
-                        });
+                        ui.small(format!("Runtime: {} active", runtime_snapshot.frames.len()))
+                            .on_hover_text(if tooltip.trim().is_empty() {
+                                "Process-local runtime activity stack".to_string()
+                            } else {
+                                tooltip
+                            });
                     }
                     if !self.app_status.trim().is_empty() {
                         ui.separator();

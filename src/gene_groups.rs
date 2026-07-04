@@ -10,7 +10,6 @@ use gentle_protocol::{
     GeneGroupExternalMapping, GeneGroupExternalResource, GeneGroupListEntry, GeneGroupListReport,
     GeneGroupMember, GeneGroupRecord, GeneGroupResolveReport, GeneGroupShowReport,
 };
-use sha1::{Digest, Sha1};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -878,7 +877,7 @@ pub fn draft_gene_group(options: GeneGroupDraftOptions) -> Result<GeneGroupDraft
         external_resources,
         groups: vec![group.clone()],
     };
-    let input_description_sha1 = format!("{:x}", Sha1::digest(description.as_bytes()));
+    let input_description_sha1 = crate::digest_utils::sha256_prefixed_str(description);
     let mut report = GeneGroupDraftReport {
         schema: GENE_GROUP_DRAFT_REPORT_SCHEMA.to_string(),
         generation_method: "deterministic_review_gated_draft".to_string(),
@@ -1104,7 +1103,7 @@ fn inspect_doctor_file(
             return;
         }
     };
-    source.sha1 = Some(format!("{:x}", Sha1::digest(text.as_bytes())));
+    source.sha1 = Some(crate::digest_utils::sha256_prefixed_str(&text));
     let parsed = match parse_gene_group_catalog(&text, path) {
         Ok(parsed) => parsed,
         Err(e) => {

@@ -230,7 +230,7 @@ tools such as `sha1sum`, `shasum -a 1`, or Windows `certutil`. If no suitable
 tool is available, the file is not SHA-1 verified; preparation may still rely on
 basic corruption checks such as successful gzip decompression, size checks, and
 parser validation. `GENTLE_SHA1_TOOL` may point to an explicit tool, and
-`GENTLE_DISABLE_LEGACY_SHA1=1` intentionally disables the legacy check. Existing
-SHA-1-shaped local provenance identifiers are compatibility fields and should
-be migrated separately to stronger identifiers without conflating that
-migration with download verification.
+`GENTLE_DISABLE_LEGACY_SHA1=1` intentionally disables the legacy check. Legacy
+SHA-1-shaped local provenance fields are compatibility fields; regenerated
+local fingerprints should use algorithm-prefixed stronger digests such as
+`sha256:<hex>` without requiring an in-process SHA-1 dependency.

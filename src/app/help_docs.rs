@@ -298,18 +298,20 @@ impl GENtleApp {
             return None;
         }
         let metadata = fs::metadata(svg_path).ok();
-        let mut hasher = Sha1::new();
-        hasher.update(svg_path.to_string_lossy().as_bytes());
+        let mut fingerprint_input = svg_path.to_string_lossy().to_string();
         if let Some(metadata) = metadata {
-            hasher.update(metadata.len().to_le_bytes());
+            fingerprint_input.push_str(&format!("\nlen={}", metadata.len()));
             if let Ok(modified) = metadata.modified()
                 && let Ok(duration) = modified.duration_since(UNIX_EPOCH)
             {
-                hasher.update(duration.as_secs().to_le_bytes());
-                hasher.update(duration.subsec_nanos().to_le_bytes());
+                fingerprint_input.push_str(&format!(
+                    "\nmtime={}.{}",
+                    duration.as_secs(),
+                    duration.subsec_nanos()
+                ));
             }
         }
-        let digest = format!("{:x}", hasher.finalize());
+        let digest = crate::digest_utils::sha256_hex_str(&fingerprint_input);
         let stem = svg_path
             .file_stem()
             .and_then(|stem| stem.to_str())

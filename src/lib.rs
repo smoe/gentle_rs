@@ -26,6 +26,7 @@ pub mod app;
 pub mod attract_motifs;
 /// Small shared helpers for GENtle command-line binaries.
 pub mod cli_support;
+pub(crate) mod digest_utils;
 /// Shared DNA display configuration and visibility policies.
 pub mod dna_display;
 /// DNA/RNA ladder catalogs and migration helper utilities.
