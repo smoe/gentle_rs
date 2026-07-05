@@ -158,6 +158,8 @@ pub mod svg_png;
 /// Hidden shared support helpers for internal tests across library and binaries.
 #[doc(hidden)]
 pub mod test_support;
+/// Standalone RNA-seq target-region rescue screen for CLI calibration runs.
+pub mod target_rescue;
 /// TF-motif registry and matching support.
 pub mod tf_motifs;
 /// Process-local tool-path override registry.

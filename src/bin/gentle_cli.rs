@@ -18,6 +18,8 @@ mod gentle_cli_reference;
 mod gentle_cli_rendering;
 #[path = "gentle_cli/reporters.rs"]
 mod gentle_cli_reporters;
+#[path = "gentle_cli/rescue_screen.rs"]
+mod gentle_cli_rescue_screen;
 #[path = "gentle_cli/resources.rs"]
 mod gentle_cli_resources;
 #[path = "gentle_cli/services.rs"]
@@ -495,6 +497,7 @@ fn usage_text() -> String {
   gentle_cli reporters recommend [--assay NAME] [--chassis HOST] [--color COLOR] [--class CLASS] [--max-length-bp N]\n  \
   gentle_cli reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--format json|jsonl]\n\n  \
   gentle_cli reporters plan-handoff CANDIDATE_SET.json [--candidate-id ID] [--catalog PATH] [--backbone-seq-id ID] [--backbone-path PATH] [--reference-fragment-seq-id ID] [--alternate-fragment-seq-id ID] [--output-prefix PREFIX] [--output FILE.json]\n\n  \
+  gentle_cli rescue-screen --transcript-fasta PATH [--transcript-fasta PATH ...] --genes SYM[,SYM,...] [--gene SYM ...] --reads PATH [--reads PATH ...] [--read-id-allowlist PATH] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--kmer-len N] [--min-kmer-hits N] [--gene-symbol-tag KEY ...] --output-prefix PREFIX\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
   --project is an alias of --state for project.gentle.json files\n\n  \
   Shared command reference (generated from docs/glossary.json):\n  \
@@ -1126,6 +1129,7 @@ fn run() -> Result<(), String> {
         "resources" => gentle_cli_resources::handle_resources_family(&args, cmd_idx),
         "services" => gentle_cli_services::handle_services_family(&args, cmd_idx),
         "reporters" => gentle_cli_reporters::handle_reporters_family(&args, cmd_idx),
+        "rescue-screen" => gentle_cli_rescue_screen::handle_rescue_screen(&args, cmd_idx),
         "shell" => {
             if args.len() <= cmd_idx + 1 {
                 usage();

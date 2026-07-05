@@ -68,6 +68,25 @@ Executable overrides can be supplied through environment variables such as
 `GENTLE_SHA1_TOOL`. Set `GENTLE_DISABLE_LEGACY_SHA1=1` to skip legacy SHA-1
 checks intentionally.
 
+## RNA-seq Target Rescue Screen
+
+`gentle_cli rescue-screen` is a pilot calibration command for screening
+RNA-seq reads against a small requested gene set after external quantification,
+for example reads Salmon left unassigned or reads Salmon assigned to target
+transcripts. It is intentionally separate from the shared `rna-reads` engine
+routes and does not claim to call fusions, splice isoforms, or definitive
+transcript origin.
+
+The command accepts one or more Ensembl-style transcript FASTA files
+(`--transcript-fasta`), requested genes (`--genes` or repeatable `--gene`),
+streamed FASTA/FASTQ reads (`--reads`, plain or `.gz`), optional read-id
+filters, and optional Salmon bridge files (`--salmon-unmapped-names`,
+`--salmon-mappings-sam`). It builds redundant per-gene canonical k-mer hashes
+and writes deterministic reports as `<prefix>.gene_manifest.tsv`,
+`<prefix>.gene_hits.tsv`, `<prefix>.read_hits.tsv`,
+`<prefix>.run_metadata.json`, `<prefix>.summary.json`, and, when Salmon bridge
+inputs define multiple universes, `<prefix>.comparison.json`.
+
 ## What To Trust Today
 
 Use this as a task-oriented confidence map rather than assuming every visible

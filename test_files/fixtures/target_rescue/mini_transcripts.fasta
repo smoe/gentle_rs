@@ -1,0 +1,9 @@
+>ENSTA1.1 cdna chromosome:GRCh38:1:1:80:1 gene:ENSG_GENEA.1 gene_biotype:protein_coding transcript_biotype:protein_coding gene_symbol:GENEA description:synthetic GENEA transcript
+CTCAGATGGCTTAGCCAGCCTACGCGTGCCACTTGCGAAACTTCAAGTATCAAACTTGGT
+CTGGCGCATCACACGTTGCG
+>ENSTB1.1 cdna chromosome:GRCh38:1:1:80:1 gene:ENSG_GENEB.1 gene_biotype:protein_coding transcript_biotype:protein_coding gene_symbol:GENEB description:synthetic GENEB transcript
+TAAAGTGTGGCACCTGCAACGCACCCAAATTCTCCCAGACCCCGTGATTAAGAGACGTAG
+GACGACCTACGGCTGAGCCG
+>ENSTC1.1 cdna chromosome:GRCh38:1:1:80:1 gene:ENSG_GENEC.1 gene_biotype:protein_coding transcript_biotype:protein_coding gene_symbol:GENEC description:synthetic GENEC transcript
+TAGGTCGAATTGCAGCCTGTCTACCGGAGCCCGCAGAGCTTAATGATGATTTACTTTGGA
+GGGCCTCTCGGTCTTATAGA
