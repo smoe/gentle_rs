@@ -24550,7 +24550,7 @@ fn execute_introspect_capabilities_filters_first_slice_by_kind() {
 }
 
 #[test]
-fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice() {
+fn execute_introspect_capabilities_projects_full_registry_with_fact_annotations() {
     let mut engine = GentleEngine::default();
 
     let cmd = parse_shell_line("introspect capabilities").expect("parse introspect capabilities");
@@ -25609,12 +25609,7 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             "{id} should have a fact-annotated sequencing-primer suggestion descriptor"
         );
     }
-    assert!(
-        capabilities
-            .iter()
-            .all(|descriptor| descriptor["annotation_status"].as_str() != Some("registry_only")),
-        "all shared registry capabilities should have fact-aware introspection descriptors"
-    );
+    assert_no_registry_only_capabilities(capabilities, "introspect capabilities");
     for id in ["ExportPool", "export-pool", "render_pool_gel_svg"] {
         assert!(
             capabilities.iter().any(|descriptor| {
@@ -26988,6 +26983,153 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             "{id} should have a fact-annotated read-acquisition external-write descriptor"
         );
     }
+}
+
+fn introspection_capability_ids(
+    capabilities: &[serde_json::Value],
+) -> std::collections::BTreeSet<String> {
+    capabilities
+        .iter()
+        .filter_map(|descriptor| descriptor["id"].as_str().map(str::to_string))
+        .collect()
+}
+
+fn assert_no_registry_only_capabilities(capabilities: &[serde_json::Value], route: &str) {
+    let registry_only = capabilities
+        .iter()
+        .filter_map(|descriptor| {
+            (descriptor["annotation_status"].as_str() == Some("registry_only")).then(|| {
+                descriptor["id"]
+                    .as_str()
+                    .unwrap_or("<missing id>")
+                    .to_string()
+            })
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        registry_only.is_empty(),
+        "{route} contains registry-only capability descriptors: {registry_only:?}"
+    );
+}
+
+fn collect_fact_names_from_introspection_value(
+    value: &serde_json::Value,
+    out: &mut std::collections::BTreeSet<String>,
+) {
+    match value {
+        serde_json::Value::Object(map) => {
+            if let Some(fact) = map.get("fact").and_then(serde_json::Value::as_str) {
+                out.insert(fact.to_string());
+            }
+            for child in map.values() {
+                collect_fact_names_from_introspection_value(child, out);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for child in items {
+                collect_fact_names_from_introspection_value(child, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[test]
+fn execute_introspect_all_capability_section_has_full_fact_annotations() {
+    let mut engine = GentleEngine::default();
+
+    let all_cmd = parse_shell_line("introspect all").expect("parse introspect all");
+    let all = execute_shell_command(&mut engine, &all_cmd).expect("execute introspect all");
+    let aggregate_capabilities = all.output["capabilities"]["capabilities"]
+        .as_array()
+        .expect("aggregate capabilities");
+    assert_no_registry_only_capabilities(aggregate_capabilities, "introspect all");
+
+    let capabilities_cmd =
+        parse_shell_line("introspect capabilities").expect("parse introspect capabilities");
+    let direct = execute_shell_command(&mut engine, &capabilities_cmd)
+        .expect("execute introspect capabilities");
+    let direct_capabilities = direct.output["capabilities"]
+        .as_array()
+        .expect("direct capabilities");
+    assert_eq!(
+        introspection_capability_ids(aggregate_capabilities),
+        introspection_capability_ids(direct_capabilities),
+        "introspect all should project the same capability id set as introspect capabilities"
+    );
+}
+
+#[test]
+fn execute_introspection_fact_vocabulary_covers_capability_contracts() {
+    let mut engine = GentleEngine::default();
+
+    let facts_cmd = parse_shell_line("introspect facts").expect("parse introspect facts");
+    let facts = execute_shell_command(&mut engine, &facts_cmd).expect("execute introspect facts");
+    let declared = facts.output["fact_type_specs"]
+        .as_array()
+        .expect("fact type specs")
+        .iter()
+        .filter_map(|spec| spec["name"].as_str().map(str::to_string))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(
+        !declared.is_empty(),
+        "introspect facts should expose the project fact vocabulary"
+    );
+
+    let capabilities_cmd =
+        parse_shell_line("introspect capabilities").expect("parse introspect capabilities");
+    let capabilities = execute_shell_command(&mut engine, &capabilities_cmd)
+        .expect("execute introspect capabilities");
+    let mut missing = Vec::new();
+    for descriptor in capabilities.output["capabilities"]
+        .as_array()
+        .expect("capabilities")
+    {
+        let capability_id = descriptor["id"].as_str().unwrap_or("<missing id>");
+        let mut used = std::collections::BTreeSet::new();
+        collect_fact_names_from_introspection_value(&descriptor["reads"], &mut used);
+        collect_fact_names_from_introspection_value(&descriptor["effects"], &mut used);
+        collect_fact_names_from_introspection_value(&descriptor["precondition_expr"], &mut used);
+        for fact in used {
+            if !declared.contains(&fact) {
+                missing.push(format!("{capability_id}: {fact}"));
+            }
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "capability descriptors reference undeclared fact types: {missing:?}"
+    );
+}
+
+#[test]
+fn execute_introspect_readiness_covers_every_capability_descriptor() {
+    let mut engine = GentleEngine::default();
+
+    let capabilities_cmd =
+        parse_shell_line("introspect capabilities").expect("parse introspect capabilities");
+    let capabilities = execute_shell_command(&mut engine, &capabilities_cmd)
+        .expect("execute introspect capabilities");
+    let capability_ids = introspection_capability_ids(
+        capabilities.output["capabilities"]
+            .as_array()
+            .expect("capabilities"),
+    );
+
+    let readiness_cmd =
+        parse_shell_line("introspect readiness").expect("parse introspect readiness");
+    let readiness =
+        execute_shell_command(&mut engine, &readiness_cmd).expect("execute introspect readiness");
+    let readiness_ids = readiness.output["readiness"]
+        .as_array()
+        .expect("readiness")
+        .iter()
+        .filter_map(|row| row["capability_id"].as_str().map(str::to_string))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        readiness_ids, capability_ids,
+        "unfiltered introspect readiness should cover every capability descriptor"
+    );
 }
 
 #[test]

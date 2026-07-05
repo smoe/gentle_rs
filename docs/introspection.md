@@ -1,6 +1,6 @@
 # GENtle Introspection Contract
 
-Last updated: 2026-06-28
+Last updated: 2026-07-05
 
 Status: implemented for `introspect facts`, `introspect capabilities`,
 `introspect readiness`, `introspect verify-effects`, and `introspect all`. The
@@ -11,7 +11,7 @@ can prove every supplied sequence or container id before execution.
 
 Revision note: incorporates the first Codex review (argument binding, fact
 domains, effect modality, subroutes, narrowed "lossless", explicit host fact).
-Where this draft keeps a different mechanism than the review literally proposed,
+Where this contract keeps a different mechanism than the review literally proposed,
 the divergence is called out inline as "Reconciliation".
 
 Related shared documents:
@@ -710,14 +710,14 @@ on semantic glyphs.
 - **Reuse, don't fork.** `facts`, vocabulary, `readiness`, and capability
   metadata come from existing sources.
 
-## 10. First slice (review tweak adopted)
+## 10. Implemented Coverage (review tweak adopted)
 
 1. Add the `domain` discriminator and the `view` domain, including
    `ui.host_available` projected as `false` in headless contexts (implemented).
 2. Add `introspect facts` and `introspect capabilities` as separate subroutes
    (implemented; `introspect readiness` and `introspect all` are also present).
 3. Attach engine-owned bound self-description (`args`, `reads`, `effects` with
-   `effect_kind`, `precondition_expr`) to the first fact-annotated capabilities:
+   `effect_kind`, `precondition_expr`) to all current fact-annotated capabilities:
    `help`, `capabilities`, `state-summary`, `state_summary`,
    `history status`, `history undo`, `history redo`,
    `load-project`, `load_project`, `save-project`, `save_project`,
@@ -988,13 +988,14 @@ on semantic glyphs.
 5. Complete current shared-registry fact annotation (implemented).
 6. Add list-bound/foreach readiness atoms for list-valued pool/container rows
    (implemented).
-7. Defer: glossary-as-projection inversion and any visualization-interpretation
+7. Deferred: glossary-as-projection inversion and any visualization-interpretation
    work.
 
 ## 11. Resolved decisions
 
-These were open questions in the prior draft; the review and implemented first
-slice resolved them. The non-negotiables are promoted into `docs/decisions.md`.
+These were open questions in the prior draft; the review and implemented
+contract resolved them. The non-negotiables are promoted into
+`docs/decisions.md`.
 
 - **Routes:** subroutes + aggregate, not one scoped route (section 3).
 - **Domains:** additive `domain` field; landed facts unchanged (section 5).
