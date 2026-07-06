@@ -29042,7 +29042,7 @@ fn execute_attract_inspect_splicing_uses_shared_engine_view() {
     assert!(
         out.output["active_resource_fingerprint"]
             .as_str()
-            .map(|value| value.starts_with("sha1:"))
+            .map(|value| value.starts_with("sha256:"))
             .unwrap_or(false)
     );
     assert_eq!(
