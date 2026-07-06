@@ -1184,6 +1184,7 @@ fn file_size(path: &str) -> Result<u64, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flate2::{Compression, write::GzEncoder};
     use std::collections::BTreeMap;
     use tempfile::{TempDir, tempdir};
 
@@ -1224,6 +1225,25 @@ mod tests {
 
     fn write_text(path: &Path, text: &str) {
         fs::write(path, text).expect("test fixture should write");
+    }
+
+    fn gzipped_committed_reads(base: &Path, dir: &TempDir) -> String {
+        let source = base.join("mini_reads.fastq");
+        assert!(
+            source.exists(),
+            "committed target_rescue FASTQ fixture is required"
+        );
+        let reads = fs::read(&source).expect("committed FASTQ fixture should read");
+        let gz_path = dir.path().join("mini_reads.fastq.gz");
+        let file = File::create(&gz_path).expect("temporary gzipped FASTQ should create");
+        let mut encoder = GzEncoder::new(file, Compression::default());
+        encoder
+            .write_all(&reads)
+            .expect("temporary gzipped FASTQ should write");
+        encoder
+            .finish()
+            .expect("temporary gzipped FASTQ should finish");
+        gz_path.display().to_string()
     }
 
     fn synthetic_fasta() -> String {
@@ -1316,10 +1336,8 @@ mod tests {
     #[test]
     fn committed_fixture_gzip_allowlist_counts_streamed_and_selected_reads() {
         let base = Path::new("test_files/fixtures/target_rescue");
-        if !base.join("mini_reads.fastq.gz").exists() {
-            return;
-        }
         let dir = tempdir().expect("temp dir");
+        let gz_reads = gzipped_committed_reads(base, &dir);
         let allowlist = dir.path().join("allowlist.txt");
         write_text(&allowlist, "readA_geneA\nreadA2_geneA\n");
         let prefix = dir.path().join("fixture_allowlist");
@@ -1330,7 +1348,7 @@ mod tests {
                 "GENEB".to_string(),
                 "MISSINGX".to_string(),
             ],
-            reads: vec![base.join("mini_reads.fastq.gz").display().to_string()],
+            reads: vec![gz_reads],
             read_id_allowlist: Some(allowlist.display().to_string()),
             kmer_len: 11,
             min_kmer_hits: 3,
@@ -1354,10 +1372,8 @@ mod tests {
     #[test]
     fn committed_fixture_salmon_bridge_builds_two_universes_and_comparison() {
         let base = Path::new("test_files/fixtures/target_rescue");
-        if !base.join("mini_reads.fastq.gz").exists() {
-            return;
-        }
         let dir = tempdir().expect("temp dir");
+        let gz_reads = gzipped_committed_reads(base, &dir);
         let prefix = dir.path().join("fixture_salmon");
         let summary = run_target_rescue_screen(TargetRescueRequest {
             transcript_fastas: vec![base.join("mini_transcripts.fasta").display().to_string()],
@@ -1366,7 +1382,7 @@ mod tests {
                 "GENEB".to_string(),
                 "MISSINGX".to_string(),
             ],
-            reads: vec![base.join("mini_reads.fastq.gz").display().to_string()],
+            reads: vec![gz_reads],
             salmon_unmapped_names: Some(
                 base.join("salmon_unmapped_names.txt").display().to_string(),
             ),
