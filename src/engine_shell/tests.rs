@@ -25609,7 +25609,7 @@ fn execute_introspect_capabilities_projects_full_registry_with_fact_annotations(
             "{id} should have a fact-annotated sequencing-primer suggestion descriptor"
         );
     }
-    assert_no_registry_only_capabilities(capabilities, "introspect capabilities");
+    assert_all_capabilities_are_fact_annotated(capabilities, "introspect capabilities");
     for id in ["ExportPool", "export-pool", "render_pool_gel_svg"] {
         assert!(
             capabilities.iter().any(|descriptor| {
@@ -26994,21 +26994,26 @@ fn introspection_capability_ids(
         .collect()
 }
 
-fn assert_no_registry_only_capabilities(capabilities: &[serde_json::Value], route: &str) {
-    let registry_only = capabilities
+fn assert_all_capabilities_are_fact_annotated(capabilities: &[serde_json::Value], route: &str) {
+    let non_fact_annotated = capabilities
         .iter()
         .filter_map(|descriptor| {
-            (descriptor["annotation_status"].as_str() == Some("registry_only")).then(|| {
-                descriptor["id"]
+            (descriptor["annotation_status"].as_str() != Some("fact_annotated")).then(|| {
+                let id = descriptor["id"]
                     .as_str()
                     .unwrap_or("<missing id>")
-                    .to_string()
+                    .to_string();
+                let status = descriptor["annotation_status"]
+                    .as_str()
+                    .unwrap_or("<missing annotation_status>")
+                    .to_string();
+                (id, status)
             })
         })
         .collect::<Vec<_>>();
     assert!(
-        registry_only.is_empty(),
-        "{route} contains registry-only capability descriptors: {registry_only:?}"
+        non_fact_annotated.is_empty(),
+        "{route} contains capability descriptors that are not fact_annotated: {non_fact_annotated:?}"
     );
 }
 
@@ -27043,7 +27048,7 @@ fn execute_introspect_all_capability_section_has_full_fact_annotations() {
     let aggregate_capabilities = all.output["capabilities"]["capabilities"]
         .as_array()
         .expect("aggregate capabilities");
-    assert_no_registry_only_capabilities(aggregate_capabilities, "introspect all");
+    assert_all_capabilities_are_fact_annotated(aggregate_capabilities, "introspect all");
 
     let capabilities_cmd =
         parse_shell_line("introspect capabilities").expect("parse introspect capabilities");
@@ -27052,6 +27057,7 @@ fn execute_introspect_all_capability_section_has_full_fact_annotations() {
     let direct_capabilities = direct.output["capabilities"]
         .as_array()
         .expect("direct capabilities");
+    assert_all_capabilities_are_fact_annotated(direct_capabilities, "introspect capabilities");
     assert_eq!(
         introspection_capability_ids(aggregate_capabilities),
         introspection_capability_ids(direct_capabilities),
