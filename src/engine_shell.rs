@@ -28,6 +28,7 @@ use crate::{
     agent_transport::{
         agent_system_availability, discover_models_for_agent_system, load_agent_system_catalog,
     },
+    allele_hash_screen::{AlleleHashScreenRequest, run_allele_hash_screen},
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
     attract_motifs,
     dna_ladder::LadderMolecule,
@@ -2828,6 +2829,18 @@ pub enum ShellCommand {
         path: String,
         seed_kmer_len: usize,
         transcript_fasta_paths: Vec<String>,
+    },
+    RnaReadsAlleleHashScreen {
+        gene: String,
+        transcript_fasta: String,
+        variant_table: Option<String>,
+        vcf: Option<String>,
+        transcript_map: Option<String>,
+        read_files: Vec<String>,
+        read_id_allowlist: Option<String>,
+        out_dir: String,
+        kmer_len: usize,
+        min_unique_kmer_hits: u64,
     },
     RnaReadsMaterializeHits {
         report_id: String,
@@ -11935,6 +11948,25 @@ impl ShellCommand {
                 } else {
                     transcript_fasta_paths.join(",")
                 }
+            ),
+            Self::RnaReadsAlleleHashScreen {
+                gene,
+                transcript_fasta,
+                variant_table,
+                read_files,
+                out_dir,
+                kmer_len,
+                min_unique_kmer_hits,
+                ..
+            } => format!(
+                "screen allele-aware RNA-read haplotype support for '{}' (transcripts='{}', variants='{}', reads={}, kmer_len={}, min_unique_kmer_hits={}, out='{}')",
+                gene,
+                transcript_fasta,
+                variant_table.as_deref().unwrap_or("<none>"),
+                read_files.len(),
+                kmer_len,
+                min_unique_kmer_hits,
+                out_dir
             ),
             Self::RnaReadsMaterializeHits {
                 report_id,
@@ -21699,6 +21731,34 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--transcript-fasta", "required": true, "subject_kind": "other", "detail": "transcript FASTA/FASTA.GZ input path; may be repeated"}),
             ],
         ),
+        json!({
+            "id": "rna-reads allele-hash-screen",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                json!({"name": "--gene", "required": true, "subject_kind": "other", "detail": "target gene symbol"}),
+                json!({"name": "--transcript-fasta", "required": true, "subject_kind": "other", "detail": "local transcript FASTA input path"}),
+                json!({"name": "--variant-table", "required": true, "subject_kind": "other", "detail": "transcript-coordinate TSV variant table"}),
+                json!({"name": "--read-file", "required": true, "subject_kind": "other", "detail": "FASTA/FASTQ read input path; may be repeated"}),
+                json!({"name": "--read-id-allowlist", "required": false, "subject_kind": "other", "detail": "optional read id allowlist path"}),
+                json!({"name": "--kmer-len", "required": false, "subject_kind": "other", "detail": "k-mer length"}),
+                json!({"name": "--min-unique-kmer-hits", "required": false, "subject_kind": "other", "detail": "minimum unique haplotype k-mer hits for a haplotype call"}),
+                json!({"name": "--out", "required": true, "subject_kind": "other", "detail": "external allele-hash screen output directory"}),
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUT_DIR"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Run a deterministic allele-aware RNA-read k-mer screen against transcript-coordinate variant evidence without project-state preconditions.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("rna-reads allele-hash-screen")
+        }),
         rna_read_report_mutation_descriptor(
             "rna-reads align-report",
             "Run the retained-hit alignment pass for one persisted RNA-read interpretation report.",
@@ -25584,6 +25644,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "ExportRnaReadSampleSheet"
         | "rna-reads export-sample-sheet"
         | "rna-reads build-transcript-index"
+        | "rna-reads allele-hash-screen"
         | "SummarizeMultiGenePromoterTfbs"
         | "RenderMultiGenePromoterTfbsSvg" => Some(vec![]),
         "SummarizeAlternativePromoterComparison"
@@ -53702,6 +53763,36 @@ fn execute_rna_reads_command(
                 }),
             })
         }
+        ShellCommand::RnaReadsAlleleHashScreen {
+            gene,
+            transcript_fasta,
+            variant_table,
+            vcf,
+            transcript_map,
+            read_files,
+            read_id_allowlist,
+            out_dir,
+            kmer_len,
+            min_unique_kmer_hits,
+        } => {
+            let report = run_allele_hash_screen(AlleleHashScreenRequest {
+                gene: gene.clone(),
+                transcript_fasta: transcript_fasta.clone(),
+                variant_table: variant_table.clone(),
+                vcf: vcf.clone(),
+                transcript_map: transcript_map.clone(),
+                read_files: read_files.clone(),
+                read_id_allowlist: read_id_allowlist.clone(),
+                out_dir: out_dir.clone(),
+                kmer_len: *kmer_len,
+                min_unique_kmer_hits: *min_unique_kmer_hits,
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report)
+                    .map_err(|e| format!("Could not serialize allele hash screen report: {e}"))?,
+            })
+        }
         ShellCommand::RnaReadsMaterializeHits {
             report_id,
             selection,
@@ -55285,6 +55376,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::RnaReadsInspectAlignments { .. }
             | ShellCommand::RnaReadsInspectConcatemers { .. }
             | ShellCommand::RnaReadsBuildTranscriptIndex { .. }
+            | ShellCommand::RnaReadsAlleleHashScreen { .. }
             | ShellCommand::RnaReadsMaterializeHits { .. }
             | ShellCommand::RnaReadsExportReport { .. }
             | ShellCommand::RnaReadsExportHitsFasta { .. }
@@ -56879,6 +56971,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsInspectAlignments { .. }
         | ShellCommand::RnaReadsInspectConcatemers { .. }
         | ShellCommand::RnaReadsBuildTranscriptIndex { .. }
+        | ShellCommand::RnaReadsAlleleHashScreen { .. }
         | ShellCommand::RnaReadsMaterializeHits { .. }
         | ShellCommand::RnaReadsExportReport { .. }
         | ShellCommand::RnaReadsExportHitsFasta { .. }

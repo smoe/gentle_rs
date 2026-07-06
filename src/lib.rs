@@ -18,6 +18,8 @@ pub mod agent_execution;
 pub mod agent_planner;
 /// Shared agent transport metadata, availability, and discovery helpers.
 pub mod agent_transport;
+/// Allele-aware RNA-read hash screen for transcript-coordinate variant evidence.
+pub mod allele_hash_screen;
 /// Amino-acid lookup tables and codon translation helpers.
 pub mod amino_acids;
 /// Top-level GUI application wiring and event loop state.
@@ -155,11 +157,11 @@ pub mod shell_docs;
 pub mod svg_pdf;
 /// Deterministic SVG-to-PNG rasterization helpers for headless adapters.
 pub mod svg_png;
+/// Standalone RNA-seq target-region rescue screen for CLI calibration runs.
+pub mod target_rescue;
 /// Hidden shared support helpers for internal tests across library and binaries.
 #[doc(hidden)]
 pub mod test_support;
-/// Standalone RNA-seq target-region rescue screen for CLI calibration runs.
-pub mod target_rescue;
 /// TF-motif registry and matching support.
 pub mod tf_motifs;
 /// Process-local tool-path override registry.

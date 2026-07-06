@@ -12,6 +12,13 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-05
+
+- Added a deterministic allele-aware RNA-read hash screen
+  (`gentle.rna_allele_hash_screen.v1`) with a standalone
+  `gentle_cli allele-hash-screen` adapter, shared
+  `rna-reads allele-hash-screen` shell route, and synthetic FUS fixture.
+
 ## 2026-07-04
 
 - Removed the in-process Rust `sha1` dependency. Local regenerated

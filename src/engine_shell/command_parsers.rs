@@ -9267,11 +9267,152 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-isoform-triage-tsv, export-alignment-dotplot-svg"
+            "rna-reads requires a subcommand: preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, allele-hash-screen, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-isoform-triage-tsv, export-alignment-dotplot-svg"
                 .to_string(),
         );
     }
     match tokens[1].as_str() {
+        "allele-hash-screen" => {
+            let mut gene: Option<String> = None;
+            let mut transcript_fasta: Option<String> = None;
+            let mut variant_table: Option<String> = None;
+            let mut vcf: Option<String> = None;
+            let mut transcript_map: Option<String> = None;
+            let mut read_files = Vec::<String>::new();
+            let mut read_id_allowlist: Option<String> = None;
+            let mut out_dir: Option<String> = None;
+            let mut kmer_len = 21usize;
+            let mut min_unique_kmer_hits = 1u64;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene" => {
+                        gene = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--gene",
+                            "rna-reads allele-hash-screen",
+                        )?);
+                    }
+                    "--transcript-fasta" => {
+                        transcript_fasta = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-fasta",
+                            "rna-reads allele-hash-screen",
+                        )?);
+                    }
+                    "--variant-table" => {
+                        variant_table = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--variant-table",
+                            "rna-reads allele-hash-screen",
+                        )?);
+                    }
+                    "--vcf" => {
+                        vcf = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--vcf",
+                            "rna-reads allele-hash-screen",
+                        )?);
+                    }
+                    "--transcript-map" => {
+                        transcript_map = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-map",
+                            "rna-reads allele-hash-screen",
+                        )?);
+                    }
+                    "--read-file" => {
+                        read_files.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--read-file",
+                            "rna-reads allele-hash-screen",
+                        )?);
+                    }
+                    "--read-id-allowlist" => {
+                        read_id_allowlist = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--read-id-allowlist",
+                            "rna-reads allele-hash-screen",
+                        )?);
+                    }
+                    "--out" => {
+                        out_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--out",
+                            "rna-reads allele-hash-screen",
+                        )?);
+                    }
+                    "--kmer-len" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--kmer-len",
+                            "rna-reads allele-hash-screen",
+                        )?;
+                        kmer_len = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --kmer-len value '{raw}' for rna-reads allele-hash-screen: {e}"
+                            )
+                        })?;
+                    }
+                    "--min-unique-kmer-hits" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-unique-kmer-hits",
+                            "rna-reads allele-hash-screen",
+                        )?;
+                        min_unique_kmer_hits = raw.parse::<u64>().map_err(|e| {
+                            format!(
+                                "Invalid --min-unique-kmer-hits value '{raw}' for rna-reads allele-hash-screen: {e}"
+                            )
+                        })?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads allele-hash-screen"
+                        ));
+                    }
+                }
+            }
+            let gene = gene
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| "rna-reads allele-hash-screen requires --gene GENE".to_string())?;
+            let transcript_fasta = transcript_fasta
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    "rna-reads allele-hash-screen requires --transcript-fasta PATH".to_string()
+                })?;
+            let out_dir = out_dir
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| "rna-reads allele-hash-screen requires --out OUT_DIR".to_string())?;
+            if read_files.is_empty() {
+                return Err(
+                    "rna-reads allele-hash-screen requires at least one --read-file PATH"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::RnaReadsAlleleHashScreen {
+                gene,
+                transcript_fasta,
+                variant_table,
+                vcf,
+                transcript_map,
+                read_files,
+                read_id_allowlist,
+                out_dir,
+                kmer_len,
+                min_unique_kmer_hits,
+            })
+        }
         "preflight-isoforms" | "preflight-isoform" => {
             if tokens.len() < 4 {
                 return Err(
@@ -11885,7 +12026,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, show-alignments, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-isoform-triage-tsv, export-alignment-dotplot-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, show-alignments, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, allele-hash-screen, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-isoform-triage-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }

@@ -36981,6 +36981,32 @@ fn parse_rna_reads_commands() {
                 ]
     ));
 
+    let allele_hash = parse_shell_line(
+        "rna-reads allele-hash-screen --gene FUS --transcript-fasta tx.fa --variant-table vars.tsv --read-file reads_1.fq --read-file reads_2.fq --read-id-allowlist ids.txt --kmer-len 9 --min-unique-kmer-hits 2 --out out/allele",
+    )
+    .expect("parse rna-reads allele-hash-screen");
+    assert!(matches!(
+        allele_hash,
+        ShellCommand::RnaReadsAlleleHashScreen {
+            gene,
+            transcript_fasta,
+            variant_table,
+            read_files,
+            read_id_allowlist,
+            out_dir,
+            kmer_len,
+            min_unique_kmer_hits,
+            ..
+        } if gene == "FUS"
+            && transcript_fasta == "tx.fa"
+            && variant_table.as_deref() == Some("vars.tsv")
+            && read_files == vec!["reads_1.fq".to_string(), "reads_2.fq".to_string()]
+            && read_id_allowlist.as_deref() == Some("ids.txt")
+            && out_dir == "out/allele"
+            && kmer_len == 9
+            && min_unique_kmer_hits == 2
+    ));
+
     let materialize_hits = parse_shell_line(
         "rna-reads materialize-hits tp73_reads --selection aligned --record-indices 4,9 --output-prefix tp73_saved_reads",
     )

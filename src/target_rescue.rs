@@ -227,9 +227,9 @@ enum ReadFormat {
 }
 
 #[derive(Debug, Clone)]
-struct SequenceRecord {
-    id: String,
-    sequence: String,
+pub(crate) struct SequenceRecord {
+    pub(crate) id: String,
+    pub(crate) sequence: String,
 }
 
 /// Run the target-region rescue screen and write all requested reports.
@@ -834,7 +834,7 @@ fn count_gene_kmer_matches(
     (read_kmer_count, gene_counts)
 }
 
-fn canonical_kmers_for_each(sequence: &[u8], k: usize, mut on_kmer: impl FnMut(u64)) {
+pub(crate) fn canonical_kmers_for_each(sequence: &[u8], k: usize, mut on_kmer: impl FnMut(u64)) {
     if k == 0 || k > 31 {
         return;
     }
@@ -915,7 +915,7 @@ fn normalize_read_id(raw: &str) -> String {
         .to_string()
 }
 
-fn read_id_set_from_path(path: &str) -> Result<HashSet<String>, String> {
+pub(crate) fn read_id_set_from_path(path: &str) -> Result<HashSet<String>, String> {
     let mut reader = open_maybe_gz_reader(path)?;
     let mut ids = HashSet::new();
     let mut line = String::new();
@@ -982,7 +982,7 @@ fn target_mapped_read_ids_from_sam(
     Ok(ids)
 }
 
-fn visit_fasta_records(
+pub(crate) fn visit_fasta_records(
     path: &str,
     mut on_record: impl FnMut(&str, &str) -> Result<(), String>,
 ) -> Result<(), String> {
@@ -1014,7 +1014,7 @@ fn visit_fasta_records(
     Ok(())
 }
 
-fn visit_read_records(
+pub(crate) fn visit_read_records(
     path: &str,
     mut on_record: impl FnMut(SequenceRecord) -> Result<(), String>,
 ) -> Result<(), String> {
