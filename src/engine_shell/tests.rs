@@ -31270,11 +31270,19 @@ fn assert_execute_genomes_extract_promoter_uses_transcript_tss_on_reverse_strand
 
 #[test]
 fn execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloads() {
+    let _serial = lock_jaspar_tests();
+    crate::tf_motifs::reload_builtin_for_test();
+    let _guard = JasparReloadResetGuard;
+
     assert_execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloads();
 }
 
 #[test]
 fn execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloads_on_small_stack() {
+    let _serial = lock_jaspar_tests();
+    crate::tf_motifs::reload_builtin_for_test();
+    let _guard = JasparReloadResetGuard;
+
     thread::Builder::new()
         .name("gentle-test-small-stack-promoter-tfbs".to_string())
         .stack_size(256 * 1024)
