@@ -871,7 +871,7 @@ impl RenderDnaLinear {
         show_contextual_transcript_features: bool,
         show_tfbs: bool,
         tfbs_display_criteria: TfbsDisplayCriteria,
-        vcf_display_criteria: VcfDisplayCriteria,
+        vcf_display_criteria: &VcfDisplayCriteria,
         hidden_feature_kinds: &BTreeSet<String>,
     ) -> bool {
         if RenderDna::is_source_feature(feature) {
@@ -908,7 +908,7 @@ impl RenderDnaLinear {
             return RenderDna::tfbs_feature_passes_display_filter(feature, tfbs_display_criteria);
         }
         if RenderDna::is_vcf_track_feature(feature) {
-            return RenderDna::vcf_feature_passes_display_filter(feature, &vcf_display_criteria);
+            return RenderDna::vcf_feature_passes_display_filter(feature, vcf_display_criteria);
         }
         true
     }
@@ -1251,6 +1251,7 @@ impl RenderDnaLinear {
             regulatory_tracks_near_baseline,
             regulatory_feature_max_view_span_bp,
             hidden_feature_kinds,
+            show_restriction_enzyme_sites,
         ) = self
             .display
             .read()
@@ -1268,6 +1269,7 @@ impl RenderDnaLinear {
                     display.regulatory_tracks_near_baseline(),
                     display.regulatory_feature_max_view_span_bp(),
                     display.hidden_feature_kinds().clone(),
+                    display.show_restriction_enzyme_sites(),
                 )
             })
             .unwrap_or((
@@ -1283,233 +1285,227 @@ impl RenderDnaLinear {
                 false,
                 50_000,
                 BTreeSet::new(),
+                false,
             ));
-        let features = self
-            .dna
-            .read()
-            .map(|dna| dna.features().to_owned())
-            .unwrap_or_default();
-        for (feature_number, feature) in features.iter().enumerate() {
-            if !Self::draw_feature(
-                feature,
-                show_cds_features,
-                show_gene_features,
-                show_mrna_features,
-                show_repeat_features,
-                show_array_features,
-                show_contextual_transcript_features,
-                show_tfbs,
-                tfbs_display_criteria,
-                vcf_display_criteria.clone(),
-                &hidden_feature_kinds,
-            ) {
-                continue;
-            }
-            if !RenderDna::feature_visible_for_view_span(
-                feature,
-                viewport.span,
-                regulatory_feature_max_view_span_bp,
-            ) {
-                continue;
-            }
-
-            let (raw_from, raw_to) = match feature.location.find_bounds() {
-                Ok(bounds) => bounds,
-                Err(_) => continue,
-            };
-            if raw_from < 0 || raw_to < 0 {
-                continue;
-            }
-
-            let mut from = raw_from as usize;
-            let mut to = raw_to as usize;
-            if to < from {
-                std::mem::swap(&mut to, &mut from);
-            }
-            if from >= self.sequence_length {
-                continue;
-            }
-            if to > self.sequence_length {
-                to = self.sequence_length;
-            }
-            if to <= from {
-                continue;
-            }
-
-            let label = RenderDna::feature_name(feature);
-            let is_mcs = RenderDna::is_mcs_feature(feature);
-            let is_variation = RenderDna::is_variation_feature(feature);
-            let show_exon_length_cues = RenderDna::is_exon_length_frame_cue_feature(feature);
-            let is_array_track = RenderDna::is_array_track_feature(feature);
-            let is_junction_array_probe = Self::is_junction_array_probe_feature(feature);
-            let mut exon_ranges: Vec<(usize, usize)> = vec![];
-            collect_location_ranges_usize(&feature.location, &mut exon_ranges);
-            if let Some(junction_ranges) =
-                Self::junction_array_probe_visual_ranges(feature, from, to, self.sequence_length)
-            {
-                exon_ranges = junction_ranges;
-            }
-            if exon_ranges.is_empty() {
-                exon_ranges.push((from, to));
-            }
-            exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-            let visual_from = exon_ranges
-                .iter()
-                .map(|(start, _)| *start)
-                .min()
-                .unwrap_or(from);
-            let visual_to = exon_ranges.iter().map(|(_, end)| *end).max().unwrap_or(to);
-
-            let mut exon_segments: Vec<(f32, f32)> = Vec::new();
-            let mut exon_length_mod3_cues: Vec<Option<u8>> = Vec::new();
-            let mut exon_visibility: Vec<Option<(f32, f32)>> =
-                Vec::with_capacity(exon_ranges.len());
-            for (exon_start, exon_end_exclusive) in exon_ranges.iter().copied() {
-                if exon_start >= self.sequence_length {
-                    exon_visibility.push(None);
+        let mut has_restriction_sites = false;
+        if let Ok(dna) = self.dna.read() {
+            has_restriction_sites =
+                show_restriction_enzyme_sites && !dna.restriction_enzyme_groups().is_empty();
+            for (feature_number, feature) in dna.features().iter().enumerate() {
+                if !Self::draw_feature(
+                    feature,
+                    show_cds_features,
+                    show_gene_features,
+                    show_mrna_features,
+                    show_repeat_features,
+                    show_array_features,
+                    show_contextual_transcript_features,
+                    show_tfbs,
+                    tfbs_display_criteria,
+                    &vcf_display_criteria,
+                    &hidden_feature_kinds,
+                ) {
                     continue;
                 }
-                let exon_end_exclusive = exon_end_exclusive.min(self.sequence_length);
-                if exon_end_exclusive <= exon_start {
-                    exon_visibility.push(None);
+                if !RenderDna::feature_visible_for_view_span(
+                    feature,
+                    viewport.span,
+                    regulatory_feature_max_view_span_bp,
+                ) {
                     continue;
                 }
-                let Some((visible_start, visible_end)) = Self::range_overlap(
-                    exon_start,
-                    exon_end_exclusive,
-                    viewport.start,
-                    viewport.end,
-                ) else {
-                    exon_visibility.push(None);
-                    continue;
+
+                let (raw_from, raw_to) = match feature.location.find_bounds() {
+                    Ok(bounds) => bounds,
+                    Err(_) => continue,
                 };
-                let seg_x1 = self.bp_to_x(visible_start, viewport).max(self.area.left());
-                let seg_x2 = self
-                    .bp_to_x(visible_end, viewport)
-                    .max(seg_x1 + 1.0)
-                    .min(self.area.right());
-                exon_segments.push((seg_x1, seg_x2));
-                exon_length_mod3_cues.push(show_exon_length_cues.then(|| {
-                    RenderDna::exon_length_mod3_for_range(exon_start, exon_end_exclusive)
-                }));
-                exon_visibility.push(Some((seg_x1, seg_x2)));
-            }
-            let mut exon_segments_with_cues: Vec<((f32, f32), Option<u8>)> = exon_segments
-                .into_iter()
-                .zip(exon_length_mod3_cues)
-                .collect();
-            exon_segments_with_cues.sort_by(|left, right| {
-                let ((left_x1, left_x2), _) = left;
-                let ((right_x1, right_x2), _) = right;
-                left_x1
-                    .total_cmp(right_x1)
-                    .then(left_x2.total_cmp(right_x2))
-            });
-            let (mut exon_segments, exon_length_mod3_cues): (Vec<_>, Vec<_>) =
-                exon_segments_with_cues.into_iter().unzip();
+                if raw_from < 0 || raw_to < 0 {
+                    continue;
+                }
 
-            let mut connector_segments: Vec<(f32, f32)> = Vec::new();
-            for exon_idx in 0..exon_ranges.len().saturating_sub(1) {
-                let (left_start, left_end_exclusive) = exon_ranges[exon_idx];
-                let (right_start, _right_end_exclusive) = exon_ranges[exon_idx + 1];
-                if left_start >= self.sequence_length {
+                let mut from = raw_from as usize;
+                let mut to = raw_to as usize;
+                if to < from {
+                    std::mem::swap(&mut to, &mut from);
+                }
+                if from >= self.sequence_length {
                     continue;
                 }
-                let intron_start = left_end_exclusive.min(self.sequence_length);
-                let intron_end = right_start.min(self.sequence_length);
-                if intron_end <= intron_start {
+                if to > self.sequence_length {
+                    to = self.sequence_length;
+                }
+                if to <= from {
                     continue;
                 }
-                if Self::range_overlap(intron_start, intron_end, viewport.start, viewport.end)
-                    .is_none()
-                {
-                    continue;
-                }
-                let start_x = exon_visibility[exon_idx]
-                    .map(|(_, x2)| x2)
-                    .unwrap_or_else(|| self.area.left());
-                let end_x = exon_visibility[exon_idx + 1]
-                    .map(|(x1, _)| x1)
-                    .unwrap_or_else(|| self.area.right());
-                if end_x <= start_x {
-                    continue;
-                }
-                connector_segments.push((start_x, end_x));
-            }
-            if exon_segments.is_empty() && connector_segments.is_empty() {
-                continue;
-            }
 
-            let mut x1 = exon_segments
-                .iter()
-                .map(|(sx1, _)| *sx1)
-                .chain(connector_segments.iter().map(|(sx1, _)| *sx1))
-                .fold(f32::INFINITY, f32::min);
-            let mut x2 = exon_segments
-                .iter()
-                .map(|(_, sx2)| *sx2)
-                .chain(connector_segments.iter().map(|(_, sx2)| *sx2))
-                .fold(f32::NEG_INFINITY, f32::max);
-            if !x1.is_finite() || !x2.is_finite() {
-                continue;
-            }
-            if is_variation && connector_segments.is_empty() && !exon_segments.is_empty() {
-                let center_x = (x1 + x2) * 0.5;
-                let half_width = (VARIATION_MIN_WIDTH_PX * 0.5).max((x2 - x1) * 0.5);
-                let expanded_left = (center_x - half_width).max(self.area.left());
-                let expanded_right = (center_x + half_width).min(self.area.right());
-                if let Some(first_segment) = exon_segments.first_mut() {
-                    *first_segment = (expanded_left, expanded_right.max(expanded_left + 1.0));
+                let label = RenderDna::feature_name(feature);
+                let is_mcs = RenderDna::is_mcs_feature(feature);
+                let is_variation = RenderDna::is_variation_feature(feature);
+                let show_exon_length_cues = RenderDna::is_exon_length_frame_cue_feature(feature);
+                let is_array_track = RenderDna::is_array_track_feature(feature);
+                let is_junction_array_probe = Self::is_junction_array_probe_feature(feature);
+                let mut exon_ranges: Vec<(usize, usize)> = vec![];
+                collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+                if let Some(junction_ranges) = Self::junction_array_probe_visual_ranges(
+                    feature,
+                    from,
+                    to,
+                    self.sequence_length,
+                ) {
+                    exon_ranges = junction_ranges;
                 }
-                x1 = expanded_left;
-                x2 = expanded_right.max(expanded_left + 1.0);
-            }
-            let kind = feature.kind.to_string().to_ascii_uppercase();
-            let is_high_priority_feature = is_mcs
-                || is_variation
-                || is_array_track
-                || matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
-            if !is_high_priority_feature && (x2 - x1) < low_value_feature_min_width_px {
-                continue;
-            }
+                if exon_ranges.is_empty() {
+                    exon_ranges.push((from, to));
+                }
+                exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+                let visual_from = exon_ranges
+                    .iter()
+                    .map(|(start, _)| *start)
+                    .min()
+                    .unwrap_or(from);
+                let visual_to = exon_ranges.iter().map(|(_, end)| *end).max().unwrap_or(to);
 
-            seeds.push(Seed {
-                feature_number,
-                from: visual_from,
-                to: visual_to,
-                exon_segments,
-                exon_length_mod3_cues,
-                connector_segments,
-                x1,
-                x2,
-                label,
-                kind_upper: kind.clone(),
-                color: RenderDna::feature_color(feature),
-                is_pointy: RenderDna::is_feature_pointy(feature),
-                is_reverse: feature_is_reverse(feature),
-                is_regulatory: RenderDna::is_regulatory_feature(feature) || is_array_track,
-                is_array_track,
-                is_junction_array_probe,
-                array_stroke: RenderDna::array_feature_confidence_stroke(feature),
-                is_mcs,
-                is_variation,
-            });
+                let mut exon_segments: Vec<(f32, f32)> = Vec::new();
+                let mut exon_length_mod3_cues: Vec<Option<u8>> = Vec::new();
+                let mut exon_visibility: Vec<Option<(f32, f32)>> =
+                    Vec::with_capacity(exon_ranges.len());
+                for (exon_start, exon_end_exclusive) in exon_ranges.iter().copied() {
+                    if exon_start >= self.sequence_length {
+                        exon_visibility.push(None);
+                        continue;
+                    }
+                    let exon_end_exclusive = exon_end_exclusive.min(self.sequence_length);
+                    if exon_end_exclusive <= exon_start {
+                        exon_visibility.push(None);
+                        continue;
+                    }
+                    let Some((visible_start, visible_end)) = Self::range_overlap(
+                        exon_start,
+                        exon_end_exclusive,
+                        viewport.start,
+                        viewport.end,
+                    ) else {
+                        exon_visibility.push(None);
+                        continue;
+                    };
+                    let seg_x1 = self.bp_to_x(visible_start, viewport).max(self.area.left());
+                    let seg_x2 = self
+                        .bp_to_x(visible_end, viewport)
+                        .max(seg_x1 + 1.0)
+                        .min(self.area.right());
+                    exon_segments.push((seg_x1, seg_x2));
+                    exon_length_mod3_cues.push(show_exon_length_cues.then(|| {
+                        RenderDna::exon_length_mod3_for_range(exon_start, exon_end_exclusive)
+                    }));
+                    exon_visibility.push(Some((seg_x1, seg_x2)));
+                }
+                let mut exon_segments_with_cues: Vec<((f32, f32), Option<u8>)> = exon_segments
+                    .into_iter()
+                    .zip(exon_length_mod3_cues)
+                    .collect();
+                exon_segments_with_cues.sort_by(|left, right| {
+                    let ((left_x1, left_x2), _) = left;
+                    let ((right_x1, right_x2), _) = right;
+                    left_x1
+                        .total_cmp(right_x1)
+                        .then(left_x2.total_cmp(right_x2))
+                });
+                let (mut exon_segments, exon_length_mod3_cues): (Vec<_>, Vec<_>) =
+                    exon_segments_with_cues.into_iter().unzip();
+
+                let mut connector_segments: Vec<(f32, f32)> = Vec::new();
+                for exon_idx in 0..exon_ranges.len().saturating_sub(1) {
+                    let (left_start, left_end_exclusive) = exon_ranges[exon_idx];
+                    let (right_start, _right_end_exclusive) = exon_ranges[exon_idx + 1];
+                    if left_start >= self.sequence_length {
+                        continue;
+                    }
+                    let intron_start = left_end_exclusive.min(self.sequence_length);
+                    let intron_end = right_start.min(self.sequence_length);
+                    if intron_end <= intron_start {
+                        continue;
+                    }
+                    if Self::range_overlap(intron_start, intron_end, viewport.start, viewport.end)
+                        .is_none()
+                    {
+                        continue;
+                    }
+                    let start_x = exon_visibility[exon_idx]
+                        .map(|(_, x2)| x2)
+                        .unwrap_or_else(|| self.area.left());
+                    let end_x = exon_visibility[exon_idx + 1]
+                        .map(|(x1, _)| x1)
+                        .unwrap_or_else(|| self.area.right());
+                    if end_x <= start_x {
+                        continue;
+                    }
+                    connector_segments.push((start_x, end_x));
+                }
+                if exon_segments.is_empty() && connector_segments.is_empty() {
+                    continue;
+                }
+
+                let mut x1 = exon_segments
+                    .iter()
+                    .map(|(sx1, _)| *sx1)
+                    .chain(connector_segments.iter().map(|(sx1, _)| *sx1))
+                    .fold(f32::INFINITY, f32::min);
+                let mut x2 = exon_segments
+                    .iter()
+                    .map(|(_, sx2)| *sx2)
+                    .chain(connector_segments.iter().map(|(_, sx2)| *sx2))
+                    .fold(f32::NEG_INFINITY, f32::max);
+                if !x1.is_finite() || !x2.is_finite() {
+                    continue;
+                }
+                if is_variation && connector_segments.is_empty() && !exon_segments.is_empty() {
+                    let center_x = (x1 + x2) * 0.5;
+                    let half_width = (VARIATION_MIN_WIDTH_PX * 0.5).max((x2 - x1) * 0.5);
+                    let expanded_left = (center_x - half_width).max(self.area.left());
+                    let expanded_right = (center_x + half_width).min(self.area.right());
+                    if let Some(first_segment) = exon_segments.first_mut() {
+                        *first_segment = (expanded_left, expanded_right.max(expanded_left + 1.0));
+                    }
+                    x1 = expanded_left;
+                    x2 = expanded_right.max(expanded_left + 1.0);
+                }
+                let kind = feature.kind.to_string().to_ascii_uppercase();
+                let is_high_priority_feature = is_mcs
+                    || is_variation
+                    || is_array_track
+                    || matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
+                if !is_high_priority_feature && (x2 - x1) < low_value_feature_min_width_px {
+                    continue;
+                }
+
+                seeds.push(Seed {
+                    feature_number,
+                    from: visual_from,
+                    to: visual_to,
+                    exon_segments,
+                    exon_length_mod3_cues,
+                    connector_segments,
+                    x1,
+                    x2,
+                    label,
+                    kind_upper: kind.clone(),
+                    color: RenderDna::feature_color(feature),
+                    is_pointy: RenderDna::is_feature_pointy(feature),
+                    is_reverse: feature_is_reverse(feature),
+                    is_regulatory: RenderDna::is_regulatory_feature(feature) || is_array_track,
+                    is_array_track,
+                    is_junction_array_probe,
+                    array_stroke: RenderDna::array_feature_confidence_stroke(feature),
+                    is_mcs,
+                    is_variation,
+                });
+            }
         }
 
         let mut feature_lanes_top: Vec<f32> = vec![];
         let mut feature_lanes_bottom: Vec<f32> = vec![];
         let mut feature_lanes_regulatory_top: Vec<f32> = vec![];
         let has_regulatory_features = seeds.iter().any(|seed| seed.is_regulatory);
-        let has_restriction_sites = self
-            .display
-            .read()
-            .map(|display| display.show_restriction_enzyme_sites())
-            .unwrap_or(false)
-            && self
-                .dna
-                .read()
-                .map(|dna| !dna.restriction_enzyme_groups().is_empty())
-                .unwrap_or(false);
         let compact_feature_spacing = !has_regulatory_features && !has_restriction_sites;
         let mut lane_seed: Vec<PositionedSeed> = Vec::with_capacity(seeds.len());
         let mut lane_order = seeds.clone();

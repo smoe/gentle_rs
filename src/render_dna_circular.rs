@@ -10,7 +10,6 @@ use crate::{
     gc_contents::{GcContents, GcRegion},
     render_dna::RenderDna,
     render_dna::RestrictionEnzymePosition,
-    restriction_enzyme::RestrictionEnzymeKey,
 };
 use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke, StrokeKind,
@@ -729,28 +728,25 @@ impl RenderDnaCircular {
                 display.hidden_feature_kinds().clone(),
             )
         };
-        let features = self
-            .dna
-            .read()
-            .expect("DNA lock poisoned")
-            .features()
-            .to_owned();
-        for (feature_number, feature) in features.iter().enumerate() {
-            let fp_opt = self.layout_feature_from_location(
-                feature,
-                show_cds_features,
-                show_gene_features,
-                show_mrna_features,
-                show_repeat_features,
-                show_contextual_transcript_features,
-                show_tfbs,
-                tfbs_display_criteria,
-                vcf_display_criteria.clone(),
-                &hidden_feature_kinds,
-            );
-            if let Some(mut fp) = fp_opt {
-                fp.feature_number = feature_number;
-                self.features.push(fp);
+        {
+            let dna = self.dna.read().expect("DNA lock poisoned");
+            for (feature_number, feature) in dna.features().iter().enumerate() {
+                let fp_opt = self.layout_feature_from_location(
+                    feature,
+                    show_cds_features,
+                    show_gene_features,
+                    show_mrna_features,
+                    show_repeat_features,
+                    show_contextual_transcript_features,
+                    show_tfbs,
+                    tfbs_display_criteria,
+                    &vcf_display_criteria,
+                    &hidden_feature_kinds,
+                );
+                if let Some(mut fp) = fp_opt {
+                    fp.feature_number = feature_number;
+                    self.features.push(fp);
+                }
             }
         }
         self.compact_feature_bands();
@@ -1080,7 +1076,7 @@ impl RenderDnaCircular {
         show_contextual_transcript_features: bool,
         show_tfbs: bool,
         tfbs_display_criteria: TfbsDisplayCriteria,
-        vcf_display_criteria: VcfDisplayCriteria,
+        vcf_display_criteria: &VcfDisplayCriteria,
         hidden_feature_kinds: &BTreeSet<String>,
     ) -> Option<FeaturePosition> {
         if !Self::draw_feature(
@@ -1534,15 +1530,6 @@ impl RenderDnaCircular {
             family: FontFamily::Proportional,
         };
 
-        let mut re_positions: Vec<RestrictionEnzymeKey> = self
-            .dna
-            .read()
-            .unwrap()
-            .restriction_enzyme_groups()
-            .keys()
-            .cloned()
-            .collect();
-        re_positions.sort();
         let (display_mode, preferred_restriction_enzymes) = self
             .display
             .read()
@@ -1553,22 +1540,29 @@ impl RenderDnaCircular {
                 )
             })
             .unwrap_or((RestrictionEnzymeDisplayMode::default(), vec![]));
-        let all_groups = self.dna.read().unwrap().restriction_enzyme_groups().clone();
-        let visible_groups = re_positions
-            .into_iter()
-            .filter_map(|key| {
-                let names = all_groups.get(&key)?;
-                DnaDisplay::restriction_group_matches_mode(
-                    display_mode,
-                    &preferred_restriction_enzymes,
-                    &key,
-                    names,
-                )
-                .then_some((key, names.clone()))
+        let (all_group_count, visible_groups) = self
+            .dna
+            .read()
+            .map(|dna| {
+                let groups = dna.restriction_enzyme_groups();
+                let mut visible_groups = groups
+                    .iter()
+                    .filter_map(|(key, names)| {
+                        DnaDisplay::restriction_group_matches_mode(
+                            display_mode,
+                            &preferred_restriction_enzymes,
+                            key,
+                            names,
+                        )
+                        .then(|| (key.clone(), names.clone()))
+                    })
+                    .collect::<Vec<_>>();
+                visible_groups.sort_by(|(left, _), (right, _)| left.cmp(right));
+                (groups.len(), visible_groups)
             })
-            .collect::<Vec<_>>();
+            .unwrap_or_default();
         if visible_groups.is_empty() {
-            let message = if all_groups.is_empty()
+            let message = if all_group_count == 0
                 || matches!(display_mode, RestrictionEnzymeDisplayMode::AllInView)
             {
                 RestrictionEnzymeDisplayMode::AllInView
@@ -1578,7 +1572,7 @@ impl RenderDnaCircular {
                 format!(
                     "{} {} total cut sites hidden by the current filter.",
                     display_mode.empty_state_label(),
-                    all_groups.len()
+                    all_group_count
                 )
             };
             painter.text(
@@ -1684,7 +1678,7 @@ impl RenderDnaCircular {
         show_contextual_transcript_features: bool,
         show_tfbs: bool,
         tfbs_display_criteria: TfbsDisplayCriteria,
-        vcf_display_criteria: VcfDisplayCriteria,
+        vcf_display_criteria: &VcfDisplayCriteria,
         hidden_feature_kinds: &BTreeSet<String>,
     ) -> bool {
         if RenderDna::is_source_feature(feature) {
@@ -1718,7 +1712,7 @@ impl RenderDnaCircular {
             return RenderDna::tfbs_feature_passes_display_filter(feature, tfbs_display_criteria);
         }
         if RenderDna::is_vcf_track_feature(feature) {
-            return RenderDna::vcf_feature_passes_display_filter(feature, &vcf_display_criteria);
+            return RenderDna::vcf_feature_passes_display_filter(feature, vcf_display_criteria);
         }
         true
     }
