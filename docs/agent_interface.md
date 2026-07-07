@@ -523,6 +523,7 @@ an agent has selected a deterministic operation.
 - `reverse-translate run`
 - `reverse-translate show-report`
 - `rna-info`
+- `rna-reads allele-hash-screen`
 - `rna-reads align-report`
 - `rna-reads batch-map`
 - `rna-reads build-transcript-index`

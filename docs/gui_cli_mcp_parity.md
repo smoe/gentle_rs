@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 21 | 584 | 0 |
-| gentle_cli | 363 | 267 | 0 |
-| MCP | 75 | 414 | 44 |
-| JS | 78 | 397 | 47 |
-| Lua | 77 | 398 | 47 |
+| GUI | 21 | 585 | 0 |
+| gentle_cli | 364 | 267 | 0 |
+| MCP | 75 | 414 | 45 |
+| JS | 78 | 397 | 48 |
+| Lua | 77 | 398 | 48 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -358,6 +358,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | rna-reads inspect-alignments | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads inspect-concatemers | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>JS: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>Lua: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads build-transcript-index | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>JS: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>Lua: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| rna-reads allele-hash-screen | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads materialize-hits | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads export-report | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads export-hits-fasta | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -793,6 +794,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | JS | primers show-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | racks show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | rna-reads allele-hash-screen | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | rna-reads inspect-alignments | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | rna-reads list-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | rna-reads show-alignment | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -840,6 +842,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | Lua | primers show-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | racks show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | rna-reads allele-hash-screen | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | rna-reads inspect-alignments | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | rna-reads list-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | rna-reads show-alignment | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -885,6 +888,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | MCP | primers show-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | racks show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | rna-reads allele-hash-screen | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | rna-reads inspect-alignments | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | rna-reads list-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | rna-reads show-alignment | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |

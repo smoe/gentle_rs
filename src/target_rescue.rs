@@ -1246,6 +1246,31 @@ mod tests {
         gz_path.display().to_string()
     }
 
+    fn synthetic_salmon_bridge_inputs(dir: &TempDir) -> (String, String) {
+        let unmapped_names = dir.path().join("salmon_unmapped_names.txt");
+        write_text(
+            &unmapped_names,
+            "readA_geneA u\nreadN_nohit u\nreadAB_ambiguous u\nreadA2_geneA u\n",
+        );
+        let mappings_sam = dir.path().join("salmon_mappings.sam");
+        write_text(
+            &mappings_sam,
+            concat!(
+                "@HD\tVN:1.0\tSO:unsorted\n",
+                "@SQ\tSN:ENSTB1.1\tLN:80\n",
+                "@SQ\tSN:ENSTC1.1\tLN:80\n",
+                "readB_geneB\t0\tENSTB1.1\t9\t255\t48M\t*\t0\t0\t",
+                "GGCACCTGCAACGCACCCAAATTCTCCCAGACCCCGTGATTAAGAGAC\t*\n",
+                "readA_geneA\t0\tENSTC1.1\t1\t255\t44M\t*\t0\t0\t",
+                "TTAGCCAGCCTACGCGTGCCACTTGCGAAACTTCAAGTATCAAA\t*\n",
+            ),
+        );
+        (
+            unmapped_names.display().to_string(),
+            mappings_sam.display().to_string(),
+        )
+    }
+
     fn synthetic_fasta() -> String {
         format!(
             ">ENSTA1.1 cdna gene_symbol:GENEA description:test\n{GENEA_SEQ}\n>ENSTB1.1 cdna gene_symbol:GENEB description:test\n{GENEB_SEQ}\n"
@@ -1374,6 +1399,7 @@ mod tests {
         let base = Path::new("test_files/fixtures/target_rescue");
         let dir = tempdir().expect("temp dir");
         let gz_reads = gzipped_committed_reads(base, &dir);
+        let (salmon_unmapped_names, salmon_mappings_sam) = synthetic_salmon_bridge_inputs(&dir);
         let prefix = dir.path().join("fixture_salmon");
         let summary = run_target_rescue_screen(TargetRescueRequest {
             transcript_fastas: vec![base.join("mini_transcripts.fasta").display().to_string()],
@@ -1383,10 +1409,8 @@ mod tests {
                 "MISSINGX".to_string(),
             ],
             reads: vec![gz_reads],
-            salmon_unmapped_names: Some(
-                base.join("salmon_unmapped_names.txt").display().to_string(),
-            ),
-            salmon_mappings_sam: Some(base.join("salmon_mappings.sam").display().to_string()),
+            salmon_unmapped_names: Some(salmon_unmapped_names),
+            salmon_mappings_sam: Some(salmon_mappings_sam),
             kmer_len: 11,
             min_kmer_hits: 3,
             output_prefix: prefix.display().to_string(),
