@@ -12,6 +12,14 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-08
+
+- Made undo/redo checkpoints for display-only DNA-view operations cheap.
+  `SetDisplayVisibility` and `SetLinearViewport` now snapshot only
+  `DisplaySettings` plus history bookkeeping instead of cloning full sequence
+  state, while full checkpoints remain the default for data-mutating
+  operations.
+
 ## 2026-07-05
 
 - Added a deterministic allele-aware RNA-read hash screen

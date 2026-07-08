@@ -5344,11 +5344,39 @@ struct GenomeSequenceAnchor {
     cache_dir: Option<String>,
 }
 
-#[derive(Debug, Clone, Default)]
-struct EngineHistoryCheckpoint {
-    state: ProjectState,
-    journal: Vec<OperationRecord>,
-    op_counter: u64,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EngineHistoryCheckpointKind {
+    Full,
+    DisplayOnly,
+}
+
+#[derive(Debug, Clone)]
+enum EngineHistoryCheckpoint {
+    Full {
+        state: ProjectState,
+        journal: Vec<OperationRecord>,
+        op_counter: u64,
+    },
+    DisplayOnly {
+        display: DisplaySettings,
+        journal: Vec<OperationRecord>,
+        op_counter: u64,
+    },
+}
+
+impl EngineHistoryCheckpoint {
+    fn kind(&self) -> EngineHistoryCheckpointKind {
+        match self {
+            Self::Full { .. } => EngineHistoryCheckpointKind::Full,
+            Self::DisplayOnly { .. } => EngineHistoryCheckpointKind::DisplayOnly,
+        }
+    }
+
+    fn journal(&self) -> &[OperationRecord] {
+        match self {
+            Self::Full { journal, .. } | Self::DisplayOnly { journal, .. } => journal,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -8312,7 +8340,7 @@ impl GentleEngine {
             next_redo: self
                 .redo_stack
                 .last()
-                .and_then(|checkpoint| checkpoint.journal.last())
+                .and_then(|checkpoint| checkpoint.journal().last())
                 .map(Self::history_transition_summary_for_record),
         }
     }
@@ -8325,24 +8353,51 @@ impl GentleEngine {
         }
     }
 
-    fn capture_history_checkpoint(&self) -> EngineHistoryCheckpoint {
-        EngineHistoryCheckpoint {
-            state: self.state.clone(),
-            journal: self.journal.clone(),
-            op_counter: self.op_counter,
+    fn capture_history_checkpoint(
+        &self,
+        kind: EngineHistoryCheckpointKind,
+    ) -> EngineHistoryCheckpoint {
+        match kind {
+            EngineHistoryCheckpointKind::Full => EngineHistoryCheckpoint::Full {
+                state: self.state.clone(),
+                journal: self.journal.clone(),
+                op_counter: self.op_counter,
+            },
+            EngineHistoryCheckpointKind::DisplayOnly => EngineHistoryCheckpoint::DisplayOnly {
+                display: self.state.display.clone(),
+                journal: self.journal.clone(),
+                op_counter: self.op_counter,
+            },
         }
     }
 
     fn restore_history_checkpoint(&mut self, checkpoint: EngineHistoryCheckpoint) {
-        self.state = checkpoint.state;
-        self.journal = checkpoint.journal;
-        self.op_counter = checkpoint.op_counter;
-        self.reconcile_lineage_nodes();
-        self.reconcile_containers();
+        match checkpoint {
+            EngineHistoryCheckpoint::Full {
+                state,
+                journal,
+                op_counter,
+            } => {
+                self.state = state;
+                self.journal = journal;
+                self.op_counter = op_counter;
+                self.reconcile_lineage_nodes();
+                self.reconcile_containers();
+            }
+            EngineHistoryCheckpoint::DisplayOnly {
+                display,
+                journal,
+                op_counter,
+            } => {
+                self.state.display = display;
+                self.journal = journal;
+                self.op_counter = op_counter;
+            }
+        }
     }
 
-    fn op_records_history_checkpoint(op: &Operation) -> bool {
-        !matches!(
+    fn operation_checkpoint_kind(op: &Operation) -> Option<EngineHistoryCheckpointKind> {
+        if matches!(
             op,
             Operation::SaveFile { .. }
                 | Operation::RenderSequenceSvg { .. }
@@ -8449,11 +8504,20 @@ impl GentleEngine {
                 | Operation::TestCdnaQpcr { .. }
                 | Operation::BuildTranscriptQpcrPanel { .. }
                 | Operation::TestCdnaQpcrFasta { .. }
-        )
+        ) {
+            None
+        } else if matches!(
+            op,
+            Operation::SetDisplayVisibility { .. } | Operation::SetLinearViewport { .. }
+        ) {
+            Some(EngineHistoryCheckpointKind::DisplayOnly)
+        } else {
+            Some(EngineHistoryCheckpointKind::Full)
+        }
     }
 
     fn maybe_capture_checkpoint(&self, op: &Operation) -> Option<EngineHistoryCheckpoint> {
-        Self::op_records_history_checkpoint(op).then(|| self.capture_history_checkpoint())
+        Self::operation_checkpoint_kind(op).map(|kind| self.capture_history_checkpoint(kind))
     }
 
     fn push_undo_checkpoint(&mut self, checkpoint: EngineHistoryCheckpoint) {
@@ -8474,6 +8538,20 @@ impl GentleEngine {
         self.redo_stack.len()
     }
 
+    #[cfg(test)]
+    fn top_undo_checkpoint_kind(&self) -> Option<EngineHistoryCheckpointKind> {
+        self.undo_stack
+            .last()
+            .map(EngineHistoryCheckpoint::kind)
+    }
+
+    #[cfg(test)]
+    fn top_redo_checkpoint_kind(&self) -> Option<EngineHistoryCheckpointKind> {
+        self.redo_stack
+            .last()
+            .map(EngineHistoryCheckpoint::kind)
+    }
+
     pub fn undo_last_operation(&mut self) -> Result<(), EngineError> {
         let Some(previous) = self.undo_stack.pop() else {
             return Err(EngineError {
@@ -8483,7 +8561,8 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         };
-        let current = self.capture_history_checkpoint();
+        let checkpoint_kind = previous.kind();
+        let current = self.capture_history_checkpoint(checkpoint_kind);
         self.redo_stack.push(current);
         let limit = self.history_limit_or_default();
         if self.redo_stack.len() > limit {
@@ -8503,7 +8582,8 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         };
-        let current = self.capture_history_checkpoint();
+        let checkpoint_kind = next.kind();
+        let current = self.capture_history_checkpoint(checkpoint_kind);
         self.undo_stack.push(current);
         let limit = self.history_limit_or_default();
         if self.undo_stack.len() > limit {

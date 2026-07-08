@@ -6262,6 +6262,94 @@ fn test_engine_history_redo_clears_after_new_mutation() {
 }
 
 #[test]
+fn test_display_history_checkpoint_is_display_only_but_still_undoable() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("large_context".to_string(), seq(&"ATGC".repeat(1000)));
+    let mut engine = GentleEngine::from_state(state);
+
+    assert!(engine.state().display.show_features);
+    assert_eq!(engine.undo_available(), 0);
+    engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::Features,
+            visible: false,
+        })
+        .unwrap();
+
+    assert!(!engine.state().display.show_features);
+    assert_eq!(engine.undo_available(), 1);
+    assert_eq!(
+        engine.top_undo_checkpoint_kind(),
+        Some(EngineHistoryCheckpointKind::DisplayOnly)
+    );
+
+    engine.undo_last_operation().unwrap();
+    assert!(engine.state().display.show_features);
+    assert_eq!(engine.undo_available(), 0);
+    assert_eq!(engine.redo_available(), 1);
+    assert_eq!(
+        engine.top_redo_checkpoint_kind(),
+        Some(EngineHistoryCheckpointKind::DisplayOnly)
+    );
+
+    engine.redo_last_operation().unwrap();
+    assert!(!engine.state().display.show_features);
+    assert_eq!(engine.undo_available(), 1);
+    assert_eq!(
+        engine.top_undo_checkpoint_kind(),
+        Some(EngineHistoryCheckpointKind::DisplayOnly)
+    );
+
+    engine
+        .apply(Operation::SetLinearViewport {
+            start_bp: 250,
+            span_bp: 75,
+        })
+        .unwrap();
+    assert_eq!(
+        engine.top_undo_checkpoint_kind(),
+        Some(EngineHistoryCheckpointKind::DisplayOnly)
+    );
+    engine.undo_last_operation().unwrap();
+    assert_ne!(engine.state().display.linear_view_start_bp, 250);
+}
+
+#[test]
+fn test_data_mutation_history_checkpoint_remains_full() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("x".to_string(), seq(&"ATGC".repeat(100)));
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ExtractRegion {
+            input: "x".to_string(),
+            from: 2,
+            to: 7,
+            output_id: Some("part".to_string()),
+        })
+        .unwrap();
+
+    assert!(engine.state().sequences.contains_key("part"));
+    assert_eq!(engine.undo_available(), 1);
+    assert_eq!(
+        engine.top_undo_checkpoint_kind(),
+        Some(EngineHistoryCheckpointKind::Full)
+    );
+
+    engine.undo_last_operation().unwrap();
+    assert!(!engine.state().sequences.contains_key("part"));
+    assert_eq!(engine.redo_available(), 1);
+    assert_eq!(
+        engine.top_redo_checkpoint_kind(),
+        Some(EngineHistoryCheckpointKind::Full)
+    );
+}
+
+#[test]
 fn test_extract_region() {
     let mut state = ProjectState::default();
     state
