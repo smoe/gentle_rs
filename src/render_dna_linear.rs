@@ -21,6 +21,7 @@ use crate::{
     open_reading_frame::OpenReadingFrame,
     render_dna::RenderDna,
     render_dna::{HoveredExonFrameCue, RestrictionEnzymePosition},
+    restriction_enzyme::RestrictionEnzymeKey,
 };
 use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Stroke, StrokeKind, Vec2,
@@ -129,6 +130,147 @@ struct FeaturePosition {
     exon_rects: Vec<Rect>,
     exon_length_mod3_cues: Vec<Option<u8>>,
     intron_connectors: Vec<[Pos2; 3]>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FeatureIntervalIndexEntry {
+    start: usize,
+    end: usize,
+    feature_idx: usize,
+}
+
+#[derive(Debug, Clone)]
+struct FeatureIntervalIndexNode {
+    center: usize,
+    overlaps_by_start: Vec<FeatureIntervalIndexEntry>,
+    overlaps_by_end_desc: Vec<FeatureIntervalIndexEntry>,
+    left: Option<Box<FeatureIntervalIndexNode>>,
+    right: Option<Box<FeatureIntervalIndexNode>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct FeatureIntervalIndex {
+    generation: Option<u64>,
+    root: Option<Box<FeatureIntervalIndexNode>>,
+}
+
+impl FeatureIntervalIndex {
+    fn rebuild(&mut self, generation: u64, mut entries: Vec<FeatureIntervalIndexEntry>) {
+        entries.sort_unstable_by(|left, right| {
+            left.start
+                .cmp(&right.start)
+                .then(left.end.cmp(&right.end))
+                .then(left.feature_idx.cmp(&right.feature_idx))
+        });
+        self.root = Self::build_node(entries);
+        self.generation = Some(generation);
+    }
+
+    fn build_node(
+        entries: Vec<FeatureIntervalIndexEntry>,
+    ) -> Option<Box<FeatureIntervalIndexNode>> {
+        if entries.is_empty() {
+            return None;
+        }
+        let mut midpoints = entries
+            .iter()
+            .map(|entry| entry.start.saturating_add(entry.end) / 2)
+            .collect::<Vec<_>>();
+        midpoints.sort_unstable();
+        let center = midpoints[midpoints.len() / 2];
+        let mut left = Vec::new();
+        let mut right = Vec::new();
+        let mut overlaps = Vec::new();
+        for entry in entries {
+            if entry.end <= center {
+                left.push(entry);
+            } else if entry.start > center {
+                right.push(entry);
+            } else {
+                overlaps.push(entry);
+            }
+        }
+        let mut overlaps_by_start = overlaps.clone();
+        overlaps_by_start.sort_unstable_by(|left, right| {
+            left.start
+                .cmp(&right.start)
+                .then(left.end.cmp(&right.end))
+                .then(left.feature_idx.cmp(&right.feature_idx))
+        });
+        let mut overlaps_by_end_desc = overlaps;
+        overlaps_by_end_desc.sort_unstable_by(|left, right| {
+            right
+                .end
+                .cmp(&left.end)
+                .then(left.start.cmp(&right.start))
+                .then(left.feature_idx.cmp(&right.feature_idx))
+        });
+        Some(Box::new(FeatureIntervalIndexNode {
+            center,
+            overlaps_by_start,
+            overlaps_by_end_desc,
+            left: Self::build_node(left),
+            right: Self::build_node(right),
+        }))
+    }
+
+    fn query(&self, start: usize, end: usize) -> Vec<usize> {
+        if end <= start {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        if let Some(root) = &self.root {
+            root.query(start, end, &mut out);
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+}
+
+impl FeatureIntervalIndexNode {
+    fn query(&self, start: usize, end: usize, out: &mut Vec<usize>) {
+        if end <= self.center {
+            for entry in &self.overlaps_by_start {
+                if entry.start >= end {
+                    break;
+                }
+                if entry.end > start {
+                    out.push(entry.feature_idx);
+                }
+            }
+            if let Some(left) = &self.left {
+                left.query(start, end, out);
+            }
+        } else if start > self.center {
+            for entry in &self.overlaps_by_end_desc {
+                if entry.end <= start {
+                    break;
+                }
+                if entry.start < end {
+                    out.push(entry.feature_idx);
+                }
+            }
+            if let Some(right) = &self.right {
+                right.query(start, end, out);
+            }
+        } else {
+            out.extend(self.overlaps_by_start.iter().map(|entry| entry.feature_idx));
+            if let Some(left) = &self.left {
+                left.query(start, end, out);
+            }
+            if let Some(right) = &self.right {
+                right.query(start, end, out);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RestrictionGroupIndexEntry {
+    pos: usize,
+    key: RestrictionEnzymeKey,
+    names: Vec<String>,
 }
 
 impl FeaturePosition {
@@ -251,7 +393,10 @@ pub struct RenderDnaLinear {
     area: Rect,
     baseline_y: f32,
     features: Vec<FeaturePosition>,
+    feature_interval_index: FeatureIntervalIndex,
     restriction_enzyme_sites: Vec<RestrictionEnzymePosition>,
+    restriction_group_index: Vec<RestrictionGroupIndexEntry>,
+    restriction_group_index_generation: Option<u64>,
     selected_feature_number: Option<usize>,
     selected_enzyme: Option<RestrictionEnzymePosition>,
     selected_reasoning_evidence_id: Option<String>,
@@ -348,7 +493,10 @@ impl RenderDnaLinear {
             area: Rect::NOTHING,
             baseline_y: 0.0,
             features: vec![],
+            feature_interval_index: FeatureIntervalIndex::default(),
             restriction_enzyme_sites: vec![],
+            restriction_group_index: vec![],
+            restriction_group_index_generation: None,
             selected_feature_number: None,
             selected_enzyme: None,
             selected_reasoning_evidence_id: None,
@@ -365,6 +513,80 @@ impl RenderDnaLinear {
 
     pub fn area(&self) -> &Rect {
         &self.area
+    }
+
+    fn refresh_feature_interval_index(&mut self, dna: &DNAsequence) {
+        let generation = dna.feature_generation();
+        if self.feature_interval_index.generation == Some(generation) {
+            return;
+        }
+        let mut entries = Vec::with_capacity(dna.features().len());
+        for (feature_idx, feature) in dna.features().iter().enumerate() {
+            let Ok((raw_from, raw_to)) = feature.location.find_bounds() else {
+                continue;
+            };
+            if raw_from < 0 || raw_to < 0 {
+                continue;
+            }
+            let mut start = raw_from as usize;
+            let mut end = raw_to as usize;
+            if end < start {
+                std::mem::swap(&mut start, &mut end);
+            }
+            if start >= self.sequence_length {
+                continue;
+            }
+            end = end.min(self.sequence_length);
+            if end <= start {
+                continue;
+            }
+            entries.push(FeatureIntervalIndexEntry {
+                start,
+                end,
+                feature_idx,
+            });
+        }
+        self.feature_interval_index.rebuild(generation, entries);
+    }
+
+    fn feature_indices_overlapping_viewport(&self, viewport: LinearViewport) -> Vec<usize> {
+        self.feature_interval_index
+            .query(viewport.start, viewport.end)
+    }
+
+    fn refresh_restriction_group_index(&mut self, dna: &DNAsequence) {
+        let generation = dna.restriction_enzyme_group_generation();
+        if self.restriction_group_index_generation == Some(generation) {
+            return;
+        }
+        self.restriction_group_index = dna
+            .restriction_enzyme_groups()
+            .iter()
+            .filter_map(|(key, names)| {
+                let pos = self.normalize_pos(key.pos());
+                (pos < self.sequence_length).then(|| RestrictionGroupIndexEntry {
+                    pos,
+                    key: key.clone(),
+                    names: names.clone(),
+                })
+            })
+            .collect();
+        self.restriction_group_index
+            .sort_by(|left, right| left.pos.cmp(&right.pos).then(left.key.cmp(&right.key)));
+        self.restriction_group_index_generation = Some(generation);
+    }
+
+    fn restriction_group_index_range(
+        &self,
+        viewport: LinearViewport,
+    ) -> &[RestrictionGroupIndexEntry] {
+        let start = self
+            .restriction_group_index
+            .partition_point(|entry| entry.pos < viewport.start);
+        let end = self
+            .restriction_group_index
+            .partition_point(|entry| entry.pos < viewport.end);
+        &self.restriction_group_index[start..end]
     }
 
     pub fn visible_feature_bounds_y(&self) -> Option<(f32, f32)> {
@@ -1190,6 +1412,7 @@ impl RenderDnaLinear {
     }
 
     fn layout_features(&mut self, viewport: LinearViewport) {
+        crate::gentle_gui_profile_scope!("RenderDnaLinear::layout_features");
         self.features.clear();
         self.baseline_y = self.area.center().y;
         if self.sequence_length == 0 {
@@ -1288,10 +1511,16 @@ impl RenderDnaLinear {
                 false,
             ));
         let mut has_restriction_sites = false;
-        if let Ok(dna) = self.dna.read() {
+        let dna = Arc::clone(&self.dna);
+        if let Ok(dna) = dna.read() {
+            self.refresh_feature_interval_index(&dna);
             has_restriction_sites =
                 show_restriction_enzyme_sites && !dna.restriction_enzyme_groups().is_empty();
-            for (feature_number, feature) in dna.features().iter().enumerate() {
+            let feature_indices = self.feature_indices_overlapping_viewport(viewport);
+            for feature_number in feature_indices {
+                let Some(feature) = dna.features().get(feature_number) else {
+                    continue;
+                };
                 if !Self::draw_feature(
                     feature,
                     show_cds_features,
@@ -3229,6 +3458,7 @@ impl RenderDnaLinear {
         viewport: LinearViewport,
         detail: LinearDetailLevel,
     ) {
+        crate::gentle_gui_profile_scope!("RenderDnaLinear::draw_restriction_enzyme_sites");
         self.restriction_enzyme_sites.clear();
 
         if !self
@@ -3266,21 +3496,19 @@ impl RenderDnaLinear {
 
         let mut visible_groups: Vec<_> = Vec::new();
         let mut total_groups_in_view = 0usize;
-        if let Ok(dna) = self.dna.read() {
-            for (key, names) in dna.restriction_enzyme_groups() {
-                let pos = self.normalize_pos(key.pos());
-                if pos < viewport.start || pos >= viewport.end {
-                    continue;
-                }
-                total_groups_in_view = total_groups_in_view.saturating_add(1);
-                if DnaDisplay::restriction_group_matches_mode(
-                    display_mode,
-                    &preferred_restriction_enzymes,
-                    key,
-                    names,
-                ) {
-                    visible_groups.push((key.clone(), names.clone()));
-                }
+        let dna = Arc::clone(&self.dna);
+        if let Ok(dna) = dna.read() {
+            self.refresh_restriction_group_index(&dna);
+        }
+        for entry in self.restriction_group_index_range(viewport) {
+            total_groups_in_view = total_groups_in_view.saturating_add(1);
+            if DnaDisplay::restriction_group_matches_mode(
+                display_mode,
+                &preferred_restriction_enzymes,
+                &entry.key,
+                &entry.names,
+            ) {
+                visible_groups.push((entry.key.clone(), entry.names.clone()));
             }
         }
         visible_groups.sort_by(|(left, _), (right, _)| left.cmp(right));
@@ -3513,6 +3741,18 @@ mod tests {
         renderer
     }
 
+    fn refresh_test_feature_index(renderer: &mut RenderDnaLinear) {
+        let dna = Arc::clone(&renderer.dna);
+        let dna = dna.read().expect("read test dna");
+        renderer.refresh_feature_interval_index(&dna);
+    }
+
+    fn refresh_test_restriction_group_index(renderer: &mut RenderDnaLinear) {
+        let dna = Arc::clone(&renderer.dna);
+        let dna = dna.read().expect("read test dna");
+        renderer.refresh_restriction_group_index(&dna);
+    }
+
     fn restriction_ready_renderer(sequence: &str) -> RenderDnaLinear {
         let mut dna = DNAsequence::from_sequence(sequence).expect("valid DNA");
         *dna.restriction_enzymes_mut() = active_restriction_enzymes();
@@ -3523,6 +3763,123 @@ mod tests {
         let mut renderer = RenderDnaLinear::new(dna, display);
         renderer.area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1200.0, 600.0));
         renderer
+    }
+
+    #[test]
+    fn feature_interval_index_returns_exact_overlaps_for_viewport() {
+        let features = vec![
+            make_test_feature(Location::simple_range(10, 20)),
+            make_test_feature(Location::simple_range(80, 200)),
+            make_test_feature(Location::simple_range(110, 120)),
+            make_test_feature(Location::simple_range(150, 180)),
+            make_test_feature(Location::Join(vec![
+                Location::simple_range(40, 60),
+                Location::simple_range(220, 240),
+            ])),
+            make_test_feature(Location::Complement(Box::new(Location::Join(vec![
+                Location::simple_range(300, 320),
+                Location::simple_range(360, 380),
+            ])))),
+        ];
+        let mut renderer = test_renderer_with_features(features, 500);
+        refresh_test_feature_index(&mut renderer);
+
+        let hits = renderer.feature_indices_overlapping_viewport(LinearViewport {
+            start: 100,
+            end: 150,
+            span: 50,
+        });
+        assert_eq!(hits, vec![1, 2, 4]);
+
+        let complement_join_hits = renderer.feature_indices_overlapping_viewport(LinearViewport {
+            start: 340,
+            end: 350,
+            span: 10,
+        });
+        assert_eq!(complement_join_hits, vec![5]);
+    }
+
+    #[test]
+    fn feature_mutation_generation_rebuilds_interval_index() {
+        let mut renderer = test_renderer_with_features(
+            vec![make_test_feature(Location::simple_range(10, 20))],
+            200,
+        );
+        refresh_test_feature_index(&mut renderer);
+        let initial_generation = renderer.feature_interval_index.generation;
+        assert_eq!(
+            renderer.feature_indices_overlapping_viewport(LinearViewport {
+                start: 100,
+                end: 120,
+                span: 20,
+            }),
+            Vec::<usize>::new()
+        );
+
+        {
+            let mut dna = renderer.dna.write().expect("write test dna");
+            let before = dna.feature_generation();
+            dna.features_mut()
+                .push(make_test_feature(Location::simple_range(105, 115)));
+            assert_ne!(dna.feature_generation(), before);
+        }
+        refresh_test_feature_index(&mut renderer);
+
+        assert_ne!(
+            renderer.feature_interval_index.generation,
+            initial_generation
+        );
+        assert_eq!(
+            renderer.feature_indices_overlapping_viewport(LinearViewport {
+                start: 100,
+                end: 120,
+                span: 20,
+            }),
+            vec![1]
+        );
+    }
+
+    #[test]
+    fn restriction_group_index_ranges_match_viewport_and_generation() {
+        let mut renderer = restriction_ready_renderer("AAAAAGAATTCTTTTTTTTTTTTTGAATTC");
+        refresh_test_restriction_group_index(&mut renderer);
+        assert!(
+            !renderer.restriction_group_index.is_empty(),
+            "test sequence should have restriction groups"
+        );
+        let initial_generation = renderer.restriction_group_index_generation;
+        let first_pos = renderer.restriction_group_index[0].pos;
+        let viewport = LinearViewport {
+            start: first_pos,
+            end: first_pos.saturating_add(1),
+            span: 1,
+        };
+        let expected = renderer
+            .restriction_group_index
+            .iter()
+            .filter(|entry| entry.pos >= viewport.start && entry.pos < viewport.end)
+            .map(|entry| entry.key.clone())
+            .collect::<Vec<_>>();
+        let hits = renderer
+            .restriction_group_index_range(viewport)
+            .iter()
+            .map(|entry| entry.key.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(hits, expected);
+
+        {
+            let mut dna = renderer.dna.write().expect("write test dna");
+            let before = dna.restriction_enzyme_group_generation();
+            dna.restriction_enzymes_mut().clear();
+            dna.update_computed_features();
+            assert_ne!(dna.restriction_enzyme_group_generation(), before);
+        }
+        refresh_test_restriction_group_index(&mut renderer);
+        assert_ne!(
+            renderer.restriction_group_index_generation,
+            initial_generation
+        );
+        assert!(renderer.restriction_group_index.is_empty());
     }
 
     #[test]
