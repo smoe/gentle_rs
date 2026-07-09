@@ -6811,6 +6811,8 @@ pub struct RnaReadInterpretationHit {
     #[serde(default)]
     pub exon_path_transcript_id: String,
     #[serde(default)]
+    pub transcript_exon_path: String,
+    #[serde(default)]
     pub exon_path: String,
     #[serde(default)]
     pub exon_transitions_confirmed: usize,
@@ -8124,6 +8126,8 @@ pub struct RnaReadAlignmentInspectionRow {
     pub seed_chain_transcript_id: String,
     #[serde(default)]
     pub exon_path_transcript_id: String,
+    #[serde(default)]
+    pub transcript_exon_path: String,
     #[serde(default)]
     pub exon_path: String,
     #[serde(default)]

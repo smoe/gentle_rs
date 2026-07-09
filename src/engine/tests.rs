@@ -34650,6 +34650,7 @@ fn test_infer_read_exon_path_prefers_chain_strand_on_cross_strand_tie() {
             strand: "+".to_string(),
             exon_ordinals: vec![1, 2],
             transitions: vec![(1, 2)],
+            ..TranscriptExonPathModel::default()
         },
         TranscriptExonPathModel {
             transcript_feature_id: 5,
@@ -34658,6 +34659,7 @@ fn test_infer_read_exon_path_prefers_chain_strand_on_cross_strand_tie() {
             strand: "-".to_string(),
             exon_ordinals: vec![1, 2],
             transitions: vec![(1, 2)],
+            ..TranscriptExonPathModel::default()
         },
     ];
     let supported_exons = [1usize, 2usize].into_iter().collect::<HashSet<_>>();
@@ -34677,6 +34679,40 @@ fn test_infer_read_exon_path_prefers_chain_strand_on_cross_strand_tie() {
     assert!(inferred.strand_diagnostics.competing_opposite_strand);
     assert!(inferred.strand_diagnostics.ambiguous_near_tie);
     assert_eq!(inferred.strand_diagnostics.selected_strand, "+");
+}
+
+#[test]
+fn test_transcript_exon_path_stays_local_when_global_projection_repeats() {
+    let global_ordinals = vec![2, 3, 7, 10, 11, 12, 13, 15, 13];
+    let global_transitions = global_ordinals
+        .windows(2)
+        .map(|pair| (pair[0], pair[1]))
+        .collect::<Vec<_>>();
+    let model = TranscriptExonPathModel {
+        transcript_feature_id: 68,
+        transcript_id: "ENST00001135483".to_string(),
+        transcript_label: "PATZ1-213".to_string(),
+        strand: "+".to_string(),
+        exon_ordinals: global_ordinals.clone(),
+        transitions: global_transitions.clone(),
+        transcript_local_ordinals: vec![1, 2, 3, 4, 5],
+        transcript_local_transition_edges: vec![(3, 7), (7, 10), (10, 11), (12, 13)],
+    };
+    let supported_exons = global_ordinals.into_iter().collect::<HashSet<_>>();
+    let supported_transitions = global_transitions.into_iter().collect::<HashSet<_>>();
+
+    let inferred = GentleEngine::infer_read_exon_path(
+        &[model],
+        &supported_exons,
+        &supported_transitions,
+        "ENST00001135483",
+    );
+
+    assert_eq!(inferred.transcript_id, "ENST00001135483");
+    assert_eq!(inferred.path, "2:3:7:10:11:12:13:15:13");
+    assert_eq!(inferred.transcript_exon_path, "1:2:3:4:5");
+    assert_eq!(inferred.confirmed_transitions, 8);
+    assert_eq!(inferred.total_transitions, 8);
 }
 
 #[test]
@@ -37278,6 +37314,7 @@ fn test_export_rna_read_exon_paths_and_abundance_tsv() {
     assert!(path_text.contains("# seed_filter: k=10 stride=1"));
     assert!(path_text.contains("adjacent windows overlap by 9 bp"));
     assert!(path_text.contains("exon_path"));
+    assert!(path_text.contains("transcript_exon_path"));
     assert!(path_text.contains("reverse_complement_applied"));
 
     let abundance_tsv = td.path().join("abundance.tsv");
@@ -38044,6 +38081,7 @@ fn test_collect_rna_seed_hash_catalog_rows_deduplicates_overlapping_templates() 
         strand: "+".to_string(),
         sequence: b"ACG".to_vec(),
         genomic_positions_1based: vec![100, 101, 102],
+        transcript_local_exon_ordinals: vec![1, 1, 1],
         kmer_positions: HashMap::from([(bits, vec![0])]),
     };
     let template_b = SplicingTranscriptTemplate {
@@ -38053,6 +38091,7 @@ fn test_collect_rna_seed_hash_catalog_rows_deduplicates_overlapping_templates() 
         strand: "+".to_string(),
         sequence: b"ACG".to_vec(),
         genomic_positions_1based: vec![100, 101, 102],
+        transcript_local_exon_ordinals: vec![1, 1, 1],
         kmer_positions: HashMap::from([(bits, vec![0])]),
     };
     let rows =
@@ -38073,6 +38112,7 @@ fn test_build_rna_read_seed_histogram_index_deduplicates_shared_template_positio
         strand: "+".to_string(),
         sequence: b"ACG".to_vec(),
         genomic_positions_1based: vec![100, 101, 102],
+        transcript_local_exon_ordinals: vec![1, 1, 1],
         kmer_positions: HashMap::from([(bits, vec![0])]),
     };
     let template_b = SplicingTranscriptTemplate {
@@ -38082,6 +38122,7 @@ fn test_build_rna_read_seed_histogram_index_deduplicates_shared_template_positio
         strand: "+".to_string(),
         sequence: b"ACG".to_vec(),
         genomic_positions_1based: vec![100, 101, 102],
+        transcript_local_exon_ordinals: vec![1, 1, 1],
         kmer_positions: HashMap::from([(bits, vec![0])]),
     };
     let bins = GentleEngine::build_rna_read_seed_histogram_bins(300);

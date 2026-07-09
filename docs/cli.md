@@ -3138,8 +3138,13 @@ Shared shell command:
       - `--subset-spec TEXT` records the formal subset definition in the FASTA
         headers
       - `exon_path_tx=<transcript_id|none>`
-      - `exon_path=<ordinal_path|none>` where `:` marks hash-confirmed adjacent
-        exon transitions and `-` marks unconfirmed adjacency
+      - `transcript_exon_path=<ordinal_path|none>` uses transcript-local exon
+        numbering and is the primary human-facing path; `:` marks
+        hash-confirmed adjacent exon transitions and `-` marks unconfirmed
+        adjacency
+      - `exon_path=<ordinal_path|none>` is the legacy genomic-projection
+        ordinal path; it may be non-monotone when overlapping isoforms split a
+        continuous transcript exon
       - `exon_transitions=<confirmed>/<total>`
       - `rc_applied=<true|false>` indicating automatic cDNA poly-T
         reverse-complement normalization was applied

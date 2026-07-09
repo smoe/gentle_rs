@@ -7714,11 +7714,16 @@ impl MainAreaDna {
                 }
             ));
             ui.small(format!(
-                "Exon-path transcript/path: {} | {}",
+                "Exon-path transcript/local/projection: {} | {} | {}",
                 if row.exon_path_transcript_id.trim().is_empty() {
                     "none".to_string()
                 } else {
                     row.exon_path_transcript_id.clone()
+                },
+                if row.transcript_exon_path.trim().is_empty() {
+                    "none".to_string()
+                } else {
+                    row.transcript_exon_path.clone()
                 },
                 if row.exon_path.trim().is_empty() {
                     "none".to_string()

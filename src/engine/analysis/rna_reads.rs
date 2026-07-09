@@ -2256,7 +2256,7 @@ impl GentleEngine {
                 format!("{:.2}", hit.seed_median_transcript_gap)
             };
             let header = format!(
-                "{} record_index={} byte_offset={} seed_hit_fraction={:.3} seed_gap_median={} seed_gap_count={} seed_chain_support={} seed_chain_frac={:.3} seed_chain_tx={} origin_class={} origin_conf={:.3} strand_conf={:.3} perfect={} rc_applied={} msa_eligible={} msa_reason={} exon_path_tx={} exon_path={} exon_transitions={}/{} subset_spec={} {}",
+                "{} record_index={} byte_offset={} seed_hit_fraction={:.3} seed_gap_median={} seed_gap_count={} seed_chain_support={} seed_chain_frac={:.3} seed_chain_tx={} origin_class={} origin_conf={:.3} strand_conf={:.3} perfect={} rc_applied={} msa_eligible={} msa_reason={} exon_path_tx={} transcript_exon_path={} exon_path={} exon_transitions={}/{} subset_spec={} {}",
                 hit.header_id,
                 hit.record_index,
                 hit.source_byte_offset,
@@ -2281,6 +2281,11 @@ impl GentleEngine {
                     "none"
                 } else {
                     hit.exon_path_transcript_id.as_str()
+                },
+                if hit.transcript_exon_path.is_empty() {
+                    "none"
+                } else {
+                    hit.transcript_exon_path.as_str()
                 },
                 if hit.exon_path.is_empty() {
                     "none"
@@ -2517,6 +2522,7 @@ impl GentleEngine {
             row.phase1_primary_transcript_id.as_str(),
             row.seed_chain_transcript_id.as_str(),
             row.exon_path_transcript_id.as_str(),
+            row.transcript_exon_path.as_str(),
             row.exon_path.as_str(),
             row.transcript_id.as_str(),
             row.transcript_label.as_str(),
@@ -2789,6 +2795,7 @@ impl GentleEngine {
                 strand,
                 sequence,
                 genomic_positions_1based: Vec::new(),
+                transcript_local_exon_ordinals: Vec::new(),
                 kmer_positions,
             },
             gene_id,
@@ -3032,6 +3039,7 @@ impl GentleEngine {
                 strand: record.strand,
                 sequence: record.sequence.into_bytes(),
                 genomic_positions_1based: Vec::new(),
+                transcript_local_exon_ordinals: Vec::new(),
                 kmer_positions: record.kmer_positions.into_iter().collect(),
             });
         }
@@ -4130,6 +4138,7 @@ impl GentleEngine {
                             .to_string(),
                         seed_chain_transcript_id: hit.seed_chain_transcript_id.clone(),
                         exon_path_transcript_id: hit.exon_path_transcript_id.clone(),
+                        transcript_exon_path: hit.transcript_exon_path.clone(),
                         exon_path: hit.exon_path.clone(),
                         exon_transitions_confirmed: hit.exon_transitions_confirmed,
                         exon_transitions_total: hit.exon_transitions_total,
@@ -4425,7 +4434,7 @@ impl GentleEngine {
         }
         writeln!(
             writer,
-            "report_id\tseq_id\trank\trecord_index\theader_id\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tselected_strand\treverse_complement_applied\talignment_effect\ttranscript_id\ttranscript_label\tstrand\talignment_mode\ttarget_start_1based\ttarget_end_1based\tscore\tidentity_fraction\tquery_coverage_fraction\ttarget_coverage_fraction\tfull_length_exact\tfull_length_near\tfull_length_strict\tfull_length_class\tsecondary_mapping_count\tseed_hit_fraction\tweighted_seed_hit_fraction\tpassed_seed_filter\tmsa_eligible\torigin_class\tmapped_exon_support\tmapped_junction_support"
+            "report_id\tseq_id\trank\trecord_index\theader_id\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\ttranscript_exon_path\texon_path\texon_transitions_confirmed\texon_transitions_total\tselected_strand\treverse_complement_applied\talignment_effect\ttranscript_id\ttranscript_label\tstrand\talignment_mode\ttarget_start_1based\ttarget_end_1based\tscore\tidentity_fraction\tquery_coverage_fraction\ttarget_coverage_fraction\tfull_length_exact\tfull_length_near\tfull_length_strict\tfull_length_class\tsecondary_mapping_count\tseed_hit_fraction\tweighted_seed_hit_fraction\tpassed_seed_filter\tmsa_eligible\torigin_class\tmapped_exon_support\tmapped_junction_support"
         )
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -4443,7 +4452,7 @@ impl GentleEngine {
             );
             writeln!(
                 writer,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}",
                 Self::sanitize_tsv_cell(&inspection.report_id),
                 Self::sanitize_tsv_cell(&inspection.seq_id),
                 row.rank,
@@ -4452,6 +4461,7 @@ impl GentleEngine {
                 Self::sanitize_tsv_cell(&row.phase1_primary_transcript_id),
                 Self::sanitize_tsv_cell(&row.seed_chain_transcript_id),
                 Self::sanitize_tsv_cell(&row.exon_path_transcript_id),
+                Self::sanitize_tsv_cell(&row.transcript_exon_path),
                 Self::sanitize_tsv_cell(&row.exon_path),
                 row.exon_transitions_confirmed,
                 row.exon_transitions_total,
@@ -4596,7 +4606,7 @@ impl GentleEngine {
         }
         writeln!(
             writer,
-            "report_id\tseq_id\trecord_index\theader_id\ttriage_bin\ttriage_reason\tread_length_bp\tpassed_seed_filter\torigin_class\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\tbest_transcript_id\tbest_transcript_label\tbest_strand\talignment_effect\tidentity_fraction\tquery_coverage_fraction\tsecondary_mapping_count\texon_path\texon_transitions_confirmed\texon_transitions_total\tconfirmed_transition_fraction\tseed_hit_fraction\tweighted_seed_hit_fraction\tmsa_eligible"
+            "report_id\tseq_id\trecord_index\theader_id\ttriage_bin\ttriage_reason\tread_length_bp\tpassed_seed_filter\torigin_class\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\ttranscript_exon_path\tbest_transcript_id\tbest_transcript_label\tbest_strand\talignment_effect\tidentity_fraction\tquery_coverage_fraction\tsecondary_mapping_count\texon_path\texon_transitions_confirmed\texon_transitions_total\tconfirmed_transition_fraction\tseed_hit_fraction\tweighted_seed_hit_fraction\tmsa_eligible"
         )
         .map_err(|e| {
             EngineError::new(
@@ -4650,7 +4660,7 @@ impl GentleEngine {
                 };
             writeln!(
                 writer,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}",
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}",
                 Self::sanitize_tsv_cell(&report.report_id),
                 Self::sanitize_tsv_cell(&report.seq_id),
                 hit.record_index,
@@ -4663,6 +4673,7 @@ impl GentleEngine {
                 Self::sanitize_tsv_cell(primary_transcript_id),
                 Self::sanitize_tsv_cell(&hit.seed_chain_transcript_id),
                 Self::sanitize_tsv_cell(&hit.exon_path_transcript_id),
+                Self::sanitize_tsv_cell(&hit.transcript_exon_path),
                 Self::sanitize_tsv_cell(best_transcript_id),
                 Self::sanitize_tsv_cell(best_transcript_label),
                 Self::sanitize_tsv_cell(best_strand),
@@ -5137,7 +5148,7 @@ impl GentleEngine {
         }
         writeln!(
             writer,
-            "report_id\tseq_id\trecord_index\theader_id\tsource_byte_offset\tread_length_bp\tseed_hit_fraction\tweighted_seed_hit_fraction\tweighted_matched_kmers\tseed_chain_transcript_id\tseed_chain_support_kmers\tseed_chain_support_fraction\tseed_median_transcript_gap\tseed_transcript_gap_count\tmatched_kmers\ttested_kmers\tpassed_seed_filter\treverse_complement_applied\torigin_class\torigin_reason\torigin_confidence\tstrand_confidence\tmsa_eligible\tmsa_eligibility_reason\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tbest_transcript_id\tbest_alignment_mode\tbest_strand\tbest_target_start_1based\tbest_target_end_1based\tbest_identity_fraction\tbest_query_coverage_fraction"
+            "report_id\tseq_id\trecord_index\theader_id\tsource_byte_offset\tread_length_bp\tseed_hit_fraction\tweighted_seed_hit_fraction\tweighted_matched_kmers\tseed_chain_transcript_id\tseed_chain_support_kmers\tseed_chain_support_fraction\tseed_median_transcript_gap\tseed_transcript_gap_count\tmatched_kmers\ttested_kmers\tpassed_seed_filter\treverse_complement_applied\torigin_class\torigin_reason\torigin_confidence\tstrand_confidence\tmsa_eligible\tmsa_eligibility_reason\texon_path_transcript_id\ttranscript_exon_path\texon_path\texon_transitions_confirmed\texon_transitions_total\tbest_transcript_id\tbest_alignment_mode\tbest_strand\tbest_target_start_1based\tbest_target_end_1based\tbest_identity_fraction\tbest_query_coverage_fraction"
         )
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -5215,6 +5226,7 @@ impl GentleEngine {
                 hit.msa_eligible.to_string(),
                 Self::sanitize_tsv_cell(&hit.msa_eligibility_reason),
                 Self::sanitize_tsv_cell(&hit.exon_path_transcript_id),
+                Self::sanitize_tsv_cell(&hit.transcript_exon_path),
                 Self::sanitize_tsv_cell(&hit.exon_path),
                 hit.exon_transitions_confirmed.to_string(),
                 hit.exon_transitions_total.to_string(),
@@ -10822,9 +10834,11 @@ impl GentleEngine {
         let is_reverse = lane.strand.trim() == "-";
         let mut sequence = Vec::<u8>::new();
         let mut genomic_positions_1based = Vec::<usize>::new();
+        let mut transcript_local_exon_ordinals = Vec::<usize>::new();
 
         if is_reverse {
-            for exon in lane.exons.iter().rev() {
+            for (local_idx, exon) in lane.exons.iter().rev().enumerate() {
+                let transcript_local_ordinal = local_idx + 1;
                 for pos_1based in (exon.start_1based..=exon.end_1based).rev() {
                     let idx = pos_1based.saturating_sub(1);
                     if idx >= forward.len() {
@@ -10832,10 +10846,12 @@ impl GentleEngine {
                     }
                     sequence.push(Self::complement_nucleotide_base(forward[idx]));
                     genomic_positions_1based.push(pos_1based);
+                    transcript_local_exon_ordinals.push(transcript_local_ordinal);
                 }
             }
         } else {
-            for exon in &lane.exons {
+            for (local_idx, exon) in lane.exons.iter().enumerate() {
+                let transcript_local_ordinal = local_idx + 1;
                 for pos_1based in exon.start_1based..=exon.end_1based {
                     let idx = pos_1based.saturating_sub(1);
                     if idx >= forward.len() {
@@ -10843,6 +10859,7 @@ impl GentleEngine {
                     }
                     sequence.push(Self::normalize_nucleotide_base(forward[idx]));
                     genomic_positions_1based.push(pos_1based);
+                    transcript_local_exon_ordinals.push(transcript_local_ordinal);
                 }
             }
         }
@@ -10865,6 +10882,7 @@ impl GentleEngine {
             strand: lane.strand.clone(),
             sequence,
             genomic_positions_1based,
+            transcript_local_exon_ordinals,
             kmer_positions,
         }
     }
@@ -10935,16 +10953,42 @@ impl GentleEngine {
 
         for template in templates {
             let mut transcript_exons = Vec::<usize>::new();
-            for pos in &template.genomic_positions_1based {
+            let mut transcript_path_segments = Vec::<(usize, usize)>::new();
+            for (offset, pos) in template.genomic_positions_1based.iter().enumerate() {
                 let Some((ordinal, _, _)) = exon_position_ordinal.get(pos).copied() else {
                     continue;
                 };
                 if transcript_exons.last().copied() != Some(ordinal) {
                     transcript_exons.push(ordinal);
                 }
+                let transcript_local_ordinal = template
+                    .transcript_local_exon_ordinals
+                    .get(offset)
+                    .copied()
+                    .unwrap_or_default();
+                if transcript_local_ordinal > 0
+                    && transcript_path_segments.last().copied()
+                        != Some((ordinal, transcript_local_ordinal))
+                {
+                    transcript_path_segments.push((ordinal, transcript_local_ordinal));
+                }
             }
             if transcript_exons.is_empty() {
                 continue;
+            }
+            let mut transcript_local_ordinals = Vec::<usize>::new();
+            let mut transcript_local_transition_edges = Vec::<(usize, usize)>::new();
+            let mut previous_global_ordinal = None::<usize>;
+            for (global_ordinal, local_ordinal) in &transcript_path_segments {
+                if transcript_local_ordinals.last().copied() != Some(*local_ordinal) {
+                    if !transcript_local_ordinals.is_empty()
+                        && let Some(previous) = previous_global_ordinal
+                    {
+                        transcript_local_transition_edges.push((previous, *global_ordinal));
+                    }
+                    transcript_local_ordinals.push(*local_ordinal);
+                }
+                previous_global_ordinal = Some(*global_ordinal);
             }
             let transcript_transitions = transcript_exons
                 .windows(2)
@@ -10960,6 +11004,8 @@ impl GentleEngine {
                 strand: template.strand.clone(),
                 exon_ordinals: transcript_exons.clone(),
                 transitions: transcript_transitions.clone(),
+                transcript_local_ordinals,
+                transcript_local_transition_edges,
             });
 
             if template.sequence.len() < kmer_len {
@@ -11584,6 +11630,38 @@ impl GentleEngine {
             path.push(sep);
             path.push_str(pair[1].to_string().as_str());
         }
+        let local_ordinals = if model.transcript_local_ordinals.is_empty() {
+            model.exon_ordinals.as_slice()
+        } else {
+            model.transcript_local_ordinals.as_slice()
+        };
+        let local_transition_edges = if model.transcript_local_transition_edges.is_empty() {
+            model.transitions.as_slice()
+        } else {
+            model.transcript_local_transition_edges.as_slice()
+        };
+        let mut transcript_exon_path = local_ordinals
+            .first()
+            .map(|ordinal| ordinal.to_string())
+            .unwrap_or_default();
+        for (idx, pair) in local_ordinals.windows(2).enumerate() {
+            let fallback_edge = model
+                .transitions
+                .get(idx)
+                .copied()
+                .unwrap_or((pair[0], pair[1]));
+            let edge = local_transition_edges
+                .get(idx)
+                .copied()
+                .unwrap_or(fallback_edge);
+            let sep = if supported_transitions.contains(&edge) {
+                ':'
+            } else {
+                '-'
+            };
+            transcript_exon_path.push(sep);
+            transcript_exon_path.push_str(pair[1].to_string().as_str());
+        }
         let plus_best = best_plus;
         let minus_best = best_minus;
         let opposite_best = if model.strand.trim() == "-" {
@@ -11632,6 +11710,7 @@ impl GentleEngine {
         };
         ReadExonPathInference {
             path,
+            transcript_exon_path,
             confirmed_transitions,
             total_transitions: model.transitions.len(),
             transcript_id: model.transcript_id.clone(),
@@ -12957,6 +13036,7 @@ impl GentleEngine {
             hit.seed_median_transcript_gap = spacing_metrics.median_transcript_gap;
             hit.seed_transcript_gap_count = spacing_metrics.transcript_gap_count;
             hit.exon_path_transcript_id = path_inference.transcript_id;
+            hit.transcript_exon_path = path_inference.transcript_exon_path;
             hit.exon_path = path_inference.path;
             hit.exon_transitions_confirmed = path_inference.confirmed_transitions;
             hit.exon_transitions_total = path_inference.total_transitions;
@@ -14411,6 +14491,7 @@ impl GentleEngine {
                     seed_median_transcript_gap: spacing_metrics.median_transcript_gap,
                     seed_transcript_gap_count: spacing_metrics.transcript_gap_count,
                     exon_path_transcript_id: path_inference.transcript_id,
+                    transcript_exon_path: path_inference.transcript_exon_path,
                     exon_path: path_inference.path,
                     exon_transitions_confirmed: path_inference.confirmed_transitions,
                     exon_transitions_total: path_inference.total_transitions,
@@ -15039,6 +15120,7 @@ mod tests {
             strand: "-".to_string(),
             sequence: b"CCTT".to_vec(),
             genomic_positions_1based: vec![6, 5, 2, 1],
+            transcript_local_exon_ordinals: vec![1, 1, 2, 2],
             kmer_positions: HashMap::new(),
         };
 

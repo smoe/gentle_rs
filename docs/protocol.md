@@ -8969,7 +8969,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - each row now carries:
       - phase-1 transcript-assignment fields
         (`phase1_primary_transcript_id`, `seed_chain_transcript_id`,
-        `exon_path_transcript_id`, `exon_path`,
+        `exon_path_transcript_id`, `transcript_exon_path`, `exon_path`,
         `exon_transitions_confirmed/total`, `selected_strand`,
         `reverse_complement_applied`)
       - phase-2 best-mapping fields
@@ -9232,8 +9232,12 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - optional `subset_spec` records the formal subset definition that produced
     that explicit `record_index` subset
   - `exon_path_tx=<transcript_id|none>`
-  - `exon_path=<ordinal_path|none>` using `:` for hash-confirmed adjacent
-    exon transitions and `-` for unconfirmed adjacency
+  - `transcript_exon_path=<ordinal_path|none>` uses transcript-local exon
+    numbering and is the primary human-facing path; `:` marks hash-confirmed
+    adjacent exon transitions and `-` marks unconfirmed adjacency
+  - `exon_path=<ordinal_path|none>` is the legacy genomic-projection ordinal
+    path; overlapping isoforms can make this path non-monotone even when the
+    transcript-local path is monotone
   - `exon_transitions=<confirmed>/<total>`
   - `rc_applied=<true|false>` (automatic cDNA poly-T reverse-complement
     normalization marker)

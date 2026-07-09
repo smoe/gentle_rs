@@ -1435,6 +1435,7 @@ impl MainAreaDna {
             row.phase1_primary_transcript_id.as_str(),
             row.seed_chain_transcript_id.as_str(),
             row.exon_path_transcript_id.as_str(),
+            row.transcript_exon_path.as_str(),
             row.exon_path.as_str(),
             row.transcript_id.as_str(),
             row.transcript_label.as_str(),
@@ -1991,7 +1992,7 @@ impl MainAreaDna {
             "none".to_string()
         };
         format!(
-            ">{header_id} record_index={} score={:.3} wscore={:.4} wsupport={:.2} gap_med={} gap_n={} chain={:.2}/{} tx={} class={} origin_conf={:.3} strand_conf={:.3} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} msa_eligible={} msa_reason={} align={} len={}\n{}",
+            ">{header_id} record_index={} score={:.3} wscore={:.4} wsupport={:.2} gap_med={} gap_n={} chain={:.2}/{} tx={} class={} origin_conf={:.3} strand_conf={:.3} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} msa_eligible={} msa_reason={} transcript_exon_path={} exon_path={} align={} len={}\n{}",
             hit.record_index + 1,
             hit.seed_hit_fraction,
             hit.weighted_seed_hit_fraction,
@@ -2021,6 +2022,16 @@ impl MainAreaDna {
             hit.reverse_complement_applied,
             hit.msa_eligible,
             hit.msa_eligibility_reason.trim(),
+            if hit.transcript_exon_path.is_empty() {
+                "none"
+            } else {
+                hit.transcript_exon_path.as_str()
+            },
+            if hit.exon_path.is_empty() {
+                "none"
+            } else {
+                hit.exon_path.as_str()
+            },
             mapping_summary,
             hit.read_length_bp,
             hit.sequence,

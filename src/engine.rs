@@ -1296,6 +1296,7 @@ struct SplicingTranscriptTemplate {
     strand: String,
     sequence: Vec<u8>,
     genomic_positions_1based: Vec<usize>,
+    transcript_local_exon_ordinals: Vec<usize>,
     kmer_positions: HashMap<u32, Vec<usize>>,
 }
 
@@ -1307,6 +1308,8 @@ struct TranscriptExonPathModel {
     strand: String,
     exon_ordinals: Vec<usize>,
     transitions: Vec<(usize, usize)>,
+    transcript_local_ordinals: Vec<usize>,
+    transcript_local_transition_edges: Vec<(usize, usize)>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -1347,6 +1350,7 @@ struct RnaReadOriginClassification {
 #[derive(Debug, Clone, Default)]
 struct ReadExonPathInference {
     path: String,
+    transcript_exon_path: String,
     confirmed_transitions: usize,
     total_transitions: usize,
     transcript_id: String,
