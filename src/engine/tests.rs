@@ -34694,6 +34694,7 @@ fn test_transcript_exon_path_stays_local_when_global_projection_repeats() {
         transcript_label: "PATZ1-213".to_string(),
         strand: "+".to_string(),
         exon_ordinals: global_ordinals.clone(),
+        exon_local_ordinals: vec![],
         transitions: global_transitions.clone(),
         transcript_local_ordinals: vec![1, 2, 3, 4, 5],
         transcript_local_transition_edges: vec![(3, 7), (7, 10), (10, 11), (12, 13)],
@@ -34713,6 +34714,254 @@ fn test_transcript_exon_path_stays_local_when_global_projection_repeats() {
     assert_eq!(inferred.transcript_exon_path, "1:2:3:4:5");
     assert_eq!(inferred.confirmed_transitions, 8);
     assert_eq!(inferred.total_transitions, 8);
+}
+
+#[test]
+fn test_dexseq_exonic_part_path_marks_intra_exon_bins_without_changing_local_path() {
+    let global_ordinals = vec![2, 3, 7, 10, 11, 12, 13, 14, 15];
+    let real_splice_transitions = vec![(2, 3), (3, 7), (7, 10), (10, 11)];
+    let model = TranscriptExonPathModel {
+        transcript_feature_id: 68,
+        transcript_id: "ENST00001135483".to_string(),
+        transcript_label: "PATZ1-213".to_string(),
+        strand: "+".to_string(),
+        exon_ordinals: global_ordinals.clone(),
+        exon_local_ordinals: vec![1, 2, 3, 4, 5, 5, 5, 5, 5],
+        transitions: real_splice_transitions.clone(),
+        transcript_local_ordinals: vec![1, 2, 3, 4, 5],
+        transcript_local_transition_edges: real_splice_transitions.clone(),
+    };
+    let supported_exons = global_ordinals.iter().copied().collect::<HashSet<_>>();
+    let supported_transitions = real_splice_transitions
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>();
+
+    let inferred = GentleEngine::infer_read_exon_path(
+        &[model],
+        &supported_exons,
+        &supported_transitions,
+        "ENST00001135483",
+    );
+
+    assert_eq!(inferred.transcript_id, "ENST00001135483");
+    assert_eq!(inferred.path, "2:3:7:10:11_12_13_14_15");
+    assert_eq!(inferred.transcript_exon_path, "1:2:3:4:5");
+    assert_eq!(inferred.confirmed_transitions, 4);
+    assert_eq!(inferred.total_transitions, 4);
+    let ordinals = GentleEngine::parse_exon_path(&inferred.path).0;
+    let unique_ordinals = ordinals.iter().copied().collect::<HashSet<_>>();
+    assert_eq!(
+        ordinals.len(),
+        unique_ordinals.len(),
+        "DEXSeq-style exonic-part paths must not repeat global ordinals"
+    );
+}
+
+#[test]
+fn test_seed_support_exon_summaries_are_disjoint_exonic_parts() {
+    let transcript_lanes = vec![
+        SplicingTranscriptLane {
+            transcript_feature_id: 1,
+            transcript_id: "tx_full".to_string(),
+            label: "TX full".to_string(),
+            strand: "+".to_string(),
+            exons: vec![
+                SplicingRange {
+                    start_1based: 10,
+                    end_1based: 20,
+                },
+                SplicingRange {
+                    start_1based: 40,
+                    end_1based: 80,
+                },
+            ],
+            exon_cds_phases: vec![],
+            introns: vec![],
+            has_target_feature: true,
+        },
+        SplicingTranscriptLane {
+            transcript_feature_id: 2,
+            transcript_id: "tx_nested".to_string(),
+            label: "TX nested".to_string(),
+            strand: "+".to_string(),
+            exons: vec![
+                SplicingRange {
+                    start_1based: 10,
+                    end_1based: 20,
+                },
+                SplicingRange {
+                    start_1based: 40,
+                    end_1based: 60,
+                },
+            ],
+            exon_cds_phases: vec![],
+            introns: vec![],
+            has_target_feature: false,
+        },
+        SplicingTranscriptLane {
+            transcript_feature_id: 3,
+            transcript_id: "tx_shifted".to_string(),
+            label: "TX shifted".to_string(),
+            strand: "+".to_string(),
+            exons: vec![
+                SplicingRange {
+                    start_1based: 10,
+                    end_1based: 20,
+                },
+                SplicingRange {
+                    start_1based: 61,
+                    end_1based: 70,
+                },
+            ],
+            exon_cds_phases: vec![],
+            introns: vec![],
+            has_target_feature: false,
+        },
+    ];
+
+    let summaries = GentleEngine::collect_seed_support_exon_summaries(&transcript_lanes);
+    let spans = summaries
+        .iter()
+        .map(|row| {
+            (
+                row.start_1based,
+                row.end_1based,
+                row.support_transcript_count,
+                row.constitutive,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        spans,
+        vec![
+            (10, 20, 3, true),
+            (40, 60, 2, false),
+            (61, 70, 2, false),
+            (71, 80, 1, false),
+        ]
+    );
+    for pair in summaries.windows(2) {
+        assert!(
+            pair[0].end_1based < pair[1].start_1based,
+            "exonic-part bins must be disjoint and sorted by genomic coordinate"
+        );
+    }
+}
+
+#[test]
+fn test_minus_strand_exonic_part_path_keeps_transcript_order_and_intra_exon_marker() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(50)).expect("synthetic dna");
+    let lane = SplicingTranscriptLane {
+        transcript_feature_id: 7,
+        transcript_id: "tx_minus".to_string(),
+        label: "TX minus".to_string(),
+        strand: "-".to_string(),
+        exons: vec![
+            SplicingRange {
+                start_1based: 10,
+                end_1based: 20,
+            },
+            SplicingRange {
+                start_1based: 30,
+                end_1based: 40,
+            },
+        ],
+        exon_cds_phases: vec![],
+        introns: vec![],
+        has_target_feature: true,
+    };
+    let splitter_lane = SplicingTranscriptLane {
+        transcript_feature_id: 8,
+        transcript_id: "tx_splitter".to_string(),
+        label: "TX splitter".to_string(),
+        strand: "-".to_string(),
+        exons: vec![SplicingRange {
+            start_1based: 15,
+            end_1based: 20,
+        }],
+        exon_cds_phases: vec![],
+        introns: vec![],
+        has_target_feature: false,
+    };
+    let summaries =
+        GentleEngine::collect_seed_support_exon_summaries(&[lane.clone(), splitter_lane]);
+    let template = GentleEngine::make_transcript_template(&dna, &lane, 3);
+    let (_seed_to_exons, _seed_to_transitions, models, _transition_rows) =
+        GentleEngine::build_seed_support_indexes(&summaries, &[template], 3);
+    let model = models
+        .iter()
+        .find(|model| model.transcript_id == "tx_minus")
+        .expect("minus transcript model");
+    assert_eq!(model.exon_ordinals, vec![3, 2, 1]);
+    assert_eq!(model.exon_local_ordinals, vec![1, 2, 2]);
+    assert_eq!(model.transitions, vec![(3, 2)]);
+
+    let supported_exons = model.exon_ordinals.iter().copied().collect::<HashSet<_>>();
+    let supported_transitions = model.transitions.iter().copied().collect::<HashSet<_>>();
+    let inferred = GentleEngine::infer_read_exon_path(
+        &models,
+        &supported_exons,
+        &supported_transitions,
+        "tx_minus",
+    );
+
+    assert_eq!(inferred.path, "3:2_1");
+    assert_eq!(inferred.transcript_exon_path, "1:2");
+    assert_eq!(inferred.confirmed_transitions, 1);
+    assert_eq!(inferred.total_transitions, 1);
+}
+
+#[test]
+fn test_parse_exon_path_keeps_underscore_as_intra_exon_boundary() {
+    let (ordinals, transitions) = GentleEngine::parse_exon_path("13_15");
+    assert_eq!(ordinals, vec![13, 15]);
+    assert_eq!(transitions, vec!['_']);
+}
+
+#[test]
+fn test_export_rna_read_exon_abundance_skips_intra_exon_bin_edges() {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_intra_bin_abundance".to_string(),
+            seq_id: "seq_bins".to_string(),
+            hits: vec![RnaReadInterpretationHit {
+                record_index: 0,
+                header_id: "read_bins".to_string(),
+                sequence: "AACCGG".to_string(),
+                read_length_bp: 6,
+                exon_path_transcript_id: "tx_bins".to_string(),
+                transcript_exon_path: "1:2".to_string(),
+                exon_path: "13_15:16".to_string(),
+                ..RnaReadInterpretationHit::default()
+            }],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert abundance report");
+
+    let td = tempdir().expect("tempdir");
+    let abundance_tsv = td.path().join("abundance.tsv");
+    let abundance_export = engine
+        .export_rna_read_exon_abundance_tsv(
+            "rna_reads_intra_bin_abundance",
+            abundance_tsv.to_str().expect("abundance tsv"),
+            RnaReadHitSelection::All,
+            &[],
+            None,
+        )
+        .expect("export abundance");
+    assert_eq!(abundance_export.selected_read_count, 1);
+    assert_eq!(abundance_export.exon_row_count, 3);
+    assert_eq!(abundance_export.transition_row_count, 1);
+    let abundance_text = fs::read_to_string(abundance_tsv).expect("read abundance tsv");
+    assert!(abundance_text.contains("\texon\t13\t"));
+    assert!(abundance_text.contains("\texon\t15\t"));
+    assert!(abundance_text.contains("\texon\t16\t"));
+    assert!(abundance_text.contains("\ttransition\t\t15\t16\t"));
+    assert!(!abundance_text.contains("\ttransition\t\t13\t15\t"));
 }
 
 #[test]

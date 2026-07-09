@@ -1307,6 +1307,7 @@ struct TranscriptExonPathModel {
     transcript_label: String,
     strand: String,
     exon_ordinals: Vec<usize>,
+    exon_local_ordinals: Vec<usize>,
     transitions: Vec<(usize, usize)>,
     transcript_local_ordinals: Vec<usize>,
     transcript_local_transition_edges: Vec<(usize, usize)>,

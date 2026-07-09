@@ -9235,9 +9235,13 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `transcript_exon_path=<ordinal_path|none>` uses transcript-local exon
     numbering and is the primary human-facing path; `:` marks hash-confirmed
     adjacent exon transitions and `-` marks unconfirmed adjacency
-  - `exon_path=<ordinal_path|none>` is the legacy genomic-projection ordinal
-    path; overlapping isoforms can make this path non-monotone even when the
-    transcript-local path is monotone
+  - `exon_path=<ordinal_path|none>` is the DEXSeq-style genomic projection into
+    disjoint exonic-part bins, numbered by ascending genomic coordinate; `_`
+    marks adjacent bins inside the same transcript-local exon (no splice),
+    while `:` / `-` retain confirmed / unconfirmed splice junction semantics
+  - schema note: these global projection ordinals are renumbered relative to
+    pre-exonic-parts releases; `transcript_exon_path` is unchanged and remains
+    the primary human-facing field
   - `exon_transitions=<confirmed>/<total>`
   - `rc_applied=<true|false>` (automatic cDNA poly-T reverse-complement
     normalization marker)
@@ -9245,7 +9249,9 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 - `rna-reads export-exon-paths-tsv` and `rna-reads export-exon-abundance-tsv`
   now begin with the same `#` report/seed-screen provenance block used by the
   alignment TSV export, minus alignment-only fields; optional `subset_spec`
-  records the formal subset definition alongside `selected_record_indices`
+  records the formal subset definition alongside `selected_record_indices`.
+  Abundance exports count per-bin support from `exon_path` and exclude `_`
+  intra-exon adjacencies from junction rows.
 - cDNA/direct-RNA normalization controls in `seed_filter`:
   - `cdna_poly_t_flip_enabled` (default `true`)
   - `poly_t_prefix_min_bp` (default `18`): minimum T support used by the

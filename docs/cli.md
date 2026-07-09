@@ -3124,7 +3124,8 @@ Shared shell command:
       - `full_length_class` (`exact` / `strict_end` / `near` / `partial`)
     - `rna-reads export-paths-tsv` and `rna-reads export-abundance-tsv` now
       accept the same `--record-indices` exact-subset override plus optional
-      `--subset-spec` provenance.
+      `--subset-spec` provenance. Abundance exports count per-bin support from
+      `exon_path` and exclude `_` intra-exon adjacencies from junction rows.
     - `rna-reads export-isoform-triage-tsv` writes a conservative read-level
       TSV with bins `known_isoform_confirmed`, `known_isoform_ambiguous`,
       `gene_supported_no_isoform_call`, and `off_target_or_bad_seed`; recurrent
@@ -3142,9 +3143,14 @@ Shared shell command:
         numbering and is the primary human-facing path; `:` marks
         hash-confirmed adjacent exon transitions and `-` marks unconfirmed
         adjacency
-      - `exon_path=<ordinal_path|none>` is the legacy genomic-projection
-        ordinal path; it may be non-monotone when overlapping isoforms split a
-        continuous transcript exon
+      - `exon_path=<ordinal_path|none>` is the DEXSeq-style genomic projection
+        into disjoint exonic-part bins, numbered by ascending genomic
+        coordinate; `_` marks adjacent bins inside the same transcript-local
+        exon (no splice), while `:` / `-` retain confirmed / unconfirmed splice
+        junction semantics
+      - schema note: these global projection ordinals are renumbered relative
+        to pre-exonic-parts releases; `transcript_exon_path` is unchanged and
+        remains the primary human-facing field
       - `exon_transitions=<confirmed>/<total>`
       - `rc_applied=<true|false>` indicating automatic cDNA poly-T
         reverse-complement normalization was applied

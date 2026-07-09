@@ -5086,10 +5086,20 @@ impl GentleEngine {
                 current.push(ch);
                 continue;
             }
-            if (ch == ':' || ch == '-') && !current.is_empty() {
+            if ch == ':' || ch == '-' || ch == '_' {
+                if current.is_empty() {
+                    continue;
+                }
                 if let Ok(value) = current.parse::<usize>() {
                     ordinals.push(value);
                     transitions.push(ch);
+                }
+                current.clear();
+                continue;
+            }
+            if !current.is_empty() {
+                if let Ok(value) = current.parse::<usize>() {
+                    ordinals.push(value);
                 }
                 current.clear();
             }
@@ -5348,6 +5358,9 @@ impl GentleEngine {
             for (idx, transition) in transitions.iter().enumerate() {
                 if idx + 1 >= ordinals.len() {
                     break;
+                }
+                if *transition == '_' {
+                    continue;
                 }
                 let pair = (ordinals[idx], ordinals[idx + 1]);
                 let entry = transition_counts.entry(pair).or_insert((0, 0));
@@ -10894,7 +10907,11 @@ impl GentleEngine {
         for (idx, exon) in exon_summaries.iter().enumerate() {
             let ordinal = idx + 1;
             for pos in exon.start_1based..=exon.end_1based {
-                map.insert(pos, (ordinal, exon.start_1based, exon.end_1based));
+                let previous = map.insert(pos, (ordinal, exon.start_1based, exon.end_1based));
+                debug_assert!(
+                    previous.is_none(),
+                    "RNA-read exonic-part projection generated overlapping bins"
+                );
             }
         }
         map
@@ -10903,33 +10920,50 @@ impl GentleEngine {
     pub(super) fn collect_seed_support_exon_summaries(
         transcript_lanes: &[SplicingTranscriptLane],
     ) -> Vec<SplicingExonSummary> {
-        let mut exon_support = HashMap::<(usize, usize), HashSet<usize>>::new();
+        let mut breakpoints = BTreeSet::<usize>::new();
+        let mut exon_intervals = Vec::<(usize, usize, usize)>::new();
+        let mut transcript_ids = HashSet::<usize>::new();
         for lane in transcript_lanes {
+            transcript_ids.insert(lane.transcript_feature_id);
             for exon in &lane.exons {
-                exon_support
-                    .entry((exon.start_1based, exon.end_1based))
-                    .or_default()
-                    .insert(lane.transcript_feature_id);
+                let start_1based = exon.start_1based.min(exon.end_1based);
+                let end_1based = exon.start_1based.max(exon.end_1based);
+                if start_1based == 0 || end_1based < start_1based {
+                    continue;
+                }
+                breakpoints.insert(start_1based);
+                breakpoints.insert(end_1based.saturating_add(1));
+                exon_intervals.push((start_1based, end_1based, lane.transcript_feature_id));
             }
         }
-        let transcript_count = transcript_lanes.len().max(1);
-        let mut exons = exon_support
-            .into_iter()
-            .map(
-                |((start_1based, end_1based), supporting_transcripts)| SplicingExonSummary {
-                    start_1based,
-                    end_1based,
-                    support_transcript_count: supporting_transcripts.len(),
-                    constitutive: supporting_transcripts.len() == transcript_count,
-                },
-            )
-            .collect::<Vec<_>>();
-        exons.sort_by(|left, right| {
-            left.start_1based
-                .cmp(&right.start_1based)
-                .then(left.end_1based.cmp(&right.end_1based))
-        });
-        exons
+        let transcript_count = transcript_ids.len().max(1);
+        let breakpoints = breakpoints.into_iter().collect::<Vec<_>>();
+        let mut exonic_parts = Vec::<SplicingExonSummary>::new();
+        for window in breakpoints.windows(2) {
+            let start_1based = window[0];
+            let end_exclusive_1based = window[1];
+            if end_exclusive_1based <= start_1based {
+                continue;
+            }
+            let end_1based = end_exclusive_1based - 1;
+            let supporting_transcripts = exon_intervals
+                .iter()
+                .filter(|(exon_start, exon_end, _)| {
+                    *exon_start <= start_1based && *exon_end >= end_1based
+                })
+                .map(|(_, _, transcript_feature_id)| *transcript_feature_id)
+                .collect::<HashSet<_>>();
+            if supporting_transcripts.is_empty() {
+                continue;
+            }
+            exonic_parts.push(SplicingExonSummary {
+                start_1based,
+                end_1based,
+                support_transcript_count: supporting_transcripts.len(),
+                constitutive: supporting_transcripts.len() == transcript_count,
+            });
+        }
+        exonic_parts
     }
 
     pub(super) fn build_seed_support_indexes(
@@ -10953,19 +10987,21 @@ impl GentleEngine {
 
         for template in templates {
             let mut transcript_exons = Vec::<usize>::new();
+            let mut transcript_exon_local_ordinals = Vec::<usize>::new();
             let mut transcript_path_segments = Vec::<(usize, usize)>::new();
             for (offset, pos) in template.genomic_positions_1based.iter().enumerate() {
                 let Some((ordinal, _, _)) = exon_position_ordinal.get(pos).copied() else {
                     continue;
                 };
-                if transcript_exons.last().copied() != Some(ordinal) {
-                    transcript_exons.push(ordinal);
-                }
                 let transcript_local_ordinal = template
                     .transcript_local_exon_ordinals
                     .get(offset)
                     .copied()
                     .unwrap_or_default();
+                if transcript_exons.last().copied() != Some(ordinal) {
+                    transcript_exons.push(ordinal);
+                    transcript_exon_local_ordinals.push(transcript_local_ordinal);
+                }
                 if transcript_local_ordinal > 0
                     && transcript_path_segments.last().copied()
                         != Some((ordinal, transcript_local_ordinal))
@@ -10992,7 +11028,14 @@ impl GentleEngine {
             }
             let transcript_transitions = transcript_exons
                 .windows(2)
-                .map(|pair| (pair[0], pair[1]))
+                .zip(transcript_exon_local_ordinals.windows(2))
+                .filter_map(|(pair, local_pair)| {
+                    if local_pair[0] > 0 && local_pair[0] == local_pair[1] {
+                        None
+                    } else {
+                        Some((pair[0], pair[1]))
+                    }
+                })
                 .collect::<Vec<_>>();
             for transition in &transcript_transitions {
                 transition_catalog.insert(*transition);
@@ -11003,6 +11046,7 @@ impl GentleEngine {
                 transcript_label: template.transcript_label.clone(),
                 strand: template.strand.clone(),
                 exon_ordinals: transcript_exons.clone(),
+                exon_local_ordinals: transcript_exon_local_ordinals.clone(),
                 transitions: transcript_transitions.clone(),
                 transcript_local_ordinals,
                 transcript_local_transition_edges,
@@ -11016,7 +11060,7 @@ impl GentleEngine {
                 let Some(bits) = Self::encode_kmer_bits(window) else {
                     continue;
                 };
-                let mut touched_exons = Vec::<usize>::new();
+                let mut touched_segments = Vec::<(usize, usize)>::new();
                 for offset in start..start + kmer_len {
                     let Some(pos_1based) = template.genomic_positions_1based.get(offset).copied()
                     else {
@@ -11026,10 +11070,21 @@ impl GentleEngine {
                     else {
                         continue;
                     };
-                    if touched_exons.last().copied() != Some(ordinal) {
-                        touched_exons.push(ordinal);
+                    let transcript_local_ordinal = template
+                        .transcript_local_exon_ordinals
+                        .get(offset)
+                        .copied()
+                        .unwrap_or_default();
+                    let segment = (ordinal, transcript_local_ordinal);
+                    if touched_segments.last().copied() != Some(segment) {
+                        touched_segments.push(segment);
                     }
                 }
+                let mut touched_exons = touched_segments
+                    .iter()
+                    .map(|(ordinal, _)| *ordinal)
+                    .collect::<Vec<_>>();
+                touched_exons.dedup();
                 if touched_exons.is_empty() {
                     continue;
                 }
@@ -11037,10 +11092,17 @@ impl GentleEngine {
                     .entry(bits)
                     .or_default()
                     .extend(touched_exons.iter().copied());
-                if touched_exons.len() >= 2 {
+                if touched_segments.len() >= 2 {
                     let row = seed_to_transitions.entry(bits).or_default();
-                    for pair in touched_exons.windows(2) {
-                        row.insert((pair[0], pair[1]));
+                    for pair in touched_segments.windows(2) {
+                        let (from_ordinal, from_local_ordinal) = pair[0];
+                        let (to_ordinal, to_local_ordinal) = pair[1];
+                        if from_ordinal == to_ordinal
+                            || (from_local_ordinal > 0 && from_local_ordinal == to_local_ordinal)
+                        {
+                            continue;
+                        }
+                        row.insert((from_ordinal, to_ordinal));
                     }
                 }
             }
@@ -11620,9 +11682,17 @@ impl GentleEngine {
             };
         }
         let mut path = model.exon_ordinals[0].to_string();
-        for pair in model.exon_ordinals.windows(2) {
+        for (idx, pair) in model.exon_ordinals.windows(2).enumerate() {
             let edge = (pair[0], pair[1]);
-            let sep = if supported_transitions.contains(&edge) {
+            let same_transcript_local_exon = model
+                .exon_local_ordinals
+                .get(idx)
+                .zip(model.exon_local_ordinals.get(idx + 1))
+                .map(|(left, right)| *left > 0 && left == right)
+                .unwrap_or(false);
+            let sep = if same_transcript_local_exon {
+                '_'
+            } else if supported_transitions.contains(&edge) {
                 ':'
             } else {
                 '-'
