@@ -243,6 +243,10 @@ pub struct DNAsequence {
     methylation_sites: MethylationSites,
     methylation_mode: MethylationMode,
     gc_content: GcContents,
+    #[serde(default, skip)]
+    feature_generation: u64,
+    #[serde(default, skip)]
+    restriction_enzyme_group_generation: u64,
 }
 
 impl DNAsequence {
@@ -434,6 +438,8 @@ impl DNAsequence {
             methylation_sites: MethylationSites::default(),
             methylation_mode: self.methylation_mode.clone(),
             gc_content: GcContents::default(),
+            feature_generation: 0,
+            restriction_enzyme_group_generation: 0,
         })
     }
 
@@ -467,6 +473,8 @@ impl DNAsequence {
             methylation_sites: MethylationSites::default(),
             methylation_mode: MethylationMode::default(),
             gc_content: GcContents::default(),
+            feature_generation: 0,
+            restriction_enzyme_group_generation: 0,
         }
     }
 
@@ -640,6 +648,8 @@ impl DNAsequence {
             methylation_sites: MethylationSites::default(),
             methylation_mode: MethylationMode::default(), // TODO default?
             gc_content: GcContents::default(),
+            feature_generation: 0,
+            restriction_enzyme_group_generation: 0,
         }
     }
 
@@ -701,9 +711,11 @@ impl DNAsequence {
     }
 
     pub fn update_computed_features(&mut self) {
+        self.bump_feature_generation();
         if self.is_protein_sequence() {
             self.restriction_enzyme_sites.clear();
             self.restriction_enzyme_groups.clear();
+            self.bump_restriction_enzyme_group_generation();
             self.open_reading_frames.clear();
             self.methylation_sites = MethylationSites::default();
             self.gc_content = GcContents::default();
@@ -723,7 +735,25 @@ impl DNAsequence {
     }
 
     pub fn features_mut(&mut self) -> &mut Vec<Feature> {
+        self.bump_feature_generation();
         &mut self.seq.features
+    }
+
+    pub fn feature_generation(&self) -> u64 {
+        self.feature_generation
+    }
+
+    fn bump_feature_generation(&mut self) {
+        self.feature_generation = self.feature_generation.wrapping_add(1);
+    }
+
+    pub fn restriction_enzyme_group_generation(&self) -> u64 {
+        self.restriction_enzyme_group_generation
+    }
+
+    fn bump_restriction_enzyme_group_generation(&mut self) {
+        self.restriction_enzyme_group_generation =
+            self.restriction_enzyme_group_generation.wrapping_add(1);
     }
 
     pub(crate) fn clone_seq_record(&self) -> Seq {
@@ -907,6 +937,7 @@ impl DNAsequence {
                 .or_default()
                 .push(re_site.enzyme.name.to_owned());
         }
+        self.bump_restriction_enzyme_group_generation();
     }
 
     fn split_at_restriction_enzyme_site_circular(&self, site: &RestrictionEnzymeSite) -> Self {
