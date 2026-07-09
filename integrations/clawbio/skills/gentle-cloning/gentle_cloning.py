@@ -3149,6 +3149,20 @@ def _fallback_chat_summary_lines(
         return None
     stdout_preview = _one_line_preview(run_result.stdout)
     stderr_preview = _one_line_preview(run_result.stderr)
+    if (
+        _is_default_demo_request(request)
+        and not isinstance(stdout_json, dict)
+        and not stdout_preview
+        and not stderr_preview
+    ):
+        return [
+            "Generated a deterministic GENtle protocol cartoon for a two-fragment Gibson assembly.",
+            (
+                "The ClawBio demo now starts with a graphical export so the first reply can "
+                "show an actual figure instead of only listing commands."
+            ),
+            "Best-first preview artifact: generated/artifacts/gibson.two_fragment.protocol.png",
+        ]
     if not isinstance(stdout_json, dict) and not stdout_preview and not stderr_preview:
         return None
     command_text = _format_command_text(command)

@@ -400,6 +400,17 @@ metadata:
       - trypsin digest gel demo
       - protease digest demo
       - peptide gel demo
+      - construct reasoning recommended inspections
+      - recommended inspections for graph
+      - which dotplot should i inspect
+      - list reasoning inspection actions
+      - list recommended dotplots
+      - construct reasoning dotplot recommendations
+      - run reasoning inspection action
+      - render recommended dotplot
+      - run recommended dotplot
+      - open reasoning dotplot action
+      - compute reasoning inspection action
       - gentle demo
       - cloning demo
       - continue gibson
