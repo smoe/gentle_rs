@@ -9267,7 +9267,7 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, allele-hash-screen, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-isoform-triage-tsv, export-alignment-dotplot-svg"
+            "rna-reads requires a subcommand: preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, allele-hash-screen, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-dexseq-annotation-gff, export-dexseq-counts-tsv, export-score-density-svg, export-alignments-tsv, export-isoform-triage-tsv, export-alignment-dotplot-svg"
                 .to_string(),
         );
     }
@@ -11724,6 +11724,75 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 subset_spec,
             })
         }
+        "export-dexseq-annotation-gff" => {
+            if tokens.len() != 4 {
+                return Err(
+                    "rna-reads export-dexseq-annotation-gff requires REPORT_ID OUTPUT.gff"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::RnaReadsExportDexseqAnnotationGff {
+                report_id: tokens[2].clone(),
+                path: tokens[3].clone(),
+            })
+        }
+        "export-dexseq-counts-tsv" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-dexseq-counts-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut selection = RnaReadHitSelection::All;
+            let mut selected_record_indices: Vec<usize> = vec![];
+            let mut subset_spec: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads export-dexseq-counts-tsv",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads export-dexseq-counts-tsv",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
+                    "--subset-spec" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--subset-spec",
+                            "rna-reads export-dexseq-counts-tsv",
+                        )?;
+                        subset_spec = Some(raw);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-dexseq-counts-tsv"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportDexseqCountsTsv {
+                report_id,
+                path,
+                selection,
+                selected_record_indices,
+                subset_spec,
+            })
+        }
         "export-score-density-svg" => {
             if tokens.len() < 4 {
                 return Err(
@@ -12026,7 +12095,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, show-alignments, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, allele-hash-screen, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-isoform-triage-tsv, export-alignment-dotplot-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, show-alignments, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, allele-hash-screen, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-dexseq-annotation-gff, export-dexseq-counts-tsv, export-score-density-svg, export-alignments-tsv, export-isoform-triage-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }

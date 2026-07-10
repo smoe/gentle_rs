@@ -2887,6 +2887,17 @@ pub enum ShellCommand {
         selected_record_indices: Vec<usize>,
         subset_spec: Option<String>,
     },
+    RnaReadsExportDexseqAnnotationGff {
+        report_id: String,
+        path: String,
+    },
+    RnaReadsExportDexseqCountsTsv {
+        report_id: String,
+        path: String,
+        selection: RnaReadHitSelection,
+        selected_record_indices: Vec<usize>,
+        subset_spec: Option<String>,
+    },
     RnaReadsExportScoreDensitySvg {
         report_id: String,
         path: String,
@@ -12056,6 +12067,24 @@ impl ShellCommand {
                 subset_spec,
             } => format!(
                 "export RNA-read exon abundance from '{}' to '{}' (selection={}, selected_record_indices={}, subset_spec={})",
+                report_id,
+                path,
+                selection.as_str(),
+                selected_record_indices.len(),
+                subset_spec.as_deref().unwrap_or("none")
+            ),
+            Self::RnaReadsExportDexseqAnnotationGff { report_id, path } => format!(
+                "export RNA-read DEXSeq flattened annotation from '{}' to '{}'",
+                report_id, path
+            ),
+            Self::RnaReadsExportDexseqCountsTsv {
+                report_id,
+                path,
+                selection,
+                selected_record_indices,
+                subset_spec,
+            } => format!(
+                "export RNA-read DEXSeq counts from '{}' to '{}' (selection={}, selected_record_indices={}, subset_spec={})",
                 report_id,
                 path,
                 selection.as_str(),
@@ -21897,6 +21926,18 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "Export exon and transition abundance rows from one persisted RNA-read interpretation report.",
         ),
         report_export_operation_descriptor(
+            "rna-reads export-dexseq-annotation-gff",
+            "rna_read",
+            "external DEXSeq flattened-annotation GFF output path",
+            "Export the persisted exonic-part partition from one RNA-read interpretation report as a DEXSeq flattened annotation.",
+        ),
+        report_export_operation_descriptor(
+            "rna-reads export-dexseq-counts-tsv",
+            "rna_read",
+            "external two-column DEXSeq/HTSeq count-table path",
+            "Export selected exonic-part counts from one RNA-read interpretation report as a DEXSeq-compatible HTSeq table.",
+        ),
+        report_export_operation_descriptor(
             "rna-reads export-score-density-svg",
             "rna_read",
             "external score-density SVG output path",
@@ -22076,6 +22117,18 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "rna_read",
             "external exon-abundance TSV output path carried by the operation payload",
             "Export exon and transition abundance rows from one persisted RNA-read report through the shared engine operation.",
+        ),
+        report_export_operation_descriptor(
+            "ExportRnaReadDexseqAnnotationGff",
+            "rna_read",
+            "external DEXSeq flattened-annotation GFF output path carried by the operation payload",
+            "Export the persisted disjoint exonic-part partition from one RNA-read report as a DEXSeq flattened-annotation GFF.",
+        ),
+        report_export_operation_descriptor(
+            "ExportRnaReadDexseqCountsTsv",
+            "rna_read",
+            "external two-column DEXSeq/HTSeq count-table path carried by the operation payload",
+            "Export selected exonic-part counts from one persisted RNA-read report as a DEXSeq-compatible HTSeq table.",
         ),
         report_export_operation_descriptor(
             "ExportRnaReadScoreDensitySvg",
@@ -25632,6 +25685,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "rna-reads export-target-quality"
         | "rna-reads export-paths-tsv"
         | "rna-reads export-abundance-tsv"
+        | "rna-reads export-dexseq-annotation-gff"
+        | "rna-reads export-dexseq-counts-tsv"
         | "rna-reads export-score-density-svg"
         | "rna-reads export-alignments-tsv"
         | "rna-reads export-isoform-triage-tsv"
@@ -25869,6 +25924,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "ExportRnaReadTargetQuality"
         | "ExportRnaReadExonPathsTsv"
         | "ExportRnaReadExonAbundanceTsv"
+        | "ExportRnaReadDexseqAnnotationGff"
+        | "ExportRnaReadDexseqCountsTsv"
         | "ExportRnaReadScoreDensitySvg"
         | "ExportRnaReadAlignmentsTsv"
         | "ExportRnaReadIsoformTriageTsv"
@@ -53999,6 +54056,40 @@ fn execute_rna_reads_command(
                 }),
             })
         }
+        ShellCommand::RnaReadsExportDexseqAnnotationGff { report_id, path } => {
+            let export = engine
+                .export_rna_read_dexseq_annotation_gff(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(export).map_err(|e| {
+                    format!("Could not serialize RNA-read DEXSeq annotation export: {e}")
+                })?,
+            })
+        }
+        ShellCommand::RnaReadsExportDexseqCountsTsv {
+            report_id,
+            path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+        } => {
+            let export = engine
+                .export_rna_read_dexseq_counts_tsv(
+                    report_id,
+                    path,
+                    *selection,
+                    selected_record_indices,
+                    subset_spec.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(export).map_err(|e| {
+                    format!("Could not serialize RNA-read DEXSeq count export: {e}")
+                })?,
+            })
+        }
         ShellCommand::RnaReadsExportScoreDensitySvg {
             report_id,
             path,
@@ -55384,6 +55475,8 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::RnaReadsExportTargetQuality { .. }
             | ShellCommand::RnaReadsExportExonPathsTsv { .. }
             | ShellCommand::RnaReadsExportExonAbundanceTsv { .. }
+            | ShellCommand::RnaReadsExportDexseqAnnotationGff { .. }
+            | ShellCommand::RnaReadsExportDexseqCountsTsv { .. }
             | ShellCommand::RnaReadsExportScoreDensitySvg { .. }
             | ShellCommand::RnaReadsExportAlignmentsTsv { .. }
             | ShellCommand::RnaReadsExportIsoformTriageTsv { .. }
@@ -56979,6 +57072,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsExportTargetQuality { .. }
         | ShellCommand::RnaReadsExportExonPathsTsv { .. }
         | ShellCommand::RnaReadsExportExonAbundanceTsv { .. }
+        | ShellCommand::RnaReadsExportDexseqAnnotationGff { .. }
+        | ShellCommand::RnaReadsExportDexseqCountsTsv { .. }
         | ShellCommand::RnaReadsExportScoreDensitySvg { .. }
         | ShellCommand::RnaReadsExportAlignmentsTsv { .. }
         | ShellCommand::RnaReadsExportIsoformTriageTsv { .. }

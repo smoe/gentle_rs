@@ -794,6 +794,8 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads export-target-quality`
   - `rna-reads export-paths-tsv`
   - `rna-reads export-abundance-tsv`
+  - `rna-reads export-dexseq-annotation-gff`
+  - `rna-reads export-dexseq-counts-tsv`
   - `rna-reads export-score-density-svg`
   - `rna-reads export-alignments-tsv`
   - `rna-reads export-isoform-triage-tsv`
@@ -805,7 +807,9 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   `MaterializeRnaReadHitSequences`, `ExportRnaReadReport`,
   `ExportRnaReadHitsFasta`, `ExportRnaReadSampleSheet`,
   `ExportRnaReadTargetQuality`,
-  `ExportRnaReadExonPathsTsv`, `ExportRnaReadExonAbundanceTsv`, `ExportRnaReadScoreDensitySvg`,
+  `ExportRnaReadExonPathsTsv`, `ExportRnaReadExonAbundanceTsv`,
+  `ExportRnaReadDexseqAnnotationGff`, `ExportRnaReadDexseqCountsTsv`,
+  `ExportRnaReadScoreDensitySvg`,
   `ExportRnaReadAlignmentsTsv`, `ExportRnaReadIsoformTriageTsv`, and
   `ExportRnaReadAlignmentDotplotSvg`, plus
   the shared engine alignment-display helper used by the GUI `Show alignment`
@@ -2191,6 +2195,8 @@ Shared shell command:
         RNA-read artifact exports such as `rna-reads export-hits-fasta`,
         `rna-reads export-target-quality`, `rna-reads export-paths-tsv`,
         `rna-reads export-abundance-tsv`,
+        `rna-reads export-dexseq-annotation-gff`,
+        `rna-reads export-dexseq-counts-tsv`,
         `rna-reads export-score-density-svg`,
         `rna-reads export-alignments-tsv`,
         `rna-reads export-isoform-triage-tsv`, and
@@ -2203,6 +2209,7 @@ Shared shell command:
         `ExportCutRunReadCoverage`, `ExportRnaReadReport`,
         `ExportRnaReadHitsFasta`, `ExportRnaReadTargetQuality`,
         `ExportRnaReadExonPathsTsv`, `ExportRnaReadExonAbundanceTsv`,
+        `ExportRnaReadDexseqAnnotationGff`, `ExportRnaReadDexseqCountsTsv`,
         `ExportRnaReadScoreDensitySvg`, `ExportRnaReadAlignmentsTsv`,
         `ExportRnaReadIsoformTriageTsv`, and
         `ExportRnaReadAlignmentDotplotSvg` expose the same model for
@@ -2969,6 +2976,8 @@ Shared shell command:
     - `rna-reads export-target-quality REPORT_ID OUTPUT.{svg|json} --gene GENE_ID [--gene GENE_ID ...] [--complete-rule near|strict|exact]`
     - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
+    - `rna-reads export-dexseq-annotation-gff REPORT_ID OUTPUT.gff`
+    - `rna-reads export-dexseq-counts-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]`
     - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-isoform-triage-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT] [--min-identity F] [--min-query-coverage F] [--min-confirmed-transition-fraction F] [--max-secondary-mappings N]`
@@ -3126,6 +3135,29 @@ Shared shell command:
       accept the same `--record-indices` exact-subset override plus optional
       `--subset-spec` provenance. Abundance exports count per-bin support from
       `exon_path` and exclude `_` intra-exon adjacencies from junction rows.
+    - `rna-reads export-dexseq-annotation-gff` writes the report's persisted,
+      selection-independent exonic-part partition in the flattened GFF shape
+      consumed by DEXSeq. `rna-reads export-dexseq-counts-tsv` writes the
+      matching plain two-column HTSeq-style count file; it deliberately emits
+      no metadata comments or extra columns. The join key is
+      `<aggregate_gene_id>:E<three-digit-part-number>`.
+      - reuse one annotation GFF across samples made from the same sequence
+        annotation and exonic-part partition
+      - each selected retained report hit contributes at most one count per
+        touched global ordinal, even if that ordinal repeats in `exon_path`
+      - `_empty` counts selected rows with an empty `exon_path`, `_lowaqual`
+        counts selected rows that failed the seed gate, and `_notaligned`
+        counts selected rows without a best alignment; these independently
+        observed diagnostics can overlap
+      - `_ambiguous` and `_ambiguous_readpair` are currently always `0`
+        because GENtle does not persist those HTSeq assignment categories
+      - command selection and `subset_spec` provenance are returned as JSON,
+        not inserted into the strict two-column count file
+      - reports that predate persisted `exonic_part_bins` are rejected; re-run
+        alignment rather than reconstructing a possibly different partition at
+        export time
+      - pass the per-sample count files and shared GFF to R as
+        `DEXSeqDataSetFromHTSeq(countfiles, sampleData, design, flattenedfile)`
     - `rna-reads export-isoform-triage-tsv` writes a conservative read-level
       TSV with bins `known_isoform_confirmed`, `known_isoform_ambiguous`,
       `gene_supported_no_isoform_call`, and `off_target_or_bad_seed`; recurrent

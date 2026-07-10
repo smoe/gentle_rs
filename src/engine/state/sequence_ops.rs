@@ -2505,6 +2505,8 @@ impl GentleEngine {
         | Operation::ExportRnaReadSampleSheet { path, .. }
         | Operation::ExportRnaReadExonPathsTsv { path, .. }
         | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
+        | Operation::ExportRnaReadDexseqAnnotationGff { path, .. }
+        | Operation::ExportRnaReadDexseqCountsTsv { path, .. }
         | Operation::ExportRnaReadScoreDensitySvg { path, .. }
         | Operation::ExportRnaReadAlignmentsTsv { path, .. }
         | Operation::ExportRnaReadIsoformTriageTsv { path, .. }
@@ -2606,6 +2608,8 @@ impl GentleEngine {
             | Operation::ExportRnaReadSampleSheet { path, .. }
             | Operation::ExportRnaReadExonPathsTsv { path, .. }
             | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
+            | Operation::ExportRnaReadDexseqAnnotationGff { path, .. }
+            | Operation::ExportRnaReadDexseqCountsTsv { path, .. }
             | Operation::ExportRnaReadScoreDensitySvg { path, .. }
             | Operation::ExportRnaReadAlignmentsTsv { path, .. }
             | Operation::ExportRnaReadIsoformTriageTsv { path, .. }

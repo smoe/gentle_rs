@@ -22623,6 +22623,8 @@ fn execute_introspect_readiness_checks_rna_read_artifact_exports() {
         "rna-reads export-target-quality",
         "rna-reads export-paths-tsv",
         "rna-reads export-abundance-tsv",
+        "rna-reads export-dexseq-annotation-gff",
+        "rna-reads export-dexseq-counts-tsv",
         "rna-reads export-score-density-svg",
         "rna-reads export-alignments-tsv",
         "rna-reads export-isoform-triage-tsv",
@@ -22637,6 +22639,8 @@ fn execute_introspect_readiness_checks_rna_read_artifact_exports() {
         "ExportRnaReadTargetQuality",
         "ExportRnaReadExonPathsTsv",
         "ExportRnaReadExonAbundanceTsv",
+        "ExportRnaReadDexseqAnnotationGff",
+        "ExportRnaReadDexseqCountsTsv",
         "ExportRnaReadScoreDensitySvg",
         "ExportRnaReadAlignmentsTsv",
         "ExportRnaReadIsoformTriageTsv",
@@ -25852,6 +25856,8 @@ fn execute_introspect_capabilities_projects_full_registry_with_fact_annotations(
         ("ExportRnaReadTargetQuality", "rna_read"),
         ("ExportRnaReadExonPathsTsv", "rna_read"),
         ("ExportRnaReadExonAbundanceTsv", "rna_read"),
+        ("ExportRnaReadDexseqAnnotationGff", "rna_read"),
+        ("ExportRnaReadDexseqCountsTsv", "rna_read"),
         ("ExportRnaReadScoreDensitySvg", "rna_read"),
         ("ExportRnaReadAlignmentsTsv", "rna_read"),
         ("ExportRnaReadIsoformTriageTsv", "rna_read"),
@@ -37114,6 +37120,29 @@ fn parse_rna_reads_commands() {
                 && subset_spec.as_deref() == Some("filtered_tp53")
     ));
 
+    let export_dexseq_annotation =
+        parse_shell_line("rna-reads export-dexseq-annotation-gff tp73_reads dexseq.gff")
+            .expect("parse rna-reads export-dexseq-annotation-gff");
+    assert!(matches!(
+        export_dexseq_annotation,
+        ShellCommand::RnaReadsExportDexseqAnnotationGff { report_id, path }
+            if report_id == "tp73_reads" && path == "dexseq.gff"
+    ));
+
+    let export_dexseq_counts = parse_shell_line(
+        "rna-reads export-dexseq-counts-tsv tp73_reads dexseq.tsv --selection aligned --record-indices 6,8 --subset-spec filtered_tp53",
+    )
+    .expect("parse rna-reads export-dexseq-counts-tsv");
+    assert!(matches!(
+        export_dexseq_counts,
+        ShellCommand::RnaReadsExportDexseqCountsTsv { report_id, path, selection, selected_record_indices, subset_spec }
+            if report_id == "tp73_reads"
+                && path == "dexseq.tsv"
+                && selection == RnaReadHitSelection::Aligned
+                && selected_record_indices == vec![6, 8]
+                && subset_spec.as_deref() == Some("filtered_tp53")
+    ));
+
     let export_score_density = parse_shell_line(
         "rna-reads export-score-density-svg tp73_reads score_density.svg --scale linear --variant composite_seed_gate",
     )
@@ -38588,6 +38617,71 @@ fn execute_rna_reads_commands_store_and_export_reports() {
     assert!(abundance_text.contains("selected_record_indices=0"));
     assert!(abundance_text.contains("subset_spec=filter=selected only | sort=score | search=tp53"));
     assert!(abundance_text.contains("row_kind"));
+
+    let exported_dexseq_gff = fasta_dir.path().join("dexseq.gff");
+    let export_dexseq_gff_result = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsExportDexseqAnnotationGff {
+            report_id: "rna_reads_test".to_string(),
+            path: exported_dexseq_gff.display().to_string(),
+        },
+    )
+    .expect("export RNA-read DEXSeq annotation");
+    assert_eq!(
+        export_dexseq_gff_result.output["schema"].as_str(),
+        Some("gentle.rna_read_dexseq_annotation_gff_export.v1")
+    );
+    assert!(
+        export_dexseq_gff_result.output["exonic_part_count"]
+            .as_u64()
+            .is_some_and(|count| count > 0)
+    );
+    assert_eq!(
+        export_dexseq_gff_result.output["row_count"].as_u64(),
+        export_dexseq_gff_result.output["aggregate_gene_count"]
+            .as_u64()
+            .zip(
+                export_dexseq_gff_result.output["exonic_part_count"]
+                    .as_u64()
+            )
+            .map(|(genes, parts)| genes + parts)
+    );
+    let dexseq_gff_text =
+        fs::read_to_string(exported_dexseq_gff).expect("read DEXSeq annotation GFF");
+    assert!(dexseq_gff_text.contains("\tGENtle_dexseq\taggregate_gene\t"));
+    assert!(dexseq_gff_text.contains("\tGENtle_dexseq\texonic_part\t"));
+
+    let exported_dexseq_counts = fasta_dir.path().join("dexseq.tsv");
+    let export_dexseq_counts_result = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsExportDexseqCountsTsv {
+            report_id: "rna_reads_test".to_string(),
+            path: exported_dexseq_counts.display().to_string(),
+            selection: RnaReadHitSelection::All,
+            selected_record_indices: vec![0],
+            subset_spec: Some("filter=selected only | sort=score | search=tp53".to_string()),
+        },
+    )
+    .expect("export RNA-read DEXSeq counts");
+    assert_eq!(
+        export_dexseq_counts_result.output["schema"].as_str(),
+        Some("gentle.rna_read_dexseq_counts_tsv_export.v1")
+    );
+    assert_eq!(
+        export_dexseq_counts_result.output["selected_read_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        export_dexseq_counts_result.output["row_count"].as_u64(),
+        export_dexseq_counts_result.output["exonic_part_count"]
+            .as_u64()
+            .map(|parts| parts + 5)
+    );
+    let dexseq_counts_text =
+        fs::read_to_string(exported_dexseq_counts).expect("read DEXSeq count table");
+    assert!(!dexseq_counts_text.starts_with('#'));
+    assert!(dexseq_counts_text.contains(":E001\t"));
+    assert!(dexseq_counts_text.contains("_ambiguous_readpair\t0"));
 
     let exported_density_svg = fasta_dir.path().join("score_density.svg");
     let export_density_result = execute_shell_command(

@@ -9067,6 +9067,8 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads export-target-quality REPORT_ID OUTPUT.{svg|json} --gene GENE_ID [--gene GENE_ID ...] [--complete-rule near|strict|exact]`
   - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
+  - `rna-reads export-dexseq-annotation-gff REPORT_ID OUTPUT.gff`
+  - `rna-reads export-dexseq-counts-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]`
   - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
@@ -9252,6 +9254,45 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   records the formal subset definition alongside `selected_record_indices`.
   Abundance exports count per-bin support from `exon_path` and exclude `_`
   intra-exon adjacencies from junction rows.
+- DEXSeq interoperability uses one persisted join table on
+  `RnaReadInterpretationReport.exonic_part_bins[]`:
+  - each bin stores `global_ordinal`, aggregate `gene_id`, per-aggregate-gene
+    `exonic_part_number`, one-based inclusive coordinates, strand, supporting
+    transcript IDs, and the existing partition's `constitutive` flag
+  - `global_ordinal` is exactly the integer encoded in `hit.exon_path`; part
+    numbers restart at `1` for each aggregate gene and increase by genomic
+    coordinate even on minus-strand loci
+  - aggregate gene IDs are the sorted `+`-joined set of genes whose
+    transcripts support the bin; unresolved genes use a stable
+    `GENtle_unassigned_<seq_id>` identifier
+  - reports written before this additive field deserialize normally with an
+    empty table, but both DEXSeq exporters reject them with a request to re-run
+    alignment
+- `ExportRnaReadDexseqAnnotationGff` /
+  `rna-reads export-dexseq-annotation-gff` write a selection-independent
+  flattened GFF with `aggregate_gene` and `exonic_part` rows. Exonic-part
+  attributes are `transcripts`, zero-padded `exonic_part_number`, and
+  `gene_id`. The result schema is
+  `gentle.rna_read_dexseq_annotation_gff_export.v1`.
+- `ExportRnaReadDexseqCountsTsv` /
+  `rna-reads export-dexseq-counts-tsv` write the corresponding strict
+  two-column HTSeq-style count file. Ordinary row IDs are
+  `<gene_id>:E<zero-padded-three-digit-part-number>` and are generated from the
+  same persisted table as the GFF. A selected retained read contributes once
+  per touched ordinal after per-read deduplication. No metadata comments or
+  extra columns are written; selection, explicit record indices, and
+  `subset_spec` are carried by the JSON result schema
+  `gentle.rna_read_dexseq_counts_tsv_export.v1`.
+  Both export result schemas report the total written `row_count` alongside
+  aggregate-gene and exonic-part counts.
+  - `_empty` counts selected rows with empty `exon_path`
+  - `_lowaqual` counts selected rows that failed the seed gate
+  - `_notaligned` counts selected rows without `best_mapping`
+  - `_ambiguous` and `_ambiguous_readpair` are currently `0` because those
+    HTSeq categories are not retained by GENtle
+  - special-row diagnostics are independently observed and may overlap
+  - use the per-sample count files and shared flattened GFF with
+    `DEXSeqDataSetFromHTSeq(countfiles, sampleData, design, flattenedfile)`
 - cDNA/direct-RNA normalization controls in `seed_filter`:
   - `cdna_poly_t_flip_enabled` (default `true`)
   - `poly_t_prefix_min_bp` (default `18`): minimum T support used by the

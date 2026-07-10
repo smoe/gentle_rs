@@ -4576,6 +4576,34 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ExportRnaReadDexseqAnnotationGff"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-dexseq-annotation-gff",
+         "summary": "Export the persisted disjoint exonic-part partition as a DEXSeq flattened-annotation GFF.",
+         "usage": "rna-reads export-dexseq-annotation-gff REPORT_ID OUTPUT.gff"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadDexseqCountsTsv"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-dexseq-counts-tsv",
+         "summary": "Export selected RNA-read exonic-part counts as a two-column DEXSeq/HTSeq table.",
+         "usage": "rna-reads export-dexseq-counts-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "ExportRnaReadScoreDensitySvg"
          ],
          "interfaces": [

@@ -729,6 +729,10 @@ const RNA_READ_CHECKPOINT_SCHEMA: &str = "gentle.rna_read_interpret_checkpoint.v
 const RNA_READ_SAMPLE_SHEET_EXPORT_SCHEMA: &str = "gentle.rna_read_sample_sheet_export.v1";
 const RNA_READ_EXON_PATHS_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_paths_export.v1";
 const RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_abundance_export.v1";
+const RNA_READ_DEXSEQ_ANNOTATION_GFF_EXPORT_SCHEMA: &str =
+    "gentle.rna_read_dexseq_annotation_gff_export.v1";
+const RNA_READ_DEXSEQ_COUNTS_TSV_EXPORT_SCHEMA: &str =
+    "gentle.rna_read_dexseq_counts_tsv_export.v1";
 const RNA_READ_GENE_SUPPORT_SUMMARY_SCHEMA: &str = "gentle.rna_read_gene_support_summary.v1";
 const RNA_READ_GENE_SUPPORT_AUDIT_SCHEMA: &str = "gentle.rna_read_gene_support_audit.v1";
 const RNA_READ_TARGET_QUALITY_COMPARISON_BUNDLE_SCHEMA: &str =
@@ -4951,6 +4955,20 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         subset_spec: Option<String>,
     },
+    ExportRnaReadDexseqAnnotationGff {
+        report_id: String,
+        path: String,
+    },
+    ExportRnaReadDexseqCountsTsv {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        selection: RnaReadHitSelection,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subset_spec: Option<String>,
+    },
     ExportRnaReadScoreDensitySvg {
         report_id: String,
         path: String,
@@ -8639,6 +8657,8 @@ impl GentleEngine {
                 | Operation::ExportRnaReadTargetQuality { .. }
                 | Operation::ExportRnaReadExonPathsTsv { .. }
                 | Operation::ExportRnaReadExonAbundanceTsv { .. }
+                | Operation::ExportRnaReadDexseqAnnotationGff { .. }
+                | Operation::ExportRnaReadDexseqCountsTsv { .. }
                 | Operation::ExportRnaReadScoreDensitySvg { .. }
                 | Operation::ExportRnaReadAlignmentsTsv { .. }
                 | Operation::ExportRnaReadIsoformTriageTsv { .. }

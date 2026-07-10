@@ -25632,6 +25632,41 @@ impl GentleEngine {
                     selected_record_indices.len()
                 ));
                 }
+                Operation::ExportRnaReadDexseqAnnotationGff { report_id, path } => {
+                    let export = self.export_rna_read_dexseq_annotation_gff(&report_id, &path)?;
+                    result.messages.push(format!(
+                        "Exported RNA-read DEXSeq annotation '{}' to '{}' (aggregate_genes={}, exonic_parts={})",
+                        export.report_id,
+                        export.path,
+                        export.aggregate_gene_count,
+                        export.exonic_part_count
+                    ));
+                }
+                Operation::ExportRnaReadDexseqCountsTsv {
+                    report_id,
+                    path,
+                    selection,
+                    selected_record_indices,
+                    subset_spec,
+                } => {
+                    let export = self.export_rna_read_dexseq_counts_tsv(
+                        &report_id,
+                        &path,
+                        selection,
+                        &selected_record_indices,
+                        subset_spec.as_deref(),
+                    )?;
+                    result.messages.push(format!(
+                        "Exported RNA-read DEXSeq counts '{}' to '{}' (selection={}, selected_reads={}, aggregate_genes={}, exonic_parts={}, selected_record_indices={})",
+                        export.report_id,
+                        export.path,
+                        export.selection.as_str(),
+                        export.selected_read_count,
+                        export.aggregate_gene_count,
+                        export.exonic_part_count,
+                        selected_record_indices.len()
+                    ));
+                }
                 Operation::ExportRnaReadScoreDensitySvg {
                     report_id,
                     path,

@@ -176,6 +176,25 @@ struct RnaReadPreflightScoringContext {
     transcript_exon_models: Vec<TranscriptExonPathModel>,
 }
 
+#[derive(Debug, Clone)]
+struct RnaReadExonicPartPartitionBin {
+    start_1based: usize,
+    end_1based: usize,
+    supporting_transcript_feature_ids: Vec<usize>,
+    constitutive: bool,
+}
+
+impl RnaReadExonicPartPartitionBin {
+    fn summary(&self) -> SplicingExonSummary {
+        SplicingExonSummary {
+            start_1based: self.start_1based,
+            end_1based: self.end_1based,
+            support_transcript_count: self.supporting_transcript_feature_ids.len(),
+            constitutive: self.constitutive,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 struct RnaReadPreflightControlAccumulator {
     source_paths: BTreeSet<String>,
@@ -5437,6 +5456,384 @@ impl GentleEngine {
             selected_read_count,
             exon_row_count: exon_counts.len(),
             transition_row_count: transition_counts.len(),
+        })
+    }
+
+    fn validated_rna_read_dexseq_bins<'a>(
+        report: &'a RnaReadInterpretationReport,
+    ) -> Result<&'a [RnaReadExonicPartBin], EngineError> {
+        if report.exonic_part_bins.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "RNA-read report '{}' predates DEXSeq export; re-run alignment to persist the exonic-part bin table",
+                    report.report_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+
+        let mut global_ordinals = BTreeSet::<usize>::new();
+        let mut parts_by_gene = BTreeMap::<String, Vec<&RnaReadExonicPartBin>>::new();
+        for bin in &report.exonic_part_bins {
+            if bin.global_ordinal == 0
+                || bin.exonic_part_number == 0
+                || bin.gene_id.trim().is_empty()
+                || bin.start_1based == 0
+                || bin.end_1based < bin.start_1based
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "RNA-read report '{}' contains an invalid persisted DEXSeq exonic-part bin",
+                        report.report_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            if !global_ordinals.insert(bin.global_ordinal) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "RNA-read report '{}' contains duplicate DEXSeq global ordinal {}",
+                        report.report_id, bin.global_ordinal
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            parts_by_gene
+                .entry(bin.gene_id.clone())
+                .or_default()
+                .push(bin);
+        }
+        if global_ordinals
+            .iter()
+            .copied()
+            .ne(1..=global_ordinals.len())
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "RNA-read report '{}' has a non-contiguous DEXSeq global-ordinal table",
+                    report.report_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        for (gene_id, parts) in &mut parts_by_gene {
+            parts.sort_by_key(|bin| (bin.start_1based, bin.end_1based, bin.global_ordinal));
+            for (index, bin) in parts.iter().enumerate() {
+                if bin.exonic_part_number != index + 1 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "RNA-read report '{}' has non-contiguous DEXSeq part numbering for aggregate gene '{}'",
+                            report.report_id, gene_id
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+            }
+        }
+        Ok(&report.exonic_part_bins)
+    }
+
+    fn ordered_rna_read_dexseq_bin_groups(
+        bins: &[RnaReadExonicPartBin],
+    ) -> Vec<(String, Vec<&RnaReadExonicPartBin>)> {
+        let mut grouped = BTreeMap::<String, Vec<&RnaReadExonicPartBin>>::new();
+        for bin in bins {
+            grouped.entry(bin.gene_id.clone()).or_default().push(bin);
+        }
+        let mut groups = grouped.into_iter().collect::<Vec<_>>();
+        for (_, parts) in &mut groups {
+            parts.sort_by_key(|bin| {
+                (
+                    bin.exonic_part_number,
+                    bin.start_1based,
+                    bin.end_1based,
+                    bin.global_ordinal,
+                )
+            });
+        }
+        groups.sort_by(|(left_gene, left_parts), (right_gene, right_parts)| {
+            let left_start = left_parts
+                .iter()
+                .map(|bin| bin.start_1based)
+                .min()
+                .unwrap_or(usize::MAX);
+            let right_start = right_parts
+                .iter()
+                .map(|bin| bin.start_1based)
+                .min()
+                .unwrap_or(usize::MAX);
+            left_start
+                .cmp(&right_start)
+                .then_with(|| left_gene.cmp(right_gene))
+        });
+        groups
+    }
+
+    fn sanitize_rna_read_dexseq_gff_attribute(value: &str) -> String {
+        value
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace(['\t', '\r', '\n'], " ")
+    }
+
+    fn sanitize_rna_read_dexseq_seqname(value: &str) -> String {
+        let value = value.trim();
+        if value.is_empty() {
+            return "GENtle_sequence".to_string();
+        }
+        value
+            .chars()
+            .map(|ch| if ch.is_whitespace() { '_' } else { ch })
+            .collect()
+    }
+
+    pub fn export_rna_read_dexseq_annotation_gff(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<RnaReadDexseqAnnotationGffExport, EngineError> {
+        let report = self.get_rna_read_report(report_id)?;
+        let bins = Self::validated_rna_read_dexseq_bins(&report)?;
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read DEXSeq annotation export requires non-empty path".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let groups = Self::ordered_rna_read_dexseq_bin_groups(bins);
+        let file = File::create(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not create RNA-read DEXSeq GFF '{}': {e}", path),
+            cause_chain: vec![],
+        })?;
+        let mut writer = BufWriter::new(file);
+        let seqname = Self::sanitize_rna_read_dexseq_seqname(&report.seq_id);
+        for (gene_id, parts) in &groups {
+            let gene_start = parts.iter().map(|bin| bin.start_1based).min().unwrap_or(1);
+            let gene_end = parts
+                .iter()
+                .map(|bin| bin.end_1based)
+                .max()
+                .unwrap_or(gene_start);
+            let strands = parts
+                .iter()
+                .map(|bin| bin.strand.as_str())
+                .filter(|strand| *strand == "+" || *strand == "-")
+                .collect::<BTreeSet<_>>();
+            let strand = if strands.len() == 1 {
+                strands.into_iter().next().unwrap_or(".")
+            } else {
+                "."
+            };
+            writeln!(
+                writer,
+                "{}\tGENtle_dexseq\taggregate_gene\t{}\t{}\t.\t{}\t.\tgene_id \"{}\"",
+                seqname,
+                gene_start,
+                gene_end,
+                strand,
+                Self::sanitize_rna_read_dexseq_gff_attribute(gene_id),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not write RNA-read DEXSeq gene row to '{}': {e}",
+                    path
+                ),
+                cause_chain: vec![],
+            })?;
+            for bin in parts {
+                writeln!(
+                    writer,
+                    "{}\tGENtle_dexseq\texonic_part\t{}\t{}\t.\t{}\t.\ttranscripts \"{}\"; exonic_part_number \"{:03}\"; gene_id \"{}\"",
+                    seqname,
+                    bin.start_1based,
+                    bin.end_1based,
+                    bin.strand,
+                    Self::sanitize_rna_read_dexseq_gff_attribute(&bin.transcripts.join("+")),
+                    bin.exonic_part_number,
+                    Self::sanitize_rna_read_dexseq_gff_attribute(&bin.gene_id),
+                )
+                .map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not write RNA-read DEXSeq exonic-part row to '{}': {e}",
+                        path
+                    ),
+                    cause_chain: vec![],
+                })?;
+            }
+        }
+        writer.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not flush RNA-read DEXSeq GFF '{}': {e}", path),
+            cause_chain: vec![],
+        })?;
+        Ok(RnaReadDexseqAnnotationGffExport {
+            schema: RNA_READ_DEXSEQ_ANNOTATION_GFF_EXPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            report_id: report.report_id.clone(),
+            seq_id: report.seq_id.clone(),
+            row_count: groups.len().saturating_add(bins.len()),
+            aggregate_gene_count: groups.len(),
+            exonic_part_count: bins.len(),
+        })
+    }
+
+    pub fn export_rna_read_dexseq_counts_tsv(
+        &self,
+        report_id: &str,
+        path: &str,
+        selection: RnaReadHitSelection,
+        selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
+    ) -> Result<RnaReadDexseqCountsTsvExport, EngineError> {
+        let report = self.get_rna_read_report(report_id)?;
+        let bins = Self::validated_rna_read_dexseq_bins(&report)?;
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read DEXSeq count export requires non-empty path".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let groups = Self::ordered_rna_read_dexseq_bin_groups(bins);
+        let bins_by_ordinal = bins
+            .iter()
+            .map(|bin| (bin.global_ordinal, bin))
+            .collect::<HashMap<_, _>>();
+        let explicit_record_filter = selected_record_indices
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
+        let mut counts_by_ordinal = HashMap::<usize, usize>::new();
+        let mut selected_read_count = 0usize;
+        let ambiguous_count = 0usize;
+        let mut empty_count = 0usize;
+        let mut lowaqual_count = 0usize;
+        let mut notaligned_count = 0usize;
+        for hit in &report.hits {
+            if !Self::include_rna_read_hit_by_selection_and_indices(
+                hit,
+                selection,
+                &explicit_record_filter,
+            ) {
+                continue;
+            }
+            selected_read_count = selected_read_count.saturating_add(1);
+            if !hit.passed_seed_filter {
+                lowaqual_count = lowaqual_count.saturating_add(1);
+            }
+            if hit.best_mapping.is_none() {
+                notaligned_count = notaligned_count.saturating_add(1);
+            }
+            let (ordinals, _) = Self::parse_exon_path(&hit.exon_path);
+            if ordinals.is_empty() {
+                empty_count = empty_count.saturating_add(1);
+                continue;
+            }
+            let touched = ordinals.into_iter().collect::<BTreeSet<_>>();
+            if let Some(unknown_ordinal) = touched
+                .iter()
+                .find(|ordinal| !bins_by_ordinal.contains_key(ordinal))
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "RNA-read report '{}' has exon_path ordinal {} without a matching persisted DEXSeq bin",
+                        report.report_id, unknown_ordinal
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            for ordinal in touched {
+                *counts_by_ordinal.entry(ordinal).or_insert(0) += 1;
+            }
+        }
+
+        let file = File::create(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create RNA-read DEXSeq count table '{}': {e}",
+                path
+            ),
+            cause_chain: vec![],
+        })?;
+        let mut writer = BufWriter::new(file);
+        for (_, parts) in &groups {
+            for bin in parts {
+                writeln!(
+                    writer,
+                    "{}:E{:03}\t{}",
+                    bin.gene_id,
+                    bin.exonic_part_number,
+                    counts_by_ordinal
+                        .get(&bin.global_ordinal)
+                        .copied()
+                        .unwrap_or(0),
+                )
+                .map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not write RNA-read DEXSeq count row to '{}': {e}",
+                        path
+                    ),
+                    cause_chain: vec![],
+                })?;
+            }
+        }
+        for (label, count) in [
+            ("_ambiguous", ambiguous_count),
+            ("_empty", empty_count),
+            ("_ambiguous_readpair", 0),
+            ("_lowaqual", lowaqual_count),
+            ("_notaligned", notaligned_count),
+        ] {
+            writeln!(writer, "{label}\t{count}").map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not write RNA-read DEXSeq special row to '{}': {e}",
+                    path
+                ),
+                cause_chain: vec![],
+            })?;
+        }
+        writer.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not flush RNA-read DEXSeq count table '{}': {e}",
+                path
+            ),
+            cause_chain: vec![],
+        })?;
+
+        let mut selected_record_indices = selected_record_indices.to_vec();
+        selected_record_indices.sort_unstable();
+        selected_record_indices.dedup();
+        Ok(RnaReadDexseqCountsTsvExport {
+            schema: RNA_READ_DEXSEQ_COUNTS_TSV_EXPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            report_id: report.report_id.clone(),
+            selection,
+            selected_record_indices,
+            subset_spec: subset_spec.map(str::to_string),
+            selected_read_count,
+            row_count: bins.len().saturating_add(5),
+            aggregate_gene_count: groups.len(),
+            exonic_part_count: bins.len(),
+            ambiguous_count,
+            empty_count,
+            ambiguous_readpair_count: 0,
+            lowaqual_count,
+            notaligned_count,
         })
     }
 
@@ -10917,9 +11314,9 @@ impl GentleEngine {
         map
     }
 
-    pub(super) fn collect_seed_support_exon_summaries(
+    fn collect_seed_support_exonic_part_partition(
         transcript_lanes: &[SplicingTranscriptLane],
-    ) -> Vec<SplicingExonSummary> {
+    ) -> Vec<RnaReadExonicPartPartitionBin> {
         let mut breakpoints = BTreeSet::<usize>::new();
         let mut exon_intervals = Vec::<(usize, usize, usize)>::new();
         let mut transcript_ids = HashSet::<usize>::new();
@@ -10938,7 +11335,7 @@ impl GentleEngine {
         }
         let transcript_count = transcript_ids.len().max(1);
         let breakpoints = breakpoints.into_iter().collect::<Vec<_>>();
-        let mut exonic_parts = Vec::<SplicingExonSummary>::new();
+        let mut exonic_parts = Vec::<RnaReadExonicPartPartitionBin>::new();
         for window in breakpoints.windows(2) {
             let start_1based = window[0];
             let end_exclusive_1based = window[1];
@@ -10946,24 +11343,196 @@ impl GentleEngine {
                 continue;
             }
             let end_1based = end_exclusive_1based - 1;
-            let supporting_transcripts = exon_intervals
+            let mut supporting_transcripts = exon_intervals
                 .iter()
                 .filter(|(exon_start, exon_end, _)| {
                     *exon_start <= start_1based && *exon_end >= end_1based
                 })
                 .map(|(_, _, transcript_feature_id)| *transcript_feature_id)
-                .collect::<HashSet<_>>();
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
             if supporting_transcripts.is_empty() {
                 continue;
             }
-            exonic_parts.push(SplicingExonSummary {
+            supporting_transcripts.sort_unstable();
+            let constitutive = supporting_transcripts.len() == transcript_count;
+            exonic_parts.push(RnaReadExonicPartPartitionBin {
                 start_1based,
                 end_1based,
-                support_transcript_count: supporting_transcripts.len(),
-                constitutive: supporting_transcripts.len() == transcript_count,
+                supporting_transcript_feature_ids: supporting_transcripts,
+                constitutive,
             });
         }
         exonic_parts
+    }
+
+    pub(super) fn collect_seed_support_exon_summaries(
+        transcript_lanes: &[SplicingTranscriptLane],
+    ) -> Vec<SplicingExonSummary> {
+        Self::collect_seed_support_exonic_part_partition(transcript_lanes)
+            .iter()
+            .map(RnaReadExonicPartPartitionBin::summary)
+            .collect()
+    }
+
+    fn synthesized_rna_read_dexseq_gene_id(seq_id: &str) -> String {
+        let mut token = seq_id
+            .trim()
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+        while token.contains("__") {
+            token = token.replace("__", "_");
+        }
+        let token = token.trim_matches('_');
+        if token.is_empty() {
+            "GENtle_unassigned_sequence".to_string()
+        } else {
+            format!("GENtle_unassigned_{token}")
+        }
+    }
+
+    fn build_rna_read_exonic_part_bins(
+        dna: &DNAsequence,
+        seq_id: &str,
+        transcript_lanes: &[SplicingTranscriptLane],
+        target_gene_ids: &[String],
+        default_group_label: &str,
+        partition: &[RnaReadExonicPartPartitionBin],
+    ) -> Vec<RnaReadExonicPartBin> {
+        let fallback_gene_id = Self::synthesized_rna_read_dexseq_gene_id(seq_id);
+        let mut normalized_target_gene_ids = target_gene_ids
+            .iter()
+            .map(|gene_id| gene_id.trim())
+            .filter(|gene_id| !gene_id.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        normalized_target_gene_ids.sort_by_key(|gene_id| gene_id.to_ascii_lowercase());
+        normalized_target_gene_ids.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+        let sole_target_gene_id =
+            (normalized_target_gene_ids.len() == 1).then(|| normalized_target_gene_ids[0].clone());
+        let default_group_label = default_group_label.trim();
+        let usable_default_group = (!default_group_label.is_empty()
+            && !default_group_label.starts_with("mRNA-group-"))
+        .then(|| default_group_label.to_string());
+
+        let mut lane_by_feature_id = HashMap::<usize, &SplicingTranscriptLane>::new();
+        let mut gene_by_feature_id = HashMap::<usize, String>::new();
+        for lane in transcript_lanes {
+            lane_by_feature_id.insert(lane.transcript_feature_id, lane);
+            let annotated_gene =
+                dna.features()
+                    .get(lane.transcript_feature_id)
+                    .and_then(|feature| {
+                        Self::first_nonempty_feature_qualifier(
+                            feature,
+                            &[
+                                "gene",
+                                "gene_id",
+                                "locus_tag",
+                                "standard_name",
+                                "gene_synonym",
+                            ],
+                        )
+                    });
+            let gene_id = annotated_gene
+                .or_else(|| sole_target_gene_id.clone())
+                .or_else(|| {
+                    if lane.has_target_feature {
+                        usable_default_group.clone()
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| fallback_gene_id.clone());
+            gene_by_feature_id.insert(lane.transcript_feature_id, gene_id);
+        }
+
+        let mut bins = Vec::<RnaReadExonicPartBin>::with_capacity(partition.len());
+        for (index, part) in partition.iter().enumerate() {
+            let mut gene_ids = BTreeSet::<String>::new();
+            let mut transcript_ids = BTreeSet::<String>::new();
+            let mut strands = BTreeSet::<String>::new();
+            for transcript_feature_id in &part.supporting_transcript_feature_ids {
+                if let Some(gene_id) = gene_by_feature_id.get(transcript_feature_id) {
+                    gene_ids.insert(gene_id.clone());
+                }
+                if let Some(lane) = lane_by_feature_id.get(transcript_feature_id) {
+                    if !lane.transcript_id.trim().is_empty() {
+                        transcript_ids.insert(lane.transcript_id.trim().to_string());
+                    }
+                    let strand = lane.strand.trim();
+                    if strand == "+" || strand == "-" {
+                        strands.insert(strand.to_string());
+                    }
+                }
+            }
+            if gene_ids.is_empty() {
+                gene_ids.insert(fallback_gene_id.clone());
+            }
+            let strand = if strands.len() == 1 {
+                strands
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| ".".to_string())
+            } else {
+                ".".to_string()
+            };
+            bins.push(RnaReadExonicPartBin {
+                global_ordinal: index + 1,
+                gene_id: gene_ids.into_iter().collect::<Vec<_>>().join("+"),
+                exonic_part_number: 0,
+                start_1based: part.start_1based,
+                end_1based: part.end_1based,
+                strand,
+                transcripts: transcript_ids.into_iter().collect(),
+                constitutive: part.constitutive,
+            });
+        }
+
+        let mut indices_by_gene = BTreeMap::<String, Vec<usize>>::new();
+        for (index, bin) in bins.iter().enumerate() {
+            indices_by_gene
+                .entry(bin.gene_id.clone())
+                .or_default()
+                .push(index);
+        }
+        for indices in indices_by_gene.values_mut() {
+            indices.sort_by_key(|index| {
+                let bin = &bins[*index];
+                (bin.start_1based, bin.end_1based, bin.global_ordinal)
+            });
+            for (part_index, bin_index) in indices.iter().copied().enumerate() {
+                bins[bin_index].exonic_part_number = part_index + 1;
+            }
+        }
+        bins
+    }
+
+    #[cfg(test)]
+    pub(super) fn collect_rna_read_exonic_part_bins(
+        dna: &DNAsequence,
+        seq_id: &str,
+        transcript_lanes: &[SplicingTranscriptLane],
+        target_gene_ids: &[String],
+        default_group_label: &str,
+    ) -> Vec<RnaReadExonicPartBin> {
+        let partition = Self::collect_seed_support_exonic_part_partition(transcript_lanes);
+        Self::build_rna_read_exonic_part_bins(
+            dna,
+            seq_id,
+            transcript_lanes,
+            target_gene_ids,
+            default_group_label,
+            &partition,
+        )
     }
 
     pub(super) fn build_seed_support_indexes(
@@ -12812,7 +13381,22 @@ impl GentleEngine {
         for row in &seed_catalog_rows {
             *seed_occurrence_counts.entry(row.seed_bits).or_insert(0) += 1;
         }
-        let seed_support_exons = Self::collect_seed_support_exon_summaries(&transcript_lanes);
+        let seed_support_partition =
+            Self::collect_seed_support_exonic_part_partition(&transcript_lanes);
+        let seed_support_exons = seed_support_partition
+            .iter()
+            .map(RnaReadExonicPartPartitionBin::summary)
+            .collect::<Vec<_>>();
+        if report.exonic_part_bins.is_empty() {
+            report.exonic_part_bins = Self::build_rna_read_exonic_part_bins(
+                dna,
+                &report.seq_id,
+                &transcript_lanes,
+                &report.target_gene_ids,
+                &splicing.group_label,
+                &seed_support_partition,
+            );
+        }
         let (
             seed_to_exons,
             seed_to_transitions,
@@ -13925,7 +14509,20 @@ impl GentleEngine {
         for row in &seed_catalog_rows {
             *seed_occurrence_counts.entry(row.seed_bits).or_insert(0) += 1;
         }
-        let seed_support_exons = Self::collect_seed_support_exon_summaries(&transcript_lanes);
+        let seed_support_partition =
+            Self::collect_seed_support_exonic_part_partition(&transcript_lanes);
+        let seed_support_exons = seed_support_partition
+            .iter()
+            .map(RnaReadExonicPartPartitionBin::summary)
+            .collect::<Vec<_>>();
+        let exonic_part_bins = Self::build_rna_read_exonic_part_bins(
+            dna,
+            seq_id,
+            &transcript_lanes,
+            &normalized_target_gene_ids,
+            &splicing.group_label,
+            &seed_support_partition,
+        );
         let (
             seed_to_exons,
             seed_to_transitions,
@@ -14940,6 +15537,7 @@ impl GentleEngine {
             scope,
             origin_mode,
             target_gene_ids: normalized_target_gene_ids,
+            exonic_part_bins,
             roi_seed_capture_enabled,
             checkpoint_path,
             checkpoint_every_reads,

@@ -34965,6 +34965,370 @@ fn test_export_rna_read_exon_abundance_skips_intra_exon_bin_edges() {
 }
 
 #[test]
+fn test_rna_read_dexseq_exports_share_partition_join_keys_and_counts() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_dexseq".to_string(), splicing_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let feature_id = engine
+        .state()
+        .sequences
+        .get("seq_dexseq")
+        .expect("DEXSeq test sequence")
+        .features()
+        .iter()
+        .position(GentleEngine::is_mrna_feature)
+        .expect("DEXSeq seed transcript");
+    let splicing = engine
+        .build_splicing_expert_view(
+            "seq_dexseq",
+            feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )
+        .expect("DEXSeq splicing view");
+    let bins = {
+        let dna = engine
+            .state()
+            .sequences
+            .get("seq_dexseq")
+            .expect("DEXSeq test sequence");
+        GentleEngine::collect_rna_read_exonic_part_bins(
+            dna,
+            "seq_dexseq",
+            &splicing.transcripts,
+            &[],
+            &splicing.group_label,
+        )
+    };
+    let summaries = GentleEngine::collect_seed_support_exon_summaries(&splicing.transcripts);
+    assert_eq!(bins.len(), summaries.len());
+    assert!(bins.len() >= 3);
+    for (index, (bin, summary)) in bins.iter().zip(&summaries).enumerate() {
+        assert_eq!(bin.global_ordinal, index + 1);
+        assert_eq!(bin.gene_id, "GENE1");
+        assert_eq!(bin.exonic_part_number, index + 1);
+        assert_eq!(bin.start_1based, summary.start_1based);
+        assert_eq!(bin.end_1based, summary.end_1based);
+        assert_eq!(bin.strand, "+");
+        assert!(!bin.transcripts.is_empty());
+    }
+
+    let first = bins[0].global_ordinal;
+    let second = bins[1].global_ordinal;
+    let last = bins.last().expect("last DEXSeq bin").global_ordinal;
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_dexseq".to_string(),
+            seq_id: "seq_dexseq".to_string(),
+            exonic_part_bins: bins.clone(),
+            hits: vec![
+                RnaReadInterpretationHit {
+                    record_index: 0,
+                    header_id: "read_first_second".to_string(),
+                    passed_seed_filter: true,
+                    exon_path: format!("{first}_{second}_{second}"),
+                    best_mapping: Some(RnaReadMappingHit::default()),
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 1,
+                    header_id: "read_last".to_string(),
+                    passed_seed_filter: true,
+                    exon_path: last.to_string(),
+                    best_mapping: Some(RnaReadMappingHit::default()),
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 2,
+                    header_id: "read_low_quality".to_string(),
+                    passed_seed_filter: false,
+                    exon_path: second.to_string(),
+                    best_mapping: None,
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 3,
+                    header_id: "read_empty".to_string(),
+                    passed_seed_filter: true,
+                    exon_path: String::new(),
+                    best_mapping: None,
+                    ..RnaReadInterpretationHit::default()
+                },
+            ],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("persist DEXSeq report");
+
+    let td = tempdir().expect("tempdir");
+    let gff_path = td.path().join("dexseq.gff");
+    let count_path = td.path().join("dexseq_counts.tsv");
+    let gff_export = engine
+        .export_rna_read_dexseq_annotation_gff(
+            "rna_reads_dexseq",
+            gff_path.to_str().expect("GFF path"),
+        )
+        .expect("export DEXSeq GFF");
+    let count_export = engine
+        .export_rna_read_dexseq_counts_tsv(
+            "rna_reads_dexseq",
+            count_path.to_str().expect("count path"),
+            RnaReadHitSelection::All,
+            &[],
+            Some("all retained synthetic reads"),
+        )
+        .expect("export DEXSeq counts");
+    assert_eq!(gff_export.exonic_part_count, bins.len());
+    assert_eq!(
+        gff_export.row_count,
+        gff_export
+            .aggregate_gene_count
+            .saturating_add(gff_export.exonic_part_count)
+    );
+    assert_eq!(count_export.exonic_part_count, bins.len());
+    assert_eq!(count_export.row_count, bins.len() + 5);
+    assert_eq!(count_export.selected_read_count, 4);
+    assert_eq!(count_export.empty_count, 1);
+    assert_eq!(count_export.lowaqual_count, 1);
+    assert_eq!(count_export.notaligned_count, 2);
+
+    let gff_text = fs::read_to_string(gff_path).expect("read DEXSeq GFF");
+    let count_text = fs::read_to_string(count_path).expect("read DEXSeq counts");
+    let gff_keys = gff_text
+        .lines()
+        .filter_map(|line| {
+            let columns = line.split('\t').collect::<Vec<_>>();
+            if columns.get(2).copied() != Some("exonic_part") {
+                return None;
+            }
+            let attributes = *columns.get(8)?;
+            let gene_id = attributes.split("gene_id \"").nth(1)?.split('"').next()?;
+            let part = attributes
+                .split("exonic_part_number \"")
+                .nth(1)?
+                .split('"')
+                .next()?;
+            Some(format!("{gene_id}:E{part}"))
+        })
+        .collect::<BTreeSet<_>>();
+    let count_rows = count_text
+        .lines()
+        .filter(|line| !line.starts_with('_'))
+        .filter_map(|line| {
+            let (key, count) = line.split_once('\t')?;
+            Some((key.to_string(), count.parse::<usize>().ok()?))
+        })
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        gff_keys,
+        count_rows.keys().cloned().collect::<BTreeSet<_>>()
+    );
+    assert_eq!(count_rows.get("GENE1:E001"), Some(&1));
+    assert_eq!(count_rows.get("GENE1:E002"), Some(&2));
+    assert_eq!(count_text.lines().next(), Some("GENE1:E001\t1"));
+    assert!(count_text.contains("_ambiguous\t0\n"));
+    assert!(count_text.contains("_empty\t1\n"));
+    assert!(count_text.contains("_ambiguous_readpair\t0\n"));
+
+    let operation_gff_path = td.path().join("dexseq_operation.gff");
+    let operation_count_path = td.path().join("dexseq_operation_counts.tsv");
+    engine
+        .apply(Operation::ExportRnaReadDexseqAnnotationGff {
+            report_id: "rna_reads_dexseq".to_string(),
+            path: operation_gff_path.display().to_string(),
+        })
+        .expect("operation DEXSeq annotation export");
+    engine
+        .apply(Operation::ExportRnaReadDexseqCountsTsv {
+            report_id: "rna_reads_dexseq".to_string(),
+            path: operation_count_path.display().to_string(),
+            selection: RnaReadHitSelection::All,
+            selected_record_indices: vec![],
+            subset_spec: None,
+        })
+        .expect("operation DEXSeq count export");
+    assert!(operation_gff_path.is_file());
+    assert!(operation_count_path.is_file());
+}
+
+#[test]
+fn test_rna_read_dexseq_partition_builds_sorted_aggregate_gene_ids() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(60)).expect("synthetic DNA");
+    for (gene_id, transcript_id, start_0based, end_0based) in [
+        ("GENEB", "TX_B", 20i64, 40i64),
+        ("GENEA", "TX_A", 10i64, 30i64),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(start_0based, end_0based),
+            qualifiers: vec![
+                ("gene".into(), Some(gene_id.to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+            ],
+        });
+    }
+    let lanes = vec![
+        SplicingTranscriptLane {
+            transcript_feature_id: 0,
+            transcript_id: "TX_B".to_string(),
+            label: "TX B".to_string(),
+            strand: "+".to_string(),
+            exons: vec![SplicingRange {
+                start_1based: 21,
+                end_1based: 40,
+            }],
+            exon_cds_phases: vec![],
+            introns: vec![],
+            has_target_feature: false,
+        },
+        SplicingTranscriptLane {
+            transcript_feature_id: 1,
+            transcript_id: "TX_A".to_string(),
+            label: "TX A".to_string(),
+            strand: "+".to_string(),
+            exons: vec![SplicingRange {
+                start_1based: 11,
+                end_1based: 30,
+            }],
+            exon_cds_phases: vec![],
+            introns: vec![],
+            has_target_feature: true,
+        },
+    ];
+
+    let bins = GentleEngine::collect_rna_read_exonic_part_bins(
+        &dna,
+        "aggregate_seq",
+        &lanes,
+        &[],
+        "GENEA",
+    );
+    assert_eq!(
+        bins.iter()
+            .map(|bin| (
+                bin.start_1based,
+                bin.end_1based,
+                bin.gene_id.as_str(),
+                bin.exonic_part_number,
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            (11, 20, "GENEA", 1),
+            (21, 30, "GENEA+GENEB", 1),
+            (31, 40, "GENEB", 1),
+        ]
+    );
+    assert_eq!(bins[1].transcripts, vec!["TX_A", "TX_B"]);
+}
+
+#[test]
+fn test_rna_read_dexseq_minus_strand_parts_number_by_genomic_coordinate() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(60)).expect("synthetic DNA");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 20),
+            gb_io::seq::Location::simple_range(30, 40),
+        ]))),
+        qualifiers: vec![
+            ("gene".into(), Some("MINUS1".to_string())),
+            ("transcript_id".into(), Some("TX_MINUS".to_string())),
+        ],
+    });
+    let lanes = vec![SplicingTranscriptLane {
+        transcript_feature_id: 0,
+        transcript_id: "TX_MINUS".to_string(),
+        label: "TX minus".to_string(),
+        strand: "-".to_string(),
+        exons: vec![
+            SplicingRange {
+                start_1based: 11,
+                end_1based: 20,
+            },
+            SplicingRange {
+                start_1based: 31,
+                end_1based: 40,
+            },
+        ],
+        exon_cds_phases: vec![],
+        introns: vec![],
+        has_target_feature: true,
+    }];
+
+    let bins =
+        GentleEngine::collect_rna_read_exonic_part_bins(&dna, "minus_seq", &lanes, &[], "MINUS1");
+    assert_eq!(bins.len(), 2);
+    assert_eq!(bins[0].start_1based, 11);
+    assert_eq!(bins[0].exonic_part_number, 1);
+    assert_eq!(bins[1].start_1based, 31);
+    assert_eq!(bins[1].exonic_part_number, 2);
+    assert!(bins.iter().all(|bin| bin.strand == "-"));
+
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "minus_dexseq".to_string(),
+            seq_id: "minus_seq".to_string(),
+            exonic_part_bins: bins,
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("persist minus-strand DEXSeq report");
+    let td = tempdir().expect("tempdir");
+    let path = td.path().join("minus.gff");
+    engine
+        .export_rna_read_dexseq_annotation_gff(
+            "minus_dexseq",
+            path.to_str().expect("minus GFF path"),
+        )
+        .expect("export minus-strand GFF");
+    let gff = fs::read_to_string(path).expect("read minus-strand GFF");
+    assert!(
+        gff.lines()
+            .filter(|line| line.contains("\texonic_part\t"))
+            .all(|line| line.split('\t').nth(6) == Some("-"))
+    );
+}
+
+#[test]
+fn test_rna_read_dexseq_export_rejects_reports_without_persisted_bins() {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "legacy_rna_reads".to_string(),
+            seq_id: "legacy_seq".to_string(),
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("persist legacy report");
+    let td = tempdir().expect("tempdir");
+    let gff_error = engine
+        .export_rna_read_dexseq_annotation_gff(
+            "legacy_rna_reads",
+            td.path().join("legacy.gff").to_str().expect("GFF path"),
+        )
+        .expect_err("legacy GFF export must fail");
+    let counts_error = engine
+        .export_rna_read_dexseq_counts_tsv(
+            "legacy_rna_reads",
+            td.path()
+                .join("legacy_counts.tsv")
+                .to_str()
+                .expect("count path"),
+            RnaReadHitSelection::All,
+            &[],
+            None,
+        )
+        .expect_err("legacy count export must fail");
+    for error in [gff_error, counts_error] {
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(error.message.contains("predates DEXSeq export"));
+        assert!(error.message.contains("re-run alignment"));
+    }
+}
+
+#[test]
 fn test_full_read_hash_windows_phase1_hashes_full_read() {
     assert_eq!(
         GentleEngine::full_read_hash_windows(0),

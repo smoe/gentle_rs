@@ -19,6 +19,14 @@ Maintenance rule:
   layer/GC/lineage/title/JASPAR derivations are cached; and dense JASPAR and
   feature-tree lists use virtualized rows.
 
+## 2026-07-09
+
+- Persisted the RNA-read disjoint exonic-part partition and added
+  `rna-reads export-dexseq-annotation-gff` plus
+  `rna-reads export-dexseq-counts-tsv`, producing a mutually joinable DEXSeq
+  flattened annotation and strict two-column HTSeq-style count table without
+  changing existing exon-path or abundance exports.
+
 ## 2026-07-08
 
 - Made undo/redo checkpoints for display-only DNA-view operations cheap.

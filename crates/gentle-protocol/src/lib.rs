@@ -5078,6 +5078,8 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportRnaReadTargetQuality",
     "ExportRnaReadExonPathsTsv",
     "ExportRnaReadExonAbundanceTsv",
+    "ExportRnaReadDexseqAnnotationGff",
+    "ExportRnaReadDexseqCountsTsv",
     "ExportRnaReadScoreDensitySvg",
     "ExportRnaReadAlignmentsTsv",
     "ExportRnaReadAlignmentDotplotSvg",
@@ -7244,6 +7246,61 @@ pub struct RnaReadExonAbundanceExport {
     pub transition_row_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One persisted DEXSeq-style disjoint exonic-part bin.
+///
+/// `global_ordinal` is the stable join key used by `RnaReadInterpretationHit::exon_path`.
+/// `exonic_part_number` is numbered independently within `gene_id` in ascending
+/// genomic-coordinate order and is used by DEXSeq-facing GFF/count exports.
+pub struct RnaReadExonicPartBin {
+    pub global_ordinal: usize,
+    pub gene_id: String,
+    pub exonic_part_number: usize,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub strand: String,
+    #[serde(default)]
+    pub transcripts: Vec<String>,
+    pub constitutive: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Summary returned after writing a DEXSeq flattened-annotation GFF.
+pub struct RnaReadDexseqAnnotationGffExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub row_count: usize,
+    pub aggregate_gene_count: usize,
+    pub exonic_part_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Summary returned after writing a two-column DEXSeq/HTSeq count table.
+pub struct RnaReadDexseqCountsTsvExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub selection: RnaReadHitSelection,
+    #[serde(default)]
+    pub selected_record_indices: Vec<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subset_spec: Option<String>,
+    pub selected_read_count: usize,
+    pub row_count: usize,
+    pub aggregate_gene_count: usize,
+    pub exonic_part_count: usize,
+    pub ambiguous_count: usize,
+    pub empty_count: usize,
+    pub ambiguous_readpair_count: usize,
+    pub lowaqual_count: usize,
+    pub notaligned_count: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RnaReadGeneExonSupportRow {
@@ -9259,6 +9316,12 @@ pub struct RnaReadInterpretationReport {
     pub origin_mode: RnaReadOriginMode,
     #[serde(default)]
     pub target_gene_ids: Vec<String>,
+    /// DEXSeq-style disjoint exonic-part partition used by `exon_path`.
+    ///
+    /// Reports written before this field was introduced deserialize with an
+    /// empty table and must be re-run before DEXSeq artifacts can be exported.
+    #[serde(default)]
+    pub exonic_part_bins: Vec<RnaReadExonicPartBin>,
     #[serde(default)]
     pub roi_seed_capture_enabled: bool,
     #[serde(default)]
