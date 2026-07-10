@@ -703,6 +703,9 @@ Interactive orchestration contract:
   stale if project structure or journal history changed meanwhile. Concurrent
   viewport/display changes and disjoint persisted UI/session metadata are
   retained in both the committed state and its new undo checkpoints.
+  Detached forks exclude inherited undo/redo checkpoints; successful commits
+  preserve the live history and append only checkpoints created by detached
+  operations.
 - The engine exposes separate execution, persisted-state mutation, and
   structural revisions.
   GUI dirty-state detection compares the mutation revision with the last saved

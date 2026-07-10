@@ -240,12 +240,15 @@ local fingerprints should use algorithm-prefixed stronger digests such as
 Status: active
 
 Long-running GUI network and computation jobs must not hold the shared
-`GentleEngine` read or write lock for their full run. A mutating worker clones
-an engine snapshot, executes against that detached snapshot, and commits with a
-short write-lock swap only if structural project data and journal history are
-unchanged. Concurrent viewport/display edits are preserved across the commit;
-disjoint UI/session metadata is merged into the result and its undo checkpoints,
-while conflicting metadata makes the result stale. Other stale results never
-overwrite intervening edits. Persisted-state mutation revision is separate from
-structural and read-only execution identity so GUI dirty checks remain
-constant-time without marking inspections as edits.
+`GentleEngine` read or write lock for their full run. A mutating worker forks
+the engine state, journal, operation counter, revisions, and history limit,
+executes against that detached snapshot, and commits with a short write-lock
+swap only if structural project data and journal history are unchanged.
+Inherited undo/redo checkpoints stay in the live engine; commit appends only
+checkpoints created by detached operations. Concurrent viewport/display edits
+are preserved across the commit; disjoint UI/session metadata is merged into
+the result and its undo checkpoints, while conflicting metadata makes the
+result stale. Other stale results never overwrite intervening edits.
+Persisted-state mutation revision is separate from structural and read-only
+execution identity so GUI dirty checks remain constant-time without marking
+inspections as edits.
