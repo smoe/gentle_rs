@@ -851,6 +851,7 @@ pub struct GENtleApp {
     genbank_accession: String,
     genbank_as_id: String,
     genbank_status: String,
+    sequence_ingress_task: Option<SequenceIngressTask>,
     dbsnp_rs_id: String,
     dbsnp_genome_id: String,
     dbsnp_flank_bp: String,
@@ -902,6 +903,7 @@ pub struct GENtleApp {
     jaspar_expert_random_seed: String,
     jaspar_expert_fetch_remote_metadata: bool,
     jaspar_expert_status: String,
+    jaspar_background_task: Option<JasparBackgroundTask>,
     jaspar_catalog_report: Option<JasparCatalogReport>,
     jaspar_catalog_generation: u64,
     jaspar_filtered_cache_key: Option<(u64, String)>,
@@ -968,7 +970,7 @@ pub struct GENtleApp {
     genome_bed_track_subscriptions: Vec<GenomeTrackSubscription>,
     genome_track_subscription_filter: String,
     genome_track_autosync_status: String,
-    tracked_autosync_last_op_count: Option<usize>,
+    tracked_autosync_last_key: Option<GenomeTrackAutosyncKey>,
     genome_blast_import_track_name: String,
     genome_blast_import_clear_existing: bool,
     show_command_palette_dialog: bool,
@@ -1704,10 +1706,47 @@ impl CacheCleanupScope {
 
 struct GenomeTrackImportTask {
     job_id: u64,
+    kind: GenomeTrackTaskKind,
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
     runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<GenomeTrackImportTaskMessage>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GenomeTrackAutosyncKey {
+    structural_revision: u64,
+    anchor_signature: String,
+    subscription_signature: String,
+    subscription_count: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum GenomeTrackTaskKind {
+    SelectedImport,
+    AllAnchoredImport,
+    ReapplyTracked,
+    Autosync(GenomeTrackAutosyncKey),
+}
+
+impl GenomeTrackTaskKind {
+    fn supports_cooperative_cancel(&self) -> bool {
+        matches!(self, Self::SelectedImport)
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::SelectedImport => "selected track import",
+            Self::AllAnchoredImport => "all-anchored track import",
+            Self::ReapplyTracked => "tracked-file re-apply",
+            Self::Autosync(_) => "tracked-file auto-sync",
+        }
+    }
+}
+
+enum GenomeTrackTaskResult {
+    Operation(OpResult),
+    Sync(GenomeTrackSyncReport),
 }
 
 enum GenomeTrackImportTaskMessage {
@@ -1715,6 +1754,78 @@ enum GenomeTrackImportTaskMessage {
         job_id: u64,
         progress: GenomeTrackImportProgress,
     },
+    Done {
+        job_id: u64,
+        result: Result<GenomeTrackTaskResult, EngineError>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SequenceIngressTaskKind {
+    GenBank { accession: String, fill_as_id: bool },
+    UniProt { query: String, fill_entry_id: bool },
+    EnsemblProtein { entry_id_override: Option<String> },
+    UniProtLinkedGenBank,
+}
+
+impl SequenceIngressTaskKind {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::GenBank { .. } => "GenBank accession fetch",
+            Self::UniProt { .. } => "UniProt fetch",
+            Self::EnsemblProtein { .. } => "Ensembl protein fetch",
+            Self::UniProtLinkedGenBank => "UniProt-linked GenBank fetch",
+        }
+    }
+
+    fn uses_genbank_status(&self) -> bool {
+        matches!(self, Self::GenBank { .. })
+    }
+}
+
+struct SequenceIngressTask {
+    job_id: u64,
+    kind: SequenceIngressTaskKind,
+    started: Instant,
+    cancel_requested: Arc<AtomicBool>,
+    _runtime_frame: RuntimeStatusGuard,
+    receiver: mpsc::Receiver<SequenceIngressTaskMessage>,
+}
+
+enum SequenceIngressTaskMessage {
+    Done {
+        job_id: u64,
+        result: Result<OpResult, EngineError>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum JasparBackgroundTaskKind {
+    Catalog,
+    SyncVisibleMetadata,
+    Expert { motif: String },
+}
+
+impl JasparBackgroundTaskKind {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Catalog => "JASPAR remote catalog refresh",
+            Self::SyncVisibleMetadata => "JASPAR visible metadata sync",
+            Self::Expert { .. } => "JASPAR remote expert refresh",
+        }
+    }
+}
+
+struct JasparBackgroundTask {
+    job_id: u64,
+    kind: JasparBackgroundTaskKind,
+    started: Instant,
+    cancel_requested: Arc<AtomicBool>,
+    _runtime_frame: RuntimeStatusGuard,
+    receiver: mpsc::Receiver<JasparBackgroundTaskMessage>,
+}
+
+enum JasparBackgroundTaskMessage {
     Done {
         job_id: u64,
         result: Result<OpResult, EngineError>,
@@ -2536,6 +2647,7 @@ impl Default for GENtleApp {
             genbank_accession: String::new(),
             genbank_as_id: String::new(),
             genbank_status: String::new(),
+            sequence_ingress_task: None,
             dbsnp_rs_id: DEFAULT_DBSNP_TUTORIAL_RS_ID.to_string(),
             dbsnp_genome_id: "Human GRCh38 Ensembl 113".to_string(),
             dbsnp_flank_bp: "3000".to_string(),
@@ -2593,6 +2705,7 @@ impl Default for GENtleApp {
             jaspar_expert_random_seed: DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED.to_string(),
             jaspar_expert_fetch_remote_metadata: false,
             jaspar_expert_status: String::new(),
+            jaspar_background_task: None,
             jaspar_catalog_report: None,
             jaspar_catalog_generation: 0,
             jaspar_filtered_cache_key: None,
@@ -2659,7 +2772,7 @@ impl Default for GENtleApp {
             genome_bed_track_subscriptions: vec![],
             genome_track_subscription_filter: String::new(),
             genome_track_autosync_status: String::new(),
-            tracked_autosync_last_op_count: None,
+            tracked_autosync_last_key: None,
             show_command_palette_dialog: false,
             command_palette_query: String::new(),
             command_palette_selected: 0,
@@ -4825,11 +4938,14 @@ Error: `{err}`"
     }
 
     fn request_track_import_task_cancel(&mut self, origin: &str) {
-        let Some((job_id, already_requested)) =
+        let Some((job_id, already_requested, cooperative, label, autosync)) =
             self.genome_track_import_task.as_ref().map(|task| {
                 (
                     task.job_id,
                     task.cancel_requested.swap(true, Ordering::Relaxed),
+                    task.kind.supports_cooperative_cancel(),
+                    task.kind.label(),
+                    matches!(&task.kind, GenomeTrackTaskKind::Autosync(_)),
                 )
             })
         else {
@@ -4843,12 +4959,28 @@ Error: `{err}`"
             return;
         }
 
-        self.genome_track_status = "Cancellation requested for running track import".to_string();
+        if cooperative {
+            self.genome_track_status =
+                "Cancellation requested for running track import".to_string();
+        } else {
+            self.genome_track_import_task = None;
+            self.genome_track_import_progress = None;
+            let status = format!("Stopped waiting for {label}; any late result will be ignored.");
+            if autosync {
+                self.genome_track_autosync_status = status;
+            } else {
+                self.genome_track_status = status;
+            }
+        }
         self.push_job_event(
             BackgroundJobKind::TrackImport,
             BackgroundJobEventPhase::CancelRequested,
             Some(job_id),
-            format!("Cancellation requested from {origin}"),
+            if cooperative {
+                format!("Cancellation requested from {origin}")
+            } else {
+                format!("Stopped waiting from {origin}; late result will be ignored")
+            },
         );
     }
 
@@ -4933,6 +5065,8 @@ Error: `{err}`"
         self.genome_prepare_task.is_some()
             || self.genome_blast_task.is_some()
             || self.genome_track_import_task.is_some()
+            || self.sequence_ingress_task.is_some()
+            || self.jaspar_background_task.is_some()
             || self.tutorial_project_task.is_some()
             || self.agent_task.is_some()
     }
@@ -4980,7 +5114,7 @@ Error: `{err}`"
         self.lineage_arrangements.clear();
         self.lineage_racks.clear();
         self.load_bed_track_subscriptions_from_state();
-        self.tracked_autosync_last_op_count = None;
+        self.tracked_autosync_last_key = None;
         self.genome_track_autosync_status.clear();
         self.refresh_sequence_windows_from_engine_state();
     }
@@ -6587,10 +6721,6 @@ Error: `{err}`"
         self.engine.read().unwrap().structural_revision()
     }
 
-    fn current_operation_count(&self) -> usize {
-        self.engine.read().unwrap().operation_log().len()
-    }
-
     fn project_has_user_content(&self) -> bool {
         let engine = self.engine.read().unwrap();
         let state = engine.state();
@@ -6725,7 +6855,9 @@ Error: `{err}`"
         self.genome_track_import_task = None;
         self.genome_track_import_progress = None;
         self.genome_track_autosync_status.clear();
-        self.tracked_autosync_last_op_count = None;
+        self.tracked_autosync_last_key = None;
+        self.sequence_ingress_task = None;
+        self.jaspar_background_task = None;
         self.tutorial_project_task = None;
         self.tutorial_project_progress_fraction = None;
         self.tutorial_project_progress_label.clear();
@@ -9295,7 +9427,7 @@ Error: `{err}`"
             .unwrap()
             .list_genome_track_subscriptions();
         self.genome_bed_track_subscriptions = subscriptions;
-        self.tracked_autosync_last_op_count = None;
+        self.tracked_autosync_last_key = None;
     }
 
     fn parse_optional_score_field(raw: &str, label: &str) -> Result<Option<f64>> {
@@ -9425,6 +9557,7 @@ Error: `{err}`"
         );
         self.genome_track_import_task = Some(GenomeTrackImportTask {
             job_id,
+            kind: GenomeTrackTaskKind::SelectedImport,
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
             runtime_frame,
@@ -9447,11 +9580,78 @@ Error: `{err}`"
                         }
                         _ => true,
                     })
-                });
+                })
+                .map(GenomeTrackTaskResult::Operation);
             let _ = tx.send(GenomeTrackImportTaskMessage::Done {
                 job_id,
                 result: outcome,
             });
+        });
+    }
+
+    fn start_genome_track_sync_task<F>(
+        &mut self,
+        kind: GenomeTrackTaskKind,
+        detail: String,
+        work: F,
+    ) where
+        F: FnOnce(&mut GentleEngine) -> Result<GenomeTrackSyncReport, EngineError> + Send + 'static,
+    {
+        if self.genome_track_import_task.is_some() {
+            self.genome_track_status =
+                "Another explicit track import or auto-sync is already running".to_string();
+            return;
+        }
+        let job_id = self.alloc_background_job_id();
+        let label = kind.label();
+        let (tx, rx) = mpsc::channel::<GenomeTrackImportTaskMessage>();
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        let runtime_frame = Self::push_runtime_background_job_frame(
+            BackgroundJobKind::TrackImport,
+            job_id,
+            detail.clone(),
+        );
+        runtime_frame.update_phase("running");
+        self.genome_track_import_progress = None;
+        if matches!(kind, GenomeTrackTaskKind::Autosync(_)) {
+            self.genome_track_autosync_status = format!("{label} running: {detail}");
+        } else {
+            self.genome_track_status = format!("{label} running in background: {detail}");
+        }
+        self.push_job_event(
+            BackgroundJobKind::TrackImport,
+            BackgroundJobEventPhase::Started,
+            Some(job_id),
+            format!("{label} started: {detail}"),
+        );
+        self.genome_track_import_task = Some(GenomeTrackImportTask {
+            job_id,
+            kind,
+            started: Instant::now(),
+            cancel_requested: cancel_requested.clone(),
+            runtime_frame,
+            receiver: rx,
+        });
+
+        let engine = self.engine.clone();
+        std::thread::spawn(move || {
+            let worker_cancel = cancel_requested;
+            let result =
+                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
+                    if worker_cancel.load(Ordering::Relaxed) {
+                        return Err(EngineError::invalid_input(
+                            "Track task was stopped before execution",
+                        ));
+                    }
+                    let report = work(snapshot)?;
+                    if worker_cancel.load(Ordering::Relaxed) {
+                        return Err(EngineError::invalid_input(
+                            "Track task finished after stop-waiting; result ignored",
+                        ));
+                    }
+                    Ok(GenomeTrackTaskResult::Sync(report))
+                });
+            let _ = tx.send(GenomeTrackImportTaskMessage::Done { job_id, result });
         });
     }
 
@@ -9549,61 +9749,23 @@ Error: `{err}`"
         if !self.ensure_bigwig_converter_ready(&subscription) {
             return;
         }
-
-        let sync_result = self
-            .engine
-            .write()
-            .unwrap()
-            .import_genome_track_to_all_anchored(subscription.clone(), track_subscription);
-        match sync_result {
-            Ok(report) => {
-                let tracked_note = if track_subscription {
-                    "tracked for auto-sync"
-                } else {
-                    "one-time import"
-                };
-                self.genome_track_status = format!(
-                    "{} ({})",
-                    Self::format_track_sync_status(
-                        &format!("{} import (all anchored)", subscription.source.label()),
-                        &report
-                    ),
-                    tracked_note
-                );
-                let refreshed = self.refresh_sequence_windows_from_engine_state();
-                if refreshed > 0 {
-                    self.genome_track_status.push_str(&format!(
-                        " | refreshed {} open sequence window(s)",
-                        refreshed
-                    ));
-                }
-                self.push_job_event(
-                    BackgroundJobKind::TrackImport,
-                    BackgroundJobEventPhase::Completed,
-                    None,
-                    format!(
-                        "{} import (all anchored): applied={}, failed={}",
-                        subscription.source.label(),
-                        report.applied_imports,
-                        report.failed_imports
-                    ),
-                );
-                self.load_bed_track_subscriptions_from_state();
+        let detail = format!(
+            "{} '{}' to all anchored sequences ({})",
+            subscription.source.label(),
+            subscription.path,
+            if track_subscription {
+                "tracked"
+            } else {
+                "one-time"
             }
-            Err(e) => {
-                self.genome_track_status = format!("Import track failed: {}", e.message);
-                self.push_job_event(
-                    BackgroundJobKind::TrackImport,
-                    BackgroundJobEventPhase::Failed,
-                    None,
-                    format!(
-                        "{} import (all anchored) failed: {}",
-                        subscription.source.label(),
-                        e.message
-                    ),
-                );
-            }
-        }
+        );
+        self.start_genome_track_sync_task(
+            GenomeTrackTaskKind::AllAnchoredImport,
+            detail,
+            move |snapshot| {
+                snapshot.import_genome_track_to_all_anchored(subscription, track_subscription)
+            },
+        );
     }
 
     fn apply_tracked_bed_subscription_to_all_anchored(&mut self, index: usize) {
@@ -9618,51 +9780,27 @@ Error: `{err}`"
             return;
         }
 
-        let sync_result = self
-            .engine
-            .write()
-            .unwrap()
-            .apply_tracked_genome_track_subscription(index);
-        match sync_result {
-            Ok(report) => {
-                self.genome_track_status = Self::format_track_sync_status(
-                    &format!(
-                        "Re-applied tracked {} '{}'",
-                        subscription.source.label(),
-                        subscription.path
-                    ),
-                    &report,
-                );
-                let refreshed = self.refresh_sequence_windows_from_engine_state();
-                if refreshed > 0 {
-                    self.genome_track_status.push_str(&format!(
-                        " | refreshed {} open sequence window(s)",
-                        refreshed
-                    ));
-                }
-                self.push_job_event(
-                    BackgroundJobKind::TrackImport,
-                    BackgroundJobEventPhase::Completed,
-                    None,
-                    format!(
-                        "Re-applied tracked {} '{}': applied={}, failed={}",
-                        subscription.source.label(),
-                        subscription.path,
-                        report.applied_imports,
-                        report.failed_imports
-                    ),
-                );
-            }
-            Err(e) => {
-                self.genome_track_status =
-                    format!("Could not re-apply tracked subscription: {}", e.message);
-                self.push_job_event(
-                    BackgroundJobKind::TrackImport,
-                    BackgroundJobEventPhase::Failed,
-                    None,
-                    format!("Tracked subscription apply failed: {}", e.message),
-                );
-            }
+        let detail = format!(
+            "{} '{}' to all anchored sequences",
+            subscription.source.label(),
+            subscription.path
+        );
+        self.start_genome_track_sync_task(
+            GenomeTrackTaskKind::ReapplyTracked,
+            detail,
+            move |snapshot| snapshot.apply_tracked_genome_track_subscription(index),
+        );
+    }
+
+    fn current_genome_track_autosync_key(&self) -> GenomeTrackAutosyncKey {
+        let engine = self.engine.read().unwrap();
+        let anchors = engine.list_sequence_genome_anchor_summaries();
+        let subscriptions = engine.list_genome_track_subscriptions();
+        GenomeTrackAutosyncKey {
+            structural_revision: engine.structural_revision(),
+            anchor_signature: serde_json::to_string(&anchors).unwrap_or_default(),
+            subscription_signature: serde_json::to_string(&subscriptions).unwrap_or_default(),
+            subscription_count: subscriptions.len(),
         }
     }
 
@@ -9670,50 +9808,20 @@ Error: `{err}`"
         if self.genome_track_import_task.is_some() {
             return;
         }
-        if self.genome_bed_track_subscriptions.is_empty() {
-            self.tracked_autosync_last_op_count = Some(self.current_operation_count());
+        let key = self.current_genome_track_autosync_key();
+        if key.subscription_count == 0 {
+            self.tracked_autosync_last_key = Some(key);
             return;
         }
-        let operation_count = self.current_operation_count();
-        if self.tracked_autosync_last_op_count == Some(operation_count) {
+        if self.tracked_autosync_last_key.as_ref() == Some(&key) {
             return;
         }
-        self.tracked_autosync_last_op_count = Some(operation_count);
-        let sync_result = {
-            self.engine
-                .write()
-                .unwrap()
-                .sync_tracked_genome_track_subscriptions(true)
-        };
-        match sync_result {
-            Ok(report) => {
-                if report.applied_imports > 0 || report.failed_imports > 0 {
-                    self.genome_track_autosync_status =
-                        Self::format_track_sync_status("Auto-sync", &report);
-                    self.push_job_event(
-                        BackgroundJobKind::TrackImport,
-                        BackgroundJobEventPhase::Completed,
-                        None,
-                        format!(
-                            "Auto-sync: applied={}, failed={}",
-                            report.applied_imports, report.failed_imports
-                        ),
-                    );
-                }
-                self.tracked_autosync_last_op_count = Some(self.current_operation_count());
-            }
-            Err(e) => {
-                self.genome_track_autosync_status =
-                    format!("Auto-sync failed unexpectedly: {}", e.message);
-                self.push_job_event(
-                    BackgroundJobKind::TrackImport,
-                    BackgroundJobEventPhase::Failed,
-                    None,
-                    format!("Auto-sync failed: {}", e.message),
-                );
-                self.tracked_autosync_last_op_count = Some(self.current_operation_count());
-            }
-        }
+        self.tracked_autosync_last_key = Some(key.clone());
+        self.start_genome_track_sync_task(
+            GenomeTrackTaskKind::Autosync(key),
+            "new or structurally changed genome anchors".to_string(),
+            |snapshot| snapshot.sync_tracked_genome_track_subscriptions(true),
+        );
     }
 
     fn refresh_genome_catalog_list(&mut self) {
@@ -11802,7 +11910,7 @@ Error: `{err}`"
             return;
         }
         ctx.request_repaint_after(Duration::from_millis(100));
-        let mut done: Option<(u64, Result<OpResult, EngineError>)> = None;
+        let mut done: Option<(u64, Result<GenomeTrackTaskResult, EngineError>)> = None;
         let mut stale_job_ids: Vec<u64> = vec![];
         if let Some(task) = &self.genome_track_import_task {
             let active_job_id = task.job_id;
@@ -11882,20 +11990,15 @@ Error: `{err}`"
         }
 
         if let Some((job_id, outcome)) = done {
-            let elapsed = self
-                .genome_track_import_task
-                .as_ref()
-                .map(|task| task.started.elapsed().as_secs_f64())
-                .unwrap_or(0.0);
-            let cancellation_requested = self
-                .genome_track_import_task
-                .as_ref()
-                .map(|task| task.cancel_requested.load(Ordering::Relaxed))
-                .unwrap_or(false);
-            self.genome_track_import_task = None;
+            let Some(task) = self.genome_track_import_task.take() else {
+                return;
+            };
+            let elapsed = task.started.elapsed().as_secs_f64();
+            let cancellation_requested = task.cancel_requested.load(Ordering::Relaxed);
+            let task_kind = task.kind;
             self.genome_track_import_progress = None;
             match outcome {
-                Ok(result) => {
+                Ok(GenomeTrackTaskResult::Operation(result)) => {
                     let prefix = if cancellation_requested {
                         "Import track finished after cancellation request"
                     } else {
@@ -11930,14 +12033,72 @@ Error: `{err}`"
                         format!("{prefix} in {:.1}s", elapsed),
                     );
                 }
-                Err(e) => {
-                    self.genome_track_status =
-                        format!("Import track failed after {:.1}s: {}", elapsed, e.message);
+                Ok(GenomeTrackTaskResult::Sync(report)) => {
+                    let prefix = match &task_kind {
+                        GenomeTrackTaskKind::AllAnchoredImport => "All-anchored import",
+                        GenomeTrackTaskKind::ReapplyTracked => "Tracked-file re-apply",
+                        GenomeTrackTaskKind::Autosync(_) => "Auto-sync",
+                        GenomeTrackTaskKind::SelectedImport => "Track import",
+                    };
+                    let mut status = Self::format_track_sync_status(prefix, &report);
+                    status.push_str(&format!(" | completed in {elapsed:.1}s"));
+                    let refreshed_windows = self.refresh_sequence_windows_from_engine_state();
+                    if refreshed_windows > 0 {
+                        status.push_str(&format!(
+                            " | refreshed {} open sequence window(s)",
+                            refreshed_windows
+                        ));
+                        ctx.request_repaint();
+                    }
+                    self.load_bed_track_subscriptions_from_state();
+                    self.tracked_autosync_last_key = Some(self.current_genome_track_autosync_key());
+                    if matches!(task_kind, GenomeTrackTaskKind::Autosync(_)) {
+                        self.genome_track_autosync_status = status;
+                    } else {
+                        self.genome_track_status = status;
+                    }
                     self.push_job_event(
                         BackgroundJobKind::TrackImport,
-                        BackgroundJobEventPhase::Failed,
+                        BackgroundJobEventPhase::Completed,
                         Some(job_id),
-                        format!("Track import failed in {:.1}s: {}", elapsed, e.message),
+                        format!(
+                            "{prefix} completed in {elapsed:.1}s: applied={}, failed={}",
+                            report.applied_imports, report.failed_imports
+                        ),
+                    );
+                }
+                Err(e) => {
+                    let stale = e.message.contains("became stale");
+                    let label = task_kind.label();
+                    let status = if stale {
+                        format!(
+                            "{label} produced a stale result after {elapsed:.1}s; project state was not changed."
+                        )
+                    } else if cancellation_requested {
+                        format!("{label} cancelled after {elapsed:.1}s: {}", e.message)
+                    } else {
+                        format!("{label} failed after {elapsed:.1}s: {}", e.message)
+                    };
+                    if matches!(task_kind, GenomeTrackTaskKind::Autosync(_)) {
+                        self.genome_track_autosync_status = status;
+                        if stale {
+                            self.tracked_autosync_last_key = None;
+                        } else {
+                            self.tracked_autosync_last_key =
+                                Some(self.current_genome_track_autosync_key());
+                        }
+                    } else {
+                        self.genome_track_status = status;
+                    }
+                    self.push_job_event(
+                        BackgroundJobKind::TrackImport,
+                        if stale {
+                            BackgroundJobEventPhase::IgnoredStale
+                        } else {
+                            BackgroundJobEventPhase::Failed
+                        },
+                        Some(job_id),
+                        format!("{label} failed in {:.1}s: {}", elapsed, e.message),
                     );
                 }
             }
@@ -14912,7 +15073,11 @@ Error: `{err}`"
         self.lineage_graph_node_offsets.clear();
         self.lineage_graph_drag_origin = None;
         self.lineage_graph_offsets_synced_stamp = 0;
-        self.tracked_autosync_last_op_count = None;
+        self.tracked_autosync_last_key = None;
+        self.genome_track_import_task = None;
+        self.genome_track_import_progress = None;
+        self.sequence_ingress_task = None;
+        self.jaspar_background_task = None;
         self.tutorial_project_task = None;
         self.tutorial_project_progress_fraction = None;
         self.tutorial_project_progress_label.clear();
@@ -21763,7 +21928,9 @@ Error: `{err}`"
             ui.separator();
             ui.strong("Genome Track Import");
             let mut cancel_track_import_clicked = false;
-            if self.genome_track_import_task.is_some() {
+            if let Some(task) = self.genome_track_import_task.as_ref() {
+                let cooperative_cancel = task.kind.supports_cooperative_cancel();
+                let task_label = task.kind.label();
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new());
                     if let Some(progress) = &self.genome_track_import_progress {
@@ -21776,11 +21943,19 @@ Error: `{err}`"
                             progress.skipped_records
                         ));
                     } else {
-                        ui.label("Running...");
+                        ui.label(format!("Running {task_label}..."));
                     }
                     if ui
-                        .button("Cancel")
-                        .on_hover_text("Request cancellation of running track-import job")
+                        .button(if cooperative_cancel {
+                            "Cancel"
+                        } else {
+                            "Stop waiting"
+                        })
+                        .on_hover_text(if cooperative_cancel {
+                            "Request cancellation of running track-import job"
+                        } else {
+                            "Stop waiting and ignore the late result; this operation has no cooperative cancellation hook"
+                        })
                         .clicked()
                     {
                         cancel_track_import_clicked = true;
@@ -24116,7 +24291,9 @@ impl GENtleApp {
             self.poll_tutorial_project_task(ctx);
             self.poll_reference_genome_blast_task(ctx);
             self.poll_genome_track_import_task(ctx);
+            self.poll_sequence_ingress_task(ctx);
             self.poll_dbsnp_fetch_task(ctx);
+            self.poll_jaspar_background_task(ctx);
             self.poll_agent_assistant_task(ctx);
             self.poll_agent_model_discovery_task(ctx);
             self.poll_clawbio_task(ctx);

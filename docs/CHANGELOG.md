@@ -21,6 +21,10 @@ Maintenance rule:
 - Made unchanged sequence-window display synchronization a constant-time cache
   hit, while display, structure, feature, topology, sequence-replacement, and
   presentation changes still force a complete settings refresh.
+- Moved GenBank, UniProt, Ensembl-protein, UniProt-linked GenBank, remote
+  JASPAR, all-anchored track import, tracked-file reapply, and track auto-sync
+  work off the egui thread with typed completion, stale-result protection,
+  duplicate suppression, and explicit cancel/stop-waiting states.
 
 ## 2026-07-09
 

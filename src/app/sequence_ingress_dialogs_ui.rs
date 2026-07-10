@@ -244,24 +244,207 @@ impl GENtleApp {
             accession: accession.clone(),
             as_id: Self::uniprot_optional_trimmed(&self.genbank_as_id),
         };
-        let result = { self.engine.write().unwrap().apply(op) };
-        match result {
+        self.start_sequence_ingress_task(
+            SequenceIngressTaskKind::GenBank {
+                accession,
+                fill_as_id: self.genbank_as_id.trim().is_empty(),
+            },
+            op,
+        );
+    }
+
+    fn start_sequence_ingress_task(&mut self, kind: SequenceIngressTaskKind, operation: Operation) {
+        if let Some(active) = self.sequence_ingress_task.as_ref() {
+            let status = format!("{} is already running", active.kind.label());
+            if kind.uses_genbank_status() {
+                self.genbank_status = status;
+            } else {
+                self.uniprot_status = status;
+            }
+            return;
+        }
+
+        let job_id = self.alloc_background_job_id();
+        let label = kind.label();
+        let (tx, rx) = mpsc::channel::<SequenceIngressTaskMessage>();
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        let runtime_frame = Self::push_runtime_external_tool_frame(label, "network request");
+        runtime_frame.update_phase("running");
+        let engine = self.engine.clone();
+        let worker_cancel = cancel_requested.clone();
+        std::thread::spawn(move || {
+            let result =
+                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
+                    if worker_cancel.load(Ordering::Relaxed) {
+                        return Err(EngineError::invalid_input(
+                            "Network request was stopped before execution",
+                        ));
+                    }
+                    let result = snapshot.apply(operation)?;
+                    if worker_cancel.load(Ordering::Relaxed) {
+                        return Err(EngineError::invalid_input(
+                            "Network request finished after stop-waiting; result ignored",
+                        ));
+                    }
+                    Ok(result)
+                });
+            let _ = tx.send(SequenceIngressTaskMessage::Done { job_id, result });
+        });
+
+        let status = format!("{label} running in background...");
+        if kind.uses_genbank_status() {
+            self.genbank_status = status;
+        } else {
+            self.uniprot_status = status;
+        }
+        self.sequence_ingress_task = Some(SequenceIngressTask {
+            job_id,
+            kind,
+            started: Instant::now(),
+            cancel_requested,
+            _runtime_frame: runtime_frame,
+            receiver: rx,
+        });
+    }
+
+    pub(super) fn stop_waiting_for_sequence_ingress_task(&mut self) {
+        let Some(task) = self.sequence_ingress_task.take() else {
+            return;
+        };
+        task.cancel_requested.store(true, Ordering::Relaxed);
+        let status = format!(
+            "Stopped waiting for {}; any late result will be ignored.",
+            task.kind.label()
+        );
+        if task.kind.uses_genbank_status() {
+            self.genbank_status = status;
+        } else {
+            self.uniprot_status = status;
+        }
+    }
+
+    pub(super) fn poll_sequence_ingress_task(&mut self, ctx: &egui::Context) {
+        let Some(task) = self.sequence_ingress_task.as_ref() else {
+            return;
+        };
+        ctx.request_repaint_after(Duration::from_millis(100));
+        let outcome = match task.receiver.try_recv() {
+            Ok(SequenceIngressTaskMessage::Done { job_id, result }) if job_id == task.job_id => {
+                Some(result)
+            }
+            Ok(SequenceIngressTaskMessage::Done { .. }) => None,
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => Some(Err(EngineError::new(
+                ErrorCode::Io,
+                "Sequence-ingress worker disconnected",
+            ))),
+        };
+        let Some(outcome) = outcome else {
+            return;
+        };
+        let Some(task) = self.sequence_ingress_task.take() else {
+            return;
+        };
+        let elapsed = task.started.elapsed().as_secs_f64();
+        let label = task.kind.label();
+        match outcome {
             Ok(result) => {
-                for seq_id in &result.created_seq_ids {
-                    self.open_sequence_window(seq_id);
+                match &task.kind {
+                    SequenceIngressTaskKind::GenBank {
+                        accession,
+                        fill_as_id,
+                    } => {
+                        for seq_id in &result.created_seq_ids {
+                            self.open_sequence_window(seq_id);
+                        }
+                        if *fill_as_id {
+                            self.genbank_as_id = accession.clone();
+                        }
+                        self.genbank_status = format!(
+                            "{}\ncompleted in {:.1}s",
+                            Self::format_op_result_status(
+                                "GenBank fetch: ok",
+                                &result.created_seq_ids,
+                                &result.warnings,
+                                &result.messages,
+                            ),
+                            elapsed
+                        );
+                    }
+                    SequenceIngressTaskKind::UniProt {
+                        query,
+                        fill_entry_id,
+                    } => {
+                        if *fill_entry_id {
+                            self.uniprot_entry_id = query.clone();
+                        }
+                        self.uniprot_status = format!(
+                            "{}\ncompleted in {:.1}s",
+                            Self::format_op_result_status(
+                                "UniProt fetch: ok",
+                                &result.created_seq_ids,
+                                &result.warnings,
+                                &result.messages,
+                            ),
+                            elapsed
+                        );
+                    }
+                    SequenceIngressTaskKind::EnsemblProtein { entry_id_override } => {
+                        if let Some(row) = self.recent_ensembl_protein_entries_for_dialog(1).first()
+                        {
+                            self.ensembl_protein_entry_id = row.entry_id.clone();
+                            if self.uniprot_map_transcript_id.trim().is_empty() {
+                                self.uniprot_map_transcript_id = row.transcript_id.clone();
+                            }
+                        } else if let Some(entry_id_override) = entry_id_override {
+                            self.ensembl_protein_entry_id = entry_id_override.clone();
+                        }
+                        self.uniprot_status = format!(
+                            "{}\ncompleted in {:.1}s",
+                            Self::format_op_result_status(
+                                "Ensembl protein fetch: ok",
+                                &result.created_seq_ids,
+                                &result.warnings,
+                                &result.messages,
+                            ),
+                            elapsed
+                        );
+                    }
+                    SequenceIngressTaskKind::UniProtLinkedGenBank => {
+                        for seq_id in &result.created_seq_ids {
+                            self.open_sequence_window(seq_id);
+                        }
+                        if let Some(seq_id) = result.created_seq_ids.first() {
+                            self.uniprot_map_seq_id = seq_id.clone();
+                        }
+                        self.uniprot_status = format!(
+                            "{}\ncompleted in {:.1}s",
+                            Self::format_op_result_status(
+                                "UniProt linked GenBank fetch: ok",
+                                &result.created_seq_ids,
+                                &result.warnings,
+                                &result.messages,
+                            ),
+                            elapsed
+                        );
+                    }
                 }
-                if self.genbank_as_id.trim().is_empty() {
-                    self.genbank_as_id = accession;
-                }
-                self.genbank_status = Self::format_op_result_status(
-                    "GenBank fetch: ok",
-                    &result.created_seq_ids,
-                    &result.warnings,
-                    &result.messages,
-                );
+                ctx.request_repaint();
             }
             Err(err) => {
-                self.genbank_status = format!("GenBank fetch failed: {}", err.message);
+                let stale = err.message.contains("became stale");
+                let status = if stale {
+                    format!(
+                        "{label} produced a stale result after {elapsed:.1}s; project state was not changed. Rerun the request."
+                    )
+                } else {
+                    format!("{label} failed after {elapsed:.1}s: {}", err.message)
+                };
+                if task.kind.uses_genbank_status() {
+                    self.genbank_status = status;
+                } else {
+                    self.uniprot_status = status;
+                }
             }
         }
     }
@@ -778,22 +961,13 @@ impl GENtleApp {
             query: query.clone(),
             entry_id: Self::uniprot_optional_trimmed(&self.uniprot_entry_id),
         };
-        match self.engine.write().unwrap().apply(op) {
-            Ok(result) => {
-                if self.uniprot_entry_id.trim().is_empty() {
-                    self.uniprot_entry_id = query;
-                }
-                self.uniprot_status = Self::format_op_result_status(
-                    "UniProt fetch: ok",
-                    &result.created_seq_ids,
-                    &result.warnings,
-                    &result.messages,
-                );
-            }
-            Err(err) => {
-                self.uniprot_status = format!("UniProt fetch failed: {}", err.message);
-            }
-        }
+        self.start_sequence_ingress_task(
+            SequenceIngressTaskKind::UniProt {
+                query,
+                fill_entry_id: self.uniprot_entry_id.trim().is_empty(),
+            },
+            op,
+        );
     }
 
     pub(super) fn import_uniprot_swiss_prot_from_dialog(&mut self) {
@@ -832,30 +1006,10 @@ impl GENtleApp {
             query,
             entry_id: entry_id_override.clone(),
         };
-        match self.engine.write().unwrap().apply(op) {
-            Ok(result) => {
-                if let Some(row) = self.recent_ensembl_protein_entries_for_dialog(1).first() {
-                    self.ensembl_protein_entry_id = row.entry_id.clone();
-                    if self.ensembl_protein_query.trim().is_empty() {
-                        self.ensembl_protein_query = row.protein_id.clone();
-                    }
-                    if self.uniprot_map_transcript_id.trim().is_empty() {
-                        self.uniprot_map_transcript_id = row.transcript_id.clone();
-                    }
-                } else if let Some(entry_id_override) = entry_id_override {
-                    self.ensembl_protein_entry_id = entry_id_override;
-                }
-                self.uniprot_status = Self::format_op_result_status(
-                    "Ensembl protein fetch: ok",
-                    &result.created_seq_ids,
-                    &result.warnings,
-                    &result.messages,
-                );
-            }
-            Err(err) => {
-                self.uniprot_status = format!("Ensembl protein fetch failed: {}", err.message);
-            }
-        }
+        self.start_sequence_ingress_task(
+            SequenceIngressTaskKind::EnsemblProtein { entry_id_override },
+            op,
+        );
     }
 
     pub(super) fn import_ensembl_protein_sequence_from_dialog(&mut self) {
@@ -900,27 +1054,7 @@ impl GENtleApp {
             accession: Self::uniprot_optional_trimmed(&self.uniprot_linked_accession),
             as_id: Self::uniprot_optional_trimmed(&self.uniprot_linked_as_id),
         };
-        let result = { self.engine.write().unwrap().apply(op) };
-        match result {
-            Ok(result) => {
-                for seq_id in &result.created_seq_ids {
-                    self.open_sequence_window(seq_id);
-                }
-                if let Some(seq_id) = result.created_seq_ids.first() {
-                    self.uniprot_map_seq_id = seq_id.clone();
-                }
-                self.uniprot_status = Self::format_op_result_status(
-                    "UniProt linked GenBank fetch: ok",
-                    &result.created_seq_ids,
-                    &result.warnings,
-                    &result.messages,
-                );
-            }
-            Err(err) => {
-                self.uniprot_status =
-                    format!("UniProt linked GenBank fetch failed: {}", err.message);
-            }
-        }
+        self.start_sequence_ingress_task(SequenceIngressTaskKind::UniProtLinkedGenBank, op);
     }
 
     pub(super) fn project_uniprot_entry_from_dialog(&mut self) {
@@ -2367,12 +2501,13 @@ impl GENtleApp {
                 );
             ui.separator();
             ui.label("GenBank accession");
+            let sequence_fetch_running = self.sequence_ingress_task.is_some();
             ui.horizontal(|ui| {
                 ui.label("accession");
                 ui.text_edit_singleline(&mut self.genbank_accession)
                     .on_hover_text("GenBank accession (for example AY738222 or NC_000001)");
                 if ui
-                    .button("Fetch")
+                    .add_enabled(!sequence_fetch_running, egui::Button::new("Fetch"))
                     .on_hover_text("Fetch accession and import sequence into the project")
                     .clicked()
                 {
@@ -2390,6 +2525,23 @@ impl GENtleApp {
             ui.small(
                     "If network fetch is unavailable, use File -> Open Sequence... with a local GenBank file.",
                 );
+            if let Some(task) = self.sequence_ingress_task.as_ref() {
+                let label = task.kind.label();
+                let elapsed = task.started.elapsed().as_secs_f32();
+                ui.horizontal(|ui| {
+                    ui.add(egui::Spinner::new());
+                    ui.label(format!("{label} running ({elapsed:.1}s)"));
+                    if ui
+                        .button("Stop waiting")
+                        .on_hover_text(
+                            "Stop waiting and ignore the late result; the network client does not expose cooperative cancellation.",
+                        )
+                        .clicked()
+                    {
+                        self.stop_waiting_for_sequence_ingress_task();
+                    }
+                });
+            }
             if !self.genbank_status.trim().is_empty() {
                 ui.separator();
                 ui.monospace(self.genbank_status.clone());
@@ -2498,6 +2650,24 @@ impl GENtleApp {
         ui.label(
             "Fetch/import UniProt or Ensembl protein evidence and compare it against transcript-native protein derivation.",
         );
+        let sequence_fetch_running = self.sequence_ingress_task.is_some();
+        if let Some(task) = self.sequence_ingress_task.as_ref() {
+            let label = task.kind.label();
+            let elapsed = task.started.elapsed().as_secs_f32();
+            ui.horizontal(|ui| {
+                ui.add(egui::Spinner::new());
+                ui.label(format!("{label} running ({elapsed:.1}s)"));
+                if ui
+                    .button("Stop waiting")
+                    .on_hover_text(
+                        "Stop waiting and ignore the late result; the network client does not expose cooperative cancellation.",
+                    )
+                    .clicked()
+                {
+                    self.stop_waiting_for_sequence_ingress_task();
+                }
+            });
+        }
         ui.horizontal(|ui| {
             ui.label("entry_id");
             ui.text_edit_singleline(&mut self.uniprot_entry_id)
@@ -2518,7 +2688,7 @@ impl GENtleApp {
                     "UniProt accession or entry ID to fetch (for example P04637 or P53_HUMAN)",
                 );
             if ui
-                .button("Fetch")
+                .add_enabled(!sequence_fetch_running, egui::Button::new("Fetch"))
                 .on_hover_text("Fetch UniProt SWISS-PROT text by accession or UniProt entry ID")
                 .clicked()
             {
@@ -2916,7 +3086,10 @@ impl GENtleApp {
             ui.text_edit_singleline(&mut self.uniprot_linked_as_id)
                 .on_hover_text("Optional project sequence id override");
             if ui
-                .button("Fetch Linked GenBank")
+                .add_enabled(
+                    !sequence_fetch_running,
+                    egui::Button::new("Fetch Linked GenBank"),
+                )
                 .on_hover_text("Fetch nucleotide entry linked from UniProt and import as sequence")
                 .clicked()
             {
@@ -3066,7 +3239,10 @@ impl GENtleApp {
                     "Ensembl protein or transcript identifier to fetch (for example ENSP... or ENST...)",
                 );
             if ui
-                .button("Fetch Ensembl")
+                .add_enabled(
+                    !sequence_fetch_running,
+                    egui::Button::new("Fetch Ensembl"),
+                )
                 .on_hover_text(
                     "Fetch one Ensembl protein entry into project metadata for later compare/import reuse",
                 )

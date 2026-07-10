@@ -3425,11 +3425,17 @@ impl GENtleApp {
             });
         }
         if self.genome_track_import_task.is_some() {
-            let elapsed_secs = self
+            let (elapsed_secs, cooperative_cancel, task_label) = self
                 .genome_track_import_task
                 .as_ref()
-                .map(|task| task.started.elapsed().as_secs_f32())
-                .unwrap_or(0.0);
+                .map(|task| {
+                    (
+                        task.started.elapsed().as_secs_f32(),
+                        task.kind.supports_cooperative_cancel(),
+                        task.kind.label(),
+                    )
+                })
+                .unwrap_or((0.0, false, "track task"));
             let progress_snapshot = self.genome_track_import_progress.clone();
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
@@ -3444,12 +3450,19 @@ impl GENtleApp {
                         elapsed_secs
                     ));
                 } else {
-                    ui.label(format!("Running import task... ({:.1}s)", elapsed_secs));
+                    ui.label(format!("Running {task_label}... ({:.1}s)", elapsed_secs));
                 }
                 let cancel_import_resp = self.track_hover_status(
-                    ui.button("Cancel Import").on_hover_text(
-                        "Request cancellation. Imported features up to the cancellation point are kept.",
-                    ),
+                    ui.button(if cooperative_cancel {
+                        "Cancel Import"
+                    } else {
+                        "Stop waiting"
+                    })
+                    .on_hover_text(if cooperative_cancel {
+                        "Request cooperative cancellation. Imported features up to the cancellation point are kept."
+                    } else {
+                        "Stop waiting and ignore the late result; this operation does not expose cooperative cancellation."
+                    }),
                     "Genome Tracks > Cancel Import",
                 );
                 if cancel_import_resp.clicked() {

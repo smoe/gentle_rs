@@ -13,11 +13,11 @@ use super::{
     DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION, DbSnpFetchTask,
     DbSnpFetchTaskMessage, EngineError, ErrorCode, GENtleApp, GenomeBlastOptionsPreset,
     GenomeBlastTask, GenomeBlastTaskMessage, GenomeDialogScope, GenomePrepareLaunchMode,
-    GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
-    GenomeTrackImportTaskMessage, GibsonUiInsertOrientation, GibsonUiInsertRow,
-    GibsonUiOpeningMode, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
-    LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT, LineageAnalysisKind,
-    LineageCopyPayloadKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
+    GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackAutosyncKey, GenomeTrackImportTask,
+    GenomeTrackImportTaskMessage, GenomeTrackTaskKind, GenomeTrackTaskResult,
+    GibsonUiInsertOrientation, GibsonUiInsertRow, GibsonUiOpeningMode, HelpDoc, HelpSearchMatch,
+    HelpTutorialDocEntry, LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
+    LineageAnalysisKind, LineageCopyPayloadKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
     MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV,
     OPERATION_HISTORY_SCROLL_ID, PendingEnsemblCatalogUpdateDialog,
     PendingEnsemblInstallableGenomeDialog, PendingEnsemblQuickInstallDialog,
@@ -29,6 +29,7 @@ use super::{
     ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
     ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
     RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
+    SequenceIngressTask, SequenceIngressTaskKind, SequenceIngressTaskMessage,
     TutorialProjectOpenOutcome, TutorialProjectTask, TutorialProjectTaskMessage,
     TutorialProjectTaskProgress, gui_prominent_glossary_entries,
     preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
@@ -10815,8 +10816,9 @@ fn poll_dbsnp_fetch_task_updates_runtime_status_from_worker_messages() {
         "status was: {}",
         app.dbsnp_status
     );
-    let snapshot =
-        crate::runtime_status::runtime_status_snapshot(crate::runtime_status::RuntimeStatusTrigger::Test);
+    let snapshot = crate::runtime_status::runtime_status_snapshot(
+        crate::runtime_status::RuntimeStatusTrigger::Test,
+    );
     let frame = snapshot
         .frames
         .iter()
@@ -11771,11 +11773,107 @@ fn refresh_sequence_windows_for_seq_ids_targets_matching_windows_only() {
 }
 
 #[test]
+fn poll_sequence_ingress_task_reports_success_and_opens_created_sequence() {
+    let mut app = GENtleApp::default();
+    let result = app
+        .engine
+        .write()
+        .expect("engine")
+        .apply(Operation::CreateSequenceFromText {
+            sequence_text: "ATGC".to_string(),
+            output_id: Some("local_genbank_fixture".to_string()),
+            name: None,
+            circular: false,
+        })
+        .expect("create local sequence fixture");
+    let (tx, rx) = mpsc::channel::<SequenceIngressTaskMessage>();
+    app.sequence_ingress_task = Some(SequenceIngressTask {
+        job_id: 81,
+        kind: SequenceIngressTaskKind::GenBank {
+            accession: "LOCAL0001".to_string(),
+            fill_as_id: true,
+        },
+        started: Instant::now(),
+        cancel_requested: Arc::new(AtomicBool::new(false)),
+        _runtime_frame: test_runtime_frame("sequence-ingress-success"),
+        receiver: rx,
+    });
+    tx.send(SequenceIngressTaskMessage::Done {
+        job_id: 81,
+        result: Ok(result),
+    })
+    .expect("send local completion");
+
+    app.poll_sequence_ingress_task(&egui::Context::default());
+
+    assert!(app.sequence_ingress_task.is_none());
+    assert_eq!(app.genbank_as_id, "LOCAL0001");
+    assert!(app.genbank_status.contains("GenBank fetch: ok"));
+    assert!(
+        app.new_windows
+            .iter()
+            .any(|window| { window.sequence_id().as_deref() == Some("local_genbank_fixture") })
+    );
+}
+
+#[test]
+fn poll_sequence_ingress_task_reports_stale_result_without_success_status() {
+    let mut app = GENtleApp::default();
+    let (tx, rx) = mpsc::channel::<SequenceIngressTaskMessage>();
+    app.sequence_ingress_task = Some(SequenceIngressTask {
+        job_id: 82,
+        kind: SequenceIngressTaskKind::UniProt {
+            query: "P04637".to_string(),
+            fill_entry_id: true,
+        },
+        started: Instant::now(),
+        cancel_requested: Arc::new(AtomicBool::new(false)),
+        _runtime_frame: test_runtime_frame("sequence-ingress-stale"),
+        receiver: rx,
+    });
+    tx.send(SequenceIngressTaskMessage::Done {
+        job_id: 82,
+        result: Err(EngineError::invalid_input(
+            "Background result became stale because project data changed",
+        )),
+    })
+    .expect("send stale completion");
+
+    app.poll_sequence_ingress_task(&egui::Context::default());
+
+    assert!(app.sequence_ingress_task.is_none());
+    assert!(app.uniprot_status.contains("stale result"));
+    assert!(app.uniprot_entry_id.is_empty());
+}
+
+#[test]
+fn sequence_ingress_stop_waiting_drops_task_and_sets_cancel_flag() {
+    let mut app = GENtleApp::default();
+    let (_tx, rx) = mpsc::channel::<SequenceIngressTaskMessage>();
+    let cancel_requested = Arc::new(AtomicBool::new(false));
+    app.sequence_ingress_task = Some(SequenceIngressTask {
+        job_id: 83,
+        kind: SequenceIngressTaskKind::UniProtLinkedGenBank,
+        started: Instant::now(),
+        cancel_requested: cancel_requested.clone(),
+        _runtime_frame: test_runtime_frame("sequence-ingress-stop"),
+        receiver: rx,
+    });
+
+    app.stop_waiting_for_sequence_ingress_task();
+
+    assert!(app.sequence_ingress_task.is_none());
+    assert!(cancel_requested.load(Ordering::Relaxed));
+    assert!(app.uniprot_status.contains("late result will be ignored"));
+}
+
+#[test]
 fn poll_track_import_refreshes_only_changed_sequence_windows() {
     let mut app = make_test_app_with_open_windows(&["seq_a", "seq_b"]);
     let (tx, rx) = mpsc::channel::<GenomeTrackImportTaskMessage>();
     app.genome_track_import_task = Some(GenomeTrackImportTask {
         job_id: 91,
+        kind: GenomeTrackTaskKind::SelectedImport,
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(false)),
         runtime_frame: test_runtime_frame("track-refresh-changed"),
@@ -11783,7 +11881,7 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
     });
     tx.send(GenomeTrackImportTaskMessage::Done {
         job_id: 91,
-        result: Ok(OpResult {
+        result: Ok(GenomeTrackTaskResult::Operation(OpResult {
             op_id: "op_track_refresh_changed".to_string(),
             created_seq_ids: vec![],
             changed_seq_ids: vec!["seq_b".to_string()],
@@ -11863,7 +11961,7 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
-        }),
+        })),
     })
     .expect("send track import done");
 
@@ -11884,6 +11982,7 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
     let (tx, rx) = mpsc::channel::<GenomeTrackImportTaskMessage>();
     app.genome_track_import_task = Some(GenomeTrackImportTask {
         job_id: 92,
+        kind: GenomeTrackTaskKind::SelectedImport,
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(false)),
         runtime_frame: test_runtime_frame("track-refresh-all"),
@@ -11891,7 +11990,7 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
     });
     tx.send(GenomeTrackImportTaskMessage::Done {
         job_id: 92,
-        result: Ok(OpResult {
+        result: Ok(GenomeTrackTaskResult::Operation(OpResult {
             op_id: "op_track_refresh_fallback".to_string(),
             created_seq_ids: vec![],
             changed_seq_ids: vec![],
@@ -11971,7 +12070,7 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
-        }),
+        })),
     })
     .expect("send track import done");
 
@@ -11984,6 +12083,132 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
         "status was: {}",
         app.genome_track_status
     );
+}
+
+#[test]
+fn genome_track_autosync_key_ignores_read_only_operation_log_growth() {
+    let app = GENtleApp::default();
+    let before = app.current_genome_track_autosync_key();
+    app.engine
+        .write()
+        .expect("engine")
+        .apply(Operation::ListJasparCatalog {
+            filter: None,
+            limit: Some(1),
+            include_remote_metadata: false,
+            refresh_remote_metadata: false,
+            path: None,
+        })
+        .expect("read-only local catalog operation");
+    let after_read_only = app.current_genome_track_autosync_key();
+    assert_eq!(before, after_read_only);
+
+    app.engine
+        .write()
+        .expect("engine")
+        .state_mut()
+        .metadata
+        .insert("structural_test".to_string(), serde_json::Value::Bool(true));
+    let after_structural_change = app.current_genome_track_autosync_key();
+    assert_ne!(after_read_only, after_structural_change);
+}
+
+#[test]
+fn uncooperative_track_task_stop_waiting_releases_shared_task_slot() {
+    let mut app = GENtleApp::default();
+    let (_tx, rx) = mpsc::channel::<GenomeTrackImportTaskMessage>();
+    let cancel_requested = Arc::new(AtomicBool::new(false));
+    app.genome_track_import_task = Some(GenomeTrackImportTask {
+        job_id: 93,
+        kind: GenomeTrackTaskKind::Autosync(GenomeTrackAutosyncKey {
+            structural_revision: 1,
+            anchor_signature: "[]".to_string(),
+            subscription_signature: "[]".to_string(),
+            subscription_count: 0,
+        }),
+        started: Instant::now(),
+        cancel_requested: cancel_requested.clone(),
+        runtime_frame: test_runtime_frame("track-autosync-stop"),
+        receiver: rx,
+    });
+
+    app.request_track_import_task_cancel("test");
+
+    assert!(app.genome_track_import_task.is_none());
+    assert!(cancel_requested.load(Ordering::Relaxed));
+    assert!(
+        app.genome_track_autosync_status
+            .contains("late result will be ignored")
+    );
+}
+
+#[test]
+fn poll_track_autosync_reports_typed_success() {
+    let mut app = GENtleApp::default();
+    let (tx, rx) = mpsc::channel::<GenomeTrackImportTaskMessage>();
+    app.genome_track_import_task = Some(GenomeTrackImportTask {
+        job_id: 94,
+        kind: GenomeTrackTaskKind::Autosync(GenomeTrackAutosyncKey {
+            structural_revision: 1,
+            anchor_signature: "[]".to_string(),
+            subscription_signature: "[]".to_string(),
+            subscription_count: 0,
+        }),
+        started: Instant::now(),
+        cancel_requested: Arc::new(AtomicBool::new(false)),
+        runtime_frame: test_runtime_frame("track-autosync-success"),
+        receiver: rx,
+    });
+    tx.send(GenomeTrackImportTaskMessage::Done {
+        job_id: 94,
+        result: Ok(GenomeTrackTaskResult::Sync(Default::default())),
+    })
+    .expect("send autosync completion");
+
+    app.poll_genome_track_import_task(&egui::Context::default());
+
+    assert!(app.genome_track_import_task.is_none());
+    assert!(app.genome_track_autosync_status.contains("Auto-sync"));
+    assert!(app.genome_track_autosync_status.contains("completed"));
+    assert!(app.tracked_autosync_last_key.is_some());
+}
+
+#[test]
+fn poll_track_autosync_marks_stale_result_and_allows_new_key_retry() {
+    let mut app = GENtleApp::default();
+    let (tx, rx) = mpsc::channel::<GenomeTrackImportTaskMessage>();
+    app.genome_track_import_task = Some(GenomeTrackImportTask {
+        job_id: 95,
+        kind: GenomeTrackTaskKind::Autosync(GenomeTrackAutosyncKey {
+            structural_revision: 1,
+            anchor_signature: "[]".to_string(),
+            subscription_signature: "[]".to_string(),
+            subscription_count: 0,
+        }),
+        started: Instant::now(),
+        cancel_requested: Arc::new(AtomicBool::new(false)),
+        runtime_frame: test_runtime_frame("track-autosync-stale"),
+        receiver: rx,
+    });
+    app.tracked_autosync_last_key = Some(GenomeTrackAutosyncKey {
+        structural_revision: 1,
+        anchor_signature: "[]".to_string(),
+        subscription_signature: "[]".to_string(),
+        subscription_count: 0,
+    });
+    tx.send(GenomeTrackImportTaskMessage::Done {
+        job_id: 95,
+        result: Err(EngineError::invalid_input(
+            "Background result became stale because project data changed",
+        )),
+    })
+    .expect("send stale autosync completion");
+
+    app.poll_genome_track_import_task(&egui::Context::default());
+
+    assert!(app.genome_track_import_task.is_none());
+    assert!(app.genome_track_autosync_status.contains("stale result"));
+    assert!(app.tracked_autosync_last_key.is_none());
 }
 
 #[test]
@@ -12201,8 +12426,9 @@ fn poll_blast_task_updates_runtime_status_from_worker_messages() {
         "status was: {}",
         app.genome_blast_status
     );
-    let snapshot =
-        crate::runtime_status::runtime_status_snapshot(crate::runtime_status::RuntimeStatusTrigger::Test);
+    let snapshot = crate::runtime_status::runtime_status_snapshot(
+        crate::runtime_status::RuntimeStatusTrigger::Test,
+    );
     let frame = snapshot
         .frames
         .iter()
