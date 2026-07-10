@@ -1840,6 +1840,152 @@ fn sequencing_confirmation_selected_target_id_prefers_unresolved_rows_when_reque
     assert_eq!(selected, "insufficient_target");
 }
 
+fn sequencing_confirmation_presentation_test_report() -> SequencingConfirmationReport {
+    SequencingConfirmationReport {
+        report_id: "confirm_large".to_string(),
+        generated_at_unix_ms: 42,
+        targets: vec![
+            SequencingConfirmationTargetResult {
+                target_id: "confirmed_target".to_string(),
+                label: "Confirmed".to_string(),
+                status: SequencingConfirmationStatus::Confirmed,
+                start_0based: 0,
+                end_0based_exclusive: 10,
+                ..Default::default()
+            },
+            SequencingConfirmationTargetResult {
+                target_id: "insufficient_target".to_string(),
+                label: "Insufficient".to_string(),
+                status: SequencingConfirmationStatus::InsufficientEvidence,
+                start_0based: 10,
+                end_0based_exclusive: 20,
+                ..Default::default()
+            },
+            SequencingConfirmationTargetResult {
+                target_id: "contradicted_target".to_string(),
+                label: "Contradicted".to_string(),
+                status: SequencingConfirmationStatus::Contradicted,
+                start_0based: 20,
+                end_0based_exclusive: 30,
+                ..Default::default()
+            },
+        ],
+        reads: vec![
+            SequencingConfirmationReadResult {
+                evidence_id: "evidence_a".to_string(),
+                read_seq_id: "read_a".to_string(),
+                ..Default::default()
+            },
+            SequencingConfirmationReadResult {
+                evidence_id: "evidence_b".to_string(),
+                read_seq_id: "read_b".to_string(),
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn sequencing_confirmation_target_review_order_cache_reuses_indices_and_tracks_sort_mode() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("dna");
+    let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+    let report = sequencing_confirmation_presentation_test_report();
+
+    let unresolved_first = area.sequencing_confirmation_cached_target_review_indices(&report, true);
+    assert_eq!(unresolved_first.as_slice(), &[2, 1, 0]);
+    let reused = area.sequencing_confirmation_cached_target_review_indices(&report, true);
+    assert!(Arc::ptr_eq(&unresolved_first, &reused));
+    assert_eq!(
+        area.sequencing_confirmation_ui
+            .target_review_order_cache_misses,
+        1
+    );
+    assert_eq!(
+        area.sequencing_confirmation_ui
+            .target_review_order_cache_hits,
+        1
+    );
+
+    let report_order = area.sequencing_confirmation_cached_target_review_indices(&report, false);
+    assert_eq!(report_order.as_slice(), &[0, 1, 2]);
+    assert_eq!(
+        area.sequencing_confirmation_ui
+            .target_review_order_cache_misses,
+        2
+    );
+
+    let mut revised_report = report.clone();
+    revised_report.generated_at_unix_ms = 43;
+    let revised = area.sequencing_confirmation_cached_target_review_indices(&revised_report, true);
+    assert!(!Arc::ptr_eq(&unresolved_first, &revised));
+    assert_eq!(
+        area.sequencing_confirmation_ui
+            .target_review_order_cache_misses,
+        3
+    );
+}
+
+#[test]
+fn sequencing_confirmation_table_scroll_requests_follow_programmatic_selection() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("dna");
+    let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+    let report = sequencing_confirmation_presentation_test_report();
+    area.sequencing_confirmation_ui.review_unresolved_first = true;
+    area.sequencing_confirmation_ui.selected_target_id = "confirmed_target".to_string();
+    area.sequencing_confirmation_ui.selected_evidence_id = "evidence_b".to_string();
+    let target_order = area.sequencing_confirmation_cached_target_review_indices(&report, true);
+
+    assert_eq!(
+        area.sequencing_confirmation_target_scroll_request(&report, &target_order),
+        Some(2)
+    );
+    assert_eq!(
+        area.sequencing_confirmation_read_scroll_request(&report),
+        Some(1)
+    );
+    assert_eq!(
+        area.sequencing_confirmation_target_scroll_request(&report, &target_order),
+        None
+    );
+    assert_eq!(
+        area.sequencing_confirmation_read_scroll_request(&report),
+        None
+    );
+
+    area.sequencing_confirmation_ui.selected_target_id = "contradicted_target".to_string();
+    assert_eq!(
+        area.sequencing_confirmation_target_scroll_request(&report, &target_order),
+        Some(0)
+    );
+    area.sequencing_confirmation_ui.review_unresolved_first = false;
+    let report_order = area.sequencing_confirmation_cached_target_review_indices(&report, false);
+    assert_eq!(
+        area.sequencing_confirmation_target_scroll_request(&report, &report_order),
+        Some(2)
+    );
+
+    area.sequencing_confirmation_ui.selected_evidence_id = "evidence_a".to_string();
+    assert_eq!(
+        area.sequencing_confirmation_read_scroll_request(&report),
+        Some(0)
+    );
+}
+
+#[test]
+fn sequencing_confirmation_virtual_table_height_bounds_visible_rows() {
+    assert_eq!(
+        MainAreaDna::sequencing_confirmation_virtual_table_height(3, 20.0, 220.0),
+        60.0
+    );
+    let target_height = MainAreaDna::sequencing_confirmation_virtual_table_height(100, 20.0, 220.0);
+    let read_height = MainAreaDna::sequencing_confirmation_virtual_table_height(100, 20.0, 280.0);
+    assert_eq!(target_height, 220.0);
+    assert_eq!(read_height, 280.0);
+    assert_eq!((target_height / 20.0) as usize, 11);
+    assert_eq!((read_height / 20.0) as usize, 14);
+}
+
 #[test]
 fn sequencing_confirmation_sync_target_selection_updates_linked_rows() {
     let dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("dna");
