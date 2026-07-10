@@ -1613,6 +1613,9 @@ pub struct MainAreaDna {
     splicing_expert_window_focus_requested: bool,
     splicing_expert_window_feature_id: Option<usize>,
     splicing_expert_window_view: Option<Arc<SplicingExpertView>>,
+    cached_splicing_expert_presentations: Vec<CachedSplicingExpertPresentation>,
+    splicing_expert_presentation_cache_hits: u64,
+    splicing_expert_presentation_cache_misses: u64,
     splicing_expert_selected_transcript_feature_id: Option<usize>,
     splicing_exon_skip_selected_candidate_ids: BTreeSet<String>,
     splicing_exon_skip_overlap_kind: String,
@@ -2353,6 +2356,9 @@ impl MainAreaDna {
             splicing_expert_window_focus_requested: false,
             splicing_expert_window_feature_id: None,
             splicing_expert_window_view: None,
+            cached_splicing_expert_presentations: Vec::new(),
+            splicing_expert_presentation_cache_hits: 0,
+            splicing_expert_presentation_cache_misses: 0,
             splicing_expert_selected_transcript_feature_id: None,
             splicing_exon_skip_selected_candidate_ids: BTreeSet::new(),
             splicing_exon_skip_overlap_kind: String::new(),
@@ -17575,10 +17581,6 @@ impl MainAreaDna {
             + 1
     }
 
-    fn splicing_exon_length_mod3(exon: &SplicingExonSummary) -> usize {
-        Self::splicing_exon_length_bp(exon) % 3
-    }
-
     fn splicing_exon_mod3_colors(mod3: usize) -> (egui::Color32, egui::Color32) {
         match mod3 % 3 {
             0 => (
@@ -24451,6 +24453,7 @@ impl MainAreaDna {
                 return;
             }
 
+            self.cached_splicing_expert_presentations.clear();
             self.description_cache_initialized = true;
             self.description_cache_selected_id = selected_id;
             self.description_cache_selected_reasoning_evidence_id =

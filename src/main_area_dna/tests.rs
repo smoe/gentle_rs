@@ -46,7 +46,7 @@ use crate::{
     feature_expert::{
         FeatureExpertView, IsoformArchitectureExpertView, RestrictionSiteExpertView,
         SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView, SplicingIntronSignal,
-        SplicingJunctionArc, SplicingRange, SplicingTranscriptLane,
+        SplicingJunctionArc, SplicingMatrixRow, SplicingRange, SplicingTranscriptLane,
     },
     linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
     protocol_cartoon::pcr_oe_substitution_geometry_bindings,
@@ -12663,6 +12663,132 @@ fn large_splicing_transition_matrix_defaults_to_collapsed_section() {
     assert!(MainAreaDna::splicing_transition_should_default_collapsed(
         81
     ));
+}
+
+fn splicing_expert_presentation_test_view() -> SplicingExpertView {
+    SplicingExpertView {
+        seq_id: "seq1".to_string(),
+        target_feature_id: 7,
+        scope: SplicingScopePreset::AllOverlappingAnyStrand,
+        group_label: "TEST".to_string(),
+        strand: "+".to_string(),
+        region_start_1based: 1,
+        region_end_1based: 40,
+        transcript_count: 2,
+        unique_exon_count: 2,
+        instruction: "test".to_string(),
+        transcripts: vec![
+            SplicingTranscriptLane {
+                transcript_feature_id: 11,
+                transcript_id: "tx1".to_string(),
+                label: "tx1".to_string(),
+                strand: "+".to_string(),
+                exons: vec![
+                    SplicingRange {
+                        start_1based: 1,
+                        end_1based: 10,
+                    },
+                    SplicingRange {
+                        start_1based: 21,
+                        end_1based: 30,
+                    },
+                ],
+                exon_cds_phases: vec![],
+                introns: vec![SplicingRange {
+                    start_1based: 11,
+                    end_1based: 20,
+                }],
+                has_target_feature: true,
+            },
+            SplicingTranscriptLane {
+                transcript_feature_id: 12,
+                transcript_id: "tx2".to_string(),
+                label: "tx2".to_string(),
+                strand: "+".to_string(),
+                exons: vec![SplicingRange {
+                    start_1based: 1,
+                    end_1based: 10,
+                }],
+                exon_cds_phases: vec![],
+                introns: vec![],
+                has_target_feature: false,
+            },
+        ],
+        unique_exons: vec![
+            SplicingExonSummary {
+                start_1based: 1,
+                end_1based: 10,
+                support_transcript_count: 2,
+                constitutive: true,
+            },
+            SplicingExonSummary {
+                start_1based: 21,
+                end_1based: 30,
+                support_transcript_count: 1,
+                constitutive: false,
+            },
+        ],
+        matrix_rows: vec![
+            SplicingMatrixRow {
+                transcript_feature_id: 11,
+                transcript_id: "tx1".to_string(),
+                label: "tx1".to_string(),
+                exon_presence: vec![true, true],
+            },
+            SplicingMatrixRow {
+                transcript_feature_id: 12,
+                transcript_id: "tx2".to_string(),
+                label: "tx2".to_string(),
+                exon_presence: vec![true, false],
+            },
+        ],
+        boundaries: vec![],
+        intron_signals: vec![],
+        junctions: vec![
+            SplicingJunctionArc {
+                donor_1based: 10,
+                acceptor_1based: 21,
+                support_transcript_count: 1,
+                transcript_feature_ids: vec![11],
+            },
+            SplicingJunctionArc {
+                donor_1based: 30,
+                acceptor_1based: 41,
+                support_transcript_count: 2,
+                transcript_feature_ids: vec![11, 12],
+            },
+        ],
+        events: vec![],
+    }
+}
+
+#[test]
+fn splicing_expert_presentation_reuses_immutable_view_and_invalidates_on_replacement() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let view = splicing_expert_presentation_test_view();
+
+    let first = area.splicing_expert_presentation_for_view(&view);
+    let second = area.splicing_expert_presentation_for_view(&view);
+    assert!(Arc::ptr_eq(&first, &second));
+    assert_eq!(area.splicing_expert_presentation_cache_misses, 1);
+    assert_eq!(area.splicing_expert_presentation_cache_hits, 1);
+    assert_eq!(first.exons[0].support_label, "2/2 (100.0%) const");
+    assert_eq!(first.transition_rows[0].cells[1].marker, "1");
+    assert!(first.transition_rows[0].cells[1].tooltip.contains("n-11"));
+    assert_eq!(first.junction_rows[0].donor_label, "30");
+
+    let mut replacement = view.clone();
+    replacement.matrix_rows[0].transcript_id = "tx1_revised".to_string();
+    let third = area.splicing_expert_presentation_for_view(&replacement);
+    assert!(!Arc::ptr_eq(&first, &third));
+    assert_eq!(area.splicing_expert_presentation_cache_misses, 2);
+    assert_eq!(third.transcript_rows[0].label, "n-11 tx1_revised");
+
+    area.invalidate_splicing_expert_presentation_cache();
+    let fourth = area.splicing_expert_presentation_for_view(&replacement);
+    assert!(!Arc::ptr_eq(&third, &fourth));
+    assert_eq!(area.splicing_expert_presentation_cache_misses, 3);
 }
 
 #[test]

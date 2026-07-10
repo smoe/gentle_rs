@@ -14,6 +14,88 @@ use crate::engine::{
     DotplotOverlayQuerySpec, DotplotReferenceAnnotationInterval, DotplotReferenceAnnotationTrack,
 };
 
+const SPLICING_EXPERT_PRESENTATION_CACHE_CAPACITY: usize = 4;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct SplicingExpertPresentationKey {
+    view_identity: usize,
+    target_feature_id: usize,
+    transcript_count: usize,
+    unique_exon_count: usize,
+    matrix_row_count: usize,
+    junction_count: usize,
+}
+
+impl SplicingExpertPresentationKey {
+    fn from_view(view: &SplicingExpertView) -> Self {
+        Self {
+            view_identity: view as *const SplicingExpertView as usize,
+            target_feature_id: view.target_feature_id,
+            transcript_count: view.transcript_count,
+            unique_exon_count: view.unique_exons.len(),
+            matrix_row_count: view.matrix_rows.len(),
+            junction_count: view.junctions.len(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SplicingExpertExonPresentation {
+    pub(super) coordinate_label: String,
+    pub(super) transition_label: String,
+    pub(super) length_mod3: usize,
+    pub(super) coordinate_tooltip: String,
+    pub(super) transition_tooltip: String,
+    pub(super) constitutive: bool,
+    pub(super) support_ratio: f32,
+    pub(super) support_label: String,
+    pub(super) support_tooltip: String,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SplicingExpertTranscriptPresentationRow {
+    pub(super) label: String,
+    pub(super) exon_presence: Vec<bool>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SplicingExpertTransitionPresentationCell {
+    pub(super) marker: String,
+    pub(super) support_ratio: f32,
+    pub(super) tooltip: String,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SplicingExpertTransitionPresentationRow {
+    pub(super) label: String,
+    pub(super) length_mod3: usize,
+    pub(super) length_tooltip: String,
+    pub(super) cells: Vec<SplicingExpertTransitionPresentationCell>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SplicingExpertJunctionPresentationRow {
+    pub(super) donor_label: String,
+    pub(super) acceptor_label: String,
+    pub(super) span_label: String,
+    pub(super) support_label: String,
+    pub(super) transcript_labels: String,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SplicingExpertPresentation {
+    pub(super) exons: Vec<SplicingExpertExonPresentation>,
+    pub(super) transcript_rows: Vec<SplicingExpertTranscriptPresentationRow>,
+    pub(super) transition_rows: Vec<SplicingExpertTransitionPresentationRow>,
+    pub(super) junction_rows: Vec<SplicingExpertJunctionPresentationRow>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct CachedSplicingExpertPresentation {
+    key: SplicingExpertPresentationKey,
+    model: Arc<SplicingExpertPresentation>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub(super) struct DotplotOpsUiState {
@@ -5075,12 +5157,209 @@ impl MainAreaDna {
             });
     }
 
+    pub(super) fn invalidate_splicing_expert_presentation_cache(&mut self) {
+        self.cached_splicing_expert_presentations.clear();
+    }
+
+    fn build_splicing_expert_presentation(view: &SplicingExpertView) -> SplicingExpertPresentation {
+        let transcript_total = view.transcript_count.max(1);
+        let exons = view
+            .unique_exons
+            .iter()
+            .enumerate()
+            .map(|(index, exon)| {
+                let length_bp = Self::splicing_exon_length_bp(exon);
+                let length_mod3 = length_bp % 3;
+                let support_ratio =
+                    Self::support_ratio_percent(exon.support_transcript_count, transcript_total)
+                        as f32
+                        / 100.0;
+                let support_fraction =
+                    Self::format_support_fraction(exon.support_transcript_count, transcript_total);
+                SplicingExpertExonPresentation {
+                    coordinate_label: format!("{}..{}", exon.start_1based, exon.end_1based),
+                    transition_label: format!("E{}", index + 1),
+                    length_mod3,
+                    coordinate_tooltip: format!(
+                        "len={} bp, len%3={length_mod3} (heuristic frame cue)",
+                        length_bp
+                    ),
+                    transition_tooltip: format!(
+                        "{}..{} (len={} bp, len%3={length_mod3})",
+                        exon.start_1based, exon.end_1based, length_bp
+                    ),
+                    constitutive: exon.constitutive,
+                    support_ratio,
+                    support_label: if exon.constitutive {
+                        format!("{support_fraction} const")
+                    } else {
+                        support_fraction.clone()
+                    },
+                    support_tooltip: format!("Support {support_fraction}"),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let transcript_rows = view
+            .matrix_rows
+            .iter()
+            .map(|row| SplicingExpertTranscriptPresentationRow {
+                label: format!("n-{} {}", row.transcript_feature_id, row.transcript_id),
+                exon_presence: row.exon_presence.clone(),
+            })
+            .collect::<Vec<_>>();
+
+        let transition_matrix = compute_splicing_exon_transition_matrix(view);
+        let transition_rows = exons
+            .iter()
+            .enumerate()
+            .map(|(from_idx, exon)| {
+                let cells = (0..exons.len())
+                    .map(|to_idx| {
+                        let support_count = transition_matrix
+                            .counts
+                            .get(from_idx)
+                            .and_then(|row| row.get(to_idx))
+                            .copied()
+                            .unwrap_or(0);
+                        let support_ratio =
+                            Self::support_ratio_percent(support_count, transcript_total) as f32
+                                / 100.0;
+                        let participants = transition_matrix
+                            .transcript_feature_ids
+                            .get(from_idx)
+                            .and_then(|row| row.get(to_idx))
+                            .map(Vec::as_slice)
+                            .unwrap_or_default();
+                        let mut participant_labels = participants
+                            .iter()
+                            .map(|feature_id| format!("n-{feature_id}"))
+                            .collect::<Vec<_>>();
+                        if participant_labels.len() > 12 {
+                            let hidden = participant_labels.len() - 12;
+                            participant_labels.truncate(12);
+                            participant_labels.push(format!("+{hidden} more"));
+                        }
+                        SplicingExpertTransitionPresentationCell {
+                            marker: if support_count > 0 {
+                                support_count.to_string()
+                            } else {
+                                "·".to_string()
+                            },
+                            support_ratio,
+                            tooltip: format!(
+                                "E{} -> E{} support {}{}",
+                                from_idx + 1,
+                                to_idx + 1,
+                                Self::format_support_fraction(support_count, transcript_total),
+                                if participant_labels.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!("\nTranscripts: {}", participant_labels.join(", "))
+                                }
+                            ),
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                SplicingExpertTransitionPresentationRow {
+                    label: exon.transition_label.clone(),
+                    length_mod3: exon.length_mod3,
+                    length_tooltip: exon.transition_tooltip.clone(),
+                    cells,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let mut junctions = view.junctions.iter().collect::<Vec<_>>();
+        junctions.sort_by(|left, right| {
+            right
+                .support_transcript_count
+                .cmp(&left.support_transcript_count)
+                .then_with(|| left.donor_1based.cmp(&right.donor_1based))
+                .then_with(|| left.acceptor_1based.cmp(&right.acceptor_1based))
+        });
+        let junction_rows = junctions
+            .into_iter()
+            .map(|junction| {
+                let span_bp = junction
+                    .acceptor_1based
+                    .max(junction.donor_1based)
+                    .saturating_sub(junction.acceptor_1based.min(junction.donor_1based));
+                let mut transcript_labels = junction
+                    .transcript_feature_ids
+                    .iter()
+                    .map(|feature_id| format!("n-{feature_id}"))
+                    .collect::<Vec<_>>();
+                if transcript_labels.len() > 10 {
+                    let hidden = transcript_labels.len() - 10;
+                    transcript_labels.truncate(10);
+                    transcript_labels.push(format!("+{hidden} more"));
+                }
+                SplicingExpertJunctionPresentationRow {
+                    donor_label: junction.donor_1based.to_string(),
+                    acceptor_label: junction.acceptor_1based.to_string(),
+                    span_label: span_bp.to_string(),
+                    support_label: Self::format_support_fraction(
+                        junction.support_transcript_count,
+                        transcript_total,
+                    ),
+                    transcript_labels: transcript_labels.join(", "),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        SplicingExpertPresentation {
+            exons,
+            transcript_rows,
+            transition_rows,
+            junction_rows,
+        }
+    }
+
+    pub(super) fn splicing_expert_presentation_for_view(
+        &mut self,
+        view: &SplicingExpertView,
+    ) -> Arc<SplicingExpertPresentation> {
+        let key = SplicingExpertPresentationKey::from_view(view);
+        if let Some(cached) = self
+            .cached_splicing_expert_presentations
+            .iter()
+            .find(|cached| cached.key == key)
+        {
+            self.splicing_expert_presentation_cache_hits = self
+                .splicing_expert_presentation_cache_hits
+                .saturating_add(1);
+            return cached.model.clone();
+        }
+
+        self.splicing_expert_presentation_cache_misses = self
+            .splicing_expert_presentation_cache_misses
+            .saturating_add(1);
+        let model = Arc::new(Self::build_splicing_expert_presentation(view));
+        if self.cached_splicing_expert_presentations.len()
+            >= SPLICING_EXPERT_PRESENTATION_CACHE_CAPACITY
+        {
+            self.cached_splicing_expert_presentations.remove(0);
+        }
+        self.cached_splicing_expert_presentations
+            .push(CachedSplicingExpertPresentation {
+                key,
+                model: model.clone(),
+            });
+        model
+    }
+
+    fn splicing_expert_virtual_table_height(row_count: usize, row_height: f32) -> f32 {
+        ((row_count.max(1) as f32 * row_height) + 2.0).min(360.0)
+    }
+
     pub(super) fn render_splicing_expert_view_ui(
         &mut self,
         ui: &mut egui::Ui,
         view: &SplicingExpertView,
         id_namespace: &str,
     ) {
+        let presentation = self.splicing_expert_presentation_for_view(view);
         ui.push_id(
             (
                 "splicing_expert_view",
@@ -5495,9 +5774,9 @@ impl MainAreaDna {
             self.splicing_expert_selected_intron_signal_key = selected_signal_key.clone();
         }
 
-        if !view.matrix_rows.is_empty() && !view.unique_exons.is_empty() {
-            let row_count = view.matrix_rows.len();
-            let exon_count = view.unique_exons.len();
+        if !presentation.transcript_rows.is_empty() && !presentation.exons.is_empty() {
+            let row_count = presentation.transcript_rows.len();
+            let exon_count = presentation.exons.len();
             let matrix_cell_count = row_count.saturating_mul(exon_count);
             let matrix_heavy = Self::splicing_matrix_should_default_collapsed(row_count, exon_count);
             ui.separator();
@@ -5526,141 +5805,155 @@ impl MainAreaDna {
             ))
             .default_open(!matrix_heavy)
             .show(ui, |ui| {
-                let transcript_total = view.transcript_count.max(1);
+                let row_height = ui.spacing().interact_size.y.max(20.0);
+                let body_row_count = presentation.transcript_rows.len().saturating_add(2);
+                let table_height =
+                    Self::splicing_expert_virtual_table_height(body_row_count, row_height);
+                let table_width = 180.0 + presentation.exons.len() as f32 * 96.0;
                 egui::ScrollArea::horizontal().show(ui, |ui| {
                     scroll_input_policy::apply_scrollarea_keyboard_navigation(
                         ui,
                         scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                     );
-                    egui::Grid::new("splicing_expert_matrix")
+                    ui.set_min_width(table_width);
+                    egui_extras::TableBuilder::new(ui)
+                        .id_salt((
+                            "splicing_expert_matrix",
+                            id_namespace,
+                            view.seq_id.as_str(),
+                            view.target_feature_id,
+                        ))
                         .striped(true)
-                        .show(ui, |ui| {
-                            ui.label(egui::RichText::new("transcript").monospace().strong());
-                            for exon in &view.unique_exons {
-                                let mod3 = Self::splicing_exon_length_mod3(exon);
-                                let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
+                        .max_scroll_height(table_height)
+                        .min_scrolled_height(0.0)
+                        .auto_shrink([true, true])
+                        .column(egui_extras::Column::initial(180.0))
+                        .columns(egui_extras::Column::initial(96.0), exon_count)
+                        .header(row_height, |mut header| {
+                            header.col(|ui| {
                                 ui.label(
-                                    egui::RichText::new(format!(
-                                        "{}..{}",
-                                        exon.start_1based, exon.end_1based
-                                    ))
-                                    .monospace()
-                                    .size(9.0)
-                                    .background_color(bg)
-                                    .color(fg),
-                                )
-                                .on_hover_text(format!(
-                                    "len={} bp, len%3={mod3} (heuristic frame cue)",
-                                    Self::splicing_exon_length_bp(exon)
-                                ));
-                            }
-                            ui.end_row();
-                            ui.label(egui::RichText::new("len%3").monospace().size(8.5).strong())
-                                .on_hover_text(
-                                    "Genomic exon length modulo 3 (heuristic reading-frame cue)",
+                                    egui::RichText::new("transcript").monospace().strong(),
                                 );
-                            for exon in &view.unique_exons {
-                                let mod3 = Self::splicing_exon_length_mod3(exon);
-                                let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
-                                ui.label(
-                                    egui::RichText::new(format!("{mod3}"))
-                                        .monospace()
-                                        .size(8.5)
-                                        .background_color(bg)
-                                        .color(fg),
-                                )
-                                .on_hover_text(format!(
-                                    "len={} bp, len%3={mod3} (heuristic frame cue)",
-                                    Self::splicing_exon_length_bp(exon)
-                                ));
-                            }
-                            ui.end_row();
-                            ui.label(
-                                egui::RichText::new("support")
-                                    .monospace()
-                                    .size(9.0)
-                                    .strong(),
-                            );
-                            for exon in &view.unique_exons {
-                                let support_ratio = Self::support_ratio_percent(
-                                    exon.support_transcript_count,
-                                    transcript_total,
-                                ) as f32
-                                    / 100.0;
-                                let support_label = Self::format_support_fraction(
-                                    exon.support_transcript_count,
-                                    transcript_total,
-                                );
-                                let label = if exon.constitutive {
-                                    format!("{support_label} const")
-                                } else {
-                                    support_label
-                                };
-                                ui.label(egui::RichText::new(label).monospace().size(8.5).color(
-                                    if exon.constitutive {
-                                        let rgb = Self::mix_rgb(
-                                            [59, 130, 246],
-                                            [30, 64, 175],
-                                            support_ratio,
-                                        );
-                                        egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
-                                    } else {
-                                        let rgb = Self::mix_rgb(
-                                            [107, 114, 128],
-                                            [30, 64, 175],
-                                            support_ratio,
-                                        );
-                                        egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
-                                    },
-                                ));
-                            }
-                            ui.end_row();
-                            for row in &view.matrix_rows {
-                                ui.label(
-                                    egui::RichText::new(format!(
-                                        "n-{} {}",
-                                        row.transcript_feature_id, row.transcript_id
-                                    ))
-                                    .monospace()
-                                    .size(9.0),
-                                );
-                                for (col_idx, present) in row.exon_presence.iter().enumerate() {
-                                    let support_count = view
-                                        .unique_exons
-                                        .get(col_idx)
-                                        .map(|exon| exon.support_transcript_count)
-                                        .unwrap_or(0);
-                                    let support_ratio =
-                                        Self::support_ratio_percent(support_count, transcript_total)
-                                            as f32
-                                            / 100.0;
+                            });
+                            for exon in &presentation.exons {
+                                header.col(|ui| {
                                     let (bg, fg) =
-                                        Self::splicing_matrix_cell_colors(*present, support_ratio);
-                                    let marker = if *present { "X" } else { "·" };
+                                        Self::splicing_exon_mod3_colors(exon.length_mod3);
                                     ui.label(
-                                        egui::RichText::new(marker)
+                                        egui::RichText::new(exon.coordinate_label.as_str())
                                             .monospace()
                                             .size(9.0)
-                                            .color(fg)
-                                            .background_color(bg),
+                                            .background_color(bg)
+                                            .color(fg),
                                     )
-                                    .on_hover_text(format!(
-                                        "Support {}",
-                                        Self::format_support_fraction(
-                                            support_count,
-                                            transcript_total
-                                        )
-                                    ));
-                                }
-                                ui.end_row();
+                                    .on_hover_text(exon.coordinate_tooltip.as_str());
+                                });
                             }
+                        })
+                        .body(|body| {
+                            body.rows(row_height, body_row_count, |mut table_row| {
+                                let row_index = table_row.index();
+                                if row_index == 0 {
+                                    table_row.col(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("len%3")
+                                                .monospace()
+                                                .size(8.5)
+                                                .strong(),
+                                        )
+                                        .on_hover_text(
+                                            "Genomic exon length modulo 3 (heuristic reading-frame cue)",
+                                        );
+                                    });
+                                    for exon in &presentation.exons {
+                                        table_row.col(|ui| {
+                                            let (bg, fg) =
+                                                Self::splicing_exon_mod3_colors(exon.length_mod3);
+                                            ui.label(
+                                                egui::RichText::new(exon.length_mod3.to_string())
+                                                    .monospace()
+                                                    .size(8.5)
+                                                    .background_color(bg)
+                                                    .color(fg),
+                                            )
+                                            .on_hover_text(exon.coordinate_tooltip.as_str());
+                                        });
+                                    }
+                                } else if row_index == 1 {
+                                    table_row.col(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("support")
+                                                .monospace()
+                                                .size(9.0)
+                                                .strong(),
+                                        );
+                                    });
+                                    for exon in &presentation.exons {
+                                        table_row.col(|ui| {
+                                            let rgb = if exon.constitutive {
+                                                Self::mix_rgb(
+                                                    [59, 130, 246],
+                                                    [30, 64, 175],
+                                                    exon.support_ratio,
+                                                )
+                                            } else {
+                                                Self::mix_rgb(
+                                                    [107, 114, 128],
+                                                    [30, 64, 175],
+                                                    exon.support_ratio,
+                                                )
+                                            };
+                                            ui.label(
+                                                egui::RichText::new(exon.support_label.as_str())
+                                                    .monospace()
+                                                    .size(8.5)
+                                                    .color(egui::Color32::from_rgb(
+                                                        rgb[0], rgb[1], rgb[2],
+                                                    )),
+                                            );
+                                        });
+                                    }
+                                } else {
+                                    let row = &presentation.transcript_rows[row_index - 2];
+                                    table_row.col(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(row.label.as_str())
+                                                .monospace()
+                                                .size(9.0),
+                                        );
+                                    });
+                                    for (column_index, exon) in
+                                        presentation.exons.iter().enumerate()
+                                    {
+                                        let present = row
+                                            .exon_presence
+                                            .get(column_index)
+                                            .copied()
+                                            .unwrap_or(false);
+                                        table_row.col(|ui| {
+                                            let (bg, fg) = Self::splicing_matrix_cell_colors(
+                                                present,
+                                                exon.support_ratio,
+                                            );
+                                            ui.label(
+                                                egui::RichText::new(if present { "X" } else { "·" })
+                                                    .monospace()
+                                                    .size(9.0)
+                                                    .color(fg)
+                                                    .background_color(bg),
+                                            )
+                                            .on_hover_text(exon.support_tooltip.as_str());
+                                        });
+                                    }
+                                }
+                            });
                         });
                 });
             });
         }
 
-        if view.unique_exons.len() >= 2 {
-            let exon_count = view.unique_exons.len();
+        if presentation.exons.len() >= 2 {
+            let exon_count = presentation.exons.len();
             let transition_cell_count = exon_count.saturating_mul(exon_count);
             let transition_heavy = Self::splicing_transition_should_default_collapsed(exon_count);
             ui.separator();
@@ -5689,8 +5982,6 @@ impl MainAreaDna {
             ))
             .default_open(!transition_heavy)
             .show(ui, |ui| {
-                let transitions = compute_splicing_exon_transition_matrix(view);
-                let transcript_total = view.transcript_count.max(1);
                 ui.label(
                     egui::RichText::new(
                         "Cell color encodes transition support frequency; exon header color encodes exon genomic length %3 (heuristic frame cue).",
@@ -5703,188 +5994,154 @@ impl MainAreaDna {
                         ui,
                         scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                     );
-                    egui::Grid::new("splicing_exon_transition_grid")
+                    let row_height = ui.spacing().interact_size.y.max(20.0);
+                    let table_height = Self::splicing_expert_virtual_table_height(
+                        presentation.transition_rows.len(),
+                        row_height,
+                    );
+                    ui.set_min_width(72.0 + presentation.exons.len() as f32 * 48.0);
+                    egui_extras::TableBuilder::new(ui)
+                        .id_salt((
+                            "splicing_exon_transition_grid",
+                            id_namespace,
+                            view.seq_id.as_str(),
+                            view.target_feature_id,
+                        ))
                         .striped(true)
-                        .show(ui, |ui| {
-                            ui.label(
-                                egui::RichText::new("from \\ to")
-                                    .monospace()
-                                    .size(9.0)
-                                    .strong(),
-                            );
-                            for (to_idx, exon) in view.unique_exons.iter().enumerate() {
-                                let mod3 = Self::splicing_exon_length_mod3(exon);
-                                let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
+                        .max_scroll_height(table_height)
+                        .min_scrolled_height(0.0)
+                        .auto_shrink([true, true])
+                        .column(egui_extras::Column::initial(72.0))
+                        .columns(egui_extras::Column::initial(48.0), exon_count)
+                        .header(row_height, |mut header| {
+                            header.col(|ui| {
                                 ui.label(
-                                    egui::RichText::new(format!("E{}", to_idx + 1))
+                                    egui::RichText::new("from \\ to")
                                         .monospace()
                                         .size(9.0)
-                                        .background_color(bg)
-                                        .color(fg),
-                                )
-                                .on_hover_text(format!(
-                                    "{}..{} (len={} bp, len%3={mod3})",
-                                    exon.start_1based,
-                                    exon.end_1based,
-                                    Self::splicing_exon_length_bp(exon),
-                                ));
-                            }
-                            ui.end_row();
-                            for (from_idx, from_exon) in view.unique_exons.iter().enumerate() {
-                                let mod3 = Self::splicing_exon_length_mod3(from_exon);
-                                let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
-                                ui.label(
-                                    egui::RichText::new(format!("E{}", from_idx + 1))
-                                        .monospace()
-                                        .size(9.0)
-                                        .background_color(bg)
-                                        .color(fg),
-                                )
-                                .on_hover_text(format!(
-                                    "{}..{} (len={} bp, len%3={mod3})",
-                                    from_exon.start_1based,
-                                    from_exon.end_1based,
-                                    Self::splicing_exon_length_bp(from_exon),
-                                ));
-                                for to_idx in 0..view.unique_exons.len() {
-                                    let support_count = transitions
-                                        .counts
-                                        .get(from_idx)
-                                        .and_then(|row| row.get(to_idx))
-                                        .copied()
-                                        .unwrap_or(0);
-                                    let support_ratio =
-                                        Self::support_ratio_percent(support_count, transcript_total)
-                                            as f32
-                                            / 100.0;
+                                        .strong(),
+                                );
+                            });
+                            for exon in &presentation.exons {
+                                header.col(|ui| {
                                     let (bg, fg) =
-                                        Self::splicing_transition_cell_colors(support_ratio);
-                                    let marker = if support_count > 0 {
-                                        support_count.to_string()
-                                    } else {
-                                        "·".to_string()
-                                    };
-                                    let participants = transitions
-                                        .transcript_feature_ids
-                                        .get(from_idx)
-                                        .and_then(|row| row.get(to_idx))
-                                        .cloned()
-                                        .unwrap_or_default();
-                                    let mut labels = participants
-                                        .iter()
-                                        .map(|feature_id| format!("n-{feature_id}"))
-                                        .collect::<Vec<_>>();
-                                    if labels.len() > 12 {
-                                        let hidden = labels.len() - 12;
-                                        labels.truncate(12);
-                                        labels.push(format!("+{hidden} more"));
-                                    }
+                                        Self::splicing_exon_mod3_colors(exon.length_mod3);
                                     ui.label(
-                                        egui::RichText::new(marker)
+                                        egui::RichText::new(exon.transition_label.as_str())
                                             .monospace()
                                             .size(9.0)
                                             .background_color(bg)
                                             .color(fg),
                                     )
-                                    .on_hover_text(format!(
-                                        "E{} -> E{} support {}{}",
-                                        from_idx + 1,
-                                        to_idx + 1,
-                                        Self::format_support_fraction(
-                                            support_count,
-                                            transcript_total
-                                        ),
-                                        if labels.is_empty() {
-                                            "".to_string()
-                                        } else {
-                                            format!("\nTranscripts: {}", labels.join(", "))
-                                        }
-                                    ));
-                                }
-                                ui.end_row();
+                                    .on_hover_text(exon.transition_tooltip.as_str());
+                                });
                             }
+                        })
+                        .body(|body| {
+                            body.rows(
+                                row_height,
+                                presentation.transition_rows.len(),
+                                |mut table_row| {
+                                    let row =
+                                        &presentation.transition_rows[table_row.index()];
+                                    table_row.col(|ui| {
+                                        let (bg, fg) = Self::splicing_exon_mod3_colors(
+                                            row.length_mod3,
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(row.label.as_str())
+                                                .monospace()
+                                                .size(9.0)
+                                                .background_color(bg)
+                                                .color(fg),
+                                        )
+                                        .on_hover_text(row.length_tooltip.as_str());
+                                    });
+                                    for cell in &row.cells {
+                                        table_row.col(|ui| {
+                                            let (bg, fg) =
+                                                Self::splicing_transition_cell_colors(
+                                                    cell.support_ratio,
+                                                );
+                                            ui.label(
+                                                egui::RichText::new(cell.marker.as_str())
+                                                    .monospace()
+                                                    .size(9.0)
+                                                    .background_color(bg)
+                                                    .color(fg),
+                                            )
+                                            .on_hover_text(cell.tooltip.as_str());
+                                        });
+                                    }
+                                },
+                            );
                         });
                 });
             });
         }
 
-        if !view.junctions.is_empty() {
+        if !presentation.junction_rows.is_empty() {
             ui.separator();
             ui.label(
                 egui::RichText::new("Junction transition support")
                     .monospace()
                     .size(self.feature_details_font_size()),
             );
-            let transcript_total = view.transcript_count.max(1);
-            let mut junctions = view.junctions.clone();
-            junctions.sort_by(|left, right| {
-                right
-                    .support_transcript_count
-                    .cmp(&left.support_transcript_count)
-                    .then_with(|| left.donor_1based.cmp(&right.donor_1based))
-                    .then_with(|| left.acceptor_1based.cmp(&right.acceptor_1based))
-            });
             egui::ScrollArea::horizontal().show(ui, |ui| {
                 scroll_input_policy::apply_scrollarea_keyboard_navigation(
                     ui,
                     scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                 );
-                egui::Grid::new("splicing_junction_support_grid")
+                let row_height = ui.spacing().interact_size.y.max(20.0);
+                let table_height = Self::splicing_expert_virtual_table_height(
+                    presentation.junction_rows.len(),
+                    row_height,
+                );
+                ui.set_min_width(560.0);
+                egui_extras::TableBuilder::new(ui)
+                    .id_salt((
+                        "splicing_junction_support_grid",
+                        id_namespace,
+                        view.seq_id.as_str(),
+                        view.target_feature_id,
+                    ))
                     .striped(true)
-                    .show(ui, |ui| {
-                        ui.label(egui::RichText::new("donor").monospace().strong());
-                        ui.label(egui::RichText::new("acceptor").monospace().strong());
-                        ui.label(egui::RichText::new("span").monospace().strong());
-                        ui.label(egui::RichText::new("support").monospace().strong());
-                        ui.label(egui::RichText::new("transcripts").monospace().strong());
-                        ui.end_row();
-                        for junction in &junctions {
-                            ui.label(
-                                egui::RichText::new(junction.donor_1based.to_string())
-                                    .monospace()
-                                    .size(9.0),
-                            );
-                            ui.label(
-                                egui::RichText::new(junction.acceptor_1based.to_string())
-                                    .monospace()
-                                    .size(9.0),
-                            );
-                            let span_bp = junction
-                                .acceptor_1based
-                                .max(junction.donor_1based)
-                                .saturating_sub(
-                                    junction.acceptor_1based.min(junction.donor_1based),
-                                );
-                            ui.label(
-                                egui::RichText::new(span_bp.to_string())
-                                    .monospace()
-                                    .size(9.0),
-                            );
-                            ui.label(
-                                egui::RichText::new(Self::format_support_fraction(
-                                    junction.support_transcript_count,
-                                    transcript_total,
-                                ))
-                                .monospace()
-                                .size(9.0),
-                            );
-                            let mut transcript_labels = junction
-                                .transcript_feature_ids
-                                .iter()
-                                .map(|feature_id| format!("n-{feature_id}"))
-                                .collect::<Vec<_>>();
-                            if transcript_labels.len() > 10 {
-                                let hidden = transcript_labels.len() - 10;
-                                transcript_labels.truncate(10);
-                                transcript_labels.push(format!("+{hidden} more"));
-                            }
-                            ui.label(
-                                egui::RichText::new(transcript_labels.join(", "))
-                                    .monospace()
-                                    .size(9.0),
-                            );
-                            ui.end_row();
+                    .max_scroll_height(table_height)
+                    .min_scrolled_height(0.0)
+                    .auto_shrink([true, true])
+                    .column(egui_extras::Column::initial(80.0))
+                    .column(egui_extras::Column::initial(80.0))
+                    .column(egui_extras::Column::initial(72.0))
+                    .column(egui_extras::Column::initial(140.0))
+                    .column(egui_extras::Column::initial(188.0))
+                    .header(row_height, |mut header| {
+                        for label in ["donor", "acceptor", "span", "support", "transcripts"] {
+                            header.col(|ui| {
+                                ui.label(egui::RichText::new(label).monospace().strong());
+                            });
                         }
+                    })
+                    .body(|body| {
+                        body.rows(
+                            row_height,
+                            presentation.junction_rows.len(),
+                            |mut table_row| {
+                                let row = &presentation.junction_rows[table_row.index()];
+                                for value in [
+                                    row.donor_label.as_str(),
+                                    row.acceptor_label.as_str(),
+                                    row.span_label.as_str(),
+                                    row.support_label.as_str(),
+                                    row.transcript_labels.as_str(),
+                                ] {
+                                    table_row.col(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(value).monospace().size(9.0),
+                                        );
+                                    });
+                                }
+                            },
+                        );
                     });
             });
         }
@@ -6523,29 +6780,31 @@ impl MainAreaDna {
     }
 
     pub(super) fn sync_splicing_expert_window_state(&mut self) {
-        if let Some(FeatureExpertView::Splicing(view)) = self.description_cache_expert_view.clone()
-        {
-            if !self.show_splicing_expert_window {
-                return;
-            }
-            let needs_refresh = self.splicing_expert_window_feature_id
-                != Some(view.target_feature_id)
-                || self
-                    .splicing_expert_window_view
-                    .as_ref()
-                    .map(|cached| {
-                        cached.seq_id != view.seq_id
-                            || cached.region_start_1based != view.region_start_1based
-                            || cached.region_end_1based != view.region_end_1based
-                            || cached.transcript_count != view.transcript_count
-                    })
-                    .unwrap_or(true);
-            if needs_refresh {
-                self.splicing_expert_window_feature_id = Some(view.target_feature_id);
-                self.splicing_expert_window_view = Some(Arc::new(view.clone()));
-                self.splicing_expert_window_pending_initial_render = true;
-                self.log_splicing_expert_status(&view, "window state refreshed", true);
-            }
+        if !self.show_splicing_expert_window {
+            return;
+        }
+        let Some(FeatureExpertView::Splicing(view)) = self.description_cache_expert_view.as_ref()
+        else {
+            return;
+        };
+        let needs_refresh = self.splicing_expert_window_feature_id != Some(view.target_feature_id)
+            || self
+                .splicing_expert_window_view
+                .as_ref()
+                .map(|cached| {
+                    cached.seq_id != view.seq_id
+                        || cached.region_start_1based != view.region_start_1based
+                        || cached.region_end_1based != view.region_end_1based
+                        || cached.transcript_count != view.transcript_count
+                })
+                .unwrap_or(true);
+        if needs_refresh {
+            let view = view.clone();
+            self.invalidate_splicing_expert_presentation_cache();
+            self.splicing_expert_window_feature_id = Some(view.target_feature_id);
+            self.splicing_expert_window_view = Some(Arc::new(view.clone()));
+            self.splicing_expert_window_pending_initial_render = true;
+            self.log_splicing_expert_status(&view, "window state refreshed", true);
         }
     }
 

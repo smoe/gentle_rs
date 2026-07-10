@@ -51,6 +51,7 @@ impl MainAreaDna {
             "open requested",
             self.splicing_expert_window_pending_initial_render,
         );
+        self.invalidate_splicing_expert_presentation_cache();
         self.splicing_expert_window_feature_id = Some(view.target_feature_id);
         self.splicing_expert_window_view = Some(Arc::new(view.clone()));
         self.splicing_exon_skip_selected_candidate_ids.clear();
@@ -95,6 +96,7 @@ impl MainAreaDna {
         match self.splicing_expert_view_for_feature(feature_id) {
             Ok(view) => {
                 self.open_splicing_expert_window_for_view(&view);
+                self.invalidate_splicing_expert_presentation_cache();
                 self.description_cache_expert_view = Some(FeatureExpertView::Splicing(view));
                 self.description_cache_expert_error = None;
                 self.op_status = format!("Opened Splicing Expert from {source}");
@@ -116,6 +118,7 @@ impl MainAreaDna {
         match self.splicing_expert_view_for_feature(feature_id) {
             Ok(view) => {
                 self.open_rna_read_mapping_workspace_for_view(&view);
+                self.invalidate_splicing_expert_presentation_cache();
                 self.description_cache_expert_view =
                     Some(FeatureExpertView::Splicing(view.clone()));
                 self.description_cache_expert_error = None;
@@ -133,6 +136,7 @@ impl MainAreaDna {
     pub(super) fn open_dotplot_for_feature(&mut self, feature_id: usize, source: &str) -> bool {
         match self.splicing_expert_view_for_feature(feature_id) {
             Ok(view) => {
+                self.invalidate_splicing_expert_presentation_cache();
                 self.description_cache_expert_view =
                     Some(FeatureExpertView::Splicing(view.clone()));
                 self.description_cache_expert_error = None;
