@@ -46,7 +46,7 @@ use crate::{
     feature_expert::{
         FeatureExpertView, IsoformArchitectureExpertView, RestrictionSiteExpertView,
         SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView, SplicingIntronSignal,
-        SplicingJunctionArc, SplicingRange, SplicingTranscriptLane,
+        SplicingJunctionArc, SplicingMatrixRow, SplicingRange, SplicingTranscriptLane,
     },
     linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
     protocol_cartoon::pcr_oe_substitution_geometry_bindings,
@@ -1838,6 +1838,152 @@ fn sequencing_confirmation_selected_target_id_prefers_unresolved_rows_when_reque
     let selected = MainAreaDna::sequencing_confirmation_selected_target_id(&report, "", true)
         .expect("selected target id");
     assert_eq!(selected, "insufficient_target");
+}
+
+fn sequencing_confirmation_presentation_test_report() -> SequencingConfirmationReport {
+    SequencingConfirmationReport {
+        report_id: "confirm_large".to_string(),
+        generated_at_unix_ms: 42,
+        targets: vec![
+            SequencingConfirmationTargetResult {
+                target_id: "confirmed_target".to_string(),
+                label: "Confirmed".to_string(),
+                status: SequencingConfirmationStatus::Confirmed,
+                start_0based: 0,
+                end_0based_exclusive: 10,
+                ..Default::default()
+            },
+            SequencingConfirmationTargetResult {
+                target_id: "insufficient_target".to_string(),
+                label: "Insufficient".to_string(),
+                status: SequencingConfirmationStatus::InsufficientEvidence,
+                start_0based: 10,
+                end_0based_exclusive: 20,
+                ..Default::default()
+            },
+            SequencingConfirmationTargetResult {
+                target_id: "contradicted_target".to_string(),
+                label: "Contradicted".to_string(),
+                status: SequencingConfirmationStatus::Contradicted,
+                start_0based: 20,
+                end_0based_exclusive: 30,
+                ..Default::default()
+            },
+        ],
+        reads: vec![
+            SequencingConfirmationReadResult {
+                evidence_id: "evidence_a".to_string(),
+                read_seq_id: "read_a".to_string(),
+                ..Default::default()
+            },
+            SequencingConfirmationReadResult {
+                evidence_id: "evidence_b".to_string(),
+                read_seq_id: "read_b".to_string(),
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn sequencing_confirmation_target_review_order_cache_reuses_indices_and_tracks_sort_mode() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("dna");
+    let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+    let report = sequencing_confirmation_presentation_test_report();
+
+    let unresolved_first = area.sequencing_confirmation_cached_target_review_indices(&report, true);
+    assert_eq!(unresolved_first.as_slice(), &[2, 1, 0]);
+    let reused = area.sequencing_confirmation_cached_target_review_indices(&report, true);
+    assert!(Arc::ptr_eq(&unresolved_first, &reused));
+    assert_eq!(
+        area.sequencing_confirmation_ui
+            .target_review_order_cache_misses,
+        1
+    );
+    assert_eq!(
+        area.sequencing_confirmation_ui
+            .target_review_order_cache_hits,
+        1
+    );
+
+    let report_order = area.sequencing_confirmation_cached_target_review_indices(&report, false);
+    assert_eq!(report_order.as_slice(), &[0, 1, 2]);
+    assert_eq!(
+        area.sequencing_confirmation_ui
+            .target_review_order_cache_misses,
+        2
+    );
+
+    let mut revised_report = report.clone();
+    revised_report.generated_at_unix_ms = 43;
+    let revised = area.sequencing_confirmation_cached_target_review_indices(&revised_report, true);
+    assert!(!Arc::ptr_eq(&unresolved_first, &revised));
+    assert_eq!(
+        area.sequencing_confirmation_ui
+            .target_review_order_cache_misses,
+        3
+    );
+}
+
+#[test]
+fn sequencing_confirmation_table_scroll_requests_follow_programmatic_selection() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("dna");
+    let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+    let report = sequencing_confirmation_presentation_test_report();
+    area.sequencing_confirmation_ui.review_unresolved_first = true;
+    area.sequencing_confirmation_ui.selected_target_id = "confirmed_target".to_string();
+    area.sequencing_confirmation_ui.selected_evidence_id = "evidence_b".to_string();
+    let target_order = area.sequencing_confirmation_cached_target_review_indices(&report, true);
+
+    assert_eq!(
+        area.sequencing_confirmation_target_scroll_request(&report, &target_order),
+        Some(2)
+    );
+    assert_eq!(
+        area.sequencing_confirmation_read_scroll_request(&report),
+        Some(1)
+    );
+    assert_eq!(
+        area.sequencing_confirmation_target_scroll_request(&report, &target_order),
+        None
+    );
+    assert_eq!(
+        area.sequencing_confirmation_read_scroll_request(&report),
+        None
+    );
+
+    area.sequencing_confirmation_ui.selected_target_id = "contradicted_target".to_string();
+    assert_eq!(
+        area.sequencing_confirmation_target_scroll_request(&report, &target_order),
+        Some(0)
+    );
+    area.sequencing_confirmation_ui.review_unresolved_first = false;
+    let report_order = area.sequencing_confirmation_cached_target_review_indices(&report, false);
+    assert_eq!(
+        area.sequencing_confirmation_target_scroll_request(&report, &report_order),
+        Some(2)
+    );
+
+    area.sequencing_confirmation_ui.selected_evidence_id = "evidence_a".to_string();
+    assert_eq!(
+        area.sequencing_confirmation_read_scroll_request(&report),
+        Some(0)
+    );
+}
+
+#[test]
+fn sequencing_confirmation_virtual_table_height_bounds_visible_rows() {
+    assert_eq!(
+        MainAreaDna::sequencing_confirmation_virtual_table_height(3, 20.0, 220.0),
+        60.0
+    );
+    let target_height = MainAreaDna::sequencing_confirmation_virtual_table_height(100, 20.0, 220.0);
+    let read_height = MainAreaDna::sequencing_confirmation_virtual_table_height(100, 20.0, 280.0);
+    assert_eq!(target_height, 220.0);
+    assert_eq!(read_height, 280.0);
+    assert_eq!((target_height / 20.0) as usize, 11);
+    assert_eq!((read_height / 20.0) as usize, 14);
 }
 
 #[test]
@@ -12663,6 +12809,132 @@ fn large_splicing_transition_matrix_defaults_to_collapsed_section() {
     assert!(MainAreaDna::splicing_transition_should_default_collapsed(
         81
     ));
+}
+
+fn splicing_expert_presentation_test_view() -> SplicingExpertView {
+    SplicingExpertView {
+        seq_id: "seq1".to_string(),
+        target_feature_id: 7,
+        scope: SplicingScopePreset::AllOverlappingAnyStrand,
+        group_label: "TEST".to_string(),
+        strand: "+".to_string(),
+        region_start_1based: 1,
+        region_end_1based: 40,
+        transcript_count: 2,
+        unique_exon_count: 2,
+        instruction: "test".to_string(),
+        transcripts: vec![
+            SplicingTranscriptLane {
+                transcript_feature_id: 11,
+                transcript_id: "tx1".to_string(),
+                label: "tx1".to_string(),
+                strand: "+".to_string(),
+                exons: vec![
+                    SplicingRange {
+                        start_1based: 1,
+                        end_1based: 10,
+                    },
+                    SplicingRange {
+                        start_1based: 21,
+                        end_1based: 30,
+                    },
+                ],
+                exon_cds_phases: vec![],
+                introns: vec![SplicingRange {
+                    start_1based: 11,
+                    end_1based: 20,
+                }],
+                has_target_feature: true,
+            },
+            SplicingTranscriptLane {
+                transcript_feature_id: 12,
+                transcript_id: "tx2".to_string(),
+                label: "tx2".to_string(),
+                strand: "+".to_string(),
+                exons: vec![SplicingRange {
+                    start_1based: 1,
+                    end_1based: 10,
+                }],
+                exon_cds_phases: vec![],
+                introns: vec![],
+                has_target_feature: false,
+            },
+        ],
+        unique_exons: vec![
+            SplicingExonSummary {
+                start_1based: 1,
+                end_1based: 10,
+                support_transcript_count: 2,
+                constitutive: true,
+            },
+            SplicingExonSummary {
+                start_1based: 21,
+                end_1based: 30,
+                support_transcript_count: 1,
+                constitutive: false,
+            },
+        ],
+        matrix_rows: vec![
+            SplicingMatrixRow {
+                transcript_feature_id: 11,
+                transcript_id: "tx1".to_string(),
+                label: "tx1".to_string(),
+                exon_presence: vec![true, true],
+            },
+            SplicingMatrixRow {
+                transcript_feature_id: 12,
+                transcript_id: "tx2".to_string(),
+                label: "tx2".to_string(),
+                exon_presence: vec![true, false],
+            },
+        ],
+        boundaries: vec![],
+        intron_signals: vec![],
+        junctions: vec![
+            SplicingJunctionArc {
+                donor_1based: 10,
+                acceptor_1based: 21,
+                support_transcript_count: 1,
+                transcript_feature_ids: vec![11],
+            },
+            SplicingJunctionArc {
+                donor_1based: 30,
+                acceptor_1based: 41,
+                support_transcript_count: 2,
+                transcript_feature_ids: vec![11, 12],
+            },
+        ],
+        events: vec![],
+    }
+}
+
+#[test]
+fn splicing_expert_presentation_reuses_immutable_view_and_invalidates_on_replacement() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let view = splicing_expert_presentation_test_view();
+
+    let first = area.splicing_expert_presentation_for_view(&view);
+    let second = area.splicing_expert_presentation_for_view(&view);
+    assert!(Arc::ptr_eq(&first, &second));
+    assert_eq!(area.splicing_expert_presentation_cache_misses, 1);
+    assert_eq!(area.splicing_expert_presentation_cache_hits, 1);
+    assert_eq!(first.exons[0].support_label, "2/2 (100.0%) const");
+    assert_eq!(first.transition_rows[0].cells[1].marker, "1");
+    assert!(first.transition_rows[0].cells[1].tooltip.contains("n-11"));
+    assert_eq!(first.junction_rows[0].donor_label, "30");
+
+    let mut replacement = view.clone();
+    replacement.matrix_rows[0].transcript_id = "tx1_revised".to_string();
+    let third = area.splicing_expert_presentation_for_view(&replacement);
+    assert!(!Arc::ptr_eq(&first, &third));
+    assert_eq!(area.splicing_expert_presentation_cache_misses, 2);
+    assert_eq!(third.transcript_rows[0].label, "n-11 tx1_revised");
+
+    area.invalidate_splicing_expert_presentation_cache();
+    let fourth = area.splicing_expert_presentation_for_view(&replacement);
+    assert!(!Arc::ptr_eq(&third, &fourth));
+    assert_eq!(area.splicing_expert_presentation_cache_misses, 3);
 }
 
 #[test]
