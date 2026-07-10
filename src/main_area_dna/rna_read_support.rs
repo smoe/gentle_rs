@@ -397,6 +397,105 @@ pub(super) struct CachedRnaReadProgress {
     pub(super) progress: Arc<RnaReadInterpretProgress>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct RnaReadSeedHistogramPresentationKey {
+    pub(super) report_id: String,
+    pub(super) progress_seq_id: String,
+    pub(super) reads_processed: usize,
+    pub(super) reads_total: usize,
+    pub(super) seed_passed: usize,
+    pub(super) aligned: usize,
+    pub(super) tested_kmers: usize,
+    pub(super) matched_kmers: usize,
+    pub(super) done: bool,
+    pub(super) bins_identity: (usize, usize),
+    pub(super) top_hits_identity: (usize, usize),
+    pub(super) seed_catalog_identity: (usize, usize),
+    pub(super) template_audit_identity: (usize, usize),
+    pub(super) selected_record_index: Option<usize>,
+    pub(super) kmer_len: usize,
+    pub(super) seed_stride_bp: usize,
+    pub(super) view_identity: usize,
+    pub(super) view_seq_id: String,
+    pub(super) target_feature_id: usize,
+    pub(super) show_exons: bool,
+    pub(super) show_introns: bool,
+    pub(super) exonic_coords: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct RnaReadSeedHistogramBarPresentation {
+    pub(super) start_fraction: f32,
+    pub(super) end_fraction: f32,
+    pub(super) confirmed_plus: u64,
+    pub(super) confirmed_minus: u64,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct RnaReadSeedHistogramGuidePresentation {
+    pub(super) start_fraction: f32,
+    pub(super) end_fraction: f32,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct RnaReadSeedHistogramPointPresentation {
+    pub(super) position_fraction: f32,
+    pub(super) strand_minus: bool,
+    pub(super) selected: bool,
+    pub(super) catalog_index: usize,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct RnaReadSeedHistogramPresentation {
+    pub(super) use_exonic_coords: bool,
+    pub(super) left_label: usize,
+    pub(super) right_label: usize,
+    pub(super) max_count: u64,
+    pub(super) bars: Vec<RnaReadSeedHistogramBarPresentation>,
+    pub(super) exon_guides: Vec<RnaReadSeedHistogramGuidePresentation>,
+    pub(super) intron_guides: Vec<RnaReadSeedHistogramGuidePresentation>,
+    pub(super) points: Vec<RnaReadSeedHistogramPointPresentation>,
+    pub(super) template_audit_index_by_feature_id: HashMap<usize, usize>,
+    pub(super) plus_unique_positions: usize,
+    pub(super) minus_unique_positions: usize,
+    pub(super) unique_seed_bits: usize,
+    pub(super) repeated_seed_bits: usize,
+    pub(super) max_seed_occurrence: usize,
+    pub(super) selected_supported_positions: usize,
+    pub(super) selected_seed_recompute_ms: f64,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct RnaReadSeedHistogramPixelPoint {
+    pub(super) x_offset: f32,
+    pub(super) strand_minus: bool,
+    pub(super) selected: bool,
+    pub(super) catalog_index: usize,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct RnaReadSeedHistogramPixelPresentation {
+    pub(super) width_bits: u32,
+    pub(super) points: Vec<RnaReadSeedHistogramPixelPoint>,
+    pub(super) rendered_pixel_bucket_count: usize,
+    pub(super) selected_pixel_bucket_count: usize,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct CachedRnaReadSeedHistogramPresentation {
+    pub(super) key: RnaReadSeedHistogramPresentationKey,
+    pub(super) model: RnaReadSeedHistogramPresentation,
+    pub(super) pixels: Option<RnaReadSeedHistogramPixelPresentation>,
+}
+
+#[derive(Debug)]
+pub(super) struct RnaReadTaskPollBatch {
+    pub(super) latest_progress: Option<RnaReadInterpretProgress>,
+    pub(super) done: Option<Result<RnaReadTaskOutcome, EngineError>>,
+    pub(super) progress_messages_drained: usize,
+    pub(super) hit_message_cap: bool,
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct CachedRnaReadGeneSupportSummary {
     pub(super) cache_key: String,
@@ -482,12 +581,17 @@ impl MainAreaDna {
         self.cached_saved_rna_read_report = None;
         self.cached_rna_read_report_summaries = None;
         self.cached_saved_rna_read_progress = None;
+        self.invalidate_rna_read_seed_histogram_cache();
         self.cached_rna_read_gene_support_summary = None;
         self.cached_rna_read_alignment_inspections.clear();
         self.cached_rna_read_alignment_detail = None;
         self.cached_rna_read_alignment_display = None;
         self.cached_rna_read_concatemer_inspection = None;
         self.rna_read_alignment_detail_visible_key = None;
+    }
+
+    pub(super) fn invalidate_rna_read_seed_histogram_cache(&mut self) {
+        self.cached_rna_read_seed_histogram = None;
     }
 
     pub(super) fn rna_read_alignment_inspection_cache_key(

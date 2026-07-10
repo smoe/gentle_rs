@@ -1064,8 +1064,6 @@ impl MainAreaDna {
                 self.render_rna_read_seed_histogram(
                     ui,
                     progress,
-                    &self.rna_seed_catalog_preview,
-                    &self.rna_seed_template_audit_preview,
                     view,
                     self.rna_seed_overlay_show_exons,
                     self.rna_seed_overlay_show_introns,
@@ -1180,8 +1178,6 @@ impl MainAreaDna {
             self.render_rna_read_seed_histogram(
                 ui,
                 progress,
-                &self.rna_seed_catalog_preview,
-                &self.rna_seed_template_audit_preview,
                 view,
                 self.rna_seed_overlay_show_exons,
                 self.rna_seed_overlay_show_introns,
@@ -1647,8 +1643,6 @@ impl MainAreaDna {
             self.render_rna_read_seed_histogram(
                 ui,
                 progress,
-                &self.rna_seed_catalog_preview,
-                &self.rna_seed_template_audit_preview,
                 view,
                 self.rna_seed_overlay_show_exons,
                 self.rna_seed_overlay_show_introns,
@@ -3145,6 +3139,7 @@ impl MainAreaDna {
         scope: SplicingScopePreset,
         kmer_len: usize,
     ) {
+        self.invalidate_rna_read_seed_histogram_cache();
         let Some(engine) = self.engine.clone() else {
             self.rna_seed_catalog_preview.clear();
             self.rna_seed_template_audit_preview.clear();
@@ -4930,6 +4925,7 @@ impl MainAreaDna {
         let started = Instant::now();
         let (tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
         self.rna_read_progress = None;
+        self.invalidate_rna_read_seed_histogram_cache();
         self.clear_rna_read_report_scoped_selection_state();
         self.rna_stream_eta_text = None;
         self.rna_stream_eta_reads_processed = 0;
@@ -5205,6 +5201,80 @@ impl MainAreaDna {
         result
     }
 
+    pub(super) fn coalesce_rna_read_task_messages(
+        rx: &Receiver<RnaReadTaskMessage>,
+        max_messages: usize,
+    ) -> RnaReadTaskPollBatch {
+        let max_messages = max_messages.max(1);
+        let mut batch = RnaReadTaskPollBatch {
+            latest_progress: None,
+            done: None,
+            progress_messages_drained: 0,
+            hit_message_cap: false,
+        };
+        for _ in 0..max_messages {
+            match rx.try_recv() {
+                Ok(RnaReadTaskMessage::Progress(progress)) => {
+                    batch.latest_progress = Some(progress);
+                    batch.progress_messages_drained =
+                        batch.progress_messages_drained.saturating_add(1);
+                }
+                Ok(RnaReadTaskMessage::Done(done)) => {
+                    batch.done = Some(done);
+                    return batch;
+                }
+                Err(TryRecvError::Empty) => return batch,
+                Err(TryRecvError::Disconnected) => {
+                    batch.done = Some(Err(EngineError {
+                        code: ErrorCode::Internal,
+                        message: "RNA-read worker disconnected unexpectedly".to_string(),
+                        cause_chain: vec![],
+                    }));
+                    return batch;
+                }
+            }
+        }
+        batch.hit_message_cap = true;
+        batch
+    }
+
+    fn apply_rna_read_progress_snapshot(
+        &mut self,
+        progress: RnaReadInterpretProgress,
+        task_started: Instant,
+    ) {
+        if let Some(selected_index) = self.rna_seed_highlight_record_index {
+            let still_visible = progress
+                .top_hits_preview
+                .iter()
+                .any(|row| row.record_index == selected_index);
+            if !still_visible {
+                self.rna_seed_highlight_record_index = None;
+            }
+        }
+        if progress.reads_total == 0
+            && progress.input_bytes_total > 0
+            && progress.reads_processed != self.rna_stream_eta_reads_processed
+        {
+            let elapsed_s = task_started.elapsed().as_secs_f64().max(0.001);
+            let fraction = (progress.input_bytes_processed as f64
+                / progress.input_bytes_total as f64)
+                .clamp(0.0, 1.0);
+            self.rna_stream_eta_text = if progress.input_bytes_processed > 0 && fraction > 0.0 {
+                let estimated_total_s = elapsed_s / fraction;
+                Some(format!(
+                    "ETA: {}",
+                    Self::format_duration_compact((estimated_total_s - elapsed_s).max(0.0))
+                ))
+            } else {
+                None
+            };
+            self.rna_stream_eta_reads_processed = progress.reads_processed;
+        }
+        self.rna_read_progress = Some(progress);
+        self.invalidate_rna_read_seed_histogram_cache();
+    }
+
     pub(super) fn poll_rna_read_task(&mut self, ctx: &egui::Context) {
         if self.rna_read_task.is_none() {
             return;
@@ -5213,82 +5283,32 @@ impl MainAreaDna {
         let mut processed_progress_messages = 0usize;
         let mut hit_progress_cap = false;
         let mut task_still_running = false;
+        let mut latest_progress = None;
+        let mut task_started = None;
         if let Some(task) = &self.rna_read_task {
+            task_started = Some(task.started);
             match task.receiver.lock() {
                 Ok(rx) => {
-                    const MAX_PROGRESS_MESSAGES_PER_TICK: usize = 512;
-                    let mut processed_progress = 0usize;
-                    loop {
-                        match rx.try_recv() {
-                            Ok(RnaReadTaskMessage::Progress(progress)) => {
-                                if let Some(selected_index) = self.rna_seed_highlight_record_index {
-                                    let still_visible = progress
-                                        .top_hits_preview
-                                        .iter()
-                                        .any(|row| row.record_index == selected_index);
-                                    if !still_visible {
-                                        self.rna_seed_highlight_record_index = None;
-                                    }
-                                }
-                                if progress.reads_total == 0
-                                    && progress.input_bytes_total > 0
-                                    && progress.reads_processed
-                                        != self.rna_stream_eta_reads_processed
-                                {
-                                    let elapsed_s = task.started.elapsed().as_secs_f64().max(0.001);
-                                    let fraction = (progress.input_bytes_processed as f64
-                                        / progress.input_bytes_total as f64)
-                                        .clamp(0.0, 1.0);
-                                    self.rna_stream_eta_text =
-                                        if progress.input_bytes_processed > 0 && fraction > 0.0 {
-                                            let estimated_total_s = elapsed_s / fraction;
-                                            Some(format!(
-                                                "ETA: {}",
-                                                Self::format_duration_compact(
-                                                    (estimated_total_s - elapsed_s).max(0.0)
-                                                )
-                                            ))
-                                        } else {
-                                            None
-                                        };
-                                    self.rna_stream_eta_reads_processed = progress.reads_processed;
-                                }
-                                self.rna_read_progress = Some(progress);
-                                processed_progress = processed_progress.saturating_add(1);
-                                if processed_progress >= MAX_PROGRESS_MESSAGES_PER_TICK {
-                                    hit_progress_cap = true;
-                                    break;
-                                }
-                            }
-                            Ok(RnaReadTaskMessage::Done(res)) => {
-                                done = Some(res);
-                                break;
-                            }
-                            Err(TryRecvError::Disconnected) => {
-                                done = Some(Err(EngineError {
-                                    code: ErrorCode::Internal,
-                                    message: "RNA-read worker disconnected unexpectedly"
-                                        .to_string(),
-
-                                    cause_chain: vec![],
-                                }));
-                                break;
-                            }
-                            Err(TryRecvError::Empty) => break,
-                        }
-                    }
-                    processed_progress_messages = processed_progress;
+                    const MAX_RNA_READ_MESSAGES_PER_TICK: usize = 512;
+                    let batch =
+                        Self::coalesce_rna_read_task_messages(&rx, MAX_RNA_READ_MESSAGES_PER_TICK);
+                    processed_progress_messages = batch.progress_messages_drained;
+                    hit_progress_cap = batch.hit_message_cap;
+                    latest_progress = batch.latest_progress;
+                    done = batch.done;
                     task_still_running = done.is_none();
                 }
                 Err(_) => {
                     done = Some(Err(EngineError {
                         code: ErrorCode::Internal,
                         message: "RNA-read progress channel lock poisoned".to_string(),
-
                         cause_chain: vec![],
                     }));
                 }
             }
+        }
+        if let (Some(progress), Some(started)) = (latest_progress, task_started) {
+            self.apply_rna_read_progress_snapshot(progress, started);
         }
 
         if done.is_none() && task_still_running && !self.show_rna_read_mapping_window {
@@ -5342,12 +5362,393 @@ impl MainAreaDna {
         }
     }
 
-    pub(super) fn render_rna_read_seed_histogram(
+    fn rna_read_slice_identity<T>(rows: &[T]) -> (usize, usize) {
+        (rows.as_ptr() as usize, rows.len())
+    }
+
+    fn rna_read_seed_histogram_presentation_key(
         &self,
-        ui: &mut egui::Ui,
+        progress: &RnaReadInterpretProgress,
+        view: &SplicingExpertView,
+        show_exons: bool,
+        show_introns: bool,
+        exonic_coords: bool,
+        kmer_len: usize,
+        seed_stride_bp: usize,
+    ) -> RnaReadSeedHistogramPresentationKey {
+        RnaReadSeedHistogramPresentationKey {
+            report_id: self
+                .selected_rna_read_evidence_report_id()
+                .or_else(|| self.current_rna_read_mapping_workspace_report_id())
+                .unwrap_or_default(),
+            progress_seq_id: progress.seq_id.clone(),
+            reads_processed: progress.reads_processed,
+            reads_total: progress.reads_total,
+            seed_passed: progress.seed_passed,
+            aligned: progress.aligned,
+            tested_kmers: progress.tested_kmers,
+            matched_kmers: progress.matched_kmers,
+            done: progress.done,
+            bins_identity: Self::rna_read_slice_identity(&progress.bins),
+            top_hits_identity: Self::rna_read_slice_identity(&progress.top_hits_preview),
+            seed_catalog_identity: Self::rna_read_slice_identity(&self.rna_seed_catalog_preview),
+            template_audit_identity: Self::rna_read_slice_identity(
+                &self.rna_seed_template_audit_preview,
+            ),
+            selected_record_index: self.rna_seed_highlight_record_index,
+            kmer_len,
+            seed_stride_bp,
+            view_identity: view as *const SplicingExpertView as usize,
+            view_seq_id: view.seq_id.clone(),
+            target_feature_id: view.target_feature_id,
+            show_exons,
+            show_introns,
+            exonic_coords,
+        }
+    }
+
+    fn build_rna_read_seed_histogram_presentation(
         progress: &RnaReadInterpretProgress,
         seed_catalog: &[RnaSeedHashCatalogEntry],
         template_audit: &[RnaSeedHashTemplateAuditEntry],
+        view: &SplicingExpertView,
+        selected_record_index: Option<usize>,
+        show_exons: bool,
+        show_introns: bool,
+        exonic_coords: bool,
+        kmer_len: usize,
+        seed_stride_bp: usize,
+    ) -> RnaReadSeedHistogramPresentation {
+        let merged_exons = Self::merged_splicing_exon_ranges(view);
+        let exonic_total_len = merged_exons.iter().fold(0usize, |acc, (start, end)| {
+            acc.saturating_add(end.saturating_sub(*start).saturating_add(1))
+        });
+        let use_exonic_coords = exonic_coords && exonic_total_len > 0;
+        let genomic_left_label = progress
+            .bins
+            .first()
+            .map(|bin| bin.start_1based)
+            .unwrap_or(1);
+        let genomic_right_label = progress
+            .bins
+            .last()
+            .map(|bin| bin.end_1based)
+            .unwrap_or(genomic_left_label);
+        let left_label = if use_exonic_coords {
+            1
+        } else {
+            genomic_left_label
+        };
+        let right_label = if use_exonic_coords {
+            exonic_total_len.max(1)
+        } else {
+            genomic_right_label.max(genomic_left_label)
+        };
+        let left_f = left_label as f32;
+        let span = (right_label as f32 - left_f).max(1.0);
+        let max_count = progress
+            .bins
+            .iter()
+            .map(|bin| bin.confirmed_plus.max(bin.confirmed_minus))
+            .max()
+            .unwrap_or(0)
+            .max(1);
+
+        let mut bars = Vec::<RnaReadSeedHistogramBarPresentation>::new();
+        if use_exonic_coords {
+            for bin in &progress.bins {
+                for (span_start, span_end) in Self::project_genomic_interval_to_exonic(
+                    &merged_exons,
+                    bin.start_1based,
+                    bin.end_1based,
+                ) {
+                    bars.push(RnaReadSeedHistogramBarPresentation {
+                        start_fraction: ((span_start as f32 - left_f) / span).clamp(0.0, 1.0),
+                        end_fraction: ((span_end as f32 - left_f) / span).clamp(0.0, 1.0),
+                        confirmed_plus: bin.confirmed_plus,
+                        confirmed_minus: bin.confirmed_minus,
+                    });
+                }
+            }
+        } else {
+            let bin_count = progress.bins.len().max(1) as f32;
+            for (idx, bin) in progress.bins.iter().enumerate() {
+                bars.push(RnaReadSeedHistogramBarPresentation {
+                    start_fraction: idx as f32 / bin_count,
+                    end_fraction: (idx + 1) as f32 / bin_count,
+                    confirmed_plus: bin.confirmed_plus,
+                    confirmed_minus: bin.confirmed_minus,
+                });
+            }
+        }
+
+        let mut exon_guides = Vec::<RnaReadSeedHistogramGuidePresentation>::new();
+        if show_exons {
+            if use_exonic_coords {
+                exon_guides.push(RnaReadSeedHistogramGuidePresentation {
+                    start_fraction: 0.0,
+                    end_fraction: 1.0,
+                });
+            } else {
+                for (start, end) in &merged_exons {
+                    if *end < genomic_left_label || *start > genomic_right_label {
+                        continue;
+                    }
+                    exon_guides.push(RnaReadSeedHistogramGuidePresentation {
+                        start_fraction: ((*start as f32 - left_f) / span).clamp(0.0, 1.0),
+                        end_fraction: ((*end as f32 - left_f) / span).clamp(0.0, 1.0),
+                    });
+                }
+            }
+        }
+
+        let mut intron_guides = Vec::<RnaReadSeedHistogramGuidePresentation>::new();
+        if show_introns {
+            if use_exonic_coords {
+                let mut running = 0usize;
+                for (idx, (start, end)) in merged_exons.iter().enumerate() {
+                    running = running.saturating_add(end.saturating_sub(*start).saturating_add(1));
+                    if idx + 1 < merged_exons.len() {
+                        let fraction = ((running as f32 - left_f) / span).clamp(0.0, 1.0);
+                        intron_guides.push(RnaReadSeedHistogramGuidePresentation {
+                            start_fraction: fraction,
+                            end_fraction: fraction,
+                        });
+                    }
+                }
+            } else {
+                for pair in merged_exons.windows(2) {
+                    let intron_start = pair[0].1.saturating_add(1);
+                    if pair[1].0 <= intron_start {
+                        continue;
+                    }
+                    let intron_end = pair[1].0.saturating_sub(1);
+                    if intron_end < genomic_left_label || intron_start > genomic_right_label {
+                        continue;
+                    }
+                    intron_guides.push(RnaReadSeedHistogramGuidePresentation {
+                        start_fraction: ((intron_start as f32 - left_f) / span).clamp(0.0, 1.0),
+                        end_fraction: ((intron_end as f32 - left_f) / span).clamp(0.0, 1.0),
+                    });
+                }
+            }
+        }
+
+        let selected_top_hit = selected_record_index.and_then(|selected_index| {
+            progress
+                .top_hits_preview
+                .iter()
+                .find(|row| row.record_index == selected_index)
+        });
+        let recompute_started = Instant::now();
+        let mut selected_seed_budget = selected_top_hit
+            .map(|row| Self::collect_read_seed_bit_counts(&row.sequence, kmer_len, seed_stride_bp))
+            .unwrap_or_default();
+        let selected_seed_recompute_ms = recompute_started.elapsed().as_secs_f64() * 1000.0;
+        let mut seed_occurrence_counts = HashMap::<u32, usize>::new();
+        let mut plus_unique = HashSet::<usize>::new();
+        let mut minus_unique = HashSet::<usize>::new();
+        let mut selected_supported_positions = 0usize;
+        let mut points = Vec::<RnaReadSeedHistogramPointPresentation>::new();
+        for (catalog_index, entry) in seed_catalog.iter().enumerate() {
+            *seed_occurrence_counts.entry(entry.seed_bits).or_insert(0) += 1;
+            let display_pos_1based = if use_exonic_coords {
+                Self::genomic_to_exonic_pos_1based(&merged_exons, entry.genomic_pos_1based)
+            } else if entry.genomic_pos_1based >= genomic_left_label
+                && entry.genomic_pos_1based <= genomic_right_label
+            {
+                Some(entry.genomic_pos_1based)
+            } else {
+                None
+            };
+            let Some(display_pos_1based) = display_pos_1based else {
+                continue;
+            };
+            let strand_minus = entry.strand.trim() == "-";
+            if strand_minus {
+                minus_unique.insert(entry.genomic_pos_1based);
+            } else {
+                plus_unique.insert(entry.genomic_pos_1based);
+            }
+            let selected =
+                selected_seed_budget
+                    .get_mut(&entry.seed_bits)
+                    .is_some_and(|remaining| {
+                        if *remaining == 0 {
+                            false
+                        } else {
+                            *remaining = remaining.saturating_sub(1);
+                            true
+                        }
+                    });
+            if selected {
+                selected_supported_positions = selected_supported_positions.saturating_add(1);
+            }
+            points.push(RnaReadSeedHistogramPointPresentation {
+                position_fraction: ((display_pos_1based as f32 - left_f) / span).clamp(0.0, 1.0),
+                strand_minus,
+                selected,
+                catalog_index,
+            });
+        }
+        let repeated_seed_bits = seed_occurrence_counts
+            .values()
+            .filter(|count| **count > 1)
+            .count();
+        let max_seed_occurrence = seed_occurrence_counts.values().copied().max().unwrap_or(0);
+        let template_audit_index_by_feature_id = template_audit
+            .iter()
+            .enumerate()
+            .map(|(idx, row)| (row.transcript_feature_id, idx))
+            .collect::<HashMap<_, _>>();
+
+        RnaReadSeedHistogramPresentation {
+            use_exonic_coords,
+            left_label,
+            right_label,
+            max_count,
+            bars,
+            exon_guides,
+            intron_guides,
+            points,
+            template_audit_index_by_feature_id,
+            plus_unique_positions: plus_unique.len(),
+            minus_unique_positions: minus_unique.len(),
+            unique_seed_bits: seed_occurrence_counts.len(),
+            repeated_seed_bits,
+            max_seed_occurrence,
+            selected_supported_positions,
+            selected_seed_recompute_ms,
+        }
+    }
+
+    fn build_rna_read_seed_histogram_pixel_presentation(
+        model: &RnaReadSeedHistogramPresentation,
+        width: f32,
+    ) -> RnaReadSeedHistogramPixelPresentation {
+        let width = width.max(0.0);
+        let mut rendered_pixel_buckets = HashSet::<(i32, bool)>::new();
+        let mut selected_pixel_buckets = HashSet::<(i32, bool)>::new();
+        let points = model
+            .points
+            .iter()
+            .map(|point| {
+                let x_offset = point.position_fraction * width;
+                let pixel_x = x_offset.round() as i32;
+                rendered_pixel_buckets.insert((pixel_x, point.strand_minus));
+                if point.selected {
+                    selected_pixel_buckets.insert((pixel_x, point.strand_minus));
+                }
+                RnaReadSeedHistogramPixelPoint {
+                    x_offset,
+                    strand_minus: point.strand_minus,
+                    selected: point.selected,
+                    catalog_index: point.catalog_index,
+                }
+            })
+            .collect::<Vec<_>>();
+        RnaReadSeedHistogramPixelPresentation {
+            width_bits: width.to_bits(),
+            points,
+            rendered_pixel_bucket_count: rendered_pixel_buckets.len(),
+            selected_pixel_bucket_count: selected_pixel_buckets.len(),
+        }
+    }
+
+    pub(super) fn refresh_rna_read_seed_histogram_cache(
+        &mut self,
+        progress: &RnaReadInterpretProgress,
+        view: &SplicingExpertView,
+        show_exons: bool,
+        show_introns: bool,
+        exonic_coords: bool,
+        width: f32,
+    ) {
+        let kmer_len = self
+            .rna_seed_catalog_preview
+            .first()
+            .map(|row| row.kmer_sequence.len())
+            .filter(|len| *len > 0)
+            .or_else(|| {
+                self.rna_reads_ui
+                    .kmer_len
+                    .trim()
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|len| *len > 0)
+            })
+            .unwrap_or(9);
+        let seed_stride_bp = self
+            .rna_reads_ui
+            .seed_stride_bp
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .filter(|value| *value > 0)
+            .unwrap_or_else(|| RnaReadSeedFilterConfig::default().seed_stride_bp);
+        let key = self.rna_read_seed_histogram_presentation_key(
+            progress,
+            view,
+            show_exons,
+            show_introns,
+            exonic_coords,
+            kmer_len,
+            seed_stride_bp,
+        );
+        let data_hit = self
+            .cached_rna_read_seed_histogram
+            .as_ref()
+            .is_some_and(|cached| cached.key == key);
+        if data_hit {
+            self.rna_read_seed_histogram_cache_hits =
+                self.rna_read_seed_histogram_cache_hits.saturating_add(1);
+        } else {
+            let model = Self::build_rna_read_seed_histogram_presentation(
+                progress,
+                &self.rna_seed_catalog_preview,
+                &self.rna_seed_template_audit_preview,
+                view,
+                self.rna_seed_highlight_record_index,
+                show_exons,
+                show_introns,
+                exonic_coords,
+                kmer_len,
+                seed_stride_bp,
+            );
+            self.cached_rna_read_seed_histogram = Some(CachedRnaReadSeedHistogramPresentation {
+                key,
+                model,
+                pixels: None,
+            });
+            self.rna_read_seed_histogram_cache_misses =
+                self.rna_read_seed_histogram_cache_misses.saturating_add(1);
+        }
+
+        let width_bits = width.max(0.0).to_bits();
+        let pixel_hit = self
+            .cached_rna_read_seed_histogram
+            .as_ref()
+            .and_then(|cached| cached.pixels.as_ref())
+            .is_some_and(|pixels| pixels.width_bits == width_bits);
+        if pixel_hit {
+            self.rna_read_seed_histogram_pixel_cache_hits = self
+                .rna_read_seed_histogram_pixel_cache_hits
+                .saturating_add(1);
+        } else if let Some(cached) = self.cached_rna_read_seed_histogram.as_mut() {
+            cached.pixels = Some(Self::build_rna_read_seed_histogram_pixel_presentation(
+                &cached.model,
+                width,
+            ));
+            self.rna_read_seed_histogram_pixel_cache_misses = self
+                .rna_read_seed_histogram_pixel_cache_misses
+                .saturating_add(1);
+        }
+    }
+
+    pub(super) fn render_rna_read_seed_histogram(
+        &mut self,
+        ui: &mut egui::Ui,
+        progress: &RnaReadInterpretProgress,
         view: &SplicingExpertView,
         show_exons: bool,
         show_introns: bool,
@@ -5358,6 +5759,25 @@ impl MainAreaDna {
             return;
         }
         let desired = Vec2::new(ui.available_width().max(280.0), 150.0);
+        self.refresh_rna_read_seed_histogram_cache(
+            progress,
+            view,
+            show_exons,
+            show_introns,
+            exonic_coords,
+            desired.x,
+        );
+        let Some(cached) = self.cached_rna_read_seed_histogram.as_ref() else {
+            ui.small("Seed-confirmation histogram presentation is unavailable.");
+            return;
+        };
+        let model = &cached.model;
+        let Some(pixels) = cached.pixels.as_ref() else {
+            ui.small("Seed-confirmation histogram pixel projection is unavailable.");
+            return;
+        };
+        let seed_catalog = &self.rna_seed_catalog_preview;
+        let template_audit = &self.rna_seed_template_audit_preview;
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::hover());
         let painter = ui.painter_at(rect);
         let border = egui::Stroke::new(1.0_f32, egui::Color32::from_gray(120));
@@ -5372,43 +5792,8 @@ impl MainAreaDna {
             egui::Stroke::new(1.0_f32, egui::Color32::from_gray(120)),
         );
 
-        let max_count = progress
-            .bins
-            .iter()
-            .map(|bin| bin.confirmed_plus.max(bin.confirmed_minus))
-            .max()
-            .unwrap_or(0)
-            .max(1);
-        let max_count_sqrt = (max_count as f32).sqrt().max(1.0);
+        let max_count_sqrt = (model.max_count as f32).sqrt().max(1.0);
         let half_h = (rect.height() * 0.44).max(1.0);
-        let genomic_left_label = progress
-            .bins
-            .first()
-            .map(|bin| bin.start_1based)
-            .unwrap_or(1);
-        let genomic_right_label = progress
-            .bins
-            .last()
-            .map(|bin| bin.end_1based)
-            .unwrap_or(genomic_left_label);
-        let merged_exons = Self::merged_splicing_exon_ranges(view);
-        let exonic_total_len = merged_exons.iter().fold(0usize, |acc, (start, end)| {
-            acc.saturating_add(end.saturating_sub(*start).saturating_add(1))
-        });
-        let use_exonic_coords = exonic_coords && exonic_total_len > 0;
-        let left_label = if use_exonic_coords {
-            1
-        } else {
-            genomic_left_label
-        };
-        let right_label = if use_exonic_coords {
-            exonic_total_len.max(1)
-        } else {
-            genomic_right_label.max(genomic_left_label)
-        };
-        let left_f = left_label as f32;
-        let right_f = right_label as f32;
-        let span = (right_f - left_f).max(1.0);
         let draw_strand_bar =
             |x0: f32, x1: f32, count: u64, strand_minus: bool, painter: &egui::Painter| {
                 if count == 0 || x1 <= x0 {
@@ -5457,138 +5842,66 @@ impl MainAreaDna {
                     }
                 }
             };
-        if use_exonic_coords {
-            let merged_exons_for_bars = Self::merged_splicing_exon_ranges(view);
-            let exonic_total = merged_exons_for_bars
-                .iter()
-                .fold(0usize, |acc, (start, end)| {
-                    acc.saturating_add(end.saturating_sub(*start).saturating_add(1))
-                });
-            let left_f_exo = 1.0f32;
-            let right_f_exo = exonic_total.max(1) as f32;
-            let span_exo = (right_f_exo - left_f_exo).max(1.0);
-            for bin in &progress.bins {
-                let spans = Self::project_genomic_interval_to_exonic(
-                    &merged_exons_for_bars,
-                    bin.start_1based,
-                    bin.end_1based,
+        for bar in &model.bars {
+            let x0 = rect.left() + bar.start_fraction * rect.width() + 0.8;
+            let x1 = rect.left() + bar.end_fraction * rect.width() - 0.8;
+            draw_strand_bar(x0, x1, bar.confirmed_plus, false, &painter);
+            draw_strand_bar(x0, x1, bar.confirmed_minus, true, &painter);
+        }
+        for intron in &model.intron_guides {
+            let x0 = rect.left() + intron.start_fraction * rect.width();
+            let x1 = rect.left() + intron.end_fraction * rect.width();
+            if model.use_exonic_coords {
+                painter.line_segment(
+                    [
+                        egui::pos2(x0, rect.top() + 2.0),
+                        egui::pos2(x0, rect.top() + 11.0),
+                    ],
+                    egui::Stroke::new(1.0_f32, egui::Color32::from_gray(140)),
                 );
-                for (span_start, span_end) in spans {
-                    let x0 = rect.left()
-                        + ((span_start as f32 - left_f_exo) / span_exo).clamp(0.0, 1.0)
-                            * rect.width()
-                        + 0.8;
-                    let x1 = rect.left()
-                        + ((span_end as f32 - left_f_exo) / span_exo).clamp(0.0, 1.0)
-                            * rect.width()
-                        - 0.8;
-                    draw_strand_bar(x0, x1, bin.confirmed_plus, false, &painter);
-                    draw_strand_bar(x0, x1, bin.confirmed_minus, true, &painter);
-                }
-            }
-        } else {
-            let bin_w = rect.width() / progress.bins.len().max(1) as f32;
-            for (idx, bin) in progress.bins.iter().enumerate() {
-                let x0 = rect.left() + idx as f32 * bin_w + 0.8;
-                let x1 = if idx + 1 == progress.bins.len() {
-                    rect.right() - 0.8
-                } else {
-                    rect.left() + (idx + 1) as f32 * bin_w - 0.8
-                };
-                draw_strand_bar(x0, x1, bin.confirmed_plus, false, &painter);
-                draw_strand_bar(x0, x1, bin.confirmed_minus, true, &painter);
+            } else {
+                painter.line_segment(
+                    [
+                        egui::pos2(x0, rect.top() + 7.0),
+                        egui::pos2(x1, rect.top() + 7.0),
+                    ],
+                    egui::Stroke::new(2.0_f32, egui::Color32::from_gray(140)),
+                );
             }
         }
-        let sorted_exons = merged_exons.clone();
-        if show_introns {
-            if use_exonic_coords {
-                let mut running = 0usize;
-                for (idx, (start, end)) in sorted_exons.iter().enumerate() {
-                    running = running.saturating_add(end.saturating_sub(*start).saturating_add(1));
-                    if idx + 1 >= sorted_exons.len() {
-                        continue;
-                    }
-                    let t = ((running as f32 - left_f) / span).clamp(0.0, 1.0);
-                    let x = rect.left() + t * rect.width();
-                    painter.line_segment(
-                        [
-                            egui::pos2(x, rect.top() + 2.0),
-                            egui::pos2(x, rect.top() + 11.0),
-                        ],
-                        egui::Stroke::new(1.0_f32, egui::Color32::from_gray(140)),
-                    );
-                }
-            } else {
-                for pair in sorted_exons.windows(2) {
-                    let left = pair[0];
-                    let right = pair[1];
-                    let intron_start = left.1.saturating_add(1);
-                    if right.0 <= intron_start {
-                        continue;
-                    }
-                    let intron_end = right.0.saturating_sub(1);
-                    if intron_end < genomic_left_label || intron_start > genomic_right_label {
-                        continue;
-                    }
-                    let start_t = ((intron_start as f32 - left_f) / span).clamp(0.0, 1.0);
-                    let end_t = ((intron_end as f32 - left_f) / span).clamp(0.0, 1.0);
-                    let x0 = rect.left() + start_t * rect.width();
-                    let x1 = rect.left() + end_t * rect.width();
-                    painter.line_segment(
-                        [
-                            egui::pos2(x0, rect.top() + 7.0),
-                            egui::pos2(x1, rect.top() + 7.0),
-                        ],
-                        egui::Stroke::new(2.0_f32, egui::Color32::from_gray(140)),
-                    );
-                }
+        for exon in &model.exon_guides {
+            let x0 = rect.left() + exon.start_fraction * rect.width();
+            let mut x1 = rect.left() + exon.end_fraction * rect.width();
+            if x1 <= x0 {
+                x1 = x0 + 1.0;
             }
-        }
-        if show_exons {
-            if use_exonic_coords {
-                let exon_rect = egui::Rect::from_min_max(
-                    egui::pos2(rect.left(), rect.top() + 3.0),
-                    egui::pos2(rect.right(), rect.top() + 10.0),
-                );
-                painter.rect_filled(exon_rect, 2.0, egui::Color32::from_rgb(34, 197, 94));
-            } else {
-                for exon in &sorted_exons {
-                    if exon.1 < genomic_left_label || exon.0 > genomic_right_label {
-                        continue;
-                    }
-                    let start_t = ((exon.0 as f32 - left_f) / span).clamp(0.0, 1.0);
-                    let end_t = ((exon.1 as f32 - left_f) / span).clamp(0.0, 1.0);
-                    let x0 = rect.left() + start_t * rect.width();
-                    let mut x1 = rect.left() + end_t * rect.width();
-                    if x1 <= x0 {
-                        x1 = x0 + 1.0;
-                    }
-                    let exon_rect = egui::Rect::from_min_max(
-                        egui::pos2(x0, rect.top() + 3.0),
-                        egui::pos2(x1, rect.top() + 10.0),
-                    );
-                    painter.rect_filled(exon_rect, 2.0, egui::Color32::from_rgb(34, 197, 94));
-                }
-            }
+            painter.rect_filled(
+                egui::Rect::from_min_max(
+                    egui::pos2(x0, rect.top() + 3.0),
+                    egui::pos2(x1, rect.top() + 10.0),
+                ),
+                2.0,
+                egui::Color32::from_rgb(34, 197, 94),
+            );
         }
         painter.text(
             egui::pos2(rect.left() + 4.0, rect.bottom() - 14.0),
             egui::Align2::LEFT_BOTTOM,
-            format!("{left_label}"),
+            format!("{}", model.left_label),
             egui::TextStyle::Small.resolve(ui.style()),
             egui::Color32::from_gray(120),
         );
         painter.text(
             egui::pos2(rect.right() - 4.0, rect.bottom() - 14.0),
             egui::Align2::RIGHT_BOTTOM,
-            format!("{right_label}"),
+            format!("{}", model.right_label),
             egui::TextStyle::Small.resolve(ui.style()),
             egui::Color32::from_gray(120),
         );
         painter.text(
             egui::pos2(rect.right() - 4.0, rect.top() + 2.0),
             egui::Align2::RIGHT_TOP,
-            if use_exonic_coords {
+            if model.use_exonic_coords {
                 "coords: exonic-only"
             } else {
                 "coords: genomic"
@@ -5598,97 +5911,24 @@ impl MainAreaDna {
         );
         if !seed_catalog.is_empty() {
             let selected_top_hit = self.selected_rna_top_hit_preview(progress);
-            let template_audit_by_feature_id = template_audit
-                .iter()
-                .map(|row| (row.transcript_feature_id, row))
-                .collect::<HashMap<_, _>>();
-            let selected_kmer_len = seed_catalog
-                .first()
-                .map(|row| row.kmer_sequence.len())
-                .filter(|len| *len > 0)
-                .unwrap_or_else(|| {
-                    self.rna_reads_ui
-                        .kmer_len
-                        .trim()
-                        .parse::<usize>()
-                        .ok()
-                        .filter(|len| *len > 0)
-                        .unwrap_or(9)
-                });
-            let selected_seed_stride = self
-                .rna_reads_ui
-                .seed_stride_bp
-                .trim()
-                .parse::<usize>()
-                .ok()
-                .filter(|value| *value > 0)
-                .unwrap_or_else(|| RnaReadSeedFilterConfig::default().seed_stride_bp);
-            let recompute_started = Instant::now();
-            let selected_seed_counts = selected_top_hit
-                .map(|row| {
-                    Self::collect_read_seed_bit_counts(
-                        &row.sequence,
-                        selected_kmer_len,
-                        selected_seed_stride,
-                    )
-                })
-                .unwrap_or_default();
-            let mut selected_seed_budget = selected_seed_counts.clone();
-            let recompute_elapsed_ms = recompute_started.elapsed().as_secs_f64() * 1000.0;
-            let mut seed_occurrence_counts = HashMap::<u32, usize>::new();
-            for entry in seed_catalog {
-                *seed_occurrence_counts.entry(entry.seed_bits).or_insert(0) += 1;
-            }
             let dot_offset = 6.0;
             let dot_color = egui::Color32::from_rgb(220, 38, 38);
             let selected_color = egui::Color32::from_rgb(22, 163, 74);
             let mut hovered: Option<(f32, &RnaSeedHashCatalogEntry)> = None;
             let pointer = response.hover_pos();
-            let mut plus_unique = HashSet::<usize>::new();
-            let mut minus_unique = HashSet::<usize>::new();
-            let mut rendered_pixel_buckets = HashSet::<(i32, bool)>::new();
-            let mut selected_supported_positions = 0usize;
-            let mut selected_supported_pixel_buckets = HashSet::<(i32, bool)>::new();
-            for entry in seed_catalog {
-                let maybe_display_pos = if use_exonic_coords {
-                    Self::genomic_to_exonic_pos_1based(&merged_exons, entry.genomic_pos_1based)
-                } else if entry.genomic_pos_1based >= genomic_left_label
-                    && entry.genomic_pos_1based <= genomic_right_label
-                {
-                    Some(entry.genomic_pos_1based)
-                } else {
-                    None
-                };
-                let Some(display_pos_1based) = maybe_display_pos else {
+            for point in &pixels.points {
+                let Some(entry) = seed_catalog.get(point.catalog_index) else {
                     continue;
                 };
-                let t = ((display_pos_1based as f32 - left_f) / span).clamp(0.0, 1.0);
-                let x = rect.left() + t * rect.width();
-                let strand_minus = entry.strand.trim() == "-";
-                let y = if strand_minus {
+                let x = rect.left() + point.x_offset;
+                let y = if point.strand_minus {
                     mid_y + dot_offset
                 } else {
                     mid_y - dot_offset
                 };
-                let pixel_x = ((x - rect.left()).round() as i32).clamp(0, rect.width() as i32);
-                rendered_pixel_buckets.insert((pixel_x, strand_minus));
-                if strand_minus {
-                    minus_unique.insert(entry.genomic_pos_1based);
-                } else {
-                    plus_unique.insert(entry.genomic_pos_1based);
-                }
                 painter.circle_filled(egui::pos2(x, y), 1.6, dot_color);
-                let mut highlight_selected = false;
-                if let Some(remaining_budget) = selected_seed_budget.get_mut(&entry.seed_bits)
-                    && *remaining_budget > 0
-                {
-                    *remaining_budget = remaining_budget.saturating_sub(1);
-                    highlight_selected = true;
-                }
-                if highlight_selected {
-                    selected_supported_positions = selected_supported_positions.saturating_add(1);
-                    selected_supported_pixel_buckets.insert((pixel_x, strand_minus));
-                    let spike_tip = if strand_minus { y + 5.0 } else { y - 5.0 };
+                if point.selected {
+                    let spike_tip = if point.strand_minus { y + 5.0 } else { y - 5.0 };
                     painter.line_segment(
                         [egui::pos2(x, y), egui::pos2(x, spike_tip)],
                         egui::Stroke::new(1.2_f32, selected_color),
@@ -5721,8 +5961,10 @@ impl MainAreaDna {
                         "transcript n-{} {}",
                         entry.transcript_feature_id, entry.transcript_id
                     ));
-                    if let Some(template) =
-                        template_audit_by_feature_id.get(&entry.transcript_feature_id)
+                    if let Some(template) = model
+                        .template_audit_index_by_feature_id
+                        .get(&entry.transcript_feature_id)
+                        .and_then(|idx| template_audit.get(*idx))
                     {
                         ui.monospace(format!(
                             "hash window={}..{} of {} bp template",
@@ -5744,22 +5986,17 @@ impl MainAreaDna {
             ui.small(format!(
                 "Seed hashes indexed: {} rows | unique genomic starts: {} (+{} / -{}) | rendered dot buckets at current width: {} | coord-mode={}",
                 seed_catalog.len(),
-                plus_unique.len() + minus_unique.len(),
-                plus_unique.len(),
-                minus_unique.len(),
-                rendered_pixel_buckets.len(),
-                if use_exonic_coords { "exonic" } else { "genomic" },
+                model.plus_unique_positions + model.minus_unique_positions,
+                model.plus_unique_positions,
+                model.minus_unique_positions,
+                pixels.rendered_pixel_bucket_count,
+                if model.use_exonic_coords { "exonic" } else { "genomic" },
             ));
-            let repeated_seed_bits = seed_occurrence_counts
-                .values()
-                .filter(|count| **count > 1)
-                .count();
-            let max_seed_occurrence = seed_occurrence_counts.values().copied().max().unwrap_or(0);
             ui.small(format!(
                 "Seed bit diversity: {} unique bits | repeated bits={} | max occurrences per bit={}",
-                seed_occurrence_counts.len(),
-                repeated_seed_bits,
-                max_seed_occurrence
+                model.unique_seed_bits,
+                model.repeated_seed_bits,
+                model.max_seed_occurrence
             ));
             if !template_audit.is_empty() {
                 ui.small(format!(
@@ -5772,9 +6009,9 @@ impl MainAreaDna {
                 ui.small(format!(
                     "Selected top read #{} supports {} hash positions ({} visible pixel buckets); hash recompute {:.2} ms | score={:.3} wscore={:.4} gap-med={} gap-n={} chain={:.2}/{} tx={} class={} oconf={:.2} sconf={:.2} align={}",
                     selected.record_index + 1,
-                    selected_supported_positions,
-                    selected_supported_pixel_buckets.len(),
-                    recompute_elapsed_ms,
+                    model.selected_supported_positions,
+                    pixels.selected_pixel_bucket_count,
+                    model.selected_seed_recompute_ms,
                     selected.seed_hit_fraction,
                     selected.weighted_seed_hit_fraction,
                     if selected.seed_transcript_gap_count == 0 {
@@ -8113,44 +8350,56 @@ impl MainAreaDna {
                 ui.small("No reported exon rows are available in the current annotation scope.");
                 return;
             }
-            egui::ScrollArea::vertical()
-                .max_height(Self::default_rna_read_support_table_height(ui))
-                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
-                .show(ui, |ui| {
-                    egui::Grid::new(format!("reported_exon_support_grid_{}", view.seq_id))
-                        .striped(true)
-                        .num_columns(5)
-                        .show(ui, |ui| {
-                            ui.small("Exon span");
-                            ui.small("Transcripts");
-                            ui.small("Transcript %");
-                            ui.small("Constitutive");
-                            ui.small("Fraction");
-                            ui.end_row();
-                            for exon in &view.unique_exons {
-                                let pct = if view.transcript_count == 0 {
-                                    0.0
-                                } else {
-                                    (exon.support_transcript_count as f64
-                                        / view.transcript_count as f64)
-                                        * 100.0
-                                };
-                                ui.monospace(format!("{}..{}", exon.start_1based, exon.end_1based));
-                                ui.monospace(exon.support_transcript_count.to_string());
-                                ui.monospace(format!("{pct:.2}%"));
-                                ui.monospace(if exon.constitutive { "yes" } else { "no" });
-                                ui.monospace(format!(
-                                    "{:.4}",
-                                    if view.transcript_count == 0 {
-                                        0.0
-                                    } else {
-                                        exon.support_transcript_count as f64
-                                            / view.transcript_count as f64
-                                    }
-                                ));
-                                ui.end_row();
-                            }
+            let row_height = Self::virtual_rna_read_table_row_height(ui);
+            let table_height = Self::default_rna_read_support_table_height(ui);
+            egui_extras::TableBuilder::new(ui)
+                .id_salt(format!("reported_exon_support_table_{}", view.seq_id))
+                .striped(true)
+                .max_scroll_height(table_height)
+                .min_scrolled_height(table_height)
+                .auto_shrink([false, false])
+                .column(egui_extras::Column::exact(120.0))
+                .column(egui_extras::Column::exact(90.0))
+                .column(egui_extras::Column::exact(100.0))
+                .column(egui_extras::Column::exact(90.0))
+                .column(egui_extras::Column::exact(90.0))
+                .header(row_height, |mut header| {
+                    for label in [
+                        "Exon span",
+                        "Transcripts",
+                        "Transcript %",
+                        "Constitutive",
+                        "Fraction",
+                    ] {
+                        header.col(|ui| {
+                            ui.small(label);
                         });
+                    }
+                })
+                .body(|body| {
+                    body.rows(row_height, view.unique_exons.len(), |mut table_row| {
+                        let exon = &view.unique_exons[table_row.index()];
+                        let fraction = if view.transcript_count == 0 {
+                            0.0
+                        } else {
+                            exon.support_transcript_count as f64 / view.transcript_count as f64
+                        };
+                        table_row.col(|ui| {
+                            ui.monospace(format!("{}..{}", exon.start_1based, exon.end_1based));
+                        });
+                        table_row.col(|ui| {
+                            ui.monospace(exon.support_transcript_count.to_string());
+                        });
+                        table_row.col(|ui| {
+                            ui.monospace(format!("{:.2}%", fraction * 100.0));
+                        });
+                        table_row.col(|ui| {
+                            ui.monospace(if exon.constitutive { "yes" } else { "no" });
+                        });
+                        table_row.col(|ui| {
+                            ui.monospace(format!("{fraction:.4}"));
+                        });
+                    });
                 });
         });
 
@@ -8159,44 +8408,48 @@ impl MainAreaDna {
                 ui.small("No reported exon-exon junction rows are available in the current annotation scope.");
                 return;
             }
-            egui::ScrollArea::vertical()
-                .max_height(Self::default_rna_read_support_table_height(ui))
-                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
-                .show(ui, |ui| {
-                    egui::Grid::new(format!("reported_junction_support_grid_{}", view.seq_id))
-                        .striped(true)
-                        .num_columns(5)
-                        .show(ui, |ui| {
-                            ui.small("Donor");
-                            ui.small("Acceptor");
-                            ui.small("Transcripts");
-                            ui.small("Transcript %");
-                            ui.small("Fraction");
-                            ui.end_row();
-                            for junction in &view.junctions {
-                                let pct = if view.transcript_count == 0 {
-                                    0.0
-                                } else {
-                                    (junction.support_transcript_count as f64
-                                        / view.transcript_count as f64)
-                                        * 100.0
-                                };
-                                ui.monospace(junction.donor_1based.to_string());
-                                ui.monospace(junction.acceptor_1based.to_string());
-                                ui.monospace(junction.support_transcript_count.to_string());
-                                ui.monospace(format!("{pct:.2}%"));
-                                ui.monospace(format!(
-                                    "{:.4}",
-                                    if view.transcript_count == 0 {
-                                        0.0
-                                    } else {
-                                        junction.support_transcript_count as f64
-                                            / view.transcript_count as f64
-                                    }
-                                ));
-                                ui.end_row();
-                            }
+            let row_height = Self::virtual_rna_read_table_row_height(ui);
+            let table_height = Self::default_rna_read_support_table_height(ui);
+            egui_extras::TableBuilder::new(ui)
+                .id_salt(format!("reported_junction_support_table_{}", view.seq_id))
+                .striped(true)
+                .max_scroll_height(table_height)
+                .min_scrolled_height(table_height)
+                .auto_shrink([false, false])
+                .columns(egui_extras::Column::exact(90.0), 3)
+                .column(egui_extras::Column::exact(100.0))
+                .column(egui_extras::Column::exact(90.0))
+                .header(row_height, |mut header| {
+                    for label in ["Donor", "Acceptor", "Transcripts", "Transcript %", "Fraction"] {
+                        header.col(|ui| {
+                            ui.small(label);
                         });
+                    }
+                })
+                .body(|body| {
+                    body.rows(row_height, view.junctions.len(), |mut table_row| {
+                        let junction = &view.junctions[table_row.index()];
+                        let fraction = if view.transcript_count == 0 {
+                            0.0
+                        } else {
+                            junction.support_transcript_count as f64 / view.transcript_count as f64
+                        };
+                        table_row.col(|ui| {
+                            ui.monospace(junction.donor_1based.to_string());
+                        });
+                        table_row.col(|ui| {
+                            ui.monospace(junction.acceptor_1based.to_string());
+                        });
+                        table_row.col(|ui| {
+                            ui.monospace(junction.support_transcript_count.to_string());
+                        });
+                        table_row.col(|ui| {
+                            ui.monospace(format!("{:.2}%", fraction * 100.0));
+                        });
+                        table_row.col(|ui| {
+                            ui.monospace(format!("{fraction:.4}"));
+                        });
+                    });
                 });
         });
 
@@ -8205,41 +8458,53 @@ impl MainAreaDna {
                 ui.small("No reported transcripts are available in the current annotation scope.");
                 return;
             }
-            egui::ScrollArea::vertical()
-                .max_height(Self::default_rna_read_support_table_height(ui))
-                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
-                .show(ui, |ui| {
-                    egui::Grid::new(format!("reported_isoform_catalogue_grid_{}", view.seq_id))
-                        .striped(true)
-                        .num_columns(5)
-                        .show(ui, |ui| {
-                            ui.small("Transcript");
-                            ui.small("Strand");
-                            ui.small("Exons");
-                            ui.small("Expected jx");
-                            ui.small("Target");
-                            ui.end_row();
-                            for transcript in &view.transcripts {
-                                let row_color = if transcript.has_target_feature {
-                                    egui::Color32::from_rgb(30, 64, 175)
-                                } else {
-                                    egui::Color32::from_gray(80)
-                                };
-                                ui.colored_label(
-                                    row_color,
-                                    format!("{} ({})", transcript.label, transcript.transcript_id),
-                                );
-                                ui.monospace(transcript.strand.as_str());
-                                ui.monospace(transcript.exons.len().to_string());
-                                ui.monospace(transcript.exons.len().saturating_sub(1).to_string());
-                                ui.monospace(if transcript.has_target_feature {
-                                    "yes"
-                                } else {
-                                    "no"
-                                });
-                                ui.end_row();
-                            }
+            let row_height = Self::virtual_rna_read_table_row_height(ui);
+            let table_height = Self::default_rna_read_support_table_height(ui);
+            egui_extras::TableBuilder::new(ui)
+                .id_salt(format!("reported_isoform_catalogue_table_{}", view.seq_id))
+                .striped(true)
+                .max_scroll_height(table_height)
+                .min_scrolled_height(table_height)
+                .auto_shrink([false, false])
+                .column(egui_extras::Column::exact(240.0))
+                .column(egui_extras::Column::exact(60.0))
+                .column(egui_extras::Column::exact(60.0))
+                .column(egui_extras::Column::exact(90.0))
+                .column(egui_extras::Column::exact(60.0))
+                .header(row_height, |mut header| {
+                    for label in ["Transcript", "Strand", "Exons", "Expected jx", "Target"] {
+                        header.col(|ui| {
+                            ui.small(label);
                         });
+                    }
+                })
+                .body(|body| {
+                    body.rows(row_height, view.transcripts.len(), |mut table_row| {
+                        let transcript = &view.transcripts[table_row.index()];
+                        let row_color = if transcript.has_target_feature {
+                            egui::Color32::from_rgb(30, 64, 175)
+                        } else {
+                            egui::Color32::from_gray(80)
+                        };
+                        table_row.col(|ui| {
+                            ui.colored_label(
+                                row_color,
+                                format!("{} ({})", transcript.label, transcript.transcript_id),
+                            );
+                        });
+                        table_row.col(|ui| {
+                            ui.monospace(transcript.strand.as_str());
+                        });
+                        table_row.col(|ui| {
+                            ui.monospace(transcript.exons.len().to_string());
+                        });
+                        table_row.col(|ui| {
+                            ui.monospace(transcript.exons.len().saturating_sub(1).to_string());
+                        });
+                        table_row.col(|ui| {
+                            ui.monospace(if transcript.has_target_feature { "yes" } else { "no" });
+                        });
+                    });
                 });
             ui.small(
                 "These rows are the reported transcript model from the annotation currently loaded into the splicing view.",
@@ -8266,29 +8531,41 @@ impl MainAreaDna {
                 ui.small("No thresholded exon-support rows are available yet.");
                 return;
             }
-            egui::ScrollArea::vertical()
-                .max_height(Self::default_rna_read_support_table_height(ui))
-                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
-                .show(ui, |ui| {
-                    egui::Grid::new(format!(
-                        "thresholded_cdna_exon_support_grid_{}",
-                        progress.seq_id
-                    ))
-                    .striped(true)
-                    .num_columns(4)
-                    .show(ui, |ui| {
-                        ui.small("Exon span");
-                        ui.small("Reads");
-                        ui.small("Seed-pass %");
-                        ui.small("Fraction");
-                        ui.end_row();
-                        for row in &thresholded_exon_rows {
+            let row_height = Self::virtual_rna_read_table_row_height(ui);
+            let table_height = Self::default_rna_read_support_table_height(ui);
+            egui_extras::TableBuilder::new(ui)
+                .id_salt(format!(
+                    "thresholded_cdna_exon_support_table_{}",
+                    progress.seq_id
+                ))
+                .striped(true)
+                .max_scroll_height(table_height)
+                .min_scrolled_height(table_height)
+                .auto_shrink([false, false])
+                .column(egui_extras::Column::exact(120.0))
+                .columns(egui_extras::Column::exact(90.0), 3)
+                .header(row_height, |mut header| {
+                    for label in ["Exon span", "Reads", "Seed-pass %", "Fraction"] {
+                        header.col(|ui| {
+                            ui.small(label);
+                        });
+                    }
+                })
+                .body(|body| {
+                    body.rows(row_height, thresholded_exon_rows.len(), |mut table_row| {
+                        let row = &thresholded_exon_rows[table_row.index()];
+                        table_row.col(|ui| {
                             ui.monospace(format!("{}..{}", row.start_1based, row.end_1based));
+                        });
+                        table_row.col(|ui| {
                             ui.monospace(row.support_read_count.to_string());
+                        });
+                        table_row.col(|ui| {
                             ui.monospace(format!("{:.2}%", row.support_fraction * 100.0));
+                        });
+                        table_row.col(|ui| {
                             ui.monospace(format!("{:.4}", row.support_fraction));
-                            ui.end_row();
-                        }
+                        });
                     });
                 });
         });
@@ -8320,44 +8597,62 @@ impl MainAreaDna {
                 ui.small("No exon-exon transition catalog rows in current scope.");
                 return;
             }
-            egui::ScrollArea::vertical()
-                .max_height(Self::default_rna_read_support_table_height(ui))
-                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
-                .show(ui, |ui| {
-                    egui::Grid::new(format!("rna_transition_support_grid_{}", progress.seq_id))
-                        .striped(true)
-                        .num_columns(5)
-                        .show(ui, |ui| {
-                            ui.small("Transition");
-                            ui.small("From (bp)");
-                            ui.small("To (bp)");
-                            ui.small("Reads");
-                            ui.small("Read %");
-                            ui.end_row();
-                            for row in &progress.transition_support_rows {
-                                let pct = if seed_passed_denominator == 0 {
-                                    0.0
-                                } else {
-                                    (row.support_read_count as f64 / seed_passed_denominator as f64)
-                                        * 100.0
-                                };
+            let row_height = Self::virtual_rna_read_table_row_height(ui);
+            let table_height = Self::default_rna_read_support_table_height(ui);
+            egui_extras::TableBuilder::new(ui)
+                .id_salt(format!("rna_transition_support_table_{}", progress.seq_id))
+                .striped(true)
+                .max_scroll_height(table_height)
+                .min_scrolled_height(table_height)
+                .auto_shrink([false, false])
+                .column(egui_extras::Column::exact(110.0))
+                .columns(egui_extras::Column::exact(110.0), 2)
+                .columns(egui_extras::Column::exact(80.0), 2)
+                .header(row_height, |mut header| {
+                    for label in ["Transition", "From (bp)", "To (bp)", "Reads", "Read %"] {
+                        header.col(|ui| {
+                            ui.small(label);
+                        });
+                    }
+                })
+                .body(|body| {
+                    body.rows(
+                        row_height,
+                        progress.transition_support_rows.len(),
+                        |mut table_row| {
+                            let row = &progress.transition_support_rows[table_row.index()];
+                            let pct = if seed_passed_denominator == 0 {
+                                0.0
+                            } else {
+                                (row.support_read_count as f64 / seed_passed_denominator as f64)
+                                    * 100.0
+                            };
+                            table_row.col(|ui| {
                                 ui.monospace(format!(
                                     "E{} -> E{}",
                                     row.from_exon_ordinal, row.to_exon_ordinal
                                 ));
+                            });
+                            table_row.col(|ui| {
                                 ui.monospace(format!(
                                     "{}..{}",
                                     row.from_start_1based, row.from_end_1based
                                 ));
+                            });
+                            table_row.col(|ui| {
                                 ui.monospace(format!(
                                     "{}..{}",
                                     row.to_start_1based, row.to_end_1based
                                 ));
+                            });
+                            table_row.col(|ui| {
                                 ui.monospace(row.support_read_count.to_string());
+                            });
+                            table_row.col(|ui| {
                                 ui.monospace(format!("{pct:.2}%"));
-                                ui.end_row();
-                            }
-                        });
+                            });
+                        },
+                    );
                 });
         });
     }
@@ -8386,71 +8681,107 @@ impl MainAreaDna {
             auto_pick.transition_rows_supported_fraction * 100.0
         ));
         ui.collapsing("Thresholded cDNA isoform ranking", |ui| {
-            egui::ScrollArea::vertical()
-                .max_height(Self::default_rna_read_support_table_height(ui))
-                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
-                .show(ui, |ui| {
-                    egui::Grid::new(format!("rna_isoform_support_grid_{}", progress.seq_id))
-                        .striped(true)
-                        .num_columns(14)
-                        .show(ui, |ui| {
-                            ui.small("Transcript");
-                            ui.small("Strand");
-                            ui.small("Exons");
-                            ui.small("Expected jx");
-                            ui.small("Assigned");
-                            ui.small("Seed-pass");
-                            ui.small("Jx supported");
-                            ui.small("Jx cov%");
-                            ui.small("Mean jx frac");
-                            ui.small("Mean gap");
-                            ui.small("Best score");
-                            ui.small("Chain=same");
-                            ui.small("Opposite");
-                            ui.small("Ambig");
-                            ui.end_row();
-                            for row in &progress.isoform_support_rows {
-                                let is_auto_pick = row.transcript_id == auto_pick.transcript_id;
-                                let row_color = if is_auto_pick {
-                                    egui::Color32::from_rgb(30, 64, 175)
-                                } else {
-                                    egui::Color32::from_gray(80)
-                                };
+            let row_height = Self::virtual_rna_read_table_row_height(ui);
+            let table_height = Self::default_rna_read_support_table_height(ui);
+            egui_extras::TableBuilder::new(ui)
+                .id_salt(format!("rna_isoform_support_table_{}", progress.seq_id))
+                .striped(true)
+                .max_scroll_height(table_height)
+                .min_scrolled_height(table_height)
+                .auto_shrink([false, false])
+                .column(egui_extras::Column::exact(220.0))
+                .column(egui_extras::Column::exact(50.0))
+                .columns(egui_extras::Column::exact(72.0), 12)
+                .header(row_height, |mut header| {
+                    for label in [
+                        "Transcript",
+                        "Strand",
+                        "Exons",
+                        "Expected jx",
+                        "Assigned",
+                        "Seed-pass",
+                        "Jx supported",
+                        "Jx cov%",
+                        "Mean jx frac",
+                        "Mean gap",
+                        "Best score",
+                        "Chain=same",
+                        "Opposite",
+                        "Ambig",
+                    ] {
+                        header.col(|ui| {
+                            ui.small(label);
+                        });
+                    }
+                })
+                .body(|body| {
+                    body.rows(
+                        row_height,
+                        progress.isoform_support_rows.len(),
+                        |mut table_row| {
+                            let row = &progress.isoform_support_rows[table_row.index()];
+                            let row_color = if row.transcript_id == auto_pick.transcript_id {
+                                egui::Color32::from_rgb(30, 64, 175)
+                            } else {
+                                egui::Color32::from_gray(80)
+                            };
+                            table_row.col(|ui| {
                                 ui.colored_label(
                                     row_color,
                                     format!("{} ({})", row.transcript_label, row.transcript_id),
                                 );
+                            });
+                            table_row.col(|ui| {
                                 ui.monospace(row.strand.as_str());
-                                ui.monospace(row.exon_count.to_string());
-                                ui.monospace(row.expected_transition_count.to_string());
-                                ui.monospace(row.reads_assigned.to_string());
-                                ui.monospace(row.reads_seed_passed.to_string());
-                                ui.monospace(row.transition_rows_supported.to_string());
+                            });
+                            for value in [
+                                row.exon_count,
+                                row.expected_transition_count,
+                                row.reads_assigned,
+                                row.reads_seed_passed,
+                                row.transition_rows_supported,
+                            ] {
+                                table_row.col(|ui| {
+                                    ui.monospace(value.to_string());
+                                });
+                            }
+                            table_row.col(|ui| {
                                 ui.monospace(format!(
                                     "{:.1}",
                                     row.transition_rows_supported_fraction * 100.0
                                 ));
+                            });
+                            table_row.col(|ui| {
                                 ui.monospace(format!(
                                     "{:.2}",
                                     row.mean_confirmed_transition_fraction
                                 ));
+                            });
+                            table_row.col(|ui| {
                                 if row.mean_seed_median_gap < 0.0 {
                                     ui.monospace("na");
                                 } else {
                                     ui.monospace(format!("{:.2}", row.mean_seed_median_gap));
                                 }
+                            });
+                            table_row.col(|ui| {
                                 ui.monospace(format!(
                                     "{:.3}/{:.3}",
-                                    row.best_seed_hit_fraction, row.best_weighted_seed_hit_fraction
+                                    row.best_seed_hit_fraction,
+                                    row.best_weighted_seed_hit_fraction
                                 ));
-                                ui.monospace(row.reads_chain_same_strand.to_string());
-                                ui.monospace(
-                                    row.reads_with_opposite_strand_competition.to_string(),
-                                );
-                                ui.monospace(row.reads_ambiguous_strand_ties.to_string());
-                                ui.end_row();
+                            });
+                            for value in [
+                                row.reads_chain_same_strand,
+                                row.reads_with_opposite_strand_competition,
+                                row.reads_ambiguous_strand_ties,
+                            ] {
+                                table_row.col(|ui| {
+                                    ui.monospace(value.to_string());
+                                });
                             }
-                        });
+                        },
+                    );
                 });
             ui.small(
                 "Rows aggregate phase-1 thresholded cDNA evidence over one joint run across all transcripts admitted by scope (including reverse strand when selected).",
@@ -8522,30 +8853,48 @@ impl MainAreaDna {
                 ui.small("No mapped exon-overlap rows are available.");
                 return;
             }
-            egui::ScrollArea::vertical()
-                .max_height(Self::default_rna_read_support_table_height(ui))
-                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
-                .show(ui, |ui| {
-                    egui::Grid::new(format!("rna_mapped_exon_support_grid_{}", progress.seq_id))
-                        .striped(true)
-                        .num_columns(6)
-                        .show(ui, |ui| {
-                            ui.small("Exon span");
-                            ui.small("Reads");
-                            ui.small("Aligned %");
-                            ui.small("Fraction");
-                            ui.small("Audit");
-                            ui.small("Export");
-                            ui.end_row();
-                            for row in &progress.mapped_exon_support_frequencies {
-                                let contributors = exon_contributors
-                                    .get(&(row.start_1based, row.end_1based))
-                                    .cloned()
-                                    .unwrap_or_default();
+            let row_height = Self::virtual_rna_read_table_row_height(ui);
+            let table_height = Self::default_rna_read_support_table_height(ui);
+            egui_extras::TableBuilder::new(ui)
+                .id_salt(format!("rna_mapped_exon_support_table_{}", progress.seq_id))
+                .striped(true)
+                .max_scroll_height(table_height)
+                .min_scrolled_height(table_height)
+                .auto_shrink([false, false])
+                .column(egui_extras::Column::exact(120.0))
+                .columns(egui_extras::Column::exact(85.0), 3)
+                .column(egui_extras::Column::exact(90.0))
+                .column(egui_extras::Column::exact(80.0))
+                .header(row_height, |mut header| {
+                    for label in ["Exon span", "Reads", "Aligned %", "Fraction", "Audit", "Export"] {
+                        header.col(|ui| {
+                            ui.small(label);
+                        });
+                    }
+                })
+                .body(|body| {
+                    body.rows(
+                        row_height,
+                        progress.mapped_exon_support_frequencies.len(),
+                        |mut table_row| {
+                            let row = &progress.mapped_exon_support_frequencies[table_row.index()];
+                            let contributors = exon_contributors
+                                .get(&(row.start_1based, row.end_1based))
+                                .cloned()
+                                .unwrap_or_default();
+                            table_row.col(|ui| {
                                 ui.monospace(format!("{}..{}", row.start_1based, row.end_1based));
+                            });
+                            table_row.col(|ui| {
                                 ui.monospace(row.support_read_count.to_string());
+                            });
+                            table_row.col(|ui| {
                                 ui.monospace(format!("{:.2}%", row.support_fraction * 100.0));
+                            });
+                            table_row.col(|ui| {
                                 ui.monospace(format!("{:.4}", row.support_fraction));
+                            });
+                            table_row.col(|ui| {
                                 let mut response = ui.add_enabled(
                                     !contributors.is_empty(),
                                     egui::Button::new(format!("Audit ({})", contributors.len())),
@@ -8568,6 +8917,8 @@ impl MainAreaDna {
                                         ),
                                     );
                                 }
+                            });
+                            table_row.col(|ui| {
                                 ui.add_enabled_ui(!contributors.is_empty(), |ui| {
                                     ui.menu_button("Export...", |ui| {
                                         for export_kind in [
@@ -8588,9 +8939,9 @@ impl MainAreaDna {
                                         }
                                     });
                                 });
-                                ui.end_row();
-                            }
-                        });
+                            });
+                        },
+                    );
                 });
         });
 
@@ -8599,80 +8950,109 @@ impl MainAreaDna {
                 ui.small("No mapped junction-overlap rows are available.");
                 return;
             }
-            egui::ScrollArea::vertical()
-                .max_height(Self::default_rna_read_support_table_height(ui))
-                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
-                .show(ui, |ui| {
-                    egui::Grid::new(format!(
-                        "rna_mapped_junction_support_grid_{}",
-                        progress.seq_id
-                    ))
-                    .striped(true)
-                    .num_columns(7)
-                    .show(ui, |ui| {
-                        ui.small("Donor");
-                        ui.small("Acceptor");
-                        ui.small("Reads");
-                        ui.small("Aligned %");
-                        ui.small("Fraction");
-                        ui.small("Audit");
-                        ui.small("Export");
-                        ui.end_row();
-                        for row in &progress.mapped_junction_support_frequencies {
+            let row_height = Self::virtual_rna_read_table_row_height(ui);
+            let table_height = Self::default_rna_read_support_table_height(ui);
+            egui_extras::TableBuilder::new(ui)
+                .id_salt(format!(
+                    "rna_mapped_junction_support_table_{}",
+                    progress.seq_id
+                ))
+                .striped(true)
+                .max_scroll_height(table_height)
+                .min_scrolled_height(table_height)
+                .auto_shrink([false, false])
+                .columns(egui_extras::Column::exact(85.0), 5)
+                .column(egui_extras::Column::exact(90.0))
+                .column(egui_extras::Column::exact(80.0))
+                .header(row_height, |mut header| {
+                    for label in [
+                        "Donor",
+                        "Acceptor",
+                        "Reads",
+                        "Aligned %",
+                        "Fraction",
+                        "Audit",
+                        "Export",
+                    ] {
+                        header.col(|ui| {
+                            ui.small(label);
+                        });
+                    }
+                })
+                .body(|body| {
+                    body.rows(
+                        row_height,
+                        progress.mapped_junction_support_frequencies.len(),
+                        |mut table_row| {
+                            let row =
+                                &progress.mapped_junction_support_frequencies[table_row.index()];
                             let contributors = junction_contributors
                                 .get(&(row.donor_1based, row.acceptor_1based))
                                 .cloned()
                                 .unwrap_or_default();
-                            ui.monospace(row.donor_1based.to_string());
-                            ui.monospace(row.acceptor_1based.to_string());
-                            ui.monospace(row.support_read_count.to_string());
-                            ui.monospace(format!("{:.2}%", row.support_fraction * 100.0));
-                            ui.monospace(format!("{:.4}", row.support_fraction));
-                            let mut response = ui.add_enabled(
-                                !contributors.is_empty(),
-                                egui::Button::new(format!("Audit ({})", contributors.len())),
-                            );
-                            if let Some(inspection) = inspection.as_ref() {
-                                let hover = Self::format_rna_read_contributor_hover_text(
-                                    inspection,
-                                    &contributors,
+                            table_row.col(|ui| {
+                                ui.monospace(row.donor_1based.to_string());
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(row.acceptor_1based.to_string());
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(row.support_read_count.to_string());
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(format!("{:.2}%", row.support_fraction * 100.0));
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(format!("{:.4}", row.support_fraction));
+                            });
+                            table_row.col(|ui| {
+                                let mut response = ui.add_enabled(
+                                    !contributors.is_empty(),
+                                    egui::Button::new(format!("Audit ({})", contributors.len())),
                                 );
-                                if !hover.is_empty() {
-                                    response = response.on_hover_text(hover);
-                                }
-                            }
-                            if response.clicked() {
-                                self.focus_rna_read_alignment_effect_record_indices(
-                                    contributors.clone(),
-                                    &format!(
-                                        "mapped junction {}->{}",
-                                        row.donor_1based, row.acceptor_1based
-                                    ),
-                                );
-                            }
-                            ui.add_enabled_ui(!contributors.is_empty(), |ui| {
-                                ui.menu_button("Export...", |ui| {
-                                    for export_kind in [
-                                        RnaReadSelectedExportKind::Fasta,
-                                        RnaReadSelectedExportKind::AlignmentsTsv,
-                                        RnaReadSelectedExportKind::ExonPathsTsv,
-                                        RnaReadSelectedExportKind::ExonAbundanceTsv,
-                                    ] {
-                                        if ui.button(export_kind.menu_label()).clicked() {
-                                            self.export_rna_read_subset_with_record_indices(
-                                                export_kind,
-                                                contributors.clone(),
-                                                None,
-                                                "No aligned contributor rows are available to export for this mapped junction.",
-                                            );
-                                            ui.close();
-                                        }
+                                if let Some(inspection) = inspection.as_ref() {
+                                    let hover = Self::format_rna_read_contributor_hover_text(
+                                        inspection,
+                                        &contributors,
+                                    );
+                                    if !hover.is_empty() {
+                                        response = response.on_hover_text(hover);
                                     }
+                                }
+                                if response.clicked() {
+                                    self.focus_rna_read_alignment_effect_record_indices(
+                                        contributors.clone(),
+                                        &format!(
+                                            "mapped junction {}->{}",
+                                            row.donor_1based, row.acceptor_1based
+                                        ),
+                                    );
+                                }
+                            });
+                            table_row.col(|ui| {
+                                ui.add_enabled_ui(!contributors.is_empty(), |ui| {
+                                    ui.menu_button("Export...", |ui| {
+                                        for export_kind in [
+                                            RnaReadSelectedExportKind::Fasta,
+                                            RnaReadSelectedExportKind::AlignmentsTsv,
+                                            RnaReadSelectedExportKind::ExonPathsTsv,
+                                            RnaReadSelectedExportKind::ExonAbundanceTsv,
+                                        ] {
+                                            if ui.button(export_kind.menu_label()).clicked() {
+                                                self.export_rna_read_subset_with_record_indices(
+                                                    export_kind,
+                                                    contributors.clone(),
+                                                    None,
+                                                    "No aligned contributor rows are available to export for this mapped junction.",
+                                                );
+                                                ui.close();
+                                            }
+                                        }
+                                    });
                                 });
                             });
-                            ui.end_row();
-                        }
-                    });
+                        },
+                    );
                 });
         });
 
@@ -8692,95 +9072,133 @@ impl MainAreaDna {
             auto_pick.mean_query_coverage_fraction * 100.0
         ));
         ui.collapsing("Mapped cDNA isoform ranking", |ui| {
-            egui::ScrollArea::vertical()
-                .max_height(Self::default_rna_read_support_table_height(ui))
-                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
-                .show(ui, |ui| {
-                    egui::Grid::new(format!(
-                        "rna_mapped_isoform_support_grid_{}",
-                        progress.seq_id
-                    ))
-                    .striped(true)
-                    .num_columns(10)
-                    .show(ui, |ui| {
-                        ui.small("Transcript");
-                        ui.small("Strand");
-                        ui.small("Aligned");
-                        ui.small("MSA");
-                        ui.small("Mean id%");
-                        ui.small("Mean cov%");
-                        ui.small("Best score");
-                        ui.small("Secondary");
-                        ui.small("Audit");
-                        ui.small("Export");
-                        ui.end_row();
-                        for row in &progress.mapped_isoform_support_rows {
+            let row_height = Self::virtual_rna_read_table_row_height(ui);
+            let table_height = Self::default_rna_read_support_table_height(ui);
+            egui_extras::TableBuilder::new(ui)
+                .id_salt(format!(
+                    "rna_mapped_isoform_support_table_{}",
+                    progress.seq_id
+                ))
+                .striped(true)
+                .max_scroll_height(table_height)
+                .min_scrolled_height(table_height)
+                .auto_shrink([false, false])
+                .column(egui_extras::Column::exact(220.0))
+                .column(egui_extras::Column::exact(50.0))
+                .columns(egui_extras::Column::exact(76.0), 6)
+                .column(egui_extras::Column::exact(90.0))
+                .column(egui_extras::Column::exact(80.0))
+                .header(row_height, |mut header| {
+                    for label in [
+                        "Transcript",
+                        "Strand",
+                        "Aligned",
+                        "MSA",
+                        "Mean id%",
+                        "Mean cov%",
+                        "Best score",
+                        "Secondary",
+                        "Audit",
+                        "Export",
+                    ] {
+                        header.col(|ui| {
+                            ui.small(label);
+                        });
+                    }
+                })
+                .body(|body| {
+                    body.rows(
+                        row_height,
+                        progress.mapped_isoform_support_rows.len(),
+                        |mut table_row| {
+                            let row = &progress.mapped_isoform_support_rows[table_row.index()];
                             let contributors = isoform_contributors
                                 .get(&row.transcript_id)
                                 .cloned()
                                 .unwrap_or_default();
-                            let is_auto_pick = row.transcript_id == auto_pick.transcript_id;
-                            let row_color = if is_auto_pick {
+                            let row_color = if row.transcript_id == auto_pick.transcript_id {
                                 egui::Color32::from_rgb(22, 101, 52)
                             } else {
                                 egui::Color32::from_gray(80)
                             };
-                            ui.colored_label(
-                                row_color,
-                                format!("{} ({})", row.transcript_label, row.transcript_id),
-                            );
-                            ui.monospace(row.strand.as_str());
-                            ui.monospace(row.aligned_read_count.to_string());
-                            ui.monospace(row.msa_eligible_read_count.to_string());
-                            ui.monospace(format!("{:.1}", row.mean_identity_fraction * 100.0));
-                            ui.monospace(format!(
-                                "{:.1}",
-                                row.mean_query_coverage_fraction * 100.0
-                            ));
-                            ui.monospace(row.best_alignment_score.to_string());
-                            ui.monospace(row.secondary_mapping_total.to_string());
-                            let mut response = ui.add_enabled(
-                                !contributors.is_empty(),
-                                egui::Button::new(format!("Audit ({})", contributors.len())),
-                            );
-                            if let Some(inspection) = inspection.as_ref() {
-                                let hover = Self::format_rna_read_contributor_hover_text(
-                                    inspection,
-                                    &contributors,
+                            table_row.col(|ui| {
+                                ui.colored_label(
+                                    row_color,
+                                    format!("{} ({})", row.transcript_label, row.transcript_id),
                                 );
-                                if !hover.is_empty() {
-                                    response = response.on_hover_text(hover);
-                                }
-                            }
-                            if response.clicked() {
-                                self.focus_rna_read_alignment_effect_record_indices(
-                                    contributors.clone(),
-                                    &format!("mapped isoform {}", row.transcript_id),
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(row.strand.as_str());
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(row.aligned_read_count.to_string());
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(row.msa_eligible_read_count.to_string());
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(format!(
+                                    "{:.1}",
+                                    row.mean_identity_fraction * 100.0
+                                ));
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(format!(
+                                    "{:.1}",
+                                    row.mean_query_coverage_fraction * 100.0
+                                ));
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(row.best_alignment_score.to_string());
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(row.secondary_mapping_total.to_string());
+                            });
+                            table_row.col(|ui| {
+                                let mut response = ui.add_enabled(
+                                    !contributors.is_empty(),
+                                    egui::Button::new(format!("Audit ({})", contributors.len())),
                                 );
-                            }
-                            ui.add_enabled_ui(!contributors.is_empty(), |ui| {
-                                ui.menu_button("Export...", |ui| {
-                                    for export_kind in [
-                                        RnaReadSelectedExportKind::Fasta,
-                                        RnaReadSelectedExportKind::AlignmentsTsv,
-                                        RnaReadSelectedExportKind::ExonPathsTsv,
-                                        RnaReadSelectedExportKind::ExonAbundanceTsv,
-                                    ] {
-                                        if ui.button(export_kind.menu_label()).clicked() {
-                                            self.export_rna_read_subset_with_record_indices(
-                                                export_kind,
-                                                contributors.clone(),
-                                                None,
-                                                "No aligned contributor rows are available to export for this mapped isoform.",
-                                            );
-                                            ui.close();
-                                        }
+                                if let Some(inspection) = inspection.as_ref() {
+                                    let hover = Self::format_rna_read_contributor_hover_text(
+                                        inspection,
+                                        &contributors,
+                                    );
+                                    if !hover.is_empty() {
+                                        response = response.on_hover_text(hover);
                                     }
+                                }
+                                if response.clicked() {
+                                    self.focus_rna_read_alignment_effect_record_indices(
+                                        contributors.clone(),
+                                        &format!("mapped isoform {}", row.transcript_id),
+                                    );
+                                }
+                            });
+                            table_row.col(|ui| {
+                                ui.add_enabled_ui(!contributors.is_empty(), |ui| {
+                                    ui.menu_button("Export...", |ui| {
+                                        for export_kind in [
+                                            RnaReadSelectedExportKind::Fasta,
+                                            RnaReadSelectedExportKind::AlignmentsTsv,
+                                            RnaReadSelectedExportKind::ExonPathsTsv,
+                                            RnaReadSelectedExportKind::ExonAbundanceTsv,
+                                        ] {
+                                            if ui.button(export_kind.menu_label()).clicked() {
+                                                self.export_rna_read_subset_with_record_indices(
+                                                    export_kind,
+                                                    contributors.clone(),
+                                                    None,
+                                                    "No aligned contributor rows are available to export for this mapped isoform.",
+                                                );
+                                                ui.close();
+                                            }
+                                        }
+                                    });
                                 });
                             });
-                            ui.end_row();
-                        }
-                    });
+                        },
+                    );
                 });
             ui.small(
                 "Rows aggregate best-mapping evidence only; they are intentionally separate from the thresholded cDNA ranking above.",

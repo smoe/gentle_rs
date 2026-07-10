@@ -15,10 +15,10 @@ use crate::{
         AttractSplicingEvidenceView, ConstructRole, CutRunAlignConfig, CutRunInputFormat,
         CutRunReadLayout, CutRunRegulatoryTfbsConfirmationStatus, CutRunSeedFilterConfig,
         DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView,
-        EditableStatus, Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack, GentleEngine,
-        LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
-        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignProgress,
-        PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport,
+        EditableStatus, Engine, EngineError, ErrorCode, EvidenceClass, FlexibilityModel,
+        FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode, OpResult, Operation,
+        PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
+        PrimerDesignProgress, PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport,
         ProbeRegionEvidenceMappingRow, ProjectState, PromoterExpressionEvidenceInput,
         PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
         QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
@@ -28,16 +28,17 @@ use crate::{
         RnaReadInterpretationProfile, RnaReadInterpretationReport,
         RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadIsoformTriageBin,
         RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
-        RnaReadSeedFilterConfig, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
-        SequencingConfirmationReadResult, SequencingConfirmationReport,
-        SequencingConfirmationStatus, SequencingConfirmationTargetKind,
-        SequencingConfirmationTargetResult, SequencingConfirmationVariantRow,
-        SequencingPrimerOrientation, SequencingPrimerOverlayReport,
-        SequencingPrimerOverlaySuggestion, SequencingPrimerProblemKind,
-        SequencingPrimerProposalRow, SequencingTraceChannelData, SequencingTraceFormat,
-        SequencingTraceImportReport, SequencingTraceRecord, SplicingScopePreset,
-        TfbsScoreTrackReport, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
-        TfbsTrackSimilarityReport, VariantPromoterContextReport,
+        RnaReadSeedFilterConfig, RnaReadSeedHistogramBin, RnaReadTopHitPreview,
+        RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport,
+        SequenceGenomeAnchorSummary, SequencingConfirmationReadResult,
+        SequencingConfirmationReport, SequencingConfirmationStatus,
+        SequencingConfirmationTargetKind, SequencingConfirmationTargetResult,
+        SequencingConfirmationVariantRow, SequencingPrimerOrientation,
+        SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
+        SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingTraceChannelData,
+        SequencingTraceFormat, SequencingTraceImportReport, SequencingTraceRecord,
+        SplicingScopePreset, TfbsScoreTrackReport, TfbsScoreTrackValueKind,
+        TfbsTrackSimilarityRankingMetric, TfbsTrackSimilarityReport, VariantPromoterContextReport,
         parse_required_usize_or_formula_text_on_sequence,
     },
     engine_shell::ShellCommand,
@@ -3281,6 +3282,262 @@ fn rna_read_dotplot_svg_default_filename_mentions_parameters() {
     assert!(file_name.ends_with(".svg"));
     assert!(file_name.contains("r7"));
     assert!(file_name.contains("_w9_s1_mm1_tileauto"));
+}
+
+fn test_rna_read_progress_snapshot(reads_processed: usize) -> RnaReadInterpretProgress {
+    RnaReadInterpretProgress {
+        seq_id: "seq1".to_string(),
+        reads_processed,
+        reads_total: 10,
+        read_bases_processed: reads_processed as u64 * 100,
+        mean_read_length_bp: 100.0,
+        median_read_length_bp: 100,
+        p95_read_length_bp: 120,
+        input_bytes_processed: reads_processed as u64 * 128,
+        input_bytes_total: 1280,
+        seed_passed: reads_processed,
+        aligned: 0,
+        tested_kmers: reads_processed * 4,
+        matched_kmers: reads_processed * 2,
+        seed_compute_ms: 0.0,
+        align_compute_ms: 0.0,
+        io_read_ms: 0.0,
+        fasta_parse_ms: 0.0,
+        normalize_compute_ms: 0.0,
+        inference_compute_ms: 0.0,
+        progress_emit_ms: 0.0,
+        update_every_reads: 1,
+        done: false,
+        bins: vec![RnaReadSeedHistogramBin {
+            start_1based: 1,
+            end_1based: 25,
+            confirmed_plus: reads_processed as u64,
+            confirmed_minus: reads_processed.saturating_sub(1) as u64,
+        }],
+        score_density_bins: vec![],
+        seed_pass_score_density_bins: vec![],
+        top_hits_preview: vec![RnaReadTopHitPreview {
+            record_index: 0,
+            header_id: "read0".to_string(),
+            sequence: "ACGT".to_string(),
+            sequence_preview: "ACGT".to_string(),
+            ..RnaReadTopHitPreview::default()
+        }],
+        transition_support_rows: vec![],
+        isoform_support_rows: vec![],
+        mapped_exon_support_frequencies: vec![],
+        mapped_junction_support_frequencies: vec![],
+        mapped_isoform_support_rows: vec![],
+        reads_with_transition_support: 0,
+        transition_confirmations: 0,
+        junction_crossing_seed_bits_indexed: 0,
+        origin_class_counts: BTreeMap::new(),
+    }
+}
+
+#[test]
+fn rna_seed_histogram_cache_separates_biological_and_pixel_rebuilds() {
+    let dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGTACGTACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.rna_reads_ui.report_id = "rna_report".to_string();
+    area.rna_reads_ui.kmer_len = "3".to_string();
+    area.rna_reads_ui.seed_stride_bp = "1".to_string();
+    area.rna_seed_highlight_record_index = Some(0);
+    area.rna_seed_catalog_preview = vec![
+        RnaSeedHashCatalogEntry {
+            seed_bits: MainAreaDna::encode_rna_seed_bits(b"ACG").expect("ACG bits"),
+            kmer_sequence: "ACG".to_string(),
+            transcript_feature_id: 11,
+            transcript_id: "TX1".to_string(),
+            transcript_label: "TX1".to_string(),
+            strand: "+".to_string(),
+            template_offset_0based: 0,
+            genomic_pos_1based: 3,
+        },
+        RnaSeedHashCatalogEntry {
+            seed_bits: MainAreaDna::encode_rna_seed_bits(b"CGT").expect("CGT bits"),
+            kmer_sequence: "CGT".to_string(),
+            transcript_feature_id: 11,
+            transcript_id: "TX1".to_string(),
+            transcript_label: "TX1".to_string(),
+            strand: "-".to_string(),
+            template_offset_0based: 1,
+            genomic_pos_1based: 18,
+        },
+    ];
+    area.rna_seed_template_audit_preview = vec![RnaSeedHashTemplateAuditEntry {
+        transcript_feature_id: 11,
+        transcript_id: "TX1".to_string(),
+        transcript_label: "TX1".to_string(),
+        strand: "+".to_string(),
+        template_sequence: "ACGT".to_string(),
+        template_length_bp: 4,
+        template_first_genomic_pos_1based: 1,
+        template_last_genomic_pos_1based: 25,
+        reverse_complemented_from_genome: false,
+    }];
+    let view = SplicingExpertView {
+        seq_id: "seq1".to_string(),
+        target_feature_id: 7,
+        scope: SplicingScopePreset::AllOverlappingAnyStrand,
+        group_label: "GENE1".to_string(),
+        strand: "+".to_string(),
+        region_start_1based: 1,
+        region_end_1based: 25,
+        transcript_count: 1,
+        unique_exon_count: 2,
+        instruction: String::new(),
+        transcripts: vec![],
+        unique_exons: vec![
+            SplicingExonSummary {
+                start_1based: 1,
+                end_1based: 10,
+                support_transcript_count: 1,
+                constitutive: true,
+            },
+            SplicingExonSummary {
+                start_1based: 15,
+                end_1based: 25,
+                support_transcript_count: 1,
+                constitutive: true,
+            },
+        ],
+        matrix_rows: vec![],
+        boundaries: vec![],
+        intron_signals: vec![],
+        junctions: vec![],
+        events: vec![],
+    };
+    let progress = test_rna_read_progress_snapshot(1);
+
+    area.refresh_rna_read_seed_histogram_cache(&progress, &view, true, true, false, 400.0);
+    assert_eq!(area.rna_read_seed_histogram_cache_misses, 1);
+    assert_eq!(area.rna_read_seed_histogram_pixel_cache_misses, 1);
+    let cached = area
+        .cached_rna_read_seed_histogram
+        .as_ref()
+        .expect("histogram cache");
+    assert_eq!(cached.model.selected_supported_positions, 2);
+    assert_eq!(cached.model.plus_unique_positions, 1);
+    assert_eq!(cached.model.minus_unique_positions, 1);
+    let model_points_ptr = cached.model.points.as_ptr();
+
+    area.refresh_rna_read_seed_histogram_cache(&progress, &view, true, true, false, 400.0);
+    assert_eq!(area.rna_read_seed_histogram_cache_hits, 1);
+    assert_eq!(area.rna_read_seed_histogram_pixel_cache_hits, 1);
+    assert_eq!(
+        area.cached_rna_read_seed_histogram
+            .as_ref()
+            .expect("stable cache")
+            .model
+            .points
+            .as_ptr(),
+        model_points_ptr
+    );
+
+    area.refresh_rna_read_seed_histogram_cache(&progress, &view, true, true, false, 520.0);
+    assert_eq!(area.rna_read_seed_histogram_cache_hits, 2);
+    assert_eq!(area.rna_read_seed_histogram_pixel_cache_misses, 2);
+    assert_eq!(
+        area.cached_rna_read_seed_histogram
+            .as_ref()
+            .expect("width-only refresh")
+            .model
+            .points
+            .as_ptr(),
+        model_points_ptr,
+        "width changes must retain the biological presentation model"
+    );
+
+    area.rna_seed_highlight_record_index = None;
+    area.refresh_rna_read_seed_histogram_cache(&progress, &view, true, true, false, 520.0);
+    assert_eq!(area.rna_read_seed_histogram_cache_misses, 2);
+    assert_eq!(
+        area.cached_rna_read_seed_histogram
+            .as_ref()
+            .expect("selection refresh")
+            .model
+            .selected_supported_positions,
+        0
+    );
+}
+
+#[test]
+fn rna_read_progress_coalescing_keeps_latest_snapshot_and_terminal_message() {
+    let (tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
+    for reads_processed in 1..=3 {
+        tx.send(RnaReadTaskMessage::Progress(
+            test_rna_read_progress_snapshot(reads_processed),
+        ))
+        .expect("send progress");
+    }
+    tx.send(RnaReadTaskMessage::Done(Err(EngineError {
+        code: ErrorCode::InvalidInput,
+        message: "terminal mapping error".to_string(),
+        cause_chain: vec![],
+    })))
+    .expect("send terminal message");
+
+    let batch = MainAreaDna::coalesce_rna_read_task_messages(&rx, 16);
+    assert_eq!(batch.progress_messages_drained, 3);
+    assert_eq!(
+        batch
+            .latest_progress
+            .as_ref()
+            .map(|progress| progress.reads_processed),
+        Some(3)
+    );
+    assert!(!batch.hit_message_cap);
+    assert_eq!(
+        batch
+            .done
+            .expect("terminal outcome")
+            .expect_err("terminal error")
+            .message,
+        "terminal mapping error"
+    );
+
+    let (tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
+    for reads_processed in 4..=6 {
+        tx.send(RnaReadTaskMessage::Progress(
+            test_rna_read_progress_snapshot(reads_processed),
+        ))
+        .expect("send capped progress");
+    }
+    tx.send(RnaReadTaskMessage::Done(Err(EngineError {
+        code: ErrorCode::InvalidInput,
+        message: "cancelled".to_string(),
+        cause_chain: vec![],
+    })))
+    .expect("send cancellation");
+    let first = MainAreaDna::coalesce_rna_read_task_messages(&rx, 2);
+    assert_eq!(first.progress_messages_drained, 2);
+    assert_eq!(
+        first
+            .latest_progress
+            .map(|progress| progress.reads_processed),
+        Some(5)
+    );
+    assert!(first.done.is_none());
+    assert!(first.hit_message_cap);
+
+    let second = MainAreaDna::coalesce_rna_read_task_messages(&rx, 2);
+    assert_eq!(second.progress_messages_drained, 1);
+    assert_eq!(
+        second
+            .latest_progress
+            .map(|progress| progress.reads_processed),
+        Some(6)
+    );
+    assert_eq!(
+        second
+            .done
+            .expect("cancellation terminal")
+            .expect_err("cancellation error")
+            .message,
+        "cancelled"
+    );
+    assert!(!second.hit_message_cap);
 }
 
 #[test]
@@ -13334,19 +13591,10 @@ fn sync_from_engine_display_key_covers_display_structure_features_and_presentati
     let mut state = ProjectState::default();
     state.sequences.insert("seq_sync".to_string(), dna.clone());
     let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
-    let mut area = MainAreaDna::new(
-        dna,
-        Some("seq_sync".to_string()),
-        Some(engine.clone()),
-    );
+    let mut area = MainAreaDna::new(dna, Some("seq_sync".to_string()), Some(engine.clone()));
     let mut expected_apply_count = area.engine_display_sync_apply_count;
 
-    let next_show_tfbs = !engine
-        .read()
-        .expect("engine")
-        .state()
-        .display
-        .show_tfbs;
+    let next_show_tfbs = !engine.read().expect("engine").state().display.show_tfbs;
     {
         let mut guard = engine.write().expect("engine");
         let display = guard.display_state_mut();
