@@ -13298,6 +13298,146 @@ fn sync_from_engine_display_does_not_rebuild_construct_reasoning_overlay_each_fr
 }
 
 #[test]
+fn sync_from_engine_display_reuses_unchanged_key_and_honors_forced_refreshes() {
+    let dna = DNAsequence::from_sequence("ATGCGTATGCGT").expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq_sync".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("seq_sync".to_string()), Some(engine));
+
+    assert_eq!(area.engine_display_sync_apply_count, 1);
+    assert_eq!(area.engine_display_sync_cache_misses, 1);
+    let initial_hits = area.engine_display_sync_cache_hits;
+
+    area.sync_from_engine_display();
+    area.sync_from_engine_display();
+
+    assert_eq!(area.engine_display_sync_apply_count, 1);
+    assert_eq!(area.engine_display_sync_cache_misses, 1);
+    assert_eq!(area.engine_display_sync_cache_hits, initial_hits + 2);
+
+    area.refresh_from_engine_settings();
+    assert_eq!(area.engine_display_sync_apply_count, 2);
+    assert_eq!(area.engine_display_sync_cache_misses, 2);
+
+    let replacement = DNAsequence::from_sequence("ATGCGTATGCGT").expect("replacement");
+    area.replace_active_dna(replacement, false);
+    assert!(area.engine_display_sync_key.is_none());
+    area.sync_from_engine_display();
+    assert_eq!(area.engine_display_sync_apply_count, 3);
+    assert_eq!(area.engine_display_sync_cache_misses, 3);
+}
+
+#[test]
+fn sync_from_engine_display_key_covers_display_structure_features_and_presentation() {
+    let dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGTATGCGT").expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq_sync".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(
+        dna,
+        Some("seq_sync".to_string()),
+        Some(engine.clone()),
+    );
+    let mut expected_apply_count = area.engine_display_sync_apply_count;
+
+    let next_show_tfbs = !engine
+        .read()
+        .expect("engine")
+        .state()
+        .display
+        .show_tfbs;
+    {
+        let mut guard = engine.write().expect("engine");
+        let display = guard.display_state_mut();
+        display.show_tfbs = next_show_tfbs;
+        display.linear_view_start_bp = 4;
+        display.linear_view_span_bp = 8;
+    }
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+    assert_eq!(
+        area.dna_display.read().expect("display").show_tfbs(),
+        next_show_tfbs
+    );
+    assert_eq!(area.current_linear_viewport(), (4, 8, 24));
+
+    area.dna
+        .write()
+        .expect("DNA")
+        .features_mut()
+        .push(make_feature("gene", vec![("gene", "SYNC1")]));
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+    assert!(
+        area.dna_display
+            .read()
+            .expect("display")
+            .suppress_cds_features_for_gene_annotations()
+    );
+
+    engine.write().expect("engine").state_mut().metadata.insert(
+        "provenance".to_string(),
+        json!({
+            "genome_extractions": [{
+                "seq_id": "seq_sync",
+                "genome_id": "synthetic_genome",
+                "chromosome": "chrSynthetic",
+                "start_1based": 1,
+                "end_1based": 24,
+                "recorded_at_unix_ms": 1
+            }]
+        }),
+    );
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+    assert!(
+        area.dna_display
+            .read()
+            .expect("display")
+            .suppress_open_reading_frames_for_genome_anchor()
+    );
+
+    area.dna.write().expect("DNA").set_circular(true);
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+
+    area.dna_presentation_mode = DnaPresentationMode::Cdna;
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+    assert!(
+        !area
+            .dna_display
+            .read()
+            .expect("display")
+            .show_contextual_transcript_features()
+    );
+
+    area.show_all_contextual_transcripts = true;
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+    assert!(
+        area.dna_display
+            .read()
+            .expect("display")
+            .show_contextual_transcript_features()
+    );
+
+    area.enable_compact_lane_layout();
+    area.sync_from_engine_display();
+    expected_apply_count += 1;
+    assert_eq!(area.engine_display_sync_apply_count, expected_apply_count);
+    assert!(!area.show_sequence);
+    assert!(area.show_map);
+}
+
+#[test]
 fn refresh_description_cache_includes_variant_reasoning_context() {
     let mut dna = DNAsequence::from_sequence("ATGGAATTTACGTACGT").expect("sequence");
     dna.features_mut().push(Feature {

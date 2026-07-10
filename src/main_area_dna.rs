@@ -1147,6 +1147,17 @@ struct LayerVisibilityCache {
     counts: LayerVisibilityCounts,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct EngineDisplaySyncKey {
+    engine_mutation_revision: u64,
+    engine_structural_revision: u64,
+    feature_generation: u64,
+    is_circular: bool,
+    dna_presentation_mode: DnaPresentationMode,
+    show_all_contextual_transcripts: bool,
+    compact_lane_layout: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct WindowTitleCacheKey {
     display_name: String,
@@ -1572,6 +1583,10 @@ pub struct MainAreaDna {
     layer_visibility_cache: Option<LayerVisibilityCache>,
     layer_visibility_cache_hits: u64,
     layer_visibility_cache_misses: u64,
+    engine_display_sync_key: Option<EngineDisplaySyncKey>,
+    engine_display_sync_cache_hits: u64,
+    engine_display_sync_cache_misses: u64,
+    engine_display_sync_apply_count: u64,
     window_title_cache: Arc<Mutex<WindowTitleCache>>,
     description_cache_initialized: bool,
     description_cache_selected_id: Option<usize>,
@@ -2303,6 +2318,10 @@ impl MainAreaDna {
             layer_visibility_cache: None,
             layer_visibility_cache_hits: 0,
             layer_visibility_cache_misses: 0,
+            engine_display_sync_key: None,
+            engine_display_sync_cache_hits: 0,
+            engine_display_sync_cache_misses: 0,
+            engine_display_sync_apply_count: 0,
             window_title_cache: Arc::new(Mutex::new(WindowTitleCache::default())),
             description_cache_initialized: false,
             description_cache_selected_id: None,
@@ -2768,6 +2787,7 @@ impl MainAreaDna {
             self.log_topology_transition_status("replace_active_dna: begin");
         }
         *self.dna.write().expect("DNA lock poisoned") = dna;
+        self.invalidate_engine_display_sync();
         self.map_dna.invalidate_sequence_derived_caches();
         if clear_feature_focus {
             self.clear_feature_focus();
@@ -3028,12 +3048,13 @@ impl MainAreaDna {
     }
 
     pub fn refresh_from_engine_settings(&mut self) {
+        self.invalidate_engine_display_sync();
         self.sync_from_engine_display();
         self.update_dna_map();
         self.sync_linear_external_feature_labels();
     }
 
-    fn refresh_construct_reasoning_overlay_if_needed(&mut self, force: bool) {
+    fn refresh_construct_reasoning_overlay_if_needed(&mut self, force: bool) -> bool {
         let overlay_visible = self
             .dna_display
             .read()
@@ -3041,7 +3062,7 @@ impl MainAreaDna {
             .unwrap_or(false);
         if !overlay_visible {
             self.construct_reasoning_overlay_sync_key = None;
-            return;
+            return true;
         }
         let Some(seq_id) = self
             .seq_id
@@ -3050,20 +3071,20 @@ impl MainAreaDna {
             .filter(|value| !value.is_empty())
         else {
             if force {
-                self.refresh_construct_reasoning_overlay();
+                return self.refresh_construct_reasoning_overlay();
             }
             self.construct_reasoning_overlay_sync_key = None;
-            return;
+            return true;
         };
         let Some(engine) = &self.engine else {
             if force {
-                self.refresh_construct_reasoning_overlay();
+                return self.refresh_construct_reasoning_overlay();
             }
             self.construct_reasoning_overlay_sync_key = None;
-            return;
+            return true;
         };
         let Ok(guard) = engine.try_read() else {
-            return;
+            return false;
         };
         let next_key = ConstructReasoningOverlaySyncKey {
             seq_id: seq_id.to_string(),
@@ -3072,16 +3093,20 @@ impl MainAreaDna {
         };
         drop(guard);
         if !force && self.construct_reasoning_overlay_sync_key.as_ref() == Some(&next_key) {
-            return;
+            return true;
         }
-        self.refresh_construct_reasoning_overlay();
-        self.construct_reasoning_overlay_sync_key = Some(next_key);
+        if self.refresh_construct_reasoning_overlay() {
+            self.construct_reasoning_overlay_sync_key = Some(next_key);
+            true
+        } else {
+            false
+        }
     }
 
-    fn refresh_construct_reasoning_overlay(&mut self) {
+    fn refresh_construct_reasoning_overlay(&mut self) -> bool {
         let overlay = if let (Some(engine), Some(seq_id)) = (&self.engine, self.seq_id.as_deref()) {
             let Ok(mut guard) = engine.try_write() else {
-                return;
+                return false;
             };
             let graph = if let Some(graph_id) = self.focused_construct_reasoning_graph_id.as_deref()
             {
@@ -3101,8 +3126,11 @@ impl MainAreaDna {
         };
         if let Ok(mut display) = self.dna_display.write() {
             display.set_construct_reasoning_overlay(overlay);
+        } else {
+            return false;
         }
         self.description_cache_initialized = false;
+        true
     }
 
     fn active_sequence_is_genome_anchored(&self, engine: &GentleEngine) -> bool {
@@ -3131,13 +3159,6 @@ impl MainAreaDna {
         let engine = self.engine.as_ref()?;
         let guard = engine.try_read().ok()?;
         guard.sequence_genome_anchor_summary(seq_id).ok()
-    }
-
-    fn active_sequence_has_gene_annotations(&self) -> bool {
-        self.dna
-            .read()
-            .map(|dna| dna.features().iter().any(RenderDna::is_gene_feature))
-            .unwrap_or(false)
     }
 
     fn should_show_contextual_transcript_features(&self) -> bool {
@@ -10134,19 +10155,49 @@ impl MainAreaDna {
             .unwrap_or(9.0)
     }
 
+    fn invalidate_engine_display_sync(&mut self) {
+        self.engine_display_sync_key = None;
+    }
+
     fn sync_from_engine_display(&mut self) {
-        let Some(engine) = &self.engine else {
+        let Some(engine) = self.engine.clone() else {
             return;
         };
         let Ok(guard) = engine.try_read() else {
             return;
         };
+        let dna_handle = self.dna.clone();
+        let Ok(dna) = dna_handle.try_read() else {
+            return;
+        };
+        let key = EngineDisplaySyncKey {
+            engine_mutation_revision: guard.mutation_revision(),
+            engine_structural_revision: guard.structural_revision(),
+            feature_generation: dna.feature_generation(),
+            is_circular: dna.is_circular(),
+            dna_presentation_mode: self.dna_presentation_mode,
+            show_all_contextual_transcripts: self.show_all_contextual_transcripts,
+            compact_lane_layout: self.compact_lane_layout,
+        };
+        if self.engine_display_sync_key.as_ref() == Some(&key) {
+            drop(dna);
+            drop(guard);
+            self.engine_display_sync_cache_hits =
+                self.engine_display_sync_cache_hits.saturating_add(1);
+            return;
+        }
+
+        crate::gentle_gui_profile_scope!("MainAreaDna::sync_from_engine_display::cache_miss");
+        self.engine_display_sync_cache_misses =
+            self.engine_display_sync_cache_misses.saturating_add(1);
         let settings = guard.state().display.clone();
         let suppress_orf_for_anchor = self.active_sequence_is_genome_anchored(&guard);
-        let suppress_cds_for_gene_annotations = self.active_sequence_has_gene_annotations();
+        let suppress_cds_for_gene_annotations =
+            dna.features().iter().any(RenderDna::is_gene_feature);
+        drop(dna);
         drop(guard);
         self.show_sequence =
-            Self::sequence_panel_default_visible_for_topology(&settings, self.is_circular());
+            Self::sequence_panel_default_visible_for_topology(&settings, key.is_circular);
         self.show_map = settings.show_map_panel;
         if self.compact_lane_layout {
             self.apply_compact_lane_layout();
@@ -10237,7 +10288,10 @@ impl MainAreaDna {
         );
         drop(display);
         self.sync_contextual_transcript_visibility_filter();
-        self.refresh_construct_reasoning_overlay_if_needed(false);
+        let overlay_sync_completed = self.refresh_construct_reasoning_overlay_if_needed(false);
+        self.engine_display_sync_key = overlay_sync_completed.then_some(key);
+        self.engine_display_sync_apply_count =
+            self.engine_display_sync_apply_count.saturating_add(1);
     }
 
     fn current_linear_viewport(&self) -> (usize, usize, usize) {

@@ -18,6 +18,9 @@ Maintenance rule:
   revision-checked snapshots; dirty checks use a constant-time state revision;
   layer/GC/lineage/title/JASPAR derivations are cached; and dense JASPAR and
   feature-tree lists use virtualized rows.
+- Made unchanged sequence-window display synchronization a constant-time cache
+  hit, while display, structure, feature, topology, sequence-replacement, and
+  presentation changes still force a complete settings refresh.
 
 ## 2026-07-09
 
