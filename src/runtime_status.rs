@@ -313,6 +313,7 @@ impl RuntimeStatusSnapshot {
 pub struct RuntimeStatusRegistry {
     frames: Mutex<BTreeMap<String, RuntimeStatusFrame>>,
     counter: AtomicU64,
+    generation: AtomicU64,
 }
 
 impl Default for RuntimeStatusRegistry {
@@ -320,6 +321,7 @@ impl Default for RuntimeStatusRegistry {
         Self {
             frames: Mutex::new(BTreeMap::new()),
             counter: AtomicU64::new(0),
+            generation: AtomicU64::new(0),
         }
     }
 }
@@ -362,6 +364,7 @@ impl RuntimeStatusRegistry {
         };
         if let Ok(mut frames) = self.frames.lock() {
             frames.insert(frame_id.clone(), frame);
+            self.generation.fetch_add(1, Ordering::Release);
         }
         RUNTIME_FRAME_STACK.with(|stack| stack.borrow_mut().push(frame_id.clone()));
         RuntimeStatusGuard {
@@ -377,38 +380,62 @@ impl RuntimeStatusRegistry {
         {
             update(frame);
             frame.updated_at_unix_ms = now_unix_ms();
+            self.generation.fetch_add(1, Ordering::Release);
         }
     }
 
     fn remove_frame(&self, frame_id: &str) {
         if let Ok(mut frames) = self.frames.lock() {
-            frames.remove(frame_id);
+            if frames.remove(frame_id).is_some() {
+                self.generation.fetch_add(1, Ordering::Release);
+            }
         }
+    }
+
+    /// Monotonic identity for the current process-local activity stack.
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Acquire)
     }
 
     /// Return a structured snapshot of all active frames in this process.
     pub fn snapshot(&self, trigger: RuntimeStatusTrigger) -> RuntimeStatusSnapshot {
-        let mut frames = self
+        self.snapshot_with_generation(trigger).1
+    }
+
+    /// Return a snapshot and the registry generation captured under the same lock.
+    pub fn snapshot_with_generation(
+        &self,
+        trigger: RuntimeStatusTrigger,
+    ) -> (u64, RuntimeStatusSnapshot) {
+        let (generation, mut frames) = self
             .frames
             .lock()
-            .map(|frames| frames.values().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
+            .map(|frames| {
+                (
+                    self.generation.load(Ordering::Acquire),
+                    frames.values().cloned().collect::<Vec<_>>(),
+                )
+            })
+            .unwrap_or_else(|_| (self.generation(), Vec::new()));
         frames.sort_by(|left, right| {
             left.started_at_unix_ms
                 .cmp(&right.started_at_unix_ms)
                 .then_with(|| left.frame_id.cmp(&right.frame_id))
         });
-        RuntimeStatusSnapshot {
-            schema: RUNTIME_STATUS_SCHEMA.to_string(),
-            generated_at_unix_ms: now_unix_ms(),
-            process_id: process::id(),
-            process_label: process_label(),
-            trigger,
-            summary_lines: runtime_summary_lines(&frames, &[]),
-            frames,
-            activities: Vec::new(),
-            observability_notes: Vec::new(),
-        }
+        (
+            generation,
+            RuntimeStatusSnapshot {
+                schema: RUNTIME_STATUS_SCHEMA.to_string(),
+                generated_at_unix_ms: now_unix_ms(),
+                process_id: process::id(),
+                process_label: process_label(),
+                trigger,
+                summary_lines: runtime_summary_lines(&frames, &[]),
+                frames,
+                activities: Vec::new(),
+                observability_notes: Vec::new(),
+            },
+        )
     }
 }
 
@@ -769,6 +796,28 @@ fn now_unix_ms() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runtime_status_generation_changes_only_with_registry_mutations() {
+        let registry = Box::leak(Box::new(RuntimeStatusRegistry::default()));
+        let initial_generation = registry.generation();
+        let (snapshot_generation, snapshot) =
+            registry.snapshot_with_generation(RuntimeStatusTrigger::Test);
+        assert_eq!(snapshot_generation, initial_generation);
+        assert!(snapshot.frames.is_empty());
+        assert_eq!(registry.generation(), initial_generation);
+
+        let guard = registry.push(RuntimeStatusFrameKind::BackgroundJob, "generation test");
+        let pushed_generation = registry.generation();
+        assert!(pushed_generation > initial_generation);
+
+        guard.update_detail("working");
+        let updated_generation = registry.generation();
+        assert!(updated_generation > pushed_generation);
+
+        drop(guard);
+        assert!(registry.generation() > updated_generation);
+    }
 
     #[test]
     fn runtime_status_snapshot_reports_nested_active_frames() {

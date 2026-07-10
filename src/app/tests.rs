@@ -5295,6 +5295,185 @@ fn open_window_entries_include_background_jobs_and_jaspar_when_open() {
 }
 
 #[test]
+fn open_window_model_cache_reuses_stable_model_and_tracks_root_window_inputs() {
+    let mut app = GENtleApp::default();
+    app.refresh_root_engine_summary_cache();
+    app.refresh_open_window_model_cache();
+    let initial_model = app.open_window_model_cache.model.clone();
+    assert_eq!(app.open_window_model_cache.misses, 1);
+    assert_eq!(app.open_window_model_cache.hits, 0);
+
+    app.refresh_open_window_model_cache();
+    assert_eq!(app.open_window_model_cache.misses, 1);
+    assert_eq!(app.open_window_model_cache.hits, 1);
+    assert!(Arc::ptr_eq(
+        &initial_model,
+        &app.open_window_model_cache.model
+    ));
+
+    app.show_help_dialog = true;
+    app.help_doc = HelpDoc::Tutorial;
+    app.help_tutorial_title = "First tutorial".to_string();
+    app.refresh_open_window_model_cache();
+    assert_eq!(app.open_window_model_cache.misses, 2);
+    assert!(
+        app.open_window_model_cache
+            .model
+            .entries
+            .iter()
+            .any(|entry| entry.title == "Help — First tutorial")
+    );
+
+    app.help_tutorial_title = "Second tutorial".to_string();
+    app.refresh_open_window_model_cache();
+    assert_eq!(app.open_window_model_cache.misses, 3);
+    assert!(
+        app.open_window_model_cache
+            .model
+            .entries
+            .iter()
+            .any(|entry| entry.title == "Help — Second tutorial")
+    );
+
+    app.show_help_dialog = false;
+    app.refresh_open_window_model_cache();
+    assert_eq!(app.open_window_model_cache.misses, 4);
+}
+
+#[test]
+fn open_window_model_cache_invalidates_for_window_title_auxiliary_and_close_changes() {
+    let mut app = GENtleApp::default();
+    app.refresh_root_engine_summary_cache();
+    let viewport_id = egui::ViewportId::from_hash_of("window-model-cache-sequence");
+    let mut first_dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    first_dna.set_name("First title");
+    app.windows.insert(
+        viewport_id,
+        Arc::new(RwLock::new(Window::new_dna(
+            first_dna,
+            "seq1".to_string(),
+            app.engine.clone(),
+        ))),
+    );
+    app.refresh_open_window_model_cache();
+    assert_eq!(app.open_window_model_cache.misses, 1);
+    assert!(
+        app.open_window_model_cache
+            .model
+            .entries
+            .iter()
+            .any(|entry| entry.title.contains("First title"))
+    );
+
+    let mut replacement_dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    replacement_dna.set_name("Replacement title");
+    app.windows.insert(
+        viewport_id,
+        Arc::new(RwLock::new(Window::new_dna(
+            replacement_dna,
+            "seq1".to_string(),
+            app.engine.clone(),
+        ))),
+    );
+    app.refresh_open_window_model_cache();
+    assert_eq!(app.open_window_model_cache.misses, 2);
+    assert!(
+        app.open_window_model_cache
+            .model
+            .entries
+            .iter()
+            .any(|entry| entry.title.contains("Replacement title"))
+    );
+
+    app.windows
+        .get(&viewport_id)
+        .expect("sequence window")
+        .write()
+        .expect("window lock")
+        .seed_rna_read_mapping_window_for_tests("seq1", 17, "TP73");
+    app.refresh_open_window_model_cache();
+    assert_eq!(app.open_window_model_cache.misses, 3);
+    assert!(
+        app.open_window_model_cache
+            .model
+            .entries
+            .iter()
+            .any(|entry| entry.title == "RNA-read Mapping - TP73 (seq1)")
+    );
+
+    app.windows.remove(&viewport_id);
+    app.refresh_open_window_model_cache();
+    assert_eq!(app.open_window_model_cache.misses, 4);
+    assert!(
+        !app.open_window_model_cache
+            .model
+            .entries
+            .iter()
+            .any(|entry| entry.title.contains("Replacement title"))
+    );
+}
+
+#[test]
+fn root_engine_summary_cache_reuses_revision_and_refreshes_after_mutation() {
+    let mut app = GENtleApp::default();
+    app.refresh_root_engine_summary_cache();
+    assert_eq!(app.root_engine_summary_cache.misses, 1);
+
+    app.refresh_root_engine_summary_cache();
+    assert_eq!(app.root_engine_summary_cache.hits, 1);
+    assert_eq!(app.root_engine_summary_cache.misses, 1);
+
+    app.engine
+        .write()
+        .expect("engine lock")
+        .state_mut()
+        .metadata
+        .insert("cache-test".to_string(), serde_json::json!(true));
+    app.refresh_root_engine_summary_cache();
+    assert_eq!(app.root_engine_summary_cache.misses, 2);
+}
+
+#[test]
+fn runtime_status_snapshot_cache_reuses_generation_and_refreshes_on_changes() {
+    let registry = Box::leak(Box::new(
+        crate::runtime_status::RuntimeStatusRegistry::default(),
+    ));
+    let mut app = GENtleApp::default();
+    app.refresh_runtime_status_snapshot_cache_from(registry);
+    assert_eq!(app.runtime_status_snapshot_cache.misses, 1);
+
+    app.refresh_runtime_status_snapshot_cache_from(registry);
+    assert_eq!(app.runtime_status_snapshot_cache.hits, 1);
+    assert_eq!(app.runtime_status_snapshot_cache.misses, 1);
+
+    let guard = registry.push(
+        crate::runtime_status::RuntimeStatusFrameKind::BackgroundJob,
+        "cache test",
+    );
+    app.refresh_runtime_status_snapshot_cache_from(registry);
+    assert_eq!(app.runtime_status_snapshot_cache.misses, 2);
+    assert_eq!(app.runtime_status_snapshot_cache.snapshot.frames.len(), 1);
+
+    drop(guard);
+    app.refresh_runtime_status_snapshot_cache_from(registry);
+    assert_eq!(app.runtime_status_snapshot_cache.misses, 3);
+    assert!(app.runtime_status_snapshot_cache.snapshot.frames.is_empty());
+}
+
+#[test]
+fn root_initialization_and_backdrop_prewarm_requests_are_one_shot() {
+    let mut app = GENtleApp::default();
+    assert!(app.take_root_initialization_request());
+    assert!(!app.take_root_initialization_request());
+
+    assert!(app.take_window_backdrop_preload_request());
+    assert!(!app.take_window_backdrop_preload_request());
+    app.window_backdrop_preload_dirty = true;
+    assert!(app.take_window_backdrop_preload_request());
+    assert!(!app.take_window_backdrop_preload_request());
+}
+
+#[test]
 fn open_configuration_graphics_dialog_focuses_existing_window_without_resetting_edits() {
     let mut app = GENtleApp::default();
     app.open_configuration_dialog();
@@ -5639,7 +5818,7 @@ fn help_copyable_text_uses_active_document_markdown() {
 
 #[test]
 fn command_palette_includes_routine_assistant_entry() {
-    let app = GENtleApp::default();
+    let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
     assert!(
         entries
@@ -5650,21 +5829,21 @@ fn command_palette_includes_routine_assistant_entry() {
 
 #[test]
 fn command_palette_includes_planning_entry() {
-    let app = GENtleApp::default();
+    let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
     assert!(entries.iter().any(|entry| entry.title == "Planning"));
 }
 
 #[test]
 fn command_palette_includes_gibson_entry() {
-    let app = GENtleApp::default();
+    let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
     assert!(entries.iter().any(|entry| entry.title == "Gibson"));
 }
 
 #[test]
 fn command_palette_includes_lab_assistant_report_export() {
-    let app = GENtleApp::default();
+    let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
     assert!(
         entries
@@ -5676,7 +5855,7 @@ fn command_palette_includes_lab_assistant_report_export() {
 
 #[test]
 fn command_palette_includes_external_services_entry() {
-    let app = GENtleApp::default();
+    let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
     assert!(
         entries
@@ -5687,7 +5866,7 @@ fn command_palette_includes_external_services_entry() {
 
 #[test]
 fn command_palette_includes_new_sequence_entries() {
-    let app = GENtleApp::default();
+    let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
 
     assert!(entries.iter().any(|entry| {
@@ -5701,14 +5880,14 @@ fn command_palette_includes_new_sequence_entries() {
 
 #[test]
 fn command_palette_includes_pcr_designer_entry() {
-    let app = GENtleApp::default();
+    let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
     assert!(entries.iter().any(|entry| entry.title == "PCR Designer"));
 }
 
 #[test]
 fn command_palette_includes_sequencing_confirmation_entry() {
-    let app = GENtleApp::default();
+    let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
     assert!(
         entries
@@ -5719,7 +5898,7 @@ fn command_palette_includes_sequencing_confirmation_entry() {
 
 #[test]
 fn command_palette_includes_mirna_target_scan_entry() {
-    let app = GENtleApp::default();
+    let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
     assert!(
         entries
@@ -5730,7 +5909,7 @@ fn command_palette_includes_mirna_target_scan_entry() {
 
 #[test]
 fn command_palette_includes_shared_ui_intent_entries() {
-    let app = GENtleApp::default();
+    let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
 
     for target in UiIntentTarget::all() {
@@ -5750,7 +5929,7 @@ fn command_palette_includes_shared_ui_intent_entries() {
 
 #[test]
 fn command_palette_includes_gui_prominent_glossary_entries() {
-    let app = GENtleApp::default();
+    let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
 
     for gui_entry in gui_prominent_glossary_entries() {
@@ -5886,7 +6065,7 @@ fn command_palette_gui_prominent_ui_intents_dispatch_to_expected_windows() {
 
 #[test]
 fn command_palette_includes_evidence_preparation_direct_action() {
-    let app = GENtleApp::default();
+    let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
     assert!(entries.iter().any(|entry| {
         entry.title == "Evidence Preparation"

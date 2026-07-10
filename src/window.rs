@@ -42,6 +42,12 @@ impl Window {
         }
     }
 
+    pub(crate) fn open_window_registry_signature(&self) -> Option<u64> {
+        match self {
+            Self::Dna(window) => window.open_window_registry_signature(),
+        }
+    }
+
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {
         match self {
             Self::Dna(window) => window.set_pool_context(pool_seq_ids),

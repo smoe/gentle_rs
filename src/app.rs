@@ -47,6 +47,7 @@ mod help_docs;
 #[path = "app/window_registry.rs"]
 mod window_registry;
 
+use window_registry::OpenWindowEntry;
 pub use window_registry::{GuiProminentGlossaryEntry, gui_prominent_glossary_entries};
 
 #[path = "app/jaspar_expert.rs"]
@@ -139,19 +140,20 @@ use crate::{
         ConstructReasoningGraph, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DEFAULT_HOST_PROFILE_CATALOG_PATH,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP, DbSnpFetchProgress, DbSnpFetchStage,
-        DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode, FeatureExpertTarget,
-        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
-        GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, HostProfileRecord,
-        JasparCatalogReport, JasparCatalogRow, JasparEntryExpertView,
-        LabAssistantInstructionsFormat, LineageMacroPortBinding, LinearSequenceLetterLayoutMode,
-        MacroTemplateSuggestion, OpResult, Operation, OperationProgress, PlanningEstimate,
-        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
-        ProjectState, ProteaseDigestReport, ProteinToDnaHandoffRankingGoal,
-        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
-        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-        RackProfileKind, RenderSvgMode, RestrictionEnzymeDisplayMode, ReverseTranslationReport,
-        RoutineDecisionTrace, RoutineDecisionTraceCandidateScore, RoutineDecisionTraceComparison,
+        DisplaySettings, DisplayTarget, Engine, EngineError, EngineHistorySummary, ErrorCode,
+        FeatureExpertTarget, GenomeAnnotationScope, GenomeGeneExtractMode,
+        GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
+        GenomeTrackSyncReport, GentleEngine, HostProfileRecord, JasparCatalogReport,
+        JasparCatalogRow, JasparEntryExpertView, LabAssistantInstructionsFormat,
+        LineageMacroPortBinding, LinearSequenceLetterLayoutMode, MacroTemplateSuggestion, OpResult,
+        Operation, OperationProgress, PlanningEstimate, PlanningObjective, PlanningProfile,
+        PlanningProfileScope, PlanningSuggestionStatus, ProjectState, ProteaseDigestReport,
+        ProteinToDnaHandoffRankingGoal, ROUTINE_DECISION_TRACE_SCHEMA,
+        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, Rack,
+        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode,
+        RestrictionEnzymeDisplayMode, ReverseTranslationReport, RoutineDecisionTrace,
+        RoutineDecisionTraceCandidateScore, RoutineDecisionTraceComparison,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, RoutinePreferenceContextRecord, SequenceGenomeAnchorSummary,
@@ -199,8 +201,8 @@ use crate::{
     },
     resource_sync,
     runtime_status::{
-        RuntimeStatusFrameKind, RuntimeStatusGuard, RuntimeStatusTrigger, runtime_status_registry,
-        runtime_status_snapshot,
+        RuntimeStatusFrameKind, RuntimeStatusGuard, RuntimeStatusRegistry, RuntimeStatusSnapshot,
+        RuntimeStatusTrigger, runtime_status_registry,
     },
     scroll_input_policy::{self, WheelIntent, ZoomDirection},
     shell_docs::{
@@ -630,6 +632,40 @@ enum PreparedGenomeReinstallDialogHost {
     PrepareDialog,
 }
 
+#[derive(Debug, Default)]
+struct OpenWindowModel {
+    entries: Vec<OpenWindowEntry>,
+    native_entries: Vec<(u64, String)>,
+    native_key_to_viewport: HashMap<u64, ViewportId>,
+    auxiliary_titles: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+struct OpenWindowModelCache {
+    signature: Option<u64>,
+    model: Arc<OpenWindowModel>,
+    hits: u64,
+    misses: u64,
+}
+
+#[derive(Debug, Default)]
+struct RootEngineSummaryCache {
+    engine_identity: usize,
+    execution_revision: Option<u64>,
+    structural_revision: u64,
+    history: EngineHistorySummary,
+    hits: u64,
+    misses: u64,
+}
+
+#[derive(Debug, Default)]
+struct RuntimeStatusSnapshotCache {
+    generation: Option<u64>,
+    snapshot: RuntimeStatusSnapshot,
+    hits: u64,
+    misses: u64,
+}
+
 pub struct GENtleApp {
     engine: Arc<RwLock<GentleEngine>>,
     new_windows: Vec<Window>,
@@ -640,6 +676,7 @@ pub struct GENtleApp {
     pending_window_initial_positions: HashMap<ViewportId, Pos2>,
     viewport_id_counter: usize,
     update_has_run_before: bool,
+    window_backdrop_preload_dirty: bool,
     splash_started_at: Instant,
     splash_dismissed: bool,
     show_about_dialog: bool,
@@ -733,6 +770,9 @@ pub struct GENtleApp {
     last_native_active_window_key: Option<u64>,
     native_window_key_to_viewport: HashMap<u64, ViewportId>,
     active_window_menu_key: Option<u64>,
+    open_window_model_cache: OpenWindowModelCache,
+    root_engine_summary_cache: RootEngineSummaryCache,
+    runtime_status_snapshot_cache: RuntimeStatusSnapshotCache,
     pending_window_open_timestamps: HashMap<ViewportId, Instant>,
     pending_viewport_focus_timestamps: HashMap<ViewportId, Instant>,
     pending_project_action: Option<ProjectAction>,
@@ -2434,6 +2474,7 @@ impl Default for GENtleApp {
             pending_window_initial_positions: HashMap::new(),
             viewport_id_counter: 0,
             update_has_run_before: false,
+            window_backdrop_preload_dirty: true,
             splash_started_at: Instant::now(),
             splash_dismissed: false,
             show_about_dialog: false,
@@ -2529,6 +2570,9 @@ impl Default for GENtleApp {
             last_native_active_window_key: Some(viewport_native_menu_key(ViewportId::ROOT)),
             native_window_key_to_viewport: HashMap::new(),
             active_window_menu_key: Some(viewport_native_menu_key(ViewportId::ROOT)),
+            open_window_model_cache: OpenWindowModelCache::default(),
+            root_engine_summary_cache: RootEngineSummaryCache::default(),
+            runtime_status_snapshot_cache: RuntimeStatusSnapshotCache::default(),
             pending_window_open_timestamps: HashMap::new(),
             pending_viewport_focus_timestamps: HashMap::new(),
             pending_project_action: None,
@@ -5171,7 +5215,7 @@ Error: `{err}`"
         }
     }
 
-    fn collect_command_palette_entries(&self) -> Vec<CommandPaletteEntry> {
+    fn collect_command_palette_entries(&mut self) -> Vec<CommandPaletteEntry> {
         let mut entries = vec![
             CommandPaletteEntry {
                 title: "New Project".to_string(),
@@ -5342,10 +5386,12 @@ Error: `{err}`"
                 .copied()
                 .map(CommandPaletteEntry::ui_intent),
         );
-        for entry in self.collect_open_window_entries() {
+        self.refresh_root_engine_summary_cache();
+        self.refresh_open_window_model_cache();
+        for entry in &self.open_window_model_cache.model.entries {
             entries.push(CommandPaletteEntry {
                 title: format!("Focus: {}", entry.title),
-                detail: entry.detail,
+                detail: entry.detail.clone(),
                 keywords: "focus window".to_string(),
                 action: CommandPaletteAction::FocusViewport(entry.viewport_id),
             });
@@ -15473,24 +15519,18 @@ Error: `{err}`"
     }
 
     pub fn render_menu_bar(&mut self, ui: &mut Ui) {
-        let open_window_entries = self.collect_open_window_entries();
-        self.native_window_key_to_viewport = open_window_entries
-            .iter()
-            .map(|entry| (entry.native_menu_key, entry.viewport_id))
-            .collect();
-        let native_window_entries = open_window_entries
-            .iter()
-            .map(|entry| (entry.native_menu_key, entry.title.clone()))
-            .collect::<Vec<_>>();
+        let open_window_model = self.open_window_model_cache.model.clone();
+        let open_window_entries = &open_window_model.entries;
+        let native_window_entries = &open_window_model.native_entries;
         let active_window_key = self
             .active_window_menu_key
             .or_else(|| Some(Self::native_menu_key_for_viewport(ViewportId::ROOT)));
-        if (self.last_native_window_entries != native_window_entries
+        if (self.last_native_window_entries != *native_window_entries
             || self.last_native_active_window_key != active_window_key)
             && !self.native_window_menu_sync_blocked_by_open_probe()
         {
             let sync_started = Instant::now();
-            about::sync_native_open_windows_menu(&native_window_entries, active_window_key);
+            about::sync_native_open_windows_menu(native_window_entries, active_window_key);
             let sync_elapsed_ms = sync_started.elapsed().as_millis();
             if sync_elapsed_ms >= WINDOW_OPEN_SLOW_THRESHOLD_MS {
                 self.app_status = format!(
@@ -15498,16 +15538,12 @@ Error: `{err}`"
                     native_window_entries.len()
                 );
             }
-            self.last_native_window_entries = native_window_entries;
+            self.last_native_window_entries = native_window_entries.clone();
             self.last_native_active_window_key = active_window_key;
         }
-        let history_summary = self
-            .engine
-            .read()
-            .map(|engine| engine.history_summary())
-            .unwrap_or_default();
-        let undo_count = history_summary.undo_count;
-        let redo_count = history_summary.redo_count;
+        let undo_count = self.root_engine_summary_cache.history.undo_count;
+        let redo_count = self.root_engine_summary_cache.history.redo_count;
+        let history_limit = self.root_engine_summary_cache.history.history_limit;
         let history_ops_enabled = !self.has_active_background_jobs();
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button(self.tr("menu.file"), |ui| {
@@ -15905,7 +15941,7 @@ Error: `{err}`"
                 } else {
                     ui.small(format!(
                         "Undo {undo_count} | Redo {redo_count} | limit {}",
-                        history_summary.history_limit
+                        history_limit
                     ));
                 }
                 ui.separator();
@@ -16303,7 +16339,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 ui.separator();
-                for entry in &open_window_entries {
+                for entry in open_window_entries {
                     let label = if entry.viewport_id == ViewportId::ROOT {
                         format!("Main: {}", entry.title)
                     } else {
@@ -20364,6 +20400,7 @@ Error: `{err}`"
     fn apply_configuration_window_backdrops(&mut self) {
         self.window_backdrops = self.configuration_window_backdrops.clone();
         window_backdrop::set_window_backdrop_settings(self.window_backdrops.clone());
+        self.window_backdrop_preload_dirty = true;
         self.window_backdrop_path_status_cache.clear();
         self.configuration_window_backdrops_dirty = false;
         self.configuration_status = "Window styling settings applied".to_string();
@@ -22616,13 +22653,63 @@ Error: `{err}`"
         self.show_jobs_panel = open;
     }
 
+    fn refresh_root_engine_summary_cache(&mut self) {
+        let engine_identity = Arc::as_ptr(&self.engine) as usize;
+        let Ok(engine) = self.engine.read() else {
+            return;
+        };
+        let execution_revision = engine.execution_revision();
+        if self.root_engine_summary_cache.engine_identity == engine_identity
+            && self.root_engine_summary_cache.execution_revision == Some(execution_revision)
+        {
+            self.root_engine_summary_cache.hits =
+                self.root_engine_summary_cache.hits.saturating_add(1);
+            return;
+        }
+        self.root_engine_summary_cache.engine_identity = engine_identity;
+        self.root_engine_summary_cache.execution_revision = Some(execution_revision);
+        self.root_engine_summary_cache.structural_revision = engine.structural_revision();
+        self.root_engine_summary_cache.history = engine.history_summary();
+        self.root_engine_summary_cache.misses =
+            self.root_engine_summary_cache.misses.saturating_add(1);
+    }
+
+    fn refresh_runtime_status_snapshot_cache(&mut self) {
+        self.refresh_runtime_status_snapshot_cache_from(runtime_status_registry());
+    }
+
+    fn refresh_runtime_status_snapshot_cache_from(&mut self, registry: &RuntimeStatusRegistry) {
+        let generation = registry.generation();
+        if self.runtime_status_snapshot_cache.generation == Some(generation) {
+            self.runtime_status_snapshot_cache.hits =
+                self.runtime_status_snapshot_cache.hits.saturating_add(1);
+            return;
+        }
+        let (generation, snapshot) =
+            registry.snapshot_with_generation(RuntimeStatusTrigger::Manual);
+        self.runtime_status_snapshot_cache.generation = Some(generation);
+        self.runtime_status_snapshot_cache.snapshot = snapshot;
+        self.runtime_status_snapshot_cache.misses =
+            self.runtime_status_snapshot_cache.misses.saturating_add(1);
+    }
+
+    fn refresh_root_frame_presentation_caches(&mut self) {
+        self.refresh_root_engine_summary_cache();
+        self.refresh_open_window_model_cache();
+        self.refresh_runtime_status_snapshot_cache();
+    }
+
+    fn take_root_initialization_request(&mut self) -> bool {
+        !std::mem::replace(&mut self.update_has_run_before, true)
+    }
+
+    fn take_window_backdrop_preload_request(&mut self) -> bool {
+        std::mem::take(&mut self.window_backdrop_preload_dirty)
+    }
+
     fn render_status_bar(&mut self, ctx: &egui::Context) {
-        let history_summary = self
-            .engine
-            .read()
-            .map(|engine| engine.history_summary())
-            .unwrap_or_default();
-        let runtime_snapshot = runtime_status_snapshot(RuntimeStatusTrigger::Manual);
+        let history_summary = &self.root_engine_summary_cache.history;
+        let runtime_snapshot = &self.runtime_status_snapshot_cache.snapshot;
         crate::egui_compat::show_bottom_panel(
             ctx,
             egui::Id::new("gentle_status_bar"),
@@ -24252,15 +24339,16 @@ impl GENtleApp {
         let update_result = catch_unwind(AssertUnwindSafe(|| {
             crate::gentle_gui_profile_scope!("GENtleApp::render_root_ui");
             Self::configure_platform_viewport_mode(ctx);
-            if !self.update_has_run_before {
+            if self.take_root_initialization_request() {
                 egui_extras::install_image_loaders(ctx);
-                self.update_has_run_before = true;
+                about::install_native_help_menu_bridge();
+                about::install_native_settings_menu_bridge();
+                about::install_native_windows_menu_bridge();
+                about::install_native_app_windows_menu_bridge();
             }
-            window_backdrop::preload_window_backdrop_images(ctx, &self.window_backdrops);
-            about::install_native_help_menu_bridge();
-            about::install_native_settings_menu_bridge();
-            about::install_native_windows_menu_bridge();
-            about::install_native_app_windows_menu_bridge();
+            if self.take_window_backdrop_preload_request() {
+                window_backdrop::preload_window_backdrop_images(ctx, &self.window_backdrops);
+            }
             self.consume_native_help_request();
             self.consume_native_settings_request();
             self.consume_native_pcr_design_request();
@@ -24299,6 +24387,7 @@ impl GENtleApp {
             self.poll_clawbio_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
             self.sync_open_windows_if_display_changed(ctx);
+            self.refresh_root_frame_presentation_caches();
             self.reset_root_auxiliary_areas_if_legacy_title_layers_visible(ctx);
 
             if self.show_help_dialog {

@@ -425,6 +425,10 @@ impl WindowDna {
         self.main_area.window_title()
     }
 
+    pub(crate) fn open_window_registry_signature(&self) -> Option<u64> {
+        self.main_area.open_window_registry_signature()
+    }
+
     pub fn sequence_id(&self) -> Option<String> {
         self.main_area.sequence_id().map(|v| v.to_string())
     }

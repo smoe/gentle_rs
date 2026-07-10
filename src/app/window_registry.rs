@@ -147,7 +147,7 @@ pub fn gui_prominent_glossary_entries() -> &'static [GuiProminentGlossaryEntry] 
     GUI_PROMINENT_GLOSSARY_ENTRIES
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(super) struct OpenWindowEntry {
     pub(super) native_menu_key: u64,
     pub(super) viewport_id: ViewportId,
@@ -295,7 +295,74 @@ impl GENtleApp {
             })
     }
 
-    pub(super) fn collect_open_window_entries(&self) -> Vec<OpenWindowEntry> {
+    fn open_window_model_signature(&self, engine_structural_revision: u64) -> Option<u64> {
+        let mut hasher = DefaultHasher::new();
+        self.root_engine_summary_cache
+            .engine_identity
+            .hash(&mut hasher);
+        engine_structural_revision.hash(&mut hasher);
+        self.current_project_path.hash(&mut hasher);
+        self.show_configuration_dialog.hash(&mut hasher);
+        self.show_help_dialog.hash(&mut hasher);
+        if self.show_help_dialog {
+            self.active_help_title().hash(&mut hasher);
+        }
+        self.show_command_palette_dialog.hash(&mut hasher);
+        self.external_services_ui.show_panel.hash(&mut hasher);
+        self.evidence_preparation_panel.show_panel.hash(&mut hasher);
+        self.history_ui.show_panel.hash(&mut hasher);
+        self.show_jobs_panel.hash(&mut hasher);
+        self.show_reference_genome_prepare_dialog.hash(&mut hasher);
+        self.show_reference_genome_retrieve_dialog.hash(&mut hasher);
+        self.show_reference_genome_blast_dialog.hash(&mut hasher);
+        self.genome_dialog_scope.prepare_title().hash(&mut hasher);
+        self.show_genome_bed_track_dialog.hash(&mut hasher);
+        self.show_gibson_dialog.hash(&mut hasher);
+        self.show_arrangement_gel_preview_dialog.hash(&mut hasher);
+        if self.show_arrangement_gel_preview_dialog {
+            self.arrangement_gel_preview
+                .arrangement_title
+                .hash(&mut hasher);
+        }
+        self.show_pcr_design_dialog.hash(&mut hasher);
+        if self.show_pcr_design_dialog {
+            self.pcr_design_seq_id.hash(&mut hasher);
+        }
+        self.show_sequencing_confirmation_dialog.hash(&mut hasher);
+        if self.show_sequencing_confirmation_dialog {
+            self.sequencing_confirmation_seq_id.hash(&mut hasher);
+        }
+        self.show_planning_dialog.hash(&mut hasher);
+        self.show_routine_assistant_dialog.hash(&mut hasher);
+        self.show_agent_assistant_dialog.hash(&mut hasher);
+        self.show_jaspar_expert_dialog.hash(&mut hasher);
+        self.show_new_sequence_dialog.hash(&mut hasher);
+        self.show_uniprot_dialog.hash(&mut hasher);
+        self.show_genbank_dialog.hash(&mut hasher);
+
+        let mut window_signature = 0_u64;
+        for (map_kind, windows) in [
+            (0_u8, &self.windows),
+            (1_u8, &self.detached_auxiliary_window_hosts),
+        ] {
+            for (viewport_id, window) in windows {
+                let window = window.read().ok()?;
+                let mut item_hasher = DefaultHasher::new();
+                map_kind.hash(&mut item_hasher);
+                viewport_id.hash(&mut item_hasher);
+                window
+                    .open_window_registry_signature()?
+                    .hash(&mut item_hasher);
+                window_signature = window_signature.wrapping_add(item_hasher.finish());
+            }
+        }
+        self.windows.len().hash(&mut hasher);
+        self.detached_auxiliary_window_hosts.len().hash(&mut hasher);
+        window_signature.hash(&mut hasher);
+        Some(hasher.finish())
+    }
+
+    fn build_open_window_model(&self) -> OpenWindowModel {
         let mut entries = vec![OpenWindowEntry {
             native_menu_key: Self::native_menu_key_for_viewport(ViewportId::ROOT),
             viewport_id: ViewportId::ROOT,
@@ -527,30 +594,18 @@ impl GENtleApp {
             });
         }
 
-        let mut sequence_windows = self
-            .windows
-            .iter()
-            .map(|(viewport_id, window)| {
-                let title = window
-                    .read()
-                    .map(|w| w.name())
-                    .unwrap_or_else(|_| "Sequence window".to_string());
-                OpenWindowEntry {
-                    native_menu_key: Self::native_menu_key_for_viewport(*viewport_id),
-                    viewport_id: *viewport_id,
-                    title,
-                    detail: "Sequence map window".to_string(),
-                }
-            })
-            .collect::<Vec<_>>();
-        sequence_windows.sort_by(|left, right| left.title.cmp(&right.title));
-        entries.extend(sequence_windows);
-
+        let mut sequence_windows = Vec::new();
         let mut auxiliary_windows = Vec::new();
-        for window in self.windows.values() {
+        for (viewport_id, window) in &self.windows {
             let Ok(window_guard) = window.read() else {
                 continue;
             };
+            sequence_windows.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(*viewport_id),
+                viewport_id: *viewport_id,
+                title: window_guard.name(),
+                detail: "Sequence map window".to_string(),
+            });
             for (viewport_id, title, detail) in window_guard.collect_open_auxiliary_window_entries()
             {
                 auxiliary_windows.push(OpenWindowEntry {
@@ -561,6 +616,9 @@ impl GENtleApp {
                 });
             }
         }
+        sequence_windows.sort_by(|left, right| left.title.cmp(&right.title));
+        entries.extend(sequence_windows);
+
         for window in self.detached_auxiliary_window_hosts.values() {
             let Ok(window_guard) = window.read() else {
                 continue;
@@ -580,34 +638,62 @@ impl GENtleApp {
                 .cmp(&right.title)
                 .then(left.detail.cmp(&right.detail))
         });
+        let auxiliary_titles = auxiliary_windows
+            .iter()
+            .map(|entry| entry.title.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
         entries.extend(auxiliary_windows);
-        entries
+        let native_entries = entries
+            .iter()
+            .map(|entry| (entry.native_menu_key, entry.title.clone()))
+            .collect();
+        let native_key_to_viewport = entries
+            .iter()
+            .map(|entry| (entry.native_menu_key, entry.viewport_id))
+            .collect();
+        OpenWindowModel {
+            entries,
+            native_entries,
+            native_key_to_viewport,
+            auxiliary_titles,
+        }
     }
 
-    fn collect_open_auxiliary_window_titles(&self) -> Vec<String> {
-        let mut titles = Vec::new();
-        let mut seen = HashSet::new();
-        for window_map in [&self.windows, &self.detached_auxiliary_window_hosts] {
-            for window in window_map.values() {
-                let Ok(window_guard) = window.read() else {
-                    continue;
-                };
-                for (_, title, _) in window_guard.collect_open_auxiliary_window_entries() {
-                    if seen.insert(title.clone()) {
-                        titles.push(title);
-                    }
-                }
-            }
+    pub(super) fn refresh_open_window_model_cache(&mut self) {
+        let structural_revision = self.root_engine_summary_cache.structural_revision;
+        let Some(signature) = self.open_window_model_signature(structural_revision) else {
+            return;
+        };
+        if self.open_window_model_cache.signature == Some(signature) {
+            self.open_window_model_cache.hits = self.open_window_model_cache.hits.saturating_add(1);
+            return;
         }
-        titles
+        let model = Arc::new(self.build_open_window_model());
+        self.native_window_key_to_viewport = model.native_key_to_viewport.clone();
+        self.open_window_model_cache.signature = Some(signature);
+        self.open_window_model_cache.model = model;
+        self.open_window_model_cache.misses = self.open_window_model_cache.misses.saturating_add(1);
+    }
+
+    #[cfg(test)]
+    pub(super) fn collect_open_window_entries(&self) -> Vec<OpenWindowEntry> {
+        self.build_open_window_model().entries
     }
 
     pub(super) fn reset_root_auxiliary_areas_if_legacy_title_layers_visible(
-        &self,
+        &mut self,
         ctx: &egui::Context,
     ) -> bool {
+        if self.open_window_model_cache.signature.is_none() {
+            self.refresh_root_engine_summary_cache();
+            self.refresh_open_window_model_cache();
+        }
         let has_stale_auxiliary_title_layer = self
-            .collect_open_auxiliary_window_titles()
+            .open_window_model_cache
+            .model
+            .auxiliary_titles
             .iter()
             .any(|title| {
                 let layer_id = Self::stale_hosted_window_title_layer_id(title);

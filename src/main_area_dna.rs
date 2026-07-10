@@ -196,8 +196,9 @@ use gentle_protocol::{
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, hash_map::DefaultHasher},
     env, fs,
+    hash::{Hash, Hasher},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, RwLock,
@@ -24281,6 +24282,61 @@ impl MainAreaDna {
 
     pub fn sequence_id(&self) -> Option<&str> {
         self.seq_id.as_deref()
+    }
+
+    /// Allocation-free identity for titles represented in the app-wide window registry.
+    pub(crate) fn open_window_registry_signature(&self) -> Option<u64> {
+        let mut hasher = DefaultHasher::new();
+        self.seq_id.hash(&mut hasher);
+        let dna = self.dna.try_read().ok()?;
+        dna.name().hash(&mut hasher);
+        drop(dna);
+
+        self.show_dotplot_window.hash(&mut hasher);
+        if self.show_dotplot_window {
+            self.dotplot_query_override_seq_id.hash(&mut hasher);
+            self.dotplot_query_override_source_label.hash(&mut hasher);
+        }
+
+        self.show_splicing_expert_window.hash(&mut hasher);
+        if self.show_splicing_expert_window
+            && let Some(view) = self.splicing_expert_window_view.as_ref()
+        {
+            view.seq_id.hash(&mut hasher);
+            view.target_feature_id.hash(&mut hasher);
+            view.group_label.hash(&mut hasher);
+        }
+
+        self.show_rna_read_mapping_window.hash(&mut hasher);
+        if self.show_rna_read_mapping_window
+            && let Some(view) = self.rna_read_mapping_window_view.as_ref()
+        {
+            view.seq_id.hash(&mut hasher);
+            view.target_feature_id.hash(&mut hasher);
+            view.group_label.hash(&mut hasher);
+        }
+
+        self.show_variant_followup_window.hash(&mut hasher);
+        if self.show_variant_followup_window {
+            self.variant_followup_ui.source_seq_id.hash(&mut hasher);
+            self.variant_followup_ui.source_feature_id.hash(&mut hasher);
+            self.variant_followup_ui.gene_label.hash(&mut hasher);
+            self.variant_followup_ui
+                .variant_label_or_id
+                .hash(&mut hasher);
+        }
+
+        self.show_isoform_expert_window.hash(&mut hasher);
+        if self.show_isoform_expert_window
+            && let Some(view) = self.isoform_expert_window_view.as_ref()
+        {
+            self.isoform_expert_window_panel_id.hash(&mut hasher);
+            view.seq_id.hash(&mut hasher);
+            view.panel_id.hash(&mut hasher);
+            view.gene_symbol.hash(&mut hasher);
+            view.panel_source.hash(&mut hasher);
+        }
+        Some(hasher.finish())
     }
 
     pub fn selection_range_0based(&self) -> Option<(usize, usize)> {
