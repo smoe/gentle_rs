@@ -320,15 +320,15 @@ impl GENtleApp {
         });
         std::thread::spawn(move || {
             let tx_progress = tx.clone();
-            let result = {
-                let mut guard = engine.write().expect("Engine lock poisoned");
-                guard.apply_with_progress(op, move |progress| {
-                    if let OperationProgress::DbSnpFetch(progress) = progress {
-                        let _ = tx_progress.send(DbSnpFetchTaskMessage::Progress(progress));
-                    }
-                    true
-                })
-            };
+            let result =
+                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
+                    snapshot.apply_with_progress(op, move |progress| {
+                        if let OperationProgress::DbSnpFetch(progress) = progress {
+                            let _ = tx_progress.send(DbSnpFetchTaskMessage::Progress(progress));
+                        }
+                        true
+                    })
+                });
             let _ = tx.send(DbSnpFetchTaskMessage::Done(result));
         });
     }

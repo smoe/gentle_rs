@@ -408,6 +408,10 @@ pub struct RenderDnaLinear {
     cached_construct_reasoning_overlay_positions: Vec<ConstructReasoningOverlayPosition>,
     last_hover_probe_pos: Option<Pos2>,
     last_hover_probe_viewport: Option<LinearViewport>,
+    gc_cache_key: Option<(u64, usize, usize)>,
+    gc_cache: GcContents,
+    gc_cache_hits: u64,
+    gc_cache_misses: u64,
 }
 
 impl RenderDnaLinear {
@@ -508,7 +512,16 @@ impl RenderDnaLinear {
             cached_construct_reasoning_overlay_positions: Vec::new(),
             last_hover_probe_pos: None,
             last_hover_probe_viewport: None,
+            gc_cache_key: None,
+            gc_cache: GcContents::default(),
+            gc_cache_hits: 0,
+            gc_cache_misses: 0,
         }
+    }
+
+    pub fn invalidate_sequence_derived_caches(&mut self) {
+        self.gc_cache_key = None;
+        self.gc_cache = GcContents::default();
     }
 
     pub fn area(&self) -> &Rect {
@@ -2987,7 +3000,8 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_gc_contents(&self, painter: &egui::Painter, viewport: LinearViewport) {
+    fn draw_gc_contents(&mut self, painter: &egui::Painter, viewport: LinearViewport) {
+        crate::gentle_gui_profile_scope!("RenderDnaLinear::gc_contents");
         let (show_gc, gc_content_bin_size_bp) = self
             .display
             .read()
@@ -3001,20 +3015,30 @@ impl RenderDnaLinear {
         let Ok(dna) = self.dna.read() else {
             return;
         };
-        let computed_gc_contents;
         let cached_gc_regions = dna.gc_content().regions();
-        let gc_regions = if Self::can_reuse_cached_gc_contents(
+        if Self::can_reuse_cached_gc_contents(
             gc_content_bin_size_bp,
             cached_gc_regions.is_empty(),
             dna.is_empty(),
         ) {
-            cached_gc_regions
+            self.gc_cache_key = None;
         } else {
-            computed_gc_contents = GcContents::new_from_sequence_with_bin_size(
-                dna.forward_bytes(),
-                gc_content_bin_size_bp,
-            );
-            computed_gc_contents.regions()
+            let key = (dna.feature_generation(), dna.len(), gc_content_bin_size_bp);
+            if self.gc_cache_key == Some(key) {
+                self.gc_cache_hits = self.gc_cache_hits.saturating_add(1);
+            } else {
+                self.gc_cache = GcContents::new_from_sequence_with_bin_size(
+                    dna.forward_bytes(),
+                    gc_content_bin_size_bp,
+                );
+                self.gc_cache_key = Some(key);
+                self.gc_cache_misses = self.gc_cache_misses.saturating_add(1);
+            }
+        }
+        let gc_regions = if self.gc_cache_key.is_some() {
+            self.gc_cache.regions()
+        } else {
+            cached_gc_regions
         };
         for region in gc_regions {
             let region_end_exclusive = region.to().saturating_add(1).min(self.sequence_length);
@@ -4719,6 +4743,28 @@ mod tests {
             !site.contains(gap_point),
             "separate restriction hit areas should not treat the inter-label gap as hovered"
         );
+    }
+
+    #[test]
+    fn custom_gc_bins_are_cached_between_render_passes() {
+        let mut renderer = test_renderer(240);
+        renderer
+            .display
+            .write()
+            .expect("display")
+            .set_gc_content_bin_size_bp(17);
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            ctx.begin_pass(egui::RawInput::default());
+            crate::egui_compat::show_central_panel_for_test_context(
+                &ctx,
+                egui::CentralPanel::default(),
+                |ui| renderer.render(ui, renderer.area),
+            );
+            let _ = ctx.end_pass();
+        }
+        assert_eq!(renderer.gc_cache_misses, 1);
+        assert!(renderer.gc_cache_hits >= 1);
     }
 
     #[test]

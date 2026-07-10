@@ -135,6 +135,10 @@ pub struct RenderDnaCircular {
     hovered_feature_number: Option<usize>,
     hover_enzyme: Option<RestrictionEnzymePosition>,
     hovered_reasoning_evidence_id: Option<String>,
+    gc_cache_key: Option<(u64, usize, usize)>,
+    gc_cache: GcContents,
+    gc_cache_hits: u64,
+    gc_cache_misses: u64,
 }
 
 impl RenderDnaCircular {
@@ -155,7 +159,16 @@ impl RenderDnaCircular {
             hovered_feature_number: None,
             hover_enzyme: None,
             hovered_reasoning_evidence_id: None,
+            gc_cache_key: None,
+            gc_cache: GcContents::default(),
+            gc_cache_hits: 0,
+            gc_cache_misses: 0,
         }
+    }
+
+    pub fn invalidate_sequence_derived_caches(&mut self) {
+        self.gc_cache_key = None;
+        self.gc_cache = GcContents::default();
     }
 
     pub fn area(&self) -> &Rect {
@@ -619,7 +632,8 @@ impl RenderDnaCircular {
     }
 
     /// Draws GC content regions on the circular DNA.
-    fn draw_gc_contents(&self, painter: &egui::Painter) {
+    fn draw_gc_contents(&mut self, painter: &egui::Painter) {
+        crate::gentle_gui_profile_scope!("RenderDnaCircular::gc_contents");
         let (show_gc, gc_content_bin_size_bp) = self
             .display
             .read()
@@ -630,17 +644,20 @@ impl RenderDnaCircular {
         }
         let radius = self.radius * 2.0 / 3.0;
         let mut last_point = self.pos2xy(0, radius);
-        let gc_content = self
-            .dna
-            .read()
-            .map(|dna| {
-                GcContents::new_from_sequence_with_bin_size(
+        if let Ok(dna) = self.dna.read() {
+            let key = (dna.feature_generation(), dna.len(), gc_content_bin_size_bp);
+            if self.gc_cache_key == Some(key) {
+                self.gc_cache_hits = self.gc_cache_hits.saturating_add(1);
+            } else {
+                self.gc_cache = GcContents::new_from_sequence_with_bin_size(
                     dna.forward_bytes(),
                     gc_content_bin_size_bp,
-                )
-            })
-            .unwrap_or_default();
-        for gc_region in gc_content.regions() {
+                );
+                self.gc_cache_key = Some(key);
+                self.gc_cache_misses = self.gc_cache_misses.saturating_add(1);
+            }
+        }
+        for gc_region in self.gc_cache.regions() {
             last_point = self.draw_gc_arc(gc_region, radius, painter, last_point);
         }
     }
@@ -1810,6 +1827,29 @@ mod tests {
         let badge_size = RenderDnaCircular::mcs_label_badge_size(text_size);
         assert!(badge_size.x > text_size.x);
         assert!(badge_size.y > text_size.y);
+    }
+
+    #[test]
+    fn custom_gc_bins_are_cached_between_circular_render_passes() {
+        let feature = make_test_feature(Location::simple_range(10, 30));
+        let mut renderer = test_renderer_with_feature(feature, 240);
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_show_gc_contents(true);
+            display.set_gc_content_bin_size_bp(17);
+        }
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            ctx.begin_pass(egui::RawInput::default());
+            crate::egui_compat::show_central_panel_for_test_context(
+                &ctx,
+                egui::CentralPanel::default(),
+                |ui| renderer.draw_gc_contents(ui.painter()),
+            );
+            let _ = ctx.end_pass();
+        }
+        assert_eq!(renderer.gc_cache_misses, 1);
+        assert!(renderer.gc_cache_hits >= 1);
     }
 
     #[test]

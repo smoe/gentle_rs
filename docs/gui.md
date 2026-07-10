@@ -1615,6 +1615,15 @@ Global productivity controls:
     imports or analyses cannot race against state restoration.
 - `Window -> Show Background Jobs` opens a centralized progress panel for
   long-running tasks (prepare/import/BLAST).
+  - Engine-backed dbSNP fetch, track import, primer design, TFBS, and RNA-read
+    workers run against detached snapshots, so the sequence windows remain
+    inspectable while computation or network work is active.
+  - If the project changes before a mutating worker finishes, GENtle reports
+    the result as stale and asks for a rerun instead of overwriting the newer
+    project state.
+- Sequence layer badges, custom-bin GC tracks, lineage graph projection/layout,
+  JASPAR filtering, and sequence-window titles are cached by their relevant
+  revisions. Large JASPAR and feature-tree lists render only visible rows.
 - `Cmd/Ctrl+K` opens the Command Palette.
 
 Patterns menu:

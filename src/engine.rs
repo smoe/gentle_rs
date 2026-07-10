@@ -5794,6 +5794,12 @@ pub struct GentleEngine {
     journal: Vec<OperationRecord>,
     op_counter: u64,
     #[serde(skip, default)]
+    execution_revision: u64,
+    #[serde(skip, default)]
+    mutation_revision: u64,
+    #[serde(skip, default)]
+    structural_revision: u64,
+    #[serde(skip, default)]
     undo_stack: Vec<EngineHistoryCheckpoint>,
     #[serde(skip, default)]
     redo_stack: Vec<EngineHistoryCheckpoint>,
@@ -5882,13 +5888,151 @@ impl GentleEngine {
         &self.state
     }
 
+    /// Monotonic identity for every successful operation or direct state edit.
+    ///
+    /// GUI background workers use this to reject stale detached snapshots
+    /// instead of overwriting work performed while a long operation ran.
+    pub fn execution_revision(&self) -> u64 {
+        self.execution_revision
+    }
+
+    /// Monotonic identity for persisted project-state mutations.
+    ///
+    /// Read-only operations advance [`Self::execution_revision`] but leave this
+    /// value unchanged, so GUI dirty checks remain constant-time without
+    /// treating report inspection as a project edit.
+    pub fn mutation_revision(&self) -> u64 {
+        self.mutation_revision
+    }
+
+    /// Monotonic identity for biological/project structure, excluding display-only edits.
+    pub fn structural_revision(&self) -> u64 {
+        self.structural_revision
+    }
+
+    fn bump_execution_revision(&mut self) {
+        self.execution_revision = self.execution_revision.wrapping_add(1);
+    }
+
+    fn bump_mutation_revision(&mut self) {
+        self.mutation_revision = self.mutation_revision.wrapping_add(1);
+        self.bump_execution_revision();
+    }
+
+    fn bump_structural_revision(&mut self) {
+        self.structural_revision = self.structural_revision.wrapping_add(1);
+        self.bump_mutation_revision();
+    }
+
     /// Mutably borrow the canonical project snapshot.
     ///
     /// Direct mutation is intended for tightly controlled internal call sites;
     /// adapter code should normally prefer `apply`/`apply_workflow` so lineage,
     /// journaling, and parity guarantees remain intact.
     pub fn state_mut(&mut self) -> &mut ProjectState {
+        self.bump_structural_revision();
         &mut self.state
+    }
+
+    /// Mutably borrow only persisted display settings.
+    ///
+    /// GUI viewport/style changes remain dirty-state mutations, but do not
+    /// invalidate detached biological computations.
+    pub fn display_state_mut(&mut self) -> &mut DisplaySettings {
+        self.bump_mutation_revision();
+        &mut self.state.display
+    }
+
+    /// Mutably borrow persisted UI/session metadata without changing biological structure.
+    pub(crate) fn auxiliary_metadata_mut(&mut self) -> &mut HashMap<String, serde_json::Value> {
+        self.bump_mutation_revision();
+        &mut self.state.metadata
+    }
+
+    pub(crate) fn rebase_detached_commit_revisions(
+        &mut self,
+        live: &GentleEngine,
+        base_metadata: &HashMap<String, serde_json::Value>,
+        base_journal_len: usize,
+        structural_changed: bool,
+        persisted_state_changed: bool,
+    ) -> Result<(), EngineError> {
+        let metadata_keys = base_metadata
+            .keys()
+            .chain(live.state.metadata.keys())
+            .chain(self.state.metadata.keys())
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for key in &metadata_keys {
+            let base_value = base_metadata.get(key);
+            let live_value = live.state.metadata.get(key);
+            let detached_value = self.state.metadata.get(key);
+            if live_value != base_value
+                && detached_value != base_value
+                && live_value != detached_value
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Background result became stale because metadata key '{key}' changed both in the live project and in the detached operation; rerun the operation"
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+        }
+        let live_metadata_changes = metadata_keys
+            .into_iter()
+            .filter_map(|key| {
+                (live.state.metadata.get(&key) != base_metadata.get(&key))
+                    .then(|| (key.clone(), live.state.metadata.get(&key).cloned()))
+            })
+            .collect::<Vec<_>>();
+        for (key, live_value) in &live_metadata_changes {
+            let base_value = base_metadata.get(key);
+            let detached_value = self.state.metadata.get(key);
+            if detached_value == base_value {
+                if let Some(value) = live_value {
+                    self.state.metadata.insert(key.clone(), value.clone());
+                } else {
+                    self.state.metadata.remove(key);
+                }
+            }
+        }
+        let live_display = live.state.display.clone();
+        self.state.display = live_display.clone();
+        for checkpoint in self
+            .undo_stack
+            .iter_mut()
+            .filter(|checkpoint| checkpoint.journal().len() >= base_journal_len)
+        {
+            match checkpoint {
+                EngineHistoryCheckpoint::Full { state, .. } => {
+                    state.display = live_display.clone();
+                    for (key, live_value) in &live_metadata_changes {
+                        if let Some(value) = live_value {
+                            state.metadata.insert(key.clone(), value.clone());
+                        } else {
+                            state.metadata.remove(key);
+                        }
+                    }
+                }
+                EngineHistoryCheckpoint::DisplayOnly { display, .. } => {
+                    *display = live_display.clone()
+                }
+            }
+        }
+        self.execution_revision = live.execution_revision.wrapping_add(1);
+        self.mutation_revision = if persisted_state_changed {
+            live.mutation_revision.wrapping_add(1)
+        } else {
+            live.mutation_revision
+        };
+        self.structural_revision = if structural_changed {
+            live.structural_revision.wrapping_add(1)
+        } else {
+            live.structural_revision
+        };
+        Ok(())
     }
 
     pub fn list_sequences_with_genome_anchor(&self) -> Vec<String> {
@@ -8525,6 +8669,17 @@ impl GentleEngine {
         Self::operation_checkpoint_kind(op).map(|kind| self.capture_history_checkpoint(kind))
     }
 
+    fn bump_revision_for_checkpoint_kind(
+        &mut self,
+        checkpoint_kind: Option<EngineHistoryCheckpointKind>,
+    ) {
+        match checkpoint_kind {
+            Some(EngineHistoryCheckpointKind::Full) => self.bump_structural_revision(),
+            Some(EngineHistoryCheckpointKind::DisplayOnly) => self.bump_mutation_revision(),
+            None => self.bump_execution_revision(),
+        }
+    }
+
     fn push_undo_checkpoint(&mut self, checkpoint: EngineHistoryCheckpoint) {
         self.undo_stack.push(checkpoint);
         let limit = self.history_limit_or_default();
@@ -8575,6 +8730,7 @@ impl GentleEngine {
             self.redo_stack.drain(0..drain_len);
         }
         self.restore_history_checkpoint(previous);
+        self.bump_revision_for_checkpoint_kind(Some(checkpoint_kind));
         Ok(())
     }
 
@@ -8596,6 +8752,7 @@ impl GentleEngine {
             self.undo_stack.drain(0..drain_len);
         }
         self.restore_history_checkpoint(next);
+        self.bump_revision_for_checkpoint_kind(Some(checkpoint_kind));
         Ok(())
     }
 
@@ -8609,6 +8766,7 @@ impl GentleEngine {
     {
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
+        let checkpoint_kind = checkpoint.as_ref().map(EngineHistoryCheckpoint::kind);
         let result = self.apply_internal(op.clone(), &run_id, &mut on_progress)?;
         self.journal.push(OperationRecord {
             run_id,
@@ -8618,6 +8776,7 @@ impl GentleEngine {
         if let Some(checkpoint) = checkpoint {
             self.push_undo_checkpoint(checkpoint);
         }
+        self.bump_revision_for_checkpoint_kind(checkpoint_kind);
         Ok(result)
     }
 
@@ -8636,6 +8795,7 @@ impl GentleEngine {
         let mut results = Vec::new();
         for op in &wf.ops {
             let checkpoint = self.maybe_capture_checkpoint(op);
+            let checkpoint_kind = checkpoint.as_ref().map(EngineHistoryCheckpoint::kind);
             let result = self.apply_internal(op.clone(), &wf.run_id, &mut on_progress)?;
             self.journal.push(OperationRecord {
                 run_id: wf.run_id.clone(),
@@ -8645,6 +8805,7 @@ impl GentleEngine {
             if let Some(checkpoint) = checkpoint {
                 self.push_undo_checkpoint(checkpoint);
             }
+            self.bump_revision_for_checkpoint_kind(checkpoint_kind);
             results.push(result);
         }
         Ok(results)
@@ -27377,6 +27538,7 @@ impl Engine for GentleEngine {
         let run_id = "interactive".to_string();
         let mut noop = |_p: OperationProgress| true;
         let checkpoint = self.maybe_capture_checkpoint(&op);
+        let checkpoint_kind = checkpoint.as_ref().map(EngineHistoryCheckpoint::kind);
         let result = self.apply_internal(op.clone(), &run_id, &mut noop)?;
         self.journal.push(OperationRecord {
             run_id,
@@ -27386,6 +27548,7 @@ impl Engine for GentleEngine {
         if let Some(checkpoint) = checkpoint {
             self.push_undo_checkpoint(checkpoint);
         }
+        self.bump_revision_for_checkpoint_kind(checkpoint_kind);
         Ok(result)
     }
 
@@ -27394,6 +27557,7 @@ impl Engine for GentleEngine {
         for op in &wf.ops {
             let mut noop = |_p: OperationProgress| true;
             let checkpoint = self.maybe_capture_checkpoint(op);
+            let checkpoint_kind = checkpoint.as_ref().map(EngineHistoryCheckpoint::kind);
             let result = self.apply_internal(op.clone(), &wf.run_id, &mut noop)?;
             self.journal.push(OperationRecord {
                 run_id: wf.run_id.clone(),
@@ -27403,6 +27567,7 @@ impl Engine for GentleEngine {
             if let Some(checkpoint) = checkpoint {
                 self.push_undo_checkpoint(checkpoint);
             }
+            self.bump_revision_for_checkpoint_kind(checkpoint_kind);
             results.push(result);
         }
         Ok(results)

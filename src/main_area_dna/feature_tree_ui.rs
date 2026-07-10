@@ -230,6 +230,7 @@ pub(super) struct FeatureTreeKindGroup {
 pub(super) struct FeatureTreeCacheKey {
     pub(super) seq_len: usize,
     pub(super) feature_count: usize,
+    pub(super) feature_generation: u64,
     pub(super) viewport: Option<(usize, usize)>,
     pub(super) grouping_mode: FeatureTreeGroupingMode,
     pub(super) feature_filter_text: String,
@@ -259,6 +260,82 @@ pub(super) struct FeatureTreeCache {
 }
 
 impl MainAreaDna {
+    fn feature_tree_virtual_row_range(
+        list_top: f32,
+        clip_top: f32,
+        clip_bottom: f32,
+        row_height: f32,
+        row_count: usize,
+    ) -> std::ops::Range<usize> {
+        if row_count == 0 || row_height <= 0.0 {
+            return 0..0;
+        }
+        let first = (((clip_top - list_top) / row_height).floor() as isize).max(0) as usize;
+        let last = (((clip_bottom - list_top) / row_height).ceil() as isize).max(0) as usize;
+        first.saturating_sub(1).min(row_count)..last.saturating_add(1).min(row_count)
+    }
+
+    fn render_feature_tree_entry_indices(
+        ui: &mut egui::Ui,
+        entries: &[FeatureTreeEntry],
+        indices: &[usize],
+        pending_scroll_to: Option<usize>,
+        grouped_entry: bool,
+        show_range_only_when_grouped: bool,
+        render_entry: &mut impl FnMut(&mut egui::Ui, &FeatureTreeEntry, bool, bool),
+    ) {
+        const VIRTUALIZE_THRESHOLD: usize = 120;
+        let pending_is_here = pending_scroll_to
+            .is_some_and(|feature_id| indices.iter().any(|index| entries[*index].id == feature_id));
+        if indices.len() < VIRTUALIZE_THRESHOLD || pending_is_here {
+            for index in indices {
+                let entry = &entries[*index];
+                ui.push_id(("feature_tree_entry", entry.id), |ui| {
+                    render_entry(ui, entry, grouped_entry, show_range_only_when_grouped);
+                });
+            }
+            return;
+        }
+
+        crate::gentle_gui_profile_scope!("MainAreaDna::feature_tree_virtual_rows");
+        let row_height = (ui.spacing().interact_size.y + ui.spacing().item_spacing.y).max(20.0);
+        let width = ui.available_width().max(1.0);
+        let total_height = row_height * indices.len() as f32;
+        let (list_rect, _) =
+            ui.allocate_exact_size(egui::vec2(width, total_height), egui::Sense::hover());
+        let clip_rect = ui.clip_rect();
+        let visible_rows = Self::feature_tree_virtual_row_range(
+            list_rect.top(),
+            clip_rect.top(),
+            clip_rect.bottom(),
+            row_height,
+            indices.len(),
+        );
+        for row_index in visible_rows {
+            let entry = &entries[indices[row_index]];
+            let row_rect = egui::Rect::from_min_size(
+                egui::pos2(
+                    list_rect.left(),
+                    list_rect.top() + row_index as f32 * row_height,
+                ),
+                egui::vec2(width, row_height),
+            );
+            let mut row_ui = ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt(("feature_tree_virtual_entry", entry.id))
+                    .max_rect(row_rect)
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            row_ui.set_clip_rect(row_rect.intersect(clip_rect));
+            render_entry(
+                &mut row_ui,
+                entry,
+                grouped_entry,
+                show_range_only_when_grouped,
+            );
+        }
+    }
+
     pub(super) fn format_feature_tree_count_label(
         label: &str,
         visible_count: usize,
@@ -1226,11 +1303,11 @@ impl MainAreaDna {
         &self,
         viewport: Option<(usize, usize)>,
     ) -> FeatureTreeCacheKey {
-        let (seq_len, feature_count) = self
+        let (seq_len, feature_count, feature_generation) = self
             .dna
             .read()
-            .map(|dna| (dna.len(), dna.features().len()))
-            .unwrap_or((0, 0));
+            .map(|dna| (dna.len(), dna.features().len(), dna.feature_generation()))
+            .unwrap_or((0, 0, 0));
         let (
             show_cds_features,
             show_gene_features,
@@ -1260,6 +1337,7 @@ impl MainAreaDna {
         FeatureTreeCacheKey {
             seq_len,
             feature_count,
+            feature_generation,
             viewport,
             grouping_mode: self.feature_tree_grouping_mode,
             feature_filter_text: self.feature_tree_filter.trim().to_string(),
@@ -1851,6 +1929,7 @@ impl MainAreaDna {
         let mut focus_matching_array_feature: Option<usize> = None;
         let feature_font_size = feature_details_font_size;
         let kind_font_size = feature_font_size + 1.0;
+        let pending_feature_tree_scroll_to = self.pending_feature_tree_scroll_to;
         {
             let Some(model) = self.feature_tree_cache.as_ref().map(|cache| &cache.model) else {
                 return;
@@ -2148,25 +2227,27 @@ impl MainAreaDna {
                                     None
                                 })
                                 .show(ui, |ui| {
-                                    for index in &secondary_group.entry_indices {
-                                        render_entry(
-                                            ui,
-                                            &group.entries[*index],
-                                            true,
-                                            false,
-                                        );
-                                    }
+                                    Self::render_feature_tree_entry_indices(
+                                        ui,
+                                        &group.entries,
+                                        &secondary_group.entry_indices,
+                                        pending_feature_tree_scroll_to,
+                                        true,
+                                        false,
+                                        &mut render_entry,
+                                    );
                                 });
                             }
 
-                            for index in &primary_group.ungrouped_entry_indices {
-                                render_entry(
-                                    ui,
-                                    &group.entries[*index],
-                                    false,
-                                    false,
-                                );
-                            }
+                            Self::render_feature_tree_entry_indices(
+                                ui,
+                                &group.entries,
+                                &primary_group.ungrouped_entry_indices,
+                                pending_feature_tree_scroll_to,
+                                false,
+                                false,
+                                &mut render_entry,
+                            );
                         });
                     }
 
@@ -2192,25 +2273,27 @@ impl MainAreaDna {
                         ))
                         .open(if subgroup_has_selected { Some(true) } else { None })
                         .show(ui, |ui| {
-                            for index in &subgroup.entry_indices {
-                                render_entry(
-                                    ui,
-                                    &group.entries[*index],
-                                    true,
-                                    true,
-                                );
-                            }
+                            Self::render_feature_tree_entry_indices(
+                                ui,
+                                &group.entries,
+                                &subgroup.entry_indices,
+                                pending_feature_tree_scroll_to,
+                                true,
+                                true,
+                                &mut render_entry,
+                            );
                         });
                     }
 
-                    for index in &group.ungrouped_entry_indices {
-                        render_entry(
-                            ui,
-                            &group.entries[*index],
-                            false,
-                            false,
-                        );
-                    }
+                    Self::render_feature_tree_entry_indices(
+                        ui,
+                        &group.entries,
+                        &group.ungrouped_entry_indices,
+                        pending_feature_tree_scroll_to,
+                        false,
+                        false,
+                        &mut render_entry,
+                    );
                 });
             }
         }
@@ -2245,5 +2328,18 @@ impl MainAreaDna {
         if let Some(feature_id) = focus_matching_array_feature {
             self.focus_matching_array_features(feature_id);
         }
+    }
+}
+
+#[cfg(test)]
+mod virtualization_tests {
+    use super::*;
+
+    #[test]
+    fn virtual_row_range_limits_dense_feature_groups_to_viewport() {
+        let rows = MainAreaDna::feature_tree_virtual_row_range(100.0, 340.0, 580.0, 24.0, 500);
+        assert!(rows.start <= 10);
+        assert!(rows.end >= 20);
+        assert!(rows.len() < 20);
     }
 }

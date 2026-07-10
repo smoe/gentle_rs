@@ -109,6 +109,91 @@ fn splash_screen_is_visible_for_fresh_app() {
 }
 
 #[test]
+fn project_dirty_check_uses_mutation_revision_and_ignores_read_only_operations() {
+    let mut app = GENtleApp::default();
+    app.engine
+        .write()
+        .expect("engine")
+        .state_mut()
+        .sequences
+        .insert(
+            "seq".to_string(),
+            DNAsequence::from_sequence("ATGC").expect("sequence"),
+        );
+    app.mark_clean_snapshot();
+    assert!(!app.is_project_dirty());
+
+    let before_mutation_revision = app.current_state_change_stamp();
+    app.engine
+        .write()
+        .expect("engine")
+        .apply(Operation::ListJasparCatalog {
+            filter: None,
+            limit: Some(1),
+            include_remote_metadata: false,
+            refresh_remote_metadata: false,
+            path: None,
+        })
+        .expect("read-only catalog operation");
+    assert_eq!(app.current_state_change_stamp(), before_mutation_revision);
+    assert!(!app.is_project_dirty());
+
+    app.engine
+        .write()
+        .expect("engine")
+        .state_mut()
+        .metadata
+        .insert("edited".to_string(), serde_json::Value::Bool(true));
+    assert!(app.is_project_dirty());
+}
+
+#[test]
+fn unchanged_metadata_persistence_does_not_mark_project_dirty() {
+    let mut app = GENtleApp::default();
+    app.persist_background_job_history_to_state();
+    app.mark_clean_snapshot();
+
+    app.persist_background_job_history_to_state();
+
+    assert!(!app.is_project_dirty());
+}
+
+#[test]
+fn lineage_projection_cache_ignores_zoom_and_pan_state() {
+    let mut app = GENtleApp::default();
+    app.refresh_lineage_cache_if_needed();
+    let first = app.cached_lineage_graph_projection(&[]);
+    app.lineage_graph_zoom = 2.0;
+    app.lineage_graph_scroll_offset = egui::vec2(120.0, 80.0);
+    let second = app.cached_lineage_graph_projection(&[]);
+
+    assert!(Arc::ptr_eq(&first, &second));
+    assert_eq!(app.lineage_projection_cache_misses, 1);
+    assert_eq!(app.lineage_projection_cache_hits, 1);
+}
+
+#[test]
+fn lineage_projection_cache_survives_display_only_engine_changes() {
+    let mut app = GENtleApp::default();
+    app.refresh_lineage_cache_if_needed();
+    let first = app.cached_lineage_graph_projection(&[]);
+    let first_stamp = app.lineage_cache_stamp;
+    app.engine
+        .write()
+        .expect("engine")
+        .display_state_mut()
+        .linear_view_start_bp = 25;
+    app.lineage_graph_zoom = 1.5;
+    app.persist_lineage_graph_workspace_to_state();
+
+    app.refresh_lineage_cache_if_needed();
+    let second = app.cached_lineage_graph_projection(&[]);
+
+    assert_eq!(app.lineage_cache_stamp, first_stamp);
+    assert!(Arc::ptr_eq(&first, &second));
+}
+
+#[test]
 fn splash_screen_hides_after_timeout_or_dismissal() {
     let mut app = GENtleApp::default();
     let now = Instant::now();

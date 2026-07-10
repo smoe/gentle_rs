@@ -234,3 +234,18 @@ parser validation. `GENTLE_SHA1_TOOL` may point to an explicit tool, and
 SHA-1-shaped local provenance fields are compatibility fields; regenerated
 local fingerprints should use algorithm-prefixed stronger digests such as
 `sha256:<hex>` without requiring an in-process SHA-1 dependency.
+
+## DEC-026: Long GUI Jobs Use Optimistic Engine Snapshots
+
+Status: active
+
+Long-running GUI network and computation jobs must not hold the shared
+`GentleEngine` read or write lock for their full run. A mutating worker clones
+an engine snapshot, executes against that detached snapshot, and commits with a
+short write-lock swap only if structural project data and journal history are
+unchanged. Concurrent viewport/display edits are preserved across the commit;
+disjoint UI/session metadata is merged into the result and its undo checkpoints,
+while conflicting metadata makes the result stale. Other stale results never
+overwrite intervening edits. Persisted-state mutation revision is separate from
+structural and read-only execution identity so GUI dirty checks remain
+constant-time without marking inspections as edits.

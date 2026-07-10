@@ -2217,7 +2217,7 @@ fn restriction_layer_counts_respect_display_mode_and_total_sites() {
         .collect();
     dna.set_max_restriction_enzyme_sites(None);
     dna.update_computed_features();
-    let area = MainAreaDna::new(dna, Some("s".to_string()), None);
+    let mut area = MainAreaDna::new(dna, Some("s".to_string()), None);
     {
         let mut display = area.dna_display.write().expect("display");
         display.set_restriction_enzyme_display_mode(RestrictionEnzymeDisplayMode::PreferredOnly);
@@ -2242,6 +2242,45 @@ fn restriction_layer_counts_respect_display_mode_and_total_sites() {
         .set_restriction_enzyme_display_mode(RestrictionEnzymeDisplayMode::AllInView);
     let all_counts = area.compute_layer_visibility_counts();
     assert_eq!(all_counts.restriction_site_count, 3);
+}
+
+#[test]
+fn layer_visibility_counts_reuse_cache_until_display_changes() {
+    let dna = DNAsequence::from_sequence("ATGCGCGCATGC").expect("seq");
+    let mut area = MainAreaDna::new(dna, Some("s".to_string()), None);
+
+    let first = area.compute_layer_visibility_counts();
+    let second = area.compute_layer_visibility_counts();
+    assert_eq!(first.gc_region_count, second.gc_region_count);
+    assert_eq!(area.layer_visibility_cache_misses, 1);
+    assert_eq!(area.layer_visibility_cache_hits, 1);
+
+    area.dna_display
+        .write()
+        .expect("display")
+        .set_gc_content_bin_size_bp(3);
+    let _ = area.compute_layer_visibility_counts();
+    assert_eq!(area.layer_visibility_cache_misses, 2);
+}
+
+#[test]
+fn window_title_reuses_lineage_lookup_cache() {
+    let dna = DNAsequence::from_sequence("ATGC").expect("seq");
+    let engine = Arc::new(RwLock::new(GentleEngine::new()));
+    let area = MainAreaDna::new(dna, Some("seq".to_string()), Some(engine.clone()));
+    assert_eq!(area.window_title(), "seq (seq)");
+    engine
+        .write()
+        .expect("engine")
+        .display_state_mut()
+        .linear_view_start_bp = 25;
+    assert_eq!(area.window_title(), "seq (seq)");
+    let write_guard = engine.write().expect("engine");
+    assert_eq!(area.window_title(), "seq (seq)");
+    drop(write_guard);
+    let cache = area.window_title_cache.lock().expect("title cache");
+    assert_eq!(cache.misses, 1);
+    assert_eq!(cache.hits, 2);
 }
 
 #[test]

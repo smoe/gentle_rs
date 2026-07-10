@@ -142,16 +142,16 @@ use crate::{
         DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode, FeatureExpertTarget,
         GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
         GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, HostProfileRecord,
-        JasparCatalogReport, JasparEntryExpertView, LabAssistantInstructionsFormat,
-        LineageMacroPortBinding, LinearSequenceLetterLayoutMode, MacroTemplateSuggestion, OpResult,
-        Operation, OperationProgress, PlanningEstimate, PlanningObjective, PlanningProfile,
-        PlanningProfileScope, PlanningSuggestionStatus, ProjectState, ProteaseDigestReport,
-        ProteinToDnaHandoffRankingGoal, ROUTINE_DECISION_TRACE_SCHEMA,
-        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, Rack,
-        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode,
-        RestrictionEnzymeDisplayMode, ReverseTranslationReport, RoutineDecisionTrace,
-        RoutineDecisionTraceCandidateScore, RoutineDecisionTraceComparison,
+        JasparCatalogReport, JasparCatalogRow, JasparEntryExpertView,
+        LabAssistantInstructionsFormat, LineageMacroPortBinding, LinearSequenceLetterLayoutMode,
+        MacroTemplateSuggestion, OpResult, Operation, OperationProgress, PlanningEstimate,
+        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
+        ProjectState, ProteaseDigestReport, ProteinToDnaHandoffRankingGoal,
+        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
+        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+        RackProfileKind, RenderSvgMode, RestrictionEnzymeDisplayMode, ReverseTranslationReport,
+        RoutineDecisionTrace, RoutineDecisionTraceCandidateScore, RoutineDecisionTraceComparison,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, RoutinePreferenceContextRecord, SequenceGenomeAnchorSummary,
@@ -705,6 +705,9 @@ pub struct GENtleApp {
     lineage_graph_offsets_synced_stamp: u64,
     lineage_cache_stamp: u64,
     lineage_cache_valid: bool,
+    lineage_projection_cache: Option<Arc<LineageGraphProjectionCache>>,
+    lineage_projection_cache_hits: u64,
+    lineage_projection_cache_misses: u64,
     lineage_rows: Vec<LineageRow>,
     lineage_edges: Vec<(String, String, String)>,
     lineage_op_label_by_id: HashMap<String, String>,
@@ -723,12 +726,8 @@ pub struct GENtleApp {
     lineage_containers: Vec<ContainerRow>,
     lineage_arrangements: Vec<ArrangementRow>,
     lineage_racks: Vec<RackRow>,
-    clean_state_fingerprint: u64,
-    dirty_cache_stamp: u64,
+    clean_state_revision: u64,
     last_display_sync_stamp: u64,
-    dirty_cache_valid: bool,
-    dirty_cache_value: bool,
-    dirty_cache_last_deep_check: Instant,
     last_applied_window_title: String,
     last_native_window_entries: Vec<(u64, String)>,
     last_native_active_window_key: Option<u64>,
@@ -904,6 +903,11 @@ pub struct GENtleApp {
     jaspar_expert_fetch_remote_metadata: bool,
     jaspar_expert_status: String,
     jaspar_catalog_report: Option<JasparCatalogReport>,
+    jaspar_catalog_generation: u64,
+    jaspar_filtered_cache_key: Option<(u64, String)>,
+    jaspar_filtered_cache_rows: Arc<Vec<JasparCatalogRow>>,
+    jaspar_filtered_cache_hits: u64,
+    jaspar_filtered_cache_misses: u64,
     jaspar_expert_view: Option<JasparEntryExpertView>,
     gibson_destination_seq_id: String,
     gibson_opening_mode: GibsonUiOpeningMode,
@@ -2069,6 +2073,21 @@ struct LineageTableEntry {
     hidden_group_member_count: usize,
 }
 
+#[derive(Clone)]
+struct LineageGraphProjectionCache {
+    lineage_stamp: u64,
+    groups: Vec<PersistedLineageNodeGroup>,
+    source_rows: Vec<LineageRow>,
+    source_edges: Vec<(String, String, String)>,
+    source_op_label_by_id: HashMap<String, String>,
+    rows: Vec<LineageRow>,
+    edges: Vec<(String, String, String)>,
+    op_label_by_id: HashMap<String, String>,
+    layout_by_node: HashMap<String, (usize, usize)>,
+    layer_count: usize,
+    max_nodes_in_layer: usize,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct LineageGroupHiddenOpBadge {
     total_ops: usize,
@@ -2371,6 +2390,9 @@ impl Default for GENtleApp {
             lineage_graph_offsets_synced_stamp: 0,
             lineage_cache_stamp: 0,
             lineage_cache_valid: false,
+            lineage_projection_cache: None,
+            lineage_projection_cache_hits: 0,
+            lineage_projection_cache_misses: 0,
             lineage_rows: vec![],
             lineage_edges: vec![],
             lineage_op_label_by_id: HashMap::new(),
@@ -2389,12 +2411,8 @@ impl Default for GENtleApp {
             lineage_containers: vec![],
             lineage_arrangements: vec![],
             lineage_racks: vec![],
-            clean_state_fingerprint: 0,
-            dirty_cache_stamp: 0,
+            clean_state_revision: 0,
             last_display_sync_stamp: 0,
-            dirty_cache_valid: false,
-            dirty_cache_value: false,
-            dirty_cache_last_deep_check: Instant::now(),
             last_applied_window_title: String::new(),
             last_native_window_entries: vec![],
             last_native_active_window_key: Some(viewport_native_menu_key(ViewportId::ROOT)),
@@ -2576,6 +2594,11 @@ impl Default for GENtleApp {
             jaspar_expert_fetch_remote_metadata: false,
             jaspar_expert_status: String::new(),
             jaspar_catalog_report: None,
+            jaspar_catalog_generation: 0,
+            jaspar_filtered_cache_key: None,
+            jaspar_filtered_cache_rows: Arc::new(vec![]),
+            jaspar_filtered_cache_hits: 0,
+            jaspar_filtered_cache_misses: 0,
             jaspar_expert_view: None,
             gibson_destination_seq_id: String::new(),
             gibson_opening_mode: GibsonUiOpeningMode::DefinedSite,
@@ -3216,7 +3239,7 @@ impl GENtleApp {
 
     fn apply_configuration_graphics_to_engine_state(&mut self) {
         let mut guard = self.engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         Self::apply_graphics_settings_to_display(&self.configuration_graphics, display);
         self.configuration_graphics_dirty = false;
     }
@@ -4696,14 +4719,29 @@ Error: `{err}`"
         let Ok(value) = serde_json::to_value(payload) else {
             return;
         };
+        self.persist_project_metadata_values(&[(BACKGROUND_JOB_HISTORY_METADATA_KEY, Some(value))]);
+    }
+
+    fn persist_project_metadata_values(
+        &self,
+        updates: &[(&str, Option<serde_json::Value>)],
+    ) -> bool {
         let mut engine = self.engine.write().unwrap();
-        let state = engine.state_mut();
-        if state.metadata.get(BACKGROUND_JOB_HISTORY_METADATA_KEY) == Some(&value) {
-            return;
+        if updates
+            .iter()
+            .all(|(key, value)| engine.state().metadata.get(*key) == value.as_ref())
+        {
+            return false;
         }
-        state
-            .metadata
-            .insert(BACKGROUND_JOB_HISTORY_METADATA_KEY.to_string(), value);
+        let metadata = engine.auxiliary_metadata_mut();
+        for (key, value) in updates {
+            if let Some(value) = value {
+                metadata.insert((*key).to_string(), value.clone());
+            } else {
+                metadata.remove(*key);
+            }
+        }
+        true
     }
 
     fn push_job_event<S: Into<String>>(
@@ -4934,6 +4972,7 @@ Error: `{err}`"
 
     fn handle_engine_state_after_history_transition(&mut self) {
         self.lineage_cache_valid = false;
+        self.lineage_projection_cache = None;
         self.lineage_rows.clear();
         self.lineage_edges.clear();
         self.lineage_op_label_by_id.clear();
@@ -6536,180 +6575,16 @@ Error: `{err}`"
             .map_err(|e| anyhow!(e.to_string()))
     }
 
-    fn current_state_fingerprint(&self) -> u64 {
-        let state_json = {
-            let engine = self.engine.read().unwrap();
-            serde_json::to_vec(engine.state()).unwrap_or_default()
-        };
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        state_json.hash(&mut hasher);
-        hasher.finish()
-    }
-
     fn current_state_change_stamp(&self) -> u64 {
-        let engine = self.engine.read().unwrap();
-        let state = engine.state();
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        engine.operation_log().len().hash(&mut hasher);
-        state.sequences.len().hash(&mut hasher);
-        state.lineage.nodes.len().hash(&mut hasher);
-        state.lineage.edges.len().hash(&mut hasher);
-        state.container_state.containers.len().hash(&mut hasher);
-        state.container_state.arrangements.len().hash(&mut hasher);
-        state.container_state.racks.len().hash(&mut hasher);
-        state.metadata.len().hash(&mut hasher);
-
-        let mut metadata_keys: Vec<&String> = state.metadata.keys().collect();
-        metadata_keys.sort_unstable();
-        for key in metadata_keys {
-            key.hash(&mut hasher);
-        }
-
-        let display = &state.display;
-        display.show_sequence_panel.hash(&mut hasher);
-        display.show_linear_sequence_panel.hash(&mut hasher);
-        display.sequence_panel_max_text_length_bp.hash(&mut hasher);
-        display.show_map_panel.hash(&mut hasher);
-        display.show_cds_features.hash(&mut hasher);
-        display.show_gene_features.hash(&mut hasher);
-        display.show_mrna_features.hash(&mut hasher);
-        display.show_repeat_features.hash(&mut hasher);
-        display.show_array_features.hash(&mut hasher);
-        display.show_tfbs.hash(&mut hasher);
-        display.regulatory_tracks_near_baseline.hash(&mut hasher);
-        display
-            .regulatory_feature_max_view_span_bp
-            .hash(&mut hasher);
-        display.tfbs_display_use_llr_bits.hash(&mut hasher);
-        display
-            .tfbs_display_min_llr_bits
-            .to_bits()
-            .hash(&mut hasher);
-        display.tfbs_display_use_llr_quantile.hash(&mut hasher);
-        display
-            .tfbs_display_min_llr_quantile
-            .to_bits()
-            .hash(&mut hasher);
-        display
-            .tfbs_display_use_true_log_odds_bits
-            .hash(&mut hasher);
-        display
-            .tfbs_display_min_true_log_odds_bits
-            .to_bits()
-            .hash(&mut hasher);
-        display
-            .tfbs_display_use_true_log_odds_quantile
-            .hash(&mut hasher);
-        display
-            .tfbs_display_min_true_log_odds_quantile
-            .to_bits()
-            .hash(&mut hasher);
-        display.vcf_display_show_snp.hash(&mut hasher);
-        display.vcf_display_show_ins.hash(&mut hasher);
-        display.vcf_display_show_del.hash(&mut hasher);
-        display.vcf_display_show_sv.hash(&mut hasher);
-        display.vcf_display_show_other.hash(&mut hasher);
-        display.vcf_display_pass_only.hash(&mut hasher);
-        display.vcf_display_use_min_qual.hash(&mut hasher);
-        display.vcf_display_min_qual.to_bits().hash(&mut hasher);
-        display.vcf_display_use_max_qual.hash(&mut hasher);
-        display.vcf_display_max_qual.to_bits().hash(&mut hasher);
-        for key in &display.vcf_display_required_info_keys {
-            key.hash(&mut hasher);
-        }
-        display.show_restriction_enzymes.hash(&mut hasher);
-        display.restriction_enzyme_display_mode.hash(&mut hasher);
-        for name in &display.preferred_restriction_enzymes {
-            name.hash(&mut hasher);
-        }
-        display.show_gc_contents.hash(&mut hasher);
-        display.gc_content_bin_size_bp.hash(&mut hasher);
-        display.show_open_reading_frames.hash(&mut hasher);
-        display.show_methylation_sites.hash(&mut hasher);
-        display
-            .feature_details_font_size
-            .to_bits()
-            .hash(&mut hasher);
-        display
-            .linear_external_feature_label_font_size
-            .to_bits()
-            .hash(&mut hasher);
-        display
-            .linear_external_feature_label_background_opacity
-            .to_bits()
-            .hash(&mut hasher);
-        display
-            .auto_hide_sequence_panel_when_linear_bases_visible
-            .hash(&mut hasher);
-        display.linear_view_start_bp.hash(&mut hasher);
-        display.linear_view_span_bp.hash(&mut hasher);
-        display
-            .linear_view_vertical_offset_px
-            .to_bits()
-            .hash(&mut hasher);
-        display.linear_show_sequence_bases.hash(&mut hasher);
-        display
-            .linear_sequence_base_text_max_view_span_bp
-            .hash(&mut hasher);
-        display
-            .linear_sequence_helical_letters_enabled
-            .hash(&mut hasher);
-        display
-            .linear_sequence_helical_max_view_span_bp
-            .hash(&mut hasher);
-        display
-            .linear_sequence_condensed_max_view_span_bp
-            .hash(&mut hasher);
-        display.linear_sequence_letter_layout_mode.hash(&mut hasher);
-        display
-            .linear_sequence_helical_phase_offset_bp
-            .hash(&mut hasher);
-        display.linear_show_double_strand_bases.hash(&mut hasher);
-        display.linear_helical_parallel_strands.hash(&mut hasher);
-        display
-            .linear_hide_backbone_when_sequence_bases_visible
-            .hash(&mut hasher);
-        display
-            .linear_reverse_strand_use_upside_down_letters
-            .hash(&mut hasher);
-        display
-            .reverse_strand_visual_opacity
-            .to_bits()
-            .hash(&mut hasher);
-
-        hasher.finish()
+        self.engine.read().unwrap().mutation_revision()
     }
 
     fn current_display_change_stamp(&self) -> u64 {
-        let display_bytes = {
-            let engine = self.engine.read().unwrap();
-            serde_json::to_vec(&engine.state().display).unwrap_or_default()
-        };
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        display_bytes.hash(&mut hasher);
-        hasher.finish()
+        self.current_state_change_stamp()
     }
 
     fn current_lineage_change_stamp(&self) -> u64 {
-        let engine = self.engine.read().unwrap();
-        let state = engine.state();
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        engine.operation_log().len().hash(&mut hasher);
-        state.sequences.len().hash(&mut hasher);
-        state.lineage.nodes.len().hash(&mut hasher);
-        state.lineage.edges.len().hash(&mut hasher);
-        state.lineage.macro_instances.len().hash(&mut hasher);
-        state.container_state.containers.len().hash(&mut hasher);
-        state.container_state.arrangements.len().hash(&mut hasher);
-        state.container_state.racks.len().hash(&mut hasher);
-        for report in GentleEngine::sequencing_confirmation_reports_from_state(state) {
-            report.report_id.hash(&mut hasher);
-            report.expected_seq_id.hash(&mut hasher);
-            report.baseline_seq_id.hash(&mut hasher);
-            report.overall_status.as_str().hash(&mut hasher);
-            report.generated_at_unix_ms.hash(&mut hasher);
-        }
-        hasher.finish()
+        self.engine.read().unwrap().structural_revision()
     }
 
     fn current_operation_count(&self) -> usize {
@@ -6731,31 +6606,12 @@ Error: `{err}`"
     }
 
     fn mark_clean_snapshot(&mut self) {
-        self.clean_state_fingerprint = self.current_state_fingerprint();
-        self.dirty_cache_stamp = self.current_state_change_stamp();
-        self.dirty_cache_valid = true;
-        self.dirty_cache_value = false;
-        self.dirty_cache_last_deep_check = Instant::now();
+        self.clean_state_revision = self.current_state_change_stamp();
     }
 
     fn is_project_dirty(&mut self) -> bool {
-        if !self.project_has_user_content() {
-            return false;
-        }
-        const DIRTY_DEEP_CHECK_INTERVAL: Duration = Duration::from_secs(2);
-        let now = Instant::now();
-        let stamp = self.current_state_change_stamp();
-        let stamp_changed = !self.dirty_cache_valid || stamp != self.dirty_cache_stamp;
-        if stamp_changed
-            || now.duration_since(self.dirty_cache_last_deep_check) >= DIRTY_DEEP_CHECK_INTERVAL
-        {
-            self.dirty_cache_value =
-                self.current_state_fingerprint() != self.clean_state_fingerprint;
-            self.dirty_cache_last_deep_check = now;
-        }
-        self.dirty_cache_stamp = stamp;
-        self.dirty_cache_valid = true;
-        self.dirty_cache_value
+        self.project_has_user_content()
+            && self.current_state_change_stamp() != self.clean_state_revision
     }
 
     fn reset_to_empty_project(&mut self) {
@@ -6764,6 +6620,7 @@ Error: `{err}`"
         self.current_project_path = None;
         self.last_applied_window_title.clear();
         self.lineage_cache_valid = false;
+        self.lineage_projection_cache = None;
         self.lineage_rows.clear();
         self.lineage_edges.clear();
         self.lineage_op_label_by_id.clear();
@@ -9578,19 +9435,19 @@ Error: `{err}`"
         std::thread::spawn(move || {
             let tx_progress = tx.clone();
             let cancel_flag = cancel_requested.clone();
-            let outcome = {
-                let mut guard = engine.write().expect("Engine lock poisoned");
-                guard.apply_with_progress(op, move |progress| match progress {
-                    OperationProgress::GenomeTrackImport(p) => {
-                        let _ = tx_progress.send(GenomeTrackImportTaskMessage::Progress {
-                            job_id,
-                            progress: p,
-                        });
-                        !cancel_flag.load(Ordering::Relaxed)
-                    }
-                    _ => true,
-                })
-            };
+            let outcome =
+                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
+                    snapshot.apply_with_progress(op, move |progress| match progress {
+                        OperationProgress::GenomeTrackImport(p) => {
+                            let _ = tx_progress.send(GenomeTrackImportTaskMessage::Progress {
+                                job_id,
+                                progress: p,
+                            });
+                            !cancel_flag.load(Ordering::Relaxed)
+                        }
+                        _ => true,
+                    })
+                });
             let _ = tx.send(GenomeTrackImportTaskMessage::Done {
                 job_id,
                 result: outcome,
@@ -14727,6 +14584,9 @@ Error: `{err}`"
             ) {
                 Ok(report) => {
                     tf_motifs::reload();
+                    self.jaspar_catalog_generation = self.jaspar_catalog_generation.wrapping_add(1);
+                    self.jaspar_catalog_report = None;
+                    self.jaspar_filtered_cache_key = None;
                     println!(
                         "Imported JASPAR from '{}' ({} motifs) to '{}'",
                         report.source, report.item_count, report.output
@@ -15027,6 +14887,7 @@ Error: `{err}`"
         self.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
         self.set_current_project_path(path, track_recent);
         self.lineage_cache_valid = false;
+        self.lineage_projection_cache = None;
         self.lineage_rows.clear();
         self.lineage_edges.clear();
         self.lineage_op_label_by_id.clear();
@@ -15372,36 +15233,20 @@ Error: `{err}`"
             && workspace.node_offsets.is_empty()
             && workspace.node_groups.is_empty();
 
-        let mut engine = self.engine.write().unwrap();
-        let state = engine.state_mut();
-        if workspace_is_default {
-            state.metadata.remove(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY);
-        } else if let Ok(value) = serde_json::to_value(&workspace)
-            && state.metadata.get(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY) != Some(&value)
-        {
-            state
-                .metadata
-                .insert(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY.to_string(), value);
-        }
-
-        if raw.is_empty() {
-            state.metadata.remove(LINEAGE_NODE_OFFSETS_METADATA_KEY);
-        } else if let Ok(value) = serde_json::to_value(raw)
-            && state.metadata.get(LINEAGE_NODE_OFFSETS_METADATA_KEY) != Some(&value)
-        {
-            state
-                .metadata
-                .insert(LINEAGE_NODE_OFFSETS_METADATA_KEY.to_string(), value);
-        }
-        if self.lineage_node_groups.is_empty() {
-            state.metadata.remove(LINEAGE_NODE_GROUPS_METADATA_KEY);
-        } else if let Ok(value) = serde_json::to_value(&self.lineage_node_groups)
-            && state.metadata.get(LINEAGE_NODE_GROUPS_METADATA_KEY) != Some(&value)
-        {
-            state
-                .metadata
-                .insert(LINEAGE_NODE_GROUPS_METADATA_KEY.to_string(), value);
-        }
+        let workspace_value = (!workspace_is_default)
+            .then(|| serde_json::to_value(&workspace).ok())
+            .flatten();
+        let offsets_value = (!raw.is_empty())
+            .then(|| serde_json::to_value(raw).ok())
+            .flatten();
+        let groups_value = (!self.lineage_node_groups.is_empty())
+            .then(|| serde_json::to_value(&self.lineage_node_groups).ok())
+            .flatten();
+        self.persist_project_metadata_values(&[
+            (LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, workspace_value),
+            (LINEAGE_NODE_OFFSETS_METADATA_KEY, offsets_value),
+            (LINEAGE_NODE_GROUPS_METADATA_KEY, groups_value),
+        ]);
     }
 
     fn persist_rack_workspace_to_state(&mut self) {
@@ -15411,21 +15256,16 @@ Error: `{err}`"
             help_strip_successful_move_count: self.rack_help_strip_successful_move_count,
             help_strip_auto_minimized: self.rack_help_strip_auto_minimized,
         };
-        let mut engine = self.engine.write().unwrap();
-        let state = engine.state_mut();
-        if !workspace.help_strip_collapsed
+        let workspace_value = if !workspace.help_strip_collapsed
             && !workspace.help_strip_pinned_open
             && workspace.help_strip_successful_move_count == 0
             && !workspace.help_strip_auto_minimized
         {
-            state.metadata.remove(RACK_WORKSPACE_METADATA_KEY);
-        } else if let Ok(value) = serde_json::to_value(&workspace)
-            && state.metadata.get(RACK_WORKSPACE_METADATA_KEY) != Some(&value)
-        {
-            state
-                .metadata
-                .insert(RACK_WORKSPACE_METADATA_KEY.to_string(), value);
-        }
+            None
+        } else {
+            serde_json::to_value(&workspace).ok()
+        };
+        self.persist_project_metadata_values(&[(RACK_WORKSPACE_METADATA_KEY, workspace_value)]);
     }
 
     fn specialist_window_close_hover_text(window_title: &str) -> String {
@@ -16670,6 +16510,102 @@ Error: `{err}`"
         }
     }
 
+    fn append_arrangement_lineage_rows(
+        rows: &mut Vec<LineageRow>,
+        edges: &mut Vec<(String, String, String)>,
+        op_label_by_id: &mut HashMap<String, String>,
+        containers: &[ContainerRow],
+        arrangements: &[ArrangementRow],
+    ) {
+        let seq_node_by_seq_id: HashMap<String, String> = rows
+            .iter()
+            .filter(|row| row.kind == LineageNodeKind::Sequence)
+            .map(|row| (row.seq_id.clone(), row.node_id.clone()))
+            .collect();
+        let container_members_by_id: HashMap<String, Vec<String>> = containers
+            .iter()
+            .map(|row| (row.container_id.clone(), row.members.clone()))
+            .collect();
+        for arrangement in arrangements {
+            let arrangement_node_id = format!("arr:{}", arrangement.arrangement_id);
+            let arrangement_edge_op_id = format!(
+                "{}::arrangement:{}",
+                arrangement.created_by_op, arrangement.arrangement_id
+            );
+            let mut source_node_ids = Vec::new();
+            let mut seen_sources = HashSet::new();
+            for container_id in &arrangement.lane_container_ids {
+                if let Some(members) = container_members_by_id.get(container_id) {
+                    for seq_id in members {
+                        if let Some(source_node_id) = seq_node_by_seq_id.get(seq_id).cloned()
+                            && seen_sources.insert(source_node_id.clone())
+                        {
+                            source_node_ids.push(source_node_id.clone());
+                            edges.push((
+                                source_node_id,
+                                arrangement_node_id.clone(),
+                                arrangement_edge_op_id.clone(),
+                            ));
+                        }
+                    }
+                }
+            }
+            op_label_by_id
+                .entry(arrangement_edge_op_id)
+                .or_insert_with(|| "Arrange serial lanes".to_string());
+            rows.push(LineageRow {
+                kind: LineageNodeKind::Arrangement,
+                node_id: arrangement_node_id,
+                seq_id: arrangement.arrangement_id.clone(),
+                display_name: if arrangement.name.trim().is_empty() {
+                    arrangement.arrangement_id.clone()
+                } else {
+                    arrangement.name.clone()
+                },
+                origin: "Arrangement".to_string(),
+                created_by_op: arrangement.created_by_op.clone(),
+                created_at: arrangement.created_at,
+                parents: source_node_ids,
+                length: 0,
+                circular: false,
+                pool_size: 1,
+                pool_members: vec![],
+                arrangement_id: Some(arrangement.arrangement_id.clone()),
+                arrangement_mode: Some(arrangement.mode.clone()),
+                lane_container_ids: arrangement.lane_container_ids.clone(),
+                ladders: arrangement.ladders.clone(),
+                genome_anchor_summary: None,
+                genome_anchor_display: None,
+                is_full_genome_sequence: false,
+                retrieval_descriptor: None,
+                analysis_kind: None,
+                analysis_artifact_id: None,
+                analysis_reference_seq_id: None,
+                analysis_mode: None,
+                analysis_status: None,
+                analysis_point_count: None,
+                analysis_bin_count: None,
+                analysis_read_count: None,
+                analysis_trace_count: None,
+                analysis_target_count: None,
+                analysis_variant_count: None,
+                macro_instance_id: None,
+                macro_routine_id: None,
+                macro_template_name: None,
+                macro_status: None,
+                macro_status_message: None,
+                macro_op_ids: vec![],
+                macro_inputs: vec![],
+                macro_outputs: vec![],
+            });
+        }
+        rows.sort_by(|a, b| {
+            a.created_at
+                .cmp(&b.created_at)
+                .then(a.node_id.cmp(&b.node_id))
+        });
+    }
+
     fn refresh_lineage_cache_if_needed(&mut self) {
         let stamp = self.current_lineage_change_stamp();
         if self.lineage_cache_valid && self.lineage_cache_stamp == stamp {
@@ -16677,9 +16613,9 @@ Error: `{err}`"
         }
 
         let (
-            rows,
-            lineage_edges,
-            op_label_by_id,
+            mut rows,
+            mut lineage_edges,
+            mut op_label_by_id,
             reopenable_gibson_op_ids,
             reopenable_pcr_op_seq_ids,
             containers,
@@ -18150,6 +18086,14 @@ Error: `{err}`"
             )
         };
 
+        Self::append_arrangement_lineage_rows(
+            &mut rows,
+            &mut lineage_edges,
+            &mut op_label_by_id,
+            &containers,
+            &arrangements,
+        );
+        self.lineage_projection_cache = None;
         self.lineage_rows = rows;
         self.lineage_edges = lineage_edges;
         self.lineage_op_label_by_id = op_label_by_id;
@@ -18395,6 +18339,53 @@ Error: `{err}`"
 
         let max_nodes_in_layer = max_rank_seen.saturating_add(1);
         (layout_by_node, max_layer + 1, max_nodes_in_layer)
+    }
+
+    fn cached_lineage_graph_projection(
+        &mut self,
+        groups: &[PersistedLineageNodeGroup],
+    ) -> Arc<LineageGraphProjectionCache> {
+        crate::gentle_gui_profile_scope!("GENtleApp::lineage_graph_projection");
+        if let Some(cache) = self
+            .lineage_projection_cache
+            .as_ref()
+            .filter(|cache| {
+                cache.lineage_stamp == self.lineage_cache_stamp && cache.groups == groups
+            })
+            .cloned()
+        {
+            self.lineage_projection_cache_hits =
+                self.lineage_projection_cache_hits.saturating_add(1);
+            return cache;
+        }
+
+        let (projected_rows, projected_edges) =
+            Self::project_lineage_graph_by_groups(&self.lineage_rows, &self.lineage_edges, groups);
+        let (rows, edges, op_label_by_id) = Self::project_lineage_graph_operation_hubs(
+            &projected_rows,
+            &projected_edges,
+            &self.lineage_op_label_by_id,
+            &self.lineage_reopenable_gibson_op_ids,
+        );
+        let (layout_by_node, layer_count, max_nodes_in_layer) =
+            Self::compute_lineage_dag_layout(&rows, &edges);
+        let cache = Arc::new(LineageGraphProjectionCache {
+            lineage_stamp: self.lineage_cache_stamp,
+            groups: groups.to_vec(),
+            source_rows: self.lineage_rows.clone(),
+            source_edges: self.lineage_edges.clone(),
+            source_op_label_by_id: self.lineage_op_label_by_id.clone(),
+            rows,
+            edges,
+            op_label_by_id,
+            layout_by_node,
+            layer_count,
+            max_nodes_in_layer,
+        });
+        self.lineage_projection_cache = Some(cache.clone());
+        self.lineage_projection_cache_misses =
+            self.lineage_projection_cache_misses.saturating_add(1);
+        cache
     }
 
     fn compact_lineage_node_label(raw: &str, max_chars: usize) -> String {
@@ -19072,110 +19063,18 @@ Error: `{err}`"
     ) {
         self.refresh_lineage_cache_if_needed();
 
-        let mut graph_rows = self.lineage_rows.clone();
-        let mut graph_edges = self.lineage_edges.clone();
-        let mut graph_op_label_by_id = self.lineage_op_label_by_id.clone();
-        let seq_node_by_seq_id: HashMap<String, String> = self
+        let valid_lineage_node_ids: HashSet<String> = self
             .lineage_rows
             .iter()
-            .filter(|row| row.kind == LineageNodeKind::Sequence)
-            .map(|row| (row.seq_id.clone(), row.node_id.clone()))
+            .map(|row| row.node_id.clone())
             .collect();
-        let container_members_by_id: HashMap<String, Vec<String>> = self
-            .lineage_containers
-            .iter()
-            .map(|row| (row.container_id.clone(), row.members.clone()))
-            .collect();
-        for arrangement in &self.lineage_arrangements {
-            let arrangement_node_id = format!("arr:{}", arrangement.arrangement_id);
-            let arrangement_edge_op_id = format!(
-                "{}::arrangement:{}",
-                arrangement.created_by_op, arrangement.arrangement_id
-            );
-            let mut source_node_ids: Vec<String> = vec![];
-            let mut seen_sources: HashSet<String> = HashSet::new();
-            for container_id in &arrangement.lane_container_ids {
-                if let Some(members) = container_members_by_id.get(container_id) {
-                    for seq_id in members {
-                        if let Some(source_node_id) = seq_node_by_seq_id.get(seq_id).cloned()
-                            && seen_sources.insert(source_node_id.clone())
-                        {
-                            source_node_ids.push(source_node_id.clone());
-                            graph_edges.push((
-                                source_node_id,
-                                arrangement_node_id.clone(),
-                                arrangement_edge_op_id.clone(),
-                            ));
-                        }
-                    }
-                }
-            }
-            graph_op_label_by_id
-                .entry(arrangement_edge_op_id)
-                .or_insert_with(|| "Arrange serial lanes".to_string());
-            graph_rows.push(LineageRow {
-                kind: LineageNodeKind::Arrangement,
-                node_id: arrangement_node_id,
-                seq_id: arrangement.arrangement_id.clone(),
-                display_name: if arrangement.name.trim().is_empty() {
-                    arrangement.arrangement_id.clone()
-                } else {
-                    arrangement.name.clone()
-                },
-                origin: "Arrangement".to_string(),
-                created_by_op: arrangement.created_by_op.clone(),
-                created_at: arrangement.created_at,
-                parents: source_node_ids,
-                length: 0,
-                circular: false,
-                pool_size: 1,
-                pool_members: vec![],
-                arrangement_id: Some(arrangement.arrangement_id.clone()),
-                arrangement_mode: Some(arrangement.mode.clone()),
-                lane_container_ids: arrangement.lane_container_ids.clone(),
-                ladders: arrangement.ladders.clone(),
-                genome_anchor_summary: None,
-                genome_anchor_display: None,
-                is_full_genome_sequence: false,
-                retrieval_descriptor: None,
-                analysis_kind: None,
-                analysis_artifact_id: None,
-                analysis_reference_seq_id: None,
-                analysis_mode: None,
-                analysis_status: None,
-                analysis_point_count: None,
-                analysis_bin_count: None,
-                analysis_read_count: None,
-                analysis_trace_count: None,
-                analysis_target_count: None,
-                analysis_variant_count: None,
-                macro_instance_id: None,
-                macro_routine_id: None,
-                macro_template_name: None,
-                macro_status: None,
-                macro_status_message: None,
-                macro_op_ids: vec![],
-                macro_inputs: vec![],
-                macro_outputs: vec![],
-            });
-        }
-        graph_rows.sort_by(|a, b| {
-            a.created_at
-                .cmp(&b.created_at)
-                .then(a.node_id.cmp(&b.node_id))
-        });
-
-        let valid_lineage_node_ids: HashSet<String> =
-            graph_rows.iter().map(|row| row.node_id.clone()).collect();
         let sanitized_groups =
             Self::sanitize_lineage_node_groups(&self.lineage_node_groups, &valid_lineage_node_ids);
-        let (projected_graph_rows, projected_graph_edges) =
-            Self::project_lineage_graph_by_groups(&graph_rows, &graph_edges, &sanitized_groups);
-        Self::project_lineage_graph_operation_hubs(
-            &projected_graph_rows,
-            &projected_graph_edges,
-            &graph_op_label_by_id,
-            &self.lineage_reopenable_gibson_op_ids,
+        let cache = self.cached_lineage_graph_projection(&sanitized_groups);
+        (
+            cache.rows.clone(),
+            cache.edges.clone(),
+            cache.op_label_by_id.clone(),
         )
     }
 

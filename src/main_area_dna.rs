@@ -159,7 +159,9 @@ use crate::{
         RestrictionSiteExpertView, SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView,
         SplicingIntronSignal, TfbsExpertView, compute_splicing_exon_transition_matrix,
     },
-    feature_location::{collect_location_ranges_usize, feature_is_reverse},
+    feature_location::{
+        collect_location_ranges_usize, feature_is_reverse, location_overlaps_usize,
+    },
     gc_contents::GcContents,
     icons::*,
     iupac_code::IupacCode,
@@ -1130,6 +1132,36 @@ impl LayerVisibilityCounts {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LayerVisibilityCacheKey {
+    display_revision: u64,
+    feature_generation: u64,
+    restriction_generation: u64,
+    sequence_length: usize,
+    viewport: Option<(usize, usize)>,
+}
+
+#[derive(Clone, Debug)]
+struct LayerVisibilityCache {
+    key: LayerVisibilityCacheKey,
+    counts: LayerVisibilityCounts,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct WindowTitleCacheKey {
+    display_name: String,
+    seq_id: Option<String>,
+    engine_revision: u64,
+}
+
+#[derive(Clone, Debug, Default)]
+struct WindowTitleCache {
+    key: Option<WindowTitleCacheKey>,
+    title: String,
+    hits: u64,
+    misses: u64,
+}
+
 #[derive(Clone, Debug)]
 struct DeclutterSnapshot {
     show_tfbs: bool,
@@ -1537,6 +1569,10 @@ pub struct MainAreaDna {
     focused_feature_id: Option<usize>,
     multi_selected_feature_ids: BTreeSet<usize>,
     feature_tree_cache: Option<FeatureTreeCache>,
+    layer_visibility_cache: Option<LayerVisibilityCache>,
+    layer_visibility_cache_hits: u64,
+    layer_visibility_cache_misses: u64,
+    window_title_cache: Arc<Mutex<WindowTitleCache>>,
     description_cache_initialized: bool,
     description_cache_selected_id: Option<usize>,
     description_cache_selected_reasoning_evidence_id: Option<String>,
@@ -2264,6 +2300,10 @@ impl MainAreaDna {
             focused_feature_id: None,
             multi_selected_feature_ids: BTreeSet::new(),
             feature_tree_cache: None,
+            layer_visibility_cache: None,
+            layer_visibility_cache_hits: 0,
+            layer_visibility_cache_misses: 0,
+            window_title_cache: Arc::new(Mutex::new(WindowTitleCache::default())),
             description_cache_initialized: false,
             description_cache_selected_id: None,
             description_cache_selected_reasoning_evidence_id: None,
@@ -2728,6 +2768,7 @@ impl MainAreaDna {
             self.log_topology_transition_status("replace_active_dna: begin");
         }
         *self.dna.write().expect("DNA lock poisoned") = dna;
+        self.map_dna.invalidate_sequence_derived_caches();
         if clear_feature_focus {
             self.clear_feature_focus();
         }
@@ -2772,6 +2813,7 @@ impl MainAreaDna {
 
     fn invalidate_feature_tree_cache(&mut self) {
         self.feature_tree_cache = None;
+        self.layer_visibility_cache = None;
     }
 
     fn mark_dna_layout_dirty(&self) {
@@ -3159,33 +3201,27 @@ impl MainAreaDna {
         viewport_start: usize,
         viewport_end: usize,
     ) -> bool {
-        let mut ranges: Vec<(usize, usize)> = vec![];
-        collect_location_ranges_usize(&feature.location, &mut ranges);
-        if ranges.is_empty()
-            && let Ok((raw_from, raw_to)) = feature.location.find_bounds()
-            && raw_from >= 0
-            && raw_to >= 0
+        if let Some(overlaps) =
+            location_overlaps_usize(&feature.location, viewport_start, viewport_end)
         {
-            let mut from = raw_from as usize;
-            let mut to = raw_to as usize;
-            if to < from {
-                std::mem::swap(&mut from, &mut to);
-            }
-            ranges.push((from, to));
+            return overlaps;
         }
-        ranges.into_iter().any(|(mut from, mut to)| {
-            if to < from {
-                std::mem::swap(&mut from, &mut to);
-            }
-            if from >= sequence_length {
-                return false;
-            }
-            to = to.min(sequence_length);
-            if to <= from {
-                return false;
-            }
-            Self::ranges_overlap(from, to, viewport_start, viewport_end)
-        })
+        let Ok((raw_from, raw_to)) = feature.location.find_bounds() else {
+            return false;
+        };
+        if raw_from < 0 || raw_to < 0 {
+            return false;
+        }
+        let mut from = raw_from as usize;
+        let mut to = raw_to as usize;
+        if to < from {
+            std::mem::swap(&mut from, &mut to);
+        }
+        if from >= sequence_length {
+            return false;
+        }
+        to = to.min(sequence_length);
+        to > from && Self::ranges_overlap(from, to, viewport_start, viewport_end)
     }
 
     fn orf_overlaps_linear_viewport(
@@ -3249,8 +3285,43 @@ impl MainAreaDna {
         })
     }
 
-    fn compute_layer_visibility_counts(&self) -> LayerVisibilityCounts {
+    fn compute_layer_visibility_counts(&mut self) -> LayerVisibilityCounts {
+        crate::gentle_gui_profile_scope!("MainAreaDna::layer_visibility_counts");
         let viewport = self.active_linear_viewport_range();
+        let display_revision = self
+            .dna_display
+            .read()
+            .map(|display| display.revision())
+            .unwrap_or_default();
+        let dna_cache_identity = self.dna.read().ok().map(|dna| {
+            (
+                dna.feature_generation(),
+                dna.restriction_enzyme_group_generation(),
+                dna.len(),
+            )
+        });
+        if let Some((feature_generation, restriction_generation, sequence_length)) =
+            dna_cache_identity
+        {
+            let key = LayerVisibilityCacheKey {
+                display_revision,
+                feature_generation,
+                restriction_generation,
+                sequence_length,
+                viewport,
+            };
+            if let Some(counts) = self
+                .layer_visibility_cache
+                .as_ref()
+                .filter(|cache| cache.key == key)
+                .map(|cache| cache.counts.clone())
+            {
+                self.layer_visibility_cache_hits =
+                    self.layer_visibility_cache_hits.saturating_add(1);
+                return counts;
+            }
+        }
+        self.layer_visibility_cache_misses = self.layer_visibility_cache_misses.saturating_add(1);
         let (
             tfbs_display_criteria,
             vcf_display_criteria,
@@ -3442,6 +3513,20 @@ impl MainAreaDna {
                         }
                 })
                 .count();
+        }
+        if let Some((feature_generation, restriction_generation, sequence_length)) =
+            dna_cache_identity
+        {
+            self.layer_visibility_cache = Some(LayerVisibilityCache {
+                key: LayerVisibilityCacheKey {
+                    display_revision,
+                    feature_generation,
+                    restriction_generation,
+                    sequence_length,
+                    viewport,
+                },
+                counts: counts.clone(),
+            });
         }
         counts
     }
@@ -9848,9 +9933,9 @@ impl MainAreaDna {
             if matches!(target, DisplayTarget::SequencePanel) {
                 let mut guard = engine.write().expect("Engine lock poisoned");
                 if self.is_circular() {
-                    guard.state_mut().display.show_sequence_panel = visible;
+                    guard.display_state_mut().show_sequence_panel = visible;
                 } else {
-                    guard.state_mut().display.show_linear_sequence_panel = visible;
+                    guard.display_state_mut().show_linear_sequence_panel = visible;
                 }
             } else {
                 let _ = engine
@@ -9866,7 +9951,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         display.tfbs_display_use_llr_bits = criteria.use_llr_bits;
         display.tfbs_display_min_llr_bits = criteria.min_llr_bits;
         display.tfbs_display_use_llr_quantile = criteria.use_llr_quantile;
@@ -9882,7 +9967,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         display.vcf_display_show_snp = criteria.show_snp;
         display.vcf_display_show_ins = criteria.show_ins;
         display.vcf_display_show_del = criteria.show_del;
@@ -9905,7 +9990,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         display.restriction_enzyme_display_mode = mode;
         display.preferred_restriction_enzymes = preferred_restriction_enzymes;
     }
@@ -9941,7 +10026,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        guard.state_mut().display.regulatory_tracks_near_baseline = near_baseline;
+        guard.display_state_mut().regulatory_tracks_near_baseline = near_baseline;
     }
 
     fn sync_feature_details_font_size_to_engine(&self, value: f32) {
@@ -9949,7 +10034,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        guard.state_mut().display.feature_details_font_size = value.clamp(8.0, 24.0);
+        guard.display_state_mut().feature_details_font_size = value.clamp(8.0, 24.0);
     }
 
     fn sync_linear_external_feature_label_font_size_to_engine(&self, value: f32) {
@@ -9958,8 +10043,7 @@ impl MainAreaDna {
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
         guard
-            .state_mut()
-            .display
+            .display_state_mut()
             .linear_external_feature_label_font_size = value.clamp(8.0, 24.0);
     }
 
@@ -9969,8 +10053,7 @@ impl MainAreaDna {
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
         guard
-            .state_mut()
-            .display
+            .display_state_mut()
             .linear_external_feature_label_background_opacity = value.clamp(0.0, 1.0);
     }
 
@@ -9979,7 +10062,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        guard.state_mut().display.gc_content_bin_size_bp = value.max(1);
+        guard.display_state_mut().gc_content_bin_size_bp = value.max(1);
     }
 
     fn sync_linear_double_strand_settings_to_engine(
@@ -9993,7 +10076,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         display.linear_show_double_strand_bases = show_double_strand;
         display.linear_helical_parallel_strands = helical_parallel_strands;
         display.reverse_strand_visual_opacity = reverse_strand_opacity.clamp(0.2, 1.0);
@@ -10010,7 +10093,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         display.linear_sequence_helical_letters_enabled = enabled;
         display.linear_sequence_letter_layout_mode = layout_mode;
         display.linear_sequence_helical_phase_offset_bp = phase_offset_bp % 10;
@@ -10021,7 +10104,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        guard.state_mut().display.linear_show_sequence_bases = visible;
+        guard.display_state_mut().linear_show_sequence_bases = visible;
     }
 
     fn sync_linear_backbone_visibility_to_engine(&self, hide_when_bases_visible: bool) {
@@ -10030,8 +10113,7 @@ impl MainAreaDna {
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
         guard
-            .state_mut()
-            .display
+            .display_state_mut()
             .linear_hide_backbone_when_sequence_bases_visible = hide_when_bases_visible;
     }
 
@@ -10041,8 +10123,7 @@ impl MainAreaDna {
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
         guard
-            .state_mut()
-            .display
+            .display_state_mut()
             .auto_hide_sequence_panel_when_linear_bases_visible = value;
     }
 
@@ -13190,7 +13271,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        let display = &mut guard.state_mut().display;
+        let display = guard.display_state_mut();
         display.linear_view_start_bp = start;
         display.linear_view_span_bp = span;
     }
@@ -13283,7 +13364,7 @@ impl MainAreaDna {
             return;
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        guard.state_mut().display.linear_view_vertical_offset_px = stored_offset;
+        guard.display_state_mut().linear_view_vertical_offset_px = stored_offset;
     }
 
     fn pan_linear_vertical_viewport(&self, delta_px: f32) {
@@ -19481,10 +19562,10 @@ impl MainAreaDna {
             receiver: Arc::new(Mutex::new(rx)),
         });
         std::thread::spawn(move || {
-            let outcome = match engine.write() {
-                Ok(mut guard) => {
-                    let tx_progress = tx.clone();
-                    guard
+            let tx_progress = tx.clone();
+            let outcome =
+                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
+                    snapshot
                         .apply_with_progress(op, move |progress| {
                             if let OperationProgress::PrimerDesign(progress) = progress {
                                 let _ =
@@ -19493,14 +19574,7 @@ impl MainAreaDna {
                             true
                         })
                         .map(PrimerDesignTaskCompletion::Single)
-                }
-                Err(_) => Err(EngineError {
-                    code: ErrorCode::Internal,
-                    message: "Engine lock poisoned while running primer design".to_string(),
-
-                    cause_chain: vec![],
-                }),
-            };
+                });
             let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
         });
     }
@@ -19536,28 +19610,22 @@ impl MainAreaDna {
         });
         std::thread::spawn(move || {
             let tx_progress = tx.clone();
-            let outcome = match engine.write() {
-                Ok(mut guard) => Ok(PrimerDesignTaskCompletion::Batch(
-                    Self::execute_primer_pair_design_batch(
-                        &mut guard,
-                        &prepared.queued_regions,
-                        &prepared.spec,
-                        &prepared.report_base,
-                        prepared.create_copies,
-                        move |progress| {
-                            let _ =
-                                tx_progress.send(PrimerDesignTaskMessage::BatchProgress(progress));
-                        },
-                    ),
-                )),
-                Err(_) => Err(EngineError {
-                    code: ErrorCode::Internal,
-                    message: "Engine lock poisoned while running queued PCR primer design"
-                        .to_string(),
-
-                    cause_chain: vec![],
-                }),
-            };
+            let outcome =
+                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
+                    Ok(PrimerDesignTaskCompletion::Batch(
+                        Self::execute_primer_pair_design_batch(
+                            snapshot,
+                            &prepared.queued_regions,
+                            &prepared.spec,
+                            &prepared.report_base,
+                            prepared.create_copies,
+                            move |progress| {
+                                let _ = tx_progress
+                                    .send(PrimerDesignTaskMessage::BatchProgress(progress));
+                            },
+                        ),
+                    ))
+                });
             let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
         });
     }
@@ -19887,11 +19955,11 @@ impl MainAreaDna {
         std::thread::spawn(move || {
             let tx_progress = tx.clone();
             let cancel_for_worker = cancel_requested.clone();
-            let outcome = match engine.write() {
-                Ok(mut guard) => {
+            let outcome =
+                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
                     let mut last_motif_index: Option<usize> = None;
                     let mut last_total_tenths: Option<i64> = None;
-                    guard.apply_with_progress(op, move |progress| {
+                    snapshot.apply_with_progress(op, move |progress| {
                         if cancel_for_worker.load(AtomicOrdering::Relaxed) {
                             return false;
                         }
@@ -19911,14 +19979,7 @@ impl MainAreaDna {
                         }
                         !cancel_for_worker.load(AtomicOrdering::Relaxed)
                     })
-                }
-                Err(_) => Err(EngineError {
-                    code: ErrorCode::Internal,
-                    message: "Engine lock poisoned while running TFBS work".to_string(),
-
-                    cause_chain: vec![],
-                }),
-            };
+                });
             let _ = tx.send(TfbsTaskMessage::Done(outcome));
         });
     }
@@ -23764,7 +23825,7 @@ impl MainAreaDna {
         if guard.state().metadata.get(&key) == Some(&value) {
             return;
         }
-        guard.state_mut().metadata.insert(key, value);
+        guard.auxiliary_metadata_mut().insert(key, value);
     }
 
     fn load_engine_ops_state(&mut self) {
@@ -24160,17 +24221,22 @@ impl MainAreaDna {
         self.current_selection_range_0based()
     }
 
-    fn lineage_node_id_for_seq_id(&self, seq_id: &str) -> Option<String> {
-        let engine = self.engine.as_ref()?;
-        let guard = engine.read().ok()?;
-        guard
-            .state()
-            .lineage
-            .nodes
-            .values()
-            .filter(|node| node.seq_id == seq_id)
-            .max_by_key(|node| node.created_at_unix_ms)
-            .map(|node| node.node_id.clone())
+    fn lineage_title_context(&self, seq_id: Option<&str>) -> Option<(u64, Option<String>)> {
+        let Some(engine) = self.engine.as_ref() else {
+            return Some((0, None));
+        };
+        let guard = engine.try_read().ok()?;
+        let node_id = seq_id.and_then(|seq_id| {
+            guard
+                .state()
+                .lineage
+                .nodes
+                .values()
+                .filter(|node| node.seq_id == seq_id)
+                .max_by_key(|node| node.created_at_unix_ms)
+                .map(|node| node.node_id.clone())
+        });
+        Some((guard.structural_revision(), node_id))
     }
 
     pub fn window_title(&self) -> String {
@@ -24180,14 +24246,47 @@ impl MainAreaDna {
             .filter(|name| !name.trim().is_empty())
             .or_else(|| seq_id.clone())
             .unwrap_or_else(|| "<Unnamed sequence>".to_string());
-        let Some(seq_id) = seq_id.as_deref() else {
-            return display_name;
+        let Some((engine_revision, lineage_node_id)) =
+            self.lineage_title_context(seq_id.as_deref())
+        else {
+            if let Ok(mut cache) = self.window_title_cache.lock()
+                && cache
+                    .key
+                    .as_ref()
+                    .is_some_and(|key| key.display_name == display_name && key.seq_id == seq_id)
+            {
+                cache.hits = cache.hits.saturating_add(1);
+                return cache.title.clone();
+            }
+            return seq_id
+                .map(|seq_id| format!("{display_name} ({seq_id})"))
+                .unwrap_or(display_name);
         };
-        if let Some(node_id) = self.lineage_node_id_for_seq_id(seq_id) {
-            format!("{display_name} [{node_id}] ({seq_id})")
-        } else {
-            format!("{display_name} ({seq_id})")
+        let key = WindowTitleCacheKey {
+            display_name: display_name.clone(),
+            seq_id: seq_id.clone(),
+            engine_revision,
+        };
+        if let Ok(mut cache) = self.window_title_cache.lock()
+            && cache.key.as_ref() == Some(&key)
+        {
+            cache.hits = cache.hits.saturating_add(1);
+            return cache.title.clone();
         }
+
+        let title = match seq_id.as_deref() {
+            None => display_name,
+            Some(seq_id) => match lineage_node_id {
+                Some(node_id) => format!("{display_name} [{node_id}] ({seq_id})"),
+                None => format!("{display_name} ({seq_id})"),
+            },
+        };
+        if let Ok(mut cache) = self.window_title_cache.lock() {
+            cache.key = Some(key);
+            cache.title = title.clone();
+            cache.misses = cache.misses.saturating_add(1);
+        }
+        title
     }
 
     fn splicing_expert_window_help_text() -> &'static str {

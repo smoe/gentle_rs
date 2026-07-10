@@ -12,6 +12,13 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-10
+
+- Hardened GUI responsiveness: long engine jobs now execute on detached,
+  revision-checked snapshots; dirty checks use a constant-time state revision;
+  layer/GC/lineage/title/JASPAR derivations are cached; and dense JASPAR and
+  feature-tree lists use virtualized rows.
+
 ## 2026-07-08
 
 - Made undo/redo checkpoints for display-only DNA-view operations cheap.

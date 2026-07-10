@@ -26,6 +26,7 @@ pub mod amino_acids;
 pub mod app;
 /// ATtRACT RNA-binding motif registry and runtime snapshot helpers.
 pub mod attract_motifs;
+mod background_engine;
 /// Small shared helpers for GENtle command-line binaries.
 pub mod cli_support;
 pub(crate) mod digest_utils;

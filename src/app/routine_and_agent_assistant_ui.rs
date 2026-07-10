@@ -1179,7 +1179,11 @@ impl GENtleApp {
                     job_id,
                     message: "Building project summary for agent request".to_string(),
                 });
-                Some(engine.read().unwrap().summarize_state())
+                engine
+                    .read()
+                    .map(|guard| guard.clone())
+                    .ok()
+                    .map(|snapshot| snapshot.summarize_state())
             } else {
                 None
             };
@@ -4741,14 +4745,10 @@ impl GENtleApp {
         let Ok(value) = serde_json::to_value(&normalized) else {
             return;
         };
-        let mut engine = self.engine.write().unwrap();
-        let state = engine.state_mut();
-        if state.metadata.get(ROUTINE_DECISION_TRACES_METADATA_KEY) == Some(&value) {
-            return;
-        }
-        state
-            .metadata
-            .insert(ROUTINE_DECISION_TRACES_METADATA_KEY.to_string(), value);
+        self.persist_project_metadata_values(&[(
+            ROUTINE_DECISION_TRACES_METADATA_KEY,
+            Some(value),
+        )]);
     }
 
     pub(super) fn persist_routine_assistant_decision_trace(&mut self) {

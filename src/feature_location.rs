@@ -101,6 +101,53 @@ pub fn collect_location_ranges_usize(location: &Location, ranges: &mut Vec<(usiz
     }));
 }
 
+/// Test whether any concrete location segment overlaps a half-open range.
+///
+/// `None` means the location contained no usable concrete segment, allowing a
+/// caller to fall back to `find_bounds` without allocating a temporary vector.
+pub fn location_overlaps_usize(
+    location: &Location,
+    range_start: usize,
+    range_end_exclusive: usize,
+) -> Option<bool> {
+    match location {
+        Location::Range((from, _), (to, _)) | Location::Between(from, to) => {
+            let (Ok(mut start), Ok(mut end)) = (usize::try_from(*from), usize::try_from(*to))
+            else {
+                return None;
+            };
+            if end < start {
+                std::mem::swap(&mut start, &mut end);
+            }
+            Some(start < range_end_exclusive && end > range_start)
+        }
+        Location::Complement(inner) => {
+            location_overlaps_usize(inner, range_start, range_end_exclusive)
+        }
+        Location::Join(parts)
+        | Location::Order(parts)
+        | Location::Bond(parts)
+        | Location::OneOf(parts) => {
+            let mut found_segment = false;
+            for part in parts {
+                if let Some(overlaps) =
+                    location_overlaps_usize(part, range_start, range_end_exclusive)
+                {
+                    found_segment = true;
+                    if overlaps {
+                        return Some(true);
+                    }
+                }
+            }
+            found_segment.then_some(false)
+        }
+        Location::External(_, maybe_loc) => maybe_loc
+            .as_deref()
+            .and_then(|inner| location_overlaps_usize(inner, range_start, range_end_exclusive)),
+        Location::Gap(_) => None,
+    }
+}
+
 pub fn feature_ranges_sorted_i64(feature: &Feature) -> Vec<(i64, i64)> {
     let mut ranges = Vec::new();
     collect_location_ranges_i64(&feature.location, &mut ranges);
@@ -178,6 +225,16 @@ mod tests {
         let ranges = feature_ranges_sorted_i64(&feature);
         assert_eq!(ranges, vec![(10, 20), (40, 50)]);
         assert!(feature_is_reverse(&feature));
+    }
+
+    #[test]
+    fn overlap_query_handles_join_without_collecting_ranges() {
+        let location = Location::Join(vec![
+            Location::simple_range(10, 20),
+            Location::simple_range(40, 50),
+        ]);
+        assert_eq!(location_overlaps_usize(&location, 15, 16), Some(true));
+        assert_eq!(location_overlaps_usize(&location, 25, 30), Some(false));
     }
 
     #[test]

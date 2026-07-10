@@ -558,101 +558,11 @@ impl GENtleApp {
         );
         let mut graph_compact_labels = self.lineage_graph_compact_labels;
         let mut persist_workspace_after_frame = false;
-        let mut graph_rows = self.lineage_rows.clone();
-        let mut graph_edges = self.lineage_edges.clone();
-        let mut graph_op_label_by_id = self.lineage_op_label_by_id.clone();
-        let seq_node_by_seq_id: HashMap<String, String> = self
+        let valid_lineage_node_ids: HashSet<String> = self
             .lineage_rows
             .iter()
-            .filter(|row| row.kind == LineageNodeKind::Sequence)
-            .map(|row| (row.seq_id.clone(), row.node_id.clone()))
+            .map(|row| row.node_id.clone())
             .collect();
-        let container_members_by_id: HashMap<String, Vec<String>> = self
-            .lineage_containers
-            .iter()
-            .map(|row| (row.container_id.clone(), row.members.clone()))
-            .collect();
-        for arrangement in &self.lineage_arrangements {
-            let arrangement_node_id = format!("arr:{}", arrangement.arrangement_id);
-            let arrangement_edge_op_id = format!(
-                "{}::arrangement:{}",
-                arrangement.created_by_op, arrangement.arrangement_id
-            );
-            let mut source_node_ids: Vec<String> = vec![];
-            let mut seen_sources: HashSet<String> = HashSet::new();
-            for container_id in &arrangement.lane_container_ids {
-                if let Some(members) = container_members_by_id.get(container_id) {
-                    for seq_id in members {
-                        if let Some(source_node_id) = seq_node_by_seq_id.get(seq_id).cloned()
-                            && seen_sources.insert(source_node_id.clone())
-                        {
-                            source_node_ids.push(source_node_id.clone());
-                            graph_edges.push((
-                                source_node_id,
-                                arrangement_node_id.clone(),
-                                arrangement_edge_op_id.clone(),
-                            ));
-                        }
-                    }
-                }
-            }
-            graph_op_label_by_id
-                .entry(arrangement_edge_op_id)
-                .or_insert_with(|| "Arrange serial lanes".to_string());
-            graph_rows.push(LineageRow {
-                kind: LineageNodeKind::Arrangement,
-                node_id: arrangement_node_id,
-                seq_id: arrangement.arrangement_id.clone(),
-                display_name: if arrangement.name.trim().is_empty() {
-                    arrangement.arrangement_id.clone()
-                } else {
-                    arrangement.name.clone()
-                },
-                origin: "Arrangement".to_string(),
-                created_by_op: arrangement.created_by_op.clone(),
-                created_at: arrangement.created_at,
-                parents: source_node_ids,
-                length: 0,
-                circular: false,
-                pool_size: 1,
-                pool_members: vec![],
-                arrangement_id: Some(arrangement.arrangement_id.clone()),
-                arrangement_mode: Some(arrangement.mode.clone()),
-                lane_container_ids: arrangement.lane_container_ids.clone(),
-                ladders: arrangement.ladders.clone(),
-                genome_anchor_summary: None,
-                genome_anchor_display: None,
-                is_full_genome_sequence: false,
-                retrieval_descriptor: None,
-                analysis_kind: None,
-                analysis_artifact_id: None,
-                analysis_reference_seq_id: None,
-                analysis_mode: None,
-                analysis_status: None,
-                analysis_point_count: None,
-                analysis_bin_count: None,
-                analysis_read_count: None,
-                analysis_trace_count: None,
-                analysis_target_count: None,
-                analysis_variant_count: None,
-                macro_instance_id: None,
-                macro_routine_id: None,
-                macro_template_name: None,
-                macro_status: None,
-                macro_status_message: None,
-                macro_op_ids: vec![],
-                macro_inputs: vec![],
-                macro_outputs: vec![],
-            });
-        }
-        graph_rows.sort_by(|a, b| {
-            a.created_at
-                .cmp(&b.created_at)
-                .then(a.node_id.cmp(&b.node_id))
-        });
-
-        let valid_lineage_node_ids: HashSet<String> =
-            graph_rows.iter().map(|row| row.node_id.clone()).collect();
         self.lineage_group_marked_nodes
             .retain(|node_id| valid_lineage_node_ids.contains(node_id));
         let mut sanitized_groups =
@@ -854,25 +764,20 @@ impl GENtleApp {
                     persist_workspace_after_frame = true;
                 }
                 let lineage_groups = self.lineage_node_groups.clone();
+                let projection_cache = self.cached_lineage_graph_projection(&lineage_groups);
+                let graph_rows = &projection_cache.source_rows;
+                let graph_edges = &projection_cache.source_edges;
+                let graph_op_label_by_id = &projection_cache.source_op_label_by_id;
                 let (group_by_id, node_to_group_id) = Self::lineage_node_group_maps(&lineage_groups);
-                let (projected_graph_rows, projected_graph_edges) =
-                    Self::project_lineage_graph_by_groups(&graph_rows, &graph_edges, &lineage_groups);
                 let collapsed_group_badges = Self::lineage_collapsed_group_hidden_op_badges(
                     &graph_edges,
                     &lineage_groups,
                     &graph_op_label_by_id,
                 );
                 let table_entries = Self::build_lineage_table_entries(&graph_rows, &lineage_groups);
-                let (
-                    graph_view_rows,
-                    graph_view_edges,
-                    graph_view_op_label_by_id,
-                ) = Self::project_lineage_graph_operation_hubs(
-                    &projected_graph_rows,
-                    &projected_graph_edges,
-                    &graph_op_label_by_id,
-                    &self.lineage_reopenable_gibson_op_ids,
-                );
+                let graph_view_rows = projection_cache.rows.as_slice();
+                let graph_view_edges = projection_cache.edges.as_slice();
+                let graph_view_op_label_by_id = &projection_cache.op_label_by_id;
                 let leaf_node_ids = Self::lineage_leaf_node_ids(&graph_rows, &graph_edges);
                 let visible_node_ids: HashSet<String> = graph_view_rows
                     .iter()
@@ -1005,9 +910,9 @@ impl GENtleApp {
                 ui.label(format!("{:.0}%", graph_zoom * 100.0));
             });
             ui.separator();
-            let rows = &graph_view_rows;
-            let lineage_edges = &graph_view_edges;
-            let op_label_by_id = &graph_view_op_label_by_id;
+            let rows = graph_view_rows;
+            let lineage_edges = graph_view_edges;
+            let op_label_by_id = graph_view_op_label_by_id;
             let graph_panel_width = ui.available_width().max(1.0);
             let graph_canvas_viewport_width = (graph_panel_width - 16.0).max(1.0);
             let graph_panel_height = graph_area_height.max(LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT);
@@ -1032,8 +937,9 @@ impl GENtleApp {
                         })
                         .max_height(ui.available_height())
                         .show(ui, |ui| {
-                            let (layout_by_node, layer_count, max_nodes_in_layer) =
-                                Self::compute_lineage_dag_layout(rows, lineage_edges);
+                            let layout_by_node = &projection_cache.layout_by_node;
+                            let layer_count = projection_cache.layer_count;
+                            let max_nodes_in_layer = projection_cache.max_nodes_in_layer;
                             let base_width = (layer_count.max(1) as f32) * 220.0 + 220.0;
                             let base_height = (max_nodes_in_layer.max(1) as f32) * 110.0 + 300.0;
                             if request_fit_zoom {

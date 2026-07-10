@@ -698,6 +698,15 @@ Interactive orchestration contract:
 - Long-running jobs are surfaced in one GUI background-jobs panel with progress
   snapshots and cancel/retry controls where the engine callback contract
   supports cancellation.
+- Long-running GUI workers execute from immutable/versioned engine snapshots.
+  Mutating results use an optimistic short-lock commit and are rejected as
+  stale if project structure or journal history changed meanwhile. Concurrent
+  viewport/display changes and disjoint persisted UI/session metadata are
+  retained in both the committed state and its new undo checkpoints.
+- The engine exposes separate execution, persisted-state mutation, and
+  structural revisions.
+  GUI dirty-state detection compares the mutation revision with the last saved
+  revision instead of serializing and hashing the complete project on a timer.
 - Operation history is surfaced in a dedicated GUI panel backed by engine
   operation journal + checkpoint stacks.
 

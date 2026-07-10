@@ -5043,11 +5043,11 @@ impl MainAreaDna {
                     let tx_progress = tx.clone();
                     let cancel_for_progress = Arc::clone(&cancel_requested);
                     let cancel_for_compute = Arc::clone(&cancel_requested);
-                    let outcome = match engine.read() {
-                        Ok(guard) => {
+                    let outcome = match engine.read().map(|guard| guard.clone()) {
+                        Ok(snapshot) => {
                             let mut should_continue =
                                 move || !cancel_for_compute.load(AtomicOrdering::Relaxed);
-                            guard
+                            snapshot
                                 .compute_rna_read_report_with_runtime_options_and_progress_and_cancel(
                                     &seq_id,
                                     seed_feature_id,
@@ -5104,11 +5104,11 @@ impl MainAreaDna {
                     let tx_progress = tx.clone();
                     let cancel_for_progress = Arc::clone(&cancel_requested);
                     let cancel_for_compute = Arc::clone(&cancel_requested);
-                    let outcome = match engine.read() {
-                        Ok(guard) => {
+                    let outcome = match engine.read().map(|guard| guard.clone()) {
+                        Ok(snapshot) => {
                             let mut should_continue =
                                 move || !cancel_for_compute.load(AtomicOrdering::Relaxed);
-                            guard
+                            snapshot
                                 .align_rna_read_report_with_progress_and_cancel(
                                     &report_id,
                                     selection,

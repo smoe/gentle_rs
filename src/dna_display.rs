@@ -309,6 +309,7 @@ impl UpdateLayoutParts {
 
 #[derive(Debug)]
 pub struct DnaDisplay {
+    revision: u64,
     show_restriction_enzymes: bool,
     restriction_enzyme_display_mode: RestrictionEnzymeDisplayMode,
     preferred_restriction_enzymes: Vec<String>,
@@ -473,7 +474,13 @@ impl DnaDisplay {
     }
 
     fn mark_layout_dirty(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
         self.update_layout.update_all();
+    }
+
+    /// Monotonic identity for display inputs that affect derived rendering.
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     fn normalize_vcf_info_keys(keys: &[String]) -> Vec<String> {
@@ -1202,6 +1209,7 @@ impl Default for DnaDisplay {
         let mut hidden_feature_kinds = BTreeSet::new();
         hidden_feature_kinds.insert("MISC_FEATURE".to_string());
         Self {
+            revision: 0,
             show_restriction_enzymes: true,
             restriction_enzyme_display_mode: RestrictionEnzymeDisplayMode::default(),
             preferred_restriction_enzymes: default_preferred_restriction_enzyme_names(),

@@ -91,6 +91,21 @@ impl RenderDna {
         }
     }
 
+    pub fn invalidate_sequence_derived_caches(&self) {
+        match self {
+            RenderDna::Circular(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.invalidate_sequence_derived_caches();
+                }
+            }
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.invalidate_sequence_derived_caches();
+                }
+            }
+        }
+    }
+
     pub fn on_click(&self, pointer_state: PointerState) {
         match self {
             RenderDna::Circular(renderer) => {

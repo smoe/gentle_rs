@@ -26,9 +26,16 @@ impl GENtleApp {
             .collect()
     }
 
-    fn filtered_jaspar_catalog_rows(&self) -> Vec<JasparCatalogRow> {
+    fn filtered_jaspar_catalog_rows(&mut self) -> Arc<Vec<JasparCatalogRow>> {
+        crate::gentle_gui_profile_scope!("GENtleApp::filtered_jaspar_catalog_rows");
         let filter = self.jaspar_expert_filter.trim().to_ascii_uppercase();
-        self.jaspar_catalog_report
+        let cache_key = (self.jaspar_catalog_generation, filter.clone());
+        if self.jaspar_filtered_cache_key.as_ref() == Some(&cache_key) {
+            self.jaspar_filtered_cache_hits = self.jaspar_filtered_cache_hits.saturating_add(1);
+            return Arc::clone(&self.jaspar_filtered_cache_rows);
+        }
+        let rows: Vec<JasparCatalogRow> = self
+            .jaspar_catalog_report
             .as_ref()
             .map(|report| report.rows.clone())
             .unwrap_or_else(|| self.jaspar_catalog_rows_local_fallback())
@@ -46,10 +53,16 @@ impl GENtleApp {
                         .contains(&filter)
                     || row.consensus_iupac.to_ascii_uppercase().contains(&filter)
             })
-            .collect()
+            .collect();
+        self.jaspar_filtered_cache_key = Some(cache_key);
+        self.jaspar_filtered_cache_rows = Arc::new(rows);
+        self.jaspar_filtered_cache_misses = self.jaspar_filtered_cache_misses.saturating_add(1);
+        Arc::clone(&self.jaspar_filtered_cache_rows)
     }
 
     fn merge_jaspar_catalog_report(&mut self, report: JasparCatalogReport) {
+        self.jaspar_catalog_generation = self.jaspar_catalog_generation.wrapping_add(1);
+        self.jaspar_filtered_cache_key = None;
         if !report.include_remote_metadata {
             self.jaspar_catalog_report = Some(report);
             return;
@@ -151,8 +164,8 @@ impl GENtleApp {
     fn sync_visible_jaspar_remote_metadata(&mut self) {
         let motifs = self
             .filtered_jaspar_catalog_rows()
-            .into_iter()
-            .map(|row| row.motif_id)
+            .iter()
+            .map(|row| row.motif_id.clone())
             .collect::<Vec<_>>();
         if motifs.is_empty() {
             self.jaspar_expert_status =
@@ -618,70 +631,94 @@ impl GENtleApp {
                             entries.len(),
                             total_entries
                         ));
-                        egui::ScrollArea::both()
+                        let selected_id = self.jaspar_expert_selected_motif_id.clone();
+                        let mut next_selected_id = None;
+                        let row_height = 24.0;
+                        egui_extras::TableBuilder::new(ui)
+                            .id_salt("jaspar_catalog_table")
+                            .striped(true)
+                            .max_scroll_height(720.0)
+                            .min_scrolled_height(320.0)
                             .auto_shrink([false, false])
-                            .max_height(720.0)
-                            .show(ui, |ui| {
-                                egui::Grid::new("jaspar_catalog_grid")
-                                    .striped(true)
-                                    .min_col_width(52.0)
-                                    .show(ui, |ui| {
-                                        ui.strong("ID");
-                                        ui.strong("Name");
-                                        ui.strong("Len");
-                                        ui.strong("Consensus");
-                                        ui.strong("Species");
-                                        ui.strong("Collection");
-                                        ui.end_row();
-                                        for row in &entries {
-                                            let selected = self.jaspar_expert_selected_motif_id
-                                                == row.motif_id;
-                                            if ui
-                                                .selectable_label(selected, row.motif_id.clone())
-                                                .clicked()
-                                            {
-                                                self.jaspar_expert_selected_motif_id =
-                                                    row.motif_id.clone();
-                                                self.refresh_jaspar_expert_view();
-                                            }
-                                            ui.label(
-                                                row.motif_name
-                                                    .as_deref()
-                                                    .filter(|value| !value.trim().is_empty())
-                                                    .unwrap_or(""),
-                                            );
-                                            ui.label(row.motif_length_bp.to_string());
-                                            ui.monospace(row.consensus_iupac.clone());
-                                            ui.label(
-                                                row.remote_summary
-                                                    .as_ref()
-                                                    .map(|remote| {
-                                                        if remote.species_count == 0 {
-                                                            "0".to_string()
-                                                        } else {
-                                                            remote.species_count.to_string()
-                                                        }
-                                                    })
-                                                    .unwrap_or_else(|| "—".to_string()),
-                                            );
-                                            ui.label(
-                                                row.remote_summary
-                                                    .as_ref()
-                                                    .and_then(|remote| remote.collection.as_deref())
-                                                    .unwrap_or(""),
-                                            );
-                                            ui.end_row();
+                            .column(egui_extras::Column::exact(92.0))
+                            .column(egui_extras::Column::remainder().at_least(120.0))
+                            .column(egui_extras::Column::exact(42.0))
+                            .column(egui_extras::Column::exact(112.0))
+                            .column(egui_extras::Column::exact(56.0))
+                            .column(egui_extras::Column::exact(96.0))
+                            .header(row_height, |mut header| {
+                                for label in [
+                                    "ID",
+                                    "Name",
+                                    "Len",
+                                    "Consensus",
+                                    "Species",
+                                    "Collection",
+                                ] {
+                                    header.col(|ui| {
+                                        ui.strong(label);
+                                    });
+                                }
+                            })
+                            .body(|body| {
+                                body.rows(row_height, entries.len(), |mut table_row| {
+                                    let row = &entries[table_row.index()];
+                                    table_row.col(|ui| {
+                                        if ui
+                                            .selectable_label(
+                                                selected_id == row.motif_id,
+                                                &row.motif_id,
+                                            )
+                                            .clicked()
+                                        {
+                                            next_selected_id = Some(row.motif_id.clone());
                                         }
                                     });
-                                if let Some(report) = self.jaspar_catalog_report.as_ref()
-                                    && !report.warnings.is_empty() {
-                                        ui.separator();
-                                        ui.small(format!(
-                                            "Catalog warnings: {}",
-                                            report.warnings.join(" | ")
-                                        ));
-                                    }
+                                    table_row.col(|ui| {
+                                        ui.label(
+                                            row.motif_name
+                                                .as_deref()
+                                                .filter(|value| !value.trim().is_empty())
+                                                .unwrap_or(""),
+                                        );
+                                    });
+                                    table_row.col(|ui| {
+                                        ui.label(row.motif_length_bp.to_string());
+                                    });
+                                    table_row.col(|ui| {
+                                        ui.monospace(&row.consensus_iupac);
+                                    });
+                                    table_row.col(|ui| {
+                                        ui.label(
+                                            row.remote_summary
+                                                .as_ref()
+                                                .map(|remote| remote.species_count.to_string())
+                                                .unwrap_or_else(|| "—".to_string()),
+                                        );
+                                    });
+                                    table_row.col(|ui| {
+                                        ui.label(
+                                            row.remote_summary
+                                                .as_ref()
+                                                .and_then(|remote| remote.collection.as_deref())
+                                                .unwrap_or(""),
+                                        );
+                                    });
+                                });
                             });
+                        if let Some(motif_id) = next_selected_id {
+                            self.jaspar_expert_selected_motif_id = motif_id;
+                            self.refresh_jaspar_expert_view();
+                        }
+                        if let Some(report) = self.jaspar_catalog_report.as_ref()
+                            && !report.warnings.is_empty()
+                        {
+                            ui.separator();
+                            ui.small(format!(
+                                "Catalog warnings: {}",
+                                report.warnings.join(" | ")
+                            ));
+                        }
                     });
                     columns[1].vertical(|ui| {
                         let Some(view) = self.jaspar_expert_view.as_ref() else {
@@ -984,5 +1021,22 @@ mod tests {
                 .any(|(label, value)| label == "Background"
                     && value.contains("512 bp deterministic"))
         );
+    }
+
+    #[test]
+    fn jaspar_catalog_filter_reuses_cached_rows_until_query_changes() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
+        let mut app = GENtleApp::default();
+        app.jaspar_expert_filter = "TP73".to_string();
+        let first = app.filtered_jaspar_catalog_rows();
+        let second = app.filtered_jaspar_catalog_rows();
+        assert_eq!(first.len(), second.len());
+        assert_eq!(app.jaspar_filtered_cache_misses, 1);
+        assert_eq!(app.jaspar_filtered_cache_hits, 1);
+
+        app.jaspar_expert_filter = "SP1".to_string();
+        let _ = app.filtered_jaspar_catalog_rows();
+        assert_eq!(app.jaspar_filtered_cache_misses, 2);
     }
 }
