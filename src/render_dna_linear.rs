@@ -101,7 +101,7 @@ struct LinearViewport {
     span: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct LinearDetailLevel {
     show_feature_labels: bool,
     show_restriction_sites: bool,
@@ -273,6 +273,65 @@ struct RestrictionGroupIndexEntry {
     names: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct ConstructReasoningOverlayPresentationCacheKey {
+    viewport: LinearViewport,
+    area: Rect,
+    baseline_y_bits: u32,
+    sequence_length: usize,
+    display_revision: u64,
+    overlay_graph_id: Option<String>,
+    overlay_evidence_count: usize,
+}
+
+impl ConstructReasoningOverlayPresentationCacheKey {
+    fn matches(
+        &self,
+        viewport: LinearViewport,
+        area: Rect,
+        baseline_y: f32,
+        sequence_length: usize,
+        display_revision: u64,
+        overlay_graph_id: Option<&str>,
+        overlay_evidence_count: usize,
+    ) -> bool {
+        self.viewport == viewport
+            && self.area == area
+            && self.baseline_y_bits == baseline_y.to_bits()
+            && self.sequence_length == sequence_length
+            && self.display_revision == display_revision
+            && self.overlay_graph_id.as_deref() == overlay_graph_id
+            && self.overlay_evidence_count == overlay_evidence_count
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct RestrictionSitePresentationCacheKey {
+    viewport: LinearViewport,
+    area: Rect,
+    baseline_y_bits: u32,
+    detail: LinearDetailLevel,
+    restriction_generation: u64,
+    sequence_length: usize,
+    display_revision: u64,
+}
+
+#[derive(Debug, Clone)]
+struct RestrictionSiteLabelPresentation {
+    rect: Rect,
+    galley: Arc<egui::Galley>,
+}
+
+#[derive(Debug, Clone)]
+struct RestrictionSitePresentation {
+    top_x: f32,
+    bottom_x: f32,
+    y: f32,
+    group_color: Color32,
+    cut_color: Color32,
+    label: Option<RestrictionSiteLabelPresentation>,
+}
+
 impl FeaturePosition {
     fn contains(&self, pos: Pos2) -> bool {
         self.exon_rects.iter().any(|rect| rect.contains(pos))
@@ -304,7 +363,7 @@ struct ConstructReasoningOverlayPosition {
     evidence_id: String,
     rect: Rect,
     fill: Color32,
-    stroke: Stroke,
+    base_stroke: Stroke,
     label: String,
     start_0based: usize,
     end_0based_exclusive: usize,
@@ -397,6 +456,11 @@ pub struct RenderDnaLinear {
     restriction_enzyme_sites: Vec<RestrictionEnzymePosition>,
     restriction_group_index: Vec<RestrictionGroupIndexEntry>,
     restriction_group_index_generation: Option<u64>,
+    restriction_site_presentations: Vec<RestrictionSitePresentation>,
+    restriction_site_presentation_message: Option<String>,
+    restriction_site_presentation_cache_key: Option<RestrictionSitePresentationCacheKey>,
+    restriction_site_presentation_cache_hits: u64,
+    restriction_site_presentation_cache_misses: u64,
     selected_feature_number: Option<usize>,
     selected_enzyme: Option<RestrictionEnzymePosition>,
     selected_reasoning_evidence_id: Option<String>,
@@ -406,6 +470,10 @@ pub struct RenderDnaLinear {
     hovered_reasoning_evidence_id: Option<String>,
     external_labeled_feature_numbers: BTreeSet<usize>,
     cached_construct_reasoning_overlay_positions: Vec<ConstructReasoningOverlayPosition>,
+    construct_reasoning_overlay_presentation_cache_key:
+        Option<ConstructReasoningOverlayPresentationCacheKey>,
+    construct_reasoning_overlay_presentation_cache_hits: u64,
+    construct_reasoning_overlay_presentation_cache_misses: u64,
     last_hover_probe_pos: Option<Pos2>,
     last_hover_probe_viewport: Option<LinearViewport>,
     gc_cache_key: Option<(u64, usize, usize)>,
@@ -501,6 +569,11 @@ impl RenderDnaLinear {
             restriction_enzyme_sites: vec![],
             restriction_group_index: vec![],
             restriction_group_index_generation: None,
+            restriction_site_presentations: vec![],
+            restriction_site_presentation_message: None,
+            restriction_site_presentation_cache_key: None,
+            restriction_site_presentation_cache_hits: 0,
+            restriction_site_presentation_cache_misses: 0,
             selected_feature_number: None,
             selected_enzyme: None,
             selected_reasoning_evidence_id: None,
@@ -510,6 +583,9 @@ impl RenderDnaLinear {
             hovered_reasoning_evidence_id: None,
             external_labeled_feature_numbers: BTreeSet::new(),
             cached_construct_reasoning_overlay_positions: Vec::new(),
+            construct_reasoning_overlay_presentation_cache_key: None,
+            construct_reasoning_overlay_presentation_cache_hits: 0,
+            construct_reasoning_overlay_presentation_cache_misses: 0,
             last_hover_probe_pos: None,
             last_hover_probe_viewport: None,
             gc_cache_key: None,
@@ -520,6 +596,15 @@ impl RenderDnaLinear {
     }
 
     pub fn invalidate_sequence_derived_caches(&mut self) {
+        self.feature_interval_index = FeatureIntervalIndex::default();
+        self.restriction_group_index.clear();
+        self.restriction_group_index_generation = None;
+        self.restriction_enzyme_sites.clear();
+        self.restriction_site_presentations.clear();
+        self.restriction_site_presentation_message = None;
+        self.restriction_site_presentation_cache_key = None;
+        self.cached_construct_reasoning_overlay_positions.clear();
+        self.construct_reasoning_overlay_presentation_cache_key = None;
         self.gc_cache_key = None;
         self.gc_cache = GcContents::default();
     }
@@ -1024,21 +1109,6 @@ impl RenderDnaLinear {
                     + CONSTRUCT_REASONING_TRACK_MARGIN
                     + CONSTRUCT_REASONING_TRACK_GAP * lane as f32
             };
-            let selected =
-                self.selected_reasoning_evidence_id.as_deref() == Some(span.evidence_id.as_str());
-            let hovered =
-                self.hovered_reasoning_evidence_id.as_deref() == Some(span.evidence_id.as_str());
-            let stroke = if selected {
-                Stroke::new(2.0_f32, Color32::YELLOW)
-            } else if hovered {
-                Stroke::new(1.6_f32, Color32::WHITE)
-            } else {
-                Self::construct_reasoning_overlay_stroke(
-                    span.role,
-                    span.evidence_class,
-                    span.editable_status,
-                )
-            };
             positions.push(ConstructReasoningOverlayPosition {
                 evidence_id: span.evidence_id.clone(),
                 rect: Rect::from_min_max(
@@ -1050,7 +1120,11 @@ impl RenderDnaLinear {
                     span.evidence_class,
                     span.editable_status,
                 ),
-                stroke,
+                base_stroke: Self::construct_reasoning_overlay_stroke(
+                    span.role,
+                    span.evidence_class,
+                    span.editable_status,
+                ),
                 label: Self::construct_reasoning_overlay_label(&span),
                 start_0based: span.start_0based,
                 end_0based_exclusive: span.end_0based_exclusive,
@@ -1060,8 +1134,62 @@ impl RenderDnaLinear {
     }
 
     fn refresh_construct_reasoning_overlay_positions(&mut self, viewport: LinearViewport) {
+        let display = Arc::clone(&self.display);
+        let Ok(display) = display.read() else {
+            self.cached_construct_reasoning_overlay_positions.clear();
+            self.construct_reasoning_overlay_presentation_cache_key = None;
+            return;
+        };
+        let display_revision = display.revision();
+        let overlay_graph_id = display
+            .construct_reasoning_overlay()
+            .map(|overlay| overlay.graph_id.as_str());
+        let overlay_evidence_count = display
+            .construct_reasoning_overlay()
+            .map(|overlay| overlay.evidence.len())
+            .unwrap_or_default();
+        let baseline_y = self.baseline_y();
+        if self
+            .construct_reasoning_overlay_presentation_cache_key
+            .as_ref()
+            .is_some_and(|key| {
+                key.matches(
+                    viewport,
+                    self.area,
+                    baseline_y,
+                    self.sequence_length,
+                    display_revision,
+                    overlay_graph_id,
+                    overlay_evidence_count,
+                )
+            })
+        {
+            self.construct_reasoning_overlay_presentation_cache_hits = self
+                .construct_reasoning_overlay_presentation_cache_hits
+                .saturating_add(1);
+            return;
+        }
+        let overlay_graph_id = overlay_graph_id.map(str::to_owned);
+        drop(display);
+
+        crate::gentle_gui_profile_scope!(
+            "RenderDnaLinear::construct_reasoning_overlay_presentation_cache_miss"
+        );
+        self.construct_reasoning_overlay_presentation_cache_misses = self
+            .construct_reasoning_overlay_presentation_cache_misses
+            .saturating_add(1);
         self.cached_construct_reasoning_overlay_positions =
             self.compute_construct_reasoning_overlay_positions(viewport);
+        self.construct_reasoning_overlay_presentation_cache_key =
+            Some(ConstructReasoningOverlayPresentationCacheKey {
+                viewport,
+                area: self.area,
+                baseline_y_bits: baseline_y.to_bits(),
+                sequence_length: self.sequence_length,
+                display_revision,
+                overlay_graph_id,
+                overlay_evidence_count,
+            });
     }
 
     fn feature_external_label_fill(fill: Color32, alpha: u8, emphasize: bool) -> Color32 {
@@ -3112,8 +3240,19 @@ impl RenderDnaLinear {
     fn draw_construct_reasoning_overlay(&self, painter: &egui::Painter, viewport: LinearViewport) {
         let show_labels = self.bp_per_px(viewport) <= CONSTRUCT_REASONING_LABEL_MAX_BP_PER_PX;
         for overlay in &self.cached_construct_reasoning_overlay_positions {
+            let stroke = if self.selected_reasoning_evidence_id.as_deref()
+                == Some(overlay.evidence_id.as_str())
+            {
+                Stroke::new(2.0_f32, Color32::YELLOW)
+            } else if self.hovered_reasoning_evidence_id.as_deref()
+                == Some(overlay.evidence_id.as_str())
+            {
+                Stroke::new(1.6_f32, Color32::WHITE)
+            } else {
+                overlay.base_stroke
+            };
             painter.rect_filled(overlay.rect, 2.5, overlay.fill);
-            painter.rect_stroke(overlay.rect, 2.5, overlay.stroke, StrokeKind::Inside);
+            painter.rect_stroke(overlay.rect, 2.5, stroke, StrokeKind::Inside);
             if !show_labels || overlay.label.is_empty() {
                 continue;
             }
@@ -3476,54 +3615,74 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_restriction_enzyme_sites(
+    fn refresh_restriction_site_presentations(
         &mut self,
         painter: &egui::Painter,
         viewport: LinearViewport,
         detail: LinearDetailLevel,
     ) {
-        crate::gentle_gui_profile_scope!("RenderDnaLinear::draw_restriction_enzyme_sites");
-        self.restriction_enzyme_sites.clear();
+        let display = Arc::clone(&self.display);
+        let Ok(display) = display.read() else {
+            self.restriction_enzyme_sites.clear();
+            self.restriction_site_presentations.clear();
+            self.restriction_site_presentation_message = None;
+            self.restriction_site_presentation_cache_key = None;
+            return;
+        };
+        let dna = Arc::clone(&self.dna);
+        let Ok(dna) = dna.read() else {
+            self.restriction_enzyme_sites.clear();
+            self.restriction_site_presentations.clear();
+            self.restriction_site_presentation_message = None;
+            self.restriction_site_presentation_cache_key = None;
+            return;
+        };
+        let cache_key = RestrictionSitePresentationCacheKey {
+            viewport,
+            area: self.area,
+            baseline_y_bits: self.baseline_y().to_bits(),
+            detail,
+            restriction_generation: dna.restriction_enzyme_group_generation(),
+            sequence_length: self.sequence_length,
+            display_revision: display.revision(),
+        };
+        if self.restriction_site_presentation_cache_key.as_ref() == Some(&cache_key) {
+            self.restriction_site_presentation_cache_hits = self
+                .restriction_site_presentation_cache_hits
+                .saturating_add(1);
+            return;
+        }
 
-        if !self
-            .display
-            .read()
-            .map(|display| display.show_restriction_enzyme_sites())
-            .unwrap_or(false)
-        {
+        let show_restriction_enzyme_sites = display.show_restriction_enzyme_sites();
+        let display_mode = display.restriction_enzyme_display_mode();
+        let preferred_restriction_enzymes = display.preferred_restriction_enzymes().to_vec();
+        drop(display);
+
+        crate::gentle_gui_profile_scope!(
+            "RenderDnaLinear::restriction_site_presentation_cache_miss"
+        );
+        self.restriction_site_presentation_cache_misses = self
+            .restriction_site_presentation_cache_misses
+            .saturating_add(1);
+        self.restriction_enzyme_sites.clear();
+        self.restriction_site_presentations.clear();
+        self.restriction_site_presentation_message = None;
+        self.restriction_site_presentation_cache_key = Some(cache_key);
+
+        if !show_restriction_enzyme_sites {
             return;
         }
         if !detail.show_restriction_sites {
-            painter.text(
-                Pos2::new(self.area.left() + 6.0, self.area.bottom() - 6.0),
-                Align2::LEFT_BOTTOM,
-                "Restriction sites hidden at this zoom; zoom in to inspect cut sites.",
-                FontId {
-                    size: 10.0,
-                    family: FontFamily::Monospace,
-                },
-                Color32::DARK_GRAY,
+            self.restriction_site_presentation_message = Some(
+                "Restriction sites hidden at this zoom; zoom in to inspect cut sites.".to_string(),
             );
             return;
         }
 
-        let (display_mode, preferred_restriction_enzymes) = self
-            .display
-            .read()
-            .map(|display| {
-                (
-                    display.restriction_enzyme_display_mode(),
-                    display.preferred_restriction_enzymes().to_vec(),
-                )
-            })
-            .unwrap_or((RestrictionEnzymeDisplayMode::default(), vec![]));
-
         let mut visible_groups: Vec<_> = Vec::new();
         let mut total_groups_in_view = 0usize;
-        let dna = Arc::clone(&self.dna);
-        if let Ok(dna) = dna.read() {
-            self.refresh_restriction_group_index(&dna);
-        }
+        self.refresh_restriction_group_index(&dna);
+        drop(dna);
         for entry in self.restriction_group_index_range(viewport) {
             total_groups_in_view = total_groups_in_view.saturating_add(1);
             if DnaDisplay::restriction_group_matches_mode(
@@ -3537,28 +3696,20 @@ impl RenderDnaLinear {
         }
         visible_groups.sort_by(|(left, _), (right, _)| left.cmp(right));
         if visible_groups.is_empty() {
-            let empty_text = if total_groups_in_view == 0
-                || matches!(display_mode, RestrictionEnzymeDisplayMode::AllInView)
-            {
-                RestrictionEnzymeDisplayMode::AllInView
-                    .empty_state_label()
-                    .to_string()
-            } else {
-                format!(
-                    "{} {} total cut sites hidden by the current filter.",
-                    display_mode.empty_state_label(),
-                    total_groups_in_view
-                )
-            };
-            painter.text(
-                Pos2::new(self.area.left() + 6.0, self.area.bottom() - 6.0),
-                Align2::LEFT_BOTTOM,
-                empty_text,
-                FontId {
-                    size: 10.0,
-                    family: FontFamily::Monospace,
+            self.restriction_site_presentation_message = Some(
+                if total_groups_in_view == 0
+                    || matches!(display_mode, RestrictionEnzymeDisplayMode::AllInView)
+                {
+                    RestrictionEnzymeDisplayMode::AllInView
+                        .empty_state_label()
+                        .to_string()
+                } else {
+                    format!(
+                        "{} {} total cut sites hidden by the current filter.",
+                        display_mode.empty_state_label(),
+                        total_groups_in_view
+                    )
                 },
-                Color32::DARK_GRAY,
             );
             return;
         }
@@ -3571,53 +3722,12 @@ impl RenderDnaLinear {
             let center_x = (top_x + bottom_x) * 0.5;
             let y = self.baseline_y();
             let group_color = DnaDisplay::restriction_enzyme_group_color(key.number_of_cuts());
-            let selected_here = self
-                .selected_enzyme
-                .as_ref()
-                .map(|selected| selected.key == *key)
-                .unwrap_or(false);
-            let label_color = if selected_here {
-                Color32::BLACK
-            } else {
-                group_color
-            };
-            let cut_color = if selected_here {
-                Color32::BLACK
-            } else {
-                DnaDisplay::restriction_enzyme_geometry_color(key.cut_geometry())
-            };
-            let stroke_width = if selected_here { 2.0_f32 } else { 1.0_f32 };
-
-            if (top_x - bottom_x).abs() < 0.5 {
-                painter.line_segment(
-                    [Pos2::new(top_x, y - 8.0), Pos2::new(top_x, y + 8.0)],
-                    Stroke::new(stroke_width, cut_color),
-                );
-            } else {
-                painter.line_segment(
-                    [Pos2::new(top_x, y - 8.0), Pos2::new(top_x, y)],
-                    Stroke::new(stroke_width, cut_color),
-                );
-                painter.line_segment(
-                    [Pos2::new(top_x, y), Pos2::new(bottom_x, y)],
-                    Stroke::new(stroke_width, cut_color),
-                );
-                painter.line_segment(
-                    [Pos2::new(bottom_x, y), Pos2::new(bottom_x, y + 8.0)],
-                    Stroke::new(stroke_width, cut_color),
-                );
-            }
-
-            if let Some(hovered) = &self.hover_enzyme
-                && hovered.key == *key
-            {
-                painter.rect_filled(hovered.area, 1.0, Color32::LIGHT_YELLOW);
-            }
+            let cut_color = DnaDisplay::restriction_enzyme_geometry_color(key.cut_geometry());
             let tick_rect = Rect::from_min_max(
                 Pos2::new(top_x.min(bottom_x) - 3.0, y - 9.0),
                 Pos2::new(top_x.max(bottom_x) + 3.0, y + 9.0),
             );
-            let (area, hit_areas) = if detail.show_restriction_labels {
+            let (area, hit_areas, label) = if detail.show_restriction_labels {
                 let label = names.join(",");
                 let label_width = Self::estimate_label_width(&label);
                 let label_left = center_x - label_width / 2.0;
@@ -3638,20 +3748,26 @@ impl RenderDnaLinear {
                 } else {
                     Align2::CENTER_TOP
                 };
-                let text_rect = painter.text(
-                    Pos2::new(center_x, label_y),
-                    align,
+                let galley = painter.layout_no_wrap(
                     label,
                     FontId {
                         size: 9.0,
                         family: FontFamily::Monospace,
                     },
-                    label_color,
+                    Color32::PLACEHOLDER,
                 );
+                let text_rect = align.anchor_size(Pos2::new(center_x, label_y), galley.size());
                 let label_rect = text_rect.expand(2.0);
-                (label_rect.union(tick_rect), vec![tick_rect, label_rect])
+                (
+                    label_rect.union(tick_rect),
+                    vec![tick_rect, label_rect],
+                    Some(RestrictionSiteLabelPresentation {
+                        rect: text_rect,
+                        galley,
+                    }),
+                )
             } else {
-                (tick_rect, vec![tick_rect])
+                (tick_rect, vec![tick_rect], None)
             };
             self.restriction_enzyme_sites
                 .push(RestrictionEnzymePosition::with_hit_areas(
@@ -3659,6 +3775,102 @@ impl RenderDnaLinear {
                     key.clone(),
                     hit_areas,
                 ));
+            self.restriction_site_presentations
+                .push(RestrictionSitePresentation {
+                    top_x,
+                    bottom_x,
+                    y,
+                    group_color,
+                    cut_color,
+                    label,
+                });
+        }
+    }
+
+    fn draw_restriction_enzyme_sites(
+        &mut self,
+        painter: &egui::Painter,
+        viewport: LinearViewport,
+        detail: LinearDetailLevel,
+    ) {
+        self.refresh_restriction_site_presentations(painter, viewport, detail);
+
+        if let Some(message) = &self.restriction_site_presentation_message {
+            painter.text(
+                Pos2::new(self.area.left() + 6.0, self.area.bottom() - 6.0),
+                Align2::LEFT_BOTTOM,
+                message,
+                FontId {
+                    size: 10.0,
+                    family: FontFamily::Monospace,
+                },
+                Color32::DARK_GRAY,
+            );
+            return;
+        }
+
+        for (site, presentation) in self
+            .restriction_enzyme_sites
+            .iter()
+            .zip(&self.restriction_site_presentations)
+        {
+            let selected_here = self
+                .selected_enzyme
+                .as_ref()
+                .is_some_and(|selected| selected.key == site.key);
+            let cut_color = if selected_here {
+                Color32::BLACK
+            } else {
+                presentation.cut_color
+            };
+            let stroke_width = if selected_here { 2.0_f32 } else { 1.0_f32 };
+            if (presentation.top_x - presentation.bottom_x).abs() < 0.5 {
+                painter.line_segment(
+                    [
+                        Pos2::new(presentation.top_x, presentation.y - 8.0),
+                        Pos2::new(presentation.top_x, presentation.y + 8.0),
+                    ],
+                    Stroke::new(stroke_width, cut_color),
+                );
+            } else {
+                painter.line_segment(
+                    [
+                        Pos2::new(presentation.top_x, presentation.y - 8.0),
+                        Pos2::new(presentation.top_x, presentation.y),
+                    ],
+                    Stroke::new(stroke_width, cut_color),
+                );
+                painter.line_segment(
+                    [
+                        Pos2::new(presentation.top_x, presentation.y),
+                        Pos2::new(presentation.bottom_x, presentation.y),
+                    ],
+                    Stroke::new(stroke_width, cut_color),
+                );
+                painter.line_segment(
+                    [
+                        Pos2::new(presentation.bottom_x, presentation.y),
+                        Pos2::new(presentation.bottom_x, presentation.y + 8.0),
+                    ],
+                    Stroke::new(stroke_width, cut_color),
+                );
+            }
+
+            if self
+                .hover_enzyme
+                .as_ref()
+                .is_some_and(|hovered| hovered.key == site.key)
+            {
+                painter.rect_filled(site.area, 1.0, Color32::LIGHT_YELLOW);
+            }
+            if let Some(label) = &presentation.label {
+                let label_color = if selected_here {
+                    Color32::BLACK
+                } else {
+                    presentation.group_color
+                };
+                painter.galley(label.rect.min, Arc::clone(&label.galley), label_color);
+            }
         }
     }
 
@@ -3763,6 +3975,58 @@ mod tests {
         let mut renderer = RenderDnaLinear::new(dna, display);
         renderer.area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1200.0, 600.0));
         renderer
+    }
+
+    fn test_construct_reasoning_overlay(
+        graph_id: &str,
+        evidence_id: &str,
+        start_0based: usize,
+    ) -> ConstructReasoningOverlay {
+        ConstructReasoningOverlay {
+            graph_id: graph_id.to_string(),
+            seq_id: "seq1".to_string(),
+            objective_title: "Inspect construct".to_string(),
+            objective_goal: "Cache overlay presentation".to_string(),
+            evidence: vec![ConstructReasoningOverlaySpan {
+                annotation_id: format!("annotation_{evidence_id}"),
+                evidence_id: evidence_id.to_string(),
+                summary_id: format!("summary_{evidence_id}"),
+                summary_title: "Promoter".to_string(),
+                summary_subtitle: "Promoter candidate".to_string(),
+                summary_candidate_count: 1,
+                summary_review_status: "draft".to_string(),
+                start_0based,
+                end_0based_exclusive: start_0based + 80,
+                strand: Some("+".to_string()),
+                role: ConstructRole::Promoter,
+                evidence_class: EvidenceClass::ReliableAnnotation,
+                label: "Promoter".to_string(),
+                rationale: String::new(),
+                score: None,
+                confidence: None,
+                context_tags: vec![],
+                provenance_kind: String::new(),
+                provenance_refs: vec![],
+                source_kind: "generated_annotation".to_string(),
+                supporting_fact_labels: vec![],
+                supporting_decision_titles: vec![],
+                transcript_context_status: None,
+                effect_tags: vec![],
+                editable_status: crate::engine::EditableStatus::Draft,
+                warnings: vec![],
+                notes: vec![],
+            }],
+        }
+    }
+
+    fn render_test_pass(ctx: &egui::Context, renderer: &mut RenderDnaLinear) {
+        ctx.begin_pass(egui::RawInput::default());
+        crate::egui_compat::show_central_panel_for_test_context(
+            ctx,
+            egui::CentralPanel::default(),
+            |ui| renderer.render(ui, renderer.area),
+        );
+        let _ = ctx.end_pass();
     }
 
     fn refresh_test_feature_index(renderer: &mut RenderDnaLinear) {
@@ -3904,6 +4168,80 @@ mod tests {
             initial_generation
         );
         assert!(renderer.restriction_group_index.is_empty());
+    }
+
+    #[test]
+    fn restriction_site_presentation_cache_hits_and_invalidates() {
+        let mut renderer = restriction_ready_renderer("AAAAAGAATTCTTTTTTTTTTTTTGAATTC");
+        let ctx = egui::Context::default();
+
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 1);
+        assert_eq!(renderer.restriction_site_presentation_cache_hits, 0);
+        assert!(!renderer.restriction_enzyme_sites.is_empty());
+        let initial_sites = renderer.restriction_enzyme_sites.clone();
+        let initial_label_galley = renderer
+            .restriction_site_presentations
+            .iter()
+            .find_map(|presentation| presentation.label.as_ref())
+            .map(|label| Arc::clone(&label.galley))
+            .expect("restriction label galley");
+
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 1);
+        assert_eq!(renderer.restriction_site_presentation_cache_hits, 1);
+        assert_eq!(renderer.restriction_enzyme_sites, initial_sites);
+        let cached_label_galley = renderer
+            .restriction_site_presentations
+            .iter()
+            .find_map(|presentation| presentation.label.as_ref())
+            .map(|label| Arc::clone(&label.galley))
+            .expect("cached restriction label galley");
+        assert!(Arc::ptr_eq(&initial_label_galley, &cached_label_galley));
+
+        renderer.select_restriction_enzyme(initial_sites.first().cloned());
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(
+            renderer.restriction_site_presentation_cache_misses, 1,
+            "selection styling must not rebuild restriction geometry"
+        );
+        assert_eq!(renderer.restriction_site_presentation_cache_hits, 2);
+
+        renderer.area = Rect::from_min_max(Pos2::new(5.0, 5.0), Pos2::new(1205.0, 605.0));
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 2);
+
+        renderer
+            .display
+            .write()
+            .expect("display")
+            .set_linear_viewport(1, 20);
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 3);
+
+        renderer
+            .display
+            .write()
+            .expect("display")
+            .set_restriction_enzyme_display_mode(RestrictionEnzymeDisplayMode::AllInView);
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 4);
+
+        {
+            let mut dna = renderer.dna.write().expect("write test dna");
+            let before = dna.restriction_enzyme_group_generation();
+            dna.restriction_enzymes_mut().clear();
+            dna.update_computed_features();
+            assert_ne!(dna.restriction_enzyme_group_generation(), before);
+        }
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 5);
+        assert!(renderer.restriction_enzyme_sites.is_empty());
+
+        renderer.invalidate_sequence_derived_caches();
+        assert!(renderer.restriction_site_presentation_cache_key.is_none());
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.restriction_site_presentation_cache_misses, 6);
     }
 
     #[test]
@@ -4264,6 +4602,114 @@ mod tests {
             .get_clicked_construct_reasoning_overlay(overlay.rect.center())
             .expect("cached hit");
         assert_eq!(hit.evidence_id, "promoter");
+    }
+
+    #[test]
+    fn construct_reasoning_overlay_presentation_cache_hits_and_invalidates() {
+        let mut renderer = test_renderer(1000);
+        renderer
+            .display
+            .write()
+            .expect("display")
+            .set_construct_reasoning_overlay(Some(test_construct_reasoning_overlay(
+                "graph1", "promoter", 100,
+            )));
+        let viewport = LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        };
+        renderer.layout_features(viewport);
+
+        renderer.refresh_construct_reasoning_overlay_positions(viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses,
+            1
+        );
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_hits,
+            0
+        );
+        let initial_positions = renderer
+            .cached_construct_reasoning_overlay_positions
+            .clone();
+
+        renderer.refresh_construct_reasoning_overlay_positions(viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses,
+            1
+        );
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_hits,
+            1
+        );
+        assert_eq!(
+            renderer.cached_construct_reasoning_overlay_positions.len(),
+            initial_positions.len()
+        );
+
+        renderer.select_reasoning_evidence(Some("promoter".to_string()));
+        renderer.refresh_construct_reasoning_overlay_positions(viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses, 1,
+            "selection styling must not rebuild overlay geometry"
+        );
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_hits,
+            2
+        );
+
+        let moved_viewport = LinearViewport {
+            start: 50,
+            end: 950,
+            span: 900,
+        };
+        renderer.refresh_construct_reasoning_overlay_positions(moved_viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses,
+            2
+        );
+
+        renderer.area = Rect::from_min_max(Pos2::new(10.0, 5.0), Pos2::new(1210.0, 605.0));
+        renderer.refresh_construct_reasoning_overlay_positions(moved_viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses,
+            3
+        );
+
+        renderer
+            .display
+            .write()
+            .expect("display")
+            .set_construct_reasoning_overlay(Some(test_construct_reasoning_overlay(
+                "graph2",
+                "promoter2",
+                200,
+            )));
+        renderer.refresh_construct_reasoning_overlay_positions(moved_viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses,
+            4
+        );
+        assert_eq!(
+            renderer
+                .construct_reasoning_overlay_presentation_cache_key
+                .as_ref()
+                .and_then(|key| key.overlay_graph_id.as_deref()),
+            Some("graph2")
+        );
+
+        renderer.invalidate_sequence_derived_caches();
+        assert!(
+            renderer
+                .construct_reasoning_overlay_presentation_cache_key
+                .is_none()
+        );
+        renderer.refresh_construct_reasoning_overlay_positions(moved_viewport);
+        assert_eq!(
+            renderer.construct_reasoning_overlay_presentation_cache_misses,
+            5
+        );
     }
 
     #[test]
