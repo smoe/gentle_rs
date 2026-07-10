@@ -5825,6 +5825,32 @@ pub struct GentleEngine {
     history_limit: usize,
 }
 
+/// Engine-owned state for one optimistic detached execution.
+///
+/// The execution engine deliberately starts without inherited undo/redo
+/// checkpoints. Those checkpoints can contain complete project snapshots and
+/// are merged from the live engine only after the detached result passes its
+/// optimistic commit checks.
+#[derive(Debug)]
+pub(crate) struct DetachedEngineExecution {
+    engine: GentleEngine,
+    base_structural_revision: u64,
+    base_mutation_revision: u64,
+    base_journal_len: usize,
+    base_metadata: HashMap<String, serde_json::Value>,
+}
+
+impl DetachedEngineExecution {
+    pub(crate) fn engine_mut(&mut self) -> &mut GentleEngine {
+        &mut self.engine
+    }
+
+    #[cfg(test)]
+    pub(crate) fn engine(&self) -> &GentleEngine {
+        &self.engine
+    }
+}
+
 impl GentleEngine {
     fn default_history_limit() -> usize {
         256
@@ -5926,6 +5952,98 @@ impl GentleEngine {
     /// Monotonic identity for biological/project structure, excluding display-only edits.
     pub fn structural_revision(&self) -> u64 {
         self.structural_revision
+    }
+
+    /// Fork the execution state needed by a detached background operation.
+    ///
+    /// Session-local history is intentionally excluded: detached operations
+    /// build their own history delta, which is appended during commit.
+    pub(crate) fn fork_detached_execution(&self) -> DetachedEngineExecution {
+        DetachedEngineExecution {
+            engine: Self {
+                state: self.state.clone(),
+                journal: self.journal.clone(),
+                op_counter: self.op_counter,
+                execution_revision: self.execution_revision,
+                mutation_revision: self.mutation_revision,
+                structural_revision: self.structural_revision,
+                undo_stack: Vec::new(),
+                redo_stack: Vec::new(),
+                history_limit: self.history_limit,
+            },
+            base_structural_revision: self.structural_revision,
+            base_mutation_revision: self.mutation_revision,
+            base_journal_len: self.journal.len(),
+            base_metadata: self.state.metadata.clone(),
+        }
+    }
+
+    /// Commit a detached execution after validating its optimistic baseline.
+    ///
+    /// The returned prior engine is dropped by the caller after releasing the
+    /// shared write lock. Existing undo checkpoints remain live and only the
+    /// checkpoints produced inside the detached execution are appended.
+    pub(crate) fn commit_detached_execution(
+        &mut self,
+        detached: &mut DetachedEngineExecution,
+    ) -> Result<GentleEngine, EngineError> {
+        if self.structural_revision != detached.base_structural_revision
+            || self.journal.len() != detached.base_journal_len
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Background result became stale because project data or operation history changed while it was running; rerun the operation"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+
+        let structural_changed =
+            detached.engine.structural_revision != detached.base_structural_revision;
+        let persisted_state_changed =
+            detached.engine.mutation_revision != detached.base_mutation_revision;
+        detached.engine.rebase_detached_commit_revisions(
+            self,
+            &detached.base_metadata,
+            detached.base_journal_len,
+            structural_changed,
+            persisted_state_changed,
+        )?;
+
+        // All fallible checks are complete. Moving the engine only now leaves
+        // rejected detached state owned by the caller, which drops it after
+        // releasing the shared write lock.
+        let mut engine = std::mem::take(&mut detached.engine);
+        let detached_history_changed =
+            !engine.undo_stack.is_empty() || !engine.redo_stack.is_empty();
+        let detached_undo = std::mem::take(&mut engine.undo_stack);
+        let detached_redo = std::mem::take(&mut engine.redo_stack);
+        let inherited_undo = std::mem::take(&mut self.undo_stack);
+        let inherited_redo = std::mem::take(&mut self.redo_stack);
+
+        let mut combined_undo = inherited_undo;
+        combined_undo.extend(detached_undo);
+        let history_limit = engine.history_limit_or_default();
+        if combined_undo.len() > history_limit {
+            let keep_from = combined_undo.len() - history_limit;
+            engine.undo_stack = combined_undo.split_off(keep_from);
+            // Keep evicted full-state checkpoints in the prior engine so they
+            // are dropped by the caller after releasing the write lock.
+            self.undo_stack = combined_undo;
+        } else {
+            engine.undo_stack = combined_undo;
+        }
+        if detached_history_changed {
+            engine.redo_stack = detached_redo;
+            // Keep discarded inherited redo checkpoints in the prior engine so
+            // their potentially large snapshots are dropped outside the lock.
+            self.redo_stack = inherited_redo;
+        } else {
+            debug_assert!(detached_redo.is_empty());
+            engine.redo_stack = inherited_redo;
+        }
+
+        Ok(std::mem::replace(self, engine))
     }
 
     fn bump_execution_revision(&mut self) {

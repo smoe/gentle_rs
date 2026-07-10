@@ -1,7 +1,8 @@
 //! Optimistic detached execution for long-running GUI engine operations.
 //!
-//! Workers clone a versioned engine snapshot under a read lock, execute without
-//! holding the shared lock, and commit with a short guarded swap. A concurrent
+//! Workers fork a versioned engine execution snapshot under a read lock,
+//! execute without holding the shared lock, and commit with a short guarded
+//! swap. Inherited undo/redo snapshots stay in the live engine. A concurrent
 //! edit makes the result stale and leaves the live project untouched.
 
 use crate::engine::{EngineError, ErrorCode, GentleEngine};
@@ -11,49 +12,24 @@ pub(crate) fn execute_on_engine_snapshot<T>(
     shared: &Arc<RwLock<GentleEngine>>,
     work: impl FnOnce(&mut GentleEngine) -> Result<T, EngineError>,
 ) -> Result<T, EngineError> {
-    let (base_structural_revision, base_mutation_revision, base_journal_len, mut snapshot) = {
+    let mut detached = {
         let guard = shared.read().map_err(|_| EngineError {
             code: ErrorCode::Internal,
             message: "Engine lock poisoned while snapshotting background work".to_string(),
             cause_chain: vec![],
         })?;
-        (
-            guard.structural_revision(),
-            guard.mutation_revision(),
-            guard.operation_log().len(),
-            guard.clone(),
-        )
+        guard.fork_detached_execution()
     };
-    let base_metadata = snapshot.state().metadata.clone();
 
-    let result = work(&mut snapshot)?;
-    let structural_changed = snapshot.structural_revision() != base_structural_revision;
-    let persisted_state_changed = snapshot.mutation_revision() != base_mutation_revision;
+    let result = work(detached.engine_mut())?;
     let old_snapshot = {
         let mut guard = shared.write().map_err(|_| EngineError {
             code: ErrorCode::Internal,
             message: "Engine lock poisoned while committing background work".to_string(),
             cause_chain: vec![],
         })?;
-        if guard.structural_revision() != base_structural_revision
-            || guard.operation_log().len() != base_journal_len
-        {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: "Background result became stale because project data or operation history changed while it was running; rerun the operation"
-                    .to_string(),
-                cause_chain: vec![],
-            });
-        }
-        snapshot.rebase_detached_commit_revisions(
-            &guard,
-            &base_metadata,
-            base_journal_len,
-            structural_changed,
-            persisted_state_changed,
-        )?;
-        std::mem::replace(&mut *guard, snapshot)
-    };
+        guard.commit_detached_execution(&mut detached)
+    }?;
     drop(old_snapshot);
     Ok(result)
 }
@@ -63,6 +39,61 @@ mod tests {
     use super::*;
     use crate::dna_sequence::DNAsequence;
     use crate::engine::{Engine, Operation, Workflow};
+
+    #[test]
+    fn detached_fork_excludes_inherited_history_but_keeps_execution_baseline() {
+        let mut live = GentleEngine::new();
+        live.apply(Operation::CreateSequenceFromText {
+            sequence_text: "ATGC".to_string(),
+            output_id: Some("existing".to_string()),
+            name: None,
+            circular: false,
+        })
+        .expect("create existing sequence");
+        let undone_result = live
+            .apply(Operation::CreateSequenceFromText {
+                sequence_text: "GCTA".to_string(),
+                output_id: Some("undone".to_string()),
+                name: None,
+                circular: false,
+            })
+            .expect("create sequence to undo");
+        live.undo_last_operation().expect("create live redo entry");
+
+        assert_eq!(live.undo_available(), 1);
+        assert_eq!(live.redo_available(), 1);
+        let baseline_execution_revision = live.execution_revision();
+        let baseline_mutation_revision = live.mutation_revision();
+        let baseline_structural_revision = live.structural_revision();
+        let baseline_journal_len = live.operation_log().len();
+        let baseline_history_limit = live.history_summary().history_limit;
+
+        let mut detached = live.fork_detached_execution();
+        let snapshot = detached.engine();
+        assert!(snapshot.state().sequences.contains_key("existing"));
+        assert!(!snapshot.state().sequences.contains_key("undone"));
+        assert_eq!(snapshot.operation_log().len(), baseline_journal_len);
+        assert_eq!(snapshot.execution_revision(), baseline_execution_revision);
+        assert_eq!(snapshot.mutation_revision(), baseline_mutation_revision);
+        assert_eq!(snapshot.structural_revision(), baseline_structural_revision);
+        assert_eq!(
+            snapshot.history_summary().history_limit,
+            baseline_history_limit
+        );
+        assert_eq!(snapshot.undo_available(), 0);
+        assert_eq!(snapshot.redo_available(), 0);
+
+        let detached_result = detached
+            .engine_mut()
+            .apply(Operation::CreateSequenceFromText {
+                sequence_text: "TTAA".to_string(),
+                output_id: Some("detached".to_string()),
+                name: None,
+                circular: false,
+            })
+            .expect("execute from inherited operation counter");
+        assert_eq!(detached_result.op_id, undone_result.op_id);
+    }
 
     #[test]
     fn detached_commit_publishes_snapshot_with_revisions() {
@@ -289,6 +320,64 @@ mod tests {
     }
 
     #[test]
+    fn detached_commit_appends_new_checkpoints_after_live_history() {
+        let shared = Arc::new(RwLock::new(GentleEngine::new()));
+        shared
+            .write()
+            .expect("engine")
+            .apply(Operation::CreateSequenceFromText {
+                sequence_text: "ATGC".to_string(),
+                output_id: Some("existing".to_string()),
+                name: None,
+                circular: false,
+            })
+            .expect("create existing sequence");
+
+        execute_on_engine_snapshot(&shared, |snapshot| {
+            snapshot.apply_workflow(Workflow {
+                run_id: "detached-history".to_string(),
+                ops: vec![
+                    Operation::CreateSequenceFromText {
+                        sequence_text: "GCTA".to_string(),
+                        output_id: Some("detached_first".to_string()),
+                        name: None,
+                        circular: false,
+                    },
+                    Operation::CreateSequenceFromText {
+                        sequence_text: "TTAA".to_string(),
+                        output_id: Some("detached_second".to_string()),
+                        name: None,
+                        circular: false,
+                    },
+                ],
+            })?;
+            Ok(())
+        })
+        .expect("commit detached workflow");
+
+        let mut guard = shared.write().expect("engine");
+        assert_eq!(guard.undo_available(), 3);
+        assert_eq!(guard.redo_available(), 0);
+        assert_eq!(guard.operation_log().len(), 3);
+
+        guard.undo_last_operation().expect("undo detached second");
+        assert!(!guard.state().sequences.contains_key("detached_second"));
+        assert!(guard.state().sequences.contains_key("detached_first"));
+        assert!(guard.state().sequences.contains_key("existing"));
+
+        guard.undo_last_operation().expect("undo detached first");
+        assert!(!guard.state().sequences.contains_key("detached_first"));
+        assert!(guard.state().sequences.contains_key("existing"));
+
+        guard
+            .undo_last_operation()
+            .expect("undo pre-existing operation");
+        assert!(!guard.state().sequences.contains_key("existing"));
+        assert_eq!(guard.undo_available(), 0);
+        assert_eq!(guard.redo_available(), 3);
+    }
+
+    #[test]
     fn detached_read_only_work_does_not_rewrite_an_older_undo_checkpoint() {
         let shared = Arc::new(RwLock::new(GentleEngine::new()));
         shared
@@ -322,5 +411,44 @@ mod tests {
         let mut guard = shared.write().expect("engine");
         guard.undo_last_operation().expect("undo sequence creation");
         assert_eq!(guard.state().display.linear_view_start_bp, 0);
+    }
+
+    #[test]
+    fn detached_read_only_operation_preserves_undo_and_redo_availability() {
+        let shared = Arc::new(RwLock::new(GentleEngine::new()));
+        {
+            let mut guard = shared.write().expect("engine");
+            guard
+                .apply(Operation::CreateSequenceFromText {
+                    sequence_text: "ATGC".to_string(),
+                    output_id: Some("redoable".to_string()),
+                    name: None,
+                    circular: false,
+                })
+                .expect("create sequence");
+            guard.undo_last_operation().expect("prepare redo history");
+            assert_eq!(guard.undo_available(), 0);
+            assert_eq!(guard.redo_available(), 1);
+        }
+
+        execute_on_engine_snapshot(&shared, |snapshot| {
+            snapshot.apply(Operation::ListJasparCatalog {
+                filter: None,
+                limit: Some(1),
+                include_remote_metadata: false,
+                refresh_remote_metadata: false,
+                path: None,
+            })?;
+            Ok(())
+        })
+        .expect("read-only detached operation");
+
+        let mut guard = shared.write().expect("engine");
+        assert_eq!(guard.undo_available(), 0);
+        assert_eq!(guard.redo_available(), 1);
+        guard
+            .redo_last_operation()
+            .expect("redo pre-existing operation");
+        assert!(guard.state().sequences.contains_key("redoable"));
     }
 }
