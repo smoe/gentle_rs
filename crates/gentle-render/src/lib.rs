@@ -10,6 +10,7 @@ pub mod protein_gel;
 pub mod protocol_cartoon;
 
 pub use feature_expert::{
-    SplicingExonTransitionMatrix, compute_splicing_exon_transition_matrix,
+    SplicingExonTransition, SplicingExonTransitionMatrix,
+    compute_splicing_exon_transition_matrix, compute_supported_splicing_exon_transitions,
     render_feature_expert_svg,
 };

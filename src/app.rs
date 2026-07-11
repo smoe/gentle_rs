@@ -1011,6 +1011,8 @@ pub struct GENtleApp {
     genome_track_subscription_filter: String,
     genome_track_autosync_status: String,
     tracked_autosync_last_key: Option<GenomeTrackAutosyncKey>,
+    tracked_autosync_last_probe: Option<GenomeTrackAutosyncRevisionProbe>,
+    tracked_autosync_full_scan_count: u64,
     genome_blast_import_track_name: String,
     genome_blast_import_clear_existing: bool,
     show_command_palette_dialog: bool,
@@ -1755,9 +1757,18 @@ struct GenomeTrackImportTask {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct GenomeTrackAutosyncKey {
-    structural_revision: u64,
+    engine_identity: usize,
     anchor_signature: String,
     subscription_signature: String,
+    subscription_count: usize,
+    requires_bigwig_converter: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct GenomeTrackAutosyncRevisionProbe {
+    engine_identity: usize,
+    structural_revision: u64,
+    mutation_revision: u64,
     subscription_count: usize,
 }
 
@@ -2817,6 +2828,8 @@ impl Default for GENtleApp {
             genome_track_subscription_filter: String::new(),
             genome_track_autosync_status: String::new(),
             tracked_autosync_last_key: None,
+            tracked_autosync_last_probe: None,
+            tracked_autosync_full_scan_count: 0,
             show_command_palette_dialog: false,
             command_palette_query: String::new(),
             command_palette_selected: 0,
@@ -6902,6 +6915,7 @@ Error: `{err}`"
         self.genome_track_import_progress = None;
         self.genome_track_autosync_status.clear();
         self.tracked_autosync_last_key = None;
+        self.tracked_autosync_last_probe = None;
         self.sequence_ingress_task = None;
         self.jaspar_background_task = None;
         self.tutorial_project_task = None;
@@ -9474,6 +9488,7 @@ Error: `{err}`"
             .list_genome_track_subscriptions();
         self.genome_bed_track_subscriptions = subscriptions;
         self.tracked_autosync_last_key = None;
+        self.tracked_autosync_last_probe = None;
     }
 
     fn parse_optional_score_field(raw: &str, label: &str) -> Result<Option<f64>> {
@@ -9577,6 +9592,8 @@ Error: `{err}`"
             return;
         }
         let op = Self::genome_track_import_operation(&seq_id, &subscription);
+        let bigwig_converter = (subscription.source == GenomeTrackSource::BigWig)
+            .then(|| self.resolved_bigwig_to_bedgraph_executable());
         let source_label = subscription.source.label().to_string();
         let path_label = subscription.path.clone();
         let job_id = self.alloc_background_job_id();
@@ -9614,7 +9631,10 @@ Error: `{err}`"
         std::thread::spawn(move || {
             let tx_progress = tx.clone();
             let cancel_flag = cancel_requested.clone();
-            let outcome =
+            let outcome = (|| {
+                if let Some(executable) = bigwig_converter.as_deref() {
+                    Self::validate_bigwig_converter_in_background(executable)?;
+                }
                 crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
                     snapshot.apply_with_progress(op, move |progress| match progress {
                         OperationProgress::GenomeTrackImport(p) => {
@@ -9627,7 +9647,8 @@ Error: `{err}`"
                         _ => true,
                     })
                 })
-                .map(GenomeTrackTaskResult::Operation);
+                .map(GenomeTrackTaskResult::Operation)
+            })();
             let _ = tx.send(GenomeTrackImportTaskMessage::Done {
                 job_id,
                 result: outcome,
@@ -9639,6 +9660,7 @@ Error: `{err}`"
         &mut self,
         kind: GenomeTrackTaskKind,
         detail: String,
+        bigwig_converter: Option<String>,
         work: F,
     ) where
         F: FnOnce(&mut GentleEngine) -> Result<GenomeTrackSyncReport, EngineError> + Send + 'static,
@@ -9682,7 +9704,10 @@ Error: `{err}`"
         let engine = self.engine.clone();
         std::thread::spawn(move || {
             let worker_cancel = cancel_requested;
-            let result =
+            let result = (|| {
+                if let Some(executable) = bigwig_converter.as_deref() {
+                    Self::validate_bigwig_converter_in_background(executable)?;
+                }
                 crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
                     if worker_cancel.load(Ordering::Relaxed) {
                         return Err(EngineError::invalid_input(
@@ -9696,40 +9721,25 @@ Error: `{err}`"
                         ));
                     }
                     Ok(GenomeTrackTaskResult::Sync(report))
-                });
+                })
+            })();
             let _ = tx.send(GenomeTrackImportTaskMessage::Done { job_id, result });
         });
     }
 
-    fn validate_bigwig_converter_available(&self) -> Result<String> {
-        let executable = self.resolved_bigwig_to_bedgraph_executable();
-        match Command::new(&executable).arg("-version").output() {
-            Ok(output) => {
-                let detail = Self::first_non_empty_output_line(&output.stdout, &output.stderr);
-                Ok(format!("{executable}: {detail}"))
-            }
-            Err(e) if e.kind() == ErrorKind::NotFound => Err(anyhow!(
-                "bigWigToBedGraph executable '{}' not found",
-                executable
-            )),
-            Err(e) => Err(anyhow!("Could not execute '{}': {}", executable, e)),
-        }
-    }
-
-    fn ensure_bigwig_converter_ready(&mut self, subscription: &GenomeTrackSubscription) -> bool {
-        if subscription.source != GenomeTrackSource::BigWig {
-            return true;
-        }
-        match self.validate_bigwig_converter_available() {
-            Ok(detail) => {
-                self.genome_track_status = format!("BigWig converter check: {detail}");
-                true
-            }
-            Err(e) => {
-                self.genome_track_status = format!("BigWig import preflight failed: {e}");
-                false
-            }
-        }
+    fn validate_bigwig_converter_in_background(executable: &str) -> Result<(), EngineError> {
+        Command::new(executable)
+            .arg("-version")
+            .output()
+            .map(|_| ())
+            .map_err(|error| {
+                let detail = if error.kind() == ErrorKind::NotFound {
+                    format!("bigWigToBedGraph executable '{executable}' not found")
+                } else {
+                    format!("Could not execute '{executable}': {error}")
+                };
+                EngineError::invalid_input(format!("BigWig import preflight failed: {detail}"))
+            })
     }
 
     fn format_track_sync_status(prefix: &str, report: &GenomeTrackSyncReport) -> String {
@@ -9774,9 +9784,6 @@ Error: `{err}`"
                 return;
             }
         };
-        if !self.ensure_bigwig_converter_ready(&subscription) {
-            return;
-        }
         self.start_genome_track_import_for_selected_sequence(seq_id, subscription);
     }
 
@@ -9792,9 +9799,6 @@ Error: `{err}`"
                 return;
             }
         };
-        if !self.ensure_bigwig_converter_ready(&subscription) {
-            return;
-        }
         let detail = format!(
             "{} '{}' to all anchored sequences ({})",
             subscription.source.label(),
@@ -9805,9 +9809,12 @@ Error: `{err}`"
                 "one-time"
             }
         );
+        let bigwig_converter = (subscription.source == GenomeTrackSource::BigWig)
+            .then(|| self.resolved_bigwig_to_bedgraph_executable());
         self.start_genome_track_sync_task(
             GenomeTrackTaskKind::AllAnchoredImport,
             detail,
+            bigwig_converter,
             move |snapshot| {
                 snapshot.import_genome_track_to_all_anchored(subscription, track_subscription)
             },
@@ -9822,31 +9829,69 @@ Error: `{err}`"
         let Some(subscription) = self.genome_bed_track_subscriptions.get(index).cloned() else {
             return;
         };
-        if !self.ensure_bigwig_converter_ready(&subscription) {
-            return;
-        }
-
         let detail = format!(
             "{} '{}' to all anchored sequences",
             subscription.source.label(),
             subscription.path
         );
+        let bigwig_converter = (subscription.source == GenomeTrackSource::BigWig)
+            .then(|| self.resolved_bigwig_to_bedgraph_executable());
         self.start_genome_track_sync_task(
             GenomeTrackTaskKind::ReapplyTracked,
             detail,
+            bigwig_converter,
             move |snapshot| snapshot.apply_tracked_genome_track_subscription(index),
         );
     }
 
-    fn current_genome_track_autosync_key(&self) -> GenomeTrackAutosyncKey {
-        let engine = self.engine.read().unwrap();
+    fn current_genome_track_autosync_revision_probe(
+        &self,
+    ) -> Option<GenomeTrackAutosyncRevisionProbe> {
+        let engine_identity = Arc::as_ptr(&self.engine) as usize;
+        let engine = self.engine.try_read().ok()?;
+        Some(GenomeTrackAutosyncRevisionProbe {
+            engine_identity,
+            structural_revision: engine.structural_revision(),
+            mutation_revision: engine.mutation_revision(),
+            subscription_count: engine.genome_track_subscription_count(),
+        })
+    }
+
+    fn inspect_current_genome_track_autosync_state(
+        &mut self,
+    ) -> Option<(GenomeTrackAutosyncRevisionProbe, GenomeTrackAutosyncKey)> {
+        let engine_identity = Arc::as_ptr(&self.engine) as usize;
+        let engine = self.engine.try_read().ok()?;
+        let probe = GenomeTrackAutosyncRevisionProbe {
+            engine_identity,
+            structural_revision: engine.structural_revision(),
+            mutation_revision: engine.mutation_revision(),
+            subscription_count: engine.genome_track_subscription_count(),
+        };
         let anchors = engine.list_sequence_genome_anchor_summaries();
         let subscriptions = engine.list_genome_track_subscriptions();
-        GenomeTrackAutosyncKey {
-            structural_revision: engine.structural_revision(),
+        let key = GenomeTrackAutosyncKey {
+            engine_identity,
             anchor_signature: serde_json::to_string(&anchors).unwrap_or_default(),
             subscription_signature: serde_json::to_string(&subscriptions).unwrap_or_default(),
             subscription_count: subscriptions.len(),
+            requires_bigwig_converter: subscriptions
+                .iter()
+                .any(|subscription| subscription.source == GenomeTrackSource::BigWig),
+        };
+        drop(engine);
+        self.tracked_autosync_full_scan_count =
+            self.tracked_autosync_full_scan_count.saturating_add(1);
+        Some((probe, key))
+    }
+
+    fn record_current_genome_track_autosync_state(&mut self) {
+        if let Some((probe, key)) = self.inspect_current_genome_track_autosync_state() {
+            self.tracked_autosync_last_probe = Some(probe);
+            self.tracked_autosync_last_key = Some(key);
+        } else {
+            self.tracked_autosync_last_probe = None;
+            self.tracked_autosync_last_key = None;
         }
     }
 
@@ -9854,7 +9899,16 @@ Error: `{err}`"
         if self.genome_track_import_task.is_some() {
             return;
         }
-        let key = self.current_genome_track_autosync_key();
+        let Some(probe) = self.current_genome_track_autosync_revision_probe() else {
+            return;
+        };
+        if self.tracked_autosync_last_probe == Some(probe) {
+            return;
+        }
+        let Some((probe, key)) = self.inspect_current_genome_track_autosync_state() else {
+            return;
+        };
+        self.tracked_autosync_last_probe = Some(probe);
         if key.subscription_count == 0 {
             self.tracked_autosync_last_key = Some(key);
             return;
@@ -9863,9 +9917,13 @@ Error: `{err}`"
             return;
         }
         self.tracked_autosync_last_key = Some(key.clone());
+        let bigwig_converter = key
+            .requires_bigwig_converter
+            .then(|| self.resolved_bigwig_to_bedgraph_executable());
         self.start_genome_track_sync_task(
             GenomeTrackTaskKind::Autosync(key),
             "new or structurally changed genome anchors".to_string(),
+            bigwig_converter,
             |snapshot| snapshot.sync_tracked_genome_track_subscriptions(true),
         );
     }
@@ -12097,7 +12155,7 @@ Error: `{err}`"
                         ctx.request_repaint();
                     }
                     self.load_bed_track_subscriptions_from_state();
-                    self.tracked_autosync_last_key = Some(self.current_genome_track_autosync_key());
+                    self.record_current_genome_track_autosync_state();
                     if matches!(task_kind, GenomeTrackTaskKind::Autosync(_)) {
                         self.genome_track_autosync_status = status;
                     } else {
@@ -12129,9 +12187,9 @@ Error: `{err}`"
                         self.genome_track_autosync_status = status;
                         if stale {
                             self.tracked_autosync_last_key = None;
+                            self.tracked_autosync_last_probe = None;
                         } else {
-                            self.tracked_autosync_last_key =
-                                Some(self.current_genome_track_autosync_key());
+                            self.record_current_genome_track_autosync_state();
                         }
                     } else {
                         self.genome_track_status = status;
@@ -15120,6 +15178,7 @@ Error: `{err}`"
         self.lineage_graph_drag_origin = None;
         self.lineage_graph_offsets_synced_stamp = 0;
         self.tracked_autosync_last_key = None;
+        self.tracked_autosync_last_probe = None;
         self.genome_track_import_task = None;
         self.genome_track_import_progress = None;
         self.sequence_ingress_task = None;

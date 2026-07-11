@@ -5954,23 +5954,32 @@ impl GentleEngine {
         self.structural_revision
     }
 
+    /// Clone the execution baseline without inherited undo/redo checkpoints.
+    ///
+    /// Read-only background workers use this clone directly. Mutating workers
+    /// receive the same history-free baseline through fork_detached_execution
+    /// and commit only their newly-created checkpoints.
+    pub(crate) fn clone_without_history(&self) -> Self {
+        Self {
+            state: self.state.clone(),
+            journal: self.journal.clone(),
+            op_counter: self.op_counter,
+            execution_revision: self.execution_revision,
+            mutation_revision: self.mutation_revision,
+            structural_revision: self.structural_revision,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            history_limit: self.history_limit,
+        }
+    }
+
     /// Fork the execution state needed by a detached background operation.
     ///
     /// Session-local history is intentionally excluded: detached operations
     /// build their own history delta, which is appended during commit.
     pub(crate) fn fork_detached_execution(&self) -> DetachedEngineExecution {
         DetachedEngineExecution {
-            engine: Self {
-                state: self.state.clone(),
-                journal: self.journal.clone(),
-                op_counter: self.op_counter,
-                execution_revision: self.execution_revision,
-                mutation_revision: self.mutation_revision,
-                structural_revision: self.structural_revision,
-                undo_stack: Vec::new(),
-                redo_stack: Vec::new(),
-                history_limit: self.history_limit,
-            },
+            engine: self.clone_without_history(),
             base_structural_revision: self.structural_revision,
             base_mutation_revision: self.mutation_revision,
             base_journal_len: self.journal.len(),
@@ -6033,7 +6042,7 @@ impl GentleEngine {
         } else {
             engine.undo_stack = combined_undo;
         }
-        if detached_history_changed {
+        if detached_history_changed || persisted_state_changed {
             engine.redo_stack = detached_redo;
             // Keep discarded inherited redo checkpoints in the prior engine so
             // their potentially large snapshots are dropped outside the lock.
@@ -6081,8 +6090,35 @@ impl GentleEngine {
 
     /// Mutably borrow persisted UI/session metadata without changing biological structure.
     pub(crate) fn auxiliary_metadata_mut(&mut self) -> &mut HashMap<String, serde_json::Value> {
+        // A side edit starts a new persisted-state branch. A redo checkpoint
+        // predates that edit and would otherwise restore stale metadata.
+        self.redo_stack.clear();
         self.bump_mutation_revision();
         &mut self.state.metadata
+    }
+
+    fn write_auxiliary_metadata_values(
+        &mut self,
+        requested: Vec<(&'static str, Option<serde_json::Value>)>,
+    ) -> bool {
+        let mut changes = Vec::new();
+        for (key, value) in requested {
+            if self.state.metadata.get(key) != value.as_ref() {
+                changes.push((key.to_string(), value));
+            }
+        }
+        if changes.is_empty() {
+            return false;
+        }
+        let metadata = self.auxiliary_metadata_mut();
+        for (key, value) in changes {
+            if let Some(value) = value {
+                metadata.insert(key, value);
+            } else {
+                metadata.remove(&key);
+            }
+        }
+        true
     }
 
     pub(crate) fn rebase_detached_commit_revisions(
@@ -6271,6 +6307,18 @@ impl GentleEngine {
         )
     }
 
+    /// Return the persisted subscription-array size without parsing entries.
+    ///
+    /// The GUI uses this only as an O(1) change-detection stamp before it
+    /// computes normalized subscription and anchor signatures.
+    pub(crate) fn genome_track_subscription_count(&self) -> usize {
+        self.state
+            .metadata
+            .get(GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY)
+            .and_then(serde_json::Value::as_array)
+            .map_or(0, Vec::len)
+    }
+
     pub fn add_genome_track_subscription(
         &mut self,
         subscription: GenomeTrackSubscription,
@@ -6309,12 +6357,10 @@ impl GentleEngine {
     }
 
     pub fn clear_genome_track_subscriptions(&mut self) {
-        self.state
-            .metadata
-            .remove(GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY);
-        self.state
-            .metadata
-            .remove(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY);
+        self.write_auxiliary_metadata_values(vec![
+            (GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY, None),
+            (GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY, None),
+        ]);
     }
 
     pub fn import_genome_track_to_all_anchored(
@@ -10916,9 +10962,10 @@ impl GentleEngine {
         subscriptions: &[GenomeTrackSubscription],
     ) -> Result<(), EngineError> {
         if subscriptions.is_empty() {
-            self.state
-                .metadata
-                .remove(GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY);
+            self.write_auxiliary_metadata_values(vec![(
+                GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY,
+                None,
+            )]);
             return Ok(());
         }
         let value = serde_json::to_value(subscriptions).map_err(|e| EngineError {
@@ -10927,9 +10974,10 @@ impl GentleEngine {
 
             cause_chain: vec![],
         })?;
-        self.state
-            .metadata
-            .insert(GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY.to_string(), value);
+        self.write_auxiliary_metadata_values(vec![(
+            GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY,
+            Some(value),
+        )]);
         Ok(())
     }
 
@@ -10952,9 +11000,10 @@ impl GentleEngine {
 
     fn write_known_track_anchor_ids(&mut self, anchors: &BTreeSet<String>) {
         if anchors.is_empty() {
-            self.state
-                .metadata
-                .remove(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY);
+            self.write_auxiliary_metadata_values(vec![(
+                GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY,
+                None,
+            )]);
             return;
         }
         let values = anchors
@@ -10962,18 +11011,10 @@ impl GentleEngine {
             .map(|v| serde_json::Value::String(v.clone()))
             .collect::<Vec<_>>();
         let new_value = serde_json::Value::Array(values);
-        if self
-            .state
-            .metadata
-            .get(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY)
-            == Some(&new_value)
-        {
-            return;
-        }
-        self.state.metadata.insert(
-            GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY.to_string(),
-            new_value,
-        );
+        self.write_auxiliary_metadata_values(vec![(
+            GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY,
+            Some(new_value),
+        )]);
     }
 
     fn track_subscription_to_operation(
@@ -16627,7 +16668,7 @@ impl GentleEngine {
             && store.sync_status.last_snapshot_id.is_none()
             && store.sync_status.last_error.is_none();
         if is_empty {
-            self.state.metadata.remove(PLANNING_METADATA_KEY);
+            self.write_auxiliary_metadata_values(vec![(PLANNING_METADATA_KEY, None)]);
             return Ok(());
         }
 
@@ -16637,9 +16678,7 @@ impl GentleEngine {
 
             cause_chain: vec![],
         })?;
-        self.state
-            .metadata
-            .insert(PLANNING_METADATA_KEY.to_string(), value);
+        self.write_auxiliary_metadata_values(vec![(PLANNING_METADATA_KEY, Some(value))]);
         Ok(())
     }
 

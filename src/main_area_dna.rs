@@ -157,7 +157,7 @@ use crate::{
     feature_expert::{
         FeatureExpertTarget, FeatureExpertView, IsoformArchitectureExpertView,
         RestrictionSiteExpertView, SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView,
-        SplicingIntronSignal, TfbsExpertView, compute_splicing_exon_transition_matrix,
+        SplicingIntronSignal, TfbsExpertView, compute_supported_splicing_exon_transitions,
     },
     feature_location::{
         collect_location_ranges_usize, feature_is_reverse, location_overlaps_usize,
@@ -1512,6 +1512,7 @@ pub struct MainAreaDna {
     tfbs_progress: Option<TfbsProgress>,
     primer_design_task: Option<PrimerDesignTask>,
     rna_read_task: Option<RnaReadTask>,
+    rna_read_task_repaint_delay: Duration,
     rna_read_progress: Option<RnaReadInterpretProgress>,
     cached_saved_rna_read_report: Option<CachedRnaReadReport>,
     cached_rna_read_report_summaries: Option<CachedRnaReadReportSummaries>,
@@ -2255,6 +2256,7 @@ impl MainAreaDna {
             tfbs_progress: None,
             primer_design_task: None,
             rna_read_task: None,
+            rna_read_task_repaint_delay: Duration::from_millis(700),
             rna_read_progress: None,
             cached_saved_rna_read_report: None,
             cached_rna_read_report_summaries: None,

@@ -12,6 +12,15 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-11
+
+- Closed GUI performance and state-tracking gaps: read-only RNA/Agent workers
+  exclude inherited engine history, metadata-only track/planning edits mark the
+  project dirty and invalidate stale redo, genome-track auto-sync avoids
+  unchanged-frame serialization, idle RNA mapping uses the slower repaint
+  cadence, BigWig preflight runs in the background, and cached splicing
+  transitions now scale with supported transitions rather than exon pairs.
+
 ## 2026-07-10
 
 - Hardened GUI responsiveness: long engine jobs now execute on detached,

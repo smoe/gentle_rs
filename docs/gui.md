@@ -4662,7 +4662,11 @@ Notes:
   while valid gene records continue to be indexed.
 - Genome track import accepts BED (`.bed` / `.bed.gz`) and BigWig (`.bw` / `.bigWig`) inputs.
 - Genome track import also accepts VCF (`.vcf` / `.vcf.gz`) inputs.
-- BigWig import uses `bigWigToBedGraph` and can be overridden via `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`.
+- BigWig import uses `bigWigToBedGraph` and can be overridden via
+  `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`. GENtle checks the executable inside the
+  background import job, so a slow or unavailable converter cannot block the
+  GUI; an unavailable executable is reported as `BigWig import preflight
+  failed` in the task status.
 - VCF score filtering uses VCF `QUAL` for `min_score` / `max_score`.
 - Genome track import requires a genome-anchored sequence (`ExtractGenomeRegion` or
   `ExtractGenomeGene`) to map genomic coordinates into local sequence coordinates.

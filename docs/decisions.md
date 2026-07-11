@@ -252,3 +252,9 @@ result stale. Other stale results never overwrite intervening edits.
 Persisted-state mutation revision is separate from structural and read-only
 execution identity so GUI dirty checks remain constant-time without marking
 inspections as edits.
+
+Read-only workers use a history-free engine clone and do not commit it. A raw
+`GentleEngine::clone` in a background worker is prohibited because it can clone
+hundreds of full-state history checkpoints. Persisted metadata mutations outside
+`apply` must advance the mutation revision and clear redo; otherwise a redo
+checkpoint captured before the side-edit can overwrite that metadata.

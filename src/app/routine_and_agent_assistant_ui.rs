@@ -1181,7 +1181,7 @@ impl GENtleApp {
                 });
                 engine
                     .read()
-                    .map(|guard| guard.clone())
+                    .map(|guard| guard.clone_without_history())
                     .ok()
                     .map(|snapshot| snapshot.summarize_state())
             } else {

@@ -60,9 +60,11 @@ pub(super) struct SplicingExpertTranscriptPresentationRow {
 
 #[derive(Clone, Debug)]
 pub(super) struct SplicingExpertTransitionPresentationCell {
+    pub(super) to_exon_index: usize,
     pub(super) marker: String,
+    pub(super) support_count: usize,
     pub(super) support_ratio: f32,
-    pub(super) tooltip: String,
+    pub(super) transcript_feature_ids: Vec<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -5209,63 +5211,32 @@ impl MainAreaDna {
             })
             .collect::<Vec<_>>();
 
-        let transition_matrix = compute_splicing_exon_transition_matrix(view);
+        let mut transition_cells_by_from = (0..exons.len())
+            .map(|_| Vec::new())
+            .collect::<Vec<Vec<SplicingExpertTransitionPresentationCell>>>();
+        for transition in compute_supported_splicing_exon_transitions(view) {
+            let support_ratio =
+                Self::support_ratio_percent(transition.support_count, transcript_total) as f32
+                    / 100.0;
+            transition_cells_by_from[transition.from_exon_index].push(
+                SplicingExpertTransitionPresentationCell {
+                    to_exon_index: transition.to_exon_index,
+                    marker: transition.support_count.to_string(),
+                    support_count: transition.support_count,
+                    support_ratio,
+                    transcript_feature_ids: transition.transcript_feature_ids,
+                },
+            );
+        }
         let transition_rows = exons
             .iter()
             .enumerate()
             .map(|(from_idx, exon)| {
-                let cells = (0..exons.len())
-                    .map(|to_idx| {
-                        let support_count = transition_matrix
-                            .counts
-                            .get(from_idx)
-                            .and_then(|row| row.get(to_idx))
-                            .copied()
-                            .unwrap_or(0);
-                        let support_ratio =
-                            Self::support_ratio_percent(support_count, transcript_total) as f32
-                                / 100.0;
-                        let participants = transition_matrix
-                            .transcript_feature_ids
-                            .get(from_idx)
-                            .and_then(|row| row.get(to_idx))
-                            .map(Vec::as_slice)
-                            .unwrap_or_default();
-                        let mut participant_labels = participants
-                            .iter()
-                            .map(|feature_id| format!("n-{feature_id}"))
-                            .collect::<Vec<_>>();
-                        if participant_labels.len() > 12 {
-                            let hidden = participant_labels.len() - 12;
-                            participant_labels.truncate(12);
-                            participant_labels.push(format!("+{hidden} more"));
-                        }
-                        SplicingExpertTransitionPresentationCell {
-                            marker: if support_count > 0 {
-                                support_count.to_string()
-                            } else {
-                                "·".to_string()
-                            },
-                            support_ratio,
-                            tooltip: format!(
-                                "E{} -> E{} support {}{}",
-                                from_idx + 1,
-                                to_idx + 1,
-                                Self::format_support_fraction(support_count, transcript_total),
-                                if participant_labels.is_empty() {
-                                    String::new()
-                                } else {
-                                    format!("\nTranscripts: {}", participant_labels.join(", "))
-                                }
-                            ),
-                        }
-                    })
-                    .collect::<Vec<_>>();
                 SplicingExpertTransitionPresentationRow {
                     label: exon.transition_label.clone(),
                     length_mod3: exon.length_mod3,
                     length_tooltip: exon.transition_tooltip.clone(),
-                    cells,
+                    cells: std::mem::take(&mut transition_cells_by_from[from_idx]),
                 }
             })
             .collect::<Vec<_>>();
@@ -6042,8 +6013,8 @@ impl MainAreaDna {
                                 row_height,
                                 presentation.transition_rows.len(),
                                 |mut table_row| {
-                                    let row =
-                                        &presentation.transition_rows[table_row.index()];
+                                    let row_index = table_row.index();
+                                    let row = &presentation.transition_rows[row_index];
                                     table_row.col(|ui| {
                                         let (bg, fg) = Self::splicing_exon_mod3_colors(
                                             row.length_mod3,
@@ -6057,20 +6028,72 @@ impl MainAreaDna {
                                         )
                                         .on_hover_text(row.length_tooltip.as_str());
                                     });
-                                    for cell in &row.cells {
+                                    let mut supported_cell_index = 0usize;
+                                    for to_exon_index in 0..exon_count {
+                                        let cell = row
+                                            .cells
+                                            .get(supported_cell_index)
+                                            .filter(|cell| {
+                                                cell.to_exon_index == to_exon_index
+                                            });
+                                        if cell.is_some() {
+                                            supported_cell_index += 1;
+                                        }
                                         table_row.col(|ui| {
                                             let (bg, fg) =
                                                 Self::splicing_transition_cell_colors(
-                                                    cell.support_ratio,
+                                                    cell.map_or(0.0, |cell| {
+                                                        cell.support_ratio
+                                                    }),
                                                 );
-                                            ui.label(
-                                                egui::RichText::new(cell.marker.as_str())
+                                            let response = ui.label(
+                                                egui::RichText::new(
+                                                    cell.map_or("·", |cell| {
+                                                        cell.marker.as_str()
+                                                    }),
+                                                )
                                                     .monospace()
                                                     .size(9.0)
                                                     .background_color(bg)
                                                     .color(fg),
-                                            )
-                                            .on_hover_text(cell.tooltip.as_str());
+                                            );
+                                            response.on_hover_ui(|ui| {
+                                                let support_count =
+                                                    cell.map_or(0, |cell| cell.support_count);
+                                                ui.label(format!(
+                                                    "E{} -> E{} support {}",
+                                                    row_index + 1,
+                                                    to_exon_index + 1,
+                                                    Self::format_support_fraction(
+                                                        support_count,
+                                                        view.transcript_count.max(1),
+                                                    )
+                                                ));
+                                                let Some(cell) = cell else {
+                                                    return;
+                                                };
+                                                if cell.transcript_feature_ids.is_empty() {
+                                                    return;
+                                                }
+                                                let mut labels = cell
+                                                    .transcript_feature_ids
+                                                    .iter()
+                                                    .take(12)
+                                                    .map(|feature_id| {
+                                                        format!("n-{feature_id}")
+                                                    })
+                                                    .collect::<Vec<_>>();
+                                                if cell.transcript_feature_ids.len() > 12 {
+                                                    labels.push(format!(
+                                                        "+{} more",
+                                                        cell.transcript_feature_ids.len() - 12
+                                                    ));
+                                                }
+                                                ui.label(format!(
+                                                    "Transcripts: {}",
+                                                    labels.join(", ")
+                                                ));
+                                            });
                                         });
                                     }
                                 },

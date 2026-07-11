@@ -44,8 +44,9 @@ use crate::{
     engine::{
         Arrangement, ArrangementMode, BlastHitFeatureInput, BlastInvocationProvenance, Container,
         ContainerKind, DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings, DotplotMode, Engine,
-        FlexibilityModel, GenomeAnnotationProjectionTelemetry, GenomeGeneExtractMode, GentleEngine,
-        LineageEdge, LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation,
+        FlexibilityModel, GenomeAnnotationProjectionTelemetry, GenomeGeneExtractMode,
+        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, LineageEdge, LineageNode,
+        LinearSequenceLetterLayoutMode, OpResult, Operation,
         PLANNING_ESTIMATE_SCHEMA, PairwiseAlignmentMode, PlanningEstimate, PlanningObjective,
         PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
         ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy, Rack, RackAuthoringTemplate,
@@ -10026,13 +10027,17 @@ fn request_quit_without_unsaved_content_marks_application_for_close() {
 
 #[test]
 fn request_quit_with_unsaved_content_prompts_before_closing() {
-    let mut state = ProjectState::default();
-    state.sequences.insert(
-        "seq1".to_string(),
-        DNAsequence::from_sequence("ACGT").expect("sequence"),
-    );
     let mut app = GENtleApp::default();
-    app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    app.engine
+        .write()
+        .expect("engine")
+        .apply(Operation::CreateSequenceFromText {
+            sequence_text: "ACGT".to_string(),
+            output_id: Some("seq1".to_string()),
+            name: None,
+            circular: false,
+        })
+        .expect("create unsaved sequence");
 
     app.request_project_action(ProjectAction::Quit);
 
@@ -10941,6 +10946,20 @@ fn genbank_dialog_fetch_imports_sequence_and_opens_window() {
     app.genbank_accession = "NC_000001".to_string();
     app.genbank_as_id = "tp73_gui_fetch".to_string();
     app.fetch_genbank_accession_from_dialog();
+    let completed = app
+        .sequence_ingress_task
+        .as_ref()
+        .expect("GenBank worker should be active")
+        .receiver
+        .recv()
+        .expect("GenBank worker completion");
+    let (tx, rx) = mpsc::channel();
+    tx.send(completed).expect("requeue worker completion");
+    app.sequence_ingress_task
+        .as_mut()
+        .expect("GenBank worker should still be active")
+        .receiver = rx;
+    app.poll_sequence_ingress_task(&egui::Context::default());
 
     let state = app.engine.read().unwrap().state().clone();
     assert!(state.sequences.contains_key("tp73_gui_fetch"));
@@ -12266,8 +12285,15 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
 
 #[test]
 fn genome_track_autosync_key_ignores_read_only_operation_log_growth() {
-    let app = GENtleApp::default();
-    let before = app.current_genome_track_autosync_key();
+    let mut app = GENtleApp::default();
+    app.sync_tracked_bed_tracks_for_new_anchors();
+    assert_eq!(app.tracked_autosync_full_scan_count, 1);
+    app.sync_tracked_bed_tracks_for_new_anchors();
+    assert_eq!(
+        app.tracked_autosync_full_scan_count, 1,
+        "stable revisions must avoid rebuilding anchor/subscription signatures"
+    );
+
     app.engine
         .write()
         .expect("engine")
@@ -12279,8 +12305,11 @@ fn genome_track_autosync_key_ignores_read_only_operation_log_growth() {
             path: None,
         })
         .expect("read-only local catalog operation");
-    let after_read_only = app.current_genome_track_autosync_key();
-    assert_eq!(before, after_read_only);
+    app.sync_tracked_bed_tracks_for_new_anchors();
+    assert_eq!(
+        app.tracked_autosync_full_scan_count, 1,
+        "read-only operation-log growth must not trigger an auto-sync scan"
+    );
 
     app.engine
         .write()
@@ -12288,8 +12317,102 @@ fn genome_track_autosync_key_ignores_read_only_operation_log_growth() {
         .state_mut()
         .metadata
         .insert("structural_test".to_string(), serde_json::Value::Bool(true));
-    let after_structural_change = app.current_genome_track_autosync_key();
-    assert_ne!(after_read_only, after_structural_change);
+    app.sync_tracked_bed_tracks_for_new_anchors();
+    assert_eq!(app.tracked_autosync_full_scan_count, 2);
+    assert!(app.genome_track_import_task.is_none());
+
+    app.engine
+        .write()
+        .expect("engine")
+        .add_genome_track_subscription(GenomeTrackSubscription {
+            source: GenomeTrackSource::Bed,
+            path: "tracked.bed".to_string(),
+            track_name: Some("tracked".to_string()),
+            min_score: None,
+            max_score: None,
+            clear_existing: false,
+        })
+        .expect("track subscription");
+    app.record_current_genome_track_autosync_state();
+    assert_eq!(app.tracked_autosync_full_scan_count, 3);
+    app.engine
+        .write()
+        .expect("engine")
+        .state_mut()
+        .metadata
+        .insert("unrelated_structural_test".to_string(), serde_json::json!(true));
+    app.sync_tracked_bed_tracks_for_new_anchors();
+    assert_eq!(app.tracked_autosync_full_scan_count, 4);
+    assert!(
+        app.genome_track_import_task.is_none(),
+        "an unrelated structural revision must not launch track auto-sync when signatures match"
+    );
+}
+
+#[test]
+fn failed_tracked_import_still_marks_project_dirty() {
+    let mut app = GENtleApp::default();
+    app.engine
+        .write()
+        .expect("engine")
+        .apply(Operation::LoadFile {
+            path: "test_files/tp73.ncbi.gb".to_string(),
+            as_id: Some("tp73_dirty_track_test".to_string()),
+        })
+        .expect("load anchored TP73 fixture");
+    app.mark_clean_snapshot();
+    assert!(!app.is_project_dirty());
+
+    let missing_track = tempdir()
+        .expect("temporary directory")
+        .path()
+        .join("missing-track.bed");
+    let report = crate::background_engine::execute_on_engine_snapshot(
+        &app.engine,
+        move |snapshot| {
+            snapshot.import_genome_track_to_all_anchored(
+                GenomeTrackSubscription {
+                    source: GenomeTrackSource::Bed,
+                    path: missing_track.to_string_lossy().to_string(),
+                    track_name: Some("missing-track".to_string()),
+                    min_score: None,
+                    max_score: None,
+                    clear_existing: false,
+                },
+                true,
+            )
+        },
+    )
+    .expect("failed individual imports still return a sync report");
+
+    assert_eq!(report.applied_imports, 0);
+    assert_eq!(report.failed_imports, 1);
+    assert!(app.is_project_dirty());
+    assert_eq!(
+        app.engine
+            .read()
+            .expect("engine")
+            .list_genome_track_subscriptions()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn bigwig_converter_preflight_keeps_actionable_failure_message() {
+    let missing = tempdir()
+        .expect("temporary directory")
+        .path()
+        .join("missing-bigWigToBedGraph");
+
+    let error = GENtleApp::validate_bigwig_converter_in_background(
+        missing.to_string_lossy().as_ref(),
+    )
+    .expect_err("missing converter should fail");
+
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("BigWig import preflight failed"));
+    assert!(error.message.contains("not found"));
 }
 
 #[test]
@@ -12300,10 +12423,11 @@ fn uncooperative_track_task_stop_waiting_releases_shared_task_slot() {
     app.genome_track_import_task = Some(GenomeTrackImportTask {
         job_id: 93,
         kind: GenomeTrackTaskKind::Autosync(GenomeTrackAutosyncKey {
-            structural_revision: 1,
+            engine_identity: 1,
             anchor_signature: "[]".to_string(),
             subscription_signature: "[]".to_string(),
             subscription_count: 0,
+            requires_bigwig_converter: false,
         }),
         started: Instant::now(),
         cancel_requested: cancel_requested.clone(),
@@ -12328,10 +12452,11 @@ fn poll_track_autosync_reports_typed_success() {
     app.genome_track_import_task = Some(GenomeTrackImportTask {
         job_id: 94,
         kind: GenomeTrackTaskKind::Autosync(GenomeTrackAutosyncKey {
-            structural_revision: 1,
+            engine_identity: 1,
             anchor_signature: "[]".to_string(),
             subscription_signature: "[]".to_string(),
             subscription_count: 0,
+            requires_bigwig_converter: false,
         }),
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(false)),
@@ -12359,10 +12484,11 @@ fn poll_track_autosync_marks_stale_result_and_allows_new_key_retry() {
     app.genome_track_import_task = Some(GenomeTrackImportTask {
         job_id: 95,
         kind: GenomeTrackTaskKind::Autosync(GenomeTrackAutosyncKey {
-            structural_revision: 1,
+            engine_identity: 1,
             anchor_signature: "[]".to_string(),
             subscription_signature: "[]".to_string(),
             subscription_count: 0,
+            requires_bigwig_converter: false,
         }),
         started: Instant::now(),
         cancel_requested: Arc::new(AtomicBool::new(false)),
@@ -12370,10 +12496,11 @@ fn poll_track_autosync_marks_stale_result_and_allows_new_key_retry() {
         receiver: rx,
     });
     app.tracked_autosync_last_key = Some(GenomeTrackAutosyncKey {
-        structural_revision: 1,
+        engine_identity: 1,
         anchor_signature: "[]".to_string(),
         subscription_signature: "[]".to_string(),
         subscription_count: 0,
+        requires_bigwig_converter: false,
     });
     tx.send(GenomeTrackImportTaskMessage::Done {
         job_id: 95,

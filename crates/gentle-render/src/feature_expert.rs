@@ -161,24 +161,29 @@ pub struct SplicingExonTransitionMatrix {
     pub transcript_feature_ids: Vec<Vec<Vec<usize>>>,
 }
 
-pub fn compute_splicing_exon_transition_matrix(
+/// One supported directed exon transition.
+///
+/// Unsupported exon pairs are deliberately absent so GUI presentation caches
+/// scale with observed transitions rather than the square of the exon count.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SplicingExonTransition {
+    pub from_exon_index: usize,
+    pub to_exon_index: usize,
+    pub support_count: usize,
+    pub transcript_feature_ids: Vec<usize>,
+}
+
+pub fn compute_supported_splicing_exon_transitions(
     view: &SplicingExpertView,
-) -> SplicingExonTransitionMatrix {
-    let exon_count = view.unique_exons.len();
-    let mut counts = vec![vec![0usize; exon_count]; exon_count];
-    let mut transcript_feature_ids = vec![vec![Vec::<usize>::new(); exon_count]; exon_count];
-    if exon_count == 0 {
-        return SplicingExonTransitionMatrix {
-            counts,
-            transcript_feature_ids,
-        };
-    }
+) -> Vec<SplicingExonTransition> {
     let exon_index: HashMap<(usize, usize), usize> = view
         .unique_exons
         .iter()
         .enumerate()
         .map(|(idx, exon)| ((exon.start_1based, exon.end_1based), idx))
         .collect();
+    let mut transitions =
+        BTreeMap::<(usize, usize), (usize, BTreeSet<usize>)>::new();
     for transcript in &view.transcripts {
         let mut ordered_indices = transcript
             .exons
@@ -198,15 +203,39 @@ pub fn compute_splicing_exon_transition_matrix(
             if from == to {
                 continue;
             }
-            counts[from][to] += 1;
-            transcript_feature_ids[from][to].push(transcript.transcript_feature_id);
+            let entry = transitions
+                .entry((from, to))
+                .or_insert_with(|| (0, BTreeSet::new()));
+            entry.0 += 1;
+            entry.1.insert(transcript.transcript_feature_id);
         }
     }
-    for row in &mut transcript_feature_ids {
-        for participants in row {
-            participants.sort_unstable();
-            participants.dedup();
-        }
+    transitions
+        .into_iter()
+        .map(
+            |((from_exon_index, to_exon_index), (support_count, transcript_feature_ids))| {
+                SplicingExonTransition {
+                    from_exon_index,
+                    to_exon_index,
+                    support_count,
+                    transcript_feature_ids: transcript_feature_ids.into_iter().collect(),
+                }
+            },
+        )
+        .collect()
+}
+
+pub fn compute_splicing_exon_transition_matrix(
+    view: &SplicingExpertView,
+) -> SplicingExonTransitionMatrix {
+    let exon_count = view.unique_exons.len();
+    let mut counts = vec![vec![0usize; exon_count]; exon_count];
+    let mut transcript_feature_ids = vec![vec![Vec::<usize>::new(); exon_count]; exon_count];
+    for transition in compute_supported_splicing_exon_transitions(view) {
+        counts[transition.from_exon_index][transition.to_exon_index] =
+            transition.support_count;
+        transcript_feature_ids[transition.from_exon_index][transition.to_exon_index] =
+            transition.transcript_feature_ids;
     }
     SplicingExonTransitionMatrix {
         counts,

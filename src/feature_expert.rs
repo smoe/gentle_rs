@@ -17,4 +17,7 @@ pub use gentle_protocol::{
     TranscriptProteinComparisonStatus, TranscriptProteinDerivation,
     TranscriptProteinExternalOpinion,
 };
-pub use gentle_render::{SplicingExonTransitionMatrix, compute_splicing_exon_transition_matrix};
+pub use gentle_render::{
+    SplicingExonTransition, SplicingExonTransitionMatrix,
+    compute_splicing_exon_transition_matrix, compute_supported_splicing_exon_transitions,
+};

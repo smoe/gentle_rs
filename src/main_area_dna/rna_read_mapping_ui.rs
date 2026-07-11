@@ -2538,7 +2538,7 @@ impl MainAreaDna {
         let default_size = Self::rna_read_mapping_window_default_size();
         let min_size = Self::rna_read_mapping_window_min_size();
         let content_min_size = Self::rna_read_mapping_window_content_min_size();
-        let repaint_delay = Self::async_task_repaint_delay(1, false);
+        let repaint_delay = self.rna_read_task_repaint_delay;
         if ctx.embed_viewports() {
             self.render_rna_read_mapping_embedded_window_shell(
                 ctx,
@@ -5039,7 +5039,10 @@ impl MainAreaDna {
                     let tx_progress = tx.clone();
                     let cancel_for_progress = Arc::clone(&cancel_requested);
                     let cancel_for_compute = Arc::clone(&cancel_requested);
-                    let outcome = match engine.read().map(|guard| guard.clone()) {
+                    let outcome = match engine
+                        .read()
+                        .map(|guard| guard.clone_without_history())
+                    {
                         Ok(snapshot) => {
                             let mut should_continue =
                                 move || !cancel_for_compute.load(AtomicOrdering::Relaxed);
@@ -5100,7 +5103,10 @@ impl MainAreaDna {
                     let tx_progress = tx.clone();
                     let cancel_for_progress = Arc::clone(&cancel_requested);
                     let cancel_for_compute = Arc::clone(&cancel_requested);
-                    let outcome = match engine.read().map(|guard| guard.clone()) {
+                    let outcome = match engine
+                        .read()
+                        .map(|guard| guard.clone_without_history())
+                    {
                         Ok(snapshot) => {
                             let mut should_continue =
                                 move || !cancel_for_compute.load(AtomicOrdering::Relaxed);
@@ -5311,11 +5317,13 @@ impl MainAreaDna {
             self.apply_rna_read_progress_snapshot(progress, started);
         }
 
+        self.rna_read_task_repaint_delay = Self::async_task_repaint_delay(
+            processed_progress_messages,
+            hit_progress_cap,
+        );
+
         if done.is_none() && task_still_running && !self.show_rna_read_mapping_window {
-            ctx.request_repaint_after(Self::async_task_repaint_delay(
-                processed_progress_messages,
-                hit_progress_cap,
-            ));
+            ctx.request_repaint_after(self.rna_read_task_repaint_delay);
         }
 
         if let Some(done) = done {
@@ -5336,6 +5344,7 @@ impl MainAreaDna {
                 .unwrap_or_else(|| (Instant::now(), false, "RNA-read task".to_string(), false));
             let previous_op_status = self.op_status.clone();
             self.rna_read_task = None;
+            self.rna_read_task_repaint_delay = Self::async_task_repaint_delay(0, false);
             match done {
                 Ok(outcome) => match self.commit_completed_rna_read_task_outcome(outcome) {
                     Ok(result) => self.handle_operation_success(result, started),

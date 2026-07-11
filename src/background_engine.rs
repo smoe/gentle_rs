@@ -38,7 +38,9 @@ pub(crate) fn execute_on_engine_snapshot<T>(
 mod tests {
     use super::*;
     use crate::dna_sequence::DNAsequence;
-    use crate::engine::{Engine, Operation, Workflow};
+    use crate::engine::{
+        Engine, GenomeTrackSource, GenomeTrackSubscription, Operation, Workflow,
+    };
 
     #[test]
     fn detached_fork_excludes_inherited_history_but_keeps_execution_baseline() {
@@ -96,6 +98,64 @@ mod tests {
     }
 
     #[test]
+    fn detached_read_only_snapshot_excludes_inherited_history() {
+        let mut live = GentleEngine::new();
+        live.apply(Operation::CreateSequenceFromText {
+            sequence_text: "ATGC".to_string(),
+            output_id: Some("existing".to_string()),
+            name: None,
+            circular: false,
+        })
+        .expect("create existing sequence");
+        live.apply(Operation::CreateSequenceFromText {
+            sequence_text: "GCTA".to_string(),
+            output_id: Some("redoable".to_string()),
+            name: None,
+            circular: false,
+        })
+        .expect("create redoable sequence");
+        live.undo_last_operation().expect("prepare redo history");
+
+        let snapshot = live.clone_without_history();
+        assert_eq!(snapshot.undo_available(), 0);
+        assert_eq!(snapshot.redo_available(), 0);
+        assert_eq!(
+            serde_json::to_value(snapshot.operation_log()).expect("snapshot journal"),
+            serde_json::to_value(live.operation_log()).expect("live journal")
+        );
+        assert_eq!(
+            snapshot.execution_revision(),
+            live.execution_revision()
+        );
+        assert_eq!(snapshot.mutation_revision(), live.mutation_revision());
+        assert_eq!(snapshot.structural_revision(), live.structural_revision());
+        assert_eq!(
+            serde_json::to_value(snapshot.state()).expect("snapshot state"),
+            serde_json::to_value(live.state()).expect("live state")
+        );
+        assert!(snapshot.state().sequences.contains_key("existing"));
+        assert!(!snapshot.state().sequences.contains_key("redoable"));
+    }
+
+    #[test]
+    fn read_only_worker_sources_use_history_free_engine_clones() {
+        let worker_sources = [
+            include_str!("main_area_dna/rna_read_mapping_ui.rs"),
+            include_str!("app/routine_and_agent_assistant_ui.rs"),
+        ];
+        for source in worker_sources {
+            assert!(
+                !source.contains("guard.clone()"),
+                "read-only background workers must not clone complete engine history"
+            );
+            assert!(
+                source.contains("guard.clone_without_history()"),
+                "read-only worker should use the explicit history-free clone"
+            );
+        }
+    }
+
+    #[test]
     fn detached_commit_publishes_snapshot_with_revisions() {
         let shared = Arc::new(RwLock::new(GentleEngine::new()));
         execute_on_engine_snapshot(&shared, |snapshot| {
@@ -114,6 +174,76 @@ mod tests {
         );
         assert!(guard.execution_revision() > 0);
         assert!(guard.mutation_revision() > 0);
+    }
+
+    #[test]
+    fn detached_track_metadata_commit_marks_dirty_and_invalidates_live_redo() {
+        let shared = Arc::new(RwLock::new(GentleEngine::new()));
+        {
+            let mut live = shared.write().expect("engine");
+            live.apply(Operation::CreateSequenceFromText {
+                sequence_text: "ATGC".to_string(),
+                output_id: Some("existing".to_string()),
+                name: None,
+                circular: false,
+            })
+            .expect("create existing sequence");
+            live.apply(Operation::CreateSequenceFromText {
+                sequence_text: "GCTA".to_string(),
+                output_id: Some("redoable".to_string()),
+                name: None,
+                circular: false,
+            })
+            .expect("create redoable sequence");
+            live.undo_last_operation().expect("prepare redo history");
+            assert_eq!(live.undo_available(), 1);
+            assert_eq!(live.redo_available(), 1);
+        }
+        let baseline_mutation_revision = shared
+            .read()
+            .expect("engine")
+            .mutation_revision();
+
+        execute_on_engine_snapshot(&shared, |snapshot| {
+            assert!(snapshot.add_genome_track_subscription(GenomeTrackSubscription {
+                source: GenomeTrackSource::Bed,
+                path: "tracked.bed".to_string(),
+                track_name: Some("tracked".to_string()),
+                min_score: None,
+                max_score: None,
+                clear_existing: false,
+            })?);
+            Ok(())
+        })
+        .expect("commit metadata-only detached work");
+
+        let live = shared.write().expect("engine");
+        assert!(live.mutation_revision() > baseline_mutation_revision);
+        assert_eq!(live.undo_available(), 1);
+        assert_eq!(live.redo_available(), 0);
+        assert_eq!(live.list_genome_track_subscriptions().len(), 1);
+        assert!(!live.state().sequences.contains_key("redoable"));
+    }
+
+    #[test]
+    fn clearing_track_subscriptions_advances_mutation_revision() {
+        let mut engine = GentleEngine::new();
+        engine
+            .add_genome_track_subscription(GenomeTrackSubscription {
+                source: GenomeTrackSource::Bed,
+                path: "tracked.bed".to_string(),
+                track_name: Some("tracked".to_string()),
+                min_score: None,
+                max_score: None,
+                clear_existing: false,
+            })
+            .expect("add subscription");
+        let before_clear = engine.mutation_revision();
+
+        engine.clear_genome_track_subscriptions();
+
+        assert!(engine.mutation_revision() > before_clear);
+        assert!(engine.list_genome_track_subscriptions().is_empty());
     }
 
     #[test]

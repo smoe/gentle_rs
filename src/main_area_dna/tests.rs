@@ -3706,7 +3706,7 @@ fn async_task_repaint_delay_scales_with_queue_pressure() {
 fn poll_rna_read_task_keeps_live_progress_out_of_dna_window_status() {
     let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
     let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
-    let (_tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
+    let (tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
     area.show_rna_read_mapping_window = true;
     area.op_status = "keep this status in the DNA window".to_string();
     area.rna_read_progress = Some(RnaReadInterpretProgress {
@@ -3756,10 +3756,25 @@ fn poll_rna_read_task_keeps_live_progress_out_of_dna_window_status() {
         cancel_requested: Arc::new(AtomicBool::new(false)),
         receiver: Arc::new(Mutex::new(rx)),
     });
+    tx.send(RnaReadTaskMessage::Progress(
+        test_rna_read_progress_snapshot(9),
+    ))
+    .expect("send progress");
 
     area.poll_rna_read_task(&egui::Context::default());
 
     assert_eq!(area.op_status, "keep this status in the DNA window");
+    assert_eq!(
+        area.rna_read_task_repaint_delay,
+        Duration::from_millis(120)
+    );
+
+    area.poll_rna_read_task(&egui::Context::default());
+    assert_eq!(
+        area.rna_read_task_repaint_delay,
+        Duration::from_millis(700),
+        "an open mapping workspace should back off when no new progress arrived"
+    );
 }
 
 #[test]
@@ -12920,8 +12935,13 @@ fn splicing_expert_presentation_reuses_immutable_view_and_invalidates_on_replace
     assert_eq!(area.splicing_expert_presentation_cache_misses, 1);
     assert_eq!(area.splicing_expert_presentation_cache_hits, 1);
     assert_eq!(first.exons[0].support_label, "2/2 (100.0%) const");
-    assert_eq!(first.transition_rows[0].cells[1].marker, "1");
-    assert!(first.transition_rows[0].cells[1].tooltip.contains("n-11"));
+    assert_eq!(first.transition_rows[0].cells.len(), 1);
+    assert_eq!(first.transition_rows[0].cells[0].to_exon_index, 1);
+    assert_eq!(first.transition_rows[0].cells[0].marker, "1");
+    assert_eq!(
+        first.transition_rows[0].cells[0].transcript_feature_ids,
+        vec![11]
+    );
     assert_eq!(first.junction_rows[0].donor_label, "30");
 
     let mut replacement = view.clone();
@@ -12935,6 +12955,53 @@ fn splicing_expert_presentation_reuses_immutable_view_and_invalidates_on_replace
     let fourth = area.splicing_expert_presentation_for_view(&replacement);
     assert!(!Arc::ptr_eq(&third, &fourth));
     assert_eq!(area.splicing_expert_presentation_cache_misses, 3);
+}
+
+#[test]
+fn splicing_expert_presentation_transition_storage_is_sparse() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let mut view = splicing_expert_presentation_test_view();
+    let exon_count = 200usize;
+    view.unique_exons = (0..exon_count)
+        .map(|index| {
+            let start_1based = index * 20 + 1;
+            SplicingExonSummary {
+                start_1based,
+                end_1based: start_1based + 9,
+                support_transcript_count: 1,
+                constitutive: false,
+            }
+        })
+        .collect();
+    view.unique_exon_count = exon_count;
+    view.transcript_count = 1;
+    view.region_end_1based = exon_count * 20;
+    view.transcripts.truncate(1);
+    view.transcripts[0].exons = vec![
+        SplicingRange {
+            start_1based: 1,
+            end_1based: 10,
+        },
+        SplicingRange {
+            start_1based: (exon_count - 1) * 20 + 1,
+            end_1based: (exon_count - 1) * 20 + 10,
+        },
+    ];
+
+    let presentation = area.splicing_expert_presentation_for_view(&view);
+    let stored_transition_cells = presentation
+        .transition_rows
+        .iter()
+        .map(|row| row.cells.len())
+        .sum::<usize>();
+
+    assert_eq!(presentation.transition_rows.len(), exon_count);
+    assert_eq!(stored_transition_cells, 1);
+    assert_eq!(
+        presentation.transition_rows[0].cells[0].to_exon_index,
+        exon_count - 1
+    );
 }
 
 #[test]

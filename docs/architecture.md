@@ -706,10 +706,23 @@ Interactive orchestration contract:
   Detached forks exclude inherited undo/redo checkpoints; successful commits
   preserve the live history and append only checkpoints created by detached
   operations.
+- Read-only background computation uses the same engine execution baseline but
+  clones no inherited undo/redo checkpoints and never enters the commit path.
+  Raw full-engine clones are not permitted in GUI workers because history
+  checkpoints may each contain a complete project snapshot.
+- Persisted metadata edits made outside `apply` go through the engine auxiliary
+  metadata accessor. They advance the mutation revision and invalidate redo,
+  because an older redo checkpoint could otherwise restore stale metadata.
 - The engine exposes separate execution, persisted-state mutation, and
   structural revisions.
   GUI dirty-state detection compares the mutation revision with the last saved
   revision instead of serializing and hashing the complete project on a timer.
+- Root-frame orchestration is O(1) unless a cheap revision/count stamp changes.
+  Expensive signatures, serialization, disk/network I/O, and subprocess
+  preflight belong behind such a gate or in a background worker.
+- Presentation caches are sparse/lazy where the conceptual model is dense:
+  unsupported exon transitions, for example, are represented by a shared
+  render-time sentinel rather than cached per-cell strings.
 - Operation history is surfaced in a dedicated GUI panel backed by engine
   operation journal + checkpoint stacks.
 
