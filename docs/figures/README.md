@@ -1,11 +1,5 @@
 # Documentation Figures
 
-`gentle_wordmark.svg` is the hand-authored repository wordmark used at the top
-of the README. Its circular DNA/lineage mark and teal, blue, green, and warm
-accent palette intentionally match `gentle_system_overview.svg`. It contains no
-external raster input and should remain a compact, readable identity element
-rather than becoming a feature diagram.
-
 `gentle_system_overview.svg` is the hand-authored homepage schematic used near
 the top of the README. Unlike the cloning and analysis showcases below, it is
 not rendered from an engine operation; it is a maintained explanatory figure

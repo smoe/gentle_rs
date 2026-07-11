@@ -1,6 +1,4 @@
-<h1 align="center">
-  <img src="docs/figures/gentle_wordmark.svg" alt="GENtle: DNA cloning, sequence context, and reproducible workflows" width="820">
-</h1>
+# GENtle
 
 <p align="center">
   <a href="https://github.com/smoe/gentle_rs/actions/workflows/ci.yml"><img src="https://github.com/smoe/gentle_rs/actions/workflows/ci.yml/badge.svg" alt="Build and test status"></a>
