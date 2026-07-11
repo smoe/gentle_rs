@@ -1850,6 +1850,56 @@ It is intended for scripted workflows and AI agents.
 
 State is persisted to `.gentle_state.json` by default (override with `--state PATH`).
 
+### RNA-seq target rescue screen
+
+`gentle_cli rescue-screen` is a standalone pilot calibration command for
+screening RNA-seq reads against a small requested gene set after external
+quantification. Typical inputs are reads that Salmon left unassigned or reads
+that Salmon assigned to transcripts of interest.
+
+This adapter is intentionally separate from the shared `rna-reads` engine
+routes. It identifies redundant canonical k-mer support for requested genes;
+it does **not** claim to call fusions, resolve splice isoforms, or establish a
+definitive transcript of origin.
+
+Minimal shape:
+
+```sh
+cargo run --bin gentle_cli -- rescue-screen \
+  --transcript-fasta transcripts.fa \
+  --gene TP73 \
+  --gene SRSF1 \
+  --reads salmon_unassigned.fastq.gz \
+  --output-prefix artifacts/rescue/target_rescue
+```
+
+Accepted inputs include:
+
+- one or more Ensembl-style transcript FASTA files through repeated
+  `--transcript-fasta PATH`
+- requested genes through `--genes SYM[,SYM,...]` and/or repeated
+  `--gene SYM`
+- streamed FASTA or FASTQ reads, plain or gzip-compressed, through repeated
+  `--reads PATH`
+- an optional read-id allowlist
+- optional Salmon bridge files through `--salmon-unmapped-names` and
+  `--salmon-mappings-sam`
+- configurable `--kmer-len`, `--min-kmer-hits`, and repeated transcript-header
+  `--gene-symbol-tag KEY` values
+
+The output prefix produces deterministic reports:
+
+- `<prefix>.gene_manifest.tsv`
+- `<prefix>.gene_hits.tsv`
+- `<prefix>.read_hits.tsv`
+- `<prefix>.run_metadata.json`
+- `<prefix>.summary.json`
+- `<prefix>.comparison.json` when Salmon bridge inputs define multiple read
+  universes
+
+Use this command as a transparent target-enrichment screen whose hit tables
+can be audited, not as a substitute for an aligner or transcript quantifier.
+
 ### Commands
 
 ```bash

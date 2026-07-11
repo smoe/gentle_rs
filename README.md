@@ -1,969 +1,279 @@
-# GENtle
+<h1 align="center">
+  <img src="docs/figures/gentle_wordmark.svg" alt="GENtle: DNA cloning, sequence context, and reproducible workflows" width="820">
+</h1>
 
-GENtle is a DNA and cloning workbench for both interactive use and automation.
-Cloning projects are represented as workflows, with each biotechnical
-operation mapped to a deterministic in silico counterpart. The same engine can
-therefore execute a workflow, validate its assumptions, and render graphical
-protocol cartoons that explain the underlying molecular events.
+<p align="center">
+  <a href="https://github.com/smoe/gentle_rs/actions/workflows/ci.yml"><img src="https://github.com/smoe/gentle_rs/actions/workflows/ci.yml/badge.svg" alt="Build and test status"></a>
+  <img src="https://img.shields.io/badge/status-internal%20preview-d18b3f" alt="Status: internal preview">
+  <img src="https://img.shields.io/badge/version-0.1.0--internal.10-4e91a0" alt="Version 0.1.0-internal.10">
+  <a href="copyright"><img src="https://img.shields.io/badge/license-GPL--2.0--or--later-0f5964" alt="License: GPL-2.0-or-later"></a>
+</p>
 
-The same engine also fits into broader computational biology workflows where
-external reference data matters. Prepared genome annotations, curated expert
-panels, and other imported resources can contribute directly to the same
-project state used by the GUI, CLI, and automation, so showcase figures remain
-auditable instead of being redrawn by hand.
+<p align="center">
+  <a href="INSTALL.md"><strong>Install</strong></a> &middot;
+  <a href="docs/tutorial/generated/README.md"><strong>Five-minute tutorials</strong></a> &middot;
+  <a href="docs/gui.md"><strong>GUI manual</strong></a> &middot;
+  <a href="docs/cli.md"><strong>CLI manual</strong></a> &middot;
+  <a href="docs/tutorial/01-01_agent_interfaces.md"><strong>Agent interfaces</strong></a> &middot;
+  <a href="docs/showcase.md"><strong>Showcase</strong></a>
+</p>
 
-Today, that already means GENtle can:
+GENtle is an open-source desktop and automation workbench for planning,
+simulating, inspecting, and documenting DNA cloning and sequence-context
+workflows. One deterministic engine powers the GUI, CLI, Python, JavaScript,
+Lua, MCP, and curated agent handoffs, so interactive decisions and automated
+runs share the same project state, reports, and provenance.
 
-- plan and review Gibson assemblies with explicit overlaps, primer suggestions,
-  lineage-visible outputs, and ordered multi-insert previews
-- execute PCR, advanced PCR, PCR mutagenesis, primer-pair design, and qPCR
-  assay design through one shared engine family
-- bring prepared genomes, basic read-only SnapGene `.dna`/GenBank/EMBL
-  records, UniProt/Ensembl
-  protein evidence, and RNA-read context into the same project state used for
-  cloning decisions
-- render factual protocol cartoons, lineage graphs, dotplots, TFBS tracks,
-  isoform architecture panels, and protein gels from the same project state
-  instead of relying on hand-drawn figures
-- expose structured automation routes, including ClawBio/OpenClaw handoff
-  bundles for deterministic workflow execution and artifact collection
-- keep GUI, CLI, and automation routes aligned on the same deterministic
-  contracts
+Both an **inner agent** in the running application and **outer agents** in
+separate automation environments are prepared to work with GENtle's routine
+catalog. They can discover routines, help bind their inputs, run deterministic
+preflight, request confirmation where required, execute approved steps, and
+return the resulting reports without creating a second implementation of the
+biology.
 
-## Fastest First Look
+> **Internal preview:** GENtle is already useful for research planning and
+> reproducible in silico work, but interfaces and project files may still
+> evolve. Inspect generated designs before taking them to the bench. The
+> [maturity map](#what-to-trust-today) distinguishes recommended, caveated,
+> and exploratory workflows.
 
-If you are opening GENtle for the first time and want the shortest useful
-tour:
+<p align="center">
+  <img src="docs/screenshots/screenshot_GUI_sequence.png" alt="GENtle DNA sequence window showing the genome-anchored TP73 locus, transcript and regulatory annotations, restriction sites, and nucleotide sequence" width="1100">
+</p>
+<p align="center"><sub>A genome-anchored TP73 locus in the DNA sequence window. GENtle keeps annotations, sequence, experimental tracks, and provenance in one inspectable view.</sub></p>
 
-1. Start with [`INSTALL.md`](INSTALL.md) if you need a local setup path.
-2. Launch the desktop app with `cargo run --bin gentle`.
-3. Use `File -> Open Tutorial Project...` for executable walkthroughs or open
-   the Help window for GUI-first tutorials.
-4. If you only have a few minutes, look at the Gibson lineage/cartoon section,
-   the TP53/TP73 interpretation figures, and the VKORC1 ClawBio handoff below.
+## Start Here
 
-Agents working directly in a checkout should use the short in-tree loop in
-[`docs/agent_dev_loop.md`](docs/agent_dev_loop.md).
-For Claude-specific internal and external agent scenarios, see
-[`docs/quickstart_claude.md`](docs/quickstart_claude.md).
+| I want to... | Start with |
+| --- | --- |
+| Use the desktop application | [Install GENtle](INSTALL.md), run `cargo run --bin gentle`, then choose `File -> Open Tutorial Project...` |
+| Try a short executable example | [Executable tutorial hub](docs/tutorial/generated/README.md) |
+| Automate a workflow | [CLI manual](docs/cli.md) and `cargo run --bin gentle_cli -- capabilities` |
+| Connect an AI tool | [Agent interfaces tutorial](docs/tutorial/01-01_agent_interfaces.md) and [MCP/agent architecture](docs/agent_interface.md) |
+| Run headlessly in a container | [Container guide](docs/container.md) |
+| Contribute code or documentation | [Contributing guide](CONTRIBUTING.md) |
 
-## Optional External Tools
+A minimal source-build check is:
 
-Most GENtle workflows run without optional command-line helpers, but several
-advanced or compatibility paths can use them when present:
+```sh
+cargo check -q
+cargo run --bin gentle_cli -- capabilities
+cargo run --bin gentle
+```
 
-- BLAST+: `makeblastdb` and `blastn` for prepared-genome indexing/search.
-- ViennaRNA/RNAPKIN: `RNAfold` and `rnapkin` for RNA-structure calculation and
-  rendering.
-- BigWig conversion: `bigWigToBedGraph` for BigWig track import.
-- Legacy SHA-1 verification: `sha1sum` or `shasum -a 1` on Unix-like systems,
-  and Windows `certutil` on Windows. This is used only when an upstream
-  download/manifest still exposes SHA-1 fields. GENtle skips SHA-1 verification
-  when no external tool is available and still relies on basic size, gzip, and
-  parser checks where applicable.
+Tagged internal releases may provide a macOS DMG or Windows ZIP on the
+[releases page](https://github.com/smoe/gentle_rs/releases). Linux users can
+build from source or use the documented container route. See
+[`INSTALL.md`](INSTALL.md) for platform details and optional external tools.
 
-Executable overrides can be supplied through environment variables such as
-`GENTLE_MAKEBLASTDB_BIN`, `GENTLE_BLASTN_BIN`, `GENTLE_RNAFOLD_BIN`,
-`GENTLE_RNAPKIN_BIN`, `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`, and
-`GENTLE_SHA1_TOOL`. Set `GENTLE_DISABLE_LEGACY_SHA1=1` to skip legacy SHA-1
-checks intentionally.
+## Why GENtle
 
-## RNA-seq Target Rescue Screen
-
-`gentle_cli rescue-screen` is a pilot calibration command for screening
-RNA-seq reads against a small requested gene set after external quantification,
-for example reads Salmon left unassigned or reads Salmon assigned to target
-transcripts. It is intentionally separate from the shared `rna-reads` engine
-routes and does not claim to call fusions, splice isoforms, or definitive
-transcript origin.
-
-The command accepts one or more Ensembl-style transcript FASTA files
-(`--transcript-fasta`), requested genes (`--genes` or repeatable `--gene`),
-streamed FASTA/FASTQ reads (`--reads`, plain or `.gz`), optional read-id
-filters, and optional Salmon bridge files (`--salmon-unmapped-names`,
-`--salmon-mappings-sam`). It builds redundant per-gene canonical k-mer hashes
-and writes deterministic reports as `<prefix>.gene_manifest.tsv`,
-`<prefix>.gene_hits.tsv`, `<prefix>.read_hits.tsv`,
-`<prefix>.run_metadata.json`, `<prefix>.summary.json`, and, when Salmon bridge
-inputs define multiple universes, `<prefix>.comparison.json`.
+- **One engine, many interfaces.** GUI actions, shell commands, workflows,
+  scripts, and agent tools converge on shared biological operations.
+- **Project state rather than disconnected files.** Sequences, annotations,
+  containers, arrangements, reports, lineage, and imported evidence remain
+  linked.
+- **Explanations from the computation.** Protocol cartoons, lineage graphs,
+  dotplots, expert views, and structured reports are derived from the same
+  state that produced the result.
+- **Genome context when cloning needs it.** Prepared references, genome
+  anchors, GFF/GTF annotation, BED/BigWig/VCF tracks, repeats, motifs, and RNA
+  evidence can inform the same project.
+- **Reproducibility by construction.** Operations and results are
+  machine-readable, deterministic where inputs are fixed, and exportable for
+  review.
 
 ## What To Trust Today
 
-Use this as a task-oriented confidence map rather than assuming every visible
-menu item is equally mature.
+These labels describe implementation maturity, not biological validation.
+Users remain responsible for reviewing designs, assumptions, and experimental
+conditions.
 
-### Recommended now
-
-- Single-insert Gibson specialist work: destination-first planning, preview,
-  apply, reopen-from-lineage, and SVG/cartoon export.
-- Core PCR, primer-pair, and qPCR engine routes when you already know the task
-  and want deterministic execution plus an inspectable report trail.
-- Prepared-genome region/gene extraction and the linked visualization/export
-  paths once the reference has been prepared locally.
-- Basic read-only SnapGene `.dna` plus GenBank/EMBL import when you need to
-  interpret existing plasmid or sequence records inside the same deterministic
-  state as newer GENtle-native workflows.
-- RNA-read Mapping, dotplot, TFBS track, and isoform/protein interpretation
-  routes when the question is about transcript or regulatory context rather
-  than only construct assembly.
-- ClawBio/OpenClaw wrapper requests that need structured GENtle execution plus
-  reproducibility bundles, especially the current VKORC1 follow-up story.
-- Explanation/export surfaces such as lineage SVG, protocol cartoons, dotplot
-  SVG, and isoform-architecture figures.
-
-### Works with caveats
-
-- Multi-insert Gibson preview/review is useful, but execution currently
-  requires a defined destination opening; `existing_termini` is still the
-  single-fragment handoff path.
-- Primer3-backed primer workflows are available, but the internal backend is
-  still the most deterministic default and deeper backend-parity work is
-  ongoing.
-- GUI-first and manual/hybrid tutorials are good learning aids, but generated
-  executable tutorials remain the higher-confidence reference when
-  reproducibility matters most.
-
-### Exploratory / not yet first choice
-
-- Broader cloning routine families outside the strongest current
-  Gibson/restriction baselines.
-- Direct GUI feature editing and exon/intron/transcript-boundary curation.
-- guideRNA workflows, richer virtual-PCR/off-target workflows, and deeper
-  assay families such as LAMP or KASP/PACE genotyping.
-
-## Operations, Routines, and Specialists
-
-GENtle is intentionally layered so cloning logic stays deterministic without
-forcing every user to work at the same level of abstraction.
-
-| Layer | Quick read |
+| Maturity | Good current uses |
 | --- | --- |
-| **Operations** | Atomic deterministic state transitions such as `Digest`, `Ligation`, `Pcr`, `DesignPrimerPairs`, `DesignQpcrAssays`, and `ExtractGenomeRegion`.<br><sub>Meet them in GUI Engine Ops, the shared shell, and CLI JSON/workflow execution.</sub> |
-| **Routines** | Named, typed workflow patterns with explainability and preflight, like `gibson.two_fragment_overlap_preview`, `golden_gate.type_iis_single_insert`, `gateway.bp_single_insert`, and `restriction.digest_ligate_extract_sticky`.<br><sub>Meet them in `Patterns -> Routine Assistant...`, `routines list/explain/compare`, and `macros template-run --validate-only`.</sub> |
-| **Specialists** | Guided task-specific windows built on the same engine and routine ideas, such as `Patterns -> Gibson...`, the DNA-window PCR tools, and the Routine Assistant.<br><sub>Best when you want planning and review help without dropping to raw operation payloads.</sub> |
-| **Explanation artifacts** | Factual outputs generated from the same project state, including protocol cartoons, the lineage graph, and exported reports.<br><sub>These are the SVG/PNG figures and reports surfaced in the README, exports, Help, and tutorials.</sub> |
+| **Recommended** | Single-insert Gibson planning/apply/reopen/export; core PCR, primer-pair, and qPCR routes; prepared-genome extraction; read-only GenBank/EMBL/SnapGene import; genome/evidence visualization; lineage, protocol-cartoon, dotplot, TFBS, isoform, and gel exports |
+| **Useful with caveats** | Multi-insert Gibson previews; Primer3-backed design; manual/hybrid tutorials; broader routine-family comparisons |
+| **Exploratory** | Direct feature-boundary curation; guideRNA and richer off-target workflows; less mature cloning families; future LAMP, KASP/PACE, long-range, multiplex, and translocation PCR modalities |
 
-The intended usage is:
-
-1. Use operations when you already know the exact atomic steps you want.
-2. Use routines when you want GENtle to help choose, explain, preflight, and
-   bind a named cloning workflow.
-3. Use specialists when a workflow deserves a focused GUI for planning,
-   review, and export, but should still land on the same shared engine
-   contracts underneath.
-
-This is why the same project can simultaneously hold raw operations, named
-routine logic, specialist review state, generated cartoons, and
-lineage/provenance without those becoming separate worlds.
-
-This architecture is still evolving. Some domains already have richer
-specialists than the generic routine layer, and some routine families are much
-deeper than others. The important current invariant is not that every surface
-looks identical yet, but that they are converging on the same deterministic
-engine, the same typed preflight logic, and the same inspectable project
-state.
+The detailed release gate and open work live in the
+[`roadmap`](docs/roadmap.md). Completed changes are recorded in the
+[`changelog`](docs/CHANGELOG.md).
 
 ## How GENtle Fits Together
 
-![GENtle system overview](docs/figures/gentle_system_overview.svg)
+![GENtle system overview showing interfaces and biological inputs feeding one shared engine, project state, analysis layer, and provenance outputs](docs/figures/gentle_system_overview.svg)
 
-At a glance, GENtle is organized around one shared deterministic engine and
-one project state. Interactive interfaces, scripting routes, and imported
-biological context all meet in the same lineage-aware model, which then drives
-cloning workflows, retrieval, design, analysis, graphics, and provenance.
+Interactive interfaces and imported biological context meet in one shared
+engine. The resulting project state drives cloning, retrieval, design,
+analysis, rendering, and provenance rather than leaving each frontend to
+reimplement the biology.
 
-## What It Already Shows
+### Operations, Routines, and Specialists
 
-GENtle can not only perform cloning tasks, but also explain them from the
-same deterministic project state and render those explanations graphically.
-All of the figures below were produced by GENtle itself through shared engine
-routes, without manual redrawing or post-hoc illustration.
-
-### Simplest Blunt-End Clone
-
-![GENtle blunt-end PCR ligation hero](docs/figures/pgex_blunt_pcr_ligation_hero.svg)
-
-This is the smallest fully offline cloning slice now documented in the
-repository: amplify one blunt 250 bp PCR product, start from one intact
-circular pGEX vector with its MCS highlighted, open that vector with the blunt
-cutter `SmaI`, and let GENtle show the two blunt-ligation orientations that
-follow from a non-directional insert while the yellow MCS-derived vector ends
-embrace the insert in the ligation panel. The two circular products are also
-given opposite strand patterns there, so one orientation reads as
-solid-over-dotted and the other as dotted-over-solid at a glance. The PCR
-insert keeps the same strand cue already in the input and opening panels, so
-the ligation outcome reads as a continuation of the same duplex.
-
-The concrete replayable workflow lives in
-[`docs/figures/pgex_blunt_pcr_ligation.workflow.json`](docs/figures/pgex_blunt_pcr_ligation.workflow.json).
-It uses the linear FASTA
-[`test_files/pGEX_3X.fa`](test_files/pGEX_3X.fa) as the PCR template, the
-circular GenBank record
-[`test_files/pGEX-3X.gb`](test_files/pGEX-3X.gb) as the vector to digest, and
-also writes the actual lineage companion figure
-[`docs/figures/pgex_blunt_pcr_ligation_lineage.svg`](docs/figures/pgex_blunt_pcr_ligation_lineage.svg).
-The hero above is the matching conceptual strip rendered from
-[`docs/examples/protocol_cartoon/pcr_blunt_vector_ligation_template.json`](docs/examples/protocol_cartoon/pcr_blunt_vector_ligation_template.json).
-
-Regenerate both from the repository root with:
-
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/pgex_blunt_pcr_ligation.state.json \
-  workflow @docs/figures/pgex_blunt_pcr_ligation.workflow.json
-
-cargo run --quiet --bin gentle_cli -- \
-  protocol-cartoon render-template-svg \
-  docs/examples/protocol_cartoon/pcr_blunt_vector_ligation_template.json \
-  docs/figures/pgex_blunt_pcr_ligation_hero.svg
-```
-
-### Known-Insert PCR Checks
-
-![GENtle blunt-clone junction PCR hero](docs/figures/pgex_blunt_junction_pcr_hero.svg)
-
-For a known insert, the next practical checks after a non-directional blunt
-ligation are still PCR-based. Here GENtle keeps the same pGEX blunt-clone
-story, but switches from build logic to verification logic: two junction PCRs,
-one at each end, confirm the chosen insert orientation, and an outward-facing
-insert-end PCR stays negative unless multiple inserts were taken up in tandem.
-
-This conceptual strip is rendered from
-[`docs/examples/protocol_cartoon/pcr_blunt_junction_pcr_template.json`](docs/examples/protocol_cartoon/pcr_blunt_junction_pcr_template.json).
-Regenerate it from the repository root with:
-
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  protocol-cartoon template-validate \
-  docs/examples/protocol_cartoon/pcr_blunt_junction_pcr_template.json
-
-cargo run --quiet --bin gentle_cli -- \
-  protocol-cartoon render-template-svg \
-  docs/examples/protocol_cartoon/pcr_blunt_junction_pcr_template.json \
-  docs/figures/pgex_blunt_junction_pcr_hero.svg
-```
-
-### Unknown Insert with Degenerate Primers
-
-![GENtle blunt-clone degenerate-primer hero](docs/figures/pgex_blunt_sequence_confirmation_hero.svg)
-
-If the insert sequence is not known in advance, GENtle can instead illustrate
-the recovery step with degenerate primers placed on conserved motifs. Once
-that PCR product has been cloned, sequencing becomes ordinary again: the known
-vector primers on both sides read into the insert from the familiar flanks,
-and Sanger confirmation proceeds as usual.
-
-This conceptual strip is rendered from
-[`docs/examples/protocol_cartoon/pcr_blunt_sequence_confirmation_template.json`](docs/examples/protocol_cartoon/pcr_blunt_sequence_confirmation_template.json).
-Regenerate it from the repository root with:
-
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  protocol-cartoon template-validate \
-  docs/examples/protocol_cartoon/pcr_blunt_sequence_confirmation_template.json
-
-cargo run --quiet --bin gentle_cli -- \
-  protocol-cartoon render-template-svg \
-  docs/examples/protocol_cartoon/pcr_blunt_sequence_confirmation_template.json \
-  docs/figures/pgex_blunt_sequence_confirmation_hero.svg
-```
-
-### Gibson Workflow, Mechanism, and Provenance
-
-![GENtle Gibson protocol cartoon](docs/figures/gibson_two_fragment_protocol_cartoon.svg)
-
-The first strip is the compact conceptual view: two fragments, 5' chew-back,
-annealing across the homologous overlap, polymerase fill-in, and ligase
-sealing. It introduces the mechanism at a glance.
-
-![GENtle single-insert Gibson mechanism](docs/figures/gibson_single_insert_protocol_cartoon.svg)
-
-The second strip is the factual single-insert view produced from the same
-shared engine: one opened destination, one insert, two explicit junctions,
-correct 5' chew-back, annealing at both overlaps, polymerase fill-in, and
-ligase sealing.
-
-![GENtle Gibson lineage graph](docs/figures/gibson_single_insert_lineage.svg)
-
-And the same state remains inspectable as provenance: one `Gibson cloning`
-operation, two input sequences, two primer outputs, and one assembled product
-in the lineage graph. This figure is not a screenshot; it is the SVG export of
-the same lineage graph that becomes available in the GUI after Gibson apply,
-via `File -> Export DALG SVG...` or the graph-canvas context menu entry
-`Save Graph as SVG...`.
-
-Current limitation: multi-insert execution currently requires a defined
-destination opening; `existing_termini` remains the single-fragment handoff
-path.
-
-These README Gibson figures are generated from shared engine routes, not drawn
-by hand. Together they answer three different questions:
-
-1. What is Gibson at a glance?
-2. What exact mechanism is GENtle modeling?
-3. What concrete artifacts did the project produce?
-
-The conceptual hero is rendered directly by the built-in protocol-cartoon
-engine:
-
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  protocol-cartoon render-svg \
-  gibson.two_fragment \
-  docs/figures/gibson_two_fragment_protocol_cartoon.svg
-```
-
-The single-insert mechanism strip is likewise rendered directly from the newer
-built-in dual-junction protocol cartoon:
-
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  protocol-cartoon render-svg \
-  gibson.single_insert_dual_junction \
-  docs/figures/gibson_single_insert_protocol_cartoon.svg
-```
-
-The lineage figure comes from the same tutorial baseline plus one deterministic
-Gibson apply + GUI/CLI-shared lineage export path. Exact regeneration commands
-for all three Gibson figures live in [`docs/figures/README.md`](docs/figures/README.md).
-
-The protocol-cartoon command surface intentionally stays canonical under
-`protocol-cartoon ...` so scripted and AI-guided use does not need to choose
-between overlapping alias names.
-
-### Rack Placement, Gel Readout, and 3D Print Path
-
-| Linked physical carrier | Top-down inspection | README gel readout |
+| Layer | Meaning | Typical entry point |
 | --- | --- | --- |
-| ![GENtle Gibson rack hero](docs/figures/gibson_single_insert_rack_hero.svg) | ![GENtle Gibson top-down rack](docs/figures/gibson_single_insert_storage_rack_topdown.svg) | ![GENtle Gibson arrangement gel](docs/figures/gibson_single_insert_arrangement_gel_hero.svg) |
-
-The same single-insert Gibson state can now also be projected into one linked
-physical carrier and one linked analytical readout. The rack hero is not a
-screenshot: it is a README-focused SVG derived from the deterministic isometric
-rack export that the saved rack draft produces automatically. The top-down
-companion is emitted directly from the same arrangement as a cleaner inspection
-view with coordinate axes, occupied-slot rings, and lane-role labels. Its
-restored legend keeps the link back to the cloning experiment visible again:
-`Gibson arrangement` plus `DNA ladder`.
-
-The gel companion is generated from the same saved Gibson state, but the README
-version uses a deliberate analytical lane order: `insert -> vector -> product`.
-That puts the insert directly next to the finer `100 bp` ladder on the left,
-while the heavier vector and assembled-product bands sit next to each other for
-a more immediate before/after size comparison. A broader `1 kb` ladder on the
-right still keeps the larger plasmid-sized bands grounded, and the hero now
-restores side size annotations so the band scale stays legible without bringing
-back the full technical audit view. Taken together, the two figures make it
-much clearer why the rack placement and gel readout belong together even though
-the wet-lab carrier and analytical lane order are not the same thing.
-
-The same shared physical template and arrangement state also drive fabrication
-SVG, carrier-label, and OpenSCAD export. The committed model sources are
-[`gibson_single_insert_storage_rack.scad`](docs/figures/gibson_single_insert_storage_rack.scad)
-for the compact inspection rack and
-[`gibson_single_insert_pipetting_rack.scad`](docs/figures/gibson_single_insert_pipetting_rack.scad)
-for the larger pipetting carrier; they are OpenSCAD sources rather than STL
-meshes so the geometry remains deterministic and editable.
-
-Regenerate them with:
-
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gibson_rack_hero.state.json \
-  workflow @docs/examples/workflows/gibson_arrangements_baseline.json
-
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gibson_rack_hero.state.json \
-  racks isometric-svg \
-  rack-1 \
-  docs/figures/gibson_single_insert_rack_isometric.svg \
-  --template pipetting_pcr_tube_rack
-
-python3 docs/figures/render_rack_isometric_hero.py \
-  docs/figures/gibson_single_insert_rack_isometric.svg \
-  docs/figures/gibson_single_insert_rack_hero.svg
-
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gibson_rack_hero.state.json \
-  racks hero-svg \
-  rack-1 \
-  docs/figures/gibson_single_insert_storage_rack_topdown.svg \
-  --template storage_pcr_tube_rack
-
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gibson_rack_hero.state.json \
-  racks hero-svg \
-  rack-1 \
-  docs/figures/gibson_single_insert_rack_topdown.svg \
-  --template pipetting_pcr_tube_rack
-
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gibson_rack_hero.state.json \
-  racks openscad \
-  rack-1 \
-  docs/figures/gibson_single_insert_storage_rack.scad \
-  --template storage_pcr_tube_rack
-
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gibson_rack_hero.state.json \
-  racks openscad \
-  rack-1 \
-  docs/figures/gibson_single_insert_pipetting_rack.scad \
-  --template pipetting_pcr_tube_rack
-
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gibson_rack_hero.state.json \
-  render-pool-gel-svg \
-  - \
-  docs/figures/gibson_single_insert_arrangement_gel.svg \
-  --containers container-2,container-1,container-5 \
-  --ladders "GeneRuler 100bp DNA Ladder Plus,Plasmid Factory 1kb DNA Ladder"
-
-python3 docs/figures/render_serial_gel_hero.py \
-  docs/figures/gibson_single_insert_arrangement_gel.svg \
-  docs/figures/gibson_single_insert_arrangement_gel_hero.svg \
-  "100 bp ladder" insert vector product "1 kb ladder"
-```
-
-The corresponding GUI/CLI tutorial for this export lives in
-[`docs/tutorial/03-08_gibson_physical_rack_gui.md`](docs/tutorial/03-08_gibson_physical_rack_gui.md).
-
-The same `racks hero-svg` route supports storage racks, pipetting racks, and
-six-well cell-culture plates. For plates, the wells render as culture wells
-rather than PCR tubes, so the export can be used for plate-level treatment
-layouts and README/protocol figures without changing the underlying arrangement
-semantics. The README hero uses an empty top-down plate with the upper-left
-orientation corner clipped, matching common six-well plate drawings, while the
-well labels come from the saved arrangement itself.
-
-![GENtle 6-well cell-culture plate arrangement](docs/figures/cell_culture_plate_hero.svg)
-
-The matching OpenSCAD source is
-[`cell_culture_plate.scad`](docs/figures/cell_culture_plate.scad). It keeps the
-same clipped orientation corner and well geometry as the visual exports, but is
-intended as a technical model source rather than a README hero render.
-
-Regenerate the SVG and PDF copies with:
-
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gentle_cell_culture_plate.state.json \
-  workflow @docs/examples/workflows/cell_culture_plate.json
-
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gentle_cell_culture_plate.state.json \
-  racks hero-svg \
-  cell-culture-6well \
-  docs/figures/cell_culture_plate_hero.svg \
-  --template cell_culture_plate
-
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gentle_cell_culture_plate.state.json \
-  racks openscad \
-  cell-culture-6well \
-  docs/figures/cell_culture_plate.scad \
-  --template cell_culture_plate
-
-cargo run --quiet --bin gentle_cli -- \
-  svg-pdf \
-  docs/figures/cell_culture_plate_hero.svg \
-  docs/figures/cell_culture_plate_hero.pdf \
-  --scale 2
-```
-
-### Overlap-Extension PCR Substitution Mechanism
-
-![GENtle overlap-extension substitution PCR mechanism](docs/figures/pcr_overlap_extension_substitution_fig1_style.svg)
-
-This hero strip shows the six-step overlap-extension substitution flow:
-template+insert setup, chimeric primer assignment (`a`..`f`), three first-step
-PCR products (`AB`, `CD`, `EF`), denaturation, overlap annealing with
-strand-specific gaps, and polymerase fill to one continuous duplex product.
-
-The figure is rendered from the built-in protocol-cartoon route:
-
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  protocol-cartoon render-svg \
-  pcr.oe.substitution \
-  docs/figures/pcr_overlap_extension_substitution_fig1_style.svg
-```
-
-### TP73 Dotplot Views
-
-| Pairwise cDNA vs genome | Shared-exon anchored isoforms |
-| --- | --- |
-| ![GENtle TP73 cDNA vs genomic dotplot](docs/figures/tp73_cdna_genomic_dotplot.png) | ![GENtle TP73 shared-exon anchored multi-isoform dotplot](docs/figures/tp73_multi_isoform_anchor_dotplot.png) |
-
-The README dotplot story now stays on one locus: TP73. The left panel is the
-simple pairwise baseline, with `NM_001126241.3` derived locally from
-`test_files/tp73.ncbi.gb` and aligned back to the same TP73 genomic locus. The
-right panel is the more integrated multi-isoform view: the longest curated TP73
-transcript (`NM_005427.4`) is overlaid with variants `NM_001126240.3`,
-`NM_001126241.3`, and `NM_001204189.2`, all against the same genomic
-reference, while the shared exon `55034..55276` is anchored to one common
-x-position. That makes downstream splice losses and retained exon chains easier
-to compare at a glance without leaving the shared dotplot engine route.
-
-Both figures remain available interactively in the GUI through a DNA window's
-`Dotplot map` mode and the standalone `Dotplot` workspace, where the same
-payloads can be re-rendered with alternative overlay x-axis layouts.
-For the visual grammar alone, the repository also carries a tiny synthetic
-anchored teaching figure in
-[`docs/figures/toy_shared_exon_anchor_dotplot.png`](docs/figures/toy_shared_exon_anchor_dotplot.png),
-documented in [`docs/figures/README.md`](docs/figures/README.md).
-
-For a cross-gene reading, the repository now also carries an anchored p53
-family comparison:
-
-![GENtle anchored TP53 family comparison](docs/figures/p53_family_query_anchor_dotplot.png)
-
-Here TP73 stays on the shared Y-axis as the reference sequence, while TP63 and
-TP53 are overlaid on the X-axis and aligned by the conserved motif
-`CATGTGTAACAG`. This uses the same engine-owned dotplot payload plus the new
-`query_anchor_bp` overlay x-axis mode, so the family comparison is a true
-shared contract rather than a special README-only drawing.
-
-The TP73 README dotplot figures were generated with:
-
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/tp73_readme_dotplot.state.json \
-  workflow @docs/figures/tp73_cdna_genomic_dotplot.workflow.json
-
-cargo run --quiet --bin gentle_examples_docs -- \
-  svg-png \
-  docs/figures/tp73_cdna_genomic_dotplot.svg \
-  docs/figures/tp73_cdna_genomic_dotplot.png \
-  --drop-dotplot-metadata
-
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/tp73_anchor_readme.state.json \
-  workflow @docs/figures/tp73_multi_isoform_anchor_dotplot.workflow.json
-
-cargo run --quiet --bin gentle_examples_docs -- \
-  svg-png \
-  docs/figures/tp73_multi_isoform_anchor_dotplot.svg \
-  docs/figures/tp73_multi_isoform_anchor_dotplot.png \
-  --drop-dotplot-metadata
-
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/p53_family_anchor.state.json \
-  workflow @docs/figures/p53_family_query_anchor_dotplot.workflow.json
-
-cargo run --quiet --bin gentle_examples_docs -- \
-  svg-png \
-  docs/figures/p53_family_query_anchor_dotplot.svg \
-  docs/figures/p53_family_query_anchor_dotplot.png \
-  --drop-dotplot-metadata
-```
-
-### TP73 Upstream TF Score Tracks
-
-![GENtle TP73 upstream TFBS score tracks](docs/figures/tp73_upstream_tfbs_score_tracks.png)
-
-GENtle can now also export the continuous TFBS/PSSM score-track plot itself as a
-shared figure, not just as a GUI-only panel or JSON array dump. This TP73
-example uses the local `test_files/tp73.ncbi.gb` locus and shows one
-promoter-proximal internal transcript-start neighborhood (`15564..16764`),
-covering `1000 bp` upstream plus `200 bp` into the transcribed region around
-the internal TP73 start at `XM_047429524.1`, for `TP53`, `TP63`, `TP73`,
-`PATZ1`, `SP1`, `BACH2`, and `REST`. When a transcription start is immediately
-adjacent to or inside the rendered window, the shared export now marks it with
-a short hooked arrow so strand direction reads directly from the figure. The
-figure is deliberately rendered without negative clipping, because in this slice
-`SP1` provides the clearest positive support while the other requested factors
-are still informative as full continuous score traces rather than being
-flattened to zero.
-
-The figure was generated with:
-
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/tp73_upstream_tfbs_score_tracks.state.json \
-  workflow @docs/figures/tp73_upstream_tfbs_score_tracks.workflow.json
-
-cargo run --quiet --bin gentle_examples_docs -- \
-  svg-png \
-  docs/figures/tp73_upstream_tfbs_score_tracks.svg \
-  docs/figures/tp73_upstream_tfbs_score_tracks.png
-```
-
-### TERT Promoter Tail-Calibrated TFBS Tracks
-
-![GENtle TERT upstream/early-coding TFBS score tracks](docs/figures/tert_upstream_early_coding_llr_background_tail_log10.png)
-
-GENtle can also carry the same TFBS score-track machinery into a real promoter
-case study and keep the genomic anchor visible. This TERT example is derived
-through GENtle’s own internal promoter-slice path (`1000 bp` upstream plus
-`200 bp` into the transcribed region) rather than by pasting an external
-sequence into the plotter. The stacked figure uses one tail-calibrated
-`llr_background_tail_log10` view for the requested factors
-`POU5F1 (MA1115.2)`, `SOX2 (MA0143.5)`, `KLF4 (MA0039.5)`,
-`MYC (MA0147.4)`, `SP1 (MA0079.5)`, `BACH2 (MA1101.3)`,
-`PATZ1 (MA1961.2)`, `TP53 (MA0106.3)`, `TP63 (MA0525.2)`, and
-`TP73 (MA0861.2)`, and it keeps the transcription start site explicit as one
-shared dashed line with a single kinked top arrow so the whole plot still
-reads as one DNA span instead of ten independent traces.
-
-In this TERT slice, `SP1 (MA0079.5)` and `MYC (MA0147.4)` stand out most
-clearly in the tail-calibrated track view, while `PATZ1 (MA1961.2)`,
-`TP63 (MA0525.2)`, and `KLF4 (MA0039.5)` stay visible as
-secondary-but-real tail events instead of collapsing into random-looking
-texture.
-
-### TERT Promoter Synchrony View
-
-![GENtle TERT TFBS Spearman correlation heatmap](docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman.png)
-
-The same shared report can also be rendered as a synchrony view. For promoter
-work like this, GENtle now offers both Pearson and Spearman on the exact and
-smoothed per-position signals. This README figure uses Spearman because the
-track values are clearly non-normal and often tied by clipping/background
-thresholding, so rank-based correlation is the more honest default summary.
-The default `max_strands` export now keeps the strand logic visible too, but in
-the simpler way: it renders one all-against-all matrix over the strand-specific
-curves themselves, ordered `F` then `R` for every motif. That means every TF
-pair naturally appears as one 2x2 block with `F-F / F-R / R-F / R-R`, instead
-of hiding mixed-orientation pairings behind one collapsed number.
-
-That makes the TERT story easier to read: we can see not just which motifs
-peak, but which ones peak in the same neighborhoods. In the current slice,
-`SP1 (MA0079.5)` and `PATZ1 (MA1961.2)` form the strongest synchronized pair,
-with `KLF4 (MA0039.5)` also tracking the same neighborhood.
-
-GENtle now also keeps strand-aware companion exports for the same TERT slice,
-so orientation-sensitive questions do not have to be flattened into one
-`max(forward, reverse)` summary. The current README uses the combined
-max-strands Spearman view, while the matching
-[forward-only](docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_forward_only.png)
-and
-[reverse-only](docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_reverse_only.png)
-exports stay available when strand-specific spacing or flanking-motif
-relationships matter.
-
-### Dynamic Promoter TF Workflows
-
-The README examples above happen to use `TP73` and `TERT`, but the shared
-engine routes are not locked to those genes. Any prepared local
-Ensembl-backed gene can be turned into one promoter slice, and the requested
-factors can be described by exact motif id/name, common aliases such as
-`OCT4`, family-style queries such as `KLF family`, or built-in functional
-groups such as `Yamanaka factors` / `stemness`.
-
-One direct command-line path looks like this:
-
-```sh
-cargo run --quiet --bin gentle_cli -- shell \
-  'resources resolve-tf-query "Yamanaka factors" OCT4 "KLF family" --output /tmp/tf_queries.json'
-
-cargo run --quiet --bin gentle_cli -- \
-  genomes extract-promoter "Human GRCh38 Ensembl 116" TERT \
-  --output-id grch38_tert_promoter \
-  --upstream-bp 1000 \
-  --downstream-bp 200
-
-cargo run --quiet --bin gentle_cli -- shell \
-  'features tfbs-scan grch38_tert_promoter --motif "Yamanaka factors" --motif SP1 --min-llr-quantile 0.95 --max-hits 100 --path /tmp/tert_tfbs_scan.json'
-
-cargo run --quiet --bin gentle_cli -- shell \
-  'features tfbs-score-tracks-svg grch38_tert_promoter docs/figures/tert_yamanaka_sp1_score_tracks.svg --motif "Yamanaka factors" --motif SP1 --score-kind llr_background_tail_log10'
-
-cargo run --quiet --bin gentle_cli -- shell \
-  'features tfbs-track-similarity grch38_tert_promoter --anchor-motif SP1 --candidate-motif "Yamanaka factors" --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --species "Homo sapiens" --include-remote-metadata --limit 25 --path /tmp/tert_sp1_yamanaka_similarity.json'
-```
-
-That keeps the whole promoter-analysis path dynamic:
-
-- the gene can be replaced with any user-chosen locus that exists in the
-  prepared reference
-- the upstream region is derived deterministically from transcript TSS
-  geometry instead of being pasted manually
-- `features tfbs-scan ...` returns discrete hit locations
-- `features tfbs-score-tracks-svg ...` renders the continuous binding-support
-  landscape
-- `features tfbs-track-similarity ...` ranks other requested factors by how
-  similarly they score over the same promoter span
-
-The same shared engine route now also supports one combined multi-gene figure,
-so users are no longer limited to repeating the single-gene workflow by hand:
-
-```sh
-cargo run --quiet --bin gentle_cli -- shell \
-  'genomes promoter-tfbs-summary "Human GRCh38 Ensembl 116" \
-    --gene TERT \
-    --gene TP73 \
-    --motif "Yamanaka factors" \
-    --motif SP1 \
-    --upstream-bp 1000 \
-    --downstream-bp 200 \
-    --score-kind llr_background_tail_log10 \
-    --path /tmp/tert_tp73_promoter_tfbs.summary.json'
-
-cargo run --quiet --bin gentle_cli -- shell \
-  'genomes promoter-tfbs-svg "Human GRCh38 Ensembl 116" \
-    --gene TERT \
-    --gene TP73 \
-    --motif "Yamanaka factors" \
-    --motif SP1 \
-    --upstream-bp 1000 \
-    --downstream-bp 200 \
-    --score-kind llr_background_tail_log10 \
-    /tmp/tert_tp73_promoter_tfbs.svg'
-```
-
-Those commands keep the multi-gene path just as dynamic:
-
-- any prepared Ensembl-backed gene set can be supplied with repeated `--gene`
-  tokens
-- promoter windows are transcription-aligned before scoring, so upstream
-  support stays comparable across plus- and minus-strand genes
-- the summary JSON exposes one compact per-gene/per-factor comparison table
-- the SVG renders one small-multiples promoter panel per gene with a shared
-  x-axis convention and explicit TSS markers
-
-### Stateless Sequence Inspection
-
-GENtle now also has a very small state-optional inspection slice for direct DNA
-questions: paste or embed one ASCII sequence, then ask for restriction sites,
-TFBS hits, or continuous TFBS score tracks without first creating a stored
-sequence record.
-
-Canonical offline workflow example:
-
-- [`docs/examples/workflows/inline_sequence_inspection_stateless_offline.json`](docs/examples/workflows/inline_sequence_inspection_stateless_offline.json)
-
-Matching GUI/CLI tutorial:
-
-- [`docs/tutorial/02-02_stateless_sequence_inspection_gui_cli.md`](docs/tutorial/02-02_stateless_sequence_inspection_gui_cli.md)
-
-Matching ClawBio workflow request:
-
-- [`integrations/clawbio/skills/gentle-cloning/examples/request_workflow_inline_sequence_inspection_stateless.json`](integrations/clawbio/skills/gentle-cloning/examples/request_workflow_inline_sequence_inspection_stateless.json)
-
-Replay the canonical workflow from the repository root with:
-
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  workflow @docs/examples/workflows/inline_sequence_inspection_stateless_offline.json
-```
-
-This writes four portable artifacts from one synthetic inline sequence:
-
-- restriction-site JSON
-- TFBS-hit JSON
-- TFBS score-track JSON
-- TFBS score-track SVG
-
-### ClawBio / OpenClaw Handoff
-
-![GENtle VKORC1/rs9923231 luciferase hero figure](docs/figures/vkorc1_rs9923231_luciferase_hero.png)
-
-GENtle now has a concrete ClawBio/OpenClaw bridge rather than only a loose
-prompting story. Requests use `gentle.clawbio_skill_request.v1`, results use
-`gentle.clawbio_skill_result.v1`, and readiness-sensitive follow-ons can be
-surfaced through `gentle.service_handoff.v1`. In practice, that means one
-structured request can trigger a shared GENtle shell/operation/workflow route,
-write `report.md` plus `result.json`, capture reproducibility files, and
-promote one PNG-first artifact for chat-style review while leaving supporting
-SVG and report outputs inspectable.
-
-The strongest current exemplar is the `VKORC1` / `rs9923231`
-promoter-luciferase handoff. ClawBio raises the pharmacogenomic alert, and
-GENtle turns that into a concrete promoter-fragment and luciferase-reporter
-design story. The left panel explains the reverse-strand promoter interval to
-take forward, while the right panel shows the study construct as a real GENtle
-circular-map export rather than a standalone illustration.
-
-The same ClawBio bridge is also being shaped into an experimental follow-up
-planner. Natural requests such as "determine the effect of this SNP", "what
-should we do with this differentially expressed gene", "characterize this
-splice variant", "overexpress this gene", or "compare the cheapest route" can
-be routed through a machine-readable request catalog that separates prompt
-origin, intent, evidence, GENtle artifacts, routine planning, and confirmation
-gates. The current integration notes live in
-[`integrations/clawbio/experimental_followup_graph.md`](integrations/clawbio/experimental_followup_graph.md),
-[`integrations/clawbio/experimental_followup_request_catalog.json`](integrations/clawbio/experimental_followup_request_catalog.json),
-and
-[`integrations/clawbio/experimental_followup_requests.md`](integrations/clawbio/experimental_followup_requests.md).
-
-If you want the concrete wrapper examples first, start with
-[`integrations/clawbio/skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json`](integrations/clawbio/skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json),
-the matching generated workflow note
-[`docs/examples/generated/vkorc1_rs9923231_promoter_luciferase_assay_planning.md`](docs/examples/generated/vkorc1_rs9923231_promoter_luciferase_assay_planning.md),
-and the reproducibility bundle under
-[`docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/`](docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/).
-
-### Guided GUI Tutorials
-
-![GENtle Gibson testing tutorial in the Help window](docs/screenshots/screenshot_GUI_help_tutorial_testing_gibson.png)
-
-GENtle also ships guided GUI tutorials. For example, the Gibson specialist has
-a dedicated walkthrough in
-[`docs/tutorial/03-05_gibson_specialist_testing_gui.md`](docs/tutorial/03-05_gibson_specialist_testing_gui.md),
-and that guide is available directly through the Help window with associated
-screenshots. This keeps the interactive workflow teachable and reproducible:
-users can follow a stable step-by-step path inside the GUI, and contributors
-still gain a concrete reference sequence baseline for validation when needed.
-
-## Ongoing Development
-
-GENtle is already practically useful, but it is still evolving in public. Some
-areas already have deeper specialists and richer visual explanation than
-others, and some generic routine families are still catching up with the
-strongest GUI flows.
-
-The README aims to show what is genuinely working today. The source of truth
-for current implementation status, open gaps, and execution order remains
-[`docs/roadmap.md`](docs/roadmap.md).
-
-Build note:
-- default Rust builds now focus on GUI/CLI/MCP/docs paths
-- embedded JavaScript and Lua shells are optional Cargo feature targets
-  (`js-interface`, `lua-interface`)
-- release packaging builds enable `script-interfaces`, so tagged release builds
-  include the embedded scripting adapter feature set even though default local
-  builds stay lean
-- the Python wrapper in `integrations/python/gentle_py` remains a separate
-  `gentle_cli`-based integration rather than a Rust build dependency
-
-### PCR and Primer Design Snapshot
-
-| Flavor / workflow | Current support | Main engine route(s) | Current surface |
-| --- | --- | --- | --- |
-| Standard endpoint PCR | Shipped | `Pcr` | GUI `PCR`, shared-shell/CLI operation payload |
-| Advanced PCR | Shipped | `PcrAdvanced` | GUI `PCR Adv`, shared-shell/CLI operation payload |
-| Degenerate / randomized primer-library PCR | Shipped inside advanced PCR | `PcrAdvanced` | shared-shell/CLI operation payload |
-| PCR mutagenesis | Shipped | `PcrMutagenesis` | GUI `PCR Mut`, shared-shell/CLI operation payload |
-| Primer-pair design for one ROI | Shipped | `DesignPrimerPairs` | Engine Ops, CLI/shared-shell report routes |
-| Insertion-first anchored pair design | Shipped (engine contract) | `DesignInsertionPrimerPairs` | CLI/shared-shell `op`/workflow payloads (GUI form pending) |
-| Selection-first batch primer-pair design | Shipped | repeated `DesignPrimerPairs` | DNA-window PCR queue + Engine Ops batch results |
-| qPCR assay design | Shipped | `DesignQpcrAssays` | PCR Designer qPCR mode, Engine Ops, CLI/shared-shell qPCR report routes |
-| PCR protocol cartoons | Shipped baseline | `RenderProtocolCartoonSvg` | `pcr.assay.pair`, `pcr.assay.pair.no_product`, `pcr.assay.pair.with_tail`, `pcr.assay.qpcr` |
-| Nested PCR | Planned | future `DesignPrimerPairs` family extension | tracked in roadmap |
-| Inverse PCR | Planned | future PCR modality extension | tracked in roadmap |
-| Long-range / multiplex / translocation PCR | Planned | future PCR modality extension | tracked in roadmap |
-
-This is an area where GENtle is already operational but still deepening. The
-core PCR engine family is shipped; richer specialist UX, broader modality
-coverage, and more showcase-grade explanation layers are still being expanded.
-
-The design direction is to keep these PCR flavors on one deterministic engine
-contract family rather than split them into unrelated specialist paths. In the
-layering above, that means:
-
-- PCR execution lives in engine operations such as `Pcr`, `PcrAdvanced`,
-  `PcrMutagenesis`, `DesignPrimerPairs`, and `DesignQpcrAssays`
-- PCR deep-dive GUI work lives in specialists and DNA-window tools
-- PCR explanation lives in shared protocol-cartoon outputs such as
-  `pcr.assay.pair`, `pcr.assay.pair.no_product`,
-  `pcr.assay.pair.with_tail`, and `pcr.assay.qpcr`
-
-The qPCR strip below is included as a supporting figure rather than a hero
-image. It is strongest as an assay-planning cartoon: panels 1 to 3 show the
-sequence-grounded setup GENtle models directly, while panel 4 should be read
-more lightly as quantification context than as a detailed fluorescence-physics
-model.
-
-![GENtle qPCR protocol cartoon](docs/figures/qpcr_assay_protocol_cartoon.svg)
-
-qPCR now has two clear command-line entry points:
-
-- use `primers seed-qpcr-from-feature ...` or `primers seed-qpcr-from-splicing ...`
-  to derive a deterministic `DesignQpcrAssays` setup payload from existing
-  sequence context
-- use `protocol-cartoon render-svg pcr.assay.qpcr ...` to export the
-  built-in probe-bearing qPCR strip for reports, ClawBio/OpenClaw bundles, or
-  README-style promotion
-
-Concrete cDNA example from the bundled
-[`test_files/tp73.ncbi.gb`](test_files/tp73.ncbi.gb) locus:
-
-| TP73-AS3 qPCR intent | Forward primer | Probe | Reverse primer | Product / support | Genomic carryover check |
-| --- | --- | --- | --- | --- | --- |
-| Shared across all three TP73-AS3 transcripts (`NR_187362.1`, `NR_187363.1`, `NR_187364.1`) | `TTCCTGCTCCAGCAGAACAA`<br><sub>Tm 64.9 C; spans shared exon junction `9638..9750 -> 6128..6915`</sub> | `AGAAATCCTGCAAACTGAGGCTGGACG`<br><sub>Tm 71.5 C</sub> | `TGGGCTTCGTGGTAATCTCG`<br><sub>Tm 64.9 C</sub> | 100 bp cDNA product in all 3/3 TP73-AS3 transcript templates | Low risk in GENtle's cDNA qPCR test; genomic-equivalent product is 2822 bp |
-| Specific to the first TP73-AS3 transcript (`NR_187362.1`) | `TACATGCTTCCAGCAGCTTG`<br><sub>Tm 63.7 C; spans transcript-specific junction `16110..16430 -> 9638..9750`</sub> | `TGACATGAAAGGACCTCCGTGGCTG`<br><sub>Tm 71.2 C</sub> | `GCAAAGGGCAGTTTTGTTCTG`<br><sub>Tm 63.7 C; spans shared junction `9638..9750 -> 6128..6915`</sub> | 147 bp cDNA product in `NR_187362.1` only | Low risk; genomic-equivalent product is 9228 bp |
-
-Both examples were checked with the shared `primers test-cdna-qpcr` path
-against the TP73-AS3 splicing group. ClawBio can already route the same family
-through the `gentle-cloning` modes `qpcr-seed-from-splicing`, `qpcr-design`,
-`cdna-qpcr-test`, and `transcript-qpcr-panel`; it needs either a state/workflow
-that loads the TP73 locus or an equivalent prepared sequence context.
-
-The two transcript-map SVGs below are the direct graphical output of those
-`primers test-cdna-qpcr --svg ...` checks. Each row shows the transcript exon
-structure (`E1`, `E2`, ...), exon-junction ticks, amplicon, primer hits, and a
-one-sided primer/probe glyphs on their detected binding strands; the requested
-primer/probe sequences are printed once in the legend.
-
-![GENtle TP73-AS3 shared cDNA qPCR transcript map](docs/figures/tp73_as3_shared_cdna_qpcr.svg)
-
-![GENtle TP73-AS3 NR_187362.1-specific cDNA qPCR transcript map](docs/figures/tp73_as3_nr187362_cdna_qpcr.svg)
-
-### TP73 cDNA isoform-selector PCR matrix
-
-GENtle can also test long-range cDNA PCR selector pairs against the bundled
-TP73 transcript set. The matrix below crosses five 5' selector primers with a
-complete 3' splice-readout panel for the annotated local RefSeq terminal
-classes: alpha, beta, gamma, delta, epsilon, and zeta. Eta is kept in the
-nomenclature note, but the bundled local TP73 RefSeq region does not contain a
-separate eta cDNA row to test.
-
-![GENtle TP73 cDNA isoform-selector PCR matrix](docs/figures/tp73_isoform_selector_matrix.png)
-
-The design is intentionally read as a panel, not as one magic primer per
-isoform. Some 3' forms are identified by paired readouts: alpha is positive
-with the alpha/beta and alpha/gamma/zeta junction primers, beta with
-alpha/beta plus beta/epsilon, gamma with gamma/epsilon plus alpha/gamma/zeta,
-epsilon with gamma/epsilon plus beta/epsilon, delta with the delta junction,
-and zeta with the zeta plus alpha/gamma/zeta readouts. The full per-pair
-GENtle transcript-map SVG/PNG/JSON outputs can be regenerated from the same
-`primers test-cdna-pcr` command family.
-
-### TP73 virtual local-knowledge cDNA selector gel
-
-For disease-oriented TP73 work, absence from the bundled public transcript set
-is not treated as proof that a 5' x 3' combination cannot exist. GENtle now
-ships a local virtual cDNA panel that explicitly materializes all five 5'
-classes crossed with alpha, beta, gamma, delta, epsilon, and zeta 3' classes.
-The theoretical sequences live in
-`assets/panels/tp73_long_range_cdna_virtual_panel_v1.fasta`, with provenance
-and primer products in the adjacent JSON panel.
-
-![GENtle TP73 virtual long-range cDNA selector gel](docs/figures/tp73_long_range_cdna_virtual_gel.png)
-
-The compact readout set keeps 5' specificity in the forward primer and reads
-the 3' class by lane plus gel size: alpha/gamma/zeta, beta/epsilon, and delta.
-Dimmed, dashed, `*`-tagged bands are explicit local hypotheses that are not yet
-reported in the bundled public GenBank/Ensembl-style TP73 transcript panel.
-The RNA-structure screen in
-`docs/figures/tp73_long_range_cdna_rt_risk.tsv` suggests that the TA 5' class
-is the only subset with an extra 5'-proximal reverse-transcription obstacle
-proxy; the 3' class does not materially change that proxy in this virtual
-panel.
-
-For current detail on contracts and GUI behavior, see
-[`docs/protocol.md`](docs/protocol.md) and [`docs/gui.md`](docs/gui.md). For
-what is actively being built next, see [`docs/roadmap.md`](docs/roadmap.md).
+| **Operations** | Atomic state transitions such as digest, ligation, PCR, primer design, and genome extraction | Engine Ops, workflow JSON, shared shell |
+| **Routines** | Named workflow patterns with preflight and explanation | Routine Assistant, `routines list`, macro templates |
+| **Specialists** | Guided task-specific interfaces built on shared engine paths | Gibson, PCR Designer, Splicing Expert, genome dialogs |
+| **Explanation artifacts** | Figures and reports derived from project state | SVG/PNG/JSON exports, lineage, protocol cartoons |
+
+Use an operation when the exact atomic step is known, a routine when GENtle
+should help bind and explain a workflow, and a specialist when the task
+benefits from focused interactive review.
+
+## Selected Workflows
+
+The full scientific and technical gallery is in the
+[`GENtle showcase`](docs/showcase.md). Exact figure-generation commands and
+asset provenance are maintained in
+[`docs/figures/README.md`](docs/figures/README.md).
+
+### Cloning with explicit mechanism and lineage
+
+![Single-insert Gibson mechanism showing the opened destination, insert, two overlap junctions, chew-back, annealing, fill-in, and sealing](docs/figures/gibson_single_insert_protocol_cartoon.svg)
+
+GENtle can plan and apply a destination-first Gibson assembly, retain explicit
+overlaps and primer suggestions, reopen the operation from lineage, and render
+the modeled mechanism. The same state can produce protocol cartoons, lineage
+graphs, container arrangements, rack layouts, and gel readouts.
+
+[See the complete cloning and physical-workflow examples.](docs/showcase.md#cloning-and-verification)
+
+### Genome-anchored isoform interpretation
+
+![TP73 shared-exon anchored multi-isoform dotplot comparing transcript paths against one genomic reference](docs/figures/tp73_multi_isoform_anchor_dotplot.png)
+
+Prepared references and genome anchors let GENtle compare transcript isoforms,
+splice structure, repeats, interval tracks, microarray evidence, TFBS support,
+and nucleotide sequence without losing assembly or coordinate provenance.
+
+[See TP73 and TERT genome-context examples.](docs/showcase.md#genome-and-regulatory-context)
+
+### Primer and qPCR planning
+
+![qPCR assay protocol cartoon showing primer and probe constraint windows, oligo placement, amplification, and probe-bearing readout context](docs/figures/qpcr_assay_protocol_cartoon.svg)
+
+The shared PCR family covers endpoint PCR, advanced PCR, mutagenesis,
+selection-first primer-pair design, and probe-bearing qPCR assay design.
+Reports preserve sequence constraints, candidate diagnostics, products, and
+links to later oligo-order planning.
+
+[See the PCR, qPCR, and TP73 isoform-selector examples.](docs/showcase.md#pcr-primer-and-qpcr-design)
+
+### Curated agent handoff
+
+![VKORC1 rs9923231 promoter-fragment selection and luciferase reporter handoff](docs/figures/vkorc1_rs9923231_luciferase_hero.png)
+
+MCP exposes typed tools plus capability metadata to compatible agent hosts.
+ClawBio/OpenClaw uses a narrower curated request/result wrapper. The VKORC1
+example turns a pharmacogenomic prompt into an inspectable promoter-fragment
+and reporter-planning bundle without bypassing confirmation or provenance.
+
+[See the complete agent-handoff story.](docs/showcase.md#agent-and-clawbio-handoffs)
+
+## Interfaces
+
+| Interface | Best suited to | Where to learn more |
+| --- | --- | --- |
+| **GUI** | Interactive sequence inspection, specialist workflows, project review | [GUI manual](docs/gui.md) |
+| **CLI and shared shell** | Reproducible workflows, batch work, automation | [CLI manual](docs/cli.md) |
+| **MCP** | AI hosts that need typed tools, capability discovery, and structured errors | [Agent interfaces](docs/tutorial/01-01_agent_interfaces.md) |
+| **Python** | Notebooks and Python automation through `gentle_cli` | [Python integration](integrations/python/README.md) |
+| **JavaScript and Lua** | Embedded scripting when the optional features are enabled | [CLI manual](docs/cli.md) |
+| **ClawBio/OpenClaw** | Curated cloning-skill requests and reproducibility bundles | [ClawBio integration](integrations/clawbio/README.md) |
+
+First-class buttons and named tools differ by interface, but all interfaces
+retain a path to the shared engine. The
+[`GUI/CLI/MCP parity matrix`](docs/gui_cli_mcp_parity.md) distinguishes engine
+reachability from intentionally curated presentation.
+
+### Inner and Outer Agents
+
+**Inner agent: the in-application Agent Assistant.** It receives the active
+project summary and works through shared `agents`, `routines`, shell,
+operation, and workflow paths. The user chats inside GENtle; the agent may ask
+for missing information, compare routines, or offer reviewed commands for
+confirmation or permitted execution.
+
+**Outer agents: separate automation environments.** Codex, Claude-style coding
+agents, MCP hosts, ClawBio/OpenClaw, and similar processes use MCP capability
+discovery, CLI help/capabilities, the shared shell, or curated skill requests.
+The external environment discovers what GENtle can do, supplies project/state
+context, invokes the same routine and preflight machinery, and collects
+structured artifacts.
+
+The routines themselves are prepared and described by GENtle, including the
+typed catalog in `assets/cloning_routines.json` and shared
+`routines list`, `routines explain`, `routines compare`, template-binding, and
+execution routes. Neither kind of agent is expected to automate the GUI by
+guessing where to click. Both operate through these shared descriptions and
+commands, and both retain confirmation boundaries for mutating operations,
+external handoffs, and purchases. A reply that only asks a question or chats
+does not imply that anything is ready to execute.
+
+The [Agent Assistant and agent interfaces tutorial](docs/tutorial/01-01_agent_interfaces.md)
+shows who runs what, where capability discovery happens, and how inner and
+outer agents differ from direct CLI use.
+
+## Installation and Optional Tools
+
+The core GUI, CLI, MCP server, and documentation paths need only Git and a Rust
+toolchain for a source build. JavaScript and Lua are optional Cargo features;
+the Python package is a separate CLI-backed integration.
+
+Advanced workflows can use BLAST+, Primer3, ViennaRNA/RNAPKIN,
+`bigWigToBedGraph`, and external legacy SHA-1 verification tools when present.
+None is required for the first GUI launch. Installation, executable overrides,
+containers, and platform notes are centralized in [`INSTALL.md`](INSTALL.md).
+
+## Project Status
+
+- Current package version: `0.1.0-internal.10`.
+- Active release story: a genome-anchored TP73 evidence viewer with inspectable
+  exon, repeat, array, BED, TFBS, and coordinate-build provenance.
+- Default builds include GUI, CLI, MCP, and documentation paths.
+- Release packaging enables the JavaScript and Lua adapter bundle.
+- Generated showcase figures come from GENtle engine outputs and/or versioned
+  deterministic repository tooling. They are not manually redrawn.
+
+See the [`roadmap`](docs/roadmap.md) for the current acceptance gate and the
+[`release guide`](docs/release.md) plus [`release notes`](docs/release_notes/)
+for notable user-facing changes.
 
 ## Principles
 
-- One engine, many interfaces: GUI, CLI, JavaScript, and Lua all use the same core logic.
-- Provenance by default: derived results should be traceable and replayable.
-- Structured contracts: operations, results, and errors should be machine-readable.
-- Thin adapters: biology logic lives in the engine, not in frontend-specific code.
+- **One deterministic core:** biology and workflow logic belongs in the
+  engine, not in GUI, CLI, Python, JavaScript, Lua, MCP, or agent adapters.
+- **Provenance by default:** derived results should remain traceable and
+  replayable.
+- **Machine-readable behavior:** operations, results, errors, readiness, and
+  capabilities should be structured as well as human-readable.
+- **Thin, purposeful interfaces:** each interface may emphasize different
+  tasks without inventing different biological behavior.
+- **Human confirmation at consequential boundaries:** agent and service
+  handoffs must not silently turn suggestions into experiments or purchases.
 
 ## Documentation
 
-- Installation: [`INSTALL.md`](INSTALL.md)
-- Container guide: [`docs/container.md`](docs/container.md)
-- Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- Architecture: [`docs/architecture.md`](docs/architecture.md)
-- Roadmap: [`docs/roadmap.md`](docs/roadmap.md)
-- Protocol: [`docs/protocol.md`](docs/protocol.md)
-- GUI manual: [`docs/gui.md`](docs/gui.md)
-- CLI manual: [`docs/cli.md`](docs/cli.md)
-- Tutorial guide: [`docs/tutorial/README.md`](docs/tutorial/README.md)
-- Executable tutorial hub: [`docs/tutorial/generated/README.md`](docs/tutorial/generated/README.md)
-- Agent interfaces tutorial: [`docs/tutorial/01-01_agent_interfaces.md`](docs/tutorial/01-01_agent_interfaces.md)
-- Acknowledgements: [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md)
+| Topic | Document |
+| --- | --- |
+| Installation | [`INSTALL.md`](INSTALL.md) |
+| Guided tutorials | [`docs/tutorial/README.md`](docs/tutorial/README.md) |
+| Executable tutorial hub | [`docs/tutorial/generated/README.md`](docs/tutorial/generated/README.md) |
+| GUI | [`docs/gui.md`](docs/gui.md) |
+| CLI and scripting | [`docs/cli.md`](docs/cli.md) |
+| Agent, MCP, and local LLM interfaces | [`docs/tutorial/01-01_agent_interfaces.md`](docs/tutorial/01-01_agent_interfaces.md) |
+| Architecture and protocol | [`docs/architecture.md`](docs/architecture.md), [`docs/protocol.md`](docs/protocol.md) |
+| Showcase and figure provenance | [`docs/showcase.md`](docs/showcase.md), [`docs/figures/README.md`](docs/figures/README.md) |
+| Container deployment | [`docs/container.md`](docs/container.md) |
+| Contributing | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| Roadmap | [`docs/roadmap.md`](docs/roadmap.md) |
+
+## License and Credits
+
+GENtle is distributed under **GPL-2.0-or-later**. Bundled third-party data may
+carry additional attribution or redistribution terms; see [`copyright`](copyright)
+for the authoritative file-by-file record.
+
+Project history and contributors are recognized in
+[`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md).

@@ -14,6 +14,12 @@ Maintenance rule:
 
 ## 2026-07-11
 
+- Reworked the repository landing documentation into a concise, visually
+  structured README; moved the detailed cloning, genome-context, primer/qPCR,
+  physical-carrier, and agent narratives into `docs/showcase.md`; and
+  centralized optional-tool, RNA rescue-screen, figure-provenance, licensing,
+  contributor-agent guidance, and the inner/outer agent distinction in their
+  dedicated manuals and landing-page overview.
 - Closed GUI performance and state-tracking gaps: read-only RNA/Agent workers
   exclude inherited engine history, metadata-only track/planning edits mark the
   project dirty and invalidate stale redo, genome-track auto-sync avoids

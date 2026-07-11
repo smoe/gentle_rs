@@ -369,7 +369,10 @@ available, such as:
 - `blastn`
 - `makeblastdb`
 - `bigWigToBedGraph`
+- `RNAfold`
 - `rnapkin`
+- `primer3`
+- `sha1sum`, `shasum -a 1`, or Windows `certutil` for legacy upstream checks
 
 These tools are optional for a first build and for a first GUI launch.
 
@@ -381,8 +384,14 @@ They become useful for more advanced workflows:
   - importing `BigWig` genome tracks through conversion
 - `rnapkin`
   - RNA secondary-structure inspection/export
+- `RNAfold`
+  - ViennaRNA-backed secondary-structure calculation
 - `primer3`
   - primer design backend for primer-pair and qPCR workflows
+- an external SHA-1 tool
+  - verifies downloads only when an upstream manifest still exposes SHA-1;
+    GENtle otherwise skips that legacy digest and continues to use size, gzip,
+    parser, and stronger-digest checks where available
 
 
 Common ways to obtain them:
@@ -410,9 +419,14 @@ CLI/shared-shell options such as `--backend primer3 --primer3-exec PATH`.
 Environment-variable overrides are also supported:
 
 - `GENTLE_RNAPKIN_BIN`
+- `GENTLE_RNAFOLD_BIN`
 - `GENTLE_MAKEBLASTDB_BIN`
 - `GENTLE_BLASTN_BIN`
 - `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`
+- `GENTLE_SHA1_TOOL`
+
+Set `GENTLE_DISABLE_LEGACY_SHA1=1` to skip legacy SHA-1 verification
+intentionally. GENtle never uses SHA-1 for new internal fingerprints.
 
 ### Notes
 
