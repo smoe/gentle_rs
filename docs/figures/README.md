@@ -13,6 +13,50 @@ comes from shared GENtle state and versioned tooling; it does not imply that
 every final presentation asset is emitted by one engine operation without a
 deterministic repository-side rendering step.
 
+## TP73 Inner and Outer Agent Views
+
+`tp73_outer_agent_evidence_viewer.svg` and
+`../screenshots/tp73_inner_agent_evidence_viewer.png` are the paired README
+views of one TP73 evidence project. Both show local sequence coordinates
+`1..1200` of an 83,686 bp region anchored to
+`1:3652516-3736201` on `GRCh38.p14`, strand `+`.
+
+The outer-agent SVG is a deterministic engine export produced by
+`docs/examples/workflows/tp73_genome_evidence_viewer_release_proof.json`. It
+contains the first-viewport gene/transcript context, repeat and array evidence,
+BED-style tracks, restriction sites, TFBS calls, a legend, and source
+provenance. Regenerate and copy it from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_evidence_viewer_readme.state.json \
+  workflow @docs/examples/workflows/tp73_genome_evidence_viewer_release_proof.json
+
+cp artifacts/tp73_evidence_viewer/tp73_evidence_viewer.linear.svg \
+  docs/figures/tp73_outer_agent_evidence_viewer.svg
+```
+
+The inner-agent PNG is a current macOS capture of the Rust GUI after opening
+that generated project state and its `tp73_evidence_viewer` sequence window.
+It intentionally uses the same `1..1200` viewport as the SVG so the two agent
+positions can be compared without changing biological scale. The screenshot
+shows the project-level GRCh38.p14 anchor and current transcript-line behavior:
+connections continue to the viewport edge when the partner exon is outside the
+visible interval. Recreate the GUI state with:
+
+```sh
+cargo run --quiet --bin gentle -- \
+  --project /tmp/tp73_evidence_viewer_readme.state.json
+```
+
+Then open sequence `tp73_evidence_viewer`, retain the `1..1200` linear
+viewport, and capture the DNA sequence window. The committed image is cropped
+to the title, controls, anchor, evidence groups, and map canvas so its aspect
+ratio matches the outer-agent panel; no feature geometry was redrawn. The PNG
+is documentation of the interactive presentation rather than a byte-for-byte
+deterministic build artifact; the SVG and workflow test remain the
+deterministic proof path.
+
 `gibson_two_fragment_protocol_cartoon.svg` is a deterministic render of the
 built-in protocol cartoon `gibson.two_fragment`.
 

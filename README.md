@@ -35,10 +35,29 @@ biology.
 > [maturity map](#what-to-trust-today) distinguishes recommended, caveated,
 > and exploratory workflows.
 
-<p align="center">
-  <img src="docs/screenshots/screenshot_GUI_sequence.png" alt="GENtle DNA sequence window showing the genome-anchored TP73 locus, transcript and regulatory annotations, restriction sites, and nucleotide sequence" width="1100">
-</p>
-<p align="center"><sub>A genome-anchored TP73 locus in the DNA sequence window. GENtle keeps annotations, sequence, experimental tracks, and provenance in one inspectable view.</sub></p>
+### One Project, Two Agent Positions
+
+<table>
+  <tr>
+    <th width="50%">Outer agent: reproducible artifact</th>
+    <th width="50%">Inner agent: live project context</th>
+  </tr>
+  <tr>
+    <td><a href="docs/figures/tp73_outer_agent_evidence_viewer.svg"><img src="docs/figures/tp73_outer_agent_evidence_viewer.svg" alt="Headless TP73 evidence-viewer SVG generated through the GENtle workflow interface" width="100%"></a></td>
+    <td><a href="docs/screenshots/tp73_inner_agent_evidence_viewer.png"><img src="docs/screenshots/tp73_inner_agent_evidence_viewer.png" alt="Current GENtle DNA sequence window showing the anchored TP73 evidence-viewer project" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td>An external agent can discover and run the headless workflow, then receive this SVG plus structured reports and provenance.</td>
+    <td>The in-application Agent Assistant works against the same active project while the user inspects its GRCh38.p14 anchor, evidence groups, and sequence map.</td>
+  </tr>
+</table>
+
+Both panels show local bases `1..1200` of the same 83,686 bp TP73 project.
+The current GUI renderer keeps transcript paths running to the viewport edge
+when their connected exon lies outside the visible span, so zooming no longer
+makes an intron look like an unexplained gap. Click either panel for the
+full-size view; exact generation and capture provenance is recorded in the
+[figure catalog](docs/figures/README.md#tp73-inner-and-outer-agent-views).
 
 ## Start Here
 

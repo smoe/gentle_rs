@@ -123,6 +123,27 @@ family as the Gibson views.
 
 ## Genome and Regulatory Context
 
+### The same TP73 project through outer and inner agents
+
+<table>
+  <tr>
+    <th width="50%">Outer agent / headless workflow</th>
+    <th width="50%">Inner agent / active GUI project</th>
+  </tr>
+  <tr>
+    <td><a href="figures/tp73_outer_agent_evidence_viewer.svg"><img src="figures/tp73_outer_agent_evidence_viewer.svg" alt="Headless TP73 evidence-viewer SVG" width="100%"></a></td>
+    <td><a href="screenshots/tp73_inner_agent_evidence_viewer.png"><img src="screenshots/tp73_inner_agent_evidence_viewer.png" alt="Live GENtle TP73 evidence-viewer project" width="100%"></a></td>
+  </tr>
+</table>
+
+These are two projections of the same deterministic project state over local
+bases `1..1200`. An outer agent can invoke the workflow through CLI or MCP and
+consume the SVG and structured reports. The inner Agent Assistant operates in
+the running application, where the user can inspect the GRCh38.p14 anchor,
+feature groups, sequence, and provenance before approving further work. The
+current map also preserves transcript-line continuations at viewport edges,
+including when the connected exon is outside the visible interval.
+
 ### TP73 cDNA and genomic dotplots
 
 ![TP73 cDNA aligned to its genomic locus](figures/tp73_cdna_genomic_dotplot.png)

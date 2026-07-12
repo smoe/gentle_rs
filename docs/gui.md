@@ -451,8 +451,11 @@ window inside the neutral root workspace.*
 
 Sequence window screenshot:
 
-![GENtle sequence window](screenshots/screenshot_GUI_sequence.png)<br>
-*Figure: Sequence window with map and sequence panels.*
+![Current GENtle sequence window showing the genome-anchored TP73 evidence-viewer project](screenshots/tp73_inner_agent_evidence_viewer.png)<br>
+*Figure: Current sequence window over local TP73 bases `1..1200`, with the
+GRCh38.p14 anchor, evidence groups, controls, and map canvas. Transcript paths
+continue to the viewport edge when their connected exon lies outside the
+visible interval.*
 
 Linear sequence-view strand placement:
 
