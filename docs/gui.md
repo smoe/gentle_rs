@@ -3115,9 +3115,10 @@ The `Help` menu now includes:
   `adj_P_Val`, probeset, transcript-cluster, exon, and optional junction
   qualifiers.
 - The linear DNA viewer has an `Array` layer toggle. Array intervals draw as
-  contrast heat lanes near regulatory tracks: red for positive `logFC`, blue
-  for negative `logFC`, and grey near zero. Stronger colour means larger
-  absolute `logFC`; in the live GUI, the outline/darkness also indicates
+  contrast heat lanes in the coordinate-aligned feature stack rather than in
+  the detached regulatory band at the top of the canvas: red for positive
+  `logFC`, blue for negative `logFC`, and grey near zero. Stronger colour means
+  larger absolute `logFC`; in the live GUI, the outline/darkness also indicates
   `adj.P.Val <= 0.05`. The linear-map legend and SVG export legend repeat this
   rule so screenshots and exported figures remain interpretable outside GENtle.
 - Junction array probes draw as two separated probe arms connected by a

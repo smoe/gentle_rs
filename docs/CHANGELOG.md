@@ -17,6 +17,9 @@ Maintenance rule:
 - Added the same content inset to the DNA viewer's feature-description pane as
   the feature tree above it, keeping long sequence descriptions clear of the
   hosted-window edge.
+- Moved projected microarray intervals from the detached regulatory ceiling
+  into the coordinate-aligned feature stack in both the live DNA viewer and
+  linear SVG export.
 
 ## 2026-07-11
 

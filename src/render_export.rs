@@ -80,6 +80,7 @@ struct FeatureVm {
     is_tfbs: bool,
     is_repeat: bool,
     is_track: bool,
+    is_array_track: bool,
     is_regulatory: bool,
     is_variation: bool,
     has_transcription_direction: bool,
@@ -1328,6 +1329,7 @@ fn collect_features(
         let is_tfbs = is_tfbs_feature(feature);
         let is_repeat = is_repeat_feature(feature);
         let is_track = is_track_like_feature(feature);
+        let is_array_track = is_array_track_feature(feature);
         let (label, is_fallback_label) = feature_name(feature);
         let legend_line = feature_legend_line(feature, &label);
         let evidence_group_label = track_evidence_group_label(feature);
@@ -1346,7 +1348,8 @@ fn collect_features(
             is_tfbs,
             is_repeat,
             is_track,
-            is_regulatory: is_regulatory_feature(feature),
+            is_array_track,
+            is_regulatory: is_regulatory_feature(feature) && !is_array_track,
             is_variation,
             has_transcription_direction: has_transcription_direction(feature)
                 && !suppress_transcription_direction_marker(feature),
@@ -1385,6 +1388,7 @@ fn merge_equivalent_features(preferred: FeatureVm, other: &FeatureVm) -> Feature
         is_tfbs: preferred.is_tfbs || other.is_tfbs,
         is_repeat: preferred.is_repeat || other.is_repeat,
         is_track: preferred.is_track || other.is_track,
+        is_array_track: preferred.is_array_track || other.is_array_track,
         is_regulatory: preferred.is_regulatory || other.is_regulatory,
         is_variation: preferred.is_variation || other.is_variation,
         has_transcription_direction: preferred.has_transcription_direction
@@ -1601,7 +1605,7 @@ fn compute_linear_svg_feature_layout(
         .iter()
         .enumerate()
         .filter_map(|(idx, f)| {
-            if !f.is_reverse && !f.is_regulatory && !f.is_variation {
+            if (!f.is_reverse || f.is_array_track) && !f.is_regulatory && !f.is_variation {
                 Some(idx)
             } else {
                 None
@@ -1613,7 +1617,10 @@ fn compute_linear_svg_feature_layout(
         let fb = &features[*b];
         let span_a = fa.to.saturating_sub(fa.from).saturating_add(1);
         let span_b = fb.to.saturating_sub(fb.from).saturating_add(1);
-        fa.from.cmp(&fb.from).then(span_b.cmp(&span_a))
+        fa.is_array_track
+            .cmp(&fb.is_array_track)
+            .then(fa.from.cmp(&fb.from))
+            .then(span_b.cmp(&span_a))
     });
     for idx in top_order {
         let f = &features[idx];
@@ -1626,7 +1633,7 @@ fn compute_linear_svg_feature_layout(
         .iter()
         .enumerate()
         .filter_map(|(idx, f)| {
-            if f.is_reverse && !f.is_regulatory && !f.is_variation {
+            if f.is_reverse && !f.is_array_track && !f.is_regulatory && !f.is_variation {
                 Some(idx)
             } else {
                 None
@@ -3629,6 +3636,22 @@ mod tests {
         display.show_array_features = true;
         display.linear_view_start_bp = 0;
         display.linear_view_span_bp = 240;
+
+        let viewport = normalize_linear_export_viewport(&dna, &display);
+        let layout = compute_linear_svg_feature_layout(&dna, &display, viewport, 60.0, W - 60.0);
+        let gene_idx = layout
+            .features
+            .iter()
+            .position(|feature| feature.is_gene)
+            .expect("gene feature");
+        let array_idx = layout
+            .features
+            .iter()
+            .position(|feature| feature.is_array_track)
+            .expect("array feature");
+        assert!(!layout.features[array_idx].is_regulatory);
+        assert_eq!(layout.lane_top_by_idx[gene_idx], 0);
+        assert_eq!(layout.lane_top_by_idx[array_idx], 1);
 
         let svg = export_linear_svg(&dna, &display);
         assert!(svg.contains("data-gentle-role=\"linear-evidence-legend-panel\""));

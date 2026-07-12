@@ -1862,7 +1862,10 @@ impl RenderDnaLinear {
                     color: RenderDna::feature_color(feature),
                     is_pointy: RenderDna::is_feature_pointy(feature),
                     is_reverse: feature_is_reverse(feature),
-                    is_regulatory: RenderDna::is_regulatory_feature(feature) || is_array_track,
+                    // Array projections are evidence tracks, not regulatory annotations. Keep
+                    // them in the coordinate-aligned feature stack instead of the detached
+                    // regulatory band at the top of the canvas.
+                    is_regulatory: RenderDna::is_regulatory_feature(feature) && !is_array_track,
                     is_array_track,
                     is_junction_array_probe,
                     array_stroke: RenderDna::array_feature_confidence_stroke(feature),
@@ -1882,18 +1885,24 @@ impl RenderDnaLinear {
         lane_order.sort_by(|a, b| {
             a.is_regulatory
                 .cmp(&b.is_regulatory)
+                .then_with(|| a.is_array_track.cmp(&b.is_array_track))
                 .then_with(|| a.x1.total_cmp(&b.x1))
                 .then_with(|| (b.x2 - b.x1).total_cmp(&(a.x2 - a.x1)))
                 .then_with(|| a.feature_number.cmp(&b.feature_number))
         });
 
         for seed in lane_order {
-            let lane_padding = if seed.is_regulatory {
+            let lane_padding = if seed.is_regulatory || seed.is_array_track {
                 REGULATORY_LANE_PADDING
             } else {
                 FEATURE_LANE_PADDING
             };
-            let (lane_side, feature_lane) = if seed.is_regulatory {
+            let (lane_side, feature_lane) = if seed.is_array_track {
+                (
+                    LaneSide::Top,
+                    Self::allocate_lane(&mut feature_lanes_top, seed.x1, seed.x2, lane_padding),
+                )
+            } else if seed.is_regulatory {
                 if regulatory_tracks_near_baseline {
                     (LaneSide::RegulatoryNearBaseline, 0)
                 } else {
@@ -3953,6 +3962,22 @@ mod tests {
         }
     }
 
+    fn make_array_feature(location: Location) -> Feature {
+        Feature {
+            kind: "track".into(),
+            location,
+            qualifiers: vec![
+                ("label".into(), Some("array interval".to_string())),
+                ("gentle_track_source".into(), Some("Array".to_string())),
+                (
+                    "gentle_generated".into(),
+                    Some("microarray_track_projection".to_string()),
+                ),
+                ("logFC".into(), Some("1.5".to_string())),
+            ],
+        }
+    }
+
     fn test_renderer_with_feature(feature: Feature, sequence_len: usize) -> RenderDnaLinear {
         test_renderer_with_features(vec![feature], sequence_len)
     }
@@ -4785,6 +4810,41 @@ mod tests {
         assert_eq!(fp.from, 200);
         assert_eq!(fp.to, 260);
         assert!(fp.exon_rects[0].right() < fp.exon_rects[1].left());
+    }
+
+    #[test]
+    fn array_track_joins_coordinate_feature_stack_instead_of_regulatory_ceiling() {
+        let transcript = make_test_feature(Location::simple_range(100, 900));
+        let array = make_array_feature(Location::simple_range(220, 320));
+        let mut renderer = test_renderer_with_features(vec![transcript, array], 1000);
+        renderer
+            .display
+            .write()
+            .expect("display")
+            .set_linear_show_sequence_bases(false);
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        });
+
+        let transcript = renderer
+            .features
+            .iter()
+            .find(|feature| feature.kind_upper == "MRNA")
+            .expect("transcript feature");
+        let array = renderer
+            .features
+            .iter()
+            .find(|feature| feature.is_array_track)
+            .expect("array feature");
+        assert!(!array.is_regulatory);
+        assert!(array.rect.center().y < transcript.rect.center().y);
+        let lane_separation = transcript.rect.center().y - array.rect.center().y;
+        assert!(
+            (MIN_FEATURE_GAP - 0.01..=FEATURE_GAP + 0.01).contains(&lane_separation),
+            "array and transcript should occupy adjacent lanes in one stack, separation={lane_separation}"
+        );
     }
 
     #[test]
