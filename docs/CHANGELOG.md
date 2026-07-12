@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-12
+
+- Added the same content inset to the DNA viewer's feature-description pane as
+  the feature tree above it, keeping long sequence descriptions clear of the
+  hosted-window edge.
+
 ## 2026-07-11
 
 - Reworked the repository landing documentation into a concise, visually

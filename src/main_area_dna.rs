@@ -25379,7 +25379,11 @@ impl MainAreaDna {
                                     Vec2::new(ui.available_width(), description_height),
                                     egui::Layout::top_down(egui::Align::Min),
                                     |ui| {
-                                        self.render_description(ui);
+                                        egui::Frame::NONE
+                                            .inner_margin(egui::Margin::symmetric(8, 4))
+                                            .show(ui, |ui| {
+                                                self.render_description(ui);
+                                            });
                                     },
                                 );
                             }
