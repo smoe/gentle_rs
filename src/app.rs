@@ -124,11 +124,11 @@ use crate::{
         AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
         AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
         AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV,
-        AgentExecutionIntent, AgentInvocationOutcome, AgentResponse, AgentSystemSpec,
-        AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH, MISTRAL_API_KEY_AUTH_HINT,
-        MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL,
+        AgentConversation, AgentConversationTurn, AgentExecutionIntent, AgentInvocationOutcome,
+        AgentResponse, AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
+        MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL,
         OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL, agent_system_availability,
-        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
+        invoke_agent_support_with_conversation_and_env_overrides, load_agent_system_catalog,
     },
     agent_transport::{
         AgentLiveProbeStatusClass, AgentSystemPreflight, agent_system_supports_model_discovery,
@@ -268,6 +268,7 @@ const BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID: &str =
 const OPERATION_HISTORY_SCROLL_ID: &str = "operation_history_scroll";
 const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
 const RACK_WORKSPACE_METADATA_KEY: &str = "gui.rack.workspace";
+const AGENT_CONVERSATION_METADATA_KEY: &str = "gui.agent.conversation";
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 const LINEAGE_NODE_GROUPS_METADATA_KEY: &str = "gui.lineage_graph.node_groups";
 const LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT: f32 = 180.0;
@@ -1105,6 +1106,7 @@ pub struct GENtleApp {
     agent_preflight_output: Option<AgentSystemPreflight>,
     agent_task: Option<AgentAskTask>,
     agent_last_invocation: Option<AgentInvocationOutcome>,
+    agent_conversation: AgentConversation,
     agent_execution_log: Vec<AgentCommandExecutionRecord>,
 }
 
@@ -1222,6 +1224,7 @@ struct RenderedHelpMarkdownEntry {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ConfigurationTab {
     ExternalApplications,
+    AgentSystems,
     Graphics,
     Language,
 }
@@ -1999,6 +2002,7 @@ struct GenomeBlastBatchResult {
 
 struct AgentAskTask {
     job_id: u64,
+    prompt: String,
     started: Instant,
     runtime_frame: RuntimeStatusGuard,
     receiver: mpsc::Receiver<AgentAskTaskMessage>,
@@ -2921,6 +2925,7 @@ impl Default for GENtleApp {
             agent_preflight_output: None,
             agent_task: None,
             agent_last_invocation: None,
+            agent_conversation: AgentConversation::default(),
             agent_execution_log: vec![],
         }
     }
@@ -3977,6 +3982,10 @@ Error: `{err}`"
 
     fn open_configuration_graphics_dialog(&mut self) {
         self.open_configuration_dialog_for_tab(ConfigurationTab::Graphics);
+    }
+
+    fn open_configuration_agent_systems_dialog(&mut self) {
+        self.open_configuration_dialog_for_tab(ConfigurationTab::AgentSystems);
     }
 
     pub(crate) fn consume_command_or_ctrl_shortcut(ctx: &egui::Context, key: Key) -> bool {
@@ -6789,6 +6798,12 @@ Error: `{err}`"
             || !state.container_state.containers.is_empty()
             || !state.container_state.arrangements.is_empty()
             || !state.container_state.racks.is_empty()
+            || state
+                .metadata
+                .get(AGENT_CONVERSATION_METADATA_KEY)
+                .and_then(|value| value.get("turns"))
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|turns| !turns.is_empty())
     }
 
     fn can_close_project(&self) -> bool {
@@ -6928,12 +6943,14 @@ Error: `{err}`"
         self.agent_status.clear();
         self.agent_preflight_output = None;
         self.agent_last_invocation = None;
+        self.agent_conversation = AgentConversation::default();
         self.agent_execution_log.clear();
         self.agent_discovered_models.clear();
         self.agent_discovered_model_pick.clear();
         self.agent_model_discovery_status.clear();
         self.agent_model_discovery_source_key.clear();
         self.agent_model_discovery_failed_source_key.clear();
+        self.load_agent_conversation_from_state();
         self.uniprot_status.clear();
         self.genbank_status.clear();
         self.load_bed_track_subscriptions_from_state();
@@ -15243,12 +15260,14 @@ Error: `{err}`"
         self.agent_status.clear();
         self.agent_preflight_output = None;
         self.agent_last_invocation = None;
+        self.agent_conversation = AgentConversation::default();
         self.agent_execution_log.clear();
         self.agent_discovered_models.clear();
         self.agent_discovered_model_pick.clear();
         self.agent_model_discovery_status.clear();
         self.agent_model_discovery_source_key.clear();
         self.agent_model_discovery_failed_source_key.clear();
+        self.load_agent_conversation_from_state();
         self.load_bed_track_subscriptions_from_state();
         self.load_lineage_graph_workspace_from_state();
         self.load_rack_workspace_from_state();

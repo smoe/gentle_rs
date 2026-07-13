@@ -28,6 +28,10 @@ Maintenance rule:
 - Repaired Codex Local structured responses by making the bridge schema strict-
   compatible, carrying human-readable command preconditions/outcomes, and
   distinguishing schema rejection from genuine network failure.
+- Separated Agent Assistant conversation from provider setup in
+  `Configuration -> Agent Systems`, and added a bounded, project-stored
+  `gentle.agent_conversation.v1` transcript so ephemeral Codex/local-model
+  requests retain explicit follow-up context without persisting credentials.
 
 ## 2026-07-12
 

@@ -75,6 +75,36 @@ def test_shared_model_override_is_forwarded_to_codex_cli(monkeypatch):
     assert command[model_flag + 1] == "gpt-5.4"
 
 
+def test_rendered_prompt_treats_conversation_as_prior_context():
+    bridge = load_bridge_module()
+    request = request_payload()
+    request["prompt"] = "Please continue."
+    request["x_conversation"] = {
+        "schema": "gentle.agent_conversation.v1",
+        "turns": [
+            {
+                "user_message": "Use homo_sapiens.",
+                "response": {
+                    "schema": "gentle.agent_response.v1",
+                    "assistant_message": "Human selected.",
+                    "questions": [],
+                    "suggested_commands": [],
+                },
+                "system_id": "codex_local_stdio",
+                "system_label": "Codex Local",
+                "completed_at_unix_ms": 1,
+            }
+        ],
+    }
+
+    prompt = bridge.render_codex_prompt(request)
+
+    assert "x_conversation.turns as the earlier dialogue" in prompt
+    assert "do not ask for the same" in prompt
+    assert "Use homo_sapiens." in prompt
+    assert '"prompt": "Please continue."' in prompt
+
+
 def test_response_schema_is_compatible_with_strict_structured_outputs():
     bridge = load_bridge_module()
     schema = bridge.response_json_schema()

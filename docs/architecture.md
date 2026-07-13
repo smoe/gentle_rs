@@ -1129,6 +1129,22 @@ AI role split (durable rule):
   share the typed planner/transport boundary rather than nesting GENtle's chat
   assistant runtime.
 
+Agent conversation ownership (durable rule):
+
+- Provider processes may be stateless or ephemeral. GENtle, not a provider-
+  specific session id, owns the inner Agent Assistant transcript.
+- Successful user/assistant turns are stored as versioned project metadata and
+  reloaded with the project; credentials, API keys, endpoint overrides, and
+  other session-only provider configuration are never stored in that record.
+  User prompt text is stored verbatim, so users must not paste secrets into a
+  prompt.
+- A bounded recent transcript is sent as the `x_conversation` extension of the
+  next `gentle.agent_request.v1` payload. This gives Codex Local and native or
+  OpenAI-compatible adapters the same follow-up context with a deterministic
+  turn-count limit.
+- The GUI keeps provider setup in `Configuration -> Agent Systems`; the Agent
+  Assistant window is reserved for conversation and reviewed actions.
+
 ### Agent assistant bridge (implemented)
 
 GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:

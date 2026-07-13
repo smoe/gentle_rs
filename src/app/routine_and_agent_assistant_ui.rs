@@ -1150,6 +1150,7 @@ impl GENtleApp {
         }
 
         let include_state_summary = self.agent_include_state_summary;
+        let conversation = self.agent_conversation.clone();
         let engine = self.engine.clone();
         let catalog_path = self.agent_catalog_path.trim().to_string();
         let job_id = self.alloc_background_job_id();
@@ -1177,6 +1178,7 @@ impl GENtleApp {
         );
         self.agent_task = Some(AgentAskTask {
             job_id,
+            prompt: prompt.clone(),
             started: Instant::now(),
             runtime_frame,
             receiver: rx,
@@ -1199,11 +1201,12 @@ impl GENtleApp {
                 job_id,
                 message: format!("Contacting agent system '{}'", system_id),
             });
-            let result = invoke_agent_support_with_env_overrides(
+            let result = invoke_agent_support_with_conversation_and_env_overrides(
                 Some(catalog_path.as_str()),
                 &system_id,
                 &prompt,
                 state_summary.as_ref(),
+                Some(&conversation),
                 if env_overrides.is_empty() {
                     None
                 } else {
@@ -1212,6 +1215,43 @@ impl GENtleApp {
             );
             let _ = tx.send(AgentAskTaskMessage::Done { job_id, result });
         });
+    }
+
+    pub(super) fn load_agent_conversation_from_state(&mut self) {
+        let stored = self
+            .engine
+            .read()
+            .ok()
+            .and_then(|engine| {
+                engine
+                    .state()
+                    .metadata
+                    .get(AGENT_CONVERSATION_METADATA_KEY)
+                    .cloned()
+            })
+            .and_then(|value| serde_json::from_value::<AgentConversation>(value).ok())
+            .filter(|conversation| {
+                conversation.schema == crate::agent_bridge::AGENT_CONVERSATION_SCHEMA
+            })
+            .map(AgentConversation::normalize)
+            .unwrap_or_default();
+        self.agent_conversation = stored;
+    }
+
+    fn persist_agent_conversation_to_state(&self) {
+        let value = if self.agent_conversation.turns.is_empty() {
+            None
+        } else {
+            serde_json::to_value(&self.agent_conversation).ok()
+        };
+        self.persist_project_metadata_values(&[(AGENT_CONVERSATION_METADATA_KEY, value)]);
+    }
+
+    fn clear_agent_conversation(&mut self) {
+        self.agent_conversation = AgentConversation::default();
+        self.agent_last_invocation = None;
+        self.persist_agent_conversation_to_state();
+        self.agent_status = "Conversation cleared".to_string();
     }
 
     pub(super) fn execute_agent_suggested_command(
@@ -1947,6 +1987,11 @@ impl GENtleApp {
                 .as_ref()
                 .map(|task| task.started.elapsed().as_secs_f64())
                 .unwrap_or(0.0);
+            let completed_prompt = self
+                .agent_task
+                .as_ref()
+                .map(|task| task.prompt.clone())
+                .unwrap_or_default();
             self.agent_task = None;
             match outcome {
                 Ok(invocation) => {
@@ -1965,6 +2010,14 @@ impl GENtleApp {
                         ),
                     );
                     let response = invocation.response.clone();
+                    self.agent_conversation.push_turn(AgentConversationTurn {
+                        user_message: completed_prompt,
+                        response: response.clone(),
+                        system_id: invocation.system_id.clone(),
+                        system_label: invocation.system_label.clone(),
+                        completed_at_unix_ms: Self::now_unix_ms(),
+                    });
+                    self.persist_agent_conversation_to_state();
                     self.agent_last_invocation = Some(invocation);
                     if self.agent_allow_auto_exec {
                         self.execute_agent_auto_suggestions(&response);
@@ -2798,18 +2851,12 @@ impl GENtleApp {
         self.show_routine_assistant_dialog = open;
     }
 
-    pub(super) fn render_agent_assistant_contents(&mut self, ui: &mut Ui) -> bool {
+    pub(super) fn render_agent_configuration_tab(&mut self, ui: &mut Ui) {
         self.refresh_agent_system_catalog();
-        let mut close_requested = false;
-        let close_hover = Self::specialist_window_close_hover_text("Agent Assistant");
-        let close_label = self.tr("button.close");
-        if self.render_specialist_window_nav_with_close(
-            ui,
-            Some((close_label.as_str(), close_hover.as_str())),
-        ) {
-            close_requested = true;
-        }
-        ui.label(self.tr("agent.description"));
+        ui.heading(self.tr("configuration.agent.heading"));
+        ui.label(self.tr("configuration.agent.description"));
+        ui.small(self.tr("configuration.agent.session_note"));
+        ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.label(self.tr("agent.catalog"));
             ui.text_edit_singleline(&mut self.agent_catalog_path);
@@ -2967,10 +3014,8 @@ impl GENtleApp {
                 }
             });
         }
-        let mut selected_available = false;
         if let Some(system) = self.selected_agent_system() {
             let (available, reason) = self.selected_agent_system_availability(&system);
-            selected_available = available;
             if let Some(description) = system.description.as_deref() {
                 let trimmed = description.trim();
                 if !trimmed.is_empty() {
@@ -3414,6 +3459,51 @@ impl GENtleApp {
         ui.small(
             "Session only: max_retries/max_response_bytes map to GENTLE_AGENT_MAX_RETRIES/GENTLE_AGENT_MAX_RESPONSE_BYTES.",
         );
+    }
+
+    pub(super) fn render_agent_assistant_contents(&mut self, ui: &mut Ui) -> bool {
+        self.refresh_agent_system_catalog();
+        let mut close_requested = false;
+        let close_hover = Self::specialist_window_close_hover_text("Agent Assistant");
+        let close_label = self.tr("button.close");
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            Some((close_label.as_str(), close_hover.as_str())),
+        ) {
+            close_requested = true;
+        }
+        ui.label(self.tr("agent.description"));
+        let selected_system = self.selected_agent_system();
+        let selected_available = selected_system
+            .as_ref()
+            .map(|system| self.selected_agent_system_availability(system).0)
+            .unwrap_or(false);
+        ui.group(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                if let Some(system) = selected_system.as_ref() {
+                    ui.strong(format!("{} ({})", system.label, system.id));
+                    let model = normalize_agent_model_name(self.agent_model_override.trim())
+                        .or_else(|| self.selected_agent_discovered_model())
+                        .or_else(|| system.model.as_deref().and_then(normalize_agent_model_name));
+                    if let Some(model) = model {
+                        ui.small(format!("model: {model}"));
+                    }
+                } else {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        self.tr("agent.choose_system"),
+                    );
+                }
+                if ui
+                    .button(self.tr("agent.configure"))
+                    .on_hover_text(self.tr("agent.configure.tooltip"))
+                    .clicked()
+                {
+                    self.open_configuration_agent_systems_dialog();
+                }
+            });
+            ui.small(self.tr("agent.configuration_separated_note"));
+        });
         let include_state_summary_label = self.tr("agent.include_state_summary");
         let auto_run_suggestions_label = self.tr("agent.auto_run_suggestions");
         ui.horizontal(|ui| {
@@ -3425,6 +3515,58 @@ impl GENtleApp {
             ui.checkbox(&mut self.agent_allow_auto_exec, auto_run_suggestions_label)
                 .on_hover_text(self.tr("agent.auto_run_suggestions.tooltip"));
         });
+        if !self.agent_conversation.turns.is_empty() {
+            let turns = self.agent_conversation.turns.clone();
+            let mut copied_response = false;
+            egui::CollapsingHeader::new(format!(
+                "{} ({})",
+                self.tr("agent.conversation"),
+                turns.len()
+            ))
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.small(self.tr("agent.conversation.project_storage_note"));
+                egui::ScrollArea::vertical()
+                    .id_salt("agent_conversation_scroll")
+                    .max_height(320.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        for (index, turn) in turns.iter().enumerate() {
+                            if index > 0 {
+                                ui.separator();
+                            }
+                            ui.strong(self.tr("agent.conversation.you"));
+                            ui.label(turn.user_message.trim());
+                            ui.horizontal_wrapped(|ui| {
+                                ui.strong(if turn.system_label.trim().is_empty() {
+                                    turn.system_id.as_str()
+                                } else {
+                                    turn.system_label.as_str()
+                                });
+                                if ui
+                                    .small_button(self.tr("agent.conversation.copy"))
+                                    .on_hover_text(
+                                        "Copy this stored agent response as structured JSON",
+                                    )
+                                    .clicked()
+                                    && let Ok(payload) =
+                                        serde_json::to_string_pretty(&turn.response)
+                                {
+                                    ui.ctx().copy_text(payload);
+                                    copied_response = true;
+                                }
+                            });
+                            ui.label(turn.response.assistant_message.trim());
+                            for question in &turn.response.questions {
+                                ui.small(format!("Question: {}", question.trim()));
+                            }
+                        }
+                    });
+            });
+            if copied_response {
+                self.agent_status = "Copied stored agent response JSON".to_string();
+            }
+        }
         if !agent_prompt_template_options()
             .iter()
             .any(|(id, _)| *id == self.agent_prompt_template_id)
@@ -3541,12 +3683,16 @@ impl GENtleApp {
                 }
             }
             if ui
-                .button(self.tr("agent.clear_response"))
-                .on_hover_text("Clear latest agent response and status")
+                .add_enabled(
+                    !running,
+                    egui::Button::new(self.tr("agent.clear_conversation")),
+                )
+                .on_hover_text(
+                    "Clear the project-stored conversation, latest response, and agent status",
+                )
                 .clicked()
             {
-                self.agent_last_invocation = None;
-                self.agent_status.clear();
+                self.clear_agent_conversation();
             }
             if ui
                 .button(self.tr("agent.clear_execution_log"))

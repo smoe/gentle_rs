@@ -38,7 +38,7 @@ When GENtle opens with an empty project, the inner Agent Assistant should be
 treated as a command-suggestion layer, not as a database client that already
 knows the current project. Start with a small, observable loop:
 
-1. Open `File -> Agent Assistant...`.
+1. Open `Configuration -> Agent Systems`.
 2. Choose the provider profile (`Local Model`, `Codex Local`, OpenAI, Claude,
    Mistral, or another catalog entry).
 3. For local OpenAI-compatible services such as Ollama, Jan, or Msty, set the
@@ -46,10 +46,11 @@ knows the current project. Start with a small, observable loop:
    model.
 4. Click `Test Setup`. This checks endpoint/model reachability without sending
    a generation request.
-5. Leave `Project summary` / `Include state summary` unchecked for the first
+5. Close Configuration and open `File -> Agent Assistant...`.
+6. Leave `Project summary` / `Include state summary` unchecked for the first
    prompt. In an empty project there is no useful project context to send, and
    small local models often behave better with the shortest possible request.
-6. Ask a response-format probe before asking biology:
+7. Ask a response-format probe before asking biology:
 
 ```text
 Introduce yourself briefly as GENtle's internal Agent Assistant.
@@ -65,6 +66,14 @@ suggestion is a valid GENtle command. Good first suggestions include
 `AGENT_RESPONSE_PARSE`, the provider answered in a form GENtle could not parse.
 Native HTTP transports tolerate a single top-level Markdown `json` code fence,
 but they still reject prose wrapped around the JSON.
+
+Successful turns appear under `Conversation`. GENtle stores that transcript
+with the current project and supplies a bounded recent portion to later agent
+requests, so a follow-up answer such as `homo_sapiens` remains available even
+when Codex Local starts a fresh process. `Clear Conversation` removes the
+stored transcript. API keys and session-only provider settings are never part
+of project conversation metadata. Prompt text is stored verbatim, so do not
+paste secrets into the prompt.
 
 The prompt box is still an Agent Assistant prompt, not the full GENtle shell.
 For convenience it intercepts a small set of local control commands before

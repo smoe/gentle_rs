@@ -21,6 +21,8 @@ pub const DEFAULT_AGENT_SYSTEM_CATALOG_PATH: &str = "assets/agent_systems.json";
 const AGENT_SYSTEMS_SCHEMA: &str = "gentle.agent_systems.v1";
 const AGENT_REQUEST_SCHEMA: &str = "gentle.agent_request.v1";
 const AGENT_RESPONSE_SCHEMA: &str = "gentle.agent_response.v1";
+/// Schema identifier for project-owned Agent Assistant conversation history.
+pub const AGENT_CONVERSATION_SCHEMA: &str = "gentle.agent_conversation.v1";
 const AGENT_SYSTEMS_SCHEMA_PREFIX: &str = "gentle.agent_systems.v";
 const AGENT_REQUEST_SCHEMA_PREFIX: &str = "gentle.agent_request.v";
 const AGENT_RESPONSE_SCHEMA_PREFIX: &str = "gentle.agent_response.v";
@@ -31,6 +33,7 @@ The top-level field named "schema" is a literal protocol id string, not a JSON S
 Do not output JSON Schema definitions, "type"/"properties" schema documents, markdown fences, or explanatory prose outside the JSON object.
 Use only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.
 Suggested command contract:
+- Conversation rule: when the request contains x_conversation, treat its turns as the earlier dialogue and prompt as the current user message. Reuse explicit facts supplied there, including species and identifiers, unless the user changes them; do not ask for the same fact again merely because this transport starts a fresh model process.
 - Documentation context rule: before proposing commands, use the GENtle documentation bundle when available: docs/glossary.json for command paths, docs/cli.md for operand conventions and examples, docs/protocol.md for schemas/execution semantics, docs/ai_prompt_contract.md for agent behavior, and the biology/context docs docs/ai_cloning_primer.md, docs/ai_task_playbooks.md, docs/examples/ai_cloning_examples.md, plus docs/ai_glossary_extensions.json when present. If the relevant documentation is not available in your context, say what is missing or ask a clarifying question instead of guessing.
 - Operand rule: glossary usage words such as QUERY, ID, SEQ_ID, GENOME_ID, ENTRY_ID, PATH, START, END, CHR, and OUTPUT.svg are placeholders with route-specific meanings. Do not infer species aliases, accession formats, local output IDs, coordinate systems, or filesystem paths from the placeholder name alone.
 - Current scope declaration: GENtle does not currently implement OpenClaw-like filesystem, operating-system, or gateway commands. That may change in a future gateway layer; for now, concentrate on actions GENtle can also perform through its GUI or shared shell on the same project state.
@@ -75,6 +78,8 @@ const AGENT_MAX_RETRIES_DEFAULT: usize = 2;
 const AGENT_MAX_RETRIES_HARD_MAX: usize = 16;
 const AGENT_MAX_RESPONSE_BYTES_DEFAULT: usize = 1_048_576;
 const AGENT_MAX_RESPONSE_BYTES_HARD_MAX: usize = 64 * 1024 * 1024;
+const AGENT_CONVERSATION_CONTEXT_MAX_TURNS: usize = 12;
+const AGENT_CONVERSATION_STORED_MAX_TURNS: usize = 50;
 const OPENAI_DEFAULT_MODEL: &str = "gpt-5";
 const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const ANTHROPIC_DEFAULT_MODEL: &str = "claude-sonnet-4-6";
@@ -1246,6 +1251,8 @@ struct AgentRequestPayload {
     prompt: String,
     sent_at_unix_ms: u128,
     state_summary: Option<EngineStateSummary>,
+    #[serde(rename = "x_conversation", skip_serializing_if = "Option::is_none")]
+    conversation: Option<AgentConversation>,
 }
 
 impl Default for AgentRequestPayload {
@@ -1256,6 +1263,7 @@ impl Default for AgentRequestPayload {
             prompt: String::new(),
             sent_at_unix_ms: 0,
             state_summary: None,
+            conversation: None,
         }
     }
 }
@@ -1308,6 +1316,104 @@ pub struct AgentResponse {
     pub assistant_message: String,
     pub questions: Vec<String>,
     pub suggested_commands: Vec<AgentSuggestedCommand>,
+}
+
+fn agent_response_has_content(response: &AgentResponse) -> bool {
+    !response.assistant_message.trim().is_empty()
+        || response
+            .questions
+            .iter()
+            .any(|question| !question.trim().is_empty())
+        || !response.suggested_commands.is_empty()
+}
+
+/// One successful user request and its validated agent response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AgentConversationTurn {
+    pub user_message: String,
+    pub response: AgentResponse,
+    pub system_id: String,
+    pub system_label: String,
+    pub completed_at_unix_ms: u128,
+}
+
+impl Default for AgentConversationTurn {
+    fn default() -> Self {
+        Self {
+            user_message: String::new(),
+            response: AgentResponse::default(),
+            system_id: String::new(),
+            system_label: String::new(),
+            completed_at_unix_ms: 0,
+        }
+    }
+}
+
+/// Project-stored Agent Assistant history shared across stateless transports.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AgentConversation {
+    pub schema: String,
+    pub turns: Vec<AgentConversationTurn>,
+}
+
+impl Default for AgentConversation {
+    fn default() -> Self {
+        Self {
+            schema: AGENT_CONVERSATION_SCHEMA.to_string(),
+            turns: Vec::new(),
+        }
+    }
+}
+
+impl AgentConversation {
+    /// Drops malformed and oldest excess turns after loading project metadata.
+    pub fn normalize(mut self) -> Self {
+        self.schema = AGENT_CONVERSATION_SCHEMA.to_string();
+        self.turns.retain(|turn| {
+            !turn.user_message.trim().is_empty()
+                && agent_response_has_content(&turn.response)
+                && turn.response.schema == AGENT_RESPONSE_SCHEMA
+                && !turn.system_id.trim().is_empty()
+        });
+        if self.turns.len() > AGENT_CONVERSATION_STORED_MAX_TURNS {
+            let drain = self.turns.len() - AGENT_CONVERSATION_STORED_MAX_TURNS;
+            self.turns.drain(0..drain);
+        }
+        self
+    }
+
+    /// Appends one validated turn while enforcing the project retention limit.
+    pub fn push_turn(&mut self, turn: AgentConversationTurn) {
+        if turn.user_message.trim().is_empty()
+            || !agent_response_has_content(&turn.response)
+            || turn.response.schema != AGENT_RESPONSE_SCHEMA
+            || turn.system_id.trim().is_empty()
+        {
+            return;
+        }
+        self.schema = AGENT_CONVERSATION_SCHEMA.to_string();
+        self.turns.push(turn);
+        if self.turns.len() > AGENT_CONVERSATION_STORED_MAX_TURNS {
+            let drain = self.turns.len() - AGENT_CONVERSATION_STORED_MAX_TURNS;
+            self.turns.drain(0..drain);
+        }
+    }
+
+    fn context_window(&self) -> Option<Self> {
+        if self.turns.is_empty() {
+            return None;
+        }
+        let start = self
+            .turns
+            .len()
+            .saturating_sub(AGENT_CONVERSATION_CONTEXT_MAX_TURNS);
+        Some(Self {
+            schema: AGENT_CONVERSATION_SCHEMA.to_string(),
+            turns: self.turns[start..].to_vec(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1368,6 +1474,7 @@ fn build_agent_request(
     system_id: &str,
     prompt: &str,
     state_summary: Option<&EngineStateSummary>,
+    conversation: Option<&AgentConversation>,
 ) -> Result<(AgentRequestPayload, Value, String), String> {
     let payload = AgentRequestPayload {
         schema: AGENT_REQUEST_SCHEMA.to_string(),
@@ -1375,6 +1482,7 @@ fn build_agent_request(
         prompt: prompt.to_string(),
         sent_at_unix_ms: now_unix_ms(),
         state_summary: state_summary.cloned(),
+        conversation: conversation.and_then(AgentConversation::context_window),
     };
     let request_value = serde_json::to_value(&payload).map_err(|e| {
         agent_err(
@@ -1469,6 +1577,44 @@ fn validate_agent_request_value(value: &Value) -> Result<(), String> {
             AgentBridgeErrorCode::SchemaValidation,
             "agent request 'state_summary' must be object or null",
         ));
+    }
+    if let Some(conversation_value) = object.get("x_conversation") {
+        let conversation: AgentConversation = serde_json::from_value(conversation_value.clone())
+            .map_err(|err| {
+                agent_err(
+                    AgentBridgeErrorCode::SchemaValidation,
+                    format!("agent request 'x_conversation' is invalid: {err}"),
+                )
+            })?;
+        if conversation.schema != AGENT_CONVERSATION_SCHEMA {
+            return Err(agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                format!(
+                    "agent request 'x_conversation.schema' must be '{}'",
+                    AGENT_CONVERSATION_SCHEMA
+                ),
+            ));
+        }
+        if conversation.turns.len() > AGENT_CONVERSATION_CONTEXT_MAX_TURNS {
+            return Err(agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                format!(
+                    "agent request 'x_conversation.turns' exceeds the context limit of {}",
+                    AGENT_CONVERSATION_CONTEXT_MAX_TURNS
+                ),
+            ));
+        }
+        if conversation.turns.iter().any(|turn| {
+            turn.user_message.trim().is_empty()
+                || !agent_response_has_content(&turn.response)
+                || turn.response.schema != AGENT_RESPONSE_SCHEMA
+                || turn.system_id.trim().is_empty()
+        }) {
+            return Err(agent_err(
+                AgentBridgeErrorCode::SchemaValidation,
+                "agent request conversation turns require non-empty user_message, a non-empty v1 response, and system_id",
+            ));
+        }
     }
     Ok(())
 }
@@ -2684,11 +2830,13 @@ pub fn load_agent_system_catalog(
     Ok((resolved_path, catalog))
 }
 
-pub fn invoke_agent_support_with_env_overrides(
+/// Invokes an agent with optional project-owned conversation context.
+pub fn invoke_agent_support_with_conversation_and_env_overrides(
     catalog_path: Option<&str>,
     system_id: &str,
     prompt: &str,
     state_summary: Option<&EngineStateSummary>,
+    conversation: Option<&AgentConversation>,
     env_overrides: Option<&HashMap<String, String>>,
 ) -> Result<AgentInvocationOutcome, String> {
     if prompt.trim().is_empty() {
@@ -2718,7 +2866,7 @@ pub fn invoke_agent_support_with_env_overrides(
         ));
     }
     let (_payload, request_value, request_json) =
-        build_agent_request(&system.id, prompt, state_summary)?;
+        build_agent_request(&system.id, prompt, state_summary, conversation)?;
     let start = std::time::Instant::now();
     let runtime = resolve_agent_runtime_config(&system);
     let attempt_limit = effective_attempt_limit(&runtime);
@@ -3169,6 +3317,23 @@ pub fn invoke_agent_support_with_env_overrides(
     Ok(outcome)
 }
 
+pub fn invoke_agent_support_with_env_overrides(
+    catalog_path: Option<&str>,
+    system_id: &str,
+    prompt: &str,
+    state_summary: Option<&EngineStateSummary>,
+    env_overrides: Option<&HashMap<String, String>>,
+) -> Result<AgentInvocationOutcome, String> {
+    invoke_agent_support_with_conversation_and_env_overrides(
+        catalog_path,
+        system_id,
+        prompt,
+        state_summary,
+        None,
+        env_overrides,
+    )
+}
+
 pub fn invoke_agent_support(
     catalog_path: Option<&str>,
     system_id: &str,
@@ -3194,6 +3359,70 @@ mod tests {
             response.suggested_commands[1].execution,
             AgentExecutionIntent::Ask
         );
+    }
+
+    fn test_conversation_turn(index: usize) -> AgentConversationTurn {
+        AgentConversationTurn {
+            user_message: format!("user message {index}"),
+            response: AgentResponse {
+                schema: AGENT_RESPONSE_SCHEMA.to_string(),
+                assistant_message: format!("assistant message {index}"),
+                questions: vec![],
+                suggested_commands: vec![],
+            },
+            system_id: "codex_local_stdio".to_string(),
+            system_label: "Codex Local".to_string(),
+            completed_at_unix_ms: index as u128,
+        }
+    }
+
+    #[test]
+    fn agent_request_carries_bounded_recent_conversation_context() {
+        let conversation = AgentConversation {
+            schema: AGENT_CONVERSATION_SCHEMA.to_string(),
+            turns: (0..20).map(test_conversation_turn).collect(),
+        };
+
+        let (_, request, _) = build_agent_request(
+            "codex_local_stdio",
+            "current question",
+            None,
+            Some(&conversation),
+        )
+        .expect("request with conversation");
+        let turns = request["x_conversation"]["turns"]
+            .as_array()
+            .expect("conversation turns");
+
+        assert_eq!(turns.len(), AGENT_CONVERSATION_CONTEXT_MAX_TURNS);
+        assert_eq!(turns[0]["user_message"].as_str(), Some("user message 8"));
+        assert_eq!(
+            turns.last().and_then(|turn| turn["user_message"].as_str()),
+            Some("user message 19")
+        );
+        assert_eq!(request["prompt"].as_str(), Some("current question"));
+    }
+
+    #[test]
+    fn agent_request_omits_conversation_extension_for_existing_callers() {
+        let (_, request, _) = build_agent_request("builtin_echo", "current question", None, None)
+            .expect("request without conversation");
+
+        assert!(request.get("x_conversation").is_none());
+    }
+
+    #[test]
+    fn agent_conversation_storage_discards_oldest_turns() {
+        let mut conversation = AgentConversation::default();
+        for index in 0..(AGENT_CONVERSATION_STORED_MAX_TURNS + 3) {
+            conversation.push_turn(test_conversation_turn(index));
+        }
+
+        assert_eq!(
+            conversation.turns.len(),
+            AGENT_CONVERSATION_STORED_MAX_TURNS
+        );
+        assert_eq!(conversation.turns[0].user_message, "user message 3");
     }
 
     #[test]

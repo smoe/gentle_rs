@@ -17,6 +17,7 @@ impl GENtleApp {
         with_window_content_inset(ui, |ui| {
             self.render_specialist_window_nav(ui);
             let external_tab_label = self.tr("configuration.tab.external_applications");
+            let agent_tab_label = self.tr("configuration.tab.agent_systems");
             let graphics_tab_label = self.tr("configuration.tab.graphics");
             let language_tab_label = self.tr("configuration.tab.language");
             let unapplied_changes_label = self.tr("configuration.status.unapplied_changes");
@@ -30,6 +31,15 @@ impl GENtleApp {
                     .clicked()
                 {
                     self.configuration_tab = ConfigurationTab::ExternalApplications;
+                }
+                if ui
+                    .selectable_label(
+                        self.configuration_tab == ConfigurationTab::AgentSystems,
+                        agent_tab_label,
+                    )
+                    .clicked()
+                {
+                    self.configuration_tab = ConfigurationTab::AgentSystems;
                 }
                 if ui
                     .selectable_label(
@@ -71,7 +81,14 @@ impl GENtleApp {
             ui.separator();
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                 ui.horizontal(|ui| {
-                    let cancel_label = self.tr("button.cancel");
+                    let agent_settings_are_immediate = self.configuration_tab
+                        == ConfigurationTab::AgentSystems
+                        && !has_unapplied_changes;
+                    let cancel_label = if agent_settings_are_immediate {
+                        self.tr("button.close")
+                    } else {
+                        self.tr("button.cancel")
+                    };
                     let apply_label = self.tr("button.apply");
                     if has_unapplied_changes {
                         ui.colored_label(
@@ -96,10 +113,11 @@ impl GENtleApp {
                         };
                         self.show_configuration_dialog = false;
                     }
-                    if ui
-                        .add_enabled(has_unapplied_changes, egui::Button::new(apply_label))
-                        .on_hover_text("Apply all unapplied configuration changes")
-                        .clicked()
+                    if !agent_settings_are_immediate
+                        && ui
+                            .add_enabled(has_unapplied_changes, egui::Button::new(apply_label))
+                            .on_hover_text("Apply all unapplied configuration changes")
+                            .clicked()
                     {
                         self.apply_pending_configuration_changes();
                     }
@@ -120,6 +138,9 @@ impl GENtleApp {
                         match self.configuration_tab {
                             ConfigurationTab::ExternalApplications => {
                                 self.render_configuration_external_tab(ui);
+                            }
+                            ConfigurationTab::AgentSystems => {
+                                self.render_agent_configuration_tab(ui);
                             }
                             ConfigurationTab::Graphics => {
                                 self.render_configuration_graphics_tab(ui);
@@ -175,12 +196,18 @@ impl GENtleApp {
         }
         let viewport_id = Self::configuration_viewport_id();
         let title = self.tr("dialog.configuration.title");
+        let (preferred_size, min_size) = if self.configuration_tab == ConfigurationTab::AgentSystems
+        {
+            (Vec2::new(980.0, 720.0), Vec2::new(620.0, 420.0))
+        } else {
+            (Vec2::new(720.0, 540.0), Vec2::new(460.0, 320.0))
+        };
         let spec = self.hosted_window_spec_for_viewport(
             title.clone(),
             Self::hosted_configuration_window_id(),
             viewport_id,
-            Vec2::new(720.0, 540.0),
-            Vec2::new(460.0, 320.0),
+            preferred_size,
+            min_size,
         );
         if ctx.embed_viewports() {
             let mut open = self.show_configuration_dialog;
@@ -201,18 +228,17 @@ impl GENtleApp {
         }
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
-            .with_inner_size([720.0, 540.0])
-            .with_min_inner_size([460.0, 320.0]);
+            .with_inner_size(preferred_size)
+            .with_min_inner_size(min_size);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_configuration_dialog;
                 let render_started = Instant::now();
-                let min_size = Vec2::new(460.0, 320.0);
                 let spec = crate::egui_compat::HostedWindowSpec::new(
                     title.clone(),
                     Self::hosted_configuration_window_id(),
-                    Vec2::new(720.0, 540.0),
+                    preferred_size,
                     min_size,
                 )
                 .foreground(

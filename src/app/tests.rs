@@ -2,7 +2,8 @@ use super::{
     AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
     AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
     ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, APP_CONFIGURATION_SCHEMA_VERSION,
-    AgentAskTask, AgentAskTaskMessage, BACKGROUND_JOB_HISTORY_METADATA_KEY,
+    AGENT_CONVERSATION_METADATA_KEY, AgentAskTask, AgentAskTaskMessage,
+    BACKGROUND_JOB_HISTORY_METADATA_KEY,
     BACKGROUND_JOB_HISTORY_SCHEMA, BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID,
     BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
     BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID,
@@ -37,8 +38,8 @@ use super::{
 };
 use crate::{
     agent_bridge::{
-        AgentExecutionIntent, AgentResponse, AgentSuggestedCommand, AgentSystemSpec,
-        AgentSystemTransport,
+        AgentConversation, AgentConversationTurn, AgentExecutionIntent, AgentInvocationOutcome,
+        AgentResponse, AgentSuggestedCommand, AgentSystemSpec, AgentSystemTransport,
     },
     agent_transport::{
         agent_system_supports_model_discovery, agent_system_supports_model_selection,
@@ -9866,6 +9867,22 @@ fn agent_assistant_content_scrolls_on_small_viewport() {
         .map(|idx| format!("agent prompt regression line {idx}"))
         .collect::<Vec<_>>()
         .join("\n");
+    for idx in 0..3 {
+        app.agent_conversation.push_turn(AgentConversationTurn {
+            user_message: format!("stored user question {idx} with enough text to wrap"),
+            response: AgentResponse {
+                schema: "gentle.agent_response.v1".to_string(),
+                assistant_message: format!(
+                    "stored assistant answer {idx} with enough detail to exercise the conversation scroll layout"
+                ),
+                questions: vec![],
+                suggested_commands: vec![],
+            },
+            system_id: "builtin_echo".to_string(),
+            system_label: "Built-in Echo".to_string(),
+            completed_at_unix_ms: idx,
+        });
+    }
 
     ctx.begin_pass(egui::RawInput {
         screen_rect: Some(screen_rect),
@@ -11618,6 +11635,7 @@ fn request_agent_cancel_stops_waiting_and_logs_event() {
     let (_tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
     app.agent_task = Some(AgentAskTask {
         job_id: 44,
+        prompt: "test prompt".to_string(),
         started: Instant::now() - Duration::from_secs(2),
         runtime_frame: test_runtime_frame("agent-cancel"),
         receiver: rx,
@@ -11658,6 +11676,7 @@ fn poll_agent_assistant_task_updates_phase_status() {
     let (tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
     app.agent_task = Some(AgentAskTask {
         job_id: 45,
+        prompt: "test prompt".to_string(),
         started: Instant::now(),
         runtime_frame: test_runtime_frame("agent-status"),
         receiver: rx,
@@ -11676,6 +11695,106 @@ fn poll_agent_assistant_task_updates_phase_status() {
         "status should reflect current phase: {}",
         app.agent_status
     );
+}
+
+#[test]
+fn poll_agent_assistant_task_stores_successful_turn_for_followup_context() {
+    let mut app = GENtleApp::default();
+    app.mark_clean_snapshot();
+    let (tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
+    app.agent_task = Some(AgentAskTask {
+        job_id: 46,
+        prompt: "The species is homo_sapiens.".to_string(),
+        started: Instant::now(),
+        runtime_frame: test_runtime_frame("agent-conversation"),
+        receiver: rx,
+    });
+    tx.send(AgentAskTaskMessage::Done {
+        job_id: 46,
+        result: Ok(AgentInvocationOutcome {
+            catalog_path: "assets/agent_systems.json".to_string(),
+            system_id: "codex_local_stdio".to_string(),
+            system_label: "Codex Local".to_string(),
+            transport: "external_json_stdio".to_string(),
+            command: vec![],
+            request: serde_json::json!({}),
+            response: AgentResponse {
+                schema: "gentle.agent_response.v1".to_string(),
+                assistant_message: "I will use homo_sapiens.".to_string(),
+                questions: vec![],
+                suggested_commands: vec![],
+            },
+            raw_stdout: String::new(),
+            raw_stderr: String::new(),
+            exit_code: Some(0),
+            elapsed_ms: 1,
+            runtime: crate::agent_bridge::AgentInvocationRuntime::default(),
+        }),
+    })
+    .expect("completed agent response");
+
+    app.poll_agent_assistant_task(&egui::Context::default());
+
+    assert_eq!(app.agent_conversation.turns.len(), 1);
+    assert_eq!(
+        app.agent_conversation.turns[0].user_message,
+        "The species is homo_sapiens."
+    );
+    assert_eq!(
+        app.engine
+            .read()
+            .expect("engine")
+            .state()
+            .metadata
+            .get(AGENT_CONVERSATION_METADATA_KEY)
+            .and_then(|value| value["turns"].as_array())
+            .map(Vec::len),
+        Some(1)
+    );
+    assert!(app.is_project_dirty());
+}
+
+#[test]
+fn agent_conversation_reloads_from_project_metadata_without_credentials() {
+    let mut app = GENtleApp::default();
+    let conversation = AgentConversation {
+        schema: crate::agent_bridge::AGENT_CONVERSATION_SCHEMA.to_string(),
+        turns: vec![AgentConversationTurn {
+            user_message: "Use mus_musculus.".to_string(),
+            response: AgentResponse {
+                schema: "gentle.agent_response.v1".to_string(),
+                assistant_message: "Mouse selected.".to_string(),
+                questions: vec![],
+                suggested_commands: vec![],
+            },
+            system_id: "builtin_echo".to_string(),
+            system_label: "Built-in Echo".to_string(),
+            completed_at_unix_ms: 1,
+        }],
+    };
+    app.engine
+        .write()
+        .expect("engine")
+        .auxiliary_metadata_mut()
+        .insert(
+            AGENT_CONVERSATION_METADATA_KEY.to_string(),
+            serde_json::to_value(conversation).expect("conversation JSON"),
+        );
+    app.agent_openai_api_key = "session-secret".to_string();
+
+    app.load_agent_conversation_from_state();
+
+    assert_eq!(app.agent_conversation.turns.len(), 1);
+    let stored = app
+        .engine
+        .read()
+        .expect("engine")
+        .state()
+        .metadata
+        .get(AGENT_CONVERSATION_METADATA_KEY)
+        .cloned()
+        .expect("stored conversation");
+    assert!(!stored.to_string().contains("session-secret"));
 }
 
 #[test]

@@ -4326,9 +4326,38 @@ Agent request payload schema (`gentle.agent_request.v1`):
   "system_id": "openai_gpt5_stdio",
   "prompt": "User request text",
   "sent_at_unix_ms": 1768860000000,
-  "state_summary": {}
+  "state_summary": {},
+  "x_conversation": {
+    "schema": "gentle.agent_conversation.v1",
+    "turns": [
+      {
+        "user_message": "Retrieve TP73.",
+        "response": {
+          "schema": "gentle.agent_response.v1",
+          "assistant_message": "Which species should I use?",
+          "questions": ["Which species should I use?"],
+          "suggested_commands": []
+        },
+        "system_id": "codex_local_stdio",
+        "system_label": "Codex Local",
+        "completed_at_unix_ms": 1768859999000
+      }
+    ]
+  }
 }
 ```
+
+`x_conversation` is an optional, backward-compatible extension. GENtle owns
+the transcript because transports such as Codex Local may start a fresh,
+ephemeral model process for every request. The current `prompt` is the newest
+user message; `x_conversation.turns` contains successful earlier exchanges in
+chronological order. GENtle stores at most 50 turns with the project and sends
+at most the 12 most recent turns on a request. Provider credentials and API
+keys are not part of this object. An adapter should reuse explicit facts from
+the transcript (for example a species or sequence id) unless the current
+prompt changes them, rather than asking for the same value again.
+Prompt and response text are stored verbatim; provider credential fields are
+excluded, but callers must not place secrets inside the prompt itself.
 
 Documentation context for agent systems:
 

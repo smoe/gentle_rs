@@ -209,15 +209,16 @@ ambiguity. The assistant should not pretend that sequences already exist.
 
 Use this order:
 
-1. Open `File -> Agent Assistant...`.
+1. Open `Configuration -> Agent Systems`.
 2. Select the agent system.
 3. For local OpenAI-compatible services such as Ollama, Jan, or Msty, set the
    base URL, click `Discover Models`, and choose a concrete model.
 4. Click `Test Setup`.
-5. Keep `Project summary` / `Include state summary` unchecked for the first
+5. Open `File -> Agent Assistant...`.
+6. Keep `Project summary` / `Include state summary` unchecked for the first
    request. There is no useful project context yet, and smaller local models
    tend to follow shorter prompts more reliably.
-6. Send a format probe:
+7. Send a format probe:
 
 ```text
 Introduce yourself briefly as GENtle's internal Agent Assistant.
@@ -238,6 +239,14 @@ the JSON. If GENtle parses the response but marks a suggested row as
 `Invalid GENtle command`, the model invented or misspelled a command; do not
 run it.
 
+Successful replies accumulate under `Conversation`. GENtle stores those turns
+with the current project and sends a bounded recent history with the next
+request. This is important for Codex Local and other adapters that may launch a
+fresh model process each time: an explicit answer such as `homo_sapiens` is
+still part of the next request and should not be asked again. Provider keys and
+session-only endpoint/model overrides are not stored with the conversation;
+prompt text is stored verbatim, so do not paste secrets into the prompt.
+
 Once the format probe passes, ask for the real empty-project task with explicit
 network confirmation:
 
@@ -257,10 +266,10 @@ created.
 
 This does not contact any provider.
 
-1. Open `File -> Agent Assistant...`.
+1. Open `Configuration -> Agent Systems`.
 2. Click `Use Demo Echo`.
 3. Click `Test Setup`.
-4. Enter a prompt such as:
+4. Open `File -> Agent Assistant...` and enter a prompt such as:
 
 ```text
 ask: features restriction-scan --sequence-text GAATTCGGGCCCGGGCCCGAGCTCGAATTC --enzyme EcoRI --enzyme SmaI
@@ -275,7 +284,9 @@ response and command-review loop without requiring an API key.
 
 ## 6) Provider quick starts
 
-The quick-start buttons configure the built-in native HTTP transports.
+The quick-start buttons in `Configuration -> Agent Systems` configure the
+built-in native HTTP transports. Return to `File -> Agent Assistant...` after
+`Test Setup` succeeds to start or continue the conversation.
 
 ### OpenAI
 

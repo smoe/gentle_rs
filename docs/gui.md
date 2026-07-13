@@ -2625,8 +2625,13 @@ Access:
 
 Behavior:
 
+- provider setup is separated from conversation:
+  - `Configuration -> Agent Systems` contains catalog, provider, key, endpoint,
+    model, timeout/retry, model-discovery, and `Test Setup` controls
+  - `File -> Agent Assistant...` contains the project conversation, prompt,
+    response details, and reviewed command execution
 - loads systems from catalog JSON (default `assets/agent_systems.json`)
-- system selection is a dropdown from catalog entries
+- system selection is a dropdown from catalog entries in Configuration
 - unavailable systems remain selectable and show the reason
 - `Quick start` buttons expose common first-run routes:
   - `Use OpenAI API`
@@ -2651,8 +2656,9 @@ Behavior:
 - this window is intentionally the local chat-oriented assistant surface; the
   typed prose compiler/executor (`agents plan` / `agents execute-plan`) is the
   headless CLI/MCP/ClawBio route for machine-facing compile/execute loops
-- `OpenAI API key` / `Anthropic API key` / `Mistral API key` field in this window is a
-  session-only override for the selected native provider
+- `OpenAI API key` / `Anthropic API key` / `Mistral API key` in
+  `Configuration -> Agent Systems` is a session-only override for the selected
+  native provider
   - OpenAI keys usually begin with `sk-...`; Anthropic keys usually begin with
     `sk-ant-...`; Mistral keys should be generated in La Plateforme
   - click `Clear Key` to remove it from current session
@@ -2707,6 +2713,17 @@ Behavior:
   project-state summary injection for that draft request
 - optional `Include state summary` injects current project summary context
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
+- successful conversation turns are shown in chronological order and stored as
+  `gentle.agent_conversation.v1` metadata with the current project
+  - the next request receives the 12 most recent turns, so ephemeral transports
+    such as Codex Local remember explicit follow-up answers such as species
+  - up to 50 successful turns are retained; oldest turns are discarded first
+  - API keys, endpoint overrides, and other provider configuration are never
+    stored in the conversation record; prompt text is stored verbatim, so do
+    not paste secrets into the prompt
+  - a conversation-only unsaved project counts as user content, so GENtle asks
+    before closing it without saving
+  - `Clear Conversation` removes the stored turns and latest response
 - `Ask Agent` runs in background and reports status in `Background Jobs`
 - `Ctrl+Return` while the prompt editor is focused is equivalent to clicking
   `Ask Agent`; plain `Return` still inserts a new line
@@ -2755,13 +2772,13 @@ Behavior:
 
 OpenAI setup (explicit):
 
-1. Open `File -> Agent Assistant...`.
+1. Open `Configuration -> Agent Systems`.
 2. Choose system `OpenAI GPT-5 (native HTTP)` from the dropdown.
 3. Paste your API key into `OpenAI API key` (format `sk-...`).
 4. Click `Test Setup` to confirm the key/base URL/model resolve correctly.
    This checks model discovery only; it does not intentionally send a
    token-generating request.
-5. Enter prompt text and click `Ask Agent`.
+5. Open `File -> Agent Assistant...`, enter prompt text, and click `Ask Agent`.
 6. If you prefer environment setup instead of GUI key field, launch GENtle with:
 
 ```bash
@@ -2786,14 +2803,15 @@ Codex Local setup (uses Codex CLI login, no API key):
    also checks `/Applications/ChatGPT.app/Contents/MacOS/ChatGPT`. Older
    standalone Codex app installs may expose
    `/Applications/Codex.app/Contents/Resources/codex`.
-4. Choose `Codex Local (uses Codex CLI login)` from the Agent Assistant system
-   dropdown.
+4. Open `Configuration -> Agent Systems` and choose
+   `Codex Local (uses Codex CLI login)` from the system dropdown.
 5. The model selector appears immediately with `Codex default`. GENtle then
    reads the visible model ids from the logged-in Codex CLI's local
    `models_cache.json`; choose one of those ids, keep `Codex default`, or enter
    an explicit custom model override. `Discover Models` repeats the local-cache
    read without sending a prompt.
-6. Click `Test Setup`, then send a small prompt. `Test Setup` confirms the
+6. Click `Test Setup`, then open `File -> Agent Assistant...` and send a small
+   prompt. `Test Setup` confirms the
    bridge executable/runtime/model settings. Reading the local model metadata
    does not contact the provider, so Codex login/quota is confirmed by the first
    actual `Ask Agent` request.
@@ -2803,7 +2821,8 @@ Notes:
 - Codex Local uses the user's Codex/ChatGPT plan limits, not OpenAI API billing.
 - The bridge runs Codex in an empty temporary directory by default so project
   files are not implicitly sent as working-tree context; GENtle passes only the
-  explicit Agent Assistant prompt and state summary.
+  explicit Agent Assistant prompt, optional state summary, and bounded stored
+  conversation.
 - The bridge asks Codex for strict `gentle.agent_response.v1` JSON and then
   validates it before GENtle sees the response.
 - A selected Codex model is passed to the CLI as `codex --model MODEL`.
@@ -2815,7 +2834,7 @@ Notes:
 
 Claude setup (explicit):
 
-1. Open `File -> Agent Assistant...`.
+1. Open `Configuration -> Agent Systems`.
 2. Click `Use Claude API` or choose `Claude Sonnet (native Anthropic HTTP)`.
 3. Paste your Anthropic Console API key into `Anthropic API key` (format
    `sk-ant-...`). Claude Code or Claude.ai subscription/login tokens are not
@@ -2825,7 +2844,7 @@ Claude setup (explicit):
    token-generating request.
    - GENtle flags obvious Claude Code/Claude.ai OAuth tokens before contacting
      Anthropic; final validation still comes from the live model-list probe.
-5. Enter prompt text and click `Ask Agent`.
+5. Open `File -> Agent Assistant...`, enter prompt text, and click `Ask Agent`.
 6. If you prefer environment setup instead of GUI key field, launch GENtle with:
 
 ```bash
@@ -2835,14 +2854,14 @@ cargo run --bin gentle
 
 Mistral setup (explicit):
 
-1. Open `File -> Agent Assistant...`.
+1. Open `Configuration -> Agent Systems`.
 2. Click `Use Mistral API` or choose `Mistral Large (native Mistral HTTP)`.
 3. Paste your Mistral La Plateforme API key into `Mistral API key`. Le Chat or
    Mistral account login tokens are not Mistral API keys.
 4. Click `Test Setup` to confirm the key/base URL/model resolve correctly.
    This checks model discovery only; it does not intentionally send a
    token-generating request.
-5. Enter prompt text and click `Ask Agent`.
+5. Open `File -> Agent Assistant...`, enter prompt text, and click `Ask Agent`.
 6. If you prefer environment setup instead of GUI key field, launch GENtle with:
 
 ```bash
@@ -2855,7 +2874,8 @@ External MCP handoff:
 1. Use this path when your outside assistant already supports MCP.
 2. Save the current GENtle project if the external assistant should inspect the
    same state.
-3. Copy the `External Agent / MCP` command from Agent Assistant, for example:
+3. Copy the `External Agent / MCP` command from
+   `Configuration -> Agent Systems`, for example:
 
 ```bash
 gentle_mcp --state .gentle_state.json
@@ -2871,7 +2891,7 @@ Notes:
 
 Local LLM setup (Jan/Msty/OpenAI-compatible endpoint):
 
-1. Open `File -> Agent Assistant...`.
+1. Open `Configuration -> Agent Systems`.
 2. Select one of:
    - `Local Llama (OpenAI-compatible)`
    - `Jan Local (template)`
@@ -2886,7 +2906,7 @@ Local LLM setup (Jan/Msty/OpenAI-compatible endpoint):
 6. Click `Test Setup` to confirm the endpoint/model resolve correctly.
 7. Optionally set persistent defaults in `assets/agent_systems.json`.
 8. If your local service expects no key, keep `OpenAI API key` empty.
-9. Ask agent as usual.
+9. Open `File -> Agent Assistant...` and ask the agent as usual.
 10. For local root URLs (such as `http://localhost:11964`), GENtle will try both:
    - `/chat/completions`
    - `/v1/chat/completions`
