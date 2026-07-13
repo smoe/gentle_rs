@@ -131,7 +131,8 @@ use crate::{
         invoke_agent_support_with_env_overrides, load_agent_system_catalog,
     },
     agent_transport::{
-        AgentLiveProbeStatusClass, AgentSystemPreflight, build_agent_system_preflight_with_live,
+        AgentLiveProbeStatusClass, AgentSystemPreflight, agent_system_supports_model_discovery,
+        agent_system_supports_model_selection, build_agent_system_preflight_with_live,
         discover_models_for_agent_system,
     },
     dna_sequence::{self, DNAsequence},

@@ -4141,6 +4141,9 @@ Adapter-equivalence guarantee for UI-intent tools:
 
 - `agents discover-models SYSTEM_ID [--catalog PATH] [--base-url URL]`
   - Returns discovered model ids as `gentle.agent_models.v1`.
+  - Native HTTP systems use model-list endpoints. `codex_local_stdio` instead
+    reads visible ids from the local Codex `models_cache.json`, excludes hidden
+    entries, and performs no provider request or credential-file read.
 
 - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system via catalog transport.
@@ -4149,7 +4152,8 @@ Adapter-equivalence guarantee for UI-intent tools:
     `native_openai_compat`).
   - `--model` applies a per-request runtime model override for native
     transports (`native_openai`, `native_anthropic`, `native_mistral`,
-    `native_openai_compat`).
+    `native_openai_compat`) and `codex_local_stdio`. The latter maps the shared
+    `GENTLE_AGENT_MODEL` override to the bridge's `codex --model MODEL` argument.
   - `--timeout-secs` applies a per-request timeout override for stdio/native
     transports (maps to `GENTLE_AGENT_TIMEOUT_SECS`).
   - `--connect-timeout-secs` applies a per-request HTTP connect timeout override
@@ -4273,7 +4277,12 @@ Transport notes:
   `scripts/codex-agent-bridge` as one such bridge. That bridge delegates
   authentication to the local Codex CLI/App login, runs Codex in a conservative
   empty working directory, and emits strict `gentle.agent_response.v1` JSON for
-  the existing GENtle validator.
+  the existing GENtle validator. It resolves the executable from `CODEX_BIN`,
+  then `codex` on `PATH`, then known local installs including the current macOS
+  ChatGPT bundle's `Contents/Resources/codex` CLI and `Contents/MacOS/ChatGPT`
+  app executable, followed by the legacy standalone Codex app path. Its model
+  selector reads the CLI's non-secret local model metadata cache; leaving
+  `Codex default` selected omits an explicit `--model` argument.
 - `native_openai`: built-in OpenAI HTTP adapter; requires `OPENAI_API_KEY`
   (environment or system-level `env` override in catalog entry).
 - `native_anthropic`: built-in Anthropic Claude HTTP adapter; requires

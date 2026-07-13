@@ -12,6 +12,17 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-13 - `v0.1.0-internal.10`
+
+- Prepared the `v0.1.0-internal.10` release boundary for changes since
+  `v0.1.0-internal.9` (2026-06-05), with the genome-anchored TP73 evidence
+  viewer as the primary release story and a self-contained summary in
+  [`release_notes_v0.1.0-internal.10.md`](release_notes/release_notes_v0.1.0-internal.10.md).
+- Consolidated this cut's other major outcomes around Clariom/probe-region and
+  RNA evidence, fact-aware agent introspection, gene-set/promoter reasoning,
+  review-gated material/service handoffs, and extensive GUI responsiveness and
+  background-execution hardening.
+
 ## 2026-07-12
 
 - Added the same content inset to the DNA viewer's feature-description pane as
@@ -20,6 +31,11 @@ Maintenance rule:
 - Moved projected microarray intervals from the detached regulatory ceiling
   into the coordinate-aligned feature stack in both the live DNA viewer and
   linear SVG export.
+- Extended Codex Local discovery to the current macOS ChatGPT bundled CLI and
+  app executable while retaining explicit `CODEX_BIN`, `PATH`, and legacy
+  Codex app support.
+- Added immediate Codex Local model selection backed by the CLI's visible local
+  model metadata, with shared GUI/CLI discovery and `codex --model` forwarding.
 
 ## 2026-07-11
 

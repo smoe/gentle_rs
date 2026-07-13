@@ -664,7 +664,13 @@ Key properties:
 - ChatGPT/Codex subscriptions do not authenticate the OpenAI API. Native OpenAI
   API mode needs `OPENAI_API_KEY`. The separate `Codex Local` catalog entry
   delegates to the logged-in local Codex CLI through `scripts/codex-agent-bridge`
-  and uses Codex/ChatGPT plan limits instead of API billing.
+  and uses Codex/ChatGPT plan limits instead of API billing. The bridge honors
+  `CODEX_BIN`, then `codex` on `PATH`, and on macOS checks both the bundled
+  ChatGPT `Contents/Resources/codex` CLI and `Contents/MacOS/ChatGPT`
+  executable before the legacy standalone Codex app location. Selecting Codex
+  Local immediately presents `Codex default`; GENtle reads the CLI's visible
+  model ids from its local metadata cache and forwards a selected id through
+  `GENTLE_AGENT_MODEL` to `codex --model`.
 - Native Claude mode uses the Anthropic API directly and needs
   `ANTHROPIC_API_KEY`; Claude Code or Claude.ai subscription/login tokens do
   not authenticate direct Anthropic API calls.

@@ -30,7 +30,7 @@
     {
       "id": "codex_local_stdio",
       "label": "Codex Local (uses Codex CLI login)",
-      "description": "Routes Agent Assistant requests through a locally installed Codex CLI/App login. No OPENAI_API_KEY is needed; usage counts against the user's Codex/ChatGPT plan limits.",
+      "description": "Routes Agent Assistant requests through a locally installed Codex CLI/App login. Selectable model ids are read from the local Codex model metadata cache. No OPENAI_API_KEY is needed; usage counts against the user's Codex/ChatGPT plan limits.",
       "transport": "external_json_stdio",
       "command": [
         "scripts/codex-agent-bridge"

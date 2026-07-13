@@ -2781,14 +2781,22 @@ Codex Local setup (uses Codex CLI login, no API key):
    `codex-agent-bridge`, or use an overlay catalog with the absolute bridge
    path.
 3. If the Codex CLI itself is not on the GUI process `PATH`, set `CODEX_BIN` to
-   the executable path. Common macOS app installs expose
+   the executable path. Current macOS ChatGPT app installs normally expose the
+   bundled CLI at `/Applications/ChatGPT.app/Contents/Resources/codex`; GENtle
+   also checks `/Applications/ChatGPT.app/Contents/MacOS/ChatGPT`. Older
+   standalone Codex app installs may expose
    `/Applications/Codex.app/Contents/Resources/codex`.
 4. Choose `Codex Local (uses Codex CLI login)` from the Agent Assistant system
    dropdown.
-5. Click `Test Setup`, then send a small prompt. `Test Setup` confirms the
-   bridge executable/runtime settings; because this is an external stdio
-   transport, Codex login/quota is confirmed by the first actual `Ask Agent`
-   request rather than a non-generating model-list probe.
+5. The model selector appears immediately with `Codex default`. GENtle then
+   reads the visible model ids from the logged-in Codex CLI's local
+   `models_cache.json`; choose one of those ids, keep `Codex default`, or enter
+   an explicit custom model override. `Discover Models` repeats the local-cache
+   read without sending a prompt.
+6. Click `Test Setup`, then send a small prompt. `Test Setup` confirms the
+   bridge executable/runtime/model settings. Reading the local model metadata
+   does not contact the provider, so Codex login/quota is confirmed by the first
+   actual `Ask Agent` request.
 
 Notes:
 
@@ -2798,6 +2806,9 @@ Notes:
   explicit Agent Assistant prompt and state summary.
 - The bridge asks Codex for strict `gentle.agent_response.v1` JSON and then
   validates it before GENtle sees the response.
+- A selected Codex model is passed to the CLI as `codex --model MODEL`.
+  `Codex default` omits that flag and lets the installed CLI choose its
+  configured default.
 - If a Finder/Spotlight-launched macOS app cannot find Codex or cannot access
   the same login/keychain context, launch GENtle from a terminal as a
   workaround or set explicit `CODEX_BIN`/catalog paths.

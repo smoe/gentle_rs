@@ -25,6 +25,8 @@ RESPONSE_SCHEMA = "gentle.agent_response.v1"
 ERROR_SCHEMA = "gentle.codex_agent_bridge_error.v1"
 
 COMMON_CODEX_PATHS = (
+    "/Applications/ChatGPT.app/Contents/Resources/codex",
+    "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT",
     "/Applications/Codex.app/Contents/Resources/codex",
     "~/.codex/bin/codex",
     "~/.local/bin/codex",
@@ -177,7 +179,11 @@ def codex_command(codex_bin: str, work_dir: str, schema_path: str, output_path: 
         "--output-last-message",
         output_path,
     ]
-    model = os.environ.get("CODEX_AGENT_MODEL") or os.environ.get("GENTLE_CODEX_MODEL")
+    model = (
+        os.environ.get("CODEX_AGENT_MODEL")
+        or os.environ.get("GENTLE_CODEX_MODEL")
+        or os.environ.get("GENTLE_AGENT_MODEL")
+    )
     if model and model.strip():
         command.extend(["--model", model.strip()])
     command.append("-")

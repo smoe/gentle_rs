@@ -291,17 +291,23 @@ ChatGPT or Codex subscriptions are not OpenAI API keys.
 1. Sign in to the local Codex app/CLI outside GENtle.
 2. Choose `Codex Local (uses Codex CLI login)` from the system dropdown.
 3. If GENtle cannot find Codex, set `CODEX_BIN` to the Codex executable path.
-   On macOS app installs this is often
-   `/Applications/Codex.app/Contents/Resources/codex`.
-4. Click `Test Setup`.
+   Current macOS ChatGPT app installs normally expose the bundled CLI at
+   `/Applications/ChatGPT.app/Contents/Resources/codex`; GENtle also checks
+   `/Applications/ChatGPT.app/Contents/MacOS/ChatGPT`. Older standalone Codex
+   app installs may expose `/Applications/Codex.app/Contents/Resources/codex`.
+4. Use the model selector that appears immediately. Keep `Codex default`, or
+   select one of the visible model ids read from the local Codex model metadata
+   cache. `Discover Models` refreshes that list without sending a prompt.
+5. Click `Test Setup`.
 
 This route does not use `OPENAI_API_KEY`. It invokes Codex locally through
 `scripts/codex-agent-bridge`, so usage counts against the user's Codex/ChatGPT
 plan limits. The bridge runs Codex from an empty temporary directory and passes
 only the explicit Agent Assistant request/state summary. `Test Setup` verifies
-the bridge executable; the first actual `Ask Agent` request verifies Codex
-login/quota because external stdio transports do not have a non-generating
-model-list probe.
+the bridge executable and selected model setting. Local model discovery reads
+only non-secret model metadata; the first actual `Ask Agent` request verifies
+Codex login/quota. A selected model is forwarded as `codex --model MODEL`, while
+`Codex default` leaves model choice to the CLI.
 
 ### Claude
 
@@ -498,6 +504,10 @@ Codex Local cannot find Codex or says login is required:
 
 - Set `CODEX_BIN` to the Codex executable path, or add Codex to the GUI
   process `PATH`.
+- Current macOS ChatGPT app installs are discovered automatically through the
+  bundled `Contents/Resources/codex` CLI or the
+  `Contents/MacOS/ChatGPT` executable; the older standalone Codex app path
+  remains supported.
 - Run the Codex app/CLI login flow outside GENtle.
 - If GENtle was launched from Finder/Spotlight on macOS, try launching from a
   terminal so the process inherits the same PATH/keychain context.

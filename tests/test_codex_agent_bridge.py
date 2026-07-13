@@ -31,6 +31,50 @@ def request_payload():
     }
 
 
+def test_resolve_codex_bin_finds_current_macos_chatgpt_app(monkeypatch):
+    bridge = load_bridge_module()
+    chatgpt_codex = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT"
+    monkeypatch.delenv("CODEX_BIN", raising=False)
+    monkeypatch.setattr(bridge.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(bridge.os.path, "isfile", lambda path: path == chatgpt_codex)
+    monkeypatch.setattr(
+        bridge.os,
+        "access",
+        lambda path, mode: path == chatgpt_codex and mode == bridge.os.X_OK,
+    )
+
+    assert bridge.resolve_codex_bin() == chatgpt_codex
+
+
+def test_resolve_codex_bin_prefers_chatgpt_bundled_cli(monkeypatch):
+    bridge = load_bridge_module()
+    bundled_cli = "/Applications/ChatGPT.app/Contents/Resources/codex"
+    app_executable = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT"
+    available = {bundled_cli, app_executable}
+    monkeypatch.delenv("CODEX_BIN", raising=False)
+    monkeypatch.setattr(bridge.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(bridge.os.path, "isfile", lambda path: path in available)
+    monkeypatch.setattr(
+        bridge.os,
+        "access",
+        lambda path, mode: path in available and mode == bridge.os.X_OK,
+    )
+
+    assert bridge.resolve_codex_bin() == bundled_cli
+
+
+def test_shared_model_override_is_forwarded_to_codex_cli(monkeypatch):
+    bridge = load_bridge_module()
+    monkeypatch.delenv("CODEX_AGENT_MODEL", raising=False)
+    monkeypatch.delenv("GENTLE_CODEX_MODEL", raising=False)
+    monkeypatch.setenv("GENTLE_AGENT_MODEL", "gpt-5.4")
+
+    command = bridge.codex_command("codex", "/tmp", "schema.json", "output.json")
+
+    model_flag = command.index("--model")
+    assert command[model_flag + 1] == "gpt-5.4"
+
+
 def test_extracts_json_from_fenced_codex_output():
     bridge = load_bridge_module()
     parsed = bridge.parse_codex_response(

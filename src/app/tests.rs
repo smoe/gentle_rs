@@ -40,6 +40,9 @@ use crate::{
         AgentExecutionIntent, AgentResponse, AgentSuggestedCommand, AgentSystemSpec,
         AgentSystemTransport,
     },
+    agent_transport::{
+        agent_system_supports_model_discovery, agent_system_supports_model_selection,
+    },
     dna_sequence::DNAsequence,
     engine::{
         Arrangement, ArrangementMode, BlastHitFeatureInput, BlastInvocationProvenance, Container,
@@ -642,6 +645,35 @@ fn agent_base_url_placeholder_tracks_selected_msty_template() {
     assert_eq!(
         app.selected_agent_base_url_placeholder(),
         "http://localhost:11973/v1"
+    );
+}
+
+#[test]
+fn codex_local_model_selector_appears_before_model_discovery_completes() {
+    let app = GENtleApp::default();
+    let codex = test_agent_system("codex_local_stdio", AgentSystemTransport::ExternalJsonStdio);
+    let echo = test_agent_system("builtin_echo", AgentSystemTransport::BuiltinEcho);
+
+    assert!(agent_system_supports_model_selection(&codex));
+    assert!(agent_system_supports_model_discovery(&codex));
+    assert!(app.should_render_agent_model_selector(&codex));
+    assert!(!app.should_render_agent_model_selector(&echo));
+}
+
+#[test]
+fn codex_local_selected_model_is_forwarded_to_bridge_environment() {
+    let mut app = GENtleApp::default();
+    let codex = test_agent_system("codex_local_stdio", AgentSystemTransport::ExternalJsonStdio);
+    app.agent_discovered_models = vec!["gpt-5.6-sol".to_string(), "gpt-5.4".to_string()];
+    app.agent_discovered_model_pick = "gpt-5.4".to_string();
+
+    let overrides = app
+        .selected_agent_session_env_overrides(&codex)
+        .expect("Codex Local overrides");
+
+    assert_eq!(
+        overrides.get(AGENT_MODEL_ENV).map(String::as_str),
+        Some("gpt-5.4")
     );
 }
 

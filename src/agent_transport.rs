@@ -3,7 +3,8 @@
 //! This module exposes the machine-facing transport metadata needed by both the
 //! local assistant UX and external orchestrators. It intentionally keeps the
 //! public surface read-only and deterministic: catalog loading, availability,
-//! preflight summaries, and native HTTP model discovery.
+//! preflight summaries, native HTTP model discovery, and local Codex model
+//! metadata discovery.
 
 use crate::agent_bridge::{
     AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
@@ -15,7 +16,12 @@ use crate::agent_bridge::{
     extract_models_from_openai_models_payload, extract_openai_error_code, redact_sensitive_text,
 };
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{
+    collections::HashSet,
+    fs,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 pub use crate::agent_bridge::{
     AgentInvocationRuntime, AgentSystemAvailability, AgentSystemCatalog, AgentSystemSpec,
@@ -36,6 +42,113 @@ const MISTRAL_DEFAULT_MODEL: &str = "mistral-large-latest";
 const MISTRAL_DEFAULT_BASE_URL: &str = "https://api.mistral.ai/v1";
 const OPENAI_COMPAT_DEFAULT_MODEL: &str = "unspecified";
 const OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
+const CODEX_LOCAL_SYSTEM_ID: &str = "codex_local_stdio";
+
+/// Whether an agent system can accept an explicit model choice through the
+/// shared model override.
+pub fn agent_system_supports_model_selection(system: &AgentSystemSpec) -> bool {
+    matches!(
+        system.transport,
+        AgentSystemTransport::NativeOpenai
+            | AgentSystemTransport::NativeAnthropic
+            | AgentSystemTransport::NativeMistral
+            | AgentSystemTransport::NativeOpenaiCompat
+    ) || is_codex_local_agent_system(system)
+}
+
+/// Whether GENtle can enumerate model identifiers for an agent system.
+pub fn agent_system_supports_model_discovery(system: &AgentSystemSpec) -> bool {
+    agent_system_supports_model_selection(system)
+}
+
+fn is_codex_local_agent_system(system: &AgentSystemSpec) -> bool {
+    system.id == CODEX_LOCAL_SYSTEM_ID
+        || system.command.iter().any(|part| {
+            Path::new(part)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name == "codex-agent-bridge")
+        })
+}
+
+fn codex_models_cache_path(system: &AgentSystemSpec) -> Result<PathBuf, String> {
+    let codex_home = system
+        .env
+        .get("CODEX_HOME")
+        .cloned()
+        .or_else(|| std::env::var("CODEX_HOME").ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    if let Some(codex_home) = codex_home {
+        return Ok(codex_home.join("models_cache.json"));
+    }
+    let home = system
+        .env
+        .get("HOME")
+        .cloned()
+        .or_else(|| system.env.get("USERPROFILE").cloned())
+        .or_else(|| std::env::var("HOME").ok())
+        .or_else(|| std::env::var("USERPROFILE").ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Codex model discovery could not resolve HOME or CODEX_HOME".to_string())?;
+    Ok(PathBuf::from(home).join(".codex/models_cache.json"))
+}
+
+fn discover_codex_models_from_cache(system: &AgentSystemSpec) -> Result<Vec<String>, String> {
+    let cache_path = codex_models_cache_path(system)?;
+    let text = fs::read_to_string(&cache_path).map_err(|error| {
+        format!(
+            "could not read Codex model metadata cache '{}': {error}; run/sign in to Codex once, then retry model discovery",
+            cache_path.display()
+        )
+    })?;
+    let value = serde_json::from_str::<serde_json::Value>(&text).map_err(|error| {
+        format!(
+            "Codex model metadata cache '{}' is invalid JSON: {error}",
+            cache_path.display()
+        )
+    })?;
+    let models = value
+        .get("models")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            format!(
+                "Codex model metadata cache '{}' has no models array",
+                cache_path.display()
+            )
+        })?;
+    let mut seen = HashSet::new();
+    let mut discovered = Vec::new();
+    for model in models {
+        if model
+            .get("visibility")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|visibility| visibility.eq_ignore_ascii_case("hide"))
+        {
+            continue;
+        }
+        let Some(slug) = model
+            .get("slug")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        if seen.insert(slug.to_string()) {
+            discovered.push(slug.to_string());
+        }
+    }
+    if discovered.is_empty() {
+        return Err(format!(
+            "Codex model metadata cache '{}' contains no selectable model ids",
+            cache_path.display()
+        ));
+    }
+    Ok(discovered)
+}
 
 /// Stable read-only preflight result for one configured agent system.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -719,7 +832,27 @@ pub fn build_agent_system_preflight_with_live(
     let mut discovery_endpoint_candidates = vec![];
 
     match system.transport {
-        AgentSystemTransport::BuiltinEcho | AgentSystemTransport::ExternalJsonStdio => {}
+        AgentSystemTransport::BuiltinEcho => {}
+        AgentSystemTransport::ExternalJsonStdio => {
+            if is_codex_local_agent_system(&system) {
+                model = system
+                    .env
+                    .get(AGENT_MODEL_ENV)
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+                    .or_else(|| {
+                        system
+                            .model
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(str::to_string)
+                    });
+                if let Ok(cache_path) = codex_models_cache_path(&system) {
+                    discovery_endpoint_candidates.push(cache_path.display().to_string());
+                }
+            }
+        }
         AgentSystemTransport::NativeOpenai => {
             let resolved = resolve_base_url(&system, OPENAI_DEFAULT_BASE_URL);
             base_url = Some(resolved.clone());
@@ -802,8 +935,8 @@ pub fn build_agent_system_preflight_with_live(
     Ok(preflight)
 }
 
-/// Discover model ids for a configured agent system that uses a native HTTP
-/// transport with model-list support.
+/// Discover model ids for a configured agent system using either native HTTP
+/// model-list support or the local Codex CLI model metadata cache.
 pub fn discover_models_for_agent_system(
     catalog_path: Option<&str>,
     system_id: &str,
@@ -819,6 +952,11 @@ pub fn discover_models_for_agent_system(
             }
             system.env.insert(key.to_string(), value.to_string());
         }
+    }
+    if matches!(system.transport, AgentSystemTransport::ExternalJsonStdio)
+        && is_codex_local_agent_system(&system)
+    {
+        return discover_codex_models_from_cache(&system);
     }
     let base_url = match system.transport {
         AgentSystemTransport::NativeOpenai => resolve_base_url(&system, OPENAI_DEFAULT_BASE_URL),
@@ -873,6 +1011,51 @@ mod tests {
             attempted_endpoints: vec![],
             selected_endpoint: None,
         }
+    }
+
+    #[test]
+    fn codex_local_model_discovery_reads_visible_models_from_local_cache() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let codex_home = temp.path().join(".codex");
+        fs::create_dir_all(&codex_home).expect("create Codex home");
+        fs::write(
+            codex_home.join("models_cache.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "models": [
+                    {"slug": "gpt-5.6-sol", "visibility": "list"},
+                    {"slug": "gpt-5.4", "visibility": "list"},
+                    {"slug": "codex-auto-review", "visibility": "hide"},
+                    {"slug": "gpt-5.4", "visibility": "list"}
+                ]
+            }))
+            .expect("serialize model cache"),
+        )
+        .expect("write model cache");
+        let catalog_path = temp.path().join("agent_systems.json");
+        fs::write(
+            &catalog_path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schema": "gentle.agent_systems.v1",
+                "systems": [{
+                    "id": "codex_local_stdio",
+                    "label": "Codex Local",
+                    "transport": "external_json_stdio",
+                    "command": ["scripts/codex-agent-bridge"],
+                    "env": {"CODEX_HOME": codex_home}
+                }]
+            }))
+            .expect("serialize catalog"),
+        )
+        .expect("write catalog");
+
+        let models = discover_models_for_agent_system(
+            Some(catalog_path.to_string_lossy().as_ref()),
+            "codex_local_stdio",
+            None,
+        )
+        .expect("discover Codex models");
+
+        assert_eq!(models, vec!["gpt-5.6-sol", "gpt-5.4"]);
     }
 
     fn spawn_model_list_server(routes: Vec<(&str, u16, &str)>) -> Option<String> {

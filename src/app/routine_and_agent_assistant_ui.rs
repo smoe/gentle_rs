@@ -193,6 +193,12 @@ impl GENtleApp {
         None
     }
 
+    pub(super) fn should_render_agent_model_selector(&self, system: &AgentSystemSpec) -> bool {
+        agent_system_supports_model_discovery(system)
+            && (matches!(system.transport, AgentSystemTransport::ExternalJsonStdio)
+                || !self.agent_discovered_models.is_empty())
+    }
+
     pub(super) fn agent_model_selection_prompt(
         &self,
         system: &AgentSystemSpec,
@@ -262,13 +268,7 @@ impl GENtleApp {
         let override_model = normalize_agent_model_name(self.agent_model_override.trim())
             .or(selected_discovered_model);
         if let Some(override_model) = override_model
-            && matches!(
-                system.transport,
-                AgentSystemTransport::NativeOpenai
-                    | AgentSystemTransport::NativeAnthropic
-                    | AgentSystemTransport::NativeMistral
-                    | AgentSystemTransport::NativeOpenaiCompat
-            )
+            && agent_system_supports_model_selection(system)
         {
             overrides.insert(AGENT_MODEL_ENV.to_string(), override_model);
         }
@@ -432,6 +432,15 @@ impl GENtleApp {
         &self,
         system: &AgentSystemSpec,
     ) -> Option<String> {
+        if matches!(system.transport, AgentSystemTransport::ExternalJsonStdio)
+            && agent_system_supports_model_discovery(system)
+        {
+            return Some(format!(
+                "{}|{}|local-codex-model-cache",
+                system.id,
+                system.transport.as_str()
+            ));
+        }
         let base_url = self.selected_agent_runtime_base_url(system)?;
         let key_state = self.selected_agent_model_discovery_key_label(system);
         Some(format!(
@@ -931,18 +940,18 @@ impl GENtleApp {
         system: &AgentSystemSpec,
         force: bool,
     ) {
-        if !matches!(
-            system.transport,
-            AgentSystemTransport::NativeOpenai
-                | AgentSystemTransport::NativeAnthropic
-                | AgentSystemTransport::NativeMistral
-                | AgentSystemTransport::NativeOpenaiCompat
-        ) {
+        if !agent_system_supports_model_discovery(system) {
             return;
         }
-        let Some(base_url) = self.selected_agent_runtime_base_url(system) else {
-            return;
-        };
+        let discovery_source =
+            if matches!(system.transport, AgentSystemTransport::ExternalJsonStdio) {
+                "local Codex model metadata cache".to_string()
+            } else {
+                let Some(base_url) = self.selected_agent_runtime_base_url(system) else {
+                    return;
+                };
+                base_url
+            };
         let Some(source_key) = self.selected_agent_model_discovery_source_key(system) else {
             return;
         };
@@ -964,9 +973,8 @@ impl GENtleApp {
         self.agent_model_discovery_failed_source_key.clear();
         self.agent_model_discovery_source_key = source_key.clone();
         let key_label = self.selected_agent_model_discovery_key_label(system);
-        self.agent_model_discovery_status = format!(
-            "Discovering models at {base_url} (auth={key_label}; timeout about 20s per endpoint) ..."
-        );
+        self.agent_model_discovery_status =
+            format!("Discovering models from {discovery_source} (auth={key_label}) ...");
         self.agent_model_discovery_task = None;
         let env_overrides = match self.selected_agent_session_env_overrides(system) {
             Ok(overrides) => overrides,
@@ -980,7 +988,7 @@ impl GENtleApp {
         let (tx, rx) = mpsc::channel::<AgentModelDiscoveryTaskMessage>();
         let runtime_frame = Self::push_runtime_external_tool_frame(
             "agent model discovery",
-            format!("{} at {}", system_id, base_url),
+            format!("{} from {}", system_id, discovery_source),
         );
         self.agent_model_discovery_task = Some(AgentModelDiscoveryTask {
             started: Instant::now(),
@@ -2976,17 +2984,11 @@ impl GENtleApp {
                     self.agent_status = "Copied selected agent command".to_string();
                 }
             }
-            if matches!(
-                system.transport,
-                AgentSystemTransport::NativeOpenai
-                    | AgentSystemTransport::NativeAnthropic
-                    | AgentSystemTransport::NativeMistral
-                    | AgentSystemTransport::NativeOpenaiCompat
-            ) {
+            if agent_system_supports_model_selection(&system) {
                 if let Some(source_key) = self.selected_agent_model_discovery_source_key(&system) {
                     if self.agent_model_discovery_source_key != source_key {
-                        self.agent_model_discovery_source_key = source_key;
                         self.clear_agent_model_discovery_snapshot();
+                        self.agent_model_discovery_source_key = source_key;
                         self.clear_agent_preflight_output();
                     }
                     if normalize_agent_model_name(self.agent_model_override.trim()).is_none()
@@ -2996,19 +2998,21 @@ impl GENtleApp {
                         self.start_agent_model_discovery_task(&system, false);
                     }
                 }
-                let catalog_base_url = system
-                    .base_url
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .unwrap_or("(transport default)");
-                if self.agent_base_url_override.trim().is_empty() {
-                    ui.small(format!("base URL: {catalog_base_url}"));
-                } else {
-                    ui.small(format!(
-                        "base URL: {} (session override)",
-                        self.agent_base_url_override.trim()
-                    ));
+                if !matches!(system.transport, AgentSystemTransport::ExternalJsonStdio) {
+                    let catalog_base_url = system
+                        .base_url
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or("(transport default)");
+                    if self.agent_base_url_override.trim().is_empty() {
+                        ui.small(format!("base URL: {catalog_base_url}"));
+                    } else {
+                        ui.small(format!(
+                            "base URL: {} (session override)",
+                            self.agent_base_url_override.trim()
+                        ));
+                    }
                 }
                 let catalog_model = system
                     .model
@@ -3022,6 +3026,7 @@ impl GENtleApp {
                         AgentSystemTransport::NativeMistral => {
                             GUI_MISTRAL_DEFAULT_MODEL.to_string()
                         }
+                        AgentSystemTransport::ExternalJsonStdio => "Codex default".to_string(),
                         _ => OPENAI_COMPAT_UNSPECIFIED_MODEL.to_string(),
                     });
                 let model_override = normalize_agent_model_name(self.agent_model_override.trim());
@@ -3114,6 +3119,7 @@ impl GENtleApp {
                 .clicked()
             {
                 self.agent_model_override.clear();
+                self.agent_discovered_model_pick.clear();
                 preflight_inputs_changed = true;
             }
         });
@@ -3203,16 +3209,18 @@ impl GENtleApp {
                 {
                     self.clear_agent_preflight_output();
                 }
-                if matches!(
-                    system.transport,
-                    AgentSystemTransport::NativeOpenai
-                        | AgentSystemTransport::NativeAnthropic
-                        | AgentSystemTransport::NativeMistral
-                        | AgentSystemTransport::NativeOpenaiCompat
-                ) {
+                if agent_system_supports_model_discovery(&system) {
+                    let discovery_hover = if matches!(
+                        system.transport,
+                        AgentSystemTransport::ExternalJsonStdio
+                    ) {
+                        "Read selectable model ids from the local Codex model metadata cache"
+                    } else {
+                        "Query local/server model list from current base URL"
+                    };
                     if ui
                         .button(self.tr("agent.discover_models"))
-                        .on_hover_text("Query local/server model list from current base URL")
+                        .on_hover_text(discovery_hover)
                         .clicked()
                     {
                         self.start_agent_model_discovery_task(&system, true);
@@ -3228,26 +3236,34 @@ impl GENtleApp {
                     }
                 }
             });
-            if !matches!(
-                system.transport,
-                AgentSystemTransport::NativeOpenai
-                    | AgentSystemTransport::NativeAnthropic
-                    | AgentSystemTransport::NativeMistral
-                    | AgentSystemTransport::NativeOpenaiCompat
-            ) {
+            if !agent_system_supports_model_discovery(&system) {
                 self.clear_agent_model_discovery_snapshot();
             } else {
-                if !self.agent_discovered_models.is_empty() {
+                if self.should_render_agent_model_selector(&system) {
+                    let codex_local =
+                        matches!(system.transport, AgentSystemTransport::ExternalJsonStdio);
                     let previous_pick = self.agent_discovered_model_pick.clone();
                     ui.horizontal(|ui| {
                         ui.label(self.tr("agent.discovered_model"));
                         egui::ComboBox::from_id_salt("agent_discovered_model_combo")
                             .selected_text(if self.agent_discovered_model_pick.trim().is_empty() {
-                                self.tr("agent.choose_model")
+                                if codex_local {
+                                    "Codex default".to_string()
+                                } else {
+                                    self.tr("agent.choose_model")
+                                }
                             } else {
                                 self.agent_discovered_model_pick.clone()
                             })
                             .show_ui(ui, |ui| {
+                                if codex_local {
+                                    ui.selectable_value(
+                                        &mut self.agent_discovered_model_pick,
+                                        String::new(),
+                                        "Codex default",
+                                    );
+                                    ui.separator();
+                                }
                                 for model in &self.agent_discovered_models {
                                     ui.selectable_value(
                                         &mut self.agent_discovered_model_pick,
@@ -3257,8 +3273,17 @@ impl GENtleApp {
                                 }
                             });
                     });
-                    preflight_inputs_changed |= previous_pick != self.agent_discovered_model_pick;
-                    ui.small(self.tr("agent.discovered_model_note"));
+                    if previous_pick != self.agent_discovered_model_pick {
+                        self.agent_model_override.clear();
+                        preflight_inputs_changed = true;
+                    }
+                    if codex_local {
+                        ui.small(
+                            "Models are read from the logged-in Codex CLI metadata cache. Codex default leaves model choice to the CLI.",
+                        );
+                    } else {
+                        ui.small(self.tr("agent.discovered_model_note"));
+                    }
                 }
                 if !self.agent_model_discovery_status.trim().is_empty() {
                     ui.small(self.agent_model_discovery_status.clone());
@@ -3378,7 +3403,7 @@ impl GENtleApp {
             "Session only: Base URL override applies to native_openai/native_anthropic/native_mistral/native_openai_compat. For local roots (e.g. http://localhost:11964), GENtle tries /chat/completions and /v1/chat/completions on that same base URL; Msty MLX model servers commonly use http://localhost:11973/v1.",
         );
         ui.small(
-            "Session only: Model override applies to native_openai/native_anthropic/native_mistral/native_openai_compat and maps to GENTLE_AGENT_MODEL. Value 'unspecified' means no override.",
+            "Session only: Model override applies to native providers and Codex Local, and maps to GENTLE_AGENT_MODEL. The Codex bridge forwards it as codex --model. Value 'unspecified' means no override.",
         );
         ui.small(
             "Session only: timeout_sec maps to GENTLE_AGENT_TIMEOUT_SECS and applies to agent requests (stdio and native transports).",
