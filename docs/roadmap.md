@@ -1,7 +1,7 @@
 # GENtle Roadmap
 
-Last session: 2026-05-16 - gentle-engine Phase 2 extraction began with
-`iupac_code`; TP73 evidence-viewer release aim remains active
+Last session: 2026-07-13 - prepared `v0.1.0-internal.10` release notes and
+aligned the interim release gate; manual GUI smoke remains post-release work
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -18,7 +18,7 @@ Maintenance invariant:
 - If a note is a durable rule, move it to [`decisions.md`](decisions.md).
 - If a note is a speculative idea, keep it as a one-line parking-lot entry.
 
-## Current Status
+## Release Gate
 
 Active next-release aim: TP73 genome-anchored evidence viewer.
 
@@ -27,47 +27,55 @@ inspect exons, introns, repeats, array/evidence tracks, CUT&RUN-style BED
 intervals, TFBS/regulatory annotations, and coordinate-build provenance in the
 DNA viewer.
 
-Smoke status: manual GUI smoke for the TP73 evidence-viewer runbook is still
-pending in this worktree. Keep the release-facing notes short until that smoke
-path has passed locally.
+Smoke status: deterministic headless proof and automated release checks define
+the cut condition for `v0.1.0-internal.10`. Manual GUI smoke is deliberately
+deferred until after this interim release and is not a tag blocker.
 
 Proof path:
 
-- Headless regeneration:
-  `docs/examples/workflows/tp73_genome_evidence_viewer_release_proof.json`
+- [Headless regeneration workflow](examples/workflows/tp73_genome_evidence_viewer_release_proof.json)
   loads `test_files/tp73.ncbi.gb`, overlays tiny local repeat, Clariom-style
   array, CUT&RUN-style BED, and TFBS fixtures, and emits SVG/report artifacts.
-- Public runbook: `docs/tp73_genome_evidence_viewer_runbook.md`.
-- Fixture bundle: `test_files/fixtures/evidence_viewer/` with provenance and
-  deterministic regeneration notes.
+- Public [TP73 evidence-viewer runbook](tp73_genome_evidence_viewer_runbook.md).
+- [Fixture provenance and regeneration notes](../test_files/fixtures/evidence_viewer/README.md).
+- Draft [`v0.1.0-internal.10` release notes](release_notes/release_notes_v0.1.0-internal.10.md).
 
 Release acceptance:
 
 - The proof workflow remains offline-safe and writes non-empty sequence,
   splicing-expert, TFBS SVG, and repeat-materialization JSON artifacts.
-- The GUI smoke path opens the proof state, shows anchor/build status, toggles
-  repeat and array layers, and exposes informative feature details for one
-  exon, one transcript/intron context, one repeat, one array row, and one
-  CUT&RUN-style interval.
+- Version metadata, generated documentation, capability/parity checks, and the
+  deterministic proof workflow pass the pre-tag validation recorded in the
+  versioned release notes.
 - Full UCSC `rmsk`, raw CEL, full SRA, and genome downloads remain optional
   external resources; CI uses only tiny local fixtures.
 
 Release cut line:
 
+- `v0.1.0-internal.10` may be tagged after the automated pre-tag matrix is
+  recorded. The manual DNA-viewer/Splicing Expert smoke is intentionally not
+  part of this interim cut.
+
 Post-release scope:
+
+- Run the manual GUI smoke from the TP73 runbook and use any findings as input
+  to the next internal release.
+- Coordinate a stable macOS bundle identifier and project URL with Magnus
+  Manske before replacing the interim `com.example.gentle` identifier.
+- Discuss the deprecated ClawBio shell-normalizer modes before their earliest
+  possible removal in `v0.1.0-internal.11`.
 
 ## Next Session Priorities
 
-1. Keep the TP73 evidence-viewer proof workflow green and offline-safe while
-   finishing release-facing documentation.
-2. Run the manual GUI smoke from the runbook and fix only evidence-viewer
-   inspection problems that block the release story.
-3. Preserve headless/GUI parity for repeat, array, CUT&RUN-style BED, TFBS, and
-   feature-detail views; avoid adding broader biology conclusions.
-4. Keep private grant material out of the GENtle source tree; only general,
-   reusable GENtle improvements should return here.
-5. After the smoke path passes locally, prepare concise release notes around
-   the TP73 viewer story as the next concrete release-facing artifact.
+1. Keep the TP73 evidence-viewer proof workflow green and offline-safe through
+   the `v0.1.0-internal.10` tag.
+2. After the interim release, run the manual GUI smoke from the runbook and fix
+   only evidence-viewer inspection problems supported by that review.
+3. Coordinate the stable macOS bundle identity/project URL with Magnus Manske.
+4. Review the ClawBio shell-normalizer deprecations before deciding whether any
+   compatibility modes should be removed in `v0.1.0-internal.11`.
+5. Preserve headless/GUI parity for repeat, array, CUT&RUN-style BED, TFBS, and
+   feature-detail views without promoting evidence overlap into conclusions.
 
 Current non-goals:
 

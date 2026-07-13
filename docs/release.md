@@ -49,9 +49,10 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
   - Runs checks/tests on pushes to `main` and pull requests.
   - Does not publish release assets.
 - Container workflow: `.github/workflows/container.yml`
-  - Builds both Debian-first runtime targets (`runtime-cli`, `runtime-gui`) on
-    PRs / `main`.
-  - Publishes `linux/amd64` GHCR images from tag pushes matching `v*`:
+  - Runs no-push build checks for both Debian-first runtime targets
+    (`runtime-cli`, `runtime-gui`) on tag pushes and manual dispatch.
+  - Publishes `linux/amd64` GHCR images only when the workflow ref is a tag
+    matching `v*`:
     `:cli` / `:<tag>-cli` for headless use and `:gui` / `:<tag>` for GUI use.
   - Moves `latest` only on release-tag publishes, as a GUI compatibility tag.
 - Release workflow: `.github/workflows/release.yml`
@@ -103,6 +104,7 @@ Required local matrix:
 
 ```bash
 cargo check -q
+cargo test -q --test release_version_consistency
 cargo build --release --features script-interfaces
 cargo run --release --bin gentle -- --version
 cargo run --release --bin gentle_cli -- capabilities
@@ -115,7 +117,8 @@ cargo run --release --bin gentle_mcp -- --help
 
 Release-note expectations for that smoke pass:
 
-- record pass/fail per command in the versioned root release-notes document
+- record pass/fail per command in the versioned internal release-notes document
+  under `docs/release_notes/`
 - call out any intentionally skipped entrypoint or known failure explicitly
 - when exercising the pre-release CUT&RUN proof path, follow
   [`docs/cutrun_release_smoke.md`](cutrun_release_smoke.md) and record whether

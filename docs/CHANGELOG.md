@@ -22,6 +22,9 @@ Maintenance rule:
   RNA evidence, fact-aware agent introspection, gene-set/promoter reasoning,
   review-gated material/service handoffs, and extensive GUI responsiveness and
   background-execution hardening.
+- Aligned the interim release gate and release-process documentation, retained
+  deprecated ClawBio normalizer modes through `.10`, added indexed release-note
+  navigation and a version-consistency guard, and improved package metadata.
 
 ## 2026-07-12
 

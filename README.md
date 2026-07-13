@@ -253,9 +253,11 @@ containers, and platform notes are centralized in [`INSTALL.md`](INSTALL.md).
 - Generated showcase figures come from GENtle engine outputs and/or versioned
   deterministic repository tooling. They are not manually redrawn.
 
-See the [`roadmap`](docs/roadmap.md) for the current acceptance gate and the
-[`release guide`](docs/release.md) plus [`release notes`](docs/release_notes/)
-for notable user-facing changes.
+See the [`roadmap`](docs/roadmap.md) for the current acceptance gate, the
+[`release guide`](docs/release.md), the
+[`v0.1.0-internal.10` release notes](docs/release_notes/release_notes_v0.1.0-internal.10.md),
+and the complete [`release-note index`](docs/release_notes/) for notable
+user-facing changes.
 
 ## Principles
 

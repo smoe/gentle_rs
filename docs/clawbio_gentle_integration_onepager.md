@@ -200,7 +200,7 @@ Class meaning:
 
 ## Deprecation Table
 
-Deprecated in `v0.1.0-internal.8`, earliest removal `v0.1.0-internal.10`:
+Deprecated in `v0.1.0-internal.8`, earliest removal `v0.1.0-internal.11`:
 
 - Primer/qPCR/report/CDNA modes listed above as shell normalizers.
 - Restriction-cloning handoff helper modes listed above as shell normalizers.
@@ -209,6 +209,10 @@ Deprecated in `v0.1.0-internal.8`, earliest removal `v0.1.0-internal.10`:
 
 Each deprecated mode still executes and adds a `warnings[]` entry naming the
 equivalent `mode: "shell"` form.
+
+All listed compatibility modes remain available in `v0.1.0-internal.10`.
+Removal in or after `.11` requires a separate compatibility discussion rather
+than following automatically from the earliest-removal marker.
 
 ## Drift Guards
 

@@ -1,11 +1,21 @@
 # Release Notes / Changelog: `v0.1.0-internal.10` (draft)
 
+| Release field | Value |
+| --- | --- |
+| Status | Draft, pending automated pre-tag validation |
+| Target date | 2026-07-13 |
+| Previous tag | `v0.1.0-internal.9` (2026-06-05) |
+| Primary story | Genome-anchored TP73 evidence viewer |
+| Manual GUI smoke | Deliberately deferred until after this interim release |
+
 This internal release covers the work after `v0.1.0-internal.9`, tagged on
 2026-06-05. Once the new tag is cut, the auditable Git comparison is:
 
 ```text
 v0.1.0-internal.9..v0.1.0-internal.10
 ```
+
+[Open the GitHub comparison after the tag is published.](https://github.com/smoe/gentle_rs/compare/v0.1.0-internal.9...v0.1.0-internal.10)
 
 The main release story is a genome-anchored TP73 evidence viewer. GENtle can
 open the GRCh38.p14 TP73 locus and inspect exon and transcript structure,
@@ -225,6 +235,9 @@ egui thread.
 - Most new schemas and fields in this interval are additive. Callers should
   continue to validate the advertised schema id/version and ignore documented
   optional fields they do not consume.
+- ClawBio shell-normalizer compatibility modes deprecated in `.8` remain
+  accepted in `.10` with warnings. Their earliest possible removal is `.11`,
+  after a separate compatibility discussion.
 - Agent-suggested commands remain subject to confirmation/execution policy;
   chat replies and clarification questions do not imply an executable action.
 - Vendor/service output remains a reviewable handoff packet. GENtle does not
@@ -237,6 +250,9 @@ egui thread.
 
 - This remains an internal release, not a stable file-format or public API
   commitment.
+- The macOS bundle identifier remains the interim `com.example.gentle` value
+  pending coordination with Magnus Manske on a stable project identity and
+  URL. Changing it is intentionally deferred from this tag.
 - The committed TP73 proof uses tiny local fixtures. Full UCSC `rmsk`, raw CEL,
   full SRA, BigWig, prepared genomes, and vendor resources remain optional
   external inputs.
@@ -259,6 +275,7 @@ release-story checks in the tag record:
 
 ```bash
 cargo check -q
+cargo test -q --test release_version_consistency
 cargo test --workspace --no-fail-fast
 cargo run --quiet --bin gentle_examples_docs -- --check
 cargo run --quiet --bin gentle_examples_docs -- tutorial-check
@@ -269,11 +286,15 @@ cargo run --release --bin gentle_cli -- capabilities
 git diff --check
 ```
 
-Manual GUI smoke should follow
-`docs/tp73_genome_evidence_viewer_runbook.md`, including anchor/build status,
-repeat/array/BED/TFBS visibility and details, feature-detail copy controls,
-Splicing Expert presentation, and the first 1200 bp linear viewport. Also open
-the Agent Assistant, select Codex Local, and confirm that the model selector is
-visible before model discovery completes.
+Automated pre-tag validation results: _pending_.
 
-Release-shaped smoke check results: _pending_.
+## Post-Release GUI Smoke
+
+Manual GUI smoke is deliberately deferred until after this interim tag. It
+should then follow `docs/tp73_genome_evidence_viewer_runbook.md`, including
+anchor/build status, repeat/array/BED/TFBS visibility and details,
+feature-detail copy controls, Splicing Expert presentation, and the first 1200
+bp linear viewport. Also open the Agent Assistant, select Codex Local, and
+confirm that the model selector is visible before model discovery completes.
+
+Manual GUI smoke: _deferred until after `v0.1.0-internal.10`_.

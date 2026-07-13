@@ -1,7 +1,7 @@
 [package]
 name = "GENtle"
 authors = ["Magnus Manske <magnusmanske@googlemail.com>", "Steffen Möller <moeller@debian.org>"]
-description = "GENtle"
+description = "Molecular biology workbench for sequence analysis, cloning design, genome evidence integration, and reproducible experimental planning"
 keywords = ["plasmid", "vector", "primer", "biology", "pcr", "cloning"]
 categories = ["science", "science::bioinformatics"]
 repository = "https://github.com/smoe/gentle_rs/"
