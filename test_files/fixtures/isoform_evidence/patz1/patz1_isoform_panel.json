@@ -1,0 +1,26 @@
+{
+  "schema": "gentle.isoform_panel_resource.v1",
+  "panel_id": "patz1_synthetic_v1",
+  "gene_symbol": "PATZ1",
+  "transcript_geometry_mode": "exon",
+  "assembly": "GRCh38.p14",
+  "source": "synthetic offline PATZ1 acceptance fixture",
+  "notes": "Test geometry only; not a biological PATZ1 transcript catalog.",
+  "isoforms": [
+    {
+      "isoform_id": "patz1_long",
+      "label": "PATZ1 long-family model",
+      "transcript_ids": ["PATZ1-201"]
+    },
+    {
+      "isoform_id": "patz1_skip",
+      "label": "PATZ1 exon-skip model",
+      "transcript_ids": ["PATZ1-202"]
+    },
+    {
+      "isoform_id": "patz1_alt",
+      "label": "PATZ1 alternative-exon model",
+      "transcript_ids": ["PATZ1-203"]
+    }
+  ]
+}

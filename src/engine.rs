@@ -571,7 +571,14 @@ struct ConstructTranscriptVariantEffectSummary {
 }
 
 pub use crate::feature_expert::{
-    FeatureExpertTarget, FeatureExpertView, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
+    CDNA_EST_EVIDENCE_RESOURCE_SCHEMA, CdnaEstEvidenceKind, CdnaEstEvidenceRecord,
+    CdnaEstEvidenceResource, FeatureExpertTarget, FeatureExpertView,
+    GENE_ISOFORM_EVIDENCE_INSTRUCTION, GENE_ISOFORM_EVIDENCE_SCHEMA,
+    GeneIsoformAssayCandidate, GeneIsoformEvidenceComponent, GeneIsoformEvidenceComponents,
+    GeneIsoformEvidenceItem, GeneIsoformEvidenceProvenanceSource, GeneIsoformEvidenceReport,
+    GeneIsoformEvidenceRequest, GeneIsoformExonFamilyRow, GeneIsoformFamilyRow,
+    GeneIsoformJunctionRow, GeneIsoformTranscriptRow, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
+    IsoformEvidenceAssessmentStatus, IsoformEvidenceSourceKind,
     IsoformArchitectureCdsAaSegment, IsoformArchitectureExpertView,
     IsoformArchitectureProteinDomain, IsoformArchitectureProteinLane,
     IsoformArchitectureTranscriptLane, RESTRICTION_EXPERT_INSTRUCTION, RestrictionSiteExpertView,

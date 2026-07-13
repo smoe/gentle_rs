@@ -1,0 +1,84 @@
+{
+  "schema": "gentle.probe_region_evidence_interpretation.v2",
+  "seq_id": "patz1_isoform_evidence",
+  "gene_label": "PATZ1",
+  "level": "probeset",
+  "coordinate_frame": "genomic_1based",
+  "coordinate_system": "GRCh38.p14",
+  "coordinate_chromosome": "22",
+  "array_feature_count": 2,
+  "transcript_count": 3,
+  "evidence_rows": [
+    {
+      "evidence_id": "JUC2200054820.hg.1",
+      "level": "junction",
+      "feature_id": "JUC2200054820.hg.1",
+      "parent_feature_id": "TC2200008477.hg.1",
+      "chromosome": "22",
+      "start_1based": 31325860,
+      "end_1based": 31325979,
+      "strand": "-",
+      "logfc": -1.2,
+      "overlapping_transcript_ids": ["PATZ1-202"],
+      "overlapping_exon_count": 2,
+      "mapping_status": "ambiguous_parent_feature",
+      "ambiguity_tags": ["parent_mixes_transcript_features", "multi_hit_not_assessed"],
+      "relationship": "review_only_constraint",
+      "transcript_mappings": [
+        {
+          "transcript_id": "PATZ1-202",
+          "coordinate_frame": "genomic_1based",
+          "mapping_kind": "junction_span",
+          "geometry_score": 1.0,
+          "geometry_score_class": "exact_geometry",
+          "score_basis": ["synthetic exact junction span"],
+          "exon_ordinals": [1, 2],
+          "exon_ranges_1based": ["31325820..31325859", "31325980..31326019"],
+          "junction_spans": [
+            {
+              "from_exon_ordinal": 1,
+              "to_exon_ordinal": 2,
+              "genomic_start_1based": 31325860,
+              "genomic_end_1based": 31325979,
+              "local_start_1based": 61,
+              "local_end_1based": 180
+            }
+          ],
+          "overlap_bp": 0
+        }
+      ]
+    },
+    {
+      "evidence_id": "PSR2200160982.hg.1",
+      "level": "probeset",
+      "feature_id": "PSR2200160982.hg.1",
+      "parent_feature_id": "TC2200008477.hg.1",
+      "chromosome": "22",
+      "start_1based": 31325900,
+      "end_1based": 31325939,
+      "strand": "-",
+      "logfc": 0.8,
+      "overlapping_transcript_ids": ["PATZ1-201"],
+      "overlapping_exon_count": 1,
+      "mapping_status": "exact_exon_geometry",
+      "ambiguity_tags": [],
+      "relationship": "review_only_constraint",
+      "transcript_mappings": [
+        {
+          "transcript_id": "PATZ1-201",
+          "coordinate_frame": "genomic_1based",
+          "mapping_kind": "exon_overlap",
+          "geometry_score": 1.0,
+          "geometry_score_class": "exact_geometry",
+          "score_basis": ["synthetic exact exon span"],
+          "exon_ordinals": [2],
+          "exon_ranges_1based": ["31325900..31325939"],
+          "junction_spans": [],
+          "overlap_bp": 40
+        }
+      ]
+    }
+  ],
+  "transcript_rows": [],
+  "warnings": ["Synthetic probe evidence; array overlap is not isoform validation."]
+}

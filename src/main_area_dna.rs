@@ -155,9 +155,11 @@ use crate::{
     enzymes::active_restriction_enzymes,
     exon_frame::{ExonLengthFrameCue, phase_entry_hint, transcript_entry_phase},
     feature_expert::{
-        FeatureExpertTarget, FeatureExpertView, IsoformArchitectureExpertView,
-        RestrictionSiteExpertView, SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView,
-        SplicingIntronSignal, TfbsExpertView, compute_supported_splicing_exon_transitions,
+        FeatureExpertTarget, FeatureExpertView, GeneIsoformEvidenceReport,
+        GeneIsoformEvidenceRequest, IsoformArchitectureExpertView,
+        IsoformEvidenceAssessmentStatus, RestrictionSiteExpertView, SplicingBoundaryMarker,
+        SplicingExonSummary, SplicingExpertView, SplicingIntronSignal, TfbsExpertView,
+        compute_supported_splicing_exon_transitions,
     },
     feature_location::{
         collect_location_ranges_usize, feature_is_reverse, location_overlaps_usize,
@@ -1049,6 +1051,13 @@ struct SplicingIntronSignalKey {
     acceptor_position_1based: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum SplicingExpertTab {
+    #[default]
+    Structure,
+    Evidence,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct ArrayProbeGeometryUiRow {
     evidence_id: String,
@@ -1615,6 +1624,17 @@ pub struct MainAreaDna {
     splicing_expert_window_focus_requested: bool,
     splicing_expert_window_feature_id: Option<usize>,
     splicing_expert_window_view: Option<Arc<SplicingExpertView>>,
+    splicing_expert_tab: SplicingExpertTab,
+    splicing_isoform_evidence_panel_id: String,
+    splicing_isoform_evidence_annotation_release: String,
+    splicing_isoform_evidence_rna_report_ids: String,
+    splicing_isoform_evidence_qpcr_report_ids: String,
+    splicing_isoform_evidence_probe_paths: String,
+    splicing_isoform_evidence_cdna_est_paths: String,
+    splicing_isoform_evidence_expression_path: String,
+    splicing_isoform_evidence_svg_path: String,
+    splicing_isoform_evidence_report: Option<Arc<GeneIsoformEvidenceReport>>,
+    splicing_isoform_evidence_status: String,
     cached_splicing_expert_presentations: Vec<CachedSplicingExpertPresentation>,
     splicing_expert_presentation_cache_hits: u64,
     splicing_expert_presentation_cache_misses: u64,
@@ -2359,6 +2379,17 @@ impl MainAreaDna {
             splicing_expert_window_focus_requested: false,
             splicing_expert_window_feature_id: None,
             splicing_expert_window_view: None,
+            splicing_expert_tab: SplicingExpertTab::Structure,
+            splicing_isoform_evidence_panel_id: String::new(),
+            splicing_isoform_evidence_annotation_release: String::new(),
+            splicing_isoform_evidence_rna_report_ids: String::new(),
+            splicing_isoform_evidence_qpcr_report_ids: String::new(),
+            splicing_isoform_evidence_probe_paths: String::new(),
+            splicing_isoform_evidence_cdna_est_paths: String::new(),
+            splicing_isoform_evidence_expression_path: String::new(),
+            splicing_isoform_evidence_svg_path: "isoform-evidence.svg".to_string(),
+            splicing_isoform_evidence_report: None,
+            splicing_isoform_evidence_status: String::new(),
             cached_splicing_expert_presentations: Vec::new(),
             splicing_expert_presentation_cache_hits: 0,
             splicing_expert_presentation_cache_misses: 0,
@@ -17947,6 +17978,23 @@ impl MainAreaDna {
         id_namespace: &str,
         pending_initial_render: bool,
     ) {
+        ui.horizontal(|ui| {
+            ui.selectable_value(
+                &mut self.splicing_expert_tab,
+                SplicingExpertTab::Structure,
+                "Structure",
+            );
+            ui.selectable_value(
+                &mut self.splicing_expert_tab,
+                SplicingExpertTab::Evidence,
+                "Evidence",
+            );
+        });
+        ui.separator();
+        if self.splicing_expert_tab == SplicingExpertTab::Evidence {
+            self.render_splicing_isoform_evidence_tab(ui, view);
+            return;
+        }
         self.render_splicing_expert_transcript_quick_actions(ui, view);
         if pending_initial_render {
             self.log_splicing_expert_status(view, "first frame deferred", true);
@@ -24414,7 +24462,7 @@ impl MainAreaDna {
     }
 
     fn splicing_expert_window_help_text() -> &'static str {
-        "This window explains one splicing group through five complementary views:\n- annotation-derived transcript and exon structure\n- splice-site donor/acceptor motif classes for the annotated introns\n- conservative acceptor-proximal intron heuristics (branchpoint-like adenines and polypyrimidine-rich tracts)\n- array probe geometry constraints from loaded probe-region reports, including junction-spanning array probe rows when a report spans annotated exon-exon boundaries\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels driven by saved mapping reports for this locus\n\nUse the transcript selector for transcript-level actions. Array probe geometry is review-only design/alignment evidence; RNA-read runs and workflow controls live in the dedicated RNA-read Mapping workspace. The Splicing Expert stays annotation-first and report-viewer-first."
+        "This window explains one splicing group through complementary Structure and Evidence views:\n- annotation-derived transcript and exon structure\n- splice-site donor/acceptor motif classes for the annotated introns\n- conservative acceptor-proximal intron heuristics (branchpoint-like adenines and polypyrimidine-rich tracts)\n- array probe geometry constraints from loaded probe-region reports, including junction-spanning array probe rows when a report spans annotated exon-exon boundaries\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels driven by saved mapping reports for this locus\n- a read-only isoform evidence ledger that composes curated families, RNA/cDNA support, expression, probe constraints, and existing qPCR candidates\n\nUse the transcript selector for transcript-level actions. Array probe geometry is review-only design/alignment evidence; RNA-read runs and workflow controls live in the dedicated RNA-read Mapping workspace. The Splicing Expert stays annotation-first and report-viewer-first."
     }
 
     fn rna_read_mapping_parameter_section_title() -> &'static str {

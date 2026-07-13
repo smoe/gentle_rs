@@ -6783,6 +6783,385 @@ impl MainAreaDna {
             });
     }
 
+    fn isoform_evidence_list(text: &str) -> Vec<String> {
+        let mut values = text
+            .split([',', '\n'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        values.sort();
+        values.dedup();
+        values
+    }
+
+    pub(super) fn splicing_isoform_evidence_request(
+        &self,
+    ) -> Result<GeneIsoformEvidenceRequest, String> {
+        let panel_id = self.splicing_isoform_evidence_panel_id.trim();
+        if panel_id.is_empty() {
+            return Err("Select an imported isoform panel before inspecting evidence".to_string());
+        }
+        Ok(GeneIsoformEvidenceRequest {
+            panel_id: panel_id.to_string(),
+            annotation_release: (!self
+                .splicing_isoform_evidence_annotation_release
+                .trim()
+                .is_empty())
+            .then(|| {
+                self.splicing_isoform_evidence_annotation_release
+                    .trim()
+                    .to_string()
+            }),
+            rna_read_report_ids: Self::isoform_evidence_list(
+                &self.splicing_isoform_evidence_rna_report_ids,
+            ),
+            qpcr_report_ids: Self::isoform_evidence_list(
+                &self.splicing_isoform_evidence_qpcr_report_ids,
+            ),
+            probe_evidence_paths: Self::isoform_evidence_list(
+                &self.splicing_isoform_evidence_probe_paths,
+            ),
+            cdna_est_resource_paths: Self::isoform_evidence_list(
+                &self.splicing_isoform_evidence_cdna_est_paths,
+            ),
+            expression_tsv_path: (!self
+                .splicing_isoform_evidence_expression_path
+                .trim()
+                .is_empty())
+            .then(|| {
+                self.splicing_isoform_evidence_expression_path
+                    .trim()
+                    .to_string()
+            }),
+        })
+    }
+
+    fn inspect_splicing_isoform_evidence(&mut self) {
+        let request = match self.splicing_isoform_evidence_request() {
+            Ok(request) => request,
+            Err(err) => {
+                self.splicing_isoform_evidence_status = err;
+                return;
+            }
+        };
+        let target = FeatureExpertTarget::IsoformEvidence { request };
+        match self.inspect_feature_expert_target(&target) {
+            Ok(FeatureExpertView::IsoformEvidence(report)) => {
+                self.splicing_isoform_evidence_status = format!(
+                    "Inspected {} transcript model(s), {} exon family/families, and {} junction(s)",
+                    report.transcripts.len(),
+                    report.exon_families.len(),
+                    report.junctions.len()
+                );
+                self.splicing_isoform_evidence_report = Some(Arc::new(report));
+            }
+            Ok(other) => {
+                self.splicing_isoform_evidence_report = None;
+                self.splicing_isoform_evidence_status =
+                    format!("Expected isoform evidence, received {other:?}");
+            }
+            Err(err) => {
+                self.splicing_isoform_evidence_report = None;
+                self.splicing_isoform_evidence_status = err;
+            }
+        }
+    }
+
+    fn render_splicing_isoform_evidence_svg(&mut self) {
+        let request = match self.splicing_isoform_evidence_request() {
+            Ok(request) => request,
+            Err(err) => {
+                self.splicing_isoform_evidence_status = err;
+                return;
+            }
+        };
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.splicing_isoform_evidence_status =
+                "Sequence id is unavailable for SVG export".to_string();
+            return;
+        };
+        let path = self.splicing_isoform_evidence_svg_path.trim().to_string();
+        if path.is_empty() {
+            self.splicing_isoform_evidence_status = "Provide an SVG output path".to_string();
+            return;
+        }
+        let Some(engine) = self.engine.clone() else {
+            self.splicing_isoform_evidence_status = "Engine is unavailable for SVG export".into();
+            return;
+        };
+        let result = engine
+            .write()
+            .map_err(|_| "Engine lock poisoned while exporting SVG".to_string())
+            .and_then(|mut engine| {
+                engine
+                    .apply(Operation::RenderFeatureExpertSvg {
+                        seq_id,
+                        target: FeatureExpertTarget::IsoformEvidence { request },
+                        path: path.clone(),
+                    })
+                    .map_err(|err| err.message)
+            });
+        self.splicing_isoform_evidence_status = match result {
+            Ok(result) if result.messages.is_empty() => format!("Wrote {path}"),
+            Ok(result) => result.messages.join(" "),
+            Err(err) => err,
+        };
+    }
+
+    fn isoform_evidence_status_label(status: IsoformEvidenceAssessmentStatus) -> &'static str {
+        match status {
+            IsoformEvidenceAssessmentStatus::Observed => "observed",
+            IsoformEvidenceAssessmentStatus::Candidate => "candidate",
+            IsoformEvidenceAssessmentStatus::ConstraintOnly => "constraint only",
+            IsoformEvidenceAssessmentStatus::NotEvaluated => "not evaluated",
+            IsoformEvidenceAssessmentStatus::Unknown => "unknown",
+        }
+    }
+
+    pub(super) fn render_isoform_evidence_view_ui(
+        ui: &mut egui::Ui,
+        report: &GeneIsoformEvidenceReport,
+    ) {
+        ui.heading(format!("{} isoform evidence", report.gene_symbol));
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!("Panel: {}", report.panel_id));
+            ui.separator();
+            ui.label(format!(
+                "{} {} strand {}",
+                report.assembly,
+                report.chromosome.as_deref().unwrap_or("unplaced"),
+                report.gene_strand
+            ));
+            ui.separator();
+            ui.label(format!(
+                "{} transcript(s), {} junction(s)",
+                report.transcripts.len(),
+                report.junctions.len()
+            ));
+        });
+        ui.label(
+            egui::RichText::new(&report.instruction)
+                .size(10.0)
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+        );
+        for warning in &report.warnings {
+            ui.colored_label(egui::Color32::from_rgb(180, 83, 9), warning);
+        }
+
+        egui::CollapsingHeader::new(format!("Transcript models ({})", report.transcripts.len()))
+            .default_open(true)
+            .show(ui, |ui| {
+                egui::Grid::new(("isoform_evidence_transcripts", report.panel_id.as_str()))
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("Transcript");
+                        ui.strong("Family");
+                        ui.strong("5' -> 3' exon families");
+                        ui.strong("Genomic ascending");
+                        ui.end_row();
+                        for transcript in &report.transcripts {
+                            ui.monospace(&transcript.transcript_id);
+                            ui.label(transcript.family_ids.join(", "));
+                            ui.monospace(transcript.exon_family_ids_5_to_3.join(" -> "));
+                            ui.monospace(
+                                transcript.exon_family_ids_genomic_ascending.join(" | "),
+                            );
+                            ui.end_row();
+                        }
+                    });
+            });
+
+        egui::CollapsingHeader::new(format!("Junction evidence ({})", report.junctions.len()))
+            .default_open(true)
+            .show(ui, |ui| {
+                egui::Grid::new(("isoform_evidence_junctions", report.panel_id.as_str()))
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("Junction");
+                        ui.strong("Donor -> acceptor");
+                        ui.strong("Families");
+                        ui.strong("Specificity");
+                        ui.strong("Abundance");
+                        ui.strong("Responsiveness");
+                        ui.strong("Assayability");
+                        ui.end_row();
+                        for junction in &report.junctions {
+                            ui.monospace(&junction.junction_id);
+                            ui.monospace(format!(
+                                "{} -> {}",
+                                junction.transcript_donor_1based,
+                                junction.transcript_acceptor_1based
+                            ));
+                            ui.label(junction.family_ids.join(", "));
+                            ui.label(&junction.components.specificity.classification);
+                            ui.label(Self::isoform_evidence_status_label(
+                                junction.components.abundance.status,
+                            ));
+                            ui.label(Self::isoform_evidence_status_label(
+                                junction.components.responsiveness.status,
+                            ));
+                            ui.label(Self::isoform_evidence_status_label(
+                                junction.components.assayability.status,
+                            ));
+                            ui.end_row();
+                        }
+                    });
+            });
+
+        egui::CollapsingHeader::new(format!("Evidence ledger ({})", report.evidence_items.len()))
+            .show(ui, |ui| {
+                for item in &report.evidence_items {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.monospace(&item.evidence_id);
+                        ui.label(format!("{:?}", item.source_kind));
+                        ui.label(Self::isoform_evidence_status_label(item.status));
+                        if !item.target_ids.is_empty() {
+                            ui.monospace(item.target_ids.join(", "));
+                        }
+                    });
+                    ui.label(
+                        egui::RichText::new(&item.method)
+                            .size(9.0)
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+            });
+
+        egui::CollapsingHeader::new(format!(
+            "Existing qPCR candidates ({})",
+            report.assay_candidates.len()
+        ))
+        .show(ui, |ui| {
+            for candidate in &report.assay_candidates {
+                ui.horizontal_wrapped(|ui| {
+                    ui.monospace(format!(
+                        "{} rank {}",
+                        candidate.qpcr_report_id, candidate.assay_rank
+                    ));
+                    ui.label(&candidate.assay_class_label);
+                    ui.label(format!("{} bp", candidate.amplicon_length_bp));
+                    ui.label(format!("score {:.2}", candidate.score));
+                });
+                ui.label(
+                    egui::RichText::new(&candidate.explanation)
+                        .size(9.0)
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            }
+        });
+
+        egui::CollapsingHeader::new(format!("Provenance ({})", report.provenance.len()))
+            .show(ui, |ui| {
+                for source in &report.provenance {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.monospace(&source.source_kind);
+                        ui.label(&source.source_id);
+                        if let Some(path) = source.path.as_deref() {
+                            ui.monospace(path);
+                        }
+                    });
+                }
+            });
+    }
+
+    pub(super) fn render_splicing_isoform_evidence_tab(
+        &mut self,
+        ui: &mut egui::Ui,
+        _view: &SplicingExpertView,
+    ) {
+        ui.label(
+            egui::RichText::new(
+                "Compose existing annotation, RNA-read, sequence, array, expression, and qPCR evidence without treating any one layer as validation.",
+            )
+            .size(10.0)
+            .color(egui::Color32::from_rgb(71, 85, 105)),
+        );
+        egui::Grid::new("splicing_isoform_evidence_inputs")
+            .num_columns(2)
+            .spacing([12.0, 5.0])
+            .show(ui, |ui| {
+                ui.label("Isoform panel");
+                ui.horizontal(|ui| {
+                    ui.text_edit_singleline(&mut self.splicing_isoform_evidence_panel_id);
+                    if ui
+                        .button("Use panel control")
+                        .on_hover_text("Copy the panel id from the Isoform Architecture controls")
+                        .clicked()
+                    {
+                        self.splicing_isoform_evidence_panel_id = self.isoform_panel_id.clone();
+                    }
+                });
+                ui.end_row();
+                ui.label("Annotation release");
+                ui.text_edit_singleline(
+                    &mut self.splicing_isoform_evidence_annotation_release,
+                );
+                ui.end_row();
+                ui.label("RNA-read report ids");
+                ui.text_edit_singleline(&mut self.splicing_isoform_evidence_rna_report_ids);
+                ui.end_row();
+                ui.label("qPCR report ids");
+                ui.text_edit_singleline(&mut self.splicing_isoform_evidence_qpcr_report_ids);
+                ui.end_row();
+                ui.label("Probe evidence JSON paths");
+                ui.text_edit_singleline(&mut self.splicing_isoform_evidence_probe_paths);
+                ui.end_row();
+                ui.label("cDNA/EST resource paths");
+                ui.text_edit_singleline(&mut self.splicing_isoform_evidence_cdna_est_paths);
+                ui.end_row();
+                ui.label("Expression TSV path");
+                ui.text_edit_singleline(&mut self.splicing_isoform_evidence_expression_path);
+                ui.end_row();
+            });
+
+        let mut inspect = false;
+        let mut render_svg = false;
+        ui.horizontal_wrapped(|ui| {
+            inspect = ui.button("Inspect evidence").clicked();
+            if ui
+                .add_enabled(
+                    self.splicing_isoform_evidence_report.is_some(),
+                    egui::Button::new("Copy report JSON"),
+                )
+                .clicked()
+                && let Some(report) = self.splicing_isoform_evidence_report.as_ref()
+                && let Ok(json) = serde_json::to_string_pretty(report.as_ref())
+            {
+                ui.ctx().copy_text(json);
+                self.splicing_isoform_evidence_status = "Copied report JSON".to_string();
+            }
+            ui.label("SVG path");
+            ui.text_edit_singleline(&mut self.splicing_isoform_evidence_svg_path);
+            render_svg = ui.button("Render SVG").clicked();
+        });
+        if inspect {
+            self.inspect_splicing_isoform_evidence();
+        }
+        if render_svg {
+            self.render_splicing_isoform_evidence_svg();
+        }
+        if !self.splicing_isoform_evidence_status.is_empty() {
+            ui.label(
+                egui::RichText::new(&self.splicing_isoform_evidence_status)
+                    .size(10.0)
+                    .color(egui::Color32::from_rgb(51, 65, 85)),
+            );
+        }
+        ui.separator();
+        if let Some(report) = self.splicing_isoform_evidence_report.clone() {
+            Self::render_isoform_evidence_view_ui(ui, report.as_ref());
+        } else {
+            ui.label(
+                egui::RichText::new(
+                    "No evidence report cached. Import an isoform panel, provide any available evidence references, then inspect.",
+                )
+                .italics()
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        }
+    }
+
     pub(super) fn render_feature_expert_view_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -6798,6 +7177,9 @@ impl MainAreaDna {
             }
             FeatureExpertView::IsoformArchitecture(isoform) => {
                 self.render_isoform_architecture_expert_view_ui(ui, isoform)
+            }
+            FeatureExpertView::IsoformEvidence(report) => {
+                Self::render_isoform_evidence_view_ui(ui, report)
             }
         }
     }
@@ -6826,6 +7208,8 @@ impl MainAreaDna {
             self.invalidate_splicing_expert_presentation_cache();
             self.splicing_expert_window_feature_id = Some(view.target_feature_id);
             self.splicing_expert_window_view = Some(Arc::new(view.clone()));
+            self.splicing_isoform_evidence_report = None;
+            self.splicing_isoform_evidence_status.clear();
             self.splicing_expert_window_pending_initial_render = true;
             self.log_splicing_expert_status(&view, "window state refreshed", true);
         }

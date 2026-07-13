@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-07-13 - `v0.1.0-internal.10`
 
+- Added a read-only `gentle.gene_isoform_evidence.v1` feature-expert target,
+  deterministic SVG, PATZ1 minus-strand fixture, and Splicing Expert Evidence
+  tab that keep transcript geometry, RNA/cDNA support, probe constraints,
+  expression, and existing qPCR candidates as separately auditable layers.
 - Prepared the `v0.1.0-internal.10` release boundary for changes since
   `v0.1.0-internal.9` (2026-06-05), with the genome-anchored TP73 evidence
   viewer as the primary release story and a self-contained summary in

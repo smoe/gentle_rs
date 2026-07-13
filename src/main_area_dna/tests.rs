@@ -16,8 +16,8 @@ use crate::{
         CutRunReadLayout, CutRunRegulatoryTfbsConfirmationStatus, CutRunSeedFilterConfig,
         DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView,
         EditableStatus, Engine, EngineError, ErrorCode, EvidenceClass, FlexibilityModel,
-        FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode, OpResult, Operation,
-        PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
+        FlexibilityTrack, GeneIsoformEvidenceReport, GentleEngine, LinearSequenceLetterLayoutMode,
+        OpResult, Operation, PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport,
         ProbeRegionEvidenceMappingRow, ProjectState, PromoterExpressionEvidenceInput,
         PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
@@ -8321,6 +8321,56 @@ fn splicing_expert_window_content_is_wider_than_default_viewport() {
     assert!(default_size.x < content_min_size.x);
     assert!(min_size.x < content_min_size.x);
     assert!(default_size.x >= min_size.x);
+}
+
+#[test]
+fn splicing_isoform_evidence_request_normalizes_gui_source_lists() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    assert!(area.splicing_isoform_evidence_request().is_err());
+
+    area.splicing_isoform_evidence_panel_id = " patz1_panel ".to_string();
+    area.splicing_isoform_evidence_annotation_release = " Ensembl 116 ".to_string();
+    area.splicing_isoform_evidence_rna_report_ids = "rna-b, rna-a\nrna-b".to_string();
+    area.splicing_isoform_evidence_qpcr_report_ids = "qpcr-1".to_string();
+    area.splicing_isoform_evidence_probe_paths = "b.json,a.json".to_string();
+    area.splicing_isoform_evidence_cdna_est_paths = "support.json".to_string();
+    area.splicing_isoform_evidence_expression_path = " expression.tsv ".to_string();
+
+    let request = area
+        .splicing_isoform_evidence_request()
+        .expect("GUI request");
+    assert_eq!(request.panel_id, "patz1_panel");
+    assert_eq!(request.annotation_release.as_deref(), Some("Ensembl 116"));
+    assert_eq!(request.rna_read_report_ids, vec!["rna-a", "rna-b"]);
+    assert_eq!(request.qpcr_report_ids, vec!["qpcr-1"]);
+    assert_eq!(request.probe_evidence_paths, vec!["a.json", "b.json"]);
+    assert_eq!(request.cdna_est_resource_paths, vec!["support.json"]);
+    assert_eq!(
+        request.expression_tsv_path.as_deref(),
+        Some("expression.tsv")
+    );
+}
+
+#[test]
+fn opening_a_splicing_group_clears_cached_isoform_evidence() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.seed_splicing_expert_window_for_tests("seq1", 17, "PATZ1");
+    let view = area
+        .splicing_expert_window_view
+        .as_ref()
+        .expect("seeded view")
+        .as_ref()
+        .clone();
+    area.splicing_isoform_evidence_report =
+        Some(Arc::new(GeneIsoformEvidenceReport::default()));
+    area.splicing_isoform_evidence_status = "stale".to_string();
+
+    area.open_splicing_expert_window_for_view(&view);
+
+    assert!(area.splicing_isoform_evidence_report.is_none());
+    assert!(area.splicing_isoform_evidence_status.is_empty());
 }
 
 #[test]

@@ -3306,6 +3306,41 @@ external coding agent runtime, see:
   - `panels inspect-isoform SEQ_ID PANEL_ID`
   - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg [--expression-tsv PATH]`
   - `panels validate-isoform PANEL_PATH [--panel-id ID]`
+- gene isoform evidence inspection reuses the shared feature-expert routes:
+  - `inspect-feature-expert SEQ_ID isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--qpcr-report-id ID]...`
+  - `render-feature-expert-svg SEQ_ID isoform-evidence PANEL_ID [same evidence options] OUTPUT.svg`
+  - the report schema is `gentle.gene_isoform_evidence.v1`; inspection is a
+    pure read and never creates qPCR assays or changes the sequence
+  - `transcripts[]` keeps biological `exon_family_ids_5_to_3` separate from
+    `exon_family_ids_genomic_ascending`, which is essential for minus-strand
+    genes
+  - assembly-local geometry ids are stable coordinate labels:
+    `EXF:{assembly}:{start}-{end}:{strand}` and
+    `JCT:{assembly}:{low}-{high}:{strand}`; junction donor/acceptor fields are
+    reported separately in transcript orientation
+  - `exon_families[]` and `junctions[]` retain annotation-model counts and four
+    independent components: specificity, dataset-relative abundance,
+    contrast-specific responsiveness, and assayability. Missing evidence is
+    `unknown` or `not_evaluated`, never numeric zero, and no aggregate utility
+    score is inferred
+  - `evidence_items[]` records typed source, method, provenance, target ids,
+    family ids, and one of `observed`, `candidate`, `constraint_only`,
+    `not_evaluated`, or `unknown`. Array-probe overlap is always
+    `constraint_only`; it does not establish isoform support
+  - persisted RNA-read and qPCR reports are resolved by report id. Probe
+    interpretation JSON, expression TSV, and cDNA/EST resources remain
+    explicit file inputs because those report stores do not yet exist
+  - RNA/probe reports for another sequence, qPCR reports for another template,
+    and cDNA/EST records with conflicting assembly/chromosome/strand provenance
+    are warned about and not attached
+  - cDNA/EST files use `gentle.cdna_est_evidence_resource.v1` with a
+    `resource_id`, source, optional annotation release, and `records[]` carrying
+    kind (`cdna`, `est`, `curated_transcript`, or `other`), accession/coordinates,
+    exon-family or junction ids, support count, optional alignment fractions,
+    and notes
+  - provenance includes source ids plus file paths and SHA-256 digests. A
+    report composes sequence evidence; it does not claim that an isoform is
+    biologically validated
 - shared-shell UniProt routes:
   - `uniprot fetch QUERY [--entry-id ID]`
     - `QUERY` is a UniProtKB/Swiss-Prot accession or entry name, for example

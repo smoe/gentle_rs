@@ -15141,6 +15141,239 @@ fn test_inspect_splicing_feature_expert_view() {
 }
 
 #[test]
+fn gene_isoform_evidence_inspector_composes_patz1_minus_strand_evidence_read_only() {
+    let fixture = "test_files/fixtures/isoform_evidence/patz1";
+    let temp = tempdir().expect("temp dir");
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: format!("{fixture}/patz1_minus_strand.gb"),
+            as_id: Some("patz1_isoform_evidence".to_string()),
+        })
+        .expect("load synthetic PATZ1 locus");
+    engine
+        .apply(Operation::ImportIsoformPanel {
+            seq_id: "patz1_isoform_evidence".to_string(),
+            panel_path: format!("{fixture}/patz1_isoform_panel.json"),
+            panel_id: None,
+            strict: false,
+        })
+        .expect("import synthetic PATZ1 panel");
+
+    let rna_report = RnaReadInterpretationReport {
+        schema: RNA_READ_REPORT_SCHEMA.to_string(),
+        report_id: "patz1_synthetic_rna".to_string(),
+        seq_id: "patz1_isoform_evidence".to_string(),
+        input_path: "synthetic://patz1-rna-reads".to_string(),
+        junction_support_frequencies: vec![RnaReadJunctionSupportFrequency {
+            donor_1based: 180,
+            acceptor_1based: 141,
+            support_read_count: 7,
+            support_fraction: 0.7,
+        }],
+        ..Default::default()
+    };
+    let mut rna_store = RnaReadReportStore {
+        schema: RNA_READ_REPORTS_SCHEMA.to_string(),
+        ..Default::default()
+    };
+    rna_store
+        .reports
+        .insert(rna_report.report_id.clone(), rna_report);
+    engine
+        .write_rna_read_report_store(rna_store)
+        .expect("store synthetic RNA report");
+
+    let qpcr_report = QpcrDesignReport {
+        schema: QPCR_DESIGN_REPORT_SCHEMA.to_string(),
+        report_id: "patz1_synthetic_qpcr".to_string(),
+        template: "patz1_isoform_evidence".to_string(),
+        assay_count: 1,
+        assays: vec![QpcrAssayRecord {
+            rank: 1,
+            score: 2.5,
+            forward: PrimerDesignPrimerRecord {
+                sequence: "ACGTACGTACGTACGTACGT".to_string(),
+                ..Default::default()
+            },
+            reverse: PrimerDesignPrimerRecord {
+                sequence: "TGCATGCATGCATGCATGCA".to_string(),
+                ..Default::default()
+            },
+            probe: PrimerDesignPrimerRecord {
+                sequence: "CGTACGTACGTACGT".to_string(),
+                ..Default::default()
+            },
+            amplicon_length_bp: 96,
+            transcript_context: Some(QpcrTranscriptAssayContext {
+                assay_class_label: "junction_spanning".to_string(),
+                explanation: "Synthetic candidate spanning the PATZ1 long/alternative-family junction."
+                    .to_string(),
+                covered_junction_labels: vec!["181..220->101..140".to_string()],
+                supported_transcript_ids: vec![
+                    "PATZ1-201".to_string(),
+                    "PATZ1-203".to_string(),
+                ],
+                satisfies_requested_targeting: true,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let mismatched_qpcr_report = QpcrDesignReport {
+        report_id: "patz1_wrong_template_qpcr".to_string(),
+        template: "another_sequence".to_string(),
+        assays: qpcr_report.assays.clone(),
+        assay_count: qpcr_report.assay_count,
+        ..qpcr_report.clone()
+    };
+    let mut primer_store = engine.read_primer_design_store();
+    primer_store
+        .qpcr_reports
+        .insert(qpcr_report.report_id.clone(), qpcr_report);
+    primer_store.qpcr_reports.insert(
+        mismatched_qpcr_report.report_id.clone(),
+        mismatched_qpcr_report,
+    );
+    engine
+        .write_primer_design_store(primer_store)
+        .expect("store synthetic qPCR report");
+
+    let mut mismatched_probe_report: serde_json::Value = serde_json::from_slice(
+        &fs::read(format!("{fixture}/patz1_probe_evidence.json"))
+            .expect("read probe fixture"),
+    )
+    .expect("parse probe fixture");
+    mismatched_probe_report["seq_id"] = serde_json::json!("another_sequence");
+    let mismatched_probe_path = temp.path().join("wrong_sequence_probe.json");
+    fs::write(
+        &mismatched_probe_path,
+        serde_json::to_vec_pretty(&mismatched_probe_report).expect("serialize mismatched probe"),
+    )
+    .expect("write mismatched probe");
+
+    let request = GeneIsoformEvidenceRequest {
+        panel_id: "patz1_synthetic_v1".to_string(),
+        annotation_release: Some("Ensembl116-like synthetic model".to_string()),
+        rna_read_report_ids: vec!["patz1_synthetic_rna".to_string()],
+        qpcr_report_ids: vec![
+            "patz1_synthetic_qpcr".to_string(),
+            "patz1_wrong_template_qpcr".to_string(),
+        ],
+        probe_evidence_paths: vec![
+            format!("{fixture}/patz1_probe_evidence.json"),
+            mismatched_probe_path.to_string_lossy().to_string(),
+        ],
+        cdna_est_resource_paths: vec![format!("{fixture}/patz1_cdna_est.json")],
+        expression_tsv_path: Some(format!("{fixture}/patz1_expression.tsv")),
+    };
+    let state_before = serde_json::to_value(engine.state()).expect("serialize state before");
+    let view = engine
+        .inspect_feature_expert(
+            "patz1_isoform_evidence",
+            &FeatureExpertTarget::IsoformEvidence {
+                request: request.clone(),
+            },
+        )
+        .expect("inspect PATZ1 isoform evidence");
+    let state_after = serde_json::to_value(engine.state()).expect("serialize state after");
+    assert_eq!(state_before, state_after, "inspection must remain pure read");
+    let FeatureExpertView::IsoformEvidence(report) = view else {
+        panic!("expected isoform evidence view");
+    };
+    assert_eq!(report.schema, GENE_ISOFORM_EVIDENCE_SCHEMA);
+    assert_eq!(report.gene_symbol, "PATZ1");
+    assert_eq!(report.assembly, "GRCh38.p14");
+    assert_eq!(report.chromosome.as_deref(), Some("22"));
+    assert_eq!(report.gene_strand, "-");
+    assert_eq!(report.families.len(), 3);
+    assert_eq!(report.transcripts.len(), 3);
+    let long = report
+        .transcripts
+        .iter()
+        .find(|row| row.transcript_id == "PATZ1-201")
+        .expect("long transcript row");
+    assert_ne!(
+        long.exon_family_ids_5_to_3,
+        long.exon_family_ids_genomic_ascending,
+        "minus-strand biological order must differ from genomic ascending order"
+    );
+    assert!(
+        long.exon_family_ids_5_to_3[0].contains("31325980-31326019"),
+        "5' end of minus-strand transcript should be the highest genomic exon"
+    );
+    let supported_junction = report
+        .junctions
+        .iter()
+        .find(|row| row.junction_id == "JCT:GRCh38.p14:31325940-31325979:-")
+        .expect("stable supported junction id");
+    assert_eq!(supported_junction.transcript_donor_1based, 31325979);
+    assert_eq!(supported_junction.transcript_acceptor_1based, 31325940);
+    assert_eq!(
+        supported_junction.components.abundance.classification,
+        "dataset_relative_rna_read_support"
+    );
+    assert_eq!(
+        supported_junction.components.assayability.classification,
+        "qpcr_candidate_available"
+    );
+    assert!(report.evidence_items.iter().any(|item| {
+        item.evidence_id == "cdna_synthetic_long_alt_shared_junction"
+            && item.status == IsoformEvidenceAssessmentStatus::Observed
+    }));
+    assert!(report.evidence_items.iter().any(|item| {
+        item.evidence_id == "cdna_synthetic_wrong_assembly"
+            && item.status == IsoformEvidenceAssessmentStatus::Unknown
+            && item.target_ids.is_empty()
+    }));
+    assert!(report.evidence_items.iter().any(|item| {
+        item.source_kind == IsoformEvidenceSourceKind::ArrayProbe
+            && item.status == IsoformEvidenceAssessmentStatus::ConstraintOnly
+            && item.notes.iter().any(|note| note.contains("not establish isoform support"))
+    }));
+    assert!(report.junctions.iter().any(|row| {
+        row.junction_id != supported_junction.junction_id
+            && !report.evidence_items.iter().any(|item| {
+                item.status == IsoformEvidenceAssessmentStatus::Observed
+                    && matches!(
+                        item.source_kind,
+                        IsoformEvidenceSourceKind::RnaRead
+                            | IsoformEvidenceSourceKind::Cdna
+                            | IsoformEvidenceSourceKind::Est
+                    )
+                    && item.target_ids.contains(&row.junction_id)
+            })
+    }));
+    assert_eq!(report.assay_candidates.len(), 1);
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("GRCh37") && warning.contains("not attached"))
+    );
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains("wrong_sequence_probe.json") && warning.contains("another_sequence")
+    }));
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains("patz1_wrong_template_qpcr") && warning.contains("another_sequence")
+    }));
+
+    let svg_path = temp.path().join("patz1_isoform_evidence.svg");
+    engine
+        .render_feature_expert_svg_to_path(
+            "patz1_isoform_evidence",
+            &FeatureExpertTarget::IsoformEvidence { request },
+            &svg_path.to_string_lossy(),
+        )
+        .expect("render isoform evidence SVG");
+    let svg = fs::read_to_string(svg_path).expect("read rendered SVG");
+    assert!(svg.contains("gentle.gene_isoform_evidence.v1"));
+    assert!(svg.contains("PATZ1 isoform evidence"));
+    assert!(svg.contains("5' -&gt; 3'") || svg.contains("5' -> 3'"));
+}
+
+#[test]
 fn test_splicing_expert_view_reports_cds_flank_phase_forward() {
     let mut dna = DNAsequence::from_sequence(&"A".repeat(64)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {

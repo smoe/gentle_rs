@@ -34258,6 +34258,31 @@ fn parse_feature_expert_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
+    let isoform_evidence = parse_shell_line(
+        "inspect-feature-expert s isoform-evidence patz1_v1 --annotation-release Ensembl116 --rna-read-report-id rna_2 --rna-read-report-id rna_1 --probe-evidence probe.json --cdna-est-resource cdna.json --expression-tsv expression.tsv --qpcr-report-id qpcr_1",
+    )
+    .expect("parse isoform evidence target");
+    match isoform_evidence {
+        ShellCommand::InspectFeatureExpert { seq_id, target } => {
+            assert_eq!(seq_id, "s");
+            assert_eq!(
+                target,
+                FeatureExpertTarget::IsoformEvidence {
+                    request: GeneIsoformEvidenceRequest {
+                        panel_id: "patz1_v1".to_string(),
+                        annotation_release: Some("Ensembl116".to_string()),
+                        rna_read_report_ids: vec!["rna_1".to_string(), "rna_2".to_string()],
+                        qpcr_report_ids: vec!["qpcr_1".to_string()],
+                        probe_evidence_paths: vec!["probe.json".to_string()],
+                        cdna_est_resource_paths: vec!["cdna.json".to_string()],
+                        expression_tsv_path: Some("expression.tsv".to_string()),
+                    },
+                }
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let protein_compare = parse_shell_line("inspect-feature-expert s protein-comparison")
         .expect("parse transcript protein comparison target");
     match protein_compare {

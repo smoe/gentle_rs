@@ -49,9 +49,9 @@ use crate::{
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine, EvidenceClass,
         ExonSkipReturnKind, ExonSkipSelectionCriterion, FactAtom, FactBasis, FactExpression,
         FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode, FeatureExpertTarget,
-        FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GeneSetCohortRelationship,
-        GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
-        GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
+        FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GeneIsoformEvidenceRequest,
+        GeneSetCohortRelationship, GeneSetProducerFilter, GeneSetPromoterCohortReport,
+        GeneSetRequest, GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
         GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
         GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
         GuidePracticalFilterConfig, InlineSequenceTopology, LabAssistantInstructionsFormat,
@@ -13878,7 +13878,7 @@ fn parse_feature_expert_target_tokens(
 ) -> Result<FeatureExpertTarget, String> {
     if tokens.is_empty() {
         return Err(format!(
-            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | protein-comparison [--transcript ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | uniprot-projection PROJECTION_ID"
+            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--qpcr-report-id ID]... | protein-comparison [--transcript ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | uniprot-projection PROJECTION_ID"
         ));
     }
     match tokens[0].trim().to_ascii_lowercase().as_str() {
@@ -13978,6 +13978,88 @@ fn parse_feature_expert_target_tokens(
                 return Err("isoform PANEL_ID must not be empty".to_string());
             }
             Ok(FeatureExpertTarget::IsoformArchitecture { panel_id })
+        }
+        "isoform-evidence" => {
+            if tokens.len() < 2 {
+                return Err(format!(
+                    "{context} isoform-evidence target expects at least: isoform-evidence PANEL_ID"
+                ));
+            }
+            let panel_id = tokens[1].trim().to_string();
+            if panel_id.is_empty() {
+                return Err("isoform-evidence PANEL_ID must not be empty".to_string());
+            }
+            let mut request = GeneIsoformEvidenceRequest {
+                panel_id,
+                ..Default::default()
+            };
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--annotation-release" => {
+                        request.annotation_release = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--annotation-release",
+                            context,
+                        )?);
+                    }
+                    "--rna-read-report-id" => {
+                        request.rna_read_report_ids.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--rna-read-report-id",
+                            context,
+                        )?);
+                    }
+                    "--qpcr-report-id" => {
+                        request.qpcr_report_ids.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--qpcr-report-id",
+                            context,
+                        )?);
+                    }
+                    "--probe-evidence" => {
+                        request.probe_evidence_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--probe-evidence",
+                            context,
+                        )?);
+                    }
+                    "--cdna-est-resource" => {
+                        request.cdna_est_resource_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cdna-est-resource",
+                            context,
+                        )?);
+                    }
+                    "--expression-tsv" => {
+                        request.expression_tsv_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--expression-tsv",
+                            context,
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {context} isoform-evidence"
+                        ));
+                    }
+                }
+            }
+            request.rna_read_report_ids.sort();
+            request.rna_read_report_ids.dedup();
+            request.qpcr_report_ids.sort();
+            request.qpcr_report_ids.dedup();
+            request.probe_evidence_paths.sort();
+            request.probe_evidence_paths.dedup();
+            request.cdna_est_resource_paths.sort();
+            request.cdna_est_resource_paths.dedup();
+            Ok(FeatureExpertTarget::IsoformEvidence { request })
         }
         "protein-comparison" => {
             let mut transcript_id_filter: Option<String> = None;
@@ -14111,7 +14193,7 @@ fn parse_feature_expert_target_tokens(
             })
         }
         other => Err(format!(
-            "Unknown feature target '{other}' (expected tfbs|restriction|splicing|isoform|protein-comparison|uniprot-projection)"
+            "Unknown feature target '{other}' (expected tfbs|restriction|splicing|isoform|isoform-evidence|protein-comparison|uniprot-projection)"
         )),
     }
 }
@@ -19362,7 +19444,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": false,
             "args": [
                 {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
-                {"name": "TARGET", "required": true, "detail": "expert target such as tfbs, restriction, splicing, isoform, protein-comparison, or uniprot-projection"}
+                {"name": "TARGET", "required": true, "detail": "expert target such as tfbs, restriction, splicing, isoform, isoform-evidence, protein-comparison, or uniprot-projection"}
             ],
             "reads": [
                 {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
@@ -19409,7 +19491,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": false,
             "args": [
                 {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
-                {"name": "TARGET", "required": true, "detail": "expert target such as tfbs, restriction, splicing, isoform, protein-comparison, or uniprot-projection"},
+                {"name": "TARGET", "required": true, "detail": "expert target such as tfbs, restriction, splicing, isoform, isoform-evidence, protein-comparison, or uniprot-projection"},
                 {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}
             ],
             "reads": [

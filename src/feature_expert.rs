@@ -5,7 +5,14 @@
 //! shared transition-matrix helper that now lives in `gentle-render`.
 
 pub use gentle_protocol::{
-    FeatureExpertTarget, FeatureExpertView, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
+    CDNA_EST_EVIDENCE_RESOURCE_SCHEMA, CdnaEstEvidenceKind, CdnaEstEvidenceRecord,
+    CdnaEstEvidenceResource, FeatureExpertTarget, FeatureExpertView,
+    GENE_ISOFORM_EVIDENCE_INSTRUCTION, GENE_ISOFORM_EVIDENCE_SCHEMA,
+    GeneIsoformAssayCandidate, GeneIsoformEvidenceComponent, GeneIsoformEvidenceComponents,
+    GeneIsoformEvidenceItem, GeneIsoformEvidenceProvenanceSource, GeneIsoformEvidenceReport,
+    GeneIsoformEvidenceRequest, GeneIsoformExonFamilyRow, GeneIsoformFamilyRow,
+    GeneIsoformJunctionRow, GeneIsoformTranscriptRow, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
+    IsoformEvidenceAssessmentStatus, IsoformEvidenceSourceKind,
     IsoformArchitectureCdsAaSegment, IsoformArchitectureExpertView,
     IsoformArchitectureProteinDomain, IsoformArchitectureProteinLane,
     IsoformArchitectureTranscriptLane, IsoformExpressionMatrix, IsoformExpressionRow,

@@ -188,8 +188,8 @@ broad crate surgery that is not tied to the selected release story.
   [`inline_operand_audit.md`](inline_operand_audit.md): `RenderSequenceSvg`,
   `RenderRnaStructureSvg`, `RenderTfbsScoreTrackCorrelationSvg`,
   `ComputeDotplot`, then `ComputeFlexibilityTrack`.
-- Clariom D and splice-isoform evidence need an engine-owned interpretation
-  layer beyond the current prepared-track projection. Current explicit APT
+- Clariom D and splice-isoform evidence now have engine-owned interpretation
+  layers beyond prepared-track projection. Current explicit APT
   imports can preserve supplied PM probe-level intensity matrices in
   `probe_intensity_chrom_order.csv` and project rows marked
   `probe_level_input` into genome-anchored array features. The first read-only
@@ -201,8 +201,11 @@ broad crate surgery that is not tied to the selected release story.
   ordinals, exon ranges, junction spans, overlap base counts, and conservative
   geometry score/basis fields plus review-only transcript labels for unique,
   shared, constraining, or absent geometry. Future work should use those
-  audited records before identifying compatible splice isoforms or ruling out
-  incompatible ones.
+  audited records feed the read-only `gentle.gene_isoform_evidence.v1` ledger,
+  which composes curated transcript families, RNA-read/cDNA/EST support,
+  expression, probe constraints, and existing qPCR candidates while retaining
+  unknown/not-evaluated states. Future work may add persisted probe/expression
+  report stores; it must not turn overlap into an isoform-validation claim.
 
 ### Reserved For Anze: Repeat/Similarity Inspection Follow-Up
 
@@ -235,9 +238,9 @@ fixtures, and scroll/zoom hardening when they fit the selected release story. Us
 work here improves inspection clarity, deterministic exports, contextual links
 to evidence records, and manual-smoke reliability; defer large visual redesigns
 unrelated to the next release aim.
-- Evidence-viewer follow-up: reuse the audited Clariom D probe/probeset
-  interpretation records in richer splicing/feature-detail views before any
-  future UI labels transcript isoforms as supported, constrained, or excluded.
+- Evidence-viewer follow-up: keep the Splicing Expert evidence ledger readable
+  on large real loci and add direct report-store selectors if probe/expression
+  reports become persisted project objects.
 - External-services GUI follow-up: keep the window a thin inspector over the
   shared provider/preflight/quote contracts, then improve product-specific
   starter templates, validation previews, and exported-bundle review affordances

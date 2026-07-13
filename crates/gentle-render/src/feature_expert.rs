@@ -1,8 +1,9 @@
 //! Feature expert-view SVG renderer.
 
 use gentle_protocol::{
-    FeatureExpertView, IsoformArchitectureExpertView, RestrictionSiteExpertView,
-    SplicingExonSummary, SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
+    FeatureExpertView, GeneIsoformEvidenceReport, IsoformArchitectureExpertView,
+    RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
+    TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
@@ -3552,12 +3553,397 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
     doc.to_string()
 }
 
+fn isoform_evidence_compact_label(raw: &str, max_chars: usize) -> String {
+    let mut chars = raw.chars();
+    let prefix = chars.by_ref().take(max_chars).collect::<String>();
+    if chars.next().is_some() {
+        format!("{prefix}...")
+    } else {
+        prefix
+    }
+}
+
+fn isoform_evidence_component_label(
+    component: &gentle_protocol::GeneIsoformEvidenceComponent,
+) -> String {
+    let value = component
+        .value
+        .map(|value| format!(" {value:+.3}"))
+        .unwrap_or_default();
+    format!("{}{}", component.classification, value)
+}
+
+fn render_isoform_evidence(report: &GeneIsoformEvidenceReport) -> String {
+    let transcript_count = report
+        .splicing
+        .as_ref()
+        .map(|view| view.transcripts.len())
+        .unwrap_or(report.transcripts.len())
+        .max(1);
+    let junction_rows = report.junctions.iter().take(18).collect::<Vec<_>>();
+    let evidence_rows = report.evidence_items.iter().take(12).collect::<Vec<_>>();
+    let lane_top = 132.0_f32;
+    let lane_pitch = 34.0_f32;
+    let lane_h = transcript_count as f32 * lane_pitch;
+    let junction_top = lane_top + lane_h + 42.0;
+    let junction_h = 50.0 + junction_rows.len() as f32 * 22.0;
+    let evidence_top = junction_top + junction_h + 28.0;
+    let evidence_h = 46.0 + evidence_rows.len() as f32 * 20.0;
+    let warning_top = evidence_top + evidence_h + 24.0;
+    let warning_lines = report.warnings.iter().take(8).collect::<Vec<_>>();
+    let doc_h = (warning_top + 70.0 + warning_lines.len() as f32 * 15.0).max(H);
+    let mut doc = Document::new()
+        .set("viewBox", (0, 0, W, doc_h))
+        .set("width", W)
+        .set("height", doc_h)
+        .set("data-gentle-schema", report.schema.as_str())
+        .set("data-gentle-panel-id", report.panel_id.as_str())
+        .add(
+            Rectangle::new()
+                .set("x", 0)
+                .set("y", 0)
+                .set("width", W)
+                .set("height", doc_h)
+                .set("fill", "#ffffff"),
+        )
+        .add(
+            Text::new(format!("{} isoform evidence", report.gene_symbol))
+                .set("x", 34)
+                .set("y", 38)
+                .set("font-family", "sans-serif")
+                .set("font-size", 24)
+                .set("font-weight", "bold")
+                .set("fill", "#111827"),
+        )
+        .add(
+            Text::new(format!(
+                "{}  {}:{}..{}  strand {}  annotation {}",
+                report.assembly,
+                report.chromosome.as_deref().unwrap_or(&report.seq_id),
+                report.region_start_1based,
+                report.region_end_1based,
+                report.gene_strand,
+                report.annotation_release.as_deref().unwrap_or("unspecified")
+            ))
+            .set("x", 34)
+            .set("y", 61)
+            .set("font-family", "monospace")
+            .set("font-size", 11)
+            .set("fill", "#4b5563"),
+        )
+        .add(
+            Text::new(format!(
+                "families={}  transcripts={}  exon families={}  junctions={}  evidence rows={}  assays={}",
+                report.families.len(),
+                report.transcripts.len(),
+                report.exon_families.len(),
+                report.junctions.len(),
+                report.evidence_items.len(),
+                report.assay_candidates.len()
+            ))
+            .set("x", 34)
+            .set("y", 81)
+            .set("font-family", "monospace")
+            .set("font-size", 11)
+            .set("fill", "#374151"),
+        )
+        .add(
+            Text::new("Transcript models (displayed 5' -> 3'; coordinates remain genomic)")
+                .set("x", 34)
+                .set("y", 111)
+                .set("font-family", "sans-serif")
+                .set("font-size", 14)
+                .set("font-weight", "bold")
+                .set("fill", "#1f2937"),
+        );
+
+    if let Some(splicing) = report.splicing.as_ref() {
+        let left = 260.0_f32;
+        let right = W - 46.0;
+        let span = splicing
+            .region_end_1based
+            .saturating_sub(splicing.region_start_1based)
+            .max(1) as f32;
+        let x_for = |position: usize| {
+            let fraction = position.saturating_sub(splicing.region_start_1based) as f32 / span;
+            if splicing.strand == "-" {
+                right - fraction * (right - left)
+            } else {
+                left + fraction * (right - left)
+            }
+        };
+        for (index, transcript) in splicing.transcripts.iter().enumerate() {
+            let y = lane_top + index as f32 * lane_pitch;
+            let family_label = report
+                .transcripts
+                .iter()
+                .find(|row| row.transcript_feature_id == transcript.transcript_feature_id)
+                .map(|row| row.family_ids.join(","))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "unassigned".to_string());
+            doc = doc
+                .add(
+                    Text::new(format!(
+                        "{} [{}]",
+                        isoform_evidence_compact_label(&transcript.transcript_id, 22),
+                        isoform_evidence_compact_label(&family_label, 18)
+                    ))
+                    .set("x", 34)
+                    .set("y", y + 5.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 10)
+                    .set("fill", "#374151"),
+                )
+                .add(
+                    Line::new()
+                        .set("x1", left)
+                        .set("x2", right)
+                        .set("y1", y)
+                        .set("y2", y)
+                        .set("stroke", "#94a3b8")
+                        .set("stroke-width", 1),
+                );
+            let mut exons = transcript.exons.clone();
+            if transcript.strand == "-" {
+                exons.reverse();
+            }
+            for exon in exons {
+                let x1 = x_for(exon.start_1based);
+                let x2 = x_for(exon.end_1based);
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x1.min(x2))
+                        .set("y", y - 7.0)
+                        .set("width", (x2 - x1).abs().max(3.0))
+                        .set("height", 14)
+                        .set("rx", 2)
+                        .set("fill", "#dbeafe")
+                        .set("stroke", "#2563eb")
+                        .set("stroke-width", 1),
+                );
+            }
+            doc = doc.add(
+                Text::new("5' -> 3'")
+                    .set("x", right - 42.0)
+                    .set("y", y - 10.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set("fill", "#64748b"),
+            );
+        }
+    } else {
+        doc = doc.add(
+            Text::new("No splicing geometry was available.")
+                .set("x", 34)
+                .set("y", lane_top)
+                .set("font-family", "sans-serif")
+                .set("font-size", 11)
+                .set("fill", "#b91c1c"),
+        );
+    }
+
+    doc = doc
+        .add(
+            Text::new("Junction evidence ledger")
+                .set("x", 34)
+                .set("y", junction_top)
+                .set("font-family", "sans-serif")
+                .set("font-size", 14)
+                .set("font-weight", "bold")
+                .set("fill", "#1f2937"),
+        )
+        .add(
+            Text::new("junction / donor -> acceptor")
+                .set("x", 34)
+                .set("y", junction_top + 23.0)
+                .set("font-family", "monospace")
+                .set("font-size", 9)
+                .set("font-weight", "bold"),
+        )
+        .add(
+            Text::new("families / specificity")
+                .set("x", 350)
+                .set("y", junction_top + 23.0)
+                .set("font-family", "monospace")
+                .set("font-size", 9)
+                .set("font-weight", "bold"),
+        )
+        .add(
+            Text::new("abundance")
+                .set("x", 650)
+                .set("y", junction_top + 23.0)
+                .set("font-family", "monospace")
+                .set("font-size", 9)
+                .set("font-weight", "bold"),
+        )
+        .add(
+            Text::new("responsiveness")
+                .set("x", 820)
+                .set("y", junction_top + 23.0)
+                .set("font-family", "monospace")
+                .set("font-size", 9)
+                .set("font-weight", "bold"),
+        )
+        .add(
+            Text::new("assayability")
+                .set("x", 1010)
+                .set("y", junction_top + 23.0)
+                .set("font-family", "monospace")
+                .set("font-size", 9)
+                .set("font-weight", "bold"),
+        );
+    for (index, junction) in junction_rows.iter().enumerate() {
+        let y = junction_top + 45.0 + index as f32 * 22.0;
+        let fill = if index % 2 == 0 { "#f8fafc" } else { "#ffffff" };
+        doc = doc
+            .add(
+                Rectangle::new()
+                    .set("x", 28)
+                    .set("y", y - 14.0)
+                    .set("width", W - 56.0)
+                    .set("height", 20)
+                    .set("fill", fill),
+            )
+            .add(
+                Text::new(format!(
+                    "{}  {} -> {}",
+                    isoform_evidence_compact_label(&junction.junction_id, 34),
+                    junction.transcript_donor_1based,
+                    junction.transcript_acceptor_1based
+                ))
+                .set("x", 34)
+                .set("y", y)
+                .set("font-family", "monospace")
+                .set("font-size", 8.5)
+                .set("fill", "#111827"),
+            )
+            .add(
+                Text::new(format!(
+                    "{} / {}",
+                    isoform_evidence_compact_label(&junction.family_ids.join(","), 24),
+                    junction.specificity_class
+                ))
+                .set("x", 350)
+                .set("y", y)
+                .set("font-family", "monospace")
+                .set("font-size", 8.5)
+                .set("fill", "#334155"),
+            )
+            .add(
+                Text::new(isoform_evidence_component_label(
+                    &junction.components.abundance,
+                ))
+                .set("x", 650)
+                .set("y", y)
+                .set("font-family", "monospace")
+                .set("font-size", 8.5)
+                .set("fill", "#166534"),
+            )
+            .add(
+                Text::new(isoform_evidence_component_label(
+                    &junction.components.responsiveness,
+                ))
+                .set("x", 820)
+                .set("y", y)
+                .set("font-family", "monospace")
+                .set("font-size", 8.5)
+                .set("fill", "#9f1239"),
+            )
+            .add(
+                Text::new(isoform_evidence_component_label(
+                    &junction.components.assayability,
+                ))
+                .set("x", 1010)
+                .set("y", y)
+                .set("font-family", "monospace")
+                .set("font-size", 8.5)
+                .set("fill", "#1d4ed8"),
+            );
+    }
+    if report.junctions.len() > junction_rows.len() {
+        doc = doc.add(
+            Text::new(format!(
+                "+{} additional junction row(s) in JSON",
+                report.junctions.len() - junction_rows.len()
+            ))
+            .set("x", 34)
+            .set("y", junction_top + junction_h - 5.0)
+            .set("font-family", "sans-serif")
+            .set("font-size", 9)
+            .set("fill", "#64748b"),
+        );
+    }
+
+    doc = doc.add(
+        Text::new("Evidence sources")
+            .set("x", 34)
+            .set("y", evidence_top)
+            .set("font-family", "sans-serif")
+            .set("font-size", 14)
+            .set("font-weight", "bold")
+            .set("fill", "#1f2937"),
+    );
+    for (index, item) in evidence_rows.iter().enumerate() {
+        let y = evidence_top + 25.0 + index as f32 * 20.0;
+        doc = doc.add(
+            Text::new(format!(
+                "{:?} | {} | targets={} | {}",
+                item.source_kind,
+                isoform_evidence_compact_label(&item.source_id, 34),
+                item.target_ids.len(),
+                isoform_evidence_compact_label(&item.method, 76)
+            ))
+            .set("x", 34)
+            .set("y", y)
+            .set("font-family", "monospace")
+            .set("font-size", 9)
+            .set("fill", "#374151"),
+        );
+    }
+
+    doc = doc.add(
+        Text::new("Interpretation boundary")
+            .set("x", 34)
+            .set("y", warning_top)
+            .set("font-family", "sans-serif")
+            .set("font-size", 14)
+            .set("font-weight", "bold")
+            .set("fill", "#1f2937"),
+    );
+    for (index, line) in wrap_text(&report.instruction, 150).iter().enumerate() {
+        doc = doc.add(
+            Text::new(line.clone())
+                .set("x", 34)
+                .set("y", warning_top + 21.0 + index as f32 * 14.0)
+                .set("font-family", "sans-serif")
+                .set("font-size", 10)
+                .set("fill", "#4b5563"),
+        );
+    }
+    let warning_start = warning_top + 48.0;
+    for (index, warning) in warning_lines.iter().enumerate() {
+        doc = doc.add(
+            Text::new(format!(
+                "warning: {}",
+                isoform_evidence_compact_label(warning, 150)
+            ))
+            .set("x", 34)
+            .set("y", warning_start + index as f32 * 15.0)
+            .set("font-family", "monospace")
+            .set("font-size", 9)
+            .set("fill", "#92400e"),
+        );
+    }
+    doc.to_string()
+}
+
 pub fn render_feature_expert_svg(view: &FeatureExpertView) -> String {
     match view {
         FeatureExpertView::Tfbs(tfbs) => render_tfbs(tfbs),
         FeatureExpertView::RestrictionSite(re) => render_restriction(re),
         FeatureExpertView::Splicing(splicing) => render_splicing(splicing),
         FeatureExpertView::IsoformArchitecture(isoform) => render_isoform_architecture(isoform),
+        FeatureExpertView::IsoformEvidence(report) => render_isoform_evidence(report),
     }
 }
 

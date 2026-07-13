@@ -922,6 +922,24 @@ Feature tree grouping:
     `Junction-targeting array probes` preview before the full geometry table
   - this is a review-only array design/alignment constraint layer, separate
     from RNA-read evidence; it does not infer isoform support by itself
+- The Splicing Expert has `Structure` and `Evidence` tabs. `Evidence` is a thin
+  GUI over `FeatureExpertTarget::IsoformEvidence`:
+  - choose an imported isoform panel and optionally supply annotation-release
+    text, persisted RNA-read/qPCR report ids, probe-evidence JSON, cDNA/EST
+    resource JSON, and an expression TSV
+  - `Inspect evidence` caches the shared `gentle.gene_isoform_evidence.v1`
+    report for the current splice group; opening a different group clears that
+    cached result
+  - transcript rows show biological 5'->3' exon order beside genomic-ascending
+    order, while junction rows show stable assembly-local ids and
+    transcript-oriented donor/acceptor coordinates
+  - specificity, abundance, responsiveness, and assayability remain separate;
+    the evidence ledger and provenance can be expanded for audit
+  - `Copy report JSON` copies the machine-readable report and `Render SVG`
+    delegates to the shared `RenderFeatureExpertSvg` operation
+  - existing qPCR rows are candidates only. New assay design remains an
+    explicit action in the Structure tab, and the GUI does not promote array
+    overlap or missing evidence into biological validation
 - The Splicing Expert now also includes an `ATtRACT / RBP evidence` section:
   - engine-owned, splice-aware motif interpretation over the selected splicing
     group; the GUI is only a viewer/filter for the shared payload

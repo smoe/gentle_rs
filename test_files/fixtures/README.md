@@ -174,6 +174,16 @@ checks.
   - intentionally stripped to minimal IDs, hg38 coordinates, feature types, and
     gene symbols; it is not a replacement for the full vendor annotations.
 
+### `isoform_evidence/patz1/*`
+
+- Origin: wholly synthetic, hand-crafted PATZ1-like minus-strand annotation,
+  expression, cDNA/EST, and probe-evidence rows.
+- Deterministic recreation and coordinate-id rules are documented in the
+  fixture-local `README.md`.
+- Primary usage: offline acceptance coverage for the reusable gene isoform
+  evidence inspector, including transcript 5'-to-3' ordering, assembly-local
+  EXF/JCT identities, and conservative array-evidence wording.
+
 ### `probe_region_outputs/clariom_pm_probe_interpretation/*`
 
 - Origin: hand-crafted synthetic completed helper-output directory for the

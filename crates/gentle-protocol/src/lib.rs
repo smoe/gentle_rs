@@ -9,6 +9,7 @@ pub mod construct_reasoning;
 pub mod dna_ladder;
 pub mod gene_groups;
 pub mod gene_sets;
+pub mod isoform_evidence;
 pub mod orthologs;
 pub mod reporter;
 
@@ -60,6 +61,15 @@ pub use gene_sets::{
     GeneSetPromoterWindow, GeneSetProvenanceRow, GeneSetRandomProvenance, GeneSetRequest,
     GeneSetResolutionReport, GeneSetResolutionReviewStatus, GeneSetResolvedMember,
     GeneSetUnresolvedMember,
+};
+pub use isoform_evidence::{
+    CDNA_EST_EVIDENCE_RESOURCE_SCHEMA, CdnaEstEvidenceKind, CdnaEstEvidenceRecord,
+    CdnaEstEvidenceResource, GENE_ISOFORM_EVIDENCE_INSTRUCTION, GENE_ISOFORM_EVIDENCE_SCHEMA,
+    GeneIsoformAssayCandidate, GeneIsoformEvidenceComponent, GeneIsoformEvidenceComponents,
+    GeneIsoformEvidenceItem, GeneIsoformEvidenceProvenanceSource, GeneIsoformEvidenceReport,
+    GeneIsoformEvidenceRequest, GeneIsoformExonFamilyRow, GeneIsoformFamilyRow,
+    GeneIsoformJunctionRow, GeneIsoformTranscriptRow, IsoformEvidenceAssessmentStatus,
+    IsoformEvidenceSourceKind,
 };
 pub use orthologs::{
     ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA,
@@ -2034,6 +2044,8 @@ pub enum FeatureExpertTarget {
     },
     #[serde(alias = "IsoformArchitecture")]
     IsoformArchitecture { panel_id: String },
+    #[serde(alias = "IsoformEvidence")]
+    IsoformEvidence { request: GeneIsoformEvidenceRequest },
     #[serde(alias = "ProteinComparison")]
     ProteinComparison {
         #[serde(default)]
@@ -2088,6 +2100,14 @@ impl FeatureExpertTarget {
             Self::IsoformArchitecture { panel_id } => {
                 format!("isoform architecture panel '{panel_id}'")
             }
+            Self::IsoformEvidence { request } => format!(
+                "isoform evidence panel '{}' (RNA reports={}, qPCR reports={}, probe resources={}, cDNA/EST resources={})",
+                request.panel_id,
+                request.rna_read_report_ids.len(),
+                request.qpcr_report_ids.len(),
+                request.probe_evidence_paths.len(),
+                request.cdna_est_resource_paths.len()
+            ),
             Self::ProteinComparison {
                 transcript_id_filter,
                 protein_feature_filter,
@@ -3133,6 +3153,7 @@ pub enum FeatureExpertView {
     RestrictionSite(RestrictionSiteExpertView),
     Splicing(SplicingExpertView),
     IsoformArchitecture(IsoformArchitectureExpertView),
+    IsoformEvidence(GeneIsoformEvidenceReport),
 }
 
 impl FeatureExpertView {
@@ -3142,6 +3163,7 @@ impl FeatureExpertView {
             Self::RestrictionSite(_) => RESTRICTION_EXPERT_INSTRUCTION,
             Self::Splicing(_) => SPLICING_EXPERT_INSTRUCTION,
             Self::IsoformArchitecture(_) => ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
+            Self::IsoformEvidence(_) => GENE_ISOFORM_EVIDENCE_INSTRUCTION,
         }
     }
 }
