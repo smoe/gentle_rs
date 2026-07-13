@@ -43,6 +43,13 @@ Maintenance rule:
 - Added protocol-owned `/history`, `/undo`, and `/redo` aliases. GUI history
   aliases use guarded transitions with full view/cache refresh, while
   agent-proposed undo/redo always requires explicit user confirmation.
+- Reordered Agent Systems configuration around the persistent provider
+  dropdown, collapsed secondary quick-start/catalog controls, and added
+  session-only native-provider token-file fallback with explicit source and
+  file-permission diagnostics.
+- Replaced the Agent Assistant's horizontally scrolling suggestion table with
+  wrapping cards that keep each `Run` control and validation reason visible;
+  invalid, empty, and chat-only suggestions remain non-executable.
 
 ## 2026-07-12
 

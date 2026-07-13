@@ -161,13 +161,29 @@ impl GENtleApp {
         self.agent_model_discovery_failed_source_key.clear();
     }
 
-    pub(super) fn select_agent_system_and_reset_setup(&mut self, system_id: &str) {
+    pub(super) fn refresh_agent_token_file_credentials(&mut self) {
+        let home = env::var_os("HOME").map(PathBuf::from);
+        self.agent_token_file_credentials = load_agent_token_file_credentials(home.as_deref());
+        self.agent_token_file_credentials_loaded = true;
+    }
+
+    pub(super) fn select_agent_system_and_reset_setup(&mut self, system_id: &str) -> bool {
         if self.agent_system_id == system_id {
-            return;
+            return false;
         }
         self.agent_system_id = system_id.to_string();
         self.clear_agent_preflight_output();
         self.clear_agent_model_discovery_snapshot();
+        true
+    }
+
+    fn select_agent_system_and_persist_setup(&mut self, system_id: &str) {
+        if !self.select_agent_system_and_reset_setup(system_id) {
+            return;
+        }
+        if let Err(err) = self.persist_agent_system_selection_to_disk() {
+            self.agent_status = format!("Could not persist selected agent system: {err}");
+        }
     }
 
     pub(super) fn selected_agent_discovered_model(&self) -> Option<String> {
@@ -241,13 +257,27 @@ impl GENtleApp {
     ) -> Result<HashMap<String, String>, String> {
         let mut overrides = HashMap::new();
         let session_api_key = self.agent_openai_api_key.trim();
-        if !session_api_key.is_empty() {
-            let key_env = match system.transport {
-                AgentSystemTransport::NativeAnthropic => ANTHROPIC_API_KEY_ENV,
-                AgentSystemTransport::NativeMistral => MISTRAL_API_KEY_ENV,
-                _ => OPENAI_API_KEY_ENV,
-            };
-            overrides.insert(key_env.to_string(), session_api_key.to_string());
+        if let Some((key_env, _token_path)) = agent_api_key_source(system.transport) {
+            if !session_api_key.is_empty() {
+                overrides.insert(key_env.to_string(), session_api_key.to_string());
+            } else if std::env::var(key_env)
+                .ok()
+                .map(|value| value.trim().is_empty())
+                .unwrap_or(true)
+                && let Some(value) = self
+                    .agent_token_file_credentials
+                    .get(key_env)
+                    .and_then(AgentTokenFileCredential::value)
+            {
+                overrides.insert(key_env.to_string(), value.to_string());
+            }
+        } else if matches!(
+            system.transport,
+            AgentSystemTransport::NativeOpenaiCompat | AgentSystemTransport::ExternalJsonStdio
+        ) && system.id != "codex_local_stdio"
+            && !session_api_key.is_empty()
+        {
+            overrides.insert(OPENAI_API_KEY_ENV.to_string(), session_api_key.to_string());
         }
         let override_base_url = self.agent_base_url_override.trim();
         if !override_base_url.is_empty()
@@ -455,27 +485,125 @@ impl GENtleApp {
     pub(super) fn selected_agent_model_discovery_key_label(
         &self,
         system: &AgentSystemSpec,
-    ) -> &'static str {
-        if !self.agent_openai_api_key.trim().is_empty() {
-            "session-key"
-        } else {
-            let (env_key, label) = match system.transport {
-                AgentSystemTransport::NativeAnthropic => {
-                    (ANTHROPIC_API_KEY_ENV, "env-anthropic-api-key")
-                }
-                AgentSystemTransport::NativeMistral => (MISTRAL_API_KEY_ENV, "env-mistral-api-key"),
-                _ => (OPENAI_API_KEY_ENV, "env-openai-api-key"),
-            };
-            if std::env::var(env_key)
-                .ok()
-                .map(|value| !value.trim().is_empty())
-                .unwrap_or(false)
-            {
-                label
+    ) -> String {
+        if system.transport == AgentSystemTransport::NativeOpenaiCompat {
+            return if self.agent_openai_api_key.trim().is_empty() {
+                "optional-no-key".to_string()
             } else {
-                "no-key"
-            }
+                "session-key".to_string()
+            };
         }
+        let Some((env_key, token_path)) = agent_api_key_source(system.transport) else {
+            return "not-applicable".to_string();
+        };
+        if !self.agent_openai_api_key.trim().is_empty() {
+            return "session-key".to_string();
+        }
+        if std::env::var(env_key)
+            .ok()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return match system.transport {
+                AgentSystemTransport::NativeAnthropic => "env-anthropic-api-key".to_string(),
+                AgentSystemTransport::NativeMistral => "env-mistral-api-key".to_string(),
+                _ => "env-openai-api-key".to_string(),
+            };
+        }
+        if self
+            .agent_token_file_credentials
+            .get(env_key)
+            .and_then(AgentTokenFileCredential::value)
+            .is_some()
+        {
+            return format!("file:{token_path}");
+        }
+        "no-key".to_string()
+    }
+
+    fn agent_credential_text(&self, key: &str, replacements: &[(&str, &str)]) -> String {
+        let mut text = self.tr(key);
+        for (name, value) in replacements {
+            text = text.replace(&format!("{{{name}}}"), value);
+        }
+        text
+    }
+
+    fn selected_agent_credential_messages(&self, system: &AgentSystemSpec) -> Vec<(String, bool)> {
+        if system.id == "codex_local_stdio" {
+            return vec![(self.tr("agent.credential.codex_login"), false)];
+        }
+        if system.transport == AgentSystemTransport::NativeOpenaiCompat {
+            return vec![(self.tr("agent.credential.optional"), false)];
+        }
+        let Some((env_key, token_path)) = agent_api_key_source(system.transport) else {
+            return Vec::new();
+        };
+        if !self.agent_openai_api_key.trim().is_empty() {
+            return vec![(self.tr("agent.credential.session"), false)];
+        }
+        if std::env::var(env_key)
+            .ok()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return vec![(
+                self.agent_credential_text("agent.credential.environment", &[("env", env_key)]),
+                false,
+            )];
+        }
+        let Some(file) = self.agent_token_file_credentials.get(env_key) else {
+            return vec![(
+                self.agent_credential_text(
+                    "agent.credential.missing",
+                    &[("env", env_key), ("path", token_path)],
+                ),
+                true,
+            )];
+        };
+        let mut messages = Vec::new();
+        match file.status {
+            AgentTokenFileStatus::Loaded => {
+                messages.push((
+                    self.agent_credential_text(
+                        "agent.credential.file",
+                        &[("path", file.display_path), ("env", env_key)],
+                    ),
+                    false,
+                ));
+                if system.transport == AgentSystemTransport::NativeAnthropic
+                    && let Some(warning) = file.value().and_then(anthropic_api_key_kind_warning)
+                {
+                    messages.push((warning.to_string(), true));
+                }
+            }
+            AgentTokenFileStatus::Missing => messages.push((
+                self.agent_credential_text(
+                    "agent.credential.missing",
+                    &[("env", env_key), ("path", file.display_path)],
+                ),
+                true,
+            )),
+            AgentTokenFileStatus::Empty
+            | AgentTokenFileStatus::Invalid
+            | AgentTokenFileStatus::Unreadable => messages.push((
+                self.agent_credential_text(
+                    "agent.credential.file_problem",
+                    &[("path", file.display_path), ("reason", &file.detail)],
+                ),
+                true,
+            )),
+        }
+        if file.broadly_readable {
+            messages.push((
+                self.agent_credential_text(
+                    "agent.credential.permissions",
+                    &[("path", file.display_path)],
+                ),
+                true,
+            ));
+        }
+        messages
     }
 
     pub(super) fn agent_model_discovery_failure_hint(error: &str) -> Option<&'static str> {
@@ -591,6 +719,38 @@ impl GENtleApp {
             .and_then(|value| value.as_str())
             .unwrap_or_default();
         Self::agent_response_sanity_warnings_for_prompt(prompt, &invocation.response)
+    }
+
+    pub(super) fn agent_suggestion_run_blocker(
+        command: &str,
+        execution: AgentExecutionIntent,
+    ) -> Option<String> {
+        if execution == AgentExecutionIntent::Chat {
+            return Some("This suggestion is explanatory (execution=chat).".to_string());
+        }
+        let command = command.trim();
+        if command.is_empty() {
+            return Some("The suggested command is empty.".to_string());
+        }
+        parse_shell_line(command).err().map(|err| {
+            format!(
+                "Invalid GENtle command: {} Use /help to inspect supported commands.",
+                Self::compact_agent_validation_message(&err.to_string())
+            )
+        })
+    }
+
+    pub(super) fn compact_agent_validation_message(message: &str) -> String {
+        let cutoff = [
+            " Supported GENtle-local alternatives:",
+            " Supported commands:",
+            " Details:",
+        ]
+        .into_iter()
+        .filter_map(|marker| message.find(marker))
+        .min()
+        .unwrap_or(message.len());
+        message[..cutoff].trim().to_string()
     }
 
     pub(super) fn agent_response_sanity_warnings_for_prompt(
@@ -2902,42 +3062,25 @@ impl GENtleApp {
 
     pub(super) fn render_agent_configuration_tab(&mut self, ui: &mut Ui) {
         self.refresh_agent_system_catalog();
+        if !self.agent_token_file_credentials_loaded {
+            self.refresh_agent_token_file_credentials();
+        }
         ui.heading(self.tr("configuration.agent.heading"));
         ui.label(self.tr("configuration.agent.description"));
         ui.small(self.tr("configuration.agent.session_note"));
         ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            ui.label(self.tr("agent.catalog"));
-            ui.text_edit_singleline(&mut self.agent_catalog_path);
-            if ui
-                .button(self.tr("button.browse"))
-                .on_hover_text("Browse filesystem and fill this path")
-                .clicked()
-                && let Some(path) = rfd::FileDialog::new()
-                    .add_filter("JSON", &["json"])
-                    .pick_file()
-            {
-                self.agent_catalog_path = path.display().to_string();
-                self.agent_catalog_loaded_path.clear();
-                self.refresh_agent_system_catalog();
-            }
-        });
-        if !self.agent_catalog_error.is_empty() {
-            ui.colored_label(
-                egui::Color32::from_rgb(190, 70, 70),
-                format!("Catalog error: {}", self.agent_catalog_error),
-            );
-        }
         let mut preflight_inputs_changed = false;
         let mut requested_agent_system_id: Option<String> = None;
+        let selected_system_text = self
+            .agent_systems
+            .iter()
+            .find(|system| system.id == self.agent_system_id)
+            .map(|system| format!("{} ({})", system.label, system.id))
+            .unwrap_or_else(|| self.tr("agent.choose_system"));
         ui.horizontal(|ui| {
             ui.label(self.tr("agent.system"));
             egui::ComboBox::from_id_salt("agent_system_combo")
-                .selected_text(if self.agent_system_id.trim().is_empty() {
-                    self.tr("agent.choose_system")
-                } else {
-                    self.agent_system_id.clone()
-                })
+                .selected_text(selected_system_text)
                 .show_ui(ui, |ui| {
                     for system in &self.agent_systems {
                         let (available, reason) = self.selected_agent_system_availability(system);
@@ -2961,87 +3104,113 @@ impl GENtleApp {
                 });
         });
         if let Some(system_id) = requested_agent_system_id {
-            self.select_agent_system_and_reset_setup(&system_id);
+            self.select_agent_system_and_persist_setup(&system_id);
         }
         if !self.agent_systems.is_empty() {
-            ui.group(|ui| {
-                ui.strong(self.tr("agent.quick_start.title"));
-                ui.small(self.tr("agent.quick_start.description"));
-                ui.horizontal_wrapped(|ui| {
-                    if let Some(openai_system_id) =
-                        preferred_openai_agent_system_id(&self.agent_systems)
-                        && ui
-                            .button(self.tr("agent.quick_start.openai"))
-                            .on_hover_text(
-                                "Select the native OpenAI agent profile and use OPENAI_API_KEY for requests",
-                            )
-                            .clicked()
+            egui::CollapsingHeader::new(self.tr("agent.quick_start.title"))
+                .default_open(false)
+                .show(ui, |ui| {
+                    ui.small(self.tr("agent.quick_start.description"));
+                    ui.horizontal_wrapped(|ui| {
+                        if let Some(openai_system_id) =
+                            preferred_openai_agent_system_id(&self.agent_systems)
+                            && ui
+                                .button(self.tr("agent.quick_start.openai"))
+                                .on_hover_text(
+                                    "Select the native OpenAI agent profile and use OPENAI_API_KEY for requests",
+                                )
+                                .clicked()
+                            {
+                                self.select_agent_system_and_persist_setup(&openai_system_id);
+                                self.agent_base_url_override.clear();
+                                self.agent_model_override.clear();
+                                self.agent_discovered_model_pick.clear();
+                                self.agent_status = self.tr("agent.status.selected_openai");
+                            }
+                        if let Some(anthropic_system_id) =
+                            preferred_anthropic_agent_system_id(&self.agent_systems)
+                            && ui
+                                .button(self.tr("agent.quick_start.claude"))
+                                .on_hover_text(
+                                    "Select the native Anthropic Claude profile and use ANTHROPIC_API_KEY for requests",
+                                )
+                                .clicked()
+                            {
+                                self.select_agent_system_and_persist_setup(&anthropic_system_id);
+                                self.agent_base_url_override.clear();
+                                self.agent_model_override.clear();
+                                self.agent_discovered_model_pick.clear();
+                                self.agent_status = self.tr("agent.status.selected_claude");
+                            }
+                        if let Some(mistral_system_id) =
+                            preferred_mistral_agent_system_id(&self.agent_systems)
+                            && ui
+                                .button(self.tr("agent.quick_start.mistral"))
+                                .on_hover_text(
+                                    "Select the native Mistral profile and use MISTRAL_API_KEY for requests",
+                                )
+                                .clicked()
+                            {
+                                self.select_agent_system_and_persist_setup(&mistral_system_id);
+                                self.agent_base_url_override.clear();
+                                self.agent_model_override.clear();
+                                self.agent_discovered_model_pick.clear();
+                                self.agent_status = self.tr("agent.status.selected_mistral");
+                            }
+                        if let Some(local_system_id) =
+                            preferred_local_agent_system_id(&self.agent_systems)
+                            && ui
+                                .button(self.tr("agent.quick_start.local"))
+                                .on_hover_text(
+                                    "Select a local OpenAI-compatible endpoint such as Msty MLX, Msty gateway, Ollama, or Jan",
+                                )
+                                .clicked()
+                            {
+                                self.select_agent_system_and_persist_setup(&local_system_id);
+                                self.agent_base_url_override.clear();
+                                self.agent_model_override.clear();
+                                self.agent_discovered_model_pick.clear();
+                                self.agent_status = self.tr("agent.status.selected_local");
+                            }
+                        if self.agent_systems.iter().any(|system| system.id == "builtin_echo")
+                            && ui
+                                .button(self.tr("agent.quick_start.demo"))
+                                .on_hover_text(
+                                    "Select the offline demo assistant that never contacts a remote service",
+                                )
+                                .clicked()
                         {
-                            self.select_agent_system_and_reset_setup(&openai_system_id);
-                            self.agent_base_url_override.clear();
-                            self.agent_model_override.clear();
-                            self.agent_discovered_model_pick.clear();
-                            self.agent_status = self.tr("agent.status.selected_openai");
+                            self.select_agent_system_and_persist_setup("builtin_echo");
+                            self.agent_status = self.tr("agent.status.selected_demo");
                         }
-                    if let Some(anthropic_system_id) =
-                        preferred_anthropic_agent_system_id(&self.agent_systems)
-                        && ui
-                            .button(self.tr("agent.quick_start.claude"))
-                            .on_hover_text(
-                                "Select the native Anthropic Claude profile and use ANTHROPIC_API_KEY for requests",
-                            )
+                    });
+                    ui.small(self.tr("agent.quick_start.cloud_note"));
+                });
+            egui::CollapsingHeader::new(self.tr("agent.catalog"))
+                .default_open(false)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.text_edit_singleline(&mut self.agent_catalog_path);
+                        if ui
+                            .button(self.tr("button.browse"))
+                            .on_hover_text("Browse filesystem and fill this path")
                             .clicked()
+                            && let Some(path) = rfd::FileDialog::new()
+                                .add_filter("JSON", &["json"])
+                                .pick_file()
                         {
-                            self.select_agent_system_and_reset_setup(&anthropic_system_id);
-                            self.agent_base_url_override.clear();
-                            self.agent_model_override.clear();
-                            self.agent_discovered_model_pick.clear();
-                            self.agent_status = self.tr("agent.status.selected_claude");
+                            self.agent_catalog_path = path.display().to_string();
+                            self.agent_catalog_loaded_path.clear();
+                            self.refresh_agent_system_catalog();
                         }
-                    if let Some(mistral_system_id) =
-                        preferred_mistral_agent_system_id(&self.agent_systems)
-                        && ui
-                            .button(self.tr("agent.quick_start.mistral"))
-                            .on_hover_text(
-                                "Select the native Mistral profile and use MISTRAL_API_KEY for requests",
-                            )
-                            .clicked()
-                        {
-                            self.select_agent_system_and_reset_setup(&mistral_system_id);
-                            self.agent_base_url_override.clear();
-                            self.agent_model_override.clear();
-                            self.agent_discovered_model_pick.clear();
-                            self.agent_status = self.tr("agent.status.selected_mistral");
-                        }
-                    if let Some(local_system_id) =
-                        preferred_local_agent_system_id(&self.agent_systems)
-                        && ui
-                            .button(self.tr("agent.quick_start.local"))
-                            .on_hover_text(
-                                "Select a local OpenAI-compatible endpoint such as Msty MLX, Msty gateway, Ollama, or Jan",
-                            )
-                            .clicked()
-                        {
-                            self.select_agent_system_and_reset_setup(&local_system_id);
-                            self.agent_base_url_override.clear();
-                            self.agent_model_override.clear();
-                            self.agent_discovered_model_pick.clear();
-                            self.agent_status = self.tr("agent.status.selected_local");
-                        }
-                    if self.agent_systems.iter().any(|system| system.id == "builtin_echo")
-                        && ui
-                            .button(self.tr("agent.quick_start.demo"))
-                            .on_hover_text(
-                                "Select the offline demo assistant that never contacts a remote service",
-                            )
-                            .clicked()
-                    {
-                        self.select_agent_system_and_reset_setup("builtin_echo");
-                        self.agent_status = self.tr("agent.status.selected_demo");
+                    });
+                    if !self.agent_catalog_error.is_empty() {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(190, 70, 70),
+                            format!("Catalog error: {}", self.agent_catalog_error),
+                        );
                     }
                 });
-                ui.small(self.tr("agent.quick_start.cloud_note"));
-            });
             ui.group(|ui| {
                 ui.strong(self.tr("agent.external_mcp.title"));
                 ui.small(self.tr("agent.external_mcp.route"));
@@ -3158,32 +3327,58 @@ impl GENtleApp {
         } else if self.agent_systems.is_empty() {
             ui.small(self.tr("agent.no_systems_loaded"));
         }
-        let selected_transport = self
-            .selected_agent_system()
-            .map(|system| system.transport)
-            .unwrap_or_default();
-        let (key_label, key_hint) = match selected_transport {
-            AgentSystemTransport::NativeAnthropic => (self.tr("agent.key.anthropic"), "sk-ant-..."),
-            AgentSystemTransport::NativeMistral => (self.tr("agent.key.mistral"), "api key"),
-            _ => (self.tr("agent.key.openai"), "sk-..."),
-        };
-        ui.horizontal(|ui| {
-            ui.label(key_label);
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut self.agent_openai_api_key)
-                    .password(true)
-                    .hint_text(key_hint),
-            );
-            preflight_inputs_changed |= response.changed();
-            if ui
-                .button(self.tr("agent.clear_key"))
-                .on_hover_text("Clear session-only API key override")
-                .clicked()
-            {
-                self.agent_openai_api_key.clear();
-                preflight_inputs_changed = true;
+        if let Some(selected_system) = self.selected_agent_system() {
+            let credential_messages = self.selected_agent_credential_messages(&selected_system);
+            let key_field_relevant =
+                selected_system.id != "builtin_echo" && selected_system.id != "codex_local_stdio";
+            if key_field_relevant {
+                let (key_label, key_hint) = match selected_system.transport {
+                    AgentSystemTransport::NativeAnthropic => {
+                        (self.tr("agent.key.anthropic"), "sk-ant-...")
+                    }
+                    AgentSystemTransport::NativeMistral => {
+                        (self.tr("agent.key.mistral"), "api key")
+                    }
+                    AgentSystemTransport::NativeOpenaiCompat => {
+                        (self.tr("agent.key.openai_compatible"), "optional")
+                    }
+                    _ => (self.tr("agent.key.openai"), "sk-..."),
+                };
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(key_label);
+                    let response = ui.add(
+                        egui::TextEdit::singleline(&mut self.agent_openai_api_key)
+                            .password(true)
+                            .hint_text(key_hint),
+                    );
+                    preflight_inputs_changed |= response.changed();
+                    if ui
+                        .button(self.tr("agent.clear_key"))
+                        .on_hover_text("Clear session-only API key override")
+                        .clicked()
+                    {
+                        self.agent_openai_api_key.clear();
+                        preflight_inputs_changed = true;
+                    }
+                    if agent_api_key_source(selected_system.transport).is_some()
+                        && ui
+                            .button(self.tr("agent.credential.reload"))
+                            .on_hover_text("Read provider token files again")
+                            .clicked()
+                    {
+                        self.refresh_agent_token_file_credentials();
+                        preflight_inputs_changed = true;
+                    }
+                });
             }
-        });
+            for (message, warning) in credential_messages {
+                if warning {
+                    ui.colored_label(egui::Color32::from_rgb(180, 100, 40), message);
+                } else {
+                    ui.small(message);
+                }
+            }
+        }
         let base_url_placeholder = self.selected_agent_base_url_placeholder();
         ui.horizontal(|ui| {
             ui.label(self.tr("agent.base_url_override"));
@@ -3585,7 +3780,7 @@ impl GENtleApp {
                                 ui.separator();
                             }
                             ui.strong(self.tr("agent.conversation.you"));
-                            ui.label(turn.user_message.trim());
+                            ui.add(egui::Label::new(turn.user_message.trim()).wrap());
                             ui.horizontal_wrapped(|ui| {
                                 ui.strong(if turn.system_label.trim().is_empty() {
                                     turn.system_id.as_str()
@@ -3605,9 +3800,18 @@ impl GENtleApp {
                                     copied_response = true;
                                 }
                             });
-                            ui.label(turn.response.assistant_message.trim());
+                            ui.add(egui::Label::new(turn.response.assistant_message.trim()).wrap());
                             for question in &turn.response.questions {
-                                ui.small(format!("Question: {}", question.trim()));
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(format!(
+                                            "Question: {}",
+                                            question.trim()
+                                        ))
+                                        .small(),
+                                    )
+                                    .wrap(),
+                                );
                             }
                         }
                     });
@@ -3827,24 +4031,37 @@ impl GENtleApp {
                 ui.group(|ui| {
                     ui.strong("Response sanity checks");
                     for warning in &sanity_warnings {
-                        ui.colored_label(egui::Color32::from_rgb(180, 110, 25), warning);
+                        let warning = Self::compact_agent_validation_message(warning);
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(&warning)
+                                    .color(egui::Color32::from_rgb(180, 110, 25)),
+                            )
+                            .wrap(),
+                        );
                     }
-                    ui.small(
-                        "These checks are deterministic GENtle validation hints, not a second AI judgment.",
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(
+                                "These checks are deterministic GENtle validation hints, not a second AI judgment.",
+                            )
+                            .small(),
+                        )
+                        .wrap(),
                     );
                 });
             }
             if !invocation.response.assistant_message.trim().is_empty() {
                 ui.group(|ui| {
                     ui.strong("Agent message");
-                    ui.label(invocation.response.assistant_message.trim());
+                    ui.add(egui::Label::new(invocation.response.assistant_message.trim()).wrap());
                 });
             }
             if !invocation.response.questions.is_empty() {
                 ui.group(|ui| {
                     ui.strong("Agent questions");
                     for question in &invocation.response.questions {
-                        ui.label(format!("- {}", question));
+                        ui.add(egui::Label::new(format!("- {}", question)).wrap());
                     }
                 });
             }
@@ -3854,108 +4071,96 @@ impl GENtleApp {
                 ui.separator();
                 ui.strong("Suggested commands");
                 let mut run_request: Option<(usize, String)> = None;
-                egui::ScrollArea::horizontal()
-                    .id_salt("agent_suggested_commands_horizontal_scroll")
-                    .show(ui, |ui| {
-                        egui::Grid::new("agent_suggested_commands_grid")
-                            .striped(true)
-                            .show(ui, |ui| {
-                                ui.strong("#");
-                                ui.strong("Intent");
-                                ui.strong("Mode");
-                                ui.strong("Command");
-                                ui.strong("Preconditions / outcomes / rationale");
-                                ui.strong("Action");
-                                ui.end_row();
-                                for (idx, suggestion) in invocation
-                                    .response
-                                    .suggested_commands
-                                    .iter()
-                                    .enumerate()
-                                {
-                                    let index_1based = idx + 1;
-                                    ui.label(index_1based.to_string());
-                                    ui.label(
-                                        suggestion
-                                            .title
-                                            .as_deref()
-                                            .unwrap_or("Suggested GENtle command"),
-                                    );
-                                    ui.label(suggestion.execution.as_str());
-                                    let command_parse_error =
-                                        parse_shell_line(&suggestion.command).err().filter(|_| {
-                                            suggestion.execution != AgentExecutionIntent::Chat
-                                        });
-                                    if command_parse_error.is_some() {
-                                        ui.colored_label(
-                                            egui::Color32::from_rgb(190, 70, 70),
-                                            suggestion.command.as_str(),
-                                        );
-                                    } else {
-                                        ui.monospace(suggestion.command.as_str());
-                                    }
-                                    let mut details = Vec::new();
-                                    if !suggestion.preconditions.is_empty() {
-                                        details.push(format!(
-                                            "Preconditions: {}",
-                                            suggestion.preconditions.join("; ")
-                                        ));
-                                    }
-                                    if let Some(expr) = &suggestion.precondition_expr {
-                                        if let Some(readiness) =
-                                            self.agent_suggestion_fact_readiness(expr)
-                                        {
-                                            details.push(format!("Readiness: {readiness}"));
-                                        }
-                                        if let Ok(expr_json) = serde_json::to_string(expr) {
-                                            details.push(format!("Precondition logic: {expr_json}"));
-                                        }
-                                    }
-                                    if !suggestion.expected_outcomes.is_empty() {
-                                        details.push(format!(
-                                            "Expected outcomes: {}",
-                                            suggestion.expected_outcomes.join("; ")
-                                        ));
-                                    }
-                                    if !suggestion.expected_effects.is_empty()
-                                        && let Ok(effects_json) =
-                                            serde_json::to_string(&suggestion.expected_effects)
-                                    {
-                                        details.push(format!("Expected effects: {effects_json}"));
-                                    }
-                                    if let Some(rationale) = suggestion.rationale.as_deref()
-                                        && !rationale.trim().is_empty()
-                                    {
-                                        details.push(rationale.trim().to_string());
-                                    }
-                                    ui.label(details.join("\n"));
-                                    let can_run = !suggestion.command.trim().is_empty()
-                                        && suggestion.execution != AgentExecutionIntent::Chat
-                                        && command_parse_error.is_none();
-                                    let mut hover_text =
-                                        "Execute this suggested command using GENtle shared shell parser/executor"
-                                            .to_string();
-                                    if let Some(err) = &command_parse_error {
-                                        hover_text =
-                                            format!("Not a valid GENtle shared-shell command: {err}");
-                                    }
-                                    let run_resp = ui
-                                        .add_enabled(can_run, egui::Button::new("Run"))
-                                        .on_hover_text(hover_text);
-                                    if let Some(err) = &command_parse_error {
-                                        ui.colored_label(
-                                            egui::Color32::from_rgb(190, 70, 70),
-                                            format!("Invalid GENtle command: {err}"),
-                                        );
-                                    }
-                                    if run_resp.clicked() {
-                                        run_request =
-                                            Some((index_1based, suggestion.command.clone()));
-                                    }
-                                    ui.end_row();
-                                }
+                for (idx, suggestion) in invocation.response.suggested_commands.iter().enumerate() {
+                    let index_1based = idx + 1;
+                    let run_blocker = Self::agent_suggestion_run_blocker(
+                        &suggestion.command,
+                        suggestion.execution,
+                    );
+                    ui.group(|ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.strong(format!("#{index_1based}"));
+                            let run_response = ui
+                                .add_enabled(run_blocker.is_none(), egui::Button::new("Run"))
+                                .on_hover_text(run_blocker.as_deref().unwrap_or(
+                                    "Execute this suggestion through GENtle's shared shell parser/executor",
+                                ));
+                            if run_response.clicked() {
+                                run_request = Some((index_1based, suggestion.command.clone()));
+                            }
+                            ui.strong(
+                                suggestion
+                                    .title
+                                    .as_deref()
+                                    .unwrap_or("Suggested GENtle command"),
+                            );
+                            ui.small(format!("mode: {}", suggestion.execution.as_str()));
+                        });
+                        if let Some(reason) = &run_blocker {
+                            let reason_color = if suggestion.execution
+                                == AgentExecutionIntent::Chat
+                            {
+                                ui.visuals().weak_text_color()
+                            } else {
+                                egui::Color32::from_rgb(190, 70, 70)
+                            };
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(reason).color(reason_color),
+                                )
+                                .wrap(),
+                            );
+                        }
+                        let command_text = egui::RichText::new(suggestion.command.trim())
+                            .monospace()
+                            .color(if run_blocker.is_some()
+                                && suggestion.execution != AgentExecutionIntent::Chat
+                            {
+                                egui::Color32::from_rgb(190, 70, 70)
+                            } else {
+                                ui.visuals().text_color()
                             });
+                        ui.add(egui::Label::new(command_text).wrap());
+
+                        let mut details = Vec::new();
+                        if !suggestion.preconditions.is_empty() {
+                            details.push(format!(
+                                "Preconditions: {}",
+                                suggestion.preconditions.join("; ")
+                            ));
+                        }
+                        if let Some(expr) = &suggestion.precondition_expr {
+                            if let Some(readiness) = self.agent_suggestion_fact_readiness(expr) {
+                                details.push(format!("Readiness: {readiness}"));
+                            }
+                            if let Ok(expr_json) = serde_json::to_string(expr) {
+                                details.push(format!("Precondition logic: {expr_json}"));
+                            }
+                        }
+                        if !suggestion.expected_outcomes.is_empty() {
+                            details.push(format!(
+                                "Expected outcomes: {}",
+                                suggestion.expected_outcomes.join("; ")
+                            ));
+                        }
+                        if !suggestion.expected_effects.is_empty()
+                            && let Ok(effects_json) =
+                                serde_json::to_string(&suggestion.expected_effects)
+                        {
+                            details.push(format!("Expected effects: {effects_json}"));
+                        }
+                        if let Some(rationale) = suggestion.rationale.as_deref()
+                            && !rationale.trim().is_empty()
+                        {
+                            details.push(format!("Rationale: {}", rationale.trim()));
+                        }
+                        for detail in details {
+                            ui.add(
+                                egui::Label::new(egui::RichText::new(detail).small()).wrap(),
+                            );
+                        }
                     });
+                }
                 if let Some((index_1based, command)) = run_request {
                     self.execute_agent_suggested_command(index_1based, &command, "manual");
                 }
@@ -3980,9 +4185,10 @@ impl GENtleApp {
         if !self.agent_execution_log.is_empty() {
             ui.separator();
             ui.strong("Execution log");
-            egui::ScrollArea::both()
+            egui::ScrollArea::vertical()
                 .id_salt("agent_execution_log_scroll")
                 .max_height(180.0)
+                .auto_shrink([false, true])
                 .show(ui, |ui| {
                     scroll_input_policy::apply_scrollarea_keyboard_navigation(
                         ui,
@@ -3994,16 +4200,21 @@ impl GENtleApp {
                         } else {
                             format!("#{}", entry.index_1based)
                         };
-                        ui.label(format!(
-                            "{} [{}] {} | {} | changed={} | t={}",
-                            source,
-                            entry.trigger,
-                            if entry.ok { "ok" } else { "error" },
-                            entry.command,
-                            entry.state_changed,
-                            entry.executed_at_unix_ms
-                        ));
-                        ui.small(entry.summary.clone());
+                        ui.add(
+                            egui::Label::new(format!(
+                                "{} [{}] {} | {} | changed={} | t={}",
+                                source,
+                                entry.trigger,
+                                if entry.ok { "ok" } else { "error" },
+                                entry.command,
+                                entry.state_changed,
+                                entry.executed_at_unix_ms
+                            ))
+                            .wrap(),
+                        );
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(&entry.summary).small()).wrap(),
+                        );
                     }
                 });
         }

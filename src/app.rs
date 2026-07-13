@@ -128,7 +128,8 @@ use crate::{
         AgentResponse, AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
         MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL,
         OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL, agent_system_availability,
-        invoke_agent_support_with_conversation_and_env_overrides, load_agent_system_catalog,
+        anthropic_api_key_kind_warning, invoke_agent_support_with_conversation_and_env_overrides,
+        load_agent_system_catalog,
     },
     agent_transport::{
         AgentLiveProbeStatusClass, AgentSystemPreflight, agent_system_supports_model_discovery,
@@ -227,13 +228,15 @@ use crate::{
     },
 };
 use agent_assistant_config::{
-    AGENT_PROMPT_TEMPLATE_DEFAULT_ID, agent_prompt_template_includes_state_summary_by_default,
+    AGENT_PROMPT_TEMPLATE_DEFAULT_ID, AgentTokenFileCredential, AgentTokenFileStatus,
+    agent_api_key_source, agent_prompt_template_includes_state_summary_by_default,
     agent_prompt_template_label, agent_prompt_template_options, agent_prompt_template_text,
     default_agent_connect_timeout_secs_string, default_agent_max_response_bytes_string,
     default_agent_max_retries_string, default_agent_read_timeout_secs_string,
-    default_agent_timeout_secs_string, normalize_agent_model_name,
-    preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
-    preferred_mistral_agent_system_id, preferred_openai_agent_system_id,
+    default_agent_timeout_secs_string, load_agent_token_file_credentials,
+    normalize_agent_model_name, preferred_anthropic_agent_system_id,
+    preferred_local_agent_system_id, preferred_mistral_agent_system_id,
+    preferred_openai_agent_system_id,
 };
 use anyhow::{Result, anyhow};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId};
@@ -409,6 +412,7 @@ struct PersistedConfiguration {
     window_backdrops: WindowBackdropSettings,
     ui_language: UiLanguage,
     recent_projects: Vec<String>,
+    agent_system_id: String,
 }
 
 impl Default for PersistedConfiguration {
@@ -423,6 +427,7 @@ impl Default for PersistedConfiguration {
             window_backdrops: WindowBackdropSettings::default(),
             ui_language: UiLanguage::default(),
             recent_projects: vec![],
+            agent_system_id: String::new(),
         }
     }
 }
@@ -1085,6 +1090,8 @@ pub struct GENtleApp {
     agent_systems: Vec<AgentSystemSpec>,
     agent_system_id: String,
     agent_openai_api_key: String,
+    agent_token_file_credentials: HashMap<String, AgentTokenFileCredential>,
+    agent_token_file_credentials_loaded: bool,
     agent_base_url_override: String,
     agent_model_override: String,
     agent_timeout_secs: String,
@@ -2904,6 +2911,8 @@ impl Default for GENtleApp {
             agent_systems: vec![],
             agent_system_id: "builtin_echo".to_string(),
             agent_openai_api_key: String::new(),
+            agent_token_file_credentials: HashMap::new(),
+            agent_token_file_credentials_loaded: false,
             agent_base_url_override: String::new(),
             agent_model_override: String::new(),
             agent_timeout_secs: default_agent_timeout_secs_string(),
@@ -3144,6 +3153,10 @@ impl GENtleApp {
 
     fn read_persisted_configuration_from_disk() -> Option<PersistedConfiguration> {
         let path = Self::configuration_store_path();
+        Self::read_persisted_configuration_from_path(&path)
+    }
+
+    fn read_persisted_configuration_from_path(path: &Path) -> Option<PersistedConfiguration> {
         let text = fs::read_to_string(&path).ok()?;
         serde_json::from_str::<PersistedConfiguration>(&text).ok()
     }
@@ -3154,17 +3167,12 @@ impl GENtleApp {
 
     fn write_persisted_configuration_to_disk(&self) -> std::result::Result<(), String> {
         let path = Self::configuration_store_path();
-        if let Some(parent) = path.parent()
-            && !parent.as_os_str().is_empty()
-        {
-            fs::create_dir_all(parent).map_err(|e| {
-                format!(
-                    "Could not create configuration directory '{}': {e}",
-                    parent.display()
-                )
-            })?;
-        }
-        let payload = PersistedConfiguration {
+        let payload = self.persisted_configuration_snapshot();
+        Self::write_persisted_configuration_to_path(&path, &payload)
+    }
+
+    fn persisted_configuration_snapshot(&self) -> PersistedConfiguration {
+        PersistedConfiguration {
             schema_version: APP_CONFIGURATION_SCHEMA_VERSION,
             rnapkin_executable: self.configuration_rnapkin_executable.trim().to_string(),
             makeblastdb_executable: self.configuration_makeblastdb_executable.trim().to_string(),
@@ -3177,7 +3185,24 @@ impl GENtleApp {
             window_backdrops: self.window_backdrops.clone(),
             ui_language: self.ui_language,
             recent_projects: self.recent_project_paths.clone(),
-        };
+            agent_system_id: self.agent_system_id.trim().to_string(),
+        }
+    }
+
+    fn write_persisted_configuration_to_path(
+        path: &Path,
+        payload: &PersistedConfiguration,
+    ) -> std::result::Result<(), String> {
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Could not create configuration directory '{}': {e}",
+                    parent.display()
+                )
+            })?;
+        }
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| format!("Could not serialize GUI configuration: {e}"))?;
         fs::write(&path, json).map_err(|e| {
@@ -3186,6 +3211,22 @@ impl GENtleApp {
                 path.display()
             )
         })
+    }
+
+    fn persist_agent_system_selection_to_disk(&self) -> std::result::Result<(), String> {
+        let path = Self::configuration_store_path();
+        self.persist_agent_system_selection_to_path(&path)
+    }
+
+    fn persist_agent_system_selection_to_path(
+        &self,
+        path: &Path,
+    ) -> std::result::Result<(), String> {
+        let mut payload = Self::read_persisted_configuration_from_path(path)
+            .unwrap_or_else(|| self.persisted_configuration_snapshot());
+        payload.schema_version = APP_CONFIGURATION_SCHEMA_VERSION;
+        payload.agent_system_id = self.agent_system_id.trim().to_string();
+        Self::write_persisted_configuration_to_path(path, &payload)
     }
 
     fn normalize_project_path(path: &str) -> String {
@@ -3460,6 +3501,9 @@ impl GENtleApp {
         self.configuration_language_dirty = false;
         self.i18n.set_language(saved.ui_language);
         self.recent_project_paths = Self::normalize_recent_project_paths(saved.recent_projects);
+        if !saved.agent_system_id.trim().is_empty() {
+            self.agent_system_id = saved.agent_system_id.trim().to_string();
+        }
         self.configuration_graphics_dirty = false;
         self.configuration_rnapkin_validation_ok = None;
         self.configuration_rnapkin_validation_message.clear();
@@ -3985,6 +4029,7 @@ Error: `{err}`"
     }
 
     fn open_configuration_agent_systems_dialog(&mut self) {
+        self.refresh_agent_token_file_credentials();
         self.open_configuration_dialog_for_tab(ConfigurationTab::AgentSystems);
     }
 
@@ -5787,6 +5832,7 @@ Error: `{err}`"
         window_backdrop::set_window_backdrop_settings(app.window_backdrops.clone());
         app.refresh_help_docs();
         app.load_persisted_configuration(true);
+        app.refresh_agent_token_file_credentials();
         app.load_bed_track_subscriptions_from_state();
         app.mark_clean_snapshot();
         app

@@ -3,15 +3,202 @@
 //! Keeping this small policy bundle outside `app.rs` makes the top-level GUI
 //! coordinator less dense while preserving the same Agent Assistant behavior.
 
-use std::env;
+use std::{collections::HashMap, env, fs, io::ErrorKind, path::Path};
 
 use crate::agent_bridge::{
     AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV,
-    AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV, AgentSystemSpec, AgentSystemTransport,
-    OPENAI_COMPAT_UNSPECIFIED_MODEL,
+    AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_ENV, AgentSystemSpec,
+    AgentSystemTransport, MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_COMPAT_UNSPECIFIED_MODEL,
 };
 
 pub(super) const AGENT_PROMPT_TEMPLATE_DEFAULT_ID: &str = "structured";
+const AGENT_TOKEN_FILE_MAX_BYTES: u64 = 16 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum AgentTokenFileStatus {
+    Loaded,
+    Missing,
+    Empty,
+    Invalid,
+    Unreadable,
+}
+
+#[derive(Clone)]
+pub(super) struct AgentTokenFileCredential {
+    pub(super) display_path: &'static str,
+    pub(super) status: AgentTokenFileStatus,
+    pub(super) detail: String,
+    pub(super) broadly_readable: bool,
+    value: Option<String>,
+}
+
+impl AgentTokenFileCredential {
+    pub(super) fn value(&self) -> Option<&str> {
+        self.value.as_deref()
+    }
+}
+
+struct AgentTokenFileSpec {
+    env_var: &'static str,
+    file_name: &'static str,
+    display_path: &'static str,
+}
+
+const AGENT_TOKEN_FILE_SPECS: [AgentTokenFileSpec; 3] = [
+    AgentTokenFileSpec {
+        env_var: OPENAI_API_KEY_ENV,
+        file_name: ".codex_token",
+        display_path: "~/.codex_token",
+    },
+    AgentTokenFileSpec {
+        env_var: ANTHROPIC_API_KEY_ENV,
+        file_name: ".claude_token",
+        display_path: "~/.claude_token",
+    },
+    AgentTokenFileSpec {
+        env_var: MISTRAL_API_KEY_ENV,
+        file_name: ".mistral_token",
+        display_path: "~/.mistral_token",
+    },
+];
+
+pub(super) fn agent_api_key_source(
+    transport: AgentSystemTransport,
+) -> Option<(&'static str, &'static str)> {
+    match transport {
+        AgentSystemTransport::NativeOpenai => Some((OPENAI_API_KEY_ENV, "~/.codex_token")),
+        AgentSystemTransport::NativeAnthropic => Some((ANTHROPIC_API_KEY_ENV, "~/.claude_token")),
+        AgentSystemTransport::NativeMistral => Some((MISTRAL_API_KEY_ENV, "~/.mistral_token")),
+        _ => None,
+    }
+}
+
+pub(super) fn load_agent_token_file_credentials(
+    home: Option<&Path>,
+) -> HashMap<String, AgentTokenFileCredential> {
+    let mut credentials = HashMap::new();
+    for spec in AGENT_TOKEN_FILE_SPECS {
+        let Some(home) = home else {
+            credentials.insert(
+                spec.env_var.to_string(),
+                AgentTokenFileCredential {
+                    display_path: spec.display_path,
+                    status: AgentTokenFileStatus::Unreadable,
+                    detail: "home directory is unavailable".to_string(),
+                    broadly_readable: false,
+                    value: None,
+                },
+            );
+            continue;
+        };
+        let path = home.join(spec.file_name);
+        let metadata = match fs::metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(err) if err.kind() == ErrorKind::NotFound => {
+                credentials.insert(
+                    spec.env_var.to_string(),
+                    AgentTokenFileCredential {
+                        display_path: spec.display_path,
+                        status: AgentTokenFileStatus::Missing,
+                        detail: String::new(),
+                        broadly_readable: false,
+                        value: None,
+                    },
+                );
+                continue;
+            }
+            Err(err) => {
+                credentials.insert(
+                    spec.env_var.to_string(),
+                    AgentTokenFileCredential {
+                        display_path: spec.display_path,
+                        status: AgentTokenFileStatus::Unreadable,
+                        detail: err.to_string(),
+                        broadly_readable: false,
+                        value: None,
+                    },
+                );
+                continue;
+            }
+        };
+        let broadly_readable = token_file_is_broadly_readable(&metadata);
+        if metadata.len() > AGENT_TOKEN_FILE_MAX_BYTES {
+            credentials.insert(
+                spec.env_var.to_string(),
+                AgentTokenFileCredential {
+                    display_path: spec.display_path,
+                    status: AgentTokenFileStatus::Invalid,
+                    detail: format!(
+                        "file is larger than the {}-byte safety limit",
+                        AGENT_TOKEN_FILE_MAX_BYTES
+                    ),
+                    broadly_readable,
+                    value: None,
+                },
+            );
+            continue;
+        }
+        let raw = match fs::read_to_string(&path) {
+            Ok(raw) => raw,
+            Err(err) => {
+                credentials.insert(
+                    spec.env_var.to_string(),
+                    AgentTokenFileCredential {
+                        display_path: spec.display_path,
+                        status: AgentTokenFileStatus::Unreadable,
+                        detail: err.to_string(),
+                        broadly_readable,
+                        value: None,
+                    },
+                );
+                continue;
+            }
+        };
+        let trimmed = raw.trim();
+        let (status, detail, value) = if trimmed.is_empty() {
+            (
+                AgentTokenFileStatus::Empty,
+                "file is empty".to_string(),
+                None,
+            )
+        } else if trimmed.chars().any(char::is_whitespace) {
+            (
+                AgentTokenFileStatus::Invalid,
+                "expected exactly one token without whitespace".to_string(),
+                None,
+            )
+        } else {
+            (
+                AgentTokenFileStatus::Loaded,
+                String::new(),
+                Some(trimmed.to_string()),
+            )
+        };
+        credentials.insert(
+            spec.env_var.to_string(),
+            AgentTokenFileCredential {
+                display_path: spec.display_path,
+                status,
+                detail,
+                broadly_readable,
+                value,
+            },
+        );
+    }
+    credentials
+}
+
+#[cfg(unix)]
+fn token_file_is_broadly_readable(metadata: &fs::Metadata) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    metadata.permissions().mode() & 0o077 != 0
+}
+
+#[cfg(not(unix))]
+fn token_file_is_broadly_readable(_metadata: &fs::Metadata) -> bool {
+    false
+}
 
 pub(super) fn normalize_agent_model_name(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
@@ -301,6 +488,7 @@ fn default_env_string(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     fn test_agent_system(id: &str, transport: AgentSystemTransport) -> AgentSystemSpec {
         AgentSystemSpec {
@@ -410,6 +598,71 @@ mod tests {
         assert_eq!(
             preferred_local_agent_system_id(&systems).as_deref(),
             Some("msty_mlx_local_compat_template")
+        );
+    }
+
+    #[test]
+    fn native_provider_token_files_have_stable_fallback_paths() {
+        assert_eq!(
+            agent_api_key_source(AgentSystemTransport::NativeOpenai),
+            Some((OPENAI_API_KEY_ENV, "~/.codex_token"))
+        );
+        assert_eq!(
+            agent_api_key_source(AgentSystemTransport::NativeAnthropic),
+            Some((ANTHROPIC_API_KEY_ENV, "~/.claude_token"))
+        );
+        assert_eq!(
+            agent_api_key_source(AgentSystemTransport::NativeMistral),
+            Some((MISTRAL_API_KEY_ENV, "~/.mistral_token"))
+        );
+        assert_eq!(
+            agent_api_key_source(AgentSystemTransport::ExternalJsonStdio),
+            None,
+            "Codex/Claude local stdio transports must retain their own login semantics"
+        );
+    }
+
+    #[test]
+    fn token_file_loader_reads_single_tokens_and_reports_missing_files() {
+        let temp = tempdir().expect("temp home");
+        fs::write(temp.path().join(".codex_token"), "codex-test-token\n")
+            .expect("write codex token");
+        fs::write(temp.path().join(".claude_token"), "two words")
+            .expect("write invalid claude token");
+
+        let loaded = load_agent_token_file_credentials(Some(temp.path()));
+        let codex = loaded.get(OPENAI_API_KEY_ENV).expect("codex credential");
+        assert_eq!(codex.status, AgentTokenFileStatus::Loaded);
+        assert_eq!(codex.value(), Some("codex-test-token"));
+
+        let claude = loaded
+            .get(ANTHROPIC_API_KEY_ENV)
+            .expect("claude credential");
+        assert_eq!(claude.status, AgentTokenFileStatus::Invalid);
+        assert!(claude.value().is_none());
+
+        let mistral = loaded.get(MISTRAL_API_KEY_ENV).expect("mistral credential");
+        assert_eq!(mistral.status, AgentTokenFileStatus::Missing);
+        assert!(mistral.value().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn token_file_loader_reports_permissions_visible_beyond_owner() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempdir().expect("temp home");
+        let path = temp.path().join(".codex_token");
+        fs::write(&path, "codex-test-token").expect("write codex token");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644))
+            .expect("set token permissions");
+
+        let loaded = load_agent_token_file_credentials(Some(temp.path()));
+        assert!(
+            loaded
+                .get(OPENAI_API_KEY_ENV)
+                .expect("codex credential")
+                .broadly_readable
         );
     }
 }

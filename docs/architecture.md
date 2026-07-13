@@ -1175,6 +1175,15 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
 - Agent request payload includes:
   - system id and prompt
   - optional project state summary context
+- GUI provider selection is durable but credentials are not:
+  - the selected catalog system id may be stored in GUI settings
+  - manual API-key, endpoint, model, and runtime overrides remain session-only
+  - native providers resolve credentials in deterministic order: GUI session
+    override, provider environment variable, then a bounded conventional token
+    file read (`~/.codex_token`, `~/.claude_token`, or `~/.mistral_token`)
+  - token-file contents are never written to project state, settings, logs, or
+    diagnostics; Codex Local continues to use its CLI/App login and does not
+    consume the OpenAI token-file fallback
 - Agent response payload supports mixed outcomes per reply:
   - plain assistant message (`chat`)
   - follow-up questions (`ask`)
@@ -1195,6 +1204,10 @@ Execution safety model:
 - Nested/recursive `agents ask` execution is blocked in suggested-command runs.
 - Suggested commands are executed through the same shared shell parser/executor
   used by GUI shell and `gentle_cli shell`.
+- The GUI keeps the per-suggestion action visible in a wrapping card. A
+  suggestion is runnable only after the shared parser accepts it and its
+  execution intent is not `chat`; malformed model output remains inspectable
+  but cannot bypass parser validation.
 - This includes BLAST shell routes (`genomes blast`, `helpers blast`,
   `genomes blast-track`, `helpers blast-track`) when agents suggest them.
 - Async BLAST job contract baseline is now available through shared shell:

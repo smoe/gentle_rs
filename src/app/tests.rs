@@ -33,6 +33,7 @@ use super::{
     SequenceIngressTask, SequenceIngressTaskKind, SequenceIngressTaskMessage,
     TutorialProjectOpenOutcome, TutorialProjectTask, TutorialProjectTaskMessage,
     TutorialProjectTaskProgress, gui_prominent_glossary_entries,
+    load_agent_token_file_credentials,
     preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
     preferred_mistral_agent_system_id, preferred_openai_agent_system_id,
 };
@@ -953,6 +954,68 @@ fn agent_model_discovery_labels_mistral_env_key() {
 }
 
 #[test]
+fn native_agent_uses_token_file_after_session_and_environment_sources() {
+    let _lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let _guard = EnvVarGuard::set(OPENAI_API_KEY_ENV, "");
+    let temp = tempdir().expect("temp home");
+    fs::write(temp.path().join(".codex_token"), "file-token")
+        .expect("write token file");
+    let mut app = GENtleApp::default();
+    app.agent_token_file_credentials =
+        load_agent_token_file_credentials(Some(temp.path()));
+    app.agent_token_file_credentials_loaded = true;
+    let system = test_agent_system("openai_gpt5_native", AgentSystemTransport::NativeOpenai);
+
+    let file_overrides = app
+        .selected_agent_session_env_overrides(&system)
+        .expect("file overrides");
+    assert_eq!(
+        file_overrides.get(OPENAI_API_KEY_ENV).map(String::as_str),
+        Some("file-token")
+    );
+    assert_eq!(
+        app.selected_agent_model_discovery_key_label(&system),
+        "file:~/.codex_token"
+    );
+
+    app.agent_openai_api_key = "session-token".to_string();
+    let session_overrides = app
+        .selected_agent_session_env_overrides(&system)
+        .expect("session overrides");
+    assert_eq!(
+        session_overrides
+            .get(OPENAI_API_KEY_ENV)
+            .map(String::as_str),
+        Some("session-token")
+    );
+    assert_eq!(
+        app.selected_agent_model_discovery_key_label(&system),
+        "session-key"
+    );
+}
+
+#[test]
+fn codex_local_keeps_cli_login_and_does_not_import_api_key_sources() {
+    let temp = tempdir().expect("temp home");
+    fs::write(temp.path().join(".codex_token"), "file-token")
+        .expect("write token file");
+    let mut app = GENtleApp::default();
+    app.agent_token_file_credentials =
+        load_agent_token_file_credentials(Some(temp.path()));
+    app.agent_token_file_credentials_loaded = true;
+    app.agent_openai_api_key = "session-token".to_string();
+    let system = test_agent_system("codex_local_stdio", AgentSystemTransport::ExternalJsonStdio);
+
+    let overrides = app
+        .selected_agent_session_env_overrides(&system)
+        .expect("codex overrides");
+
+    assert_eq!(overrides.get(OPENAI_API_KEY_ENV), None);
+}
+
+#[test]
 fn agent_model_discovery_does_not_auto_retry_failed_source() {
     let mut app = GENtleApp::default();
     let system = test_agent_system(
@@ -1656,6 +1719,30 @@ fn agent_response_sanity_accepts_fus_retrieval_commands() {
     );
 
     assert_eq!(warnings, Vec::<String>::new());
+}
+
+#[test]
+fn agent_suggestion_run_blocker_distinguishes_runnable_and_invalid_commands() {
+    assert_eq!(
+        GENtleApp::agent_suggestion_run_blocker(
+            "/fetch ensembl-gene SP1 --species homo_sapiens --id sp1_live",
+            AgentExecutionIntent::Ask,
+        ),
+        None
+    );
+
+    let invalid = GENtleApp::agent_suggestion_run_blocker(
+        "/ensembl gene SP1 --species homo_sapiens --include-transcripts all --open",
+        AgentExecutionIntent::Ask,
+    )
+    .expect("invented slash command should be blocked");
+    assert!(invalid.contains("Invalid GENtle command"));
+    assert!(!invalid.contains("Supported GENtle-local alternatives"));
+
+    assert_eq!(
+        GENtleApp::agent_suggestion_run_blocker("/help", AgentExecutionIntent::Chat),
+        Some("This suggestion is explanatory (execution=chat).".to_string())
+    );
 }
 
 #[test]
@@ -7455,6 +7542,40 @@ fn upgrade_persisted_configuration_is_noop_for_current_schema() {
         saved.graphics_defaults.linear_sequence_letter_layout_mode,
         LinearSequenceLetterLayoutMode::Condensed10Row
     );
+}
+
+#[test]
+fn persisted_configuration_roundtrips_selected_agent_system() {
+    let mut saved = PersistedConfiguration::default();
+    saved.agent_system_id = "codex_local_stdio".to_string();
+
+    let json = serde_json::to_string(&saved).expect("serialize configuration");
+    let loaded: PersistedConfiguration =
+        serde_json::from_str(&json).expect("deserialize configuration");
+
+    assert_eq!(loaded.agent_system_id, "codex_local_stdio");
+}
+
+#[test]
+fn persisting_agent_selection_preserves_other_saved_settings() {
+    let temp = tempdir().expect("tempdir");
+    let path = temp.path().join("settings.json");
+    let mut saved = PersistedConfiguration::default();
+    saved.rnapkin_executable = "/saved/rnapkin".to_string();
+    saved.agent_system_id = "builtin_echo".to_string();
+    GENtleApp::write_persisted_configuration_to_path(&path, &saved)
+        .expect("write initial settings");
+
+    let mut app = GENtleApp::default();
+    app.configuration_rnapkin_executable = "/unapplied/rnapkin".to_string();
+    app.agent_system_id = "codex_local_stdio".to_string();
+    app.persist_agent_system_selection_to_path(&path)
+        .expect("persist agent selection");
+
+    let loaded = GENtleApp::read_persisted_configuration_from_path(&path)
+        .expect("read updated settings");
+    assert_eq!(loaded.agent_system_id, "codex_local_stdio");
+    assert_eq!(loaded.rnapkin_executable, "/saved/rnapkin");
 }
 
 #[test]

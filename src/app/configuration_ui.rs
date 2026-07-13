@@ -135,20 +135,22 @@ impl GENtleApp {
                             ui,
                             scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                         );
-                        match self.configuration_tab {
-                            ConfigurationTab::ExternalApplications => {
-                                self.render_configuration_external_tab(ui);
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                            match self.configuration_tab {
+                                ConfigurationTab::ExternalApplications => {
+                                    self.render_configuration_external_tab(ui);
+                                }
+                                ConfigurationTab::AgentSystems => {
+                                    self.render_agent_configuration_tab(ui);
+                                }
+                                ConfigurationTab::Graphics => {
+                                    self.render_configuration_graphics_tab(ui);
+                                }
+                                ConfigurationTab::Language => {
+                                    self.render_configuration_language_tab(ui);
+                                }
                             }
-                            ConfigurationTab::AgentSystems => {
-                                self.render_agent_configuration_tab(ui);
-                            }
-                            ConfigurationTab::Graphics => {
-                                self.render_configuration_graphics_tab(ui);
-                            }
-                            ConfigurationTab::Language => {
-                                self.render_configuration_language_tab(ui);
-                            }
-                        }
+                        });
                     });
             });
         });

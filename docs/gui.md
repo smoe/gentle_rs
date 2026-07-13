@@ -2653,7 +2653,12 @@ Behavior:
   - `File -> Agent Assistant...` contains the project conversation, prompt,
     response details, and reviewed command execution
 - loads systems from catalog JSON (default `assets/agent_systems.json`)
-- system selection is a dropdown from catalog entries in Configuration
+- `Agent Systems` is the first heading in its Configuration tab; system
+  selection is the primary dropdown, while the optional `Quick start` shortcuts
+  are collapsed below it
+- the selected system id is persisted in `~/.gentle_gui_settings.json` and
+  restored on the next launch; API keys and other session overrides are not
+  persisted
 - unavailable systems remain selectable and show the reason
 - `Quick start` buttons expose common first-run routes:
   - `Use OpenAI API`
@@ -2685,8 +2690,16 @@ Behavior:
     `sk-ant-...`; Mistral keys should be generated in La Plateforme
   - click `Clear Key` to remove it from current session
   - the key is not persisted to disk by GENtle settings
-- if set, GUI key overrides `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or
-  `MISTRAL_API_KEY` for requests started from this window
+- native-provider credential precedence is: session key field, provider
+  environment variable, then the provider's conventional token file
+  (`~/.codex_token`, `~/.claude_token`, or `~/.mistral_token`)
+  - GENtle reads token files into memory for the current process only and never
+    copies their contents into project or GUI settings
+  - the Configuration tab reports the active source, a missing/invalid token
+    file, and token files readable beyond their owner; `Reload credentials`
+    refreshes the file snapshot
+  - Codex Local is intentionally excluded from this fallback: it uses the
+    installed Codex CLI/App login rather than an OpenAI API token
 - `Base URL override` field is a session-only endpoint override for
   `native_openai`, `native_anthropic`, `native_mistral`, and
   `native_openai_compat`
@@ -2789,9 +2802,14 @@ Behavior:
 - response panel can include:
   - assistant message text
   - follow-up questions
-  - suggested shared-shell commands with per-row `Run` action
+  - width-bounded suggestion cards whose message, command, preconditions,
+    expected outcomes, and rationale wrap instead of requiring horizontal
+    scrolling
+  - a `Run` action at the start of every suggestion card; explanatory
+    (`execution=chat`), empty, or invalid commands show a disabled action and
+    the reason directly in the card
   - invalid or invented suggestions are shown as `Invalid GENtle command` and
-    cannot be run from the row button
+    cannot be run
   - `Copy Response JSON` for copying the latest strict agent-response JSON
     payload to the clipboard
 - execution is always per suggestion (row-run, explicit all, or explicit auto);
@@ -2802,7 +2820,9 @@ OpenAI setup (explicit):
 
 1. Open `Configuration -> Agent Systems`.
 2. Choose system `OpenAI GPT-5 (native HTTP)` from the dropdown.
-3. Paste your API key into `OpenAI API key` (format `sk-...`).
+3. Paste your API key into `OpenAI API key` (format `sk-...`), export
+   `OPENAI_API_KEY`, or place the token in `~/.codex_token`. The Configuration
+   tab shows which source is active.
 4. Click `Test Setup` to confirm the key/base URL/model resolve correctly.
    This checks model discovery only; it does not intentionally send a
    token-generating request.
@@ -2865,8 +2885,10 @@ Claude setup (explicit):
 1. Open `Configuration -> Agent Systems`.
 2. Click `Use Claude API` or choose `Claude Sonnet (native Anthropic HTTP)`.
 3. Paste your Anthropic Console API key into `Anthropic API key` (format
-   `sk-ant-...`). Claude Code or Claude.ai subscription/login tokens are not
-   Anthropic API keys.
+   `sk-ant-...`), export `ANTHROPIC_API_KEY`, or place that API key in
+   `~/.claude_token`. Claude Code or Claude.ai subscription/login tokens are
+   not Anthropic API keys; GENtle warns when a file has the shape of such a
+   login token.
 4. Click `Test Setup` to confirm the key/base URL/model resolve correctly.
    This checks model discovery only; it does not intentionally send a
    token-generating request.
@@ -2884,7 +2906,8 @@ Mistral setup (explicit):
 
 1. Open `Configuration -> Agent Systems`.
 2. Click `Use Mistral API` or choose `Mistral Large (native Mistral HTTP)`.
-3. Paste your Mistral La Plateforme API key into `Mistral API key`. Le Chat or
+3. Paste your Mistral La Plateforme API key into `Mistral API key`, export
+   `MISTRAL_API_KEY`, or place that API key in `~/.mistral_token`. Le Chat or
    Mistral account login tokens are not Mistral API keys.
 4. Click `Test Setup` to confirm the key/base URL/model resolve correctly.
    This checks model discovery only; it does not intentionally send a
