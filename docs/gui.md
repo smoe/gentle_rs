@@ -2213,9 +2213,11 @@ Controls:
          - `Repeat-driven mapping review suggested`
          - `Cloning stability review suggested`
        - task-aware repeat/similarity severity is shown as compact
-         `task_severity: ...` detail lines with the rule-derived score under
-         the same fact rows, backed by protocol `task_severities[]`, and does
-         not create extra map overlays
+         `task_severity: ...` detail lines under the same fact rows. Each line
+         distinguishes intrinsic evidence (`base_severity`/`base_score`) from
+         objective-adjusted effective priority and names task applicability
+         plus its explicit/legacy/unspecified basis; this does not create extra
+         map overlays
      - repeat/similarity summaries, candidates, and repeat-driven fact rows
        can now open the shared dotplot workspace directly:
        - `Dotplot` opens a self-forward dotplot centered on the implicated
@@ -2231,6 +2233,13 @@ Controls:
        - the existing inspector rows surface the same action details before
          any richer action-specific evidence pane is added, so the button and
          explanation stay tied to the protocol record
+       - repeat-family action details enumerate every typed overlapping family
+         with class/family agreement and confidence rather than showing only a
+         single parsed provenance string
+       - the inspector reports graph snapshot freshness. Dotplot buttons are
+         disabled, and the execution path independently rejects the action,
+         when sequence/features, objective intent, or reasoning rules changed
+         after graph generation; refresh is required before inspection
        - CLI/agent layers can list and run the same action objects with
          `construct-reasoning list-inspection-actions` and
          `construct-reasoning run-inspection-action`, so the GUI does not own a

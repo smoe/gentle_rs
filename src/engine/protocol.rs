@@ -28,10 +28,10 @@ pub use gentle_protocol::{
     CandidateSetOperator, CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, Capabilities,
     CdnaAssayMaterializedProductRow, CdnaAssayProductGelBandRow, CdnaAssayProductMaterialization,
     CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, ConstructCandidate,
-    ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore, ConstructRole,
-    ContainerId, ContainerKind, CutRunAlignConfig, CutRunCatalogEntry, CutRunCatalogListEntry,
-    CutRunCoverageKind, CutRunDatasetListReport, CutRunDatasetProjectionReport,
-    CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
+    ConstructObjective, ConstructReasoningGraph, ConstructReasoningGraphFreshness,
+    ConstructReasoningStore, ConstructRole, ContainerId, ContainerKind, CutRunAlignConfig,
+    CutRunCatalogEntry, CutRunCatalogListEntry, CutRunCoverageKind, CutRunDatasetListReport,
+    CutRunDatasetProjectionReport, CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
     CutRunMotifAbsentOccupancyInterpretation, CutRunMotifAbsentSupportWindow,
     CutRunMotifContextHit, CutRunMotifContextScope, CutRunMotifContextSummaryRow,
     CutRunPreparedAssetManifest, CutRunPreparedAssetStatus, CutRunPreparedManifest,
@@ -7313,6 +7313,9 @@ pub struct ConstructReasoningGraphSummary {
     pub graph_id: String,
     pub seq_id: String,
     pub generated_at_unix_ms: u128,
+    pub freshness: ConstructReasoningGraphFreshness,
+    #[serde(default)]
+    pub stale_reasons: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub op_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

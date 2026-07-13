@@ -94,7 +94,8 @@ use crate::{
         AttractPwmMappingPolicy, AttractRegionClass, AttractSplicingEvidenceHitRow,
         AttractSplicingEvidenceSettings, AttractSplicingEvidenceView,
         CandidateFeatureStrandRelation, CandidateRecord, CandidateSetOperator,
-        ConstructReasoningGraph, ConstructReasoningInspectionAction, ConstructRole,
+        ConstructReasoningGraph, ConstructReasoningGraphFreshness,
+        ConstructReasoningGraphSnapshotStatus, ConstructReasoningInspectionAction, ConstructRole,
         CutRunMotifAbsentOccupancyInterpretation, CutRunMotifContextScope,
         CutRunRegulatoryEvidenceSourceKind, CutRunRegulatorySupportReport,
         CutRunRegulatoryTfbsConfirmationStatus, CutRunSupportStrength, DecisionMethod,
@@ -1693,6 +1694,8 @@ struct ConstructReasoningInspectorCache {
     graph_id: String,
     objective_title: String,
     objective_goal: String,
+    snapshot_freshness: ConstructReasoningGraphFreshness,
+    snapshot_status_lines: Vec<String>,
     annotation_summary_entries: Vec<ConstructReasoningInspectorEntry>,
     annotation_entries: Vec<ConstructReasoningInspectorEntry>,
     fact_entries: Vec<ConstructReasoningInspectorEntry>,
@@ -13269,6 +13272,7 @@ impl MainAreaDna {
         &mut self,
         action: &ConstructReasoningDotplotAction,
     ) -> Result<(), String> {
+        self.ensure_construct_reasoning_inspection_action_is_current()?;
         let seq_id = self.seq_id.clone().ok_or_else(|| {
             "No active sequence selected for reasoning-guided dotplot".to_string()
         })?;
@@ -13300,6 +13304,39 @@ impl MainAreaDna {
         self.compute_primary_dotplot();
         self.open_dotplot_window();
         Ok(())
+    }
+
+    fn ensure_construct_reasoning_inspection_action_is_current(&self) -> Result<(), String> {
+        let graph_id = self
+            .focused_construct_reasoning_graph_id
+            .as_deref()
+            .or_else(|| {
+                self.description_cache_construct_reasoning
+                    .as_ref()
+                    .map(|cache| cache.graph_id.as_str())
+            })
+            .filter(|graph_id| !graph_id.trim().is_empty());
+        let (Some(graph_id), Some(engine)) = (graph_id, self.engine.as_ref()) else {
+            return Ok(());
+        };
+        let engine = engine
+            .read()
+            .map_err(|_| "Could not verify construct-reasoning graph freshness".to_string())?;
+        let graph = engine
+            .construct_reasoning_graph(graph_id)
+            .map_err(|error| error.message)?;
+        let status = engine.construct_reasoning_graph_snapshot_status(&graph);
+        if status.freshness != ConstructReasoningGraphFreshness::Stale {
+            return Ok(());
+        }
+        let reasons = if status.reasons.is_empty() {
+            "current sequence, objective, or reasoning rules changed".to_string()
+        } else {
+            status.reasons.join(" ")
+        };
+        Err(format!(
+            "Construct-reasoning graph '{graph_id}' is stale; refresh it before running this inspection action. {reasons}"
+        ))
     }
 
     fn extract_current_selection_as_sequence(&mut self) {
@@ -14068,6 +14105,7 @@ impl MainAreaDna {
         &mut self,
         ui: &mut egui::Ui,
         actions: &[ConstructReasoningDotplotAction],
+        actions_enabled: bool,
     ) {
         if actions.is_empty() {
             return;
@@ -14077,9 +14115,17 @@ impl MainAreaDna {
                 ui.push_id(
                     ("construct_reasoning_dotplot_action", &action.action_id),
                     |ui| {
+                        let hover_text = if actions_enabled {
+                            action.hover_text.as_str()
+                        } else {
+                            "Refresh the stale construct-reasoning graph before running this inspection."
+                        };
                         if ui
-                            .button(action.button_label.as_str())
-                            .on_hover_text(action.hover_text.as_str())
+                            .add_enabled(
+                                actions_enabled,
+                                egui::Button::new(action.button_label.as_str()),
+                            )
+                            .on_hover_text(hover_text)
                             .clicked()
                         {
                             match self.open_construct_reasoning_dotplot_action(action) {
@@ -14144,7 +14190,12 @@ impl MainAreaDna {
                     action.context_tags.join(", ")
                 ));
             }
-            if let Some(provenance) = &action.repeat_family_provenance {
+            let provenances = if action.repeat_family_provenances.is_empty() {
+                action.repeat_family_provenance.iter().collect::<Vec<_>>()
+            } else {
+                action.repeat_family_provenances.iter().collect::<Vec<_>>()
+            };
+            for provenance in provenances {
                 let mut bits = vec![];
                 if !provenance.source_kind.trim().is_empty() {
                     bits.push(provenance.source_kind.trim().to_string());
@@ -14158,6 +14209,20 @@ impl MainAreaDna {
                     && !id.trim().is_empty()
                 {
                     bits.push(format!("family_id={}", id.trim()));
+                }
+                if let Some(class) = provenance.repeat_class.as_deref()
+                    && !class.trim().is_empty()
+                {
+                    bits.push(format!("class={}", class.trim()));
+                }
+                if let Some(family) = provenance.repeat_family.as_deref()
+                    && !family.trim().is_empty()
+                {
+                    bits.push(format!("repeat_family={}", family.trim()));
+                }
+                bits.push(format!("agreement={}", provenance.agreement.as_str()));
+                if let Some(confidence) = provenance.confidence {
+                    bits.push(format!("confidence={confidence:.2}"));
                 }
                 if !bits.is_empty() {
                     lines.push(format!(
@@ -14175,25 +14240,50 @@ impl MainAreaDna {
             .iter()
             .map(|severity| {
                 let evidence_count = severity.supporting_evidence_ids.len();
-                let score = severity
+                let effective_score = severity
                     .score
-                    .map(|value| format!(" score={value:.2}"))
+                    .map(|value| format!(" effective_score={value:.2}"))
                     .unwrap_or_default();
+                let base_score = severity
+                    .base_score
+                    .map(|value| format!(" base_score={value:.2}"))
+                    .unwrap_or_default();
+                let adjustment = severity
+                    .objective_adjustment
+                    .map(|value| format!(" objective_adjustment={value:+.2}"))
+                    .unwrap_or_default();
+                let base_severity = severity
+                    .base_severity
+                    .map(|value| format!(" base_severity={}", value.as_str()))
+                    .unwrap_or_default();
+                let applicability = format!(
+                    " applicability={} applicability_basis={}",
+                    severity.applicability.as_str(),
+                    severity.applicability_basis.as_str()
+                );
                 let rationale = severity.rationale.trim();
                 if rationale.is_empty() {
                     format!(
-                        "task_severity: {}={}{} (evidence={})",
+                        "task_severity: {}={}{}{}{}{}{} (evidence={})",
                         severity.task.as_str(),
                         severity.severity.as_str(),
-                        score,
+                        effective_score,
+                        base_severity,
+                        base_score,
+                        adjustment,
+                        applicability,
                         evidence_count
                     )
                 } else {
                     format!(
-                        "task_severity: {}={}{} (evidence={}): {}",
+                        "task_severity: {}={}{}{}{}{}{} (evidence={}): {}",
                         severity.task.as_str(),
                         severity.severity.as_str(),
-                        score,
+                        effective_score,
+                        base_severity,
+                        base_score,
+                        adjustment,
+                        applicability,
                         evidence_count,
                         rationale
                     )
@@ -15130,8 +15220,19 @@ impl MainAreaDna {
         }
     }
 
+    #[cfg(test)]
     fn build_construct_reasoning_inspector_cache(
         graph: &ConstructReasoningGraph,
+    ) -> ConstructReasoningInspectorCache {
+        Self::build_construct_reasoning_inspector_cache_with_snapshot_status(
+            graph,
+            ConstructReasoningGraphSnapshotStatus::default(),
+        )
+    }
+
+    fn build_construct_reasoning_inspector_cache_with_snapshot_status(
+        graph: &ConstructReasoningGraph,
+        snapshot_status: ConstructReasoningGraphSnapshotStatus,
     ) -> ConstructReasoningInspectorCache {
         let mut annotation_summary_entries = graph
             .annotation_candidate_summaries
@@ -15165,6 +15266,8 @@ impl MainAreaDna {
             graph_id: graph.graph_id.clone(),
             objective_title: graph.objective.title.clone(),
             objective_goal: graph.objective.goal.clone(),
+            snapshot_freshness: snapshot_status.freshness,
+            snapshot_status_lines: snapshot_status.reasons,
             annotation_summary_entries,
             annotation_entries,
             fact_entries,
@@ -24679,7 +24782,8 @@ impl MainAreaDna {
             .and_then(|seq_id| {
                 self.engine.as_ref().and_then(|engine| {
                     engine.read().ok().and_then(|guard| {
-                        if let Some(graph_id) = self.focused_construct_reasoning_graph_id.as_deref()
+                        let graph = if let Some(graph_id) =
+                            self.focused_construct_reasoning_graph_id.as_deref()
                         {
                             guard
                                 .construct_reasoning_graph(graph_id)
@@ -24688,11 +24792,19 @@ impl MainAreaDna {
                                 .or_else(|| guard.construct_reasoning_graph_for_seq_id(seq_id).ok())
                         } else {
                             guard.construct_reasoning_graph_for_seq_id(seq_id).ok()
-                        }
+                        }?;
+                        let snapshot_status =
+                            guard.construct_reasoning_graph_snapshot_status(&graph);
+                        Some((graph, snapshot_status))
                     })
                 })
             })
-            .map(|graph| Self::build_construct_reasoning_inspector_cache(&graph));
+            .map(|(graph, snapshot_status)| {
+                Self::build_construct_reasoning_inspector_cache_with_snapshot_status(
+                    &graph,
+                    snapshot_status,
+                )
+            });
         if let Some(target) = expert_target {
             match self.inspect_feature_expert_target(&target) {
                 Ok(view) => {
@@ -24998,23 +25110,29 @@ impl MainAreaDna {
                         span.supporting_fact_labels.join(", ")
                     ));
                 }
-                let selected_span_dotplot_actions = self
+                let (selected_span_dotplot_actions, selected_actions_enabled) = self
                     .description_cache_construct_reasoning
                     .as_ref()
                     .map(|reasoning| {
-                        reasoning
-                            .annotation_entries
-                            .iter()
-                            .filter(|entry| {
-                                entry.annotation_id.as_deref() == Some(span.annotation_id.as_str())
-                            })
-                            .flat_map(|entry| entry.dotplot_actions.iter().cloned())
-                            .collect::<Vec<_>>()
+                        (
+                            reasoning
+                                .annotation_entries
+                                .iter()
+                                .filter(|entry| {
+                                    entry.annotation_id.as_deref()
+                                        == Some(span.annotation_id.as_str())
+                                })
+                                .flat_map(|entry| entry.dotplot_actions.iter().cloned())
+                                .collect::<Vec<_>>(),
+                            reasoning.snapshot_freshness
+                                != ConstructReasoningGraphFreshness::Stale,
+                        )
                     })
-                    .unwrap_or_default();
+                    .unwrap_or_else(|| (vec![], true));
                 self.render_construct_reasoning_dotplot_actions(
                     ui,
                     &selected_span_dotplot_actions,
+                    selected_actions_enabled,
                 );
                 self.render_construct_reasoning_annotation_candidate_actions(
                     ui,
@@ -25051,6 +25169,33 @@ impl MainAreaDna {
                             .size(detail_font_size),
                     );
                 }
+                let reasoning_actions_enabled = reasoning.snapshot_freshness
+                    != ConstructReasoningGraphFreshness::Stale;
+                ui.label(
+                    egui::RichText::new(format!(
+                        "snapshot: {}",
+                        reasoning.snapshot_freshness.as_str()
+                    ))
+                    .monospace()
+                    .size(detail_font_size)
+                    .color(if reasoning_actions_enabled {
+                        egui::Color32::GRAY
+                    } else {
+                        egui::Color32::from_rgb(176, 80, 32)
+                    }),
+                );
+                for line in &reasoning.snapshot_status_lines {
+                    ui.label(
+                        egui::RichText::new(format!("snapshot_note: {}", line.trim()))
+                            .monospace()
+                            .size(detail_font_size)
+                            .color(if reasoning_actions_enabled {
+                                egui::Color32::GRAY
+                            } else {
+                                egui::Color32::from_rgb(176, 80, 32)
+                            }),
+                    );
+                }
                 let reasoning_graph_id = reasoning.graph_id.clone();
                 if reasoning.annotation_entries.is_empty()
                     && reasoning.annotation_summary_entries.is_empty()
@@ -25079,6 +25224,7 @@ impl MainAreaDna {
                                     self.render_construct_reasoning_dotplot_actions(
                                         ui,
                                         &entry.dotplot_actions,
+                                        reasoning_actions_enabled,
                                     );
                                     for line in &entry.detail_lines {
                                         ui.label(
@@ -25114,6 +25260,7 @@ impl MainAreaDna {
                                     self.render_construct_reasoning_dotplot_actions(
                                         ui,
                                         &entry.dotplot_actions,
+                                        reasoning_actions_enabled,
                                     );
                                     if let (Some(annotation_id), Some(editable_status)) = (
                                         entry.annotation_id.as_deref(),
@@ -25155,6 +25302,7 @@ impl MainAreaDna {
                                 self.render_construct_reasoning_dotplot_actions(
                                     ui,
                                     &entry.dotplot_actions,
+                                    reasoning_actions_enabled,
                                 );
                                 for line in &entry.detail_lines {
                                     ui.label(

@@ -6710,6 +6710,11 @@ Construct reasoning graph foundation (implemented first slice):
     - `helper_profile_id`
     - `required_host_traits[]`
     - `forbidden_host_traits[]`
+    - optional `intended_tasks[]` for explicit workflow intent using the same
+      `pcr|nanopore_sequencing|read_mapping|cloning_stability|construct_maintenance`
+      vocabulary as task severity. A missing field is legacy/unspecified and
+      permits conservative positive inference; an explicit empty list means
+      none of those tasks applies.
   - design-evidence schema now also reserves additive non-sequence context
     fields:
     - `scope`
@@ -6717,6 +6722,9 @@ Construct reasoning graph foundation (implemented first slice):
     - `host_route_step_id`
     - `helper_profile_id`
     - `medium_condition_id`
+    - optional typed `repeat_annotation` with source kind, repeat name, class,
+      family, and source references. Legacy `repeat_*=` note parsing remains a
+      compatibility fallback for older graphs rather than the primary model.
   - deterministic read-only graph build from:
     - construct-objective context such as selected propagation/expression host
       profiles, helper profile, host-route steps, medium conditions, and
@@ -6827,21 +6835,42 @@ Construct reasoning graph foundation (implemented first slice):
     - `driving_evidence_ids[]` names the specific evidence rows behind the
       action, while source fact/annotation/summary id lists let adapters attach
       the same action to the right inspector row
-    - optional repeat-family provenance is populated when a recommended action
-      is backed by overlapping materialized RepeatMasker/UCSC `rmsk`-style
-      repeat-family evidence; standalone Alu-like heuristic rows remain soft
-      hypotheses without filling that provenance slot
+    - `repeat_family_provenances[]` preserves every overlapping/nested curated
+      repeat family with typed name/class/family, evidence ids, source refs,
+      confidence, and agreement strength (`provenance_only`,
+      `curated_annotation`, `class`, or `family`). The singular
+      `repeat_family_provenance` remains a compatibility projection of the
+      first row. Standalone Alu-like heuristic rows remain soft hypotheses
+      without curated provenance.
+    - actions are persisted reasoning-snapshot outputs. Reading or normalizing
+      a graph does not silently regenerate non-empty `inspection_actions[]`;
+      refresh is the explicit operation that recomputes them.
+  - graph-level optional `input_fingerprint`:
+    - SHA-256 identities for the complete source sequence/feature snapshot and
+      normalized objective plus an explicit reasoning rule-set version
+    - live readers report `current`, `stale`, or `unknown` freshness with
+      reasons; older graphs without a fingerprint remain readable as `unknown`
+    - changed sequence/features, changed objective, or changed rule version
+      makes a fingerprinted graph stale until it is explicitly refreshed
   - fact-level `task_severities[]`:
     - compact rule-based task interpretation for repeat/similarity facts
-    - each row carries `task`, `severity`, optional numeric `score`, `rationale`, and
-      `supporting_evidence_ids[]`
+    - each row separates intrinsic evidence concern from objective priority:
+      `base_severity`/`base_score` describe the evidence itself, while
+      `severity`/`score` are the effective objective-aware result;
+      `objective_adjustment` records the transparent signed difference
+    - `applicability` is `unknown|applicable|not_applicable`, and
+      `applicability_basis` is
+      `unspecified|explicit_objective_tasks|legacy_objective_inference`
     - initial task vocabulary is `pcr`, `nanopore_sequencing`,
       `read_mapping`, `cloning_stability`, and `construct_maintenance`
     - initial severity vocabulary is `none`, `low`, `medium`, `high`
     - engine-generated scores are transparent 0.0-1.0 rule-derived scalars:
       `0.0` maps to `none`, `(0.0, 0.25)` to `low`, `[0.25, 0.60)` to
-      `medium`, and `>= 0.60` to `high`; objectives can explicitly boost or
-      down-weight a task, and the row rationale must say why
+      `medium`, and `>= 0.60` to `high`; objective adjustments are explicit and
+      the row rationale says why. Explicitly non-applicable tasks preserve
+      their intrinsic score while setting effective priority to zero.
+    - legacy free-text inference only establishes positive applicability and
+      never infers `not_applicable`; explicit `intended_tasks[]` is authoritative
     - task severity layers on top of the generic fact and evidence rows; it
       does not create additional annotation candidates or map overlays
 - Current GUI-backed scope:
@@ -6877,6 +6906,9 @@ Construct reasoning graph foundation (implemented first slice):
     - resolves one `action_id`, computes its dotplot through `ComputeDotplot`,
       returns the resolved `compute_parameters`, and optionally writes SVG
       evidence through `RenderDotplotSvg`
+    - graph show/list/action responses include live snapshot freshness;
+      execution rejects a fingerprinted stale graph and asks the caller to
+      refresh instead of applying old action coordinates to new inputs
     - `construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID draft|accepted|rejected|locked`
     - updates the persisted graph in place and returns the updated candidate
       plus the same compact summary block exposed by

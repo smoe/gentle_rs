@@ -25,7 +25,7 @@
 use crate::{
     DNA_LADDERS, RNA_LADDERS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
-    digest_utils::short_sha256_id,
+    digest_utils::{sha256_prefixed_str, short_sha256_id},
     dna_sequence::DNAsequence,
     ensembl_protein::EnsemblProteinEntry,
     enzymes::{
@@ -95,12 +95,16 @@ use tempfile::NamedTempFile;
 pub use gentle_protocol::{
     AnnotationCandidate, AnnotationCandidateSummary, AnnotationCandidateWriteback, Arrangement,
     ArrangementMode, ConstructCandidate, ConstructObjective, ConstructReasoningGraph,
-    ConstructReasoningInspectionAction, ConstructReasoningInspectionActionKind,
-    ConstructReasoningRepeatFamilyProvenance, ConstructReasoningRiskTask,
-    ConstructReasoningSeverity, ConstructReasoningStore, ConstructReasoningTaskSeverity,
-    ConstructRole, Container, ContainerId, ContainerKind, ContainerState, DecisionMethod,
-    DesignDecisionNode, DesignEvidence, DesignFact, DotplotMode, EditableStatus, EvidenceClass,
-    EvidenceScope, ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion,
+    ConstructReasoningGraphFreshness, ConstructReasoningGraphSnapshotStatus,
+    ConstructReasoningInputFingerprint, ConstructReasoningInspectionAction,
+    ConstructReasoningInspectionActionKind, ConstructReasoningRepeatAnnotation,
+    ConstructReasoningRepeatFamilyAgreement, ConstructReasoningRepeatFamilyProvenance,
+    ConstructReasoningRiskTask, ConstructReasoningSeverity, ConstructReasoningStore,
+    ConstructReasoningTaskApplicability, ConstructReasoningTaskApplicabilityBasis,
+    ConstructReasoningTaskSeverity, ConstructRole, Container, ContainerId, ContainerKind,
+    ContainerState, DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact, DotplotMode,
+    EditableStatus, EvidenceClass, EvidenceScope, ExonSkipReturnKind, ExonSkipReturnPayload,
+    ExonSkipSelectionCriterion,
     GelBufferModel, GelRunConditions, GelTopologyForm, HostLifecycleRole, LineageEdge,
     LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus,
     NodeId, OpId, OrthologAmbiguityPolicy, OrthologPromoterCohortReport,
@@ -663,6 +667,7 @@ pub const CONSTRUCT_REASONING_GRAPH_SCHEMA: &str =
     gentle_protocol::CONSTRUCT_REASONING_GRAPH_SCHEMA;
 pub const CONSTRUCT_REASONING_STORE_SCHEMA: &str =
     gentle_protocol::CONSTRUCT_REASONING_STORE_SCHEMA;
+pub const CONSTRUCT_REASONING_RULE_SET_VERSION: &str = "gentle.construct_reasoning.rules.v2";
 pub const WORKFLOW_MACRO_TEMPLATES_METADATA_KEY: &str = "workflow_macro_templates";
 const WORKFLOW_MACRO_TEMPLATES_SCHEMA: &str = "gentle.workflow_macro_templates.v1";
 pub const CLONING_MACRO_TEMPLATE_SCHEMA: &str = "gentle.cloning_macro_template.v1";
@@ -17262,6 +17267,10 @@ impl GentleEngine {
             .collect();
         objective.preferred_routine_families.sort();
         objective.preferred_routine_families.dedup();
+        if let Some(tasks) = &mut objective.intended_tasks {
+            tasks.sort();
+            tasks.dedup();
+        }
         Self::normalize_optional_note_text(&mut objective.notes);
         objective
     }
@@ -17338,6 +17347,28 @@ impl GentleEngine {
             .collect();
         evidence.provenance_refs.sort();
         evidence.provenance_refs.dedup();
+        evidence.repeat_annotation = evidence.repeat_annotation.take().map(|mut annotation| {
+            annotation.source_kind = annotation.source_kind.trim().to_ascii_lowercase();
+            for value in [
+                &mut annotation.repeat_name,
+                &mut annotation.repeat_class,
+                &mut annotation.repeat_family,
+            ] {
+                *value = value
+                    .take()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty());
+            }
+            annotation.source_refs = annotation
+                .source_refs
+                .into_iter()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect();
+            annotation.source_refs.sort();
+            annotation.source_refs.dedup();
+            annotation
+        });
         Self::normalize_optional_note_text(&mut evidence.warnings);
         Self::normalize_optional_note_text(&mut evidence.notes);
         evidence
@@ -17363,7 +17394,23 @@ impl GentleEngine {
         fact.based_on_evidence_ids.dedup();
         for severity in &mut fact.task_severities {
             severity.rationale = severity.rationale.trim().to_string();
+            severity.base_score = Self::normalize_confidence_score(severity.base_score);
             severity.score = Self::normalize_confidence_score(severity.score);
+            severity.objective_adjustment = severity
+                .objective_adjustment
+                .filter(|value| value.is_finite())
+                .map(|value| value.clamp(-1.0, 1.0));
+            if severity.base_score.is_none()
+                && severity.applicability == ConstructReasoningTaskApplicability::Unknown
+            {
+                severity.base_score = severity.score;
+            }
+            if let Some(base_score) = severity.base_score {
+                severity.base_severity =
+                    Some(Self::construct_reasoning_severity_from_score(base_score));
+            } else if severity.base_severity.is_none() {
+                severity.base_severity = Some(severity.severity);
+            }
             if let Some(score) = severity.score {
                 severity.severity = Self::construct_reasoning_severity_from_score(score);
             }
@@ -17378,7 +17425,12 @@ impl GentleEngine {
         }
         fact.task_severities.retain(|severity| {
             severity.severity != ConstructReasoningSeverity::None
-                && (!severity.rationale.is_empty() || !severity.supporting_evidence_ids.is_empty())
+                || severity
+                    .base_severity
+                    .is_some_and(|value| value != ConstructReasoningSeverity::None)
+                || (severity.applicability != ConstructReasoningTaskApplicability::Unknown
+                    && (!severity.rationale.is_empty()
+                        || !severity.supporting_evidence_ids.is_empty()))
         });
         fact.task_severities.sort_by(|a, b| {
             a.task
@@ -18115,9 +18167,21 @@ impl GentleEngine {
     fn construct_reasoning_evidence_repeat_family_class(
         row: &DesignEvidence,
     ) -> RepeatFamilyClassMapping {
-        let repeat_name = Self::construct_reasoning_evidence_note_value(row, "repeat_name");
-        let repeat_class = Self::construct_reasoning_evidence_note_value(row, "repeat_class");
-        let repeat_family = Self::construct_reasoning_evidence_note_value(row, "repeat_family");
+        let repeat_name = row
+            .repeat_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.repeat_name.clone())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_name"));
+        let repeat_class = row
+            .repeat_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.repeat_class.clone())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_class"));
+        let repeat_family = row
+            .repeat_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.repeat_family.clone())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_family"));
         let mut mapping = Self::construct_reasoning_repeat_family_class_from_parts(
             repeat_name.as_deref(),
             repeat_class.as_deref(),
@@ -18201,7 +18265,8 @@ impl GentleEngine {
         matches!(
             row.role,
             ConstructRole::RepeatRegion | ConstructRole::MobileElement
-        ) && (Self::construct_reasoning_evidence_has_tag(row, "curated_repeat_family")
+        ) && (row.repeat_annotation.is_some()
+            || Self::construct_reasoning_evidence_has_tag(row, "curated_repeat_family")
             || Self::construct_reasoning_evidence_has_tag(row, "ucsc_rmsk")
             || Self::construct_reasoning_evidence_note_value(row, "repeat_source").is_some())
     }
@@ -18212,7 +18277,12 @@ impl GentleEngine {
         if !Self::construct_reasoning_evidence_is_curated_repeat_annotation(row) {
             return None;
         }
-        let source_kind = Self::construct_reasoning_evidence_note_value(row, "repeat_source")
+        let source_kind = row
+            .repeat_annotation
+            .as_ref()
+            .map(|annotation| annotation.source_kind.clone())
+            .filter(|value| !value.is_empty())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_source"))
             .unwrap_or_else(|| {
                 if Self::construct_reasoning_evidence_has_tag(row, "ucsc_rmsk") {
                     "ucsc_rmsk".to_string()
@@ -18220,15 +18290,30 @@ impl GentleEngine {
                     "repeat_family_annotation".to_string()
                 }
             });
-        let repeat_name = Self::construct_reasoning_evidence_note_value(row, "repeat_name");
-        let repeat_class = Self::construct_reasoning_evidence_note_value(row, "repeat_class");
-        let repeat_family = Self::construct_reasoning_evidence_note_value(row, "repeat_family");
+        let repeat_name = row
+            .repeat_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.repeat_name.clone())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_name"));
+        let repeat_class = row
+            .repeat_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.repeat_class.clone())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_class"));
+        let repeat_family = row
+            .repeat_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.repeat_family.clone())
+            .or_else(|| Self::construct_reasoning_evidence_note_value(row, "repeat_family"));
         let label = Self::construct_reasoning_repeat_family_display_label(
             repeat_name.as_deref(),
             repeat_class.as_deref(),
             repeat_family.as_deref(),
         );
         let mut source_refs = row.provenance_refs.clone();
+        if let Some(annotation) = &row.repeat_annotation {
+            source_refs.extend(annotation.source_refs.clone());
+        }
         source_refs.sort();
         source_refs.dedup();
         Some(ConstructReasoningCuratedRepeatSupport {
@@ -18407,38 +18492,9 @@ impl GentleEngine {
         }
     }
 
-    fn construct_reasoning_repeat_family_provenance_for_evidence_rows(
+    fn construct_reasoning_repeat_family_provenances_for_evidence_rows(
         rows: &[&DesignEvidence],
-    ) -> Option<ConstructReasoningRepeatFamilyProvenance> {
-        let mut supports = rows
-            .iter()
-            .filter_map(|row| Self::construct_reasoning_evidence_repeat_support(row))
-            .collect::<Vec<_>>();
-        if supports.is_empty() {
-            return None;
-        }
-        supports.sort_by(|a, b| a.label.cmp(&b.label));
-        let primary = supports.first()?;
-        let source_kind = if supports
-            .iter()
-            .any(|row| row.source_kind.eq_ignore_ascii_case("ucsc_rmsk"))
-        {
-            "ucsc_rmsk".to_string()
-        } else {
-            primary.source_kind.clone()
-        };
-        let evidence_ids = supports
-            .iter()
-            .flat_map(|row| row.evidence_ids.iter().cloned())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-        let source_refs = supports
-            .iter()
-            .flat_map(|row| row.source_refs.iter().cloned())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
+    ) -> Vec<ConstructReasoningRepeatFamilyProvenance> {
         let curated_rows = rows
             .iter()
             .copied()
@@ -18449,34 +18505,103 @@ impl GentleEngine {
             .copied()
             .filter(|row| !Self::construct_reasoning_evidence_is_curated_repeat_annotation(row))
             .collect::<Vec<_>>();
-        let confidence = Self::construct_reasoning_best_repeat_family_agreement_for_rows(
-            &internal_rows,
-            &curated_rows,
-        )
-        .map(RepeatFamilyAgreementStrength::confidence)
-        .or_else(|| {
-            supports
+        let mut by_family = BTreeMap::<String, ConstructReasoningRepeatFamilyProvenance>::new();
+        for curated in curated_rows {
+            let Some(support) = Self::construct_reasoning_evidence_repeat_support(curated) else {
+                continue;
+            };
+            let agreement_strength = internal_rows
                 .iter()
-                .any(|row| row.source_kind.eq_ignore_ascii_case("ucsc_rmsk"))
-                .then_some(0.8)
-        })
-        .or(Some(0.65));
-        Some(ConstructReasoningRepeatFamilyProvenance {
-            source_kind,
-            family_id: primary
-                .repeat_family
-                .as_ref()
-                .or(primary.repeat_name.as_ref())
-                .map(|value| Self::normalize_id_token(value)),
-            family_name: primary
-                .repeat_family
-                .clone()
-                .or_else(|| primary.repeat_name.clone())
-                .or_else(|| primary.repeat_class.clone()),
-            source_refs,
-            evidence_ids,
-            confidence,
-        })
+                .filter(|internal| {
+                    Self::construct_reasoning_ranges_overlap(
+                        internal.start_0based,
+                        internal.end_0based_exclusive,
+                        curated.start_0based,
+                        curated.end_0based_exclusive,
+                    )
+                })
+                .filter_map(|internal| {
+                    Self::construct_reasoning_repeat_family_agreement_for_rows(internal, curated)
+                })
+                .max();
+            let (agreement, confidence) = match agreement_strength {
+                Some(RepeatFamilyAgreementStrength::Family) => {
+                    (ConstructReasoningRepeatFamilyAgreement::Family, 0.95)
+                }
+                Some(RepeatFamilyAgreementStrength::Class) => {
+                    (ConstructReasoningRepeatFamilyAgreement::Class, 0.90)
+                }
+                None if support.source_kind.eq_ignore_ascii_case("ucsc_rmsk") => (
+                    ConstructReasoningRepeatFamilyAgreement::CuratedAnnotation,
+                    0.80,
+                ),
+                None => (
+                    ConstructReasoningRepeatFamilyAgreement::ProvenanceOnly,
+                    0.65,
+                ),
+            };
+            let key = format!(
+                "{}:{}:{}:{}",
+                Self::normalize_id_token(&support.source_kind),
+                support
+                    .repeat_name
+                    .as_deref()
+                    .map(Self::normalize_id_token)
+                    .unwrap_or_default(),
+                support
+                    .repeat_class
+                    .as_deref()
+                    .map(Self::normalize_id_token)
+                    .unwrap_or_default(),
+                support
+                    .repeat_family
+                    .as_deref()
+                    .map(Self::normalize_id_token)
+                    .unwrap_or_default(),
+            );
+            let row = by_family.entry(key).or_insert_with(|| {
+                ConstructReasoningRepeatFamilyProvenance {
+                    source_kind: support.source_kind.clone(),
+                    repeat_name: support.repeat_name.clone(),
+                    repeat_class: support.repeat_class.clone(),
+                    repeat_family: support.repeat_family.clone(),
+                    family_id: support
+                        .repeat_family
+                        .as_ref()
+                        .or(support.repeat_name.as_ref())
+                        .map(|value| Self::normalize_id_token(value)),
+                    family_name: support
+                        .repeat_family
+                        .clone()
+                        .or_else(|| support.repeat_name.clone())
+                        .or_else(|| support.repeat_class.clone()),
+                    agreement,
+                    source_refs: vec![],
+                    evidence_ids: vec![],
+                    confidence: Some(confidence),
+                }
+            });
+            if agreement > row.agreement {
+                row.agreement = agreement;
+                row.confidence = Some(confidence);
+            }
+            row.source_refs.extend(support.source_refs);
+            row.evidence_ids.extend(support.evidence_ids);
+            row.source_refs.sort();
+            row.source_refs.dedup();
+            row.evidence_ids.sort();
+            row.evidence_ids.dedup();
+        }
+        by_family.into_values().collect()
+    }
+
+    #[cfg(test)]
+    fn construct_reasoning_repeat_family_provenance_for_evidence_rows(
+        rows: &[&DesignEvidence],
+    ) -> Option<ConstructReasoningRepeatFamilyProvenance> {
+        Self::construct_reasoning_repeat_family_provenances_for_evidence_rows(rows)
+            .into_iter()
+            .next()
     }
 
     fn construct_reasoning_context_tags_for_evidence_rows(rows: &[&DesignEvidence]) -> Vec<String> {
@@ -18504,6 +18629,126 @@ impl GentleEngine {
         ids.sort();
         ids.dedup();
         ids
+    }
+
+    fn normalize_construct_reasoning_repeat_family_provenance(
+        mut provenance: ConstructReasoningRepeatFamilyProvenance,
+    ) -> ConstructReasoningRepeatFamilyProvenance {
+        provenance.source_kind = provenance.source_kind.trim().to_ascii_lowercase();
+        for value in [
+            &mut provenance.repeat_name,
+            &mut provenance.repeat_class,
+            &mut provenance.repeat_family,
+            &mut provenance.family_id,
+            &mut provenance.family_name,
+        ] {
+            *value = value
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+        }
+        provenance.source_refs =
+            Self::construct_reasoning_inspection_action_source_ids(provenance.source_refs);
+        provenance.evidence_ids =
+            Self::construct_reasoning_inspection_action_source_ids(provenance.evidence_ids);
+        provenance.confidence = Self::normalize_confidence_score(provenance.confidence);
+        provenance
+    }
+
+    fn normalize_construct_reasoning_inspection_action(
+        mut action: ConstructReasoningInspectionAction,
+        graph_id: &str,
+        graph_seq_id: &str,
+        idx: usize,
+    ) -> ConstructReasoningInspectionAction {
+        action.schema = gentle_protocol::CONSTRUCT_REASONING_INSPECTION_ACTION_SCHEMA.to_string();
+        action.seq_id = action.seq_id.trim().to_string();
+        if action.seq_id.is_empty() {
+            action.seq_id = graph_seq_id.to_string();
+        }
+        if action.focus_end_0based_exclusive < action.focus_start_0based {
+            std::mem::swap(
+                &mut action.focus_start_0based,
+                &mut action.focus_end_0based_exclusive,
+            );
+        }
+        action.button_label = action.button_label.trim().to_string();
+        action.hover_text = action.hover_text.trim().to_string();
+        action.rationale = action.rationale.trim().to_string();
+        action.driving_evidence_ids =
+            Self::construct_reasoning_inspection_action_source_ids(action.driving_evidence_ids);
+        action.source_fact_ids =
+            Self::construct_reasoning_inspection_action_source_ids(action.source_fact_ids);
+        action.source_annotation_ids =
+            Self::construct_reasoning_inspection_action_source_ids(action.source_annotation_ids);
+        action.source_summary_ids =
+            Self::construct_reasoning_inspection_action_source_ids(action.source_summary_ids);
+        action.context_tags = action
+            .context_tags
+            .into_iter()
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect();
+        action.context_tags.sort();
+        action.context_tags.dedup();
+        if action.repeat_family_provenances.is_empty() {
+            action.repeat_family_provenances = action
+                .repeat_family_provenance
+                .clone()
+                .into_iter()
+                .collect();
+        }
+        let mut normalized_provenances = action
+            .repeat_family_provenances
+            .into_iter()
+            .map(Self::normalize_construct_reasoning_repeat_family_provenance)
+            .collect::<Vec<_>>();
+        normalized_provenances.sort_by(|left, right| {
+            left.source_kind
+                .cmp(&right.source_kind)
+                .then(left.repeat_class.cmp(&right.repeat_class))
+                .then(left.repeat_family.cmp(&right.repeat_family))
+                .then(left.repeat_name.cmp(&right.repeat_name))
+        });
+        action.repeat_family_provenances = vec![];
+        for provenance in normalized_provenances {
+            if let Some(existing) = action.repeat_family_provenances.last_mut()
+                && existing.source_kind == provenance.source_kind
+                && existing.repeat_name == provenance.repeat_name
+                && existing.repeat_class == provenance.repeat_class
+                && existing.repeat_family == provenance.repeat_family
+            {
+                existing.source_refs.extend(provenance.source_refs);
+                existing.source_refs.sort();
+                existing.source_refs.dedup();
+                existing.evidence_ids.extend(provenance.evidence_ids);
+                existing.evidence_ids.sort();
+                existing.evidence_ids.dedup();
+                if provenance.agreement > existing.agreement {
+                    existing.agreement = provenance.agreement;
+                }
+                existing.confidence = match (existing.confidence, provenance.confidence) {
+                    (Some(left), Some(right)) => Some(left.max(right)),
+                    (left, right) => left.or(right),
+                };
+                continue;
+            }
+            action.repeat_family_provenances.push(provenance);
+        }
+        action.repeat_family_provenance = action.repeat_family_provenances.first().cloned();
+        action.action_id = if action.action_id.trim().is_empty() {
+            format!(
+                "inspection_{}_{}_{}_{}_{}",
+                Self::normalize_id_token(graph_id),
+                action.mode.as_str(),
+                action.focus_start_0based,
+                action.focus_end_0based_exclusive,
+                idx,
+            )
+        } else {
+            action.action_id.trim().to_string()
+        };
+        action
     }
 
     fn construct_reasoning_build_inspection_actions_for_source(
@@ -18575,8 +18820,9 @@ impl GentleEngine {
         let end_1based = focus_end_0based_exclusive;
         let context_tags = Self::construct_reasoning_context_tags_for_evidence_rows(&rows);
         let driving_evidence_ids = Self::construct_reasoning_driving_ids_for_evidence_rows(&rows);
-        let repeat_family_provenance =
-            Self::construct_reasoning_repeat_family_provenance_for_evidence_rows(&rows);
+        let repeat_family_provenances =
+            Self::construct_reasoning_repeat_family_provenances_for_evidence_rows(&rows);
+        let repeat_family_provenance = repeat_family_provenances.first().cloned();
         let rationale = source_rationale.trim();
         let source_fact_ids =
             Self::construct_reasoning_inspection_action_source_ids(source_fact_ids);
@@ -18628,6 +18874,7 @@ impl GentleEngine {
                     source_summary_ids: source_summary_ids.clone(),
                     context_tags: context_tags.clone(),
                     repeat_family_provenance: repeat_family_provenance.clone(),
+                    repeat_family_provenances: repeat_family_provenances.clone(),
                     ..ConstructReasoningInspectionAction::default()
                 }
             })
@@ -18751,6 +18998,15 @@ impl GentleEngine {
         if graph.generated_at_unix_ms == 0 {
             graph.generated_at_unix_ms = Self::now_unix_ms();
         }
+        graph.input_fingerprint = graph.input_fingerprint.take().map(|mut fingerprint| {
+            fingerprint.schema =
+                gentle_protocol::CONSTRUCT_REASONING_INPUT_FINGERPRINT_SCHEMA.to_string();
+            fingerprint.sequence_snapshot_sha256 =
+                fingerprint.sequence_snapshot_sha256.trim().to_string();
+            fingerprint.objective_sha256 = fingerprint.objective_sha256.trim().to_string();
+            fingerprint.rule_set_version = fingerprint.rule_set_version.trim().to_string();
+            fingerprint
+        });
         for (idx, evidence) in graph.evidence.iter_mut().enumerate() {
             let mut normalized = Self::normalize_design_evidence(evidence.clone(), idx);
             if normalized.seq_id.is_empty() {
@@ -18834,9 +19090,151 @@ impl GentleEngine {
                 .then(a.title.cmp(&b.title))
                 .then(a.summary_id.cmp(&b.summary_id))
         });
-        graph.inspection_actions = Self::construct_reasoning_build_inspection_actions(&graph);
+        if graph.inspection_actions.is_empty() {
+            graph.inspection_actions = Self::construct_reasoning_build_inspection_actions(&graph);
+        } else {
+            let graph_id = graph.graph_id.clone();
+            let graph_seq_id = graph.seq_id.clone();
+            graph.inspection_actions = graph
+                .inspection_actions
+                .into_iter()
+                .enumerate()
+                .map(|(idx, action)| {
+                    Self::normalize_construct_reasoning_inspection_action(
+                        action,
+                        &graph_id,
+                        &graph_seq_id,
+                        idx,
+                    )
+                })
+                .collect();
+            graph
+                .inspection_actions
+                .sort_by(|left, right| left.action_id.cmp(&right.action_id));
+            graph
+                .inspection_actions
+                .dedup_by(|left, right| left.action_id == right.action_id);
+        }
         Self::normalize_optional_note_text(&mut graph.notes);
         graph
+    }
+
+    fn construct_reasoning_canonical_json<T: Serialize>(
+        value: &T,
+        label: &str,
+    ) -> Result<String, EngineError> {
+        let value = serde_json::to_value(value).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize construct-reasoning {label} for fingerprinting: {error}"
+            ),
+            cause_chain: vec![],
+        })?;
+        serde_json::to_string(&value).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not canonicalize construct-reasoning {label} for fingerprinting: {error}"
+            ),
+            cause_chain: vec![],
+        })
+    }
+
+    fn construct_reasoning_input_fingerprint(
+        dna: &DNAsequence,
+        objective: &ConstructObjective,
+    ) -> Result<ConstructReasoningInputFingerprint, EngineError> {
+        // Serializing through `Value` gives object maps deterministic key order;
+        // direct HashMap serialization would make fingerprints process-dependent.
+        let sequence_snapshot =
+            Self::construct_reasoning_canonical_json(dna, "sequence snapshot")?;
+        let objective_snapshot = Self::construct_reasoning_canonical_json(objective, "objective")?;
+        Ok(ConstructReasoningInputFingerprint {
+            sequence_snapshot_sha256: sha256_prefixed_str(&sequence_snapshot),
+            objective_sha256: sha256_prefixed_str(&objective_snapshot),
+            rule_set_version: CONSTRUCT_REASONING_RULE_SET_VERSION.to_string(),
+            ..ConstructReasoningInputFingerprint::default()
+        })
+    }
+
+    fn construct_reasoning_graph_snapshot_status_for_objective(
+        &self,
+        graph: &ConstructReasoningGraph,
+        objective: &ConstructObjective,
+    ) -> ConstructReasoningGraphSnapshotStatus {
+        let Some(stored) = graph.input_fingerprint.as_ref() else {
+            return ConstructReasoningGraphSnapshotStatus {
+                freshness: ConstructReasoningGraphFreshness::Unknown,
+                reasons: vec![
+                    "Graph predates construct-reasoning input fingerprints; refresh it to establish snapshot freshness."
+                        .to_string(),
+                ],
+            };
+        };
+        if stored.sequence_snapshot_sha256.is_empty()
+            || stored.objective_sha256.is_empty()
+            || stored.rule_set_version.is_empty()
+        {
+            return ConstructReasoningGraphSnapshotStatus {
+                freshness: ConstructReasoningGraphFreshness::Unknown,
+                reasons: vec![
+                    "Graph input fingerprint is incomplete; refresh it before relying on current-state actions."
+                        .to_string(),
+                ],
+            };
+        }
+        let Some(dna) = self.state.sequences.get(&graph.seq_id) else {
+            return ConstructReasoningGraphSnapshotStatus {
+                freshness: ConstructReasoningGraphFreshness::Unknown,
+                reasons: vec![format!(
+                    "Source sequence '{}' is not loaded, so snapshot freshness cannot be verified.",
+                    graph.seq_id
+                )],
+            };
+        };
+        let current = match Self::construct_reasoning_input_fingerprint(dna, objective) {
+            Ok(current) => current,
+            Err(error) => {
+                return ConstructReasoningGraphSnapshotStatus {
+                    freshness: ConstructReasoningGraphFreshness::Unknown,
+                    reasons: vec![error.to_string()],
+                };
+            }
+        };
+        let mut reasons = vec![];
+        if stored.sequence_snapshot_sha256 != current.sequence_snapshot_sha256 {
+            reasons.push(
+                "Source sequence or feature snapshot changed after graph generation.".to_string(),
+            );
+        }
+        if stored.objective_sha256 != current.objective_sha256 {
+            reasons.push("Construct objective changed after graph generation.".to_string());
+        }
+        if stored.rule_set_version != current.rule_set_version {
+            reasons.push(format!(
+                "Reasoning rule set changed from '{}' to '{}'.",
+                stored.rule_set_version, current.rule_set_version
+            ));
+        }
+        ConstructReasoningGraphSnapshotStatus {
+            freshness: if reasons.is_empty() {
+                ConstructReasoningGraphFreshness::Current
+            } else {
+                ConstructReasoningGraphFreshness::Stale
+            },
+            reasons,
+        }
+    }
+
+    pub fn construct_reasoning_graph_snapshot_status(
+        &self,
+        graph: &ConstructReasoningGraph,
+    ) -> ConstructReasoningGraphSnapshotStatus {
+        let store = self.read_construct_reasoning_store();
+        let objective = store
+            .objectives
+            .get(&graph.objective.objective_id)
+            .unwrap_or(&graph.objective);
+        self.construct_reasoning_graph_snapshot_status_for_objective(graph, objective)
     }
 
     fn read_construct_reasoning_store_from_metadata(
@@ -18930,8 +19328,9 @@ impl GentleEngine {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(|value| value.to_ascii_lowercase());
+        let store = self.read_construct_reasoning_store();
         let mut rows =
-            self.read_construct_reasoning_store()
+            store
                 .graphs
                 .values()
                 .filter(|graph| {
@@ -18940,6 +19339,12 @@ impl GentleEngine {
                         .is_none_or(|needle| graph.seq_id.to_ascii_lowercase() == *needle)
                 })
                 .map(|graph| {
+                    let objective = store
+                        .objectives
+                        .get(&graph.objective.objective_id)
+                        .unwrap_or(&graph.objective);
+                    let snapshot_status = self
+                        .construct_reasoning_graph_snapshot_status_for_objective(graph, objective);
                     let summary =
                         Self::summarize_process_run_bundle_construct_reasoning_graph(graph);
                     let (
@@ -18950,6 +19355,8 @@ impl GentleEngine {
                         graph_id: graph.graph_id.clone(),
                         seq_id: graph.seq_id.clone(),
                         generated_at_unix_ms: graph.generated_at_unix_ms,
+                        freshness: snapshot_status.freshness,
+                        stale_reasons: snapshot_status.reasons,
                         op_id: graph.op_id.clone(),
                         run_id: graph.run_id.clone(),
                         objective_id: graph.objective.objective_id.clone(),
@@ -21213,20 +21620,21 @@ impl GentleEngine {
             let rationale =
                 Self::construct_reasoning_feature_rationale(feature, role, evidence_class);
             let context_tags = Self::construct_reasoning_feature_context_tags(feature);
+            let repeat_descriptor = Self::construct_reasoning_repeat_feature_descriptor(feature);
             let (feature_provenance_refs, feature_notes) =
                 if let Some((source_kind, repeat_name, repeat_class, repeat_family)) =
-                    Self::construct_reasoning_repeat_feature_descriptor(feature)
+                    repeat_descriptor.as_ref()
                 {
                     (
                         Self::construct_reasoning_repeat_feature_provenance_refs(
-                            &source_kind,
+                            source_kind,
                             repeat_name.as_deref(),
                             repeat_class.as_deref(),
                             repeat_family.as_deref(),
                             feature,
                         ),
                         Self::construct_reasoning_repeat_feature_notes(
-                            &source_kind,
+                            source_kind,
                             repeat_name.as_deref(),
                             repeat_class.as_deref(),
                             repeat_family.as_deref(),
@@ -21236,6 +21644,16 @@ impl GentleEngine {
                 } else {
                     (vec![feature.kind.to_string()], vec![])
                 };
+            let repeat_annotation =
+                repeat_descriptor.map(|(source_kind, repeat_name, repeat_class, repeat_family)| {
+                    ConstructReasoningRepeatAnnotation {
+                        source_kind,
+                        repeat_name,
+                        repeat_class,
+                        repeat_family,
+                        source_refs: feature_provenance_refs.clone(),
+                    }
+                });
             let strand = Some(
                 if feature_is_reverse(feature) {
                     "-"
@@ -21282,6 +21700,7 @@ impl GentleEngine {
                     context_tags: context_tags.clone(),
                     provenance_kind: "sequence_feature_annotation".to_string(),
                     provenance_refs: feature_provenance_refs.clone(),
+                    repeat_annotation: repeat_annotation.clone(),
                     notes: feature_notes.clone(),
                     ..DesignEvidence::default()
                 });
@@ -22794,15 +23213,6 @@ impl GentleEngine {
         }
     }
 
-    fn construct_reasoning_min_score_for_severity(severity: ConstructReasoningSeverity) -> f64 {
-        match severity {
-            ConstructReasoningSeverity::None => 0.0,
-            ConstructReasoningSeverity::Low => 0.20,
-            ConstructReasoningSeverity::Medium => 0.50,
-            ConstructReasoningSeverity::High => 0.85,
-        }
-    }
-
     fn construct_reasoning_task_score(
         severity: ConstructReasoningSeverity,
         evidence_score: f64,
@@ -22814,38 +23224,61 @@ impl GentleEngine {
         };
         match severity {
             ConstructReasoningSeverity::None => 0.0,
-            ConstructReasoningSeverity::Low => evidence_score.clamp(0.20, 0.24),
-            ConstructReasoningSeverity::Medium => evidence_score.clamp(0.50, 0.59),
-            ConstructReasoningSeverity::High => {
-                evidence_score.max(Self::construct_reasoning_min_score_for_severity(severity))
+            ConstructReasoningSeverity::Low => 0.10 + 0.14 * evidence_score,
+            ConstructReasoningSeverity::Medium => 0.25 + 0.34 * evidence_score,
+            ConstructReasoningSeverity::High => 0.60 + 0.40 * evidence_score,
+        }
+    }
+
+    fn construct_reasoning_normalize_task_text(raw: &str) -> String {
+        let mut normalized = String::with_capacity(raw.len().saturating_add(2));
+        normalized.push('_');
+        for character in raw.chars() {
+            if character.is_ascii_alphanumeric() {
+                normalized.push(character.to_ascii_lowercase());
+            } else if !normalized.ends_with('_') {
+                normalized.push('_');
             }
         }
-    }
-
-    fn construct_reasoning_text_has_any(haystack: &str, needles: &[&str]) -> bool {
-        needles.iter().any(|needle| haystack.contains(needle))
-    }
-
-    fn construct_reasoning_objective_text(objective: &ConstructObjective) -> String {
-        let mut parts = vec![objective.title.as_str(), objective.goal.as_str()];
-        for value in [
-            objective.host_species.as_deref(),
-            objective.cell_type.as_deref(),
-            objective.tissue.as_deref(),
-            objective.organelle.as_deref(),
-            objective.expression_intent.as_deref(),
-            objective.propagation_host_profile_id.as_deref(),
-            objective.expression_host_profile_id.as_deref(),
-            objective.helper_profile_id.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            parts.push(value);
+        if !normalized.ends_with('_') {
+            normalized.push('_');
         }
-        parts.extend(objective.medium_conditions.iter().map(String::as_str));
-        parts.extend(objective.required_host_traits.iter().map(String::as_str));
-        parts.extend(objective.forbidden_host_traits.iter().map(String::as_str));
+        normalized
+    }
+
+    fn construct_reasoning_task_text_has_affirmed_any(text: &str, needles: &[&str]) -> bool {
+        needles.iter().any(|needle| {
+            let needle = Self::construct_reasoning_normalize_task_text(needle);
+            let needle = needle.trim_matches('_');
+            let positive = format!("_{needle}_");
+            text.match_indices(&positive).any(|(start, _)| {
+                let prior_tokens = text[..start]
+                    .trim_matches('_')
+                    .split('_')
+                    .filter(|token| !token.is_empty())
+                    .rev()
+                    .take(4)
+                    .collect::<Vec<_>>();
+                let negated = prior_tokens.iter().any(|token| {
+                    matches!(
+                        *token,
+                        "no" | "not" | "avoid" | "avoiding" | "without" | "exclude" | "excluding"
+                    )
+                });
+                let suffix = &text[start.saturating_add(positive.len())..];
+                let qualified_as_free = suffix
+                    .trim_matches('_')
+                    .split('_')
+                    .find(|token| !token.is_empty())
+                    == Some("free");
+                !negated && !qualified_as_free
+            })
+        })
+    }
+
+    fn construct_reasoning_objective_task_text(objective: &ConstructObjective) -> String {
+        let mut parts = vec![objective.title.as_str(), objective.goal.as_str()];
+        parts.extend(objective.expression_intent.as_deref());
         parts.extend(objective.notes.iter().map(String::as_str));
         parts.extend(
             objective
@@ -22861,79 +23294,41 @@ impl GentleEngine {
         }
         for step in &objective.host_route {
             parts.push(step.step_id.as_str());
-            parts.push(step.host_profile_id.as_str());
-            parts.push(step.role.as_str());
             parts.push(step.rationale.as_str());
             parts.extend(step.notes.iter().map(String::as_str));
         }
         for plan in &objective.adapter_restriction_capture_plans {
             parts.push(plan.capture_id.as_str());
-            parts.push(plan.restriction_enzyme_name.as_str());
-            parts.extend(plan.extra_retrieval_enzyme_names.iter().map(String::as_str));
             parts.extend(plan.notes.iter().map(String::as_str));
         }
-        parts
-            .join(" ")
-            .replace('-', "_")
-            .replace('/', "_")
-            .replace('.', "_")
-            .to_ascii_lowercase()
-    }
-
-    fn construct_reasoning_objective_has_explicit_task_context(
-        objective: &ConstructObjective,
-        text: &str,
-    ) -> bool {
-        let metadata_present = objective.host_species.is_some()
-            || objective.cell_type.is_some()
-            || objective.tissue.is_some()
-            || objective.organelle.is_some()
-            || objective.expression_intent.is_some()
-            || objective.propagation_host_profile_id.is_some()
-            || objective.expression_host_profile_id.is_some()
-            || !objective.host_route.is_empty()
-            || !objective.medium_conditions.is_empty()
-            || objective.helper_profile_id.is_some()
-            || !objective.adapter_restriction_capture_plans.is_empty()
-            || !objective.required_host_traits.is_empty()
-            || !objective.forbidden_host_traits.is_empty()
-            || !objective.required_roles.is_empty()
-            || !objective.forbidden_roles.is_empty()
-            || !objective.preferred_routine_families.is_empty()
-            || !objective.notes.is_empty();
-        let task_words = [
-            "pcr",
-            "qpcr",
-            "amplicon",
-            "primer",
-            "nanopore",
-            "sequencing",
-            "read_mapping",
-            "mapping",
-            "alignment",
-            "rna_seq",
-            "illumina",
-            "clone",
-            "cloning",
-            "assembly",
-            "ligation",
-            "propagation",
-            "stability",
-            "maintenance",
-            "storage",
-        ];
-        metadata_present || Self::construct_reasoning_text_has_any(text, &task_words)
+        Self::construct_reasoning_normalize_task_text(&parts.join(" "))
     }
 
     fn construct_reasoning_objective_task_relevance(
         objective: &ConstructObjective,
         task: ConstructReasoningRiskTask,
-    ) -> Option<(bool, &'static str)> {
-        let text = Self::construct_reasoning_objective_text(objective);
-        if !Self::construct_reasoning_objective_has_explicit_task_context(objective, &text) {
-            return None;
+    ) -> (
+        ConstructReasoningTaskApplicability,
+        ConstructReasoningTaskApplicabilityBasis,
+        &'static str,
+    ) {
+        if let Some(intended_tasks) = &objective.intended_tasks {
+            return if intended_tasks.contains(&task) {
+                (
+                    ConstructReasoningTaskApplicability::Applicable,
+                    ConstructReasoningTaskApplicabilityBasis::ExplicitObjectiveTasks,
+                    "the task is listed in objective.intended_tasks",
+                )
+            } else {
+                (
+                    ConstructReasoningTaskApplicability::NotApplicable,
+                    ConstructReasoningTaskApplicabilityBasis::ExplicitObjectiveTasks,
+                    "the task is omitted from the explicit objective.intended_tasks list",
+                )
+            };
         }
 
+        let text = Self::construct_reasoning_objective_task_text(objective);
         let has_propagation_or_storage = objective.host_route.iter().any(|step| {
             matches!(
                 step.role,
@@ -22948,56 +23343,47 @@ impl GentleEngine {
                 .any(|step| step.role == HostLifecycleRole::Expression);
         let has_adapter_capture = !objective.adapter_restriction_capture_plans.is_empty();
         let relevant = match task {
-            ConstructReasoningRiskTask::Pcr => Self::construct_reasoning_text_has_any(
-                &text,
-                &[
-                    "pcr",
-                    "qpcr",
-                    "amplification",
-                    "amplicon",
-                    "primer",
-                    "mutagenesis",
-                ],
-            ),
+            ConstructReasoningRiskTask::Pcr => {
+                Self::construct_reasoning_task_text_has_affirmed_any(
+                    &text,
+                    &[
+                        "pcr",
+                        "qpcr",
+                        "amplification",
+                        "amplicon",
+                        "primer",
+                        "mutagenesis",
+                    ],
+                )
+            }
             ConstructReasoningRiskTask::NanoporeSequencing => {
-                Self::construct_reasoning_text_has_any(
+                Self::construct_reasoning_task_text_has_affirmed_any(
                     &text,
                     &[
                         "nanopore",
-                        "long_read",
-                        "long read",
-                        "direct_sequencing",
-                        "direct sequencing",
-                        "sequence_confirmation",
-                        "sequence confirmation",
+                        "ont",
+                        "long_read_sequencing",
+                        "nanopore_sequencing",
                     ],
-                ) || (Self::construct_reasoning_text_has_any(&text, &["sequencing"])
-                    && !Self::construct_reasoning_text_has_any(
-                        &text,
-                        &["illumina", "short_read", "short read"],
-                    ))
+                )
             }
-            ConstructReasoningRiskTask::ReadMapping => Self::construct_reasoning_text_has_any(
-                &text,
-                &[
-                    "read_mapping",
-                    "read mapping",
-                    "mapping",
-                    "alignment",
-                    "align",
-                    "rna_seq",
-                    "rna seq",
-                    "rna_reads",
-                    "rna reads",
-                    "illumina",
-                    "nanopore",
-                    "sequencing",
-                ],
-            ),
+            ConstructReasoningRiskTask::ReadMapping => {
+                Self::construct_reasoning_task_text_has_affirmed_any(
+                    &text,
+                    &[
+                        "read_mapping",
+                        "mapping",
+                        "rna_seq",
+                        "rna_reads",
+                        "illumina",
+                        "short_read_sequencing",
+                    ],
+                )
+            }
             ConstructReasoningRiskTask::CloningStability => {
                 has_adapter_capture
                     || has_propagation_or_storage
-                    || Self::construct_reasoning_text_has_any(
+                    || Self::construct_reasoning_task_text_has_affirmed_any(
                         &text,
                         &[
                             "clone",
@@ -23020,7 +23406,7 @@ impl GentleEngine {
             ConstructReasoningRiskTask::ConstructMaintenance => {
                 has_propagation_or_storage
                     || has_expression
-                    || Self::construct_reasoning_text_has_any(
+                    || Self::construct_reasoning_task_text_has_affirmed_any(
                         &text,
                         &[
                             "maintenance",
@@ -23044,16 +23430,16 @@ impl GentleEngine {
                 "no PCR, primer, amplicon, or amplification step is named in the objective"
             }
             (ConstructReasoningRiskTask::NanoporeSequencing, true) => {
-                "the objective names nanopore, direct sequencing, or sequence confirmation"
+                "the objective names nanopore/ONT or long-read sequencing"
             }
             (ConstructReasoningRiskTask::NanoporeSequencing, false) => {
-                "no nanopore, direct sequencing, or sequence-confirmation step is named in the objective"
+                "no nanopore/ONT or long-read sequencing step is named in the objective"
             }
             (ConstructReasoningRiskTask::ReadMapping, true) => {
-                "the objective names sequencing, alignment, or read mapping"
+                "the objective names read mapping, RNA-seq, Illumina, or short-read sequencing"
             }
             (ConstructReasoningRiskTask::ReadMapping, false) => {
-                "no sequencing, alignment, or read-mapping step is named in the objective"
+                "no read-mapping, RNA-seq, Illumina, or short-read sequencing step is named in the objective"
             }
             (ConstructReasoningRiskTask::CloningStability, true) => {
                 "the objective includes cloning, assembly, adapter capture, or propagation"
@@ -23068,7 +23454,19 @@ impl GentleEngine {
                 "no propagation, expression, storage, or long-term maintenance context is named in the objective"
             }
         };
-        Some((relevant, reason))
+        if relevant {
+            (
+                ConstructReasoningTaskApplicability::Applicable,
+                ConstructReasoningTaskApplicabilityBasis::LegacyObjectiveInference,
+                reason,
+            )
+        } else {
+            (
+                ConstructReasoningTaskApplicability::Unknown,
+                ConstructReasoningTaskApplicabilityBasis::Unspecified,
+                "the legacy objective does not explicitly declare whether this task is performed",
+            )
+        }
     }
 
     fn construct_reasoning_task_severity(
@@ -23086,34 +23484,53 @@ impl GentleEngine {
             .collect::<Vec<_>>();
         supporting_evidence_ids.sort();
         supporting_evidence_ids.dedup();
-        let mut score = Self::construct_reasoning_task_score(severity, evidence_score);
+        let base_score = Self::construct_reasoning_task_score(severity, evidence_score);
+        let base_severity = Self::construct_reasoning_severity_from_score(base_score);
         let mut rationale = rationale.into().trim().to_string();
-        if let Some((relevant, reason)) =
-            Self::construct_reasoning_objective_task_relevance(objective, task)
-        {
-            if relevant {
-                score = (score + 0.08).min(1.0);
-                if !rationale.is_empty() {
-                    rationale.push(' ');
-                }
-                rationale.push_str("Objective context makes this task directly relevant because ");
-                rationale.push_str(reason);
-                rationale.push('.');
-            } else {
-                score = score.min(0.05);
-                if !rationale.is_empty() {
-                    rationale.push(' ');
-                }
-                rationale.push_str(
-                    "Objective context does not currently perform this task, so the score is down-weighted because ",
-                );
-                rationale.push_str(reason);
-                rationale.push('.');
+        let (applicability, applicability_basis, applicability_reason) =
+            Self::construct_reasoning_objective_task_relevance(objective, task);
+        let score = match applicability {
+            ConstructReasoningTaskApplicability::Applicable if base_score > 0.0 => {
+                (base_score + 0.08).min(1.0)
+            }
+            ConstructReasoningTaskApplicability::NotApplicable => 0.0,
+            _ => base_score,
+        };
+        let objective_adjustment = score - base_score;
+        if !rationale.is_empty() {
+            rationale.push(' ');
+        }
+        match applicability {
+            ConstructReasoningTaskApplicability::Applicable => {
+                rationale.push_str("Objective applicability is ");
+                rationale.push_str(applicability_basis.as_str());
+                rationale.push_str(" because ");
+                rationale.push_str(applicability_reason);
+                rationale.push_str(&format!(
+                    "; the effective score includes a {objective_adjustment:+.2} objective-priority adjustment."
+                ));
+            }
+            ConstructReasoningTaskApplicability::NotApplicable => {
+                rationale.push_str("Objective applicability is explicitly not applicable because ");
+                rationale.push_str(applicability_reason);
+                rationale.push_str(&format!(
+                    "; intrinsic score {base_score:.2} is preserved while effective priority is 0.00."
+                ));
+            }
+            ConstructReasoningTaskApplicability::Unknown => {
+                rationale.push_str("Objective applicability is unspecified because ");
+                rationale.push_str(applicability_reason);
+                rationale.push_str("; no objective adjustment was applied.");
             }
         }
         let severity = Self::construct_reasoning_severity_from_score(score);
         ConstructReasoningTaskSeverity {
             task,
+            applicability,
+            applicability_basis,
+            base_severity: Some(base_severity),
+            base_score: Some(base_score),
+            objective_adjustment: Some(objective_adjustment),
             severity,
             score: Some(score),
             rationale,
@@ -25371,6 +25788,7 @@ impl GentleEngine {
         } else {
             Self::construct_reasoning_default_objective(seq_id, dna)
         };
+        let input_fingerprint = Self::construct_reasoning_input_fingerprint(dna, &objective)?;
 
         let mut evidence =
             Self::build_construct_reasoning_objective_context_evidence(seq_id, &objective);
@@ -25412,6 +25830,7 @@ impl GentleEngine {
             seq_id: seq_id.to_string(),
             objective,
             generated_at_unix_ms: Self::now_unix_ms(),
+            input_fingerprint: Some(input_fingerprint),
             evidence,
             facts,
             decisions,

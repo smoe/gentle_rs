@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-07-13 - `v0.1.0-internal.10`
 
+- Hardened construct reasoning with typed objective task intent, separate
+  intrinsic/applicability/effective severity fields, typed multi-family repeat
+  provenance, and SHA-256 input/rule fingerprints; GUI and shell readers now
+  report stale snapshots and refuse outdated inspection actions until rebuild.
 - Added a read-only `gentle.gene_isoform_evidence.v1` feature-expert target,
   deterministic SVG, PATZ1 minus-strand fixture, and Splicing Expert Evidence
   tab that keep transcript geometry, RNA/cDNA support, probe constraints,

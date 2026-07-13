@@ -12,12 +12,13 @@ use crate::{
     engine::{
         AlternativePromoterComparisonRow, AnnotationCandidateSummary, AttractRegionClass,
         AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow, AttractSplicingEvidenceSettings,
-        AttractSplicingEvidenceView, ConstructRole, CutRunAlignConfig, CutRunInputFormat,
-        CutRunReadLayout, CutRunRegulatoryTfbsConfirmationStatus, CutRunSeedFilterConfig,
-        DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView,
-        EditableStatus, Engine, EngineError, ErrorCode, EvidenceClass, FlexibilityModel,
-        FlexibilityTrack, GeneIsoformEvidenceReport, GentleEngine, LinearSequenceLetterLayoutMode,
-        OpResult, Operation, PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
+        AttractSplicingEvidenceView, ConstructReasoningInspectionAction, ConstructRole,
+        CutRunAlignConfig, CutRunInputFormat, CutRunReadLayout,
+        CutRunRegulatoryTfbsConfirmationStatus, CutRunSeedFilterConfig, DotplotMode,
+        DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
+        EngineError, ErrorCode, EvidenceClass, FlexibilityModel, FlexibilityTrack,
+        GeneIsoformEvidenceReport, GentleEngine, LinearSequenceLetterLayoutMode, OpResult,
+        Operation, PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport,
         ProbeRegionEvidenceMappingRow, ProjectState, PromoterExpressionEvidenceInput,
         PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
@@ -13556,6 +13557,16 @@ fn construct_reasoning_similarity_fact_entries_offer_dotplot_actions() {
         pcr_entry.detail_lines
     );
     assert!(
+        pcr_entry.detail_lines.iter().any(|line| {
+            line.contains("effective_score=")
+                && line.contains("base_score=")
+                && line.contains("applicability=unknown")
+                && line.contains("applicability_basis=unspecified")
+        }),
+        "task severity details should distinguish intrinsic concern from objective priority: {:?}",
+        pcr_entry.detail_lines
+    );
+    assert!(
         pcr_entry
             .dotplot_actions
             .iter()
@@ -13702,6 +13713,105 @@ fn open_construct_reasoning_dotplot_action_focuses_repeat_region() {
     );
     assert!(view.span_start_0based <= focus_midpoint_0based);
     assert!(view.span_end_0based > focus_midpoint_0based);
+}
+
+#[test]
+fn construct_reasoning_dotplot_action_rejects_stale_graph_snapshot() {
+    let sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_reasoning_stale".to_string(), dna.clone());
+    let mut engine = GentleEngine::from_state(state);
+    let graph = engine
+        .build_construct_reasoning_graph("seq_reasoning_stale", None, None)
+        .expect("graph");
+    let action = graph
+        .inspection_actions
+        .first()
+        .cloned()
+        .expect("inspection action");
+    let engine = Arc::new(RwLock::new(engine));
+    let mut area = MainAreaDna::new(
+        dna,
+        Some("seq_reasoning_stale".to_string()),
+        Some(engine.clone()),
+    );
+    area.focused_construct_reasoning_graph_id = Some(graph.graph_id.clone());
+    engine
+        .write()
+        .expect("engine write")
+        .state_mut()
+        .sequences
+        .get_mut("seq_reasoning_stale")
+        .expect("sequence")
+        .features_mut()
+        .push(gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: gb_io::seq::Location::simple_range(0, 4),
+            qualifiers: vec![],
+        });
+
+    let error = area
+        .open_construct_reasoning_dotplot_action(&action)
+        .expect_err("stale graph action should be blocked");
+    assert!(error.contains("stale") && error.contains("refresh"));
+    assert!(!area.show_dotplot_window);
+}
+
+#[test]
+fn construct_reasoning_action_details_show_all_repeat_family_provenance() {
+    let action = ConstructReasoningInspectionAction {
+        repeat_family_provenances: vec![
+            crate::engine::ConstructReasoningRepeatFamilyProvenance {
+                source_kind: "ucsc_rmsk".to_string(),
+                repeat_name: Some("AluY".to_string()),
+                repeat_class: Some("SINE".to_string()),
+                repeat_family: Some("Alu".to_string()),
+                family_name: Some("Alu".to_string()),
+                agreement: crate::engine::ConstructReasoningRepeatFamilyAgreement::Family,
+                confidence: Some(0.95),
+                ..crate::engine::ConstructReasoningRepeatFamilyProvenance::default()
+            },
+            crate::engine::ConstructReasoningRepeatFamilyProvenance {
+                source_kind: "ucsc_rmsk".to_string(),
+                repeat_name: Some("L1PA2".to_string()),
+                repeat_class: Some("LINE".to_string()),
+                repeat_family: Some("L1".to_string()),
+                family_name: Some("L1".to_string()),
+                agreement:
+                    crate::engine::ConstructReasoningRepeatFamilyAgreement::CuratedAnnotation,
+                confidence: Some(0.8),
+                ..crate::engine::ConstructReasoningRepeatFamilyProvenance::default()
+            },
+        ],
+        ..ConstructReasoningInspectionAction::default()
+    };
+
+    let lines = MainAreaDna::construct_reasoning_dotplot_action_detail_lines(&[action]);
+    let provenance_lines = lines
+        .iter()
+        .filter(|line| line.starts_with("inspection_action_repeat_family:"))
+        .collect::<Vec<_>>();
+    assert_eq!(provenance_lines.len(), 2);
+    assert!(provenance_lines.iter().any(|line| {
+        line.contains("repeat_family=Alu")
+            && line.contains("agreement=family")
+            && line.contains("confidence=0.95")
+    }));
+    assert!(provenance_lines.iter().any(|line| {
+        line.contains("repeat_family=L1")
+            && line.contains("agreement=curated_annotation")
+            && line.contains("confidence=0.80")
+    }));
 }
 
 #[test]

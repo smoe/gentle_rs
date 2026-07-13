@@ -210,25 +210,10 @@ broad crate surgery that is not tied to the selected release story.
 
 ### Reserved For Anze: Repeat/Similarity Inspection Follow-Up
 
-Phase 1 direction: repeat/similarity reasoning should answer "which dotplot
-should I inspect for this warning?" through portable construct-reasoning
-`inspection_actions[]`, not GUI-local label matching. The GUI consumes those
-graph actions for its `Dotplot` / `RevComp Dotplot` buttons; CLI/agent-facing
-work uses `construct-reasoning list-inspection-actions` and
-`construct-reasoning run-inspection-action`, and ClawBio now exposes typed
-request modes over the same shell contract. MCP, JS, and Lua readers now
-inspect and run the same action object through shared shell/protocol routes
-rather than adapter-local recommendation logic.
-
-Phase 2 direction: the existing GUI inspector should expose action rationale,
-focus range, dotplot mode, context tags, and driving evidence ids directly from
-the portable action object while keeping the button itself simple.
-
 Later phases stay intentionally separate: richer action-specific evidence panes
 and broader mapping of single-sequence operations across sequence sets. The
-curated repeat-family depth item and quantitative/objective-specific task
-severity item moved to `docs/CHANGELOG.md` after those protocol-backed layers
-landed.
+portable inspection-action, cross-adapter parity, curated repeat-family, and
+objective-aware severity foundations are recorded in `docs/CHANGELOG.md`.
 
 ## Phase D: Visualization And Workflow UX
 

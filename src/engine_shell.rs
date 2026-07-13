@@ -52287,31 +52287,61 @@ fn format_construct_reasoning_fact_summary(fact: &crate::engine::DesignFact) -> 
         .iter()
         .map(|severity| {
             let evidence_count = severity.supporting_evidence_ids.len();
-            let score = severity
+            let effective_score = severity
                 .score
-                .map(|value| format!(" score={value:.2}"))
+                .map(|value| format!(" effective_score={value:.2}"))
                 .unwrap_or_default();
+            let base_score = severity
+                .base_score
+                .map(|value| format!(" base_score={value:.2}"))
+                .unwrap_or_default();
+            let adjustment = severity
+                .objective_adjustment
+                .map(|value| format!(" objective_adjustment={value:+.2}"))
+                .unwrap_or_default();
+            let base_severity = severity
+                .base_severity
+                .map(|value| format!(" base_severity={}", value.as_str()))
+                .unwrap_or_default();
+            let applicability = format!(
+                " applicability={} applicability_basis={}",
+                severity.applicability.as_str(),
+                severity.applicability_basis.as_str()
+            );
             let rationale = severity.rationale.trim();
             if rationale.is_empty() {
                 detail_lines.push(format!(
-                    "task_severity: {}={}{} (evidence={})",
+                    "task_severity: {}={}{}{}{}{}{} (evidence={})",
                     severity.task.as_str(),
                     severity.severity.as_str(),
-                    score,
+                    effective_score,
+                    base_severity,
+                    base_score,
+                    adjustment,
+                    applicability,
                     evidence_count
                 ));
             } else {
                 detail_lines.push(format!(
-                    "task_severity: {}={}{} (evidence={}): {}",
+                    "task_severity: {}={}{}{}{}{}{} (evidence={}): {}",
                     severity.task.as_str(),
                     severity.severity.as_str(),
-                    score,
+                    effective_score,
+                    base_severity,
+                    base_score,
+                    adjustment,
+                    applicability,
                     evidence_count,
                     rationale
                 ));
             }
             json!({
                 "task": severity.task.as_str(),
+                "applicability": severity.applicability.as_str(),
+                "applicability_basis": severity.applicability_basis.as_str(),
+                "base_severity": severity.base_severity.map(|value| value.as_str()),
+                "base_score": severity.base_score,
+                "objective_adjustment": severity.objective_adjustment,
                 "severity": severity.severity.as_str(),
                 "score": severity.score,
                 "rationale": &severity.rationale,
@@ -53189,11 +53219,13 @@ fn execute_protein_sequence_command(
             let graph = engine
                 .construct_reasoning_graph(graph_id)
                 .map_err(|e| e.to_string())?;
+            let snapshot_status = engine.construct_reasoning_graph_snapshot_status(&graph);
             let summary = format_construct_reasoning_graph_summary(&graph);
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "graph": graph,
+                    "snapshot_status": snapshot_status,
                     "summary": summary,
                 }),
             })
@@ -53211,6 +53243,7 @@ fn execute_protein_sequence_command(
             let graph = engine
                 .construct_reasoning_graph(graph_id)
                 .map_err(|e| e.to_string())?;
+            let snapshot_status = engine.construct_reasoning_graph_snapshot_status(&graph);
             let fact_id = fact_id
                 .as_deref()
                 .map(str::trim)
@@ -53279,6 +53312,7 @@ fn execute_protein_sequence_command(
                 output: json!({
                     "schema": "gentle.construct_reasoning_inspection_action_list.v1",
                     "graph_id": graph.graph_id,
+                    "snapshot_status": snapshot_status,
                     "filters": {
                         "fact_id": fact_id,
                         "annotation_id": annotation_id,
@@ -53306,6 +53340,14 @@ fn execute_protein_sequence_command(
             let graph = engine
                 .construct_reasoning_graph(graph_id)
                 .map_err(|e| e.to_string())?;
+            let snapshot_status = engine.construct_reasoning_graph_snapshot_status(&graph);
+            if snapshot_status.freshness == crate::engine::ConstructReasoningGraphFreshness::Stale {
+                return Err(format!(
+                    "Construct-reasoning graph '{}' is stale: {} Refresh the graph before running inspection actions.",
+                    graph.graph_id,
+                    snapshot_status.reasons.join(" ")
+                ));
+            }
             let action = graph
                 .inspection_actions
                 .iter()
@@ -53431,6 +53473,7 @@ fn execute_protein_sequence_command(
                 output: json!({
                     "schema": "gentle.construct_reasoning_inspection_action_dotplot_run.v1",
                     "graph_id": graph.graph_id,
+                    "snapshot_status": snapshot_status,
                     "action": action,
                     "compute_parameters": compute_parameters,
                     "result": op_result,

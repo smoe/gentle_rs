@@ -42162,10 +42162,28 @@ fn assert_task_severity_ids_are_fact_evidence(fact: &DesignFact) {
         let score = severity
             .score
             .expect("engine-generated task severity should carry a score");
+        let base_score = severity
+            .base_score
+            .expect("engine-generated task severity should carry an intrinsic score");
         assert!(
-            (0.0..=1.0).contains(&score),
+            (0.0..=1.0).contains(&score) && (0.0..=1.0).contains(&base_score),
             "task severity score should be normalized: {:?}",
             severity
+        );
+        assert_eq!(
+            severity.base_severity,
+            Some(GentleEngine::construct_reasoning_severity_from_score(
+                base_score
+            ))
+        );
+        assert_eq!(
+            severity.severity,
+            GentleEngine::construct_reasoning_severity_from_score(score)
+        );
+        assert_eq!(
+            severity.objective_adjustment,
+            Some(score - base_score),
+            "objective adjustment should equal the actual post-clamp score delta"
         );
         for evidence_id in &severity.supporting_evidence_ids {
             assert!(
@@ -42533,12 +42551,20 @@ fn construct_reasoning_task_severity_scores_follow_construct_objective() {
             ..HostRouteStep::default()
         }],
         preferred_routine_families: vec!["gibson".to_string()],
+        intended_tasks: Some(vec![
+            ConstructReasoningRiskTask::CloningStability,
+            ConstructReasoningRiskTask::ConstructMaintenance,
+        ]),
         ..ConstructObjective::default()
     });
     let sequencing_graph = build_graph(ConstructObjective {
         title: "Nanopore and mapping QC".to_string(),
         goal: "Nanopore sequencing and read mapping review for the construct".to_string(),
         preferred_routine_families: vec!["nanopore_sequencing".to_string()],
+        intended_tasks: Some(vec![
+            ConstructReasoningRiskTask::NanoporeSequencing,
+            ConstructReasoningRiskTask::ReadMapping,
+        ]),
         notes: vec!["inspect alignment uniqueness".to_string()],
         ..ConstructObjective::default()
     });
@@ -42571,28 +42597,36 @@ fn construct_reasoning_task_severity_scores_follow_construct_objective() {
     );
     assert_eq!(
         sequencing_cloning_stability.severity,
-        ConstructReasoningSeverity::Low,
-        "unperformed cloning task should be down-weighted, not silently treated as critical"
+        ConstructReasoningSeverity::None,
+        "unperformed cloning task should be explicitly non-applicable"
+    );
+    assert_eq!(
+        sequencing_cloning_stability.applicability,
+        ConstructReasoningTaskApplicability::NotApplicable
     );
     assert!(
-        sequencing_cloning_stability.score.unwrap() <= 0.05,
-        "unperformed cloning task should be scored at the floor"
+        sequencing_cloning_stability.score.unwrap() == 0.0,
+        "unperformed cloning task should have zero effective priority"
     );
     assert!(
         sequencing_cloning_stability
             .rationale
-            .contains("down-weighted"),
-        "objective down-weighting should be visible in rationale"
+            .contains("intrinsic score"),
+        "objective non-applicability should preserve the intrinsic score in rationale"
     );
     assert_eq!(
         cloning_read_mapping.severity,
-        ConstructReasoningSeverity::Low,
-        "unperformed mapping task should be down-weighted"
+        ConstructReasoningSeverity::None,
+        "unperformed mapping task should be explicitly non-applicable"
     );
-    assert!(cloning_read_mapping.score.unwrap() <= 0.05);
+    assert_eq!(
+        cloning_read_mapping.applicability,
+        ConstructReasoningTaskApplicability::NotApplicable
+    );
+    assert_eq!(cloning_read_mapping.score, Some(0.0));
     assert!(
-        cloning_read_mapping.rationale.contains("down-weighted"),
-        "mapping down-weighting should be visible in rationale"
+        cloning_read_mapping.rationale.contains("intrinsic score"),
+        "mapping non-applicability should be visible in rationale"
     );
 
     let cloning_nanopore = construct_reasoning_task_severity(
@@ -42608,14 +42642,103 @@ fn construct_reasoning_task_severity_scores_follow_construct_objective() {
         "nanopore objective should raise the nanopore-specific repeat score"
     );
     assert!(
-        cloning_nanopore.score.unwrap() <= 0.05,
-        "task absent from cloning objective should remain at the lowest score"
+        cloning_nanopore.score.unwrap() == 0.0,
+        "task absent from cloning objective should have zero effective priority"
     );
+    assert!(cloning_nanopore.base_score.unwrap() > 0.0);
     assert_eq!(
         cloning_stability.supporting_evidence_ids,
         sequencing_cloning_stability.supporting_evidence_ids,
         "objective-specific scoring should preserve underlying evidence ids"
     );
+    assert!(cloning_stability.base_score.unwrap() > 0.0);
+    assert!(
+        (cloning_stability.objective_adjustment.unwrap() - 0.08).abs() < f64::EPSILON
+    );
+    assert_eq!(
+        sequencing_cloning_stability.objective_adjustment,
+        sequencing_cloning_stability.base_score.map(|score| -score)
+    );
+}
+
+#[test]
+fn construct_reasoning_task_applicability_prefers_typed_intent_and_is_conservative_for_legacy_text()
+{
+    let explicit = ConstructObjective {
+        intended_tasks: Some(vec![ConstructReasoningRiskTask::Pcr]),
+        ..ConstructObjective::default()
+    };
+    let (pcr, pcr_basis, _) = GentleEngine::construct_reasoning_objective_task_relevance(
+        &explicit,
+        ConstructReasoningRiskTask::Pcr,
+    );
+    let (nanopore, nanopore_basis, _) = GentleEngine::construct_reasoning_objective_task_relevance(
+        &explicit,
+        ConstructReasoningRiskTask::NanoporeSequencing,
+    );
+    assert_eq!(pcr, ConstructReasoningTaskApplicability::Applicable);
+    assert_eq!(nanopore, ConstructReasoningTaskApplicability::NotApplicable);
+    assert_eq!(
+        pcr_basis,
+        ConstructReasoningTaskApplicabilityBasis::ExplicitObjectiveTasks
+    );
+    assert_eq!(nanopore_basis, pcr_basis);
+    let explicit_none = ConstructObjective {
+        intended_tasks: Some(vec![]),
+        ..ConstructObjective::default()
+    };
+    let (pcr, basis, _) = GentleEngine::construct_reasoning_objective_task_relevance(
+        &explicit_none,
+        ConstructReasoningRiskTask::Pcr,
+    );
+    assert_eq!(pcr, ConstructReasoningTaskApplicability::NotApplicable);
+    assert_eq!(
+        basis,
+        ConstructReasoningTaskApplicabilityBasis::ExplicitObjectiveTasks
+    );
+
+    let legacy_negated = ConstructObjective {
+        goal: "Avoid PCR and qPCR; no nanopore or read mapping; confirm the plasmid by Sanger sequencing"
+            .to_string(),
+        host_species: Some("Escherichia coli".to_string()),
+        required_roles: vec![ConstructRole::Cds],
+        ..ConstructObjective::default()
+    };
+    for task in [
+        ConstructReasoningRiskTask::Pcr,
+        ConstructReasoningRiskTask::NanoporeSequencing,
+        ConstructReasoningRiskTask::ReadMapping,
+    ] {
+        let (applicability, basis, _) =
+            GentleEngine::construct_reasoning_objective_task_relevance(&legacy_negated, task);
+        assert_eq!(
+            applicability,
+            ConstructReasoningTaskApplicability::Unknown,
+            "negated PCR, Sanger sequencing, and unrelated metadata must not infer {task:?}"
+        );
+        assert_eq!(basis, ConstructReasoningTaskApplicabilityBasis::Unspecified);
+    }
+
+    let legacy_positive = ConstructObjective {
+        goal: "Run qPCR and nanopore sequencing with read mapping".to_string(),
+        ..ConstructObjective::default()
+    };
+    for task in [
+        ConstructReasoningRiskTask::Pcr,
+        ConstructReasoningRiskTask::NanoporeSequencing,
+        ConstructReasoningRiskTask::ReadMapping,
+    ] {
+        let (applicability, basis, _) =
+            GentleEngine::construct_reasoning_objective_task_relevance(&legacy_positive, task);
+        assert_eq!(
+            applicability,
+            ConstructReasoningTaskApplicability::Applicable
+        );
+        assert_eq!(
+            basis,
+            ConstructReasoningTaskApplicabilityBasis::LegacyObjectiveInference
+        );
+    }
 }
 
 fn alu_like_demo_sequence_text() -> String {
@@ -42683,6 +42806,13 @@ fn synthetic_curated_repeat_evidence(
         ),
         provenance_kind: "sequence_feature_annotation".to_string(),
         provenance_refs: vec![format!("repeat_family:{evidence_id}")],
+        repeat_annotation: Some(ConstructReasoningRepeatAnnotation {
+            source_kind: source_kind.to_string(),
+            repeat_name: repeat_name.map(str::to_string),
+            repeat_class: repeat_class.map(str::to_string),
+            repeat_family: repeat_family.map(str::to_string),
+            source_refs: vec![format!("repeat_family:{evidence_id}")],
+        }),
         notes: {
             let mut notes = vec![format!("repeat_source={source_kind}")];
             if let Some(value) = repeat_name {
@@ -42725,6 +42855,9 @@ fn synthetic_provenance_only_repeat_evidence(
     row.notes.retain(|note| !note.starts_with("repeat_source="));
     row.notes
         .push("repeat_source=repeat_family_annotation".to_string());
+    if let Some(annotation) = &mut row.repeat_annotation {
+        annotation.source_kind = "repeat_family_annotation".to_string();
+    }
     row
 }
 
@@ -42977,6 +43110,54 @@ fn construct_reasoning_repeat_family_provenance_confidence_tracks_corroboration(
 }
 
 #[test]
+fn construct_reasoning_repeat_family_provenance_preserves_overlapping_families() {
+    let internal_alu =
+        synthetic_internal_repeat_evidence("internal_alu_nested", &["alu_like"], 0, 120);
+    let curated_alu = synthetic_curated_repeat_evidence(
+        "curated_alu_nested",
+        Some("AluY"),
+        Some("SINE"),
+        Some("Alu"),
+        0,
+        120,
+    );
+    let curated_line = synthetic_curated_repeat_evidence(
+        "curated_line_nested",
+        Some("L1PA2"),
+        Some("LINE"),
+        Some("L1"),
+        20,
+        100,
+    );
+
+    let provenances =
+        GentleEngine::construct_reasoning_repeat_family_provenances_for_evidence_rows(&[
+            &internal_alu,
+            &curated_alu,
+            &curated_line,
+        ]);
+    assert_eq!(provenances.len(), 2);
+    let alu = provenances
+        .iter()
+        .find(|row| row.repeat_family.as_deref() == Some("Alu"))
+        .expect("Alu provenance");
+    assert_eq!(
+        alu.agreement,
+        ConstructReasoningRepeatFamilyAgreement::Family
+    );
+    assert_eq!(alu.confidence, Some(0.95));
+    let line = provenances
+        .iter()
+        .find(|row| row.repeat_family.as_deref() == Some("L1"))
+        .expect("LINE provenance");
+    assert_eq!(
+        line.agreement,
+        ConstructReasoningRepeatFamilyAgreement::CuratedAnnotation
+    );
+    assert_eq!(line.confidence, Some(0.8));
+}
+
+#[test]
 fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() {
     let sequence = alu_like_demo_sequence_text();
     let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
@@ -43153,6 +43334,12 @@ fn build_construct_reasoning_graph_upgrades_alu_like_with_overlapping_rmsk_famil
     assert_eq!(curated_rows.len(), 2);
     assert!(curated_rows.iter().all(|row| {
         row.evidence_class == EvidenceClass::ReliableAnnotation
+            && row.repeat_annotation.as_ref().is_some_and(|annotation| {
+                annotation.source_kind == "ucsc_rmsk"
+                    && annotation.repeat_name.as_deref() == Some("AluY")
+                    && annotation.repeat_class.as_deref() == Some("SINE")
+                    && annotation.repeat_family.as_deref() == Some("Alu")
+            })
             && row.notes.iter().any(|note| note == "repeat_family=Alu")
             && row
                 .context_tags
@@ -43259,6 +43446,11 @@ fn build_construct_reasoning_graph_upgrades_alu_like_with_overlapping_rmsk_famil
     assert_eq!(provenance.family_name.as_deref(), Some("Alu"));
     assert_eq!(provenance.evidence_ids.len(), 2);
     assert_eq!(provenance.confidence, Some(0.95));
+    assert_eq!(mobile_action.repeat_family_provenances.len(), 1);
+    assert_eq!(
+        mobile_action.repeat_family_provenances[0].agreement,
+        ConstructReasoningRepeatFamilyAgreement::Family
+    );
 }
 
 #[test]
@@ -45710,6 +45902,12 @@ fn refresh_construct_reasoning_graph_for_seq_id_reuses_graph_id_and_rebuilds_evi
     let original = engine
         .build_construct_reasoning_graph("refresh_demo", None, None)
         .expect("build graph");
+    assert_eq!(
+        engine
+            .construct_reasoning_graph_snapshot_status(&original)
+            .freshness,
+        ConstructReasoningGraphFreshness::Current
+    );
     assert!(!original.evidence.iter().any(|row| row.label == "SP1"));
 
     {
@@ -45726,6 +45924,18 @@ fn refresh_construct_reasoning_graph_for_seq_id_reuses_graph_id_and_rebuilds_evi
         sequence.update_computed_features();
     }
 
+    let stale_status = engine.construct_reasoning_graph_snapshot_status(&original);
+    assert_eq!(
+        stale_status.freshness,
+        ConstructReasoningGraphFreshness::Stale
+    );
+    assert!(
+        stale_status
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("sequence or feature snapshot changed"))
+    );
+
     let refreshed = engine
         .refresh_construct_reasoning_graph_for_seq_id("refresh_demo")
         .expect("refresh graph");
@@ -45736,6 +45946,114 @@ fn refresh_construct_reasoning_graph_for_seq_id_reuses_graph_id_and_rebuilds_evi
             .iter()
             .any(|row| row.role == ConstructRole::Tfbs && row.label == "SP1")
     );
+    assert_eq!(
+        engine
+            .construct_reasoning_graph_snapshot_status(&refreshed)
+            .freshness,
+        ConstructReasoningGraphFreshness::Current
+    );
+    let summary = engine
+        .list_construct_reasoning_graph_summaries(Some("refresh_demo"))
+        .into_iter()
+        .find(|row| row.graph_id == refreshed.graph_id)
+        .expect("refreshed graph summary");
+    assert_eq!(summary.freshness, ConstructReasoningGraphFreshness::Current);
+    assert!(summary.stale_reasons.is_empty());
+}
+
+#[test]
+fn construct_reasoning_snapshot_detects_objective_changes_and_preserves_actions() {
+    let sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "reasoning_snapshot_demo".to_string(),
+        DNAsequence::from_sequence(&sequence).expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            objective_id: "reasoning_snapshot_objective".to_string(),
+            title: "PCR construct review".to_string(),
+            goal: "Review PCR behavior".to_string(),
+            intended_tasks: Some(vec![ConstructReasoningRiskTask::Pcr]),
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+    let mut graph = engine
+        .build_construct_reasoning_graph(
+            "reasoning_snapshot_demo",
+            Some(&objective.objective_id),
+            Some("reasoning_snapshot_graph"),
+        )
+        .expect("graph");
+    assert_eq!(
+        engine
+            .construct_reasoning_graph_snapshot_status(&graph)
+            .freshness,
+        ConstructReasoningGraphFreshness::Current
+    );
+
+    let action = graph
+        .inspection_actions
+        .first_mut()
+        .expect("repeat reasoning should produce an inspection action");
+    action.action_id = "persisted_review_action".to_string();
+    action.rationale = "Human-reviewed snapshot rationale".to_string();
+    let stored = engine
+        .upsert_construct_reasoning_graph(graph)
+        .expect("persist reviewed graph");
+    let loaded = engine
+        .construct_reasoning_graph(&stored.graph_id)
+        .expect("reload graph");
+    assert!(loaded.inspection_actions.iter().any(|action| {
+        action.action_id == "persisted_review_action"
+            && action.rationale == "Human-reviewed snapshot rationale"
+    }));
+
+    engine
+        .upsert_construct_objective(ConstructObjective {
+            objective_id: objective.objective_id.clone(),
+            title: "Long-read construct review".to_string(),
+            goal: "Review nanopore behavior".to_string(),
+            intended_tasks: Some(vec![ConstructReasoningRiskTask::NanoporeSequencing]),
+            ..ConstructObjective::default()
+        })
+        .expect("update objective");
+    let stale_status = engine.construct_reasoning_graph_snapshot_status(&loaded);
+    assert_eq!(
+        stale_status.freshness,
+        ConstructReasoningGraphFreshness::Stale
+    );
+    assert!(
+        stale_status
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("objective changed"))
+    );
+}
+
+#[test]
+fn construct_reasoning_fingerprint_canonical_json_ignores_map_insertion_order() {
+    let mut first = HashMap::new();
+    first.insert("alpha", 1usize);
+    first.insert("beta", 2usize);
+    let mut second = HashMap::new();
+    second.insert("beta", 2usize);
+    second.insert("alpha", 1usize);
+
+    let first = GentleEngine::construct_reasoning_canonical_json(&first, "test map")
+        .expect("first canonical map");
+    let second = GentleEngine::construct_reasoning_canonical_json(&second, "test map")
+        .expect("second canonical map");
+    assert_eq!(first, second);
+    assert_eq!(sha256_prefixed_str(&first), sha256_prefixed_str(&second));
 }
 
 #[test]

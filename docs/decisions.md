@@ -272,3 +272,24 @@ haplotype. Reports must distinguish physical reads, fragments, and evaluated
 evidence observations. Structural rescue matches are non-blocking candidate
 evidence and must not be labelled as novel exons, retained introns, fusions, or
 resolved isoforms without a separate alignment and junction-validation layer.
+
+## DEC-028: Construct Reasoning Outputs Are Fingerprinted Snapshots
+
+Status: active
+
+Construct-reasoning graphs persist their emitted inspection actions as part of
+the graph snapshot. Loading or normalizing a non-empty action list must not
+silently rerun current recommendation rules. New graphs fingerprint the full
+source sequence/feature snapshot and normalized objective with SHA-256 and
+record the reasoning rule-set version; readers compare those identities to
+report `current`, `stale`, or `unknown`. A fingerprinted stale graph remains
+inspectable but its executable inspection actions must be refused until its
+reasoning build route is rerun to produce a new snapshot.
+
+Task-specific reasoning keeps intrinsic evidence severity separate from
+objective applicability and effective priority. Typed
+`ConstructObjective.intended_tasks` is authoritative when present; legacy
+free text may conservatively infer positive applicability but must not infer
+non-applicability. Curated repeat provenance belongs in typed repeat annotation
+and repeat-family records, with legacy note parsing retained only for backward
+compatibility.

@@ -2849,6 +2849,10 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
                 listed.output["schema"].as_str(),
                 Some("gentle.construct_reasoning_inspection_action_list.v1")
             );
+            assert_eq!(
+                listed.output["snapshot_status"]["freshness"].as_str(),
+                Some("current")
+            );
             let listed_actions = listed.output["actions"]
                 .as_array()
                 .expect("listed actions array");
@@ -3006,6 +3010,40 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
             );
             assert!(run.output["render_result"].is_object());
             assert!(svg_path.exists());
+
+            engine
+                .state_mut()
+                .sequences
+                .get_mut("seq_reasoning_similarity")
+                .expect("sequence")
+                .features_mut()
+                .push(gb_io::seq::Feature {
+                    kind: "misc_feature".into(),
+                    location: gb_io::seq::Location::simple_range(0, 4),
+                    qualifiers: vec![(
+                        "note".into(),
+                        Some("changed after reasoning snapshot".to_string()),
+                    )],
+                });
+            let stale_error = execute_shell_command(
+                &mut engine,
+                &ShellCommand::ConstructReasoningRunInspectionAction {
+                    graph_id: graph.graph_id.clone(),
+                    action_id: protocol_action.action_id.clone(),
+                    word_size: 4,
+                    step_bp: 1,
+                    max_mismatches: 0,
+                    tile_bp: None,
+                    dotplot_id: None,
+                    render_svg_path: None,
+                },
+            )
+            .expect_err("stale graph action should be rejected");
+            let stale_error_lower = stale_error.to_ascii_lowercase();
+            assert!(
+                stale_error_lower.contains("stale") && stale_error_lower.contains("refresh"),
+                "unexpected stale graph error: {stale_error}"
+            );
         })
         .expect("spawn construct-reasoning inspection action shell test")
         .join()
@@ -11657,7 +11695,10 @@ fn execute_construct_reasoning_show_graph_includes_similarity_predictor_summary(
                         .map(|detail_rows| {
                             detail_rows.iter().any(|entry| {
                                 entry.as_str().is_some_and(|text| {
-                                    text.contains("task_severity: read_mapping=low score=")
+                                    text.contains(
+                                        "task_severity: read_mapping=low effective_score=",
+                                    ) && text.contains("base_score=")
+                                        && text.contains("applicability=")
                                 })
                             })
                         })

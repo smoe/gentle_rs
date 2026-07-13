@@ -1176,9 +1176,13 @@ UniProt mapping capability status:
       nanopore/direct-sequencing, repeat-driven mapping, and cloning stability
     - repeat/similarity fact summaries expose `task_severities[]` rows with
       task (`pcr`, `nanopore_sequencing`, `read_mapping`,
-      `cloning_stability`, `construct_maintenance`), severity, numeric
-      rule-derived score when available, rationale, and supporting evidence
-      ids, plus compact `task_severity: ...` detail lines
+      `cloning_stability`, `construct_maintenance`), explicit objective
+      applicability/basis, intrinsic `base_severity`/`base_score`, transparent
+      `objective_adjustment`, effective severity/score, rationale, and
+      supporting evidence ids, plus compact `task_severity: ...` detail lines
+    - construct objectives may declare authoritative `intended_tasks[]`;
+      missing intent retains conservative legacy positive inference while an
+      explicit empty list means none of the current task vocabulary applies
     - repeat/mobile-element facts summarize overlapping materialized
       RepeatMasker/UCSC `rmsk`-style annotations as
       `curated_repeat_support[]` rows with repeat name/class/family and
@@ -1189,12 +1193,19 @@ UniProt mapping capability status:
     ids, candidate ids, driving evidence ids, sequence id, or action kind when
     requested, so CLI/agent/ClawBio layers do not rediscover GUI dotplot
     affordances from labels.
+    Responses include `snapshot_status` (`current|stale|unknown` plus reasons),
+    and action records can carry typed `repeat_family_provenances[]` for all
+    overlapping curated families rather than one parsed note string.
   - `construct-reasoning run-inspection-action` resolves one `action_id`,
     feeds its mode and focus range to the shared `ComputeDotplot` operation,
     stores the resulting dotplot payload, and optionally invokes
     `RenderDotplotSvg` for an evidence artifact. The structured response also
     includes the resolved `compute_parameters` block used for the shared
-    operation.
+    operation. A fingerprinted stale graph is rejected until the reasoning
+    build route that created it is rerun, preventing old action ranges from
+    being run against changed sequence/features, objective intent, or reasoning
+    rules. Legacy graphs without fingerprints remain readable with `unknown`
+    freshness.
   - `construct-reasoning set-annotation-status` updates one persisted
     annotation candidate in place and returns:
     - the updated portable graph
