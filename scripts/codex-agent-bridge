@@ -81,30 +81,37 @@ def resolve_codex_bin() -> str:
 
 
 def response_json_schema() -> dict[str, Any]:
+    command_properties = {
+        "title": {"type": "string"},
+        "preconditions": {"type": "array", "items": {"type": "string"}},
+        "expected_outcomes": {"type": "array", "items": {"type": "string"}},
+        "rationale": {"type": "string"},
+        "command": {"type": "string"},
+        "execution": {
+            "type": "string",
+            "enum": ["chat", "ask", "auto"],
+        },
+    }
+    top_level_properties = {
+        "schema": {"type": "string", "const": RESPONSE_SCHEMA},
+        "assistant_message": {"type": "string"},
+        "questions": {"type": "array", "items": {"type": "string"}},
+        "suggested_commands": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": list(command_properties),
+                "properties": command_properties,
+            },
+        },
+    }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "additionalProperties": False,
-        "required": ["schema", "assistant_message"],
-        "properties": {
-            "schema": {"const": RESPONSE_SCHEMA},
-            "assistant_message": {"type": "string"},
-            "questions": {"type": "array", "items": {"type": "string"}},
-            "suggested_commands": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": ["command"],
-                    "properties": {
-                        "title": {"type": "string"},
-                        "rationale": {"type": "string"},
-                        "command": {"type": "string"},
-                        "execution": {"enum": ["chat", "ask", "auto"]},
-                    },
-                },
-            },
-        },
+        "required": list(top_level_properties),
+        "properties": top_level_properties,
     }
 
 
@@ -123,6 +130,8 @@ Allowed response shape:
   "suggested_commands": [
     {{
       "title": "optional short label",
+      "preconditions": ["human-readable requirement, or an empty array"],
+      "expected_outcomes": ["observable result to verify, or an empty array"],
       "rationale": "optional reason",
       "command": "GENtle shared-shell command only",
       "execution": "chat|ask|auto"
@@ -138,6 +147,11 @@ Command boundary:
   nested agent execution.
 - Use execution="ask" for mutating or external/network commands.
 - Use execution="chat" when no command should be run.
+- Use an empty string for an absent title or rationale. Use empty arrays for
+  absent questions, preconditions, expected outcomes, or suggested commands.
+- The strict Codex transport carries human-readable preconditions and expected
+  outcomes. Omit machine-readable precondition_expr and expected_effects here;
+  GENtle validates those richer fields on adapters that can represent them.
 
 Use only the state summary included in the request. Do not infer hidden files
 from the Codex working directory.
@@ -271,7 +285,14 @@ def validate_agent_response(value: Any) -> dict[str, Any]:
     commands = value.get("suggested_commands", [])
     if not isinstance(commands, list):
         raise ValueError("agent response suggested_commands must be an array")
-    allowed_command = {"title", "rationale", "command", "execution"}
+    allowed_command = {
+        "title",
+        "preconditions",
+        "expected_outcomes",
+        "rationale",
+        "command",
+        "execution",
+    }
     for idx, item in enumerate(commands):
         if not isinstance(item, dict):
             raise ValueError(f"suggested_commands[{idx}] must be an object")
@@ -287,6 +308,15 @@ def validate_agent_response(value: Any) -> dict[str, Any]:
         execution = item.get("execution", "ask")
         if execution not in {"chat", "ask", "auto"}:
             raise ValueError(f"suggested_commands[{idx}].execution must be chat, ask, or auto")
+        for field in ("preconditions", "expected_outcomes"):
+            values = item.get(field, [])
+            if not isinstance(values, list) or not all(
+                isinstance(value, str) for value in values
+            ):
+                raise ValueError(
+                    f"suggested_commands[{idx}].{field} must be a string array"
+                )
+            item[field] = values
         item["execution"] = execution
     value["questions"] = questions
     value["suggested_commands"] = commands
@@ -299,6 +329,23 @@ def parse_codex_response(text: str) -> dict[str, Any]:
     json_text = extract_first_json_object(text)
     value = json.loads(json_text)
     return validate_agent_response(value)
+
+
+def classify_codex_failure(message: str) -> str:
+    lower = message.lower()
+    if (
+        "invalid_json_schema" in lower
+        or "invalid schema for response_format" in lower
+        or "text.format.schema" in lower
+    ):
+        return "codex_schema_error"
+    if "login" in lower or "sign in" in lower or "authenticate" in lower:
+        return "codex_not_logged_in"
+    if "quota" in lower or "rate limit" in lower or "too many requests" in lower:
+        return "codex_quota_or_rate_limit"
+    if "network" in lower or "connection" in lower or "dns" in lower:
+        return "codex_network_error"
+    return "codex_failed"
 
 
 def main() -> int:
@@ -318,14 +365,7 @@ def main() -> int:
 
     if exit_code != 0:
         combined = (stderr_text or output_text).strip()
-        lower = combined.lower()
-        code = "codex_failed"
-        if "login" in lower or "sign in" in lower or "authenticate" in lower:
-            code = "codex_not_logged_in"
-        elif "quota" in lower or "rate limit" in lower or "too many requests" in lower:
-            code = "codex_quota_or_rate_limit"
-        elif "network" in lower or "connection" in lower or "dns" in lower:
-            code = "codex_network_error"
+        code = classify_codex_failure(combined)
         return bridge_error(code, combined or f"Codex CLI exited with status {exit_code}")
 
     try:

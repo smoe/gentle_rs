@@ -25,6 +25,9 @@ Maintenance rule:
 - Aligned the interim release gate and release-process documentation, retained
   deprecated ClawBio normalizer modes through `.10`, added indexed release-note
   navigation and a version-consistency guard, and improved package metadata.
+- Repaired Codex Local structured responses by making the bridge schema strict-
+  compatible, carrying human-readable command preconditions/outcomes, and
+  distinguishing schema rejection from genuine network failure.
 
 ## 2026-07-12
 

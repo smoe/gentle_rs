@@ -75,6 +75,28 @@ def test_shared_model_override_is_forwarded_to_codex_cli(monkeypatch):
     assert command[model_flag + 1] == "gpt-5.4"
 
 
+def test_response_schema_is_compatible_with_strict_structured_outputs():
+    bridge = load_bridge_module()
+    schema = bridge.response_json_schema()
+
+    assert set(schema["required"]) == set(schema["properties"])
+    assert schema["properties"]["schema"] == {
+        "type": "string",
+        "const": "gentle.agent_response.v1",
+    }
+    for property_schema in schema["properties"].values():
+        assert "type" in property_schema
+
+    command_schema = schema["properties"]["suggested_commands"]["items"]
+    assert command_schema["additionalProperties"] is False
+    assert set(command_schema["required"]) == set(command_schema["properties"])
+    for property_schema in command_schema["properties"].values():
+        assert "type" in property_schema
+    assert command_schema["properties"]["execution"]["type"] == "string"
+    assert "preconditions" in command_schema["properties"]
+    assert "expected_outcomes" in command_schema["properties"]
+
+
 def test_extracts_json_from_fenced_codex_output():
     bridge = load_bridge_module()
     parsed = bridge.parse_codex_response(
@@ -99,6 +121,33 @@ def test_extracts_json_from_fenced_codex_output():
 
     assert parsed["assistant_message"] == "ready"
     assert parsed["suggested_commands"][0]["execution"] == "ask"
+
+
+def test_preserves_human_readable_command_preconditions_and_outcomes():
+    bridge = load_bridge_module()
+    parsed = bridge.parse_codex_response(
+        json.dumps(
+            {
+                "schema": "gentle.agent_response.v1",
+                "assistant_message": "ready",
+                "questions": [],
+                "suggested_commands": [
+                    {
+                        "title": "Inspect project",
+                        "preconditions": ["A GENtle project is open."],
+                        "expected_outcomes": ["The project summary is shown."],
+                        "rationale": "Establish current context.",
+                        "command": "state-summary",
+                        "execution": "ask",
+                    }
+                ],
+            }
+        )
+    )
+
+    command = parsed["suggested_commands"][0]
+    assert command["preconditions"] == ["A GENtle project is open."]
+    assert command["expected_outcomes"] == ["The project summary is shown."]
 
 
 def test_rejects_unknown_agent_response_fields():
@@ -209,3 +258,14 @@ def test_bridge_reports_login_failure_from_codex_stderr(tmp_path):
     error = json.loads(completed.stderr)
     assert error["schema"] == "gentle.codex_agent_bridge_error.v1"
     assert error["code"] == "codex_not_logged_in"
+
+
+def test_schema_failure_is_not_misclassified_as_network_failure():
+    bridge = load_bridge_module()
+    message = """OpenAI Codex
+provider: openai
+ERROR: {"error":{"code":"invalid_json_schema","message":"Invalid schema for response_format 'codex_output_schema'","param":"text.format.schema"}}
+network status: available
+"""
+
+    assert bridge.classify_codex_failure(message) == "codex_schema_error"
