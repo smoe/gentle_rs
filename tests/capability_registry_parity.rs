@@ -827,6 +827,12 @@ fn shell_alias_registry_resolves_to_known_capabilities_and_parity_policy() {
         aliases.iter().any(|alias| alias.alias == "/fetch ensembl"),
         "alias registry should include agent-natural Ensembl fetch alias"
     );
+    for expected in ["/history", "/undo", "/redo"] {
+        assert!(
+            aliases.iter().any(|alias| alias.alias == expected),
+            "alias registry should include history alias `{expected}`"
+        );
+    }
     for alias in aliases {
         assert!(
             !alias.surface_form.trim().is_empty(),
@@ -902,7 +908,13 @@ fn shell_alias_registry_mutation_tags_match_contract() {
         mutation_by_alias.get("/list"),
         Some(&CapabilityMutation::ReadOnly)
     );
+    assert_eq!(
+        mutation_by_alias.get("/history"),
+        Some(&CapabilityMutation::ReadOnly)
+    );
     for alias in [
+        "/undo",
+        "/redo",
         "/open",
         "/import",
         "/open file",

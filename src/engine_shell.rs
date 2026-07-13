@@ -36658,6 +36658,20 @@ fn parse_slash_alias(tokens: &[String]) -> Result<ShellCommand, String> {
                 ))
             }
         }
+        "/history" | "/undo" | "/redo" => {
+            if tokens.len() != 1 {
+                return Err(slash_alias_rejection(
+                    cmd,
+                    format!("{cmd} does not take arguments"),
+                ));
+            }
+            match cmd {
+                "/history" => Ok(ShellCommand::HistoryStatus),
+                "/undo" => Ok(ShellCommand::HistoryUndo),
+                "/redo" => Ok(ShellCommand::HistoryRedo),
+                _ => unreachable!("history slash alias match is exhaustive"),
+            }
+        }
         "/open" | "/import" => {
             if tokens.len() == 1 {
                 Ok(ShellCommand::UiIntent {
@@ -41741,6 +41755,9 @@ struct AgentSuggestedExecutionReport {
     output: Option<Value>,
 }
 
+pub(crate) const AGENT_HISTORY_CONFIRMATION_REQUIRED: &str =
+    "Undo/redo suggestions require explicit user confirmation and cannot be auto-executed";
+
 fn should_execute_agent_suggestion(
     index_1based: usize,
     intent: AgentExecutionIntent,
@@ -41830,6 +41847,22 @@ fn execute_agent_suggested_commands(
                 continue;
             }
         };
+        if trigger == Some("allow_auto_exec")
+            && matches!(parsed, ShellCommand::HistoryUndo | ShellCommand::HistoryRedo)
+        {
+            rows.push(AgentSuggestedExecutionReport {
+                index: index_1based,
+                command: command_text,
+                execution_intent: suggestion.execution.as_str().to_string(),
+                trigger: trigger.unwrap_or("unknown").to_string(),
+                executed: true,
+                ok: false,
+                state_changed: false,
+                error: Some(AGENT_HISTORY_CONFIRMATION_REQUIRED.to_string()),
+                output: None,
+            });
+            continue;
+        }
         if matches!(
             parsed,
             ShellCommand::AgentsAsk { .. }

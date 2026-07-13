@@ -164,9 +164,9 @@ use crate::{
         UniprotProjectionAuditReport,
     },
     engine_shell::{
-        ShellCommand, ShellExecutionOptions, ShellRunResult, UiIntentAction, UiIntentTarget,
-        execute_shell_command_with_options, normalize_pasted_iupac_sequence, parse_shell_line,
-        split_shell_words,
+        AGENT_HISTORY_CONFIRMATION_REQUIRED, ShellCommand, ShellExecutionOptions, ShellRunResult,
+        UiIntentAction, UiIntentTarget, execute_shell_command_with_options,
+        normalize_pasted_iupac_sequence, parse_shell_line, split_shell_words,
     },
     ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary},
     enzymes,
@@ -5186,10 +5186,10 @@ Error: `{err}`"
         self.refresh_sequence_windows_from_engine_state();
     }
 
-    fn undo_last_operation(&mut self) {
+    fn undo_last_operation(&mut self) -> bool {
         if self.has_active_background_jobs() {
             self.app_status = "Undo is disabled while background jobs are active.".to_string();
-            return;
+            return false;
         }
         let outcome = self
             .engine
@@ -5205,17 +5205,19 @@ Error: `{err}`"
             Ok(()) => {
                 self.handle_engine_state_after_history_transition();
                 self.app_status = "Undo applied".to_string();
+                true
             }
             Err(e) => {
                 self.app_status = format!("Undo unavailable: {}", e.message);
+                false
             }
         }
     }
 
-    fn redo_last_operation(&mut self) {
+    fn redo_last_operation(&mut self) -> bool {
         if self.has_active_background_jobs() {
             self.app_status = "Redo is disabled while background jobs are active.".to_string();
-            return;
+            return false;
         }
         let outcome = self
             .engine
@@ -5231,9 +5233,11 @@ Error: `{err}`"
             Ok(()) => {
                 self.handle_engine_state_after_history_transition();
                 self.app_status = "Redo applied".to_string();
+                true
             }
             Err(e) => {
                 self.app_status = format!("Redo unavailable: {}", e.message);
+                false
             }
         }
     }
@@ -5484,8 +5488,12 @@ Error: `{err}`"
             CommandPaletteAction::ToggleHistoryPanel => {
                 self.history_ui.show_panel = !self.history_ui.show_panel;
             }
-            CommandPaletteAction::Undo => self.undo_last_operation(),
-            CommandPaletteAction::Redo => self.redo_last_operation(),
+            CommandPaletteAction::Undo => {
+                self.undo_last_operation();
+            }
+            CommandPaletteAction::Redo => {
+                self.redo_last_operation();
+            }
             CommandPaletteAction::FocusViewport(viewport_id) => {
                 self.focus_window_viewport(ctx, viewport_id);
             }

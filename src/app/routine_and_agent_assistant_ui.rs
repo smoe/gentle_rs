@@ -628,11 +628,21 @@ impl GENtleApp {
                     "Suggestion #{index_1based} contains placeholder/help syntax rather than an executable command."
                 ));
             }
+            let parsed_command = parse_shell_line(command);
             if suggestion.execution != AgentExecutionIntent::Chat
-                && let Err(err) = parse_shell_line(command)
+                && let Err(err) = &parsed_command
             {
                 warnings.push(format!(
                     "Suggestion #{index_1based} is not parseable by GENtle: {err}"
+                ));
+            }
+            if suggestion.execution == AgentExecutionIntent::Auto
+                && parsed_command.as_ref().is_ok_and(|parsed| {
+                    matches!(parsed, ShellCommand::HistoryUndo | ShellCommand::HistoryRedo)
+                })
+            {
+                warnings.push(format!(
+                    "Suggestion #{index_1based} cannot auto-run: {AGENT_HISTORY_CONFIRMATION_REQUIRED}. Click Run to confirm it explicitly."
                 ));
             }
             if command.eq_ignore_ascii_case("/list") {
@@ -1320,6 +1330,22 @@ impl GENtleApp {
                 return;
             }
         };
+        if trigger == "auto"
+            && matches!(command, ShellCommand::HistoryUndo | ShellCommand::HistoryRedo)
+        {
+            let summary = AGENT_HISTORY_CONFIRMATION_REQUIRED.to_string();
+            self.agent_status = format!("{source_label} rejected: {summary}");
+            self.agent_execution_log.push(AgentCommandExecutionRecord {
+                index_1based,
+                command: trimmed.to_string(),
+                trigger: trigger.to_string(),
+                ok: false,
+                state_changed: false,
+                summary,
+                executed_at_unix_ms: Self::now_unix_ms(),
+            });
+            return;
+        }
         if matches!(
             command,
             ShellCommand::AgentsAsk { .. }
@@ -1338,6 +1364,29 @@ impl GENtleApp {
                 summary: "agent-to-agent agents command blocked".to_string(),
                 executed_at_unix_ms: Self::now_unix_ms(),
             });
+            return;
+        }
+        if matches!(command, ShellCommand::HistoryUndo | ShellCommand::HistoryRedo) {
+            let state_changed = match command {
+                ShellCommand::HistoryUndo => self.undo_last_operation(),
+                ShellCommand::HistoryRedo => self.redo_last_operation(),
+                _ => unreachable!("history transition match is exhaustive"),
+            };
+            let summary = self.app_status.clone();
+            self.agent_status = format!("{source_label}: {summary}");
+            self.agent_execution_log.push(AgentCommandExecutionRecord {
+                index_1based,
+                command: trimmed.to_string(),
+                trigger: trigger.to_string(),
+                ok: state_changed,
+                state_changed,
+                summary,
+                executed_at_unix_ms: Self::now_unix_ms(),
+            });
+            if self.agent_execution_log.len() > 100 {
+                let drain = self.agent_execution_log.len() - 100;
+                self.agent_execution_log.drain(0..drain);
+            }
             return;
         }
         let suppress_auto_open = Self::agent_command_suppresses_auto_open(trimmed, &command);

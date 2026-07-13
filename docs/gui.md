@@ -2752,6 +2752,12 @@ Behavior:
 - GENtle-local slash aliases are deliberately small and parser-validated:
   - `/help` shows shared-shell help
   - `/list` shows the current project state summary
+  - `/history` shows session-local undo/redo availability
+  - `/undo` and `/redo` use the same guarded transitions as `Edit -> Undo` and
+    `Edit -> Redo`; they are disabled while background jobs are active and
+    refresh open sequence windows after a successful transition
+  - agent-suggested `/undo` or `/redo` commands always require the user to
+    click `Run`; the automatic-suggestion option cannot execute them
   - `/open` and `/import` open the same sequence-file picker as
     `File -> Open Sequence...`
   - `/open file PATH [--id ID]` and `/import file PATH [--id ID]` import an

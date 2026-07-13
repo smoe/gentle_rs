@@ -1144,6 +1144,9 @@ Agent conversation ownership (durable rule):
   turn-count limit.
 - The GUI keeps provider setup in `Configuration -> Agent Systems`; the Agent
   Assistant window is reserved for conversation and reviewed actions.
+- Agent-proposed undo/redo transitions are never auto-executed. They require an
+  explicit user action, and GUI execution must use the same background-job
+  guard plus window/cache refresh path as the regular Edit-menu history action.
 
 ### Agent assistant bridge (implemented)
 

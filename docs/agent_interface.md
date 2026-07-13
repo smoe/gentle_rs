@@ -83,6 +83,14 @@ instead of being reinterpreted as prose. Ollama REPL habits such as bare
 `/path/to/file` attachments are not used here; use `/open file PATH`, `/import
 file PATH`, or the GUI import path for local sequence files.
 
+Session history is also available locally: `/history` reports undo/redo
+availability, while `/undo` and `/redo` apply the corresponding session-local
+transition. A command typed and run by the user is explicit. A command proposed
+by an agent must be reviewed and run by the user; GENtle refuses to
+automatically execute undo or redo even if the provider marks it `auto`. In the
+GUI, history transitions remain disabled while background jobs are active and
+refresh dependent sequence windows and caches after success.
+
 Viewer-window requests are GUI intents, not project-data mutations. To control a
 catalogued GENtle tool/dialog, use `ui open TARGET`, `ui focus TARGET`, or
 `ui close TARGET` such as `ui close pcr-design`. To control a DNA sequence
@@ -652,6 +660,8 @@ Key properties:
   primary machine-facing planning API
 - recursion guardrail blocks nested `agents ask`, `agents plan`, and
   `agents execute-plan` execution from suggested commands
+- `/undo` and `/redo` suggestions require explicit confirmation and cannot be
+  selected by automatic-suggestion execution
 - suggested commands can execute shared BLAST routes (`genomes/helpers blast`,
   `genomes/helpers blast-track`) because they use the same parser/executor as
   CLI shell

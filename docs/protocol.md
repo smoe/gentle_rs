@@ -4472,6 +4472,16 @@ Agent command-scope declaration:
 - Accepted read-only aliases:
   - `/help [TOPIC]`
   - `/list`
+  - `/history` (canonical command: `history status`)
+- Accepted session-history aliases:
+  - `/undo` (canonical command: `history undo`)
+  - `/redo` (canonical command: `history redo`)
+  - Undo and redo are session-local state transitions. Agent suggestions for
+    either transition require an explicit user action; GENtle rejects their
+    automatic execution even when a provider labels the suggestion `auto`.
+  - In the GUI, these aliases use the same guarded history handlers as
+    `Edit -> Undo` / `Redo`: they are disabled while background jobs are active
+    and refresh dependent windows and presentation caches after success.
 - Accepted GUI/file aliases:
   - `/open` and `/import` request the GUI sequence-file picker. In headless
     shell execution they return a structured UI-intent payload explaining that

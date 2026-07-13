@@ -61,7 +61,10 @@ use crate::{
         TranslationSpeedMark, TranslationSpeedProfile, TranslationSpeedProfileSource,
         UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
     },
-    engine_shell::{ShellCommand, ShellRunResult, UiIntentTarget, parse_shell_line},
+    engine_shell::{
+        AGENT_HISTORY_CONFIRMATION_REQUIRED, ShellCommand, ShellRunResult, UiIntentTarget,
+        parse_shell_line,
+    },
     ensembl_gene::{
         EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
         EnsemblGeneTranslationSummary,
@@ -1225,6 +1228,10 @@ fn agent_prompt_direct_shell_command_detects_agent_control_commands_only() {
         Some("help")
     );
     assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command("/undo"),
+        Some("/undo")
+    );
+    assert_eq!(
         GENtleApp::agent_prompt_direct_shell_command("help me retrieve FUS"),
         None
     );
@@ -1265,6 +1272,80 @@ fn agent_prompt_direct_shell_command_executes_without_agent_roundtrip() {
     assert_eq!(entry.command, "/list");
     assert!(entry.ok);
     assert!(!entry.state_changed);
+}
+
+#[test]
+fn agent_prompt_history_aliases_use_guarded_gui_transitions() {
+    let mut app = GENtleApp::default();
+    app.engine
+        .write()
+        .expect("engine")
+        .apply(Operation::SetDisplayVisibility {
+            target: crate::engine::DisplayTarget::Features,
+            visible: false,
+        })
+        .expect("create undo checkpoint");
+    app.lineage_cache_valid = true;
+    app.tracked_autosync_last_key = Some(GenomeTrackAutosyncKey {
+        engine_identity: 1,
+        anchor_signature: "stale-anchor".to_string(),
+        subscription_signature: "stale-subscription".to_string(),
+        subscription_count: 1,
+        requires_bigwig_converter: false,
+    });
+
+    app.execute_agent_prompt_command("/undo");
+
+    assert!(app.engine.read().expect("engine").state().display.show_features);
+    assert!(!app.lineage_cache_valid);
+    assert!(app.tracked_autosync_last_key.is_none());
+    assert!(app.agent_status.contains("Undo applied"));
+    let undo_entry = app.agent_execution_log.last().expect("undo log entry");
+    assert!(undo_entry.ok);
+    assert!(undo_entry.state_changed);
+
+    app.execute_agent_prompt_command("/redo");
+
+    assert!(!app.engine.read().expect("engine").state().display.show_features);
+    assert!(app.agent_status.contains("Redo applied"));
+    let redo_entry = app.agent_execution_log.last().expect("redo log entry");
+    assert!(redo_entry.ok);
+    assert!(redo_entry.state_changed);
+}
+
+#[test]
+fn agent_history_transition_rejects_auto_execution_and_active_background_jobs() {
+    let mut app = GENtleApp::default();
+    app.engine
+        .write()
+        .expect("engine")
+        .apply(Operation::SetDisplayVisibility {
+            target: crate::engine::DisplayTarget::Features,
+            visible: false,
+        })
+        .expect("create undo checkpoint");
+
+    app.execute_agent_suggested_command(1, "/undo", "auto");
+    assert!(!app.engine.read().expect("engine").state().display.show_features);
+    assert!(
+        app.agent_status
+            .contains(AGENT_HISTORY_CONFIRMATION_REQUIRED)
+    );
+    assert!(!app.agent_execution_log.last().expect("auto log entry").ok);
+
+    let (_tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
+    app.agent_task = Some(AgentAskTask {
+        job_id: 99,
+        prompt: "background test".to_string(),
+        started: Instant::now(),
+        runtime_frame: test_runtime_frame("history-guard"),
+        receiver: rx,
+    });
+    app.execute_agent_suggested_command(2, "/undo", "manual");
+
+    assert!(!app.engine.read().expect("engine").state().display.show_features);
+    assert!(app.agent_status.contains("background jobs are active"));
+    assert!(!app.agent_execution_log.last().expect("guard log entry").ok);
 }
 
 fn synthetic_agent_fus_ensembl_gene_entry() -> EnsemblGeneEntry {
@@ -1602,6 +1683,36 @@ fn agent_response_sanity_flags_list_as_filesystem_hallucination() {
         warnings
             .iter()
             .any(|warning| warning.contains("filesystem command")),
+        "warnings: {warnings:?}"
+    );
+}
+
+#[test]
+fn agent_response_sanity_flags_auto_history_transition() {
+    let response = AgentResponse {
+        schema: "gentle.agent_response.v1".to_string(),
+        assistant_message: "I can undo the last operation after confirmation.".to_string(),
+        questions: vec![],
+        suggested_commands: vec![AgentSuggestedCommand {
+            title: Some("Undo last operation".to_string()),
+            preconditions: vec![],
+            precondition_expr: None,
+            expected_outcomes: vec![],
+            expected_effects: vec![],
+            rationale: None,
+            command: "/undo".to_string(),
+            execution: AgentExecutionIntent::Auto,
+        }],
+    };
+
+    let warnings =
+        GENtleApp::agent_response_sanity_warnings_for_prompt("Undo that change", &response);
+
+    assert!(
+        warnings.iter().any(|warning| {
+            warning.contains(AGENT_HISTORY_CONFIRMATION_REQUIRED)
+                && warning.contains("Click Run")
+        }),
         "warnings: {warnings:?}"
     );
 }

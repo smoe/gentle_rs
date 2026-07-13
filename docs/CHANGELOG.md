@@ -40,6 +40,9 @@ Maintenance rule:
   `Configuration -> Agent Systems`, and added a bounded, project-stored
   `gentle.agent_conversation.v1` transcript so ephemeral Codex/local-model
   requests retain explicit follow-up context without persisting credentials.
+- Added protocol-owned `/history`, `/undo`, and `/redo` aliases. GUI history
+  aliases use guarded transitions with full view/cache refresh, while
+  agent-proposed undo/redo always requires explicit user confirmation.
 
 ## 2026-07-12
 

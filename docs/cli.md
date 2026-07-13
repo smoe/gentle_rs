@@ -75,6 +75,11 @@ Session-local operation history:
   - restores the previous operation-level engine checkpoint.
 - `gentle_cli shell 'history redo'`
   - reapplies the most recently undone operation-level checkpoint.
+- The shared parser also accepts `/history`, `/undo`, and `/redo` as concise
+  aliases for the three commands above.
+- Agent-returned undo/redo suggestions are never executed solely by
+  `--allow-auto-exec`; use an explicit execution index or `--execute-all` after
+  reviewing the suggestion.
 - Undo/redo history is intentionally session-local and is not persisted into
   `.gentle.json` project files.
 
@@ -655,6 +660,7 @@ Agent-assistant capability status:
   (`gentle_cli agents ...`)
 - GENtle-local slash aliases are available through the shared shell parser for
   agent convenience, not as OpenClaw/OS commands. They include `/help`, `/list`,
+  session history (`/history`, `/undo`, `/redo`),
   GUI file-picker intents (`/open`, `/import`), exact file import
   (`/open file PATH [--id ID]`, `/import file PATH [--id ID]`), non-mutating
   viewer control (`/open sequence-window SEQ_ID`,

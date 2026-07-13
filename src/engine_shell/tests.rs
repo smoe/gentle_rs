@@ -1424,8 +1424,23 @@ fn parse_history_commands() {
         parse_shell_line("history redo").expect("parse history redo"),
         ShellCommand::HistoryRedo
     ));
+    assert!(matches!(
+        parse_shell_line("/history").expect("parse /history"),
+        ShellCommand::HistoryStatus
+    ));
+    assert!(matches!(
+        parse_shell_line("/undo").expect("parse /undo"),
+        ShellCommand::HistoryUndo
+    ));
+    assert!(matches!(
+        parse_shell_line("/redo").expect("parse /redo"),
+        ShellCommand::HistoryRedo
+    ));
     assert!(parse_shell_line("history").is_err());
     assert!(parse_shell_line("history rewind").is_err());
+    assert!(parse_shell_line("/undo now").is_err());
+    assert!(parse_shell_line("/redo now").is_err());
+    assert!(parse_shell_line("/history status").is_err());
 }
 
 #[test]
@@ -1453,15 +1468,15 @@ fn execute_history_commands_report_and_transition_state() {
         "SetDisplayVisibility"
     );
 
-    let undo =
-        execute_shell_command(&mut engine, &ShellCommand::HistoryUndo).expect("history undo");
+    let undo_command = parse_shell_line("/undo").expect("parse /undo");
+    let undo = execute_shell_command(&mut engine, &undo_command).expect("execute /undo");
     assert!(undo.state_changed);
     assert!(engine.state().display.show_features);
     assert_eq!(undo.output["summary"]["undo_count"], 0);
     assert_eq!(undo.output["summary"]["redo_count"], 1);
 
-    let redo =
-        execute_shell_command(&mut engine, &ShellCommand::HistoryRedo).expect("history redo");
+    let redo_command = parse_shell_line("/redo").expect("parse /redo");
+    let redo = execute_shell_command(&mut engine, &redo_command).expect("execute /redo");
     assert!(redo.state_changed);
     assert!(!engine.state().display.show_features);
     assert_eq!(redo.output["summary"]["undo_count"], 1);
@@ -18993,6 +19008,57 @@ fn execute_macros_run_blocks_nested_agents_ask_when_agent_commands_are_disabled(
         err.contains("agent-to-agent recursion guardrail"),
         "unexpected error: {err}"
     );
+}
+
+#[test]
+fn execute_agent_suggestions_require_explicit_confirmation_for_history_transitions() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::Features,
+            visible: false,
+        })
+        .expect("create undo checkpoint");
+    let suggestions = vec![crate::agent_bridge::AgentSuggestedCommand {
+        title: Some("Undo last operation".to_string()),
+        preconditions: vec![],
+        precondition_expr: None,
+        expected_outcomes: vec![],
+        expected_effects: vec![],
+        rationale: None,
+        command: "/undo".to_string(),
+        execution: AgentExecutionIntent::Auto,
+    }];
+
+    let (changed, reports) = execute_agent_suggested_commands(
+        &mut engine,
+        &suggestions,
+        false,
+        &BTreeSet::new(),
+        true,
+        &ShellExecutionOptions::default(),
+    );
+    assert!(!changed);
+    assert!(!engine.state().display.show_features);
+    assert_eq!(reports.len(), 1);
+    assert!(reports[0].executed);
+    assert!(!reports[0].ok);
+    assert_eq!(
+        reports[0].error.as_deref(),
+        Some(AGENT_HISTORY_CONFIRMATION_REQUIRED)
+    );
+
+    let (changed, reports) = execute_agent_suggested_commands(
+        &mut engine,
+        &suggestions,
+        false,
+        &BTreeSet::from([1]),
+        true,
+        &ShellExecutionOptions::default(),
+    );
+    assert!(changed);
+    assert!(engine.state().display.show_features);
+    assert!(reports[0].ok);
 }
 
 #[test]

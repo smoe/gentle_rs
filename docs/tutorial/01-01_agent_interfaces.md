@@ -50,6 +50,10 @@ parser-validated convenience forms, not operating-system commands:
 
 - `/help` maps to shared-shell help.
 - `/list` maps to the current project state summary.
+- `/history` reports session-local undo/redo availability.
+- `/undo` and `/redo` apply explicit session-local history transitions. An
+  agent may suggest them, but GENtle will not auto-execute them; review the row
+  and click `Run`. The GUI also blocks them while background jobs are active.
 - `/open` and `/import` open the GUI file picker, just like
   `File -> Open Sequence...`.
 - `/open file PATH [--id ID]` and `/import file PATH [--id ID]` load an exact
