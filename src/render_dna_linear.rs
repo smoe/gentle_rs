@@ -678,6 +678,9 @@ impl RenderDnaLinear {
         &self,
         viewport: LinearViewport,
     ) -> &[RestrictionGroupIndexEntry] {
+        if viewport.end <= viewport.start {
+            return &self.restriction_group_index[..0];
+        }
         let start = self
             .restriction_group_index
             .partition_point(|entry| entry.pos < viewport.start);
@@ -4066,6 +4069,126 @@ mod tests {
         renderer.refresh_restriction_group_index(&dna);
     }
 
+    #[derive(Debug)]
+    struct DeterministicLcg(u64);
+
+    impl DeterministicLcg {
+        fn new(seed: u64) -> Self {
+            Self(seed)
+        }
+
+        fn next_u64(&mut self) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            self.0
+        }
+
+        fn below(&mut self, upper_exclusive: usize) -> usize {
+            assert!(upper_exclusive > 0);
+            (self.next_u64() % upper_exclusive as u64) as usize
+        }
+    }
+
+    fn random_non_empty_range(rng: &mut DeterministicLcg, sequence_len: usize) -> (usize, usize) {
+        let start = rng.below(sequence_len);
+        let end = start + 1 + rng.below(sequence_len - start);
+        (start, end)
+    }
+
+    fn random_feature_location(
+        rng: &mut DeterministicLcg,
+        sequence_len: usize,
+        ordinal: usize,
+    ) -> Location {
+        match ordinal % 9 {
+            0 => {
+                let (start, end) = random_non_empty_range(rng, sequence_len);
+                Location::simple_range(start as i64, end as i64)
+            }
+            1 | 2 => {
+                let mut ranges = (0..3)
+                    .map(|_| random_non_empty_range(rng, sequence_len))
+                    .collect::<Vec<_>>();
+                ranges.sort_unstable();
+                let joined = Location::Join(
+                    ranges
+                        .into_iter()
+                        .map(|(start, end)| Location::simple_range(start as i64, end as i64))
+                        .collect(),
+                );
+                if ordinal % 9 == 2 {
+                    Location::Complement(Box::new(joined))
+                } else {
+                    joined
+                }
+            }
+            3 => {
+                let (start, end) = random_non_empty_range(rng, sequence_len);
+                Location::simple_range(end as i64, start as i64)
+            }
+            4 => {
+                let pos = rng.below(sequence_len + 1);
+                Location::simple_range(pos as i64, pos as i64)
+            }
+            5 => Location::simple_range(-(rng.below(32) as i64) - 1, rng.below(32) as i64),
+            6 => {
+                let start = if ordinal.is_multiple_of(2) {
+                    sequence_len.saturating_sub(16)
+                } else {
+                    sequence_len + rng.below(32)
+                };
+                Location::simple_range(start as i64, (sequence_len + 1 + rng.below(64)) as i64)
+            }
+            7 => Location::simple_range(0, (sequence_len + rng.below(64)) as i64),
+            _ => Location::Join(Vec::new()),
+        }
+    }
+
+    fn normalized_feature_bounds(feature: &Feature, sequence_len: usize) -> Option<(usize, usize)> {
+        let (raw_start, raw_end) = feature.location.find_bounds().ok()?;
+        if raw_start < 0 || raw_end < 0 {
+            return None;
+        }
+        let mut start = raw_start as usize;
+        let mut end = raw_end as usize;
+        if end < start {
+            std::mem::swap(&mut start, &mut end);
+        }
+        if start >= sequence_len {
+            return None;
+        }
+        end = end.min(sequence_len);
+        (end > start).then_some((start, end))
+    }
+
+    fn brute_force_feature_overlaps(
+        features: &[Feature],
+        sequence_len: usize,
+        viewport: LinearViewport,
+    ) -> Vec<usize> {
+        if viewport.end <= viewport.start {
+            return Vec::new();
+        }
+        features
+            .iter()
+            .enumerate()
+            .filter_map(|(feature_idx, feature)| {
+                let (start, end) = normalized_feature_bounds(feature, sequence_len)?;
+                (start < viewport.end && end > viewport.start).then_some(feature_idx)
+            })
+            .collect()
+    }
+
+    fn test_viewport(start: usize, end: usize) -> LinearViewport {
+        LinearViewport {
+            start,
+            end,
+            span: end.saturating_sub(start),
+        }
+    }
+
     fn restriction_ready_renderer(sequence: &str) -> RenderDnaLinear {
         let mut dna = DNAsequence::from_sequence(sequence).expect("valid DNA");
         *dna.restriction_enzymes_mut() = active_restriction_enzymes();
@@ -4110,6 +4233,126 @@ mod tests {
             span: 10,
         });
         assert_eq!(complement_join_hits, vec![5]);
+    }
+
+    #[test]
+    fn feature_interval_index_matches_brute_force_oracle() {
+        const SEQUENCE_LEN: usize = 1_000;
+        const FEATURE_SET_COUNT: usize = 32;
+        const RANDOM_FEATURE_COUNT: usize = 72;
+        const RANDOM_VIEWPORT_COUNT: usize = 96;
+
+        let mut rng = DeterministicLcg::new(0x5eed_fea7_1a7e_2026);
+        let fixed_viewports = [
+            test_viewport(0, 0),
+            test_viewport(0, 1),
+            test_viewport(0, SEQUENCE_LEN),
+            test_viewport(SEQUENCE_LEN - 1, SEQUENCE_LEN),
+            test_viewport(SEQUENCE_LEN, SEQUENCE_LEN),
+            test_viewport(SEQUENCE_LEN, SEQUENCE_LEN + 1),
+            test_viewport(50, 100),
+            test_viewport(100, 200),
+            test_viewport(150, 160),
+            test_viewport(199, 201),
+            test_viewport(200, 300),
+            test_viewport(300, 200),
+            test_viewport(50, 350),
+        ];
+
+        for feature_set in 0..FEATURE_SET_COUNT {
+            let mut features = vec![
+                make_test_feature(Location::simple_range(0, SEQUENCE_LEN as i64)),
+                make_test_feature(Location::simple_range(0, 1)),
+                make_test_feature(Location::simple_range(100, 300)),
+                make_test_feature(Location::Join(vec![
+                    Location::simple_range(25, 75),
+                    Location::simple_range(225, 275),
+                ])),
+                make_test_feature(Location::Complement(Box::new(Location::Join(vec![
+                    Location::simple_range(400, 450),
+                    Location::simple_range(600, 650),
+                ])))),
+                make_test_feature(Location::simple_range(700, 700)),
+                make_test_feature(Location::simple_range(-10, 10)),
+                make_test_feature(Location::simple_range(
+                    SEQUENCE_LEN as i64,
+                    SEQUENCE_LEN as i64 + 20,
+                )),
+            ];
+            features.extend((0..RANDOM_FEATURE_COUNT).map(|ordinal| {
+                make_test_feature(random_feature_location(
+                    &mut rng,
+                    SEQUENCE_LEN,
+                    feature_set * RANDOM_FEATURE_COUNT + ordinal,
+                ))
+            }));
+
+            let mut renderer = test_renderer_with_features(features.clone(), SEQUENCE_LEN);
+            refresh_test_feature_index(&mut renderer);
+
+            for viewport in fixed_viewports
+                .into_iter()
+                .chain((0..RANDOM_VIEWPORT_COUNT).map(|_| {
+                    let first = rng.below(SEQUENCE_LEN + 101);
+                    let second = rng.below(SEQUENCE_LEN + 101);
+                    if rng.below(5) == 0 {
+                        test_viewport(first, second)
+                    } else {
+                        test_viewport(first.min(second), first.max(second))
+                    }
+                }))
+            {
+                let expected = brute_force_feature_overlaps(&features, SEQUENCE_LEN, viewport);
+                let actual = renderer.feature_indices_overlapping_viewport(viewport);
+                assert_eq!(
+                    actual, expected,
+                    "feature-set {feature_set}, viewport [{}, {})",
+                    viewport.start, viewport.end
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn feature_interval_index_obeys_half_open_edges_and_empty_queries() {
+        let mut empty_renderer = test_renderer(100);
+        refresh_test_feature_index(&mut empty_renderer);
+        assert!(
+            empty_renderer
+                .feature_indices_overlapping_viewport(test_viewport(20, 40))
+                .is_empty()
+        );
+        assert!(
+            empty_renderer
+                .feature_indices_overlapping_viewport(test_viewport(40, 20))
+                .is_empty()
+        );
+
+        let mut renderer = test_renderer_with_features(
+            vec![make_test_feature(Location::simple_range(10, 20))],
+            100,
+        );
+        refresh_test_feature_index(&mut renderer);
+        assert!(
+            renderer
+                .feature_indices_overlapping_viewport(test_viewport(0, 10))
+                .is_empty(),
+            "touching the feature start has no overlapping base"
+        );
+        assert!(
+            renderer
+                .feature_indices_overlapping_viewport(test_viewport(20, 30))
+                .is_empty(),
+            "touching the feature end has no overlapping base"
+        );
+        assert_eq!(
+            renderer.feature_indices_overlapping_viewport(test_viewport(9, 11)),
+            vec![0]
+        );
+        assert_eq!(
+            renderer.feature_indices_overlapping_viewport(test_viewport(19, 21)),
+            vec![0]
+        );
     }
 
     #[test]
@@ -4193,6 +4436,99 @@ mod tests {
             initial_generation
         );
         assert!(renderer.restriction_group_index.is_empty());
+    }
+
+    #[test]
+    fn restriction_group_index_range_matches_brute_force_oracle() {
+        const SEQUENCE_LEN: usize = 1_000;
+        const INDEX_COUNT: usize = 32;
+        const RANDOM_ENTRY_COUNT: usize = 160;
+        const RANDOM_VIEWPORT_COUNT: usize = 128;
+
+        let mut rng = DeterministicLcg::new(0xc011_ec7e_57a7_2026);
+        for index_number in 0..INDEX_COUNT {
+            let mut renderer = test_renderer(SEQUENCE_LEN);
+            renderer.restriction_group_index = (0..RANDOM_ENTRY_COUNT)
+                .map(|ordinal| {
+                    let pos = match ordinal {
+                        0 => 0,
+                        1 => SEQUENCE_LEN - 1,
+                        _ => rng.below(SEQUENCE_LEN),
+                    };
+                    RestrictionGroupIndexEntry {
+                        pos,
+                        key: RestrictionEnzymeKey::new(
+                            pos as isize,
+                            pos as isize + (ordinal % 3) as isize,
+                            ordinal as isize,
+                            1,
+                            ordinal as isize,
+                            ordinal as isize + 1,
+                        ),
+                        names: vec![format!("enzyme_{ordinal}")],
+                    }
+                })
+                .collect();
+            renderer
+                .restriction_group_index
+                .sort_by(|left, right| left.pos.cmp(&right.pos).then(left.key.cmp(&right.key)));
+
+            let fixed_viewports = [
+                test_viewport(0, 0),
+                test_viewport(0, 1),
+                test_viewport(0, SEQUENCE_LEN),
+                test_viewport(SEQUENCE_LEN - 1, SEQUENCE_LEN),
+                test_viewport(SEQUENCE_LEN, SEQUENCE_LEN),
+                test_viewport(SEQUENCE_LEN, SEQUENCE_LEN + 1),
+                test_viewport(250, 250),
+                test_viewport(750, 250),
+            ];
+            for viewport in fixed_viewports
+                .into_iter()
+                .chain((0..RANDOM_VIEWPORT_COUNT).map(|_| {
+                    let first = rng.below(SEQUENCE_LEN + 101);
+                    let second = rng.below(SEQUENCE_LEN + 101);
+                    if rng.below(5) == 0 {
+                        test_viewport(first, second)
+                    } else {
+                        test_viewport(first.min(second), first.max(second))
+                    }
+                }))
+            {
+                let expected = if viewport.end <= viewport.start {
+                    Vec::new()
+                } else {
+                    renderer
+                        .restriction_group_index
+                        .iter()
+                        .filter(|entry| entry.pos >= viewport.start && entry.pos < viewport.end)
+                        .map(|entry| (entry.pos, entry.key.clone(), entry.names.clone()))
+                        .collect::<Vec<_>>()
+                };
+                let actual = renderer
+                    .restriction_group_index_range(viewport)
+                    .iter()
+                    .map(|entry| (entry.pos, entry.key.clone(), entry.names.clone()))
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    actual, expected,
+                    "restriction index {index_number}, viewport [{}, {})",
+                    viewport.start, viewport.end
+                );
+            }
+        }
+
+        let renderer = test_renderer(SEQUENCE_LEN);
+        assert!(
+            renderer
+                .restriction_group_index_range(test_viewport(0, SEQUENCE_LEN))
+                .is_empty()
+        );
+        assert!(
+            renderer
+                .restriction_group_index_range(test_viewport(100, 10))
+                .is_empty()
+        );
     }
 
     #[test]
