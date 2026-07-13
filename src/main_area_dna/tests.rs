@@ -8336,6 +8336,7 @@ fn splicing_isoform_evidence_request_normalizes_gui_source_lists() {
     area.splicing_isoform_evidence_probe_paths = "b.json,a.json".to_string();
     area.splicing_isoform_evidence_cdna_est_paths = "support.json".to_string();
     area.splicing_isoform_evidence_expression_path = " expression.tsv ".to_string();
+    area.splicing_isoform_evidence_occupancy_tracks = "SAOS-2 TA,SAOS-2 DN\nSAOS-2 TA".to_string();
 
     let request = area
         .splicing_isoform_evidence_request()
@@ -8349,6 +8350,10 @@ fn splicing_isoform_evidence_request_normalizes_gui_source_lists() {
     assert_eq!(
         request.expression_tsv_path.as_deref(),
         Some("expression.tsv")
+    );
+    assert_eq!(
+        request.occupancy_track_names,
+        vec!["SAOS-2 TA", "SAOS-2 DN"]
     );
 }
 

@@ -10017,6 +10017,148 @@ impl GentleEngine {
         }
     }
 
+    fn isoform_evidence_occupancy_lanes(
+        &self,
+        dna: &DNAsequence,
+        splicing: &SplicingExpertView,
+        anchor: Option<&SequenceGenomeAnchorSummary>,
+        requested_track_names: &[String],
+        warnings: &mut Vec<String>,
+    ) -> Vec<GeneIsoformOccupancyLane> {
+        let requested = requested_track_names
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        if requested.is_empty() {
+            return vec![];
+        }
+
+        let include_all = requested.iter().any(|value| value == "*");
+        let requested_order = requested
+            .iter()
+            .filter(|value| value.as_str() != "*")
+            .enumerate()
+            .map(|(index, value)| (value.to_ascii_lowercase(), index))
+            .collect::<BTreeMap<_, _>>();
+        let mut overlays = self.summarize_tfbs_score_track_overlay_tracks(
+            dna,
+            splicing.region_start_1based.saturating_sub(1),
+            splicing.region_end_1based,
+        );
+        overlays.retain(|track| {
+            include_all
+                || requested_order.contains_key(&track.track_name.trim().to_ascii_lowercase())
+        });
+        overlays.sort_by(|left, right| {
+            let left_order = requested_order
+                .get(&left.track_name.trim().to_ascii_lowercase())
+                .copied()
+                .unwrap_or(usize::MAX);
+            let right_order = requested_order
+                .get(&right.track_name.trim().to_ascii_lowercase())
+                .copied()
+                .unwrap_or(usize::MAX);
+            left_order
+                .cmp(&right_order)
+                .then(left.display_label.cmp(&right.display_label))
+                .then(left.source_path.cmp(&right.source_path))
+        });
+
+        if !include_all {
+            let found = overlays
+                .iter()
+                .map(|track| track.track_name.trim().to_ascii_lowercase())
+                .collect::<BTreeSet<_>>();
+            for requested_name in requested.iter().filter(|value| value.as_str() != "*") {
+                if !found.contains(&requested_name.to_ascii_lowercase()) {
+                    warnings.push(format!(
+                        "Occupancy track '{}' has no projected BED/BigWig interval in the inspected gene span.",
+                        requested_name
+                    ));
+                }
+            }
+        }
+
+        overlays
+            .into_iter()
+            .map(|track| {
+                let source_token = track
+                    .source_file_name
+                    .as_deref()
+                    .unwrap_or(&track.track_name);
+                let lane_identity = format!(
+                    "{}\u{1f}{}",
+                    track.track_name,
+                    track.source_path.as_deref().unwrap_or(source_token)
+                );
+                let lane_digest =
+                    crate::digest_utils::sha256_prefixed_bytes(lane_identity.as_bytes());
+                let lane_digest_short = lane_digest
+                    .rsplit(':')
+                    .next()
+                    .unwrap_or(&lane_digest)
+                    .chars()
+                    .take(12)
+                    .collect::<String>();
+                let lane_id = format!(
+                    "OCC:{}:{}:{}",
+                    Self::isoform_evidence_id_token(&track.track_name),
+                    Self::isoform_evidence_id_token(source_token),
+                    lane_digest_short
+                );
+                let mut min_score: Option<f64> = None;
+                let mut max_score: Option<f64> = None;
+                let intervals = track
+                    .intervals
+                    .into_iter()
+                    .enumerate()
+                    .map(|(interval_index, interval)| {
+                        if let Some(score) = interval.score.filter(|value| value.is_finite()) {
+                            min_score = Some(min_score.map_or(score, |current| current.min(score)));
+                            max_score = Some(max_score.map_or(score, |current| current.max(score)));
+                        }
+                        let local_start_1based = interval.start_0based.saturating_add(1);
+                        let local_end_1based = interval.end_0based_exclusive;
+                        let (genomic_start_1based, genomic_end_1based) =
+                            Self::isoform_evidence_local_range_to_report_1based(
+                                anchor,
+                                local_start_1based,
+                                local_end_1based,
+                            );
+                        GeneIsoformOccupancyInterval {
+                            interval_id: format!(
+                                "{}:{}-{}:{}",
+                                lane_id,
+                                genomic_start_1based,
+                                genomic_end_1based,
+                                interval_index + 1
+                            ),
+                            local_start_1based,
+                            local_end_1based,
+                            genomic_start_1based,
+                            genomic_end_1based,
+                            label: interval.label,
+                            score: interval.score,
+                            strand: interval.strand,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                GeneIsoformOccupancyLane {
+                    lane_id,
+                    track_name: track.track_name,
+                    display_label: track.display_label,
+                    source_kind: track.source_kind,
+                    source_path: track.source_path,
+                    interval_count: intervals.len(),
+                    min_score,
+                    max_score,
+                    intervals,
+                }
+            })
+            .collect()
+    }
+
     pub(super) fn build_gene_isoform_evidence_report(
         &self,
         seq_id: &str,
@@ -10324,6 +10466,30 @@ impl GentleEngine {
         }
         junctions.sort_by(|a, b| a.junction_id.cmp(&b.junction_id));
 
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", seq_id),
+                cause_chain: vec![],
+            })?;
+        let occupancy_lanes = self.isoform_evidence_occupancy_lanes(
+            dna,
+            &splicing,
+            anchor.as_ref(),
+            &request.occupancy_track_names,
+            &mut warnings,
+        );
+        let occupancy_shared_abs_max_score = occupancy_lanes
+            .iter()
+            .flat_map(|lane| [lane.min_score, lane.max_score])
+            .flatten()
+            .map(f64::abs)
+            .filter(|value| value.is_finite())
+            .max_by(f64::total_cmp);
+
         let mut evidence_items = Vec::new();
         let mut assay_candidates = Vec::new();
         let mut provenance = vec![GeneIsoformEvidenceProvenanceSource {
@@ -10343,6 +10509,29 @@ impl GentleEngine {
             path: None,
             sha256: None,
         });
+        for lane in &occupancy_lanes {
+            provenance.push(GeneIsoformEvidenceProvenanceSource {
+                source_kind: "projected_occupancy_track".to_string(),
+                source_id: lane.lane_id.clone(),
+                schema: None,
+                path: lane.source_path.clone(),
+                sha256: None,
+            });
+            evidence_items.push(GeneIsoformEvidenceItem {
+                evidence_id: lane.lane_id.clone(),
+                source_kind: IsoformEvidenceSourceKind::OccupancyTrack,
+                source_id: lane.track_name.clone(),
+                status: IsoformEvidenceAssessmentStatus::Observed,
+                support_count: Some(lane.interval_count),
+                method: "Genome-anchored projected BED/BigWig intervals aligned to the transcript-model coordinate axis."
+                    .to_string(),
+                notes: vec![
+                    "This is locus-level occupancy evidence; it is not assigned to abundance or responsiveness scores and does not identify a regulated isoform."
+                        .to_string(),
+                ],
+                ..Default::default()
+            });
+        }
 
         let mut rna_report_ids = request.rna_read_report_ids.clone();
         rna_report_ids.sort();
@@ -10929,6 +11118,8 @@ impl GentleEngine {
             transcripts,
             exon_families,
             junctions,
+            occupancy_lanes,
+            occupancy_shared_abs_max_score,
             evidence_items,
             assay_candidates,
             provenance,

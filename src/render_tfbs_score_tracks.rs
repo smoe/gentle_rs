@@ -1624,6 +1624,7 @@ mod tests {
                 source_kind: "BED".to_string(),
                 track_name: "cutrun_tp73".to_string(),
                 display_label: "cutrun_tp73 (tp73_cutrun.bed)".to_string(),
+                source_path: Some("/tmp/tp73_cutrun.bed".to_string()),
                 source_file_name: Some("tp73_cutrun.bed".to_string()),
                 interval_count: 2,
                 max_score: Some(42.0),

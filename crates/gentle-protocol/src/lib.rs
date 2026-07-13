@@ -68,8 +68,8 @@ pub use isoform_evidence::{
     GeneIsoformAssayCandidate, GeneIsoformEvidenceComponent, GeneIsoformEvidenceComponents,
     GeneIsoformEvidenceItem, GeneIsoformEvidenceProvenanceSource, GeneIsoformEvidenceReport,
     GeneIsoformEvidenceRequest, GeneIsoformExonFamilyRow, GeneIsoformFamilyRow,
-    GeneIsoformJunctionRow, GeneIsoformTranscriptRow, IsoformEvidenceAssessmentStatus,
-    IsoformEvidenceSourceKind,
+    GeneIsoformJunctionRow, GeneIsoformOccupancyInterval, GeneIsoformOccupancyLane,
+    GeneIsoformTranscriptRow, IsoformEvidenceAssessmentStatus, IsoformEvidenceSourceKind,
 };
 pub use orthologs::{
     ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA,

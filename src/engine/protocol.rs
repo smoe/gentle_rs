@@ -1031,6 +1031,8 @@ pub struct TfbsScoreTrackOverlayTrack {
     pub track_name: String,
     pub display_label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_file_name: Option<String>,
     pub interval_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]

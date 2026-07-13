@@ -6795,6 +6795,23 @@ impl MainAreaDna {
         values
     }
 
+    fn isoform_evidence_ordered_list(text: &str) -> Vec<String> {
+        let mut values = Vec::new();
+        for value in text
+            .split([',', '\n'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if !values
+                .iter()
+                .any(|existing: &String| existing.eq_ignore_ascii_case(value))
+            {
+                values.push(value.to_string());
+            }
+        }
+        values
+    }
+
     pub(super) fn splicing_isoform_evidence_request(
         &self,
     ) -> Result<GeneIsoformEvidenceRequest, String> {
@@ -6834,6 +6851,9 @@ impl MainAreaDna {
                     .trim()
                     .to_string()
             }),
+            occupancy_track_names: Self::isoform_evidence_ordered_list(
+                &self.splicing_isoform_evidence_occupancy_tracks,
+            ),
         })
     }
 
@@ -6972,6 +6992,40 @@ impl MainAreaDna {
                     });
             });
 
+        egui::CollapsingHeader::new(format!(
+            "Occupancy tracks ({})",
+            report.occupancy_lanes.len()
+        ))
+        .default_open(!report.occupancy_lanes.is_empty())
+        .show(ui, |ui| {
+            ui.label(
+                egui::RichText::new(
+                    "Projected locus-level BED/BigWig evidence; alignment with an exon or transcript does not identify a regulated isoform.",
+                )
+                .size(9.0)
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            egui::Grid::new(("isoform_evidence_occupancy", report.panel_id.as_str()))
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("Track");
+                    ui.strong("Source");
+                    ui.strong("Intervals");
+                    ui.strong("Score range");
+                    ui.end_row();
+                    for lane in &report.occupancy_lanes {
+                        ui.label(&lane.display_label);
+                        ui.monospace(&lane.source_kind);
+                        ui.label(lane.interval_count.to_string());
+                        ui.monospace(match (lane.min_score, lane.max_score) {
+                            (Some(min), Some(max)) => format!("{min:.3} .. {max:.3}"),
+                            _ => "peaks / unscored".to_string(),
+                        });
+                        ui.end_row();
+                    }
+                });
+        });
+
         egui::CollapsingHeader::new(format!("Junction evidence ({})", report.junctions.len()))
             .default_open(true)
             .show(ui, |ui| {
@@ -7072,7 +7126,7 @@ impl MainAreaDna {
     ) {
         ui.label(
             egui::RichText::new(
-                "Compose existing annotation, RNA-read, sequence, array, expression, and qPCR evidence without treating any one layer as validation.",
+                "Compose existing annotation, RNA-read, sequence, array, expression, projected occupancy, and qPCR evidence without treating any one layer as validation.",
             )
             .size(10.0)
             .color(egui::Color32::from_rgb(71, 85, 105)),
@@ -7112,6 +7166,12 @@ impl MainAreaDna {
                 ui.end_row();
                 ui.label("Expression TSV path");
                 ui.text_edit_singleline(&mut self.splicing_isoform_evidence_expression_path);
+                ui.end_row();
+                ui.label("Occupancy track names");
+                ui.text_edit_singleline(&mut self.splicing_isoform_evidence_occupancy_tracks)
+                    .on_hover_text(
+                        "Comma/newline-separated projected BED/BigWig track names; use * for all projected tracks in the gene span",
+                    );
                 ui.end_row();
             });
 

@@ -15159,6 +15159,49 @@ fn gene_isoform_evidence_inspector_composes_patz1_minus_strand_evidence_read_onl
             strict: false,
         })
         .expect("import synthetic PATZ1 panel");
+    let dna = engine
+        .state_mut()
+        .sequences
+        .get_mut("patz1_isoform_evidence")
+        .expect("loaded PATZ1 sequence");
+    for (track_name, source_path, start, end, score) in [
+        (
+            "SAOS-2 TAp73alpha TP73",
+            "/external/cutrun/tp73_saos2_TA_R1.bigWig",
+            145,
+            176,
+            12.0,
+        ),
+        (
+            "SAOS-2 DNp73beta TP73",
+            "/external/cutrun/tp73_saos2_DN_R1.bigWig",
+            88,
+            132,
+            6.0,
+        ),
+        (
+            "unrelated occupancy track",
+            "/external/cutrun/unrelated.bigWig",
+            40,
+            60,
+            30.0,
+        ),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "track".into(),
+            location: gb_io::seq::Location::simple_range(start, end),
+            qualifiers: vec![
+                (
+                    "gentle_generated".into(),
+                    Some(GENOME_BIGWIG_TRACK_GENERATED_TAG.to_string()),
+                ),
+                ("gentle_track_source".into(), Some("BigWig".to_string())),
+                ("gentle_track_name".into(), Some(track_name.to_string())),
+                ("gentle_track_file".into(), Some(source_path.to_string())),
+                ("score".into(), Some(format!("{score:.6}"))),
+            ],
+        });
+    }
 
     let rna_report = RnaReadInterpretationReport {
         schema: RNA_READ_REPORT_SCHEMA.to_string(),
@@ -15267,6 +15310,10 @@ fn gene_isoform_evidence_inspector_composes_patz1_minus_strand_evidence_read_onl
         ],
         cdna_est_resource_paths: vec![format!("{fixture}/patz1_cdna_est.json")],
         expression_tsv_path: Some(format!("{fixture}/patz1_expression.tsv")),
+        occupancy_track_names: vec![
+            "SAOS-2 TAp73alpha TP73".to_string(),
+            "SAOS-2 DNp73beta TP73".to_string(),
+        ],
     };
     let state_before = serde_json::to_value(engine.state()).expect("serialize state before");
     let view = engine
@@ -15346,6 +15393,29 @@ fn gene_isoform_evidence_inspector_composes_patz1_minus_strand_evidence_read_onl
             })
     }));
     assert_eq!(report.assay_candidates.len(), 1);
+    assert_eq!(report.occupancy_lanes.len(), 2);
+    assert_eq!(
+        report.occupancy_lanes[0].track_name,
+        "SAOS-2 TAp73alpha TP73"
+    );
+    assert_eq!(
+        report.occupancy_lanes[1].track_name,
+        "SAOS-2 DNp73beta TP73"
+    );
+    assert_eq!(report.occupancy_shared_abs_max_score, Some(12.0));
+    assert!(report.evidence_items.iter().any(|item| {
+        item.source_kind == IsoformEvidenceSourceKind::OccupancyTrack
+            && item.notes.iter().any(|note| {
+                note.contains("locus-level occupancy")
+                    && note.contains("does not identify a regulated isoform")
+            })
+    }));
+    assert!(
+        report
+            .occupancy_lanes
+            .iter()
+            .all(|lane| lane.source_path.as_deref().is_some_and(|path| path.ends_with(".bigWig")))
+    );
     assert!(
         report
             .warnings
@@ -15359,6 +15429,29 @@ fn gene_isoform_evidence_inspector_composes_patz1_minus_strand_evidence_read_onl
         warning.contains("patz1_wrong_template_qpcr") && warning.contains("another_sequence")
     }));
 
+    let mut wildcard_request = request.clone();
+    wildcard_request.occupancy_track_names = vec!["*".to_string()];
+    let wildcard_view = engine
+        .inspect_feature_expert(
+            "patz1_isoform_evidence",
+            &FeatureExpertTarget::IsoformEvidence {
+                request: wildcard_request,
+            },
+        )
+        .expect("inspect all projected occupancy tracks");
+    let FeatureExpertView::IsoformEvidence(wildcard_report) = wildcard_view else {
+        panic!("expected wildcard isoform evidence view");
+    };
+    assert_eq!(wildcard_report.occupancy_lanes.len(), 3);
+    for selected_lane in &report.occupancy_lanes {
+        let wildcard_lane = wildcard_report
+            .occupancy_lanes
+            .iter()
+            .find(|lane| lane.track_name == selected_lane.track_name)
+            .expect("selected lane should survive wildcard selection");
+        assert_eq!(wildcard_lane.lane_id, selected_lane.lane_id);
+    }
+
     let svg_path = temp.path().join("patz1_isoform_evidence.svg");
     engine
         .render_feature_expert_svg_to_path(
@@ -15371,6 +15464,11 @@ fn gene_isoform_evidence_inspector_composes_patz1_minus_strand_evidence_read_onl
     assert!(svg.contains("gentle.gene_isoform_evidence.v1"));
     assert!(svg.contains("PATZ1 isoform evidence"));
     assert!(svg.contains("5' -&gt; 3'") || svg.contains("5' -> 3'"));
+    assert!(svg.contains("data-gentle-occupancy-lane"));
+    assert!(svg.contains("data-gentle-occupancy-interval"));
+    assert!(svg.contains("SAOS-2 TAp73alpha TP73"));
+    assert!(svg.contains("SAOS-2 DNp73beta TP73"));
+    assert!(svg.contains("locus occupancy is not isoform-specific regulation"));
 }
 
 #[test]

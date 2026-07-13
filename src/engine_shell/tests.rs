@@ -34259,7 +34259,7 @@ fn parse_feature_expert_commands() {
     }
 
     let isoform_evidence = parse_shell_line(
-        "inspect-feature-expert s isoform-evidence patz1_v1 --annotation-release Ensembl116 --rna-read-report-id rna_2 --rna-read-report-id rna_1 --probe-evidence probe.json --cdna-est-resource cdna.json --expression-tsv expression.tsv --qpcr-report-id qpcr_1",
+        "inspect-feature-expert s isoform-evidence patz1_v1 --annotation-release Ensembl116 --rna-read-report-id rna_2 --rna-read-report-id rna_1 --probe-evidence probe.json --cdna-est-resource cdna.json --expression-tsv expression.tsv --occupancy-track 'SAOS-2 TA' --occupancy-track 'SAOS-2 DN' --qpcr-report-id qpcr_1",
     )
     .expect("parse isoform evidence target");
     match isoform_evidence {
@@ -34276,6 +34276,10 @@ fn parse_feature_expert_commands() {
                         probe_evidence_paths: vec!["probe.json".to_string()],
                         cdna_est_resource_paths: vec!["cdna.json".to_string()],
                         expression_tsv_path: Some("expression.tsv".to_string()),
+                        occupancy_track_names: vec![
+                            "SAOS-2 TA".to_string(),
+                            "SAOS-2 DN".to_string(),
+                        ],
                     },
                 }
             );

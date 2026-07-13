@@ -18,6 +18,10 @@ Maintenance rule:
   deterministic SVG, PATZ1 minus-strand fixture, and Splicing Expert Evidence
   tab that keep transcript geometry, RNA/cDNA support, probe constraints,
   expression, and existing qPCR candidates as separately auditable layers.
+- Extended that inspector with selected projected BED/BigWig occupancy lanes,
+  shared-scale transcript-aligned SVG rendering, GUI/CLI selection, and a local
+  TA/DN CUT&RUN figure runbook without treating locus occupancy as isoform
+  regulation.
 - Prepared the `v0.1.0-internal.10` release boundary for changes since
   `v0.1.0-internal.9` (2026-06-05), with the genome-anchored TP73 evidence
   viewer as the primary release story and a self-contained summary in

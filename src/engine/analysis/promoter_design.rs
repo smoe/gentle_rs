@@ -287,7 +287,7 @@ impl GentleEngine {
         markers
     }
 
-    fn summarize_tfbs_score_track_overlay_tracks(
+    pub(super) fn summarize_tfbs_score_track_overlay_tracks(
         &self,
         dna: &DNAsequence,
         start_0based: usize,
@@ -295,7 +295,9 @@ impl GentleEngine {
     ) -> Vec<TfbsScoreTrackOverlayTrack> {
         let mut grouped = std::collections::BTreeMap::<String, TfbsScoreTrackOverlayTrack>::new();
         for feature in dna.features() {
-            if !Self::is_generated_genome_bed_feature(feature) {
+            if !Self::is_generated_genome_bed_feature(feature)
+                && !Self::is_generated_genome_bigwig_feature(feature)
+            {
                 continue;
             }
             let source_kind = Self::feature_qualifier_text(feature, "gentle_track_source")
@@ -303,13 +305,13 @@ impl GentleEngine {
             let track_name =
                 Self::first_nonempty_feature_qualifier(feature, &["gentle_track_name", "name"])
                     .unwrap_or_else(|| "BED track".to_string());
-            let source_file_name = Self::feature_qualifier_text(feature, "gentle_track_file")
-                .and_then(|value| {
-                    std::path::Path::new(value.trim())
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .map(|name| name.to_string())
-                });
+            let source_path = Self::feature_qualifier_text(feature, "gentle_track_file");
+            let source_file_name = source_path.as_deref().and_then(|value| {
+                std::path::Path::new(value.trim())
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name| name.to_string())
+            });
             let display_label = match source_file_name.as_deref() {
                 Some(file_name) if file_name != track_name => {
                     format!("{track_name} ({file_name})")
@@ -342,6 +344,7 @@ impl GentleEngine {
                         source_kind: source_kind.clone(),
                         track_name: track_name.clone(),
                         display_label: display_label.clone(),
+                        source_path: source_path.clone(),
                         source_file_name: source_file_name.clone(),
                         interval_count: 0,
                         max_score: None,

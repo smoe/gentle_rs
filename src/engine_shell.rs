@@ -13878,7 +13878,7 @@ fn parse_feature_expert_target_tokens(
 ) -> Result<FeatureExpertTarget, String> {
     if tokens.is_empty() {
         return Err(format!(
-            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--qpcr-report-id ID]... | protein-comparison [--transcript ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | uniprot-projection PROJECTION_ID"
+            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--occupancy-track NAME]... [--qpcr-report-id ID]... | protein-comparison [--transcript ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | uniprot-projection PROJECTION_ID"
         ));
     }
     match tokens[0].trim().to_ascii_lowercase().as_str() {
@@ -14044,6 +14044,14 @@ fn parse_feature_expert_target_tokens(
                             context,
                         )?);
                     }
+                    "--occupancy-track" => {
+                        request.occupancy_track_names.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--occupancy-track",
+                            context,
+                        )?);
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for {context} isoform-evidence"
@@ -14059,6 +14067,16 @@ fn parse_feature_expert_target_tokens(
             request.probe_evidence_paths.dedup();
             request.cdna_est_resource_paths.sort();
             request.cdna_est_resource_paths.dedup();
+            let mut unique_occupancy_tracks = Vec::new();
+            for track_name in request.occupancy_track_names.drain(..) {
+                if !unique_occupancy_tracks
+                    .iter()
+                    .any(|value: &String| value.eq_ignore_ascii_case(&track_name))
+                {
+                    unique_occupancy_tracks.push(track_name);
+                }
+            }
+            request.occupancy_track_names = unique_occupancy_tracks;
             Ok(FeatureExpertTarget::IsoformEvidence { request })
         }
         "protein-comparison" => {

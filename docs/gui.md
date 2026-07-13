@@ -926,7 +926,7 @@ Feature tree grouping:
   GUI over `FeatureExpertTarget::IsoformEvidence`:
   - choose an imported isoform panel and optionally supply annotation-release
     text, persisted RNA-read/qPCR report ids, probe-evidence JSON, cDNA/EST
-    resource JSON, and an expression TSV
+    resource JSON, an expression TSV, and projected occupancy track names
   - `Inspect evidence` caches the shared `gentle.gene_isoform_evidence.v1`
     report for the current splice group; opening a different group clears that
     cached result
@@ -935,6 +935,10 @@ Feature tree grouping:
     transcript-oriented donor/acceptor coordinates
   - specificity, abundance, responsiveness, and assayability remain separate;
     the evidence ledger and provenance can be expanded for audit
+  - selected BED/BigWig occupancy tracks are summarized as source-specific
+    lanes and rendered beneath transcript models in the shared SVG with one
+    common score scale; `*` selects every projected track in the gene span.
+    Occupancy remains locus-level evidence and is not assigned to an isoform
   - `Copy report JSON` copies the machine-readable report and `Render SVG`
     delegates to the shared `RenderFeatureExpertSvg` operation
   - existing qPCR rows are candidates only. New assay design remains an

@@ -3585,7 +3585,15 @@ fn render_isoform_evidence(report: &GeneIsoformEvidenceReport) -> String {
     let lane_top = 132.0_f32;
     let lane_pitch = 34.0_f32;
     let lane_h = transcript_count as f32 * lane_pitch;
-    let junction_top = lane_top + lane_h + 42.0;
+    let occupancy_title_top = lane_top + lane_h + 18.0;
+    let occupancy_lane_top = occupancy_title_top + 30.0;
+    let occupancy_pitch = 28.0_f32;
+    let occupancy_h = if report.occupancy_lanes.is_empty() {
+        0.0
+    } else {
+        48.0 + report.occupancy_lanes.len() as f32 * occupancy_pitch
+    };
+    let junction_top = lane_top + lane_h + occupancy_h + 42.0;
     let junction_h = 50.0 + junction_rows.len() as f32 * 22.0;
     let evidence_top = junction_top + junction_h + 28.0;
     let evidence_h = 46.0 + evidence_rows.len() as f32 * 20.0;
@@ -3633,11 +3641,12 @@ fn render_isoform_evidence(report: &GeneIsoformEvidenceReport) -> String {
         )
         .add(
             Text::new(format!(
-                "families={}  transcripts={}  exon families={}  junctions={}  evidence rows={}  assays={}",
+                "families={}  transcripts={}  exon families={}  junctions={}  occupancy lanes={}  evidence rows={}  assays={}",
                 report.families.len(),
                 report.transcripts.len(),
                 report.exon_families.len(),
                 report.junctions.len(),
+                report.occupancy_lanes.len(),
                 report.evidence_items.len(),
                 report.assay_candidates.len()
             ))
@@ -3730,6 +3739,84 @@ fn render_isoform_evidence(report: &GeneIsoformEvidenceReport) -> String {
                     .set("font-size", 8)
                     .set("fill", "#64748b"),
             );
+        }
+        if !report.occupancy_lanes.is_empty() {
+            let shared_abs_max = report
+                .occupancy_shared_abs_max_score
+                .filter(|value| value.is_finite() && *value > 0.0)
+                .unwrap_or(1.0);
+            let lane_colors = [
+                "#2563eb", "#e11d48", "#0f766e", "#b45309", "#7c3aed", "#475569",
+            ];
+            doc = doc
+                .add(
+                    Text::new("Projected occupancy tracks")
+                        .set("x", 34)
+                        .set("y", occupancy_title_top)
+                        .set("font-family", "sans-serif")
+                        .set("font-size", 14)
+                        .set("font-weight", "bold")
+                        .set("fill", "#1f2937"),
+                )
+                .add(
+                    Text::new(format!(
+                        "shared |score| scale {:.3}; locus occupancy is not isoform-specific regulation",
+                        shared_abs_max
+                    ))
+                    .set("x", 260)
+                    .set("y", occupancy_title_top)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#64748b"),
+                );
+            for (lane_index, lane) in report.occupancy_lanes.iter().enumerate() {
+                let y = occupancy_lane_top + lane_index as f32 * occupancy_pitch;
+                let color = lane_colors[lane_index % lane_colors.len()];
+                doc = doc
+                    .add(
+                        Text::new(isoform_evidence_compact_label(&lane.display_label, 38))
+                            .set("x", 34)
+                            .set("y", y + 4.0)
+                            .set("font-family", "monospace")
+                            .set("font-size", 9)
+                            .set("fill", "#374151"),
+                    )
+                    .add(
+                        Line::new()
+                            .set("x1", left)
+                            .set("x2", right)
+                            .set("y1", y)
+                            .set("y2", y)
+                            .set("stroke", "#cbd5e1")
+                            .set("stroke-width", 1)
+                            .set("data-gentle-occupancy-lane", lane.lane_id.as_str()),
+                    );
+                for interval in &lane.intervals {
+                    let x1 = x_for(interval.local_start_1based);
+                    let x2 = x_for(interval.local_end_1based);
+                    let width = (x2 - x1).abs().max(1.0);
+                    let (bar_y, bar_height, opacity) = match interval.score {
+                        Some(score) if score.is_finite() => {
+                            let height = ((score.abs() / shared_abs_max) as f32 * 10.0).max(1.0);
+                            (if score >= 0.0 { y - height } else { y }, height, 0.82)
+                        }
+                        _ => (y - 3.0, 6.0, 0.68),
+                    };
+                    doc = doc.add(
+                        Rectangle::new()
+                            .set("x", x1.min(x2))
+                            .set("y", bar_y)
+                            .set("width", width)
+                            .set("height", bar_height)
+                            .set("fill", color)
+                            .set("fill-opacity", opacity)
+                            .set(
+                                "data-gentle-occupancy-interval",
+                                interval.interval_id.as_str(),
+                            ),
+                    );
+                }
+            }
         }
     } else {
         doc = doc.add(

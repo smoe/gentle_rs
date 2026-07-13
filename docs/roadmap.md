@@ -200,12 +200,13 @@ broad crate surgery that is not tied to the selected release story.
   The report now includes explicit per-evidence transcript mappings with exon
   ordinals, exon ranges, junction spans, overlap base counts, and conservative
   geometry score/basis fields plus review-only transcript labels for unique,
-  shared, constraining, or absent geometry. Future work should use those
-  audited records feed the read-only `gentle.gene_isoform_evidence.v1` ledger,
-  which composes curated transcript families, RNA-read/cDNA/EST support,
-  expression, probe constraints, and existing qPCR candidates while retaining
-  unknown/not-evaluated states. Future work may add persisted probe/expression
-  report stores; it must not turn overlap into an isoform-validation claim.
+  shared, constraining, or absent geometry. Those audited records now feed the
+  read-only `gentle.gene_isoform_evidence.v1` ledger, which composes curated
+  transcript families, RNA-read/cDNA/EST support, expression, probe
+  constraints, selected projected occupancy tracks, and existing qPCR
+  candidates while retaining unknown/not-evaluated states. Future work may add
+  persisted probe/expression report stores; it must not turn overlap into an
+  isoform-validation claim.
 
 ### Reserved For Anze: Repeat/Similarity Inspection Follow-Up
 

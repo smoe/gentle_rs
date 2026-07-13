@@ -3307,7 +3307,7 @@ external coding agent runtime, see:
   - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg [--expression-tsv PATH]`
   - `panels validate-isoform PANEL_PATH [--panel-id ID]`
 - gene isoform evidence inspection reuses the shared feature-expert routes:
-  - `inspect-feature-expert SEQ_ID isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--qpcr-report-id ID]...`
+  - `inspect-feature-expert SEQ_ID isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--occupancy-track NAME]... [--qpcr-report-id ID]...`
   - `render-feature-expert-svg SEQ_ID isoform-evidence PANEL_ID [same evidence options] OUTPUT.svg`
   - the report schema is `gentle.gene_isoform_evidence.v1`; inspection is a
     pure read and never creates qPCR assays or changes the sequence
@@ -3327,6 +3327,12 @@ external coding agent runtime, see:
     family ids, and one of `observed`, `candidate`, `constraint_only`,
     `not_evaluated`, or `unknown`. Array-probe overlap is always
     `constraint_only`; it does not establish isoform support
+  - optional `occupancy_track_names[]` selects already projected BED/BigWig
+    track names (`*` selects all overlapping projected tracks). The additive
+    `occupancy_lanes[]` records source-specific local/genomic intervals and
+    score ranges, while `occupancy_shared_abs_max_score` supplies the common
+    SVG scale. Occupancy rows remain locus-level evidence and do not alter the
+    abundance, responsiveness, specificity, or assayability components
   - persisted RNA-read and qPCR reports are resolved by report id. Probe
     interpretation JSON, expression TSV, and cDNA/EST resources remain
     explicit file inputs because those report stores do not yet exist

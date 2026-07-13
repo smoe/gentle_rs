@@ -3701,15 +3701,21 @@ Isoform architecture panel workflow:
   - `inspect-feature-expert SEQ_ID isoform PANEL_ID`
   - `render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg`
   - gene-level isoform evidence ledger:
-    - `inspect-feature-expert SEQ_ID isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--qpcr-report-id ID]...`
+    - `inspect-feature-expert SEQ_ID isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--occupancy-track NAME]... [--qpcr-report-id ID]...`
     - `render-feature-expert-svg SEQ_ID isoform-evidence PANEL_ID [same evidence options] OUTPUT.svg`
     - the panel and sequence annotation define transcript geometry; optional
       report ids and files add independent RNA-read, cDNA/EST, array,
-      expression, and existing qPCR-candidate layers
+      expression, projected occupancy, and existing qPCR-candidate layers
     - the JSON/SVG distinguish transcript 5'->3' ordering from genomic-ascending
       ordering and retain transcript-oriented splice donor/acceptor positions
     - probe overlap is reported as an assay constraint, not validation; missing
       evidence remains unknown/not evaluated
+    - repeat `--occupancy-track NAME` to align selected projected BED/BigWig
+      lanes below the transcript models; `--occupancy-track '*'` includes all
+      overlapping projected tracks. Lanes share one absolute score scale and
+      remain locus-level evidence rather than isoform-specific regulation
+    - see `docs/gene_isoform_occupancy_figure_runbook.md` for a local
+      TAp73alpha/DNp73beta CUT&RUN example
   - same command family for restriction-site details:
     - `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]`
     - JSON output includes `tooltip_lines[]` with the same concise

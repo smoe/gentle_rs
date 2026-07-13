@@ -13,7 +13,7 @@ pub const GENE_ISOFORM_EVIDENCE_SCHEMA: &str = "gentle.gene_isoform_evidence.v1"
 /// Small offline resource for cDNA/EST support linked to exon/junction geometry.
 pub const CDNA_EST_EVIDENCE_RESOURCE_SCHEMA: &str = "gentle.cdna_est_evidence_resource.v1";
 /// Human-facing interpretation boundary shared by GUI and SVG renderers.
-pub const GENE_ISOFORM_EVIDENCE_INSTRUCTION: &str = "Isoform evidence inspector: transcript models and coordinate geometry are annotation-derived; RNA reads, cDNA/EST records, array probes, expression values, and qPCR assays are shown as separate evidence layers. Missing evidence is unknown, and overlap alone is not experimental validation.";
+pub const GENE_ISOFORM_EVIDENCE_INSTRUCTION: &str = "Isoform evidence inspector: transcript models and coordinate geometry are annotation-derived; RNA reads, cDNA/EST records, array probes, expression values, projected occupancy tracks, and qPCR assays are shown as separate evidence layers. Missing evidence is unknown. Occupancy is locus-level evidence; spatial overlap alone neither identifies a regulated isoform nor establishes causality.";
 
 /// References to optional evidence sources composed by a pure-read inspection.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -32,6 +32,8 @@ pub struct GeneIsoformEvidenceRequest {
     pub cdna_est_resource_paths: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expression_tsv_path: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub occupancy_track_names: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -107,7 +109,43 @@ pub enum IsoformEvidenceSourceKind {
     OtherSequence,
     ArrayProbe,
     Expression,
+    OccupancyTrack,
     QpcrAssay,
+}
+
+/// One projected interval retained on a gene-level occupancy lane.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneIsoformOccupancyInterval {
+    pub interval_id: String,
+    pub local_start_1based: usize,
+    pub local_end_1based: usize,
+    pub genomic_start_1based: usize,
+    pub genomic_end_1based: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+}
+
+/// One source-specific BED/BigWig lane aligned to the transcript models.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneIsoformOccupancyLane {
+    pub lane_id: String,
+    pub track_name: String,
+    pub display_label: String,
+    pub source_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    pub interval_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_score: Option<f64>,
+    pub intervals: Vec<GeneIsoformOccupancyInterval>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -296,6 +334,9 @@ pub struct GeneIsoformEvidenceReport {
     pub transcripts: Vec<GeneIsoformTranscriptRow>,
     pub exon_families: Vec<GeneIsoformExonFamilyRow>,
     pub junctions: Vec<GeneIsoformJunctionRow>,
+    pub occupancy_lanes: Vec<GeneIsoformOccupancyLane>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub occupancy_shared_abs_max_score: Option<f64>,
     pub evidence_items: Vec<GeneIsoformEvidenceItem>,
     pub assay_candidates: Vec<GeneIsoformAssayCandidate>,
     pub provenance: Vec<GeneIsoformEvidenceProvenanceSource>,
