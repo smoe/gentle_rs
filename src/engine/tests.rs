@@ -897,6 +897,7 @@ fn interpret_probe_region_evidence_reports_junction_spanning_geometry() {
     assert_eq!(report.transcript_count, 1);
     let row = &report.evidence_rows[0];
     assert_eq!(row.feature_id, "probe_junction");
+    assert_eq!(row.contrast.as_deref(), Some("TAp73-AdGFP"));
     assert_eq!(row.mapping_status, "unique_multi_exon_overlap");
     assert_eq!(row.transcript_mappings.len(), 1);
     let mapping = &row.transcript_mappings[0];
@@ -2128,6 +2129,7 @@ fn render_probe_region_evidence_svg_is_stable_for_degenerate_single_coordinate_r
             evidence_id: "probe_42:contrast".to_string(),
             level: "pm_probe".to_string(),
             feature_id: "probe_42".to_string(),
+            contrast: Some("contrast".to_string()),
             parent_feature_id: Some("PSR42".to_string()),
             intensity_source: Some("probe_level_input".to_string()),
             chromosome: Some("chr1".to_string()),
@@ -2206,6 +2208,7 @@ fn render_probe_region_evidence_svg_uses_report_frame_without_local_alignment_wa
             evidence_id: "probe_719406:contrast".to_string(),
             level: "pm_probe".to_string(),
             feature_id: "719406".to_string(),
+            contrast: Some("contrast".to_string()),
             parent_feature_id: Some("PSR0100145779.hg.1".to_string()),
             intensity_source: Some("probe_level_input".to_string()),
             chromosome: Some("chr1".to_string()),
@@ -15390,6 +15393,7 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
     assert!(report.evidence_items.iter().any(|item| {
         item.source_kind == IsoformEvidenceSourceKind::ArrayProbe
             && item.status == IsoformEvidenceAssessmentStatus::ConstraintOnly
+            && item.condition.is_none()
             && item.notes.iter().any(|note| note.contains("not establish isoform support"))
     }));
     assert!(report.junctions.iter().any(|row| {
@@ -15485,10 +15489,26 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
     assert!(svg.contains("SAOS-2 DNp73beta TP73"));
     assert!(svg.contains("locus occupancy is not isoform-specific regulation"));
 
+    let probe_effect_path = temp.path().join("patz1_probe_effects.tsv");
+    fs::write(
+        &probe_effect_path,
+        concat!(
+            "primary_gene\tprobeset_id\tprobeset_type\tseqname\tstrand\tstart\tstop\ttranscript_cluster_id\texon_id\tjunction_start_edge\tjunction_stop_edge\tpm_probe_count\tlog2_TAp73alpha_minus_GFP\tlog2_DNp73beta_minus_GFP\n",
+            "PATZ1\tPSR_demo\tmain->psr\tchr22\t-\t31325809\t31325820\tTC_demo\tEX_demo\t\t\t6\t-0.6899\t0.2224\n",
+            "PATZ1\tJUC_demo\tmain->juc\tchr22\t-\t\t\tTC_demo\tEX_a_to_EX_b\t31325840\t31325879\t4\t-0.2331\t-0.0829\n",
+        ),
+    )
+    .expect("write synthetic locus probe-effect table");
     let locus_request = GeneLocusEvidenceDisplayRequest {
         isoform_evidence: request,
         upstream_bp: 25,
         downstream_bp: 15,
+        probe_effect_table_paths: vec![probe_effect_path.to_string_lossy().to_string()],
+        probe_effect_contrasts: vec![
+            "TAp73alpha-GFP".to_string(),
+            "DNp73beta-GFP".to_string(),
+        ],
+        probe_effect_coordinate_system: Some("GRCh38.p14".to_string()),
         occupancy_layout: GeneLocusOccupancyLayout {
             schema: GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA.to_string(),
             groups: vec![
@@ -15552,6 +15572,18 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
     };
     assert_eq!(locus_report.schema, GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA);
     assert_eq!(locus_report.gene_strand, "-");
+    assert_eq!(locus_report.probe_effect_overlays.len(), 2);
+    assert_eq!(locus_report.probe_effect_contrasts.len(), 2);
+    assert_eq!(
+        locus_report.probe_effect_overlays[0].probe_class,
+        GeneLocusProbeClass::Juc,
+        "negative-strand rows should be ordered from high to low genomic coordinates"
+    );
+    assert_eq!(
+        locus_report.probe_effect_overlays[1].probe_class,
+        GeneLocusProbeClass::Psr
+    );
+    assert_eq!(locus_report.probe_effect_overlays[1].effects[0].value, -0.6899);
     assert!(
         locus_report.axis_left_genomic_1based > locus_report.axis_right_genomic_1based,
         "minus-strand locus must read 5' to 3' while genomic coordinates descend"
@@ -15641,6 +15673,12 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
     assert!(locus_svg.contains(GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA));
     assert!(locus_svg.contains("data-gentle-occupancy-group=\"saos2\""));
     assert!(locus_svg.contains("data-gentle-motif-track=\"MA0861.2\""));
+    assert!(locus_svg.contains("data-gentle-probe-class=\"psr\""));
+    assert!(locus_svg.contains("data-gentle-probe-class=\"juc\""));
+    assert!(locus_svg.contains("data-gentle-probe-coordinate-system=\"GRCh38.p14\""));
+    assert!(locus_svg.contains("data-gentle-probe-effect-contrast=\"TAp73alpha_minus_GFP\""));
+    assert!(locus_svg.contains("data-gentle-probe-effect-contrast=\"DNp73beta_minus_GFP\""));
+    assert!(locus_svg.contains("data-gentle-probe-effect-value=\"-0.6899\""));
     assert_eq!(locus_svg.matches("data-gentle-assay-junction").count(), 1);
     assert!(locus_svg.contains("Evidence provenance"));
     assert!(locus_svg.contains("data-gentle-provenance-source"));

@@ -2,7 +2,8 @@
 
 GENtle can compose transcript architecture, annotation-derived transcript/CDS
 metrics, selected projected BED or BigWig occupancy tracks, continuous motif
-score tracks, and existing junction-qPCR candidates into one
+score tracks, coordinate-aligned PSR/JUC probe-effect rows, and existing
+junction-qPCR candidates into one
 `gentle.gene_locus_evidence_display.v1` SVG. This is intended for selected-gene
 CUT&RUN figures such as TAp73alpha versus DNp73beta at PATZ1. It is reusable for
 other genes and occupancy assays.
@@ -46,6 +47,21 @@ BigWig projection uses `bigWigToBedGraph`; set
 figures may register the matching `.clipped.clean.bed` files with
 `--source bed` instead.
 
+### Prepare probe-effect evidence
+
+The committed PATZ1 development table substitutes for the otherwise local
+`analysis/e_mtab_14704_tp73_microarray/` tree:
+
+```text
+test_files/fixtures/gene_locus_evidence/patz1_probe_effects/patz1_clariom_probe_effects.tsv
+```
+
+It contains 24 Clariom D PSR/JUC rows, 130 underlying PM probes, explicit hg38
+coordinates, and TAp73alpha-GFP/DNp73beta-GFP raw activity differences. The
+fixture README records its public dataset and derived-table provenance. GENtle
+uses this compact table directly; the uncommitted analysis directory is only an
+optional source-level cross-check and is not required by the command or tests.
+
 ## Inspect and render
 
 Use the exact registered track names in an explicit occupancy layout. The
@@ -53,9 +69,9 @@ checked-in example keeps Saos-2 and SK-MEL-29 in separate groups and uses one
 shared scale within each group:
 
 ```text
-inspect-feature-expert GENE_SEQ_ID gene-locus-evidence GENE_PANEL --annotation-release Ensembl116 --upstream-bp 5000 --downstream-bp 1000 --occupancy-layout @docs/examples/gene_locus_evidence/patz1_cutrun_layout.json --motif TP73 --score-kind llr_background_tail_log10 --motif-threshold 0 --motif-top-hits 5 --qpcr-report-id QPCR_REPORT_ID
+inspect-feature-expert GENE_SEQ_ID gene-locus-evidence GENE_PANEL --annotation-release Ensembl116 --probe-effect-table test_files/fixtures/gene_locus_evidence/patz1_probe_effects/patz1_clariom_probe_effects.tsv --probe-effect-contrast TAp73alpha-GFP --probe-effect-contrast DNp73beta-GFP --probe-effect-coordinate-system GRCh38.p14 --upstream-bp 5000 --downstream-bp 1000 --occupancy-layout @docs/examples/gene_locus_evidence/patz1_cutrun_layout.json --motif TP73 --score-kind llr_background_tail_log10 --motif-threshold 0 --motif-top-hits 5 --qpcr-report-id QPCR_REPORT_ID
 
-render-feature-expert-svg GENE_SEQ_ID gene-locus-evidence GENE_PANEL --annotation-release Ensembl116 --upstream-bp 5000 --downstream-bp 1000 --occupancy-layout @docs/examples/gene_locus_evidence/patz1_cutrun_layout.json --motif TP73 --score-kind llr_background_tail_log10 --motif-threshold 0 --motif-top-hits 5 --qpcr-report-id QPCR_REPORT_ID patz1_locus_evidence.svg
+render-feature-expert-svg GENE_SEQ_ID gene-locus-evidence GENE_PANEL --annotation-release Ensembl116 --probe-effect-table test_files/fixtures/gene_locus_evidence/patz1_probe_effects/patz1_clariom_probe_effects.tsv --probe-effect-contrast TAp73alpha-GFP --probe-effect-contrast DNp73beta-GFP --probe-effect-coordinate-system GRCh38.p14 --upstream-bp 5000 --downstream-bp 1000 --occupancy-layout @docs/examples/gene_locus_evidence/patz1_cutrun_layout.json --motif TP73 --score-kind llr_background_tail_log10 --motif-threshold 0 --motif-top-hits 5 --qpcr-report-id QPCR_REPORT_ID patz1_locus_evidence.svg
 
 svg-png patz1_locus_evidence.svg patz1_locus_evidence.png --scale 2
 svg-pdf patz1_locus_evidence.svg patz1_locus_evidence.pdf
@@ -78,6 +94,13 @@ normalization make groups quantitatively comparable; include
 `cross_group_scale_justification` in that case. Unscored BED peaks are shown as
 interval marks. The JSON report retains local and genomic interval coordinates,
 source paths, score ranges, and explicit non-causal evidence notes.
+
+Probe-effect tables require an explicit coordinate system matching the open
+sequence anchor. Each PSR is drawn once as a locus interval and each JUC once as
+a junction arc, with adjacent zero-centered contrast cells. Missing values stay
+`NA`; genomic coordinates and table-row provenance remain in JSON and SVG
+attributes. The activity differences are descriptive visualization inputs, not
+formal differential-expression statistics or direct support for one isoform.
 
 Transcript metrics report spliced exon length, CDS length, expected peptide
 length, coding status, and retained-intron/incomplete flags. Green translation

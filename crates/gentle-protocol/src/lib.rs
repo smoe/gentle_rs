@@ -79,7 +79,9 @@ pub use isoform_evidence::{
     GeneLocusMotifHit, GeneLocusMotifTrack, GeneLocusOccupancyGroup,
     GeneLocusOccupancyGroupRequest, GeneLocusOccupancyLane, GeneLocusOccupancyLaneRequest,
     GeneLocusOccupancyLaneRole, GeneLocusOccupancyLayout, GeneLocusOccupancyScaleMode,
-    GeneLocusTranscriptMetrics, IsoformEvidenceAssessmentStatus, IsoformEvidenceSourceKind,
+    GeneLocusProbeClass, GeneLocusProbeEffectContrast, GeneLocusProbeEffectOverlay,
+    GeneLocusProbeEffectValue, GeneLocusTranscriptMetrics, IsoformEvidenceAssessmentStatus,
+    IsoformEvidenceSourceKind,
 };
 pub use orthologs::{
     ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA,

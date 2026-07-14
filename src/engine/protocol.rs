@@ -4996,6 +4996,8 @@ pub struct ProbeRegionEvidenceMappingRow {
     pub level: String,
     pub feature_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contrast: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_feature_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intensity_source: Option<String>,

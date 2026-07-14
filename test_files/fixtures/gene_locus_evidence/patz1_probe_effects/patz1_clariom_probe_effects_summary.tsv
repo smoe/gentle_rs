@@ -1,0 +1,2 @@
+primary_gene	probesets	pm_probes	E1_median_DN_minus_GFP	E1_median_TA_minus_GFP	E2_median_DN_minus_GFP	E2_median_TA_minus_GFP	E3_median_DN_minus_GFP	E3_median_TA_minus_GFP	median_DN_minus_GFP_across_pairs	median_TA_minus_GFP_across_pairs
+PATZ1	24	130	-0.0671	-0.3833	0.6305	-0.3293	-0.1176	-0.9004	-0.0671	-0.3833

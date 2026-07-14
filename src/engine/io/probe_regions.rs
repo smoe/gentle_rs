@@ -129,6 +129,7 @@ struct ProbeRegionProjectedEvidence {
     evidence_id: String,
     level: String,
     feature_id: String,
+    contrast: Option<String>,
     parent_feature_id: Option<String>,
     intensity_source: Option<String>,
     chromosome: Option<String>,

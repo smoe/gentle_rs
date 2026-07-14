@@ -10864,6 +10864,7 @@ impl GentleEngine {
                     family_ids,
                     value: row.logfc,
                     unit: row.logfc.map(|_| "logFC".to_string()),
+                    condition: row.contrast.clone(),
                     method: "probe-region interpretation geometry mapping".to_string(),
                     notes,
                     ..Default::default()
@@ -11445,6 +11446,703 @@ impl GentleEngine {
         out
     }
 
+    fn gene_locus_probe_header_index(
+        headers: &csv::StringRecord,
+        aliases: &[&str],
+    ) -> Option<usize> {
+        headers.iter().position(|header| {
+            aliases
+                .iter()
+                .any(|alias| header.trim().eq_ignore_ascii_case(alias))
+        })
+    }
+
+    fn gene_locus_probe_required_header(
+        headers: &csv::StringRecord,
+        aliases: &[&str],
+        field: &str,
+        path: &str,
+    ) -> Result<usize, EngineError> {
+        Self::gene_locus_probe_header_index(headers, aliases).ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Probe-effect TSV '{path}' is missing required {field} column ({})",
+                aliases.join(" or ")
+            ),
+            cause_chain: vec![],
+        })
+    }
+
+    fn gene_locus_probe_optional_usize(
+        record: &csv::StringRecord,
+        index: Option<usize>,
+        field: &str,
+        path: &str,
+        row_1based: usize,
+    ) -> Result<Option<usize>, EngineError> {
+        let Some(raw) = index.and_then(|index| record.get(index)).map(str::trim) else {
+            return Ok(None);
+        };
+        if raw.is_empty() {
+            return Ok(None);
+        }
+        raw.parse::<usize>().map(Some).map_err(|error| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Probe-effect TSV '{path}' row {row_1based} has invalid {field} '{raw}': {error}"
+            ),
+            cause_chain: vec![],
+        })
+    }
+
+    fn gene_locus_probe_class(
+        raw: &str,
+        feature_id: &str,
+        has_junction_edges: bool,
+    ) -> (GeneLocusProbeClass, String) {
+        let raw = raw.trim().to_ascii_lowercase();
+        if raw == "psr" || raw.contains("->psr") || raw.contains("probe_selection_region") {
+            return (
+                GeneLocusProbeClass::Psr,
+                "explicit_probe_type_column".to_string(),
+            );
+        }
+        if raw == "juc" || raw == "junction" || raw.contains("->juc") {
+            return (
+                GeneLocusProbeClass::Juc,
+                "explicit_probe_type_column".to_string(),
+            );
+        }
+        let feature_upper = feature_id.trim().to_ascii_uppercase();
+        if feature_upper.starts_with("PSR") {
+            return (
+                GeneLocusProbeClass::Psr,
+                "clariom_feature_id_prefix".to_string(),
+            );
+        }
+        if feature_upper.starts_with("JUC") {
+            return (
+                GeneLocusProbeClass::Juc,
+                "clariom_feature_id_prefix".to_string(),
+            );
+        }
+        if has_junction_edges {
+            return (
+                GeneLocusProbeClass::Juc,
+                "junction_edge_columns".to_string(),
+            );
+        }
+        (GeneLocusProbeClass::Other, "unclassified".to_string())
+    }
+
+    fn gene_locus_probe_contrast(column: &str) -> GeneLocusProbeEffectContrast {
+        let contrast_id = column
+            .trim()
+            .strip_prefix("log2_")
+            .unwrap_or(column.trim())
+            .to_string();
+        let display_label = contrast_id.replace("_minus_", "-").replace('_', " ");
+        GeneLocusProbeEffectContrast {
+            contrast_id,
+            display_label,
+            source_column: column.trim().to_string(),
+        }
+    }
+
+    fn gene_locus_probe_contrast_token(raw: &str) -> String {
+        raw.chars()
+            .filter(|value| value.is_ascii_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
+    }
+
+    fn gene_locus_probe_genome_token(raw: &str) -> String {
+        let normalized = raw
+            .chars()
+            .filter(|value| value.is_ascii_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect::<String>();
+        if normalized == "hg38" || normalized.starts_with("grch38") {
+            "grch38".to_string()
+        } else if normalized == "hg19" || normalized.starts_with("grch37") {
+            "grch37".to_string()
+        } else {
+            normalized
+        }
+    }
+
+    fn gene_locus_probe_genomic_to_local(
+        anchor: &SequenceGenomeAnchorSummary,
+        genomic_1based: usize,
+    ) -> Option<usize> {
+        if genomic_1based < anchor.start_1based || genomic_1based > anchor.end_1based {
+            return None;
+        }
+        Some(if anchor.strand == Some('-') {
+            anchor.end_1based.saturating_sub(genomic_1based) + 1
+        } else {
+            genomic_1based.saturating_sub(anchor.start_1based) + 1
+        })
+    }
+
+    fn gene_locus_probe_effect_overlays(
+        &self,
+        gene_symbol: &str,
+        gene_strand: &str,
+        local_start_1based: usize,
+        local_end_1based: usize,
+        anchor: Option<&SequenceGenomeAnchorSummary>,
+        request: &GeneLocusEvidenceDisplayRequest,
+        provenance: &mut Vec<GeneIsoformEvidenceProvenanceSource>,
+        warnings: &mut Vec<String>,
+    ) -> Result<
+        (
+            Vec<GeneLocusProbeEffectContrast>,
+            Vec<GeneLocusProbeEffectOverlay>,
+            Option<f64>,
+        ),
+        EngineError,
+    > {
+        if request.probe_effect_table_paths.is_empty() {
+            return Ok((vec![], vec![], None));
+        }
+        let anchor = anchor.ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "Gene-locus probe-effect overlays require a genome-anchored sequence"
+                .to_string(),
+            cause_chain: vec![],
+        })?;
+        let coordinate_system = request
+            .probe_effect_coordinate_system
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Gene-locus probe-effect overlays require --probe-effect-coordinate-system"
+                    .to_string(),
+                cause_chain: vec![],
+            })?;
+        if Self::gene_locus_probe_genome_token(coordinate_system)
+            != Self::gene_locus_probe_genome_token(&anchor.genome_id)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Probe-effect coordinate system '{}' does not match sequence anchor genome_id '{}'",
+                    coordinate_system, anchor.genome_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+
+        let requested_contrasts = request
+            .probe_effect_contrasts
+            .iter()
+            .map(|value| Self::gene_locus_probe_contrast_token(value))
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        let anchor_chromosome = Self::normalize_genome_chromosome_token(&anchor.chromosome);
+        let mut paths = request.probe_effect_table_paths.clone();
+        paths.sort();
+        paths.dedup();
+        let mut contrasts = Vec::<GeneLocusProbeEffectContrast>::new();
+        let mut overlays = Vec::new();
+        let mut unavailable_requested = requested_contrasts.iter().cloned().collect::<BTreeSet<_>>();
+
+        for path in paths {
+            let bytes = std::fs::read(&path).map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read probe-effect TSV '{path}': {error}"),
+                cause_chain: vec![],
+            })?;
+            let mut reader = csv::ReaderBuilder::new()
+                .delimiter(b'\t')
+                .trim(csv::Trim::All)
+                .from_reader(bytes.as_slice());
+            let headers = reader.headers().map_err(|error| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not read probe-effect TSV header from '{path}': {error}"),
+                cause_chain: vec![],
+            })?.clone();
+            let feature_idx = Self::gene_locus_probe_required_header(
+                &headers,
+                &["probeset_id", "feature_id", "probeset_or_region_id"],
+                "feature id",
+                &path,
+            )?;
+            let chromosome_idx = Self::gene_locus_probe_required_header(
+                &headers,
+                &["seqname", "chromosome", "chrom"],
+                "chromosome",
+                &path,
+            )?;
+            let strand_idx = Self::gene_locus_probe_header_index(&headers, &["strand"]);
+            let type_idx = Self::gene_locus_probe_header_index(
+                &headers,
+                &["probeset_type", "probe_class", "level"],
+            );
+            let gene_idx = Self::gene_locus_probe_header_index(
+                &headers,
+                &["primary_gene", "gene", "gene_symbol"],
+            );
+            let start_idx = Self::gene_locus_probe_header_index(
+                &headers,
+                &["start", "start_1based"],
+            );
+            let end_idx = Self::gene_locus_probe_header_index(
+                &headers,
+                &["stop", "end", "end_1based"],
+            );
+            let junction_start_idx =
+                Self::gene_locus_probe_header_index(&headers, &["junction_start_edge"]);
+            let junction_stop_idx =
+                Self::gene_locus_probe_header_index(&headers, &["junction_stop_edge"]);
+            let transcript_cluster_idx = Self::gene_locus_probe_header_index(
+                &headers,
+                &["transcript_cluster_id", "parent_feature_id"],
+            );
+            let exon_idx = Self::gene_locus_probe_header_index(&headers, &["exon_id", "exon_ids"]);
+            let pm_probe_count_idx =
+                Self::gene_locus_probe_header_index(&headers, &["pm_probe_count"]);
+            let mut table_contrasts = headers
+                .iter()
+                .enumerate()
+                .filter(|(_, header)| {
+                    let header = header.trim();
+                    header.starts_with("log2_") && header.contains("_minus_")
+                })
+                .map(|(index, header)| (index, Self::gene_locus_probe_contrast(header)))
+                .collect::<Vec<_>>();
+            if !requested_contrasts.is_empty() {
+                table_contrasts.retain(|(_, contrast)| {
+                    let candidates = [
+                        &contrast.contrast_id,
+                        &contrast.display_label,
+                        &contrast.source_column,
+                    ];
+                    let matched = candidates.iter().any(|candidate| {
+                        requested_contrasts.contains(&Self::gene_locus_probe_contrast_token(candidate))
+                    });
+                    if matched {
+                        for candidate in candidates {
+                            unavailable_requested
+                                .remove(&Self::gene_locus_probe_contrast_token(candidate));
+                        }
+                    }
+                    matched
+                });
+            }
+            if table_contrasts.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Probe-effect TSV '{path}' has no selected log2_*_minus_* effect columns"
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            for (_, contrast) in &table_contrasts {
+                if !contrasts
+                    .iter()
+                    .any(|existing| existing.contrast_id == contrast.contrast_id)
+                {
+                    contrasts.push(contrast.clone());
+                }
+            }
+            provenance.push(Self::isoform_evidence_file_provenance(
+                "gene_locus_probe_effect_table",
+                &path,
+                None,
+                &path,
+                &bytes,
+            ));
+
+            let mut skipped_other_gene = 0usize;
+            let mut skipped_chromosome = 0usize;
+            let mut skipped_outside_locus = 0usize;
+            let mut seen_features = BTreeSet::new();
+            for (record_index, result) in reader.records().enumerate() {
+                let row_1based = record_index + 2;
+                let record = result.map_err(|error| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not read probe-effect TSV '{path}' row {row_1based}: {error}"
+                    ),
+                    cause_chain: vec![],
+                })?;
+                if let Some(gene_idx) = gene_idx {
+                    let row_gene = record.get(gene_idx).unwrap_or("").trim();
+                    if !row_gene.is_empty() && !row_gene.eq_ignore_ascii_case(gene_symbol) {
+                        skipped_other_gene += 1;
+                        continue;
+                    }
+                }
+                let chromosome = record.get(chromosome_idx).unwrap_or("").trim().to_string();
+                if Self::normalize_genome_chromosome_token(&chromosome) != anchor_chromosome {
+                    skipped_chromosome += 1;
+                    continue;
+                }
+                let feature_id = record.get(feature_idx).unwrap_or("").trim().to_string();
+                if feature_id.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Probe-effect TSV '{path}' row {row_1based} has an empty feature id"
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+                if !seen_features.insert(feature_id.to_ascii_lowercase()) {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Probe-effect TSV '{path}' contains duplicate feature id '{feature_id}'"
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+                let start = Self::gene_locus_probe_optional_usize(
+                    &record,
+                    start_idx,
+                    "start",
+                    &path,
+                    row_1based,
+                )?;
+                let end = Self::gene_locus_probe_optional_usize(
+                    &record,
+                    end_idx,
+                    "stop/end",
+                    &path,
+                    row_1based,
+                )?;
+                let junction_start = Self::gene_locus_probe_optional_usize(
+                    &record,
+                    junction_start_idx,
+                    "junction_start_edge",
+                    &path,
+                    row_1based,
+                )?;
+                let junction_stop = Self::gene_locus_probe_optional_usize(
+                    &record,
+                    junction_stop_idx,
+                    "junction_stop_edge",
+                    &path,
+                    row_1based,
+                )?;
+                let raw_type = type_idx.and_then(|index| record.get(index)).unwrap_or("");
+                let (probe_class, classification_basis) = Self::gene_locus_probe_class(
+                    raw_type,
+                    &feature_id,
+                    junction_start.is_some() && junction_stop.is_some(),
+                );
+                let (genomic_start, genomic_end) = match probe_class {
+                    GeneLocusProbeClass::Juc => match (junction_start, junction_stop) {
+                        (Some(left), Some(right)) => (left.min(right), left.max(right)),
+                        _ => {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Probe-effect TSV '{path}' row {row_1based} classifies '{feature_id}' as JUC but lacks junction edge coordinates"
+                                ),
+                                cause_chain: vec![],
+                            });
+                        }
+                    },
+                    _ => match (start, end) {
+                        (Some(left), Some(right)) if right >= left => (left, right),
+                        _ => {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Probe-effect TSV '{path}' row {row_1based} feature '{feature_id}' lacks a valid interval"
+                                ),
+                                cause_chain: vec![],
+                            });
+                        }
+                    },
+                };
+                if genomic_end < anchor.start_1based || genomic_start > anchor.end_1based {
+                    skipped_outside_locus += 1;
+                    continue;
+                }
+                let clipped_start = genomic_start.max(anchor.start_1based);
+                let clipped_end = genomic_end.min(anchor.end_1based);
+                let Some(local_a) = Self::gene_locus_probe_genomic_to_local(anchor, clipped_start)
+                else {
+                    skipped_outside_locus += 1;
+                    continue;
+                };
+                let Some(local_b) = Self::gene_locus_probe_genomic_to_local(anchor, clipped_end)
+                else {
+                    skipped_outside_locus += 1;
+                    continue;
+                };
+                let local_low = local_a.min(local_b);
+                let local_high = local_a.max(local_b);
+                if local_high < local_start_1based || local_low > local_end_1based {
+                    skipped_outside_locus += 1;
+                    continue;
+                }
+                let clipped_to_anchor =
+                    genomic_start != clipped_start || genomic_end != clipped_end;
+                let clipped_to_locus =
+                    local_low < local_start_1based || local_high > local_end_1based;
+                if probe_class == GeneLocusProbeClass::Juc
+                    && (clipped_to_anchor || clipped_to_locus)
+                {
+                    skipped_outside_locus += 1;
+                    continue;
+                }
+                let mut effects = Vec::new();
+                for (column_index, contrast) in &table_contrasts {
+                    let raw = record.get(*column_index).unwrap_or("").trim();
+                    if raw.is_empty() {
+                        continue;
+                    }
+                    let value = raw.parse::<f64>().map_err(|error| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Probe-effect TSV '{path}' row {row_1based} column '{}' has invalid value '{raw}': {error}",
+                            contrast.source_column
+                        ),
+                        cause_chain: vec![],
+                    })?;
+                    if !value.is_finite() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Probe-effect TSV '{path}' row {row_1based} column '{}' is not finite",
+                                contrast.source_column
+                            ),
+                            cause_chain: vec![],
+                        });
+                    }
+                    effects.push(GeneLocusProbeEffectValue {
+                        contrast_id: contrast.contrast_id.clone(),
+                        display_label: contrast.display_label.clone(),
+                        source_column: contrast.source_column.clone(),
+                        value,
+                        unit: "log2 activity difference".to_string(),
+                    });
+                }
+                let transcript_cluster_id = transcript_cluster_idx
+                    .and_then(|index| record.get(index))
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
+                let exon_ids = exon_idx
+                    .and_then(|index| record.get(index))
+                    .unwrap_or("")
+                    .split("///")
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                let pm_probe_count = Self::gene_locus_probe_optional_usize(
+                    &record,
+                    pm_probe_count_idx,
+                    "pm_probe_count",
+                    &path,
+                    row_1based,
+                )?;
+                let strand = strand_idx
+                    .and_then(|index| record.get(index))
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("?")
+                    .to_string();
+                overlays.push(GeneLocusProbeEffectOverlay {
+                    feature_id,
+                    parent_feature_id: transcript_cluster_id.clone(),
+                    probe_class,
+                    classification_basis,
+                    coordinate_system: coordinate_system.to_string(),
+                    chromosome,
+                    genomic_start_1based: genomic_start,
+                    genomic_end_1based: genomic_end,
+                    local_start_1based: local_low.max(local_start_1based),
+                    local_end_1based: local_high.min(local_end_1based),
+                    strand,
+                    transcript_cluster_id,
+                    exon_ids,
+                    junction_start_edge_1based: junction_start,
+                    junction_stop_edge_1based: junction_stop,
+                    pm_probe_count,
+                    effects,
+                    source_path: path.clone(),
+                    source_row_1based: row_1based,
+                    mapping_status: if clipped_to_anchor {
+                        "clipped_to_loaded_anchor".to_string()
+                    } else if clipped_to_locus {
+                        "clipped_to_display_locus".to_string()
+                    } else {
+                        "mapped_to_locus".to_string()
+                    },
+                    notes: if clipped_to_anchor {
+                        vec!["Feature interval was clipped to the loaded sequence anchor for display; full genomic coordinates are retained.".to_string()]
+                    } else if clipped_to_locus {
+                        vec!["Feature interval was clipped to the requested locus display span; full genomic coordinates are retained.".to_string()]
+                    } else {
+                        vec![]
+                    },
+                });
+            }
+            if skipped_other_gene > 0 {
+                warnings.push(format!(
+                    "Probe-effect TSV '{path}' skipped {skipped_other_gene} row(s) for other genes."
+                ));
+            }
+            if skipped_chromosome > 0 {
+                warnings.push(format!(
+                    "Probe-effect TSV '{path}' skipped {skipped_chromosome} row(s) outside anchor chromosome '{}'.",
+                    anchor.chromosome
+                ));
+            }
+            if skipped_outside_locus > 0 {
+                warnings.push(format!(
+                    "Probe-effect TSV '{path}' skipped {skipped_outside_locus} row(s) outside the loaded locus or with incomplete junction endpoints."
+                ));
+            }
+        }
+        if !unavailable_requested.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Requested probe-effect contrast(s) were not found: {}",
+                    unavailable_requested.into_iter().collect::<Vec<_>>().join(", ")
+                ),
+                cause_chain: vec![],
+            });
+        }
+        if !requested_contrasts.is_empty() {
+            contrasts.sort_by_key(|contrast| {
+                [
+                    &contrast.contrast_id,
+                    &contrast.display_label,
+                    &contrast.source_column,
+                ]
+                .iter()
+                .filter_map(|candidate| {
+                    let token = Self::gene_locus_probe_contrast_token(candidate);
+                    requested_contrasts
+                        .iter()
+                        .position(|requested| requested == &token)
+                })
+                .min()
+                .unwrap_or(usize::MAX)
+            });
+        }
+        let mut merged_overlays = Vec::<GeneLocusProbeEffectOverlay>::new();
+        let mut merged_indices = BTreeMap::<String, usize>::new();
+        for mut overlay in overlays.drain(..) {
+            let class_token = match overlay.probe_class {
+                GeneLocusProbeClass::Psr => "psr",
+                GeneLocusProbeClass::Juc => "juc",
+                GeneLocusProbeClass::Other => "other",
+            };
+            let key = format!(
+                "{}|{}|{}|{}|{}",
+                overlay.feature_id.to_ascii_lowercase(),
+                Self::normalize_genome_chromosome_token(&overlay.chromosome),
+                overlay.genomic_start_1based,
+                overlay.genomic_end_1based,
+                class_token
+            );
+            if let Some(index) = merged_indices.get(&key).copied() {
+                let existing = &mut merged_overlays[index];
+                for effect in overlay.effects.drain(..) {
+                    if let Some(prior) = existing
+                        .effects
+                        .iter()
+                        .find(|prior| prior.contrast_id == effect.contrast_id)
+                    {
+                        if (prior.value - effect.value).abs() > 1e-12 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Probe-effect feature '{}' has conflicting values for contrast '{}' across source tables",
+                                    existing.feature_id, effect.contrast_id
+                                ),
+                                cause_chain: vec![],
+                            });
+                        }
+                    } else {
+                        existing.effects.push(effect);
+                    }
+                }
+                existing.exon_ids.extend(overlay.exon_ids);
+                existing.exon_ids.sort();
+                existing.exon_ids.dedup();
+                existing.notes.push(format!(
+                    "Additional effect source: {} row {}.",
+                    overlay.source_path, overlay.source_row_1based
+                ));
+            } else {
+                merged_indices.insert(key, merged_overlays.len());
+                merged_overlays.push(overlay);
+            }
+        }
+        overlays = merged_overlays;
+        let contrast_order = contrasts
+            .iter()
+            .enumerate()
+            .map(|(index, contrast)| (contrast.contrast_id.as_str(), index))
+            .collect::<BTreeMap<_, _>>();
+        for overlay in &mut overlays {
+            overlay.effects.sort_by(|left, right| {
+                contrast_order
+                    .get(left.contrast_id.as_str())
+                    .cmp(&contrast_order.get(right.contrast_id.as_str()))
+                    .then(left.contrast_id.cmp(&right.contrast_id))
+            });
+        }
+        let mut feature_geometries = BTreeMap::<String, BTreeSet<(usize, usize)>>::new();
+        for overlay in &overlays {
+            feature_geometries
+                .entry(overlay.feature_id.to_ascii_lowercase())
+                .or_default()
+                .insert((
+                    overlay.genomic_start_1based,
+                    overlay.genomic_end_1based,
+                ));
+        }
+        for (feature_id, geometries) in feature_geometries {
+            if geometries.len() > 1 {
+                warnings.push(format!(
+                    "Probe-effect feature id '{feature_id}' maps to {} distinct geometries across source tables; rows remain separate.",
+                    geometries.len()
+                ));
+            }
+        }
+        overlays.sort_by(|left, right| {
+            let position_order = if gene_strand == "-" {
+                right
+                    .genomic_end_1based
+                    .cmp(&left.genomic_end_1based)
+            } else {
+                left
+                    .genomic_start_1based
+                    .cmp(&right.genomic_start_1based)
+            };
+            position_order
+                .then(left.feature_id.cmp(&right.feature_id))
+                .then(left.source_path.cmp(&right.source_path))
+        });
+        let shared_abs_max = overlays
+            .iter()
+            .flat_map(|overlay| overlay.effects.iter())
+            .map(|effect| effect.value.abs())
+            .filter(|value| value.is_finite())
+            .max_by(f64::total_cmp)
+            .filter(|value| *value > 0.0);
+        warnings.push(
+            "Probe-effect overlays are raw activity differences for visualization; they are not formal differential-expression significance or direct isoform support."
+                .to_string(),
+        );
+        Ok((contrasts, overlays, shared_abs_max))
+    }
+
     fn gene_locus_occupancy_groups(
         &self,
         dna: &DNAsequence,
@@ -11804,6 +12502,17 @@ impl GentleEngine {
             self.gene_locus_motif_tracks(seq_id, local_start, local_end, anchor.as_ref(), request)?;
         let assay_overlays = Self::gene_locus_assay_overlays(&isoform_evidence);
         let mut provenance = isoform_evidence.provenance.clone();
+        let (probe_effect_contrasts, probe_effect_overlays, probe_effect_shared_abs_max) = self
+            .gene_locus_probe_effect_overlays(
+                &isoform_evidence.gene_symbol,
+                &isoform_evidence.gene_strand,
+                local_start,
+                local_end,
+                anchor.as_ref(),
+                request,
+                &mut provenance,
+                &mut warnings,
+            )?;
         if !request.occupancy_layout.groups.is_empty() {
             provenance.push(GeneIsoformEvidenceProvenanceSource {
                 source_kind: "occupancy_layout".to_string(),
@@ -11884,6 +12593,9 @@ impl GentleEngine {
             isoform_evidence,
             transcript_metrics,
             codon_markers,
+            probe_effect_contrasts,
+            probe_effect_overlays,
+            probe_effect_shared_abs_max,
             occupancy_groups,
             motif_tracks,
             assay_overlays,
@@ -12030,5 +12742,209 @@ impl GentleEngine {
             cause_chain: vec![],
         })?;
         Ok(view)
+    }
+}
+
+#[cfg(test)]
+mod gene_locus_probe_effect_tests {
+    use super::*;
+
+    #[test]
+    fn patz1_fixture_preserves_probe_classes_contrasts_and_minus_strand_order() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "test_files/fixtures/gene_locus_evidence/patz1_probe_effects/patz1_clariom_probe_effects.tsv",
+        );
+        let request = GeneLocusEvidenceDisplayRequest {
+            probe_effect_table_paths: vec![fixture.to_string_lossy().to_string()],
+            probe_effect_contrasts: vec![
+                "TAp73alpha-GFP".to_string(),
+                "DNp73beta-GFP".to_string(),
+            ],
+            probe_effect_coordinate_system: Some("GRCh38.p14".to_string()),
+            ..Default::default()
+        };
+        let anchor = SequenceGenomeAnchorSummary {
+            seq_id: "patz1_fixture".to_string(),
+            genome_id: "GRCh38.p14".to_string(),
+            chromosome: "chr22".to_string(),
+            start_1based: 31_325_809,
+            end_1based: 31_346_263,
+            strand: Some('+'),
+            anchor_verified: Some(true),
+        };
+        let mut provenance = Vec::new();
+        let mut warnings = Vec::new();
+        let (contrasts, overlays, abs_max) = GentleEngine::default()
+            .gene_locus_probe_effect_overlays(
+                "PATZ1",
+                "-",
+                1,
+                anchor.end_1based - anchor.start_1based + 1,
+                Some(&anchor),
+                &request,
+                &mut provenance,
+                &mut warnings,
+            )
+            .expect("parse committed PATZ1 probe-effect fixture");
+
+        assert_eq!(overlays.len(), 24);
+        assert_eq!(
+            overlays
+                .iter()
+                .filter(|row| row.probe_class == GeneLocusProbeClass::Psr)
+                .count(),
+            17
+        );
+        assert_eq!(
+            overlays
+                .iter()
+                .filter(|row| row.probe_class == GeneLocusProbeClass::Juc)
+                .count(),
+            7
+        );
+        assert_eq!(
+            overlays.iter().filter_map(|row| row.pm_probe_count).sum::<usize>(),
+            130
+        );
+        assert_eq!(
+            contrasts
+                .iter()
+                .map(|row| row.contrast_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["TAp73alpha_minus_GFP", "DNp73beta_minus_GFP"]
+        );
+        let psr = overlays
+            .iter()
+            .find(|row| row.feature_id == "PSR2200160978.hg.1")
+            .expect("fixture PSR overlay");
+        assert_eq!(psr.genomic_start_1based, 31_325_809);
+        assert_eq!(psr.coordinate_system, "GRCh38.p14");
+        assert_eq!(psr.effects[0].value, -0.6899);
+        assert_eq!(psr.effects[1].value, 0.2224);
+        let juc = overlays
+            .iter()
+            .find(|row| row.feature_id == "JUC2200054818.hg.1")
+            .expect("fixture JUC overlay");
+        assert_eq!(juc.genomic_start_1based, 31_327_309);
+        assert_eq!(juc.genomic_end_1based, 31_328_787);
+        assert_eq!(juc.junction_start_edge_1based, Some(31_327_309));
+        assert_eq!(juc.junction_stop_edge_1based, Some(31_328_787));
+        assert!(
+            overlays
+                .windows(2)
+                .all(|rows| rows[0].genomic_end_1based >= rows[1].genomic_end_1based),
+            "minus-strand display rows should follow transcript 5' to 3' order"
+        );
+        assert_eq!(abs_max, Some(0.9475));
+        let ta_values = overlays
+            .iter()
+            .filter_map(|row| {
+                row.effects
+                    .iter()
+                    .find(|effect| effect.contrast_id == "TAp73alpha_minus_GFP")
+                    .map(|effect| effect.value)
+            })
+            .collect::<Vec<_>>();
+        let dn_values = overlays
+            .iter()
+            .filter_map(|row| {
+                row.effects
+                    .iter()
+                    .find(|effect| effect.contrast_id == "DNp73beta_minus_GFP")
+                    .map(|effect| effect.value)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(ta_values.iter().filter(|value| **value < 0.0).count(), 24);
+        assert_eq!(dn_values.iter().filter(|value| **value > 0.0).count(), 18);
+        assert!((ta_values.iter().sum::<f64>() / 24.0 - -0.5729).abs() < 0.0001);
+        assert!((dn_values.iter().sum::<f64>() / 24.0 - 0.1384).abs() < 0.0001);
+        assert!(
+            provenance
+                .iter()
+                .any(|row| row.source_kind == "gene_locus_probe_effect_table")
+        );
+        assert!(warnings.iter().any(|warning| warning.contains("raw activity")));
+    }
+
+    #[test]
+    fn probe_effect_overlay_rejects_coordinate_build_mismatch() {
+        let request = GeneLocusEvidenceDisplayRequest {
+            probe_effect_table_paths: vec!["not-read-before-anchor-check.tsv".to_string()],
+            probe_effect_coordinate_system: Some("GRCh37".to_string()),
+            ..Default::default()
+        };
+        let anchor = SequenceGenomeAnchorSummary {
+            seq_id: "patz1_fixture".to_string(),
+            genome_id: "GRCh38.p14".to_string(),
+            chromosome: "chr22".to_string(),
+            start_1based: 31_325_809,
+            end_1based: 31_346_263,
+            strand: Some('+'),
+            anchor_verified: Some(true),
+        };
+        let error = GentleEngine::default()
+            .gene_locus_probe_effect_overlays(
+                "PATZ1",
+                "-",
+                1,
+                20_455,
+                Some(&anchor),
+                &request,
+                &mut Vec::new(),
+                &mut Vec::new(),
+            )
+            .expect_err("GRCh37 table must not project onto GRCh38 anchor");
+        assert!(error.message.contains("does not match"));
+        assert!(error.message.contains("GRCh37"));
+        assert!(error.message.contains("GRCh38.p14"));
+    }
+
+    #[test]
+    fn probe_effect_overlay_clips_intervals_but_requires_complete_junctions() {
+        let temp = tempfile::tempdir().expect("temporary probe-effect directory");
+        let table = temp.path().join("effects.tsv");
+        std::fs::write(
+            &table,
+            concat!(
+                "primary_gene\tprobeset_id\tprobeset_type\tseqname\tstrand\tstart\tstop\tjunction_start_edge\tjunction_stop_edge\tlog2_TA_minus_GFP\n",
+                "PATZ1\tPSR_partial\tmain->psr\tchr22\t-\t100\t120\t\t\t-0.5\n",
+                "PATZ1\tJUC_partial\tmain->juc\tchr22\t-\t\t\t100\t120\t-0.4\n",
+            ),
+        )
+        .expect("write temporary probe-effect table");
+        let request = GeneLocusEvidenceDisplayRequest {
+            probe_effect_table_paths: vec![table.to_string_lossy().to_string()],
+            probe_effect_coordinate_system: Some("GRCh38".to_string()),
+            ..Default::default()
+        };
+        let anchor = SequenceGenomeAnchorSummary {
+            seq_id: "partial_locus".to_string(),
+            genome_id: "GRCh38.p14".to_string(),
+            chromosome: "chr22".to_string(),
+            start_1based: 100,
+            end_1based: 200,
+            strand: Some('+'),
+            anchor_verified: Some(true),
+        };
+        let mut warnings = Vec::new();
+        let (_, overlays, _) = GentleEngine::default()
+            .gene_locus_probe_effect_overlays(
+                "PATZ1",
+                "-",
+                10,
+                15,
+                Some(&anchor),
+                &request,
+                &mut Vec::new(),
+                &mut warnings,
+            )
+            .expect("project partial probe-effect rows");
+
+        assert_eq!(overlays.len(), 1);
+        assert_eq!(overlays[0].feature_id, "PSR_partial");
+        assert_eq!(overlays[0].local_start_1based, 10);
+        assert_eq!(overlays[0].local_end_1based, 15);
+        assert_eq!(overlays[0].mapping_status, "clipped_to_display_locus");
+        assert!(warnings.iter().any(|warning| warning.contains("skipped 1 row")));
     }
 }

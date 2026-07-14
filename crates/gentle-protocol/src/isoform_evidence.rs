@@ -126,6 +126,12 @@ pub struct GeneLocusEvidenceDisplayRequest {
     pub isoform_evidence: GeneIsoformEvidenceRequest,
     pub upstream_bp: usize,
     pub downstream_bp: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub probe_effect_table_paths: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub probe_effect_contrasts: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_effect_coordinate_system: Option<String>,
     pub occupancy_layout: GeneLocusOccupancyLayout,
     pub motifs: Vec<String>,
     pub motif_score_kind: String,
@@ -141,6 +147,9 @@ impl Default for GeneLocusEvidenceDisplayRequest {
             isoform_evidence: GeneIsoformEvidenceRequest::default(),
             upstream_bp: default_locus_upstream_bp(),
             downstream_bp: default_locus_downstream_bp(),
+            probe_effect_table_paths: vec![],
+            probe_effect_contrasts: vec![],
+            probe_effect_coordinate_system: None,
             occupancy_layout: GeneLocusOccupancyLayout::default(),
             motifs: vec![],
             motif_score_kind: default_locus_motif_score_kind(),
@@ -338,6 +347,71 @@ pub struct GeneLocusAssayOverlay {
     pub assay_ids: Vec<String>,
     pub family_ids: Vec<String>,
     pub transcript_ids: Vec<String>,
+}
+
+/// Array feature class retained by the locus probe-effect overlay.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneLocusProbeClass {
+    Psr,
+    Juc,
+    #[default]
+    Other,
+}
+
+/// One ordered contrast column exposed by a probe-effect source table.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneLocusProbeEffectContrast {
+    pub contrast_id: String,
+    pub display_label: String,
+    pub source_column: String,
+}
+
+/// One effect value associated with one probe geometry.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneLocusProbeEffectValue {
+    pub contrast_id: String,
+    pub display_label: String,
+    pub source_column: String,
+    pub value: f64,
+    pub unit: String,
+}
+
+/// One PSR interval or JUC span with its ordered contrast effects.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneLocusProbeEffectOverlay {
+    pub feature_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_feature_id: Option<String>,
+    pub probe_class: GeneLocusProbeClass,
+    pub classification_basis: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub coordinate_system: String,
+    pub chromosome: String,
+    pub genomic_start_1based: usize,
+    pub genomic_end_1based: usize,
+    pub local_start_1based: usize,
+    pub local_end_1based: usize,
+    pub strand: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transcript_cluster_id: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub exon_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub junction_start_edge_1based: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub junction_stop_edge_1based: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pm_probe_count: Option<usize>,
+    pub effects: Vec<GeneLocusProbeEffectValue>,
+    pub source_path: String,
+    pub source_row_1based: usize,
+    pub mapping_status: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
 }
 
 /// One labeled high-scoring position on a continuous motif track.
@@ -588,9 +662,44 @@ pub struct GeneLocusEvidenceDisplayReport {
     pub isoform_evidence: GeneIsoformEvidenceReport,
     pub transcript_metrics: Vec<GeneLocusTranscriptMetrics>,
     pub codon_markers: Vec<GeneLocusCodonMarker>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub probe_effect_contrasts: Vec<GeneLocusProbeEffectContrast>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub probe_effect_overlays: Vec<GeneLocusProbeEffectOverlay>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_effect_shared_abs_max: Option<f64>,
     pub occupancy_groups: Vec<GeneLocusOccupancyGroup>,
     pub motif_tracks: Vec<GeneLocusMotifTrack>,
     pub assay_overlays: Vec<GeneLocusAssayOverlay>,
     pub provenance: Vec<GeneIsoformEvidenceProvenanceSource>,
     pub warnings: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pre_probe_overlay_locus_payloads_keep_empty_defaults() {
+        let request: GeneLocusEvidenceDisplayRequest = serde_json::from_value(serde_json::json!({
+            "isoform_evidence": { "panel_id": "patz1" },
+            "upstream_bp": 5000,
+            "downstream_bp": 1000
+        }))
+        .expect("deserialize pre-overlay locus request");
+        assert!(request.probe_effect_table_paths.is_empty());
+        assert!(request.probe_effect_contrasts.is_empty());
+        assert_eq!(request.probe_effect_coordinate_system, None);
+
+        let report: GeneLocusEvidenceDisplayReport =
+            serde_json::from_value(serde_json::json!({
+                "schema": GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA,
+                "seq_id": "patz1",
+                "gene_symbol": "PATZ1"
+            }))
+            .expect("deserialize pre-overlay locus report");
+        assert!(report.probe_effect_contrasts.is_empty());
+        assert!(report.probe_effect_overlays.is_empty());
+        assert_eq!(report.probe_effect_shared_abs_max, None);
+    }
 }
