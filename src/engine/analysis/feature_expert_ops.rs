@@ -10924,6 +10924,7 @@ impl GentleEngine {
                 &bytes,
             ));
             warnings.extend(matrix.warnings.clone());
+            let digest = crate::digest_utils::sha256_hex_bytes(&bytes);
             for row in &matrix.rows {
                 let values = row.values.iter().flatten().copied().collect::<Vec<_>>();
                 if values.is_empty() {
@@ -10931,7 +10932,6 @@ impl GentleEngine {
                 }
                 let mean = values.iter().sum::<f64>() / values.len() as f64;
                 let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-                let digest = crate::digest_utils::sha256_hex_bytes(&bytes);
                 let evidence_id = format!(
                     "expression:{}:{}",
                     &digest[..12.min(digest.len())],
