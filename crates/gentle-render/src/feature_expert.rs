@@ -1,9 +1,10 @@
 //! Feature expert-view SVG renderer.
 
 use gentle_protocol::{
-    FeatureExpertView, GeneIsoformEvidenceReport, IsoformArchitectureExpertView,
-    RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
-    TfbsExpertView,
+    FeatureExpertView, GeneIsoformEvidenceReport, GeneLocusCodonKind,
+    GeneLocusEvidenceDisplayReport, GeneLocusOccupancyLaneRole, GeneLocusOccupancyScaleMode,
+    IsoformArchitectureExpertView, RestrictionSiteExpertView, SplicingExonSummary,
+    SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
@@ -4024,6 +4025,637 @@ fn render_isoform_evidence(report: &GeneIsoformEvidenceReport) -> String {
     doc.to_string()
 }
 
+fn locus_scale_mode_label(mode: GeneLocusOccupancyScaleMode) -> &'static str {
+    match mode {
+        GeneLocusOccupancyScaleMode::SharedGroup => "shared within group",
+        GeneLocusOccupancyScaleMode::SharedAll => "shared across groups",
+        GeneLocusOccupancyScaleMode::Independent => "independent lanes",
+        GeneLocusOccupancyScaleMode::Fixed => "fixed scale",
+    }
+}
+
+fn locus_lane_role_style(role: GeneLocusOccupancyLaneRole) -> (&'static str, f32) {
+    match role {
+        GeneLocusOccupancyLaneRole::Experimental => ("#2563eb", 0.84),
+        GeneLocusOccupancyLaneRole::GfpControl => ("#16a34a", 0.56),
+        GeneLocusOccupancyLaneRole::InputControl => ("#64748b", 0.48),
+        GeneLocusOccupancyLaneRole::IggControl => ("#7c3aed", 0.48),
+        GeneLocusOccupancyLaneRole::PositiveControl => ("#0f766e", 0.60),
+        GeneLocusOccupancyLaneRole::NegativeControl => ("#9ca3af", 0.44),
+        GeneLocusOccupancyLaneRole::Other => ("#b45309", 0.60),
+    }
+}
+
+fn locus_role_label(role: GeneLocusOccupancyLaneRole) -> &'static str {
+    match role {
+        GeneLocusOccupancyLaneRole::Experimental => "experimental",
+        GeneLocusOccupancyLaneRole::GfpControl => "GFP control",
+        GeneLocusOccupancyLaneRole::InputControl => "input control",
+        GeneLocusOccupancyLaneRole::IggControl => "IgG control",
+        GeneLocusOccupancyLaneRole::PositiveControl => "positive control",
+        GeneLocusOccupancyLaneRole::NegativeControl => "negative control",
+        GeneLocusOccupancyLaneRole::Other => "other",
+    }
+}
+
+fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String {
+    let width = 1400.0_f32;
+    let plot_left = 255.0_f32;
+    let plot_right = 1050.0_f32;
+    let metrics_left = 1070.0_f32;
+    let span = report
+        .locus_local_end_1based
+        .saturating_sub(report.locus_local_start_1based)
+        .max(1) as f32;
+    let x_for = |position_1based: usize| {
+        let fraction =
+            position_1based.saturating_sub(report.locus_local_start_1based) as f32 / span;
+        if report.gene_strand == "-" {
+            plot_right - fraction * (plot_right - plot_left)
+        } else {
+            plot_left + fraction * (plot_right - plot_left)
+        }
+    };
+    let splicing = report.isoform_evidence.splicing.as_ref();
+    let transcript_count = splicing.map(|view| view.transcripts.len()).unwrap_or(0);
+    let assay_top = 132.0_f32;
+    let assay_pitch = 23.0_f32;
+    let assay_height = if report.assay_overlays.is_empty() {
+        0.0
+    } else {
+        34.0 + report.assay_overlays.len() as f32 * assay_pitch
+    };
+    let transcript_top = assay_top + assay_height + 30.0;
+    let transcript_pitch = 42.0_f32;
+    let transcript_height = transcript_count.max(1) as f32 * transcript_pitch;
+    let occupancy_top = transcript_top + transcript_height + 34.0;
+    let occupancy_height = report
+        .occupancy_groups
+        .iter()
+        .map(|group| 31.0 + group.lanes.len() as f32 * 29.0)
+        .sum::<f32>();
+    let motif_top = occupancy_top + occupancy_height + 34.0;
+    let motif_pitch = 84.0_f32;
+    let motif_height = report.motif_tracks.len() as f32 * motif_pitch;
+    let warning_top = motif_top + motif_height + 42.0;
+    let warning_rows = report.warnings.iter().take(8).collect::<Vec<_>>();
+    let provenance_top = warning_top + 38.0 + warning_rows.len() as f32 * 15.0;
+    let provenance_rows = report.provenance.iter().take(10).collect::<Vec<_>>();
+    let doc_height =
+        (provenance_top + 48.0 + provenance_rows.len() as f32 * 14.0).max(620.0);
+
+    let mut doc = Document::new()
+        .set("viewBox", (0, 0, width, doc_height))
+        .set("width", width)
+        .set("height", doc_height)
+        .set("data-gentle-schema", report.schema.as_str())
+        .set("data-gentle-panel-id", report.panel_id.as_str())
+        .add(
+            Rectangle::new()
+                .set("x", 0)
+                .set("y", 0)
+                .set("width", width)
+                .set("height", doc_height)
+                .set("fill", "#ffffff"),
+        )
+        .add(
+            Text::new(format!("{} locus evidence", report.gene_symbol))
+                .set("x", 34)
+                .set("y", 36)
+                .set("font-family", "sans-serif")
+                .set("font-size", 24)
+                .set("font-weight", "bold")
+                .set("fill", "#111827"),
+        )
+        .add(
+            Text::new(format!(
+                "5' -> 3' display, genomic {} -> {} | strand {} | assembly {} | annotation {} | upstream {} bp | downstream {} bp",
+                report.axis_left_genomic_1based,
+                report.axis_right_genomic_1based,
+                report.gene_strand,
+                if report.isoform_evidence.assembly.trim().is_empty() {
+                    "not recorded"
+                } else {
+                    report.isoform_evidence.assembly.as_str()
+                },
+                report
+                    .isoform_evidence
+                    .annotation_release
+                    .as_deref()
+                    .unwrap_or("not recorded"),
+                report.upstream_bp,
+                report.downstream_bp
+            ))
+            .set("x", 34)
+            .set("y", 59)
+            .set("font-family", "monospace")
+            .set("font-size", 11)
+            .set("fill", "#475569"),
+        )
+        .add(
+            Text::new(isoform_evidence_compact_label(&report.instruction, 190))
+                .set("x", 34)
+                .set("y", 82)
+                .set("font-family", "sans-serif")
+                .set("font-size", 10)
+                .set("fill", "#64748b"),
+        )
+        .add(
+            Line::new()
+                .set("x1", plot_left)
+                .set("x2", plot_right)
+                .set("y1", 108)
+                .set("y2", 108)
+                .set("stroke", "#64748b")
+                .set("stroke-width", 1),
+        )
+        .add(
+            Text::new(report.axis_left_genomic_1based.to_string())
+                .set("x", plot_left)
+                .set("y", 102)
+                .set("font-family", "monospace")
+                .set("font-size", 9)
+                .set("fill", "#64748b"),
+        )
+        .add(
+            Text::new(report.axis_right_genomic_1based.to_string())
+                .set("x", plot_right - 68.0)
+                .set("y", 102)
+                .set("font-family", "monospace")
+                .set("font-size", 9)
+                .set("fill", "#64748b"),
+        );
+
+    if !report.assay_overlays.is_empty() {
+        doc = doc.add(
+            Text::new("Junction-spanning validation assays (one marker per junction)")
+                .set("x", 34)
+                .set("y", assay_top)
+                .set("font-family", "sans-serif")
+                .set("font-size", 13)
+                .set("font-weight", "bold")
+                .set("fill", "#1f2937"),
+        );
+        for (index, assay) in report.assay_overlays.iter().enumerate() {
+            let y = assay_top + 20.0 + index as f32 * assay_pitch;
+            let x1 = x_for(assay.local_donor_1based);
+            let x2 = x_for(assay.local_acceptor_1based);
+            let control_y = y - 13.0 - ((x2 - x1).abs() / 150.0).min(14.0);
+            let data = Data::new().move_to((x1, y)).quadratic_curve_to((
+                (x1 + x2) / 2.0,
+                control_y,
+                x2,
+                y,
+            ));
+            doc = doc
+                .add(
+                    Text::new(format!(
+                        "{} [{}]",
+                        isoform_evidence_compact_label(&assay.assay_ids.join(","), 25),
+                        isoform_evidence_compact_label(&assay.family_ids.join(","), 18)
+                    ))
+                    .set("x", 34)
+                    .set("y", y + 3.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#374151"),
+                )
+                .add(
+                    Path::new()
+                        .set("d", data)
+                        .set("fill", "none")
+                        .set("stroke", "#7c3aed")
+                        .set("stroke-width", 2)
+                        .set("data-gentle-assay-junction", assay.junction_id.as_str()),
+                );
+        }
+    }
+
+    doc = doc.add(
+        Text::new("Transcript models and annotation-derived metrics")
+            .set("x", 34)
+            .set("y", transcript_top - 16.0)
+            .set("font-family", "sans-serif")
+            .set("font-size", 13)
+            .set("font-weight", "bold")
+            .set("fill", "#1f2937"),
+    );
+    if let Some(splicing) = splicing {
+        for (index, transcript) in splicing.transcripts.iter().enumerate() {
+            let y = transcript_top + index as f32 * transcript_pitch;
+            let metrics = report
+                .transcript_metrics
+                .iter()
+                .find(|row| row.transcript_feature_id == transcript.transcript_feature_id);
+            doc = doc
+                .add(
+                    Text::new(isoform_evidence_compact_label(
+                        &transcript.transcript_id,
+                        27,
+                    ))
+                    .set("x", 34)
+                    .set("y", y + 4.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 10)
+                    .set("fill", "#374151"),
+                )
+                .add(
+                    Line::new()
+                        .set("x1", plot_left)
+                        .set("x2", plot_right)
+                        .set("y1", y)
+                        .set("y2", y)
+                        .set("stroke", "#94a3b8")
+                        .set("stroke-width", 1)
+                        .set("data-gentle-transcript", transcript.transcript_id.as_str()),
+                );
+            for exon in &transcript.exons {
+                let x1 = x_for(exon.start_1based);
+                let x2 = x_for(exon.end_1based);
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x1.min(x2))
+                        .set("y", y - 7.0)
+                        .set("width", (x2 - x1).abs().max(2.5))
+                        .set("height", 14)
+                        .set("rx", 1.5)
+                        .set("fill", "#dbeafe")
+                        .set("stroke", "#2563eb")
+                        .set("stroke-width", 1),
+                );
+            }
+            if let Some(metrics) = metrics {
+                for (start, end) in &metrics.cds_ranges_local_1based {
+                    let x1 = x_for(*start);
+                    let x2 = x_for(*end);
+                    doc = doc.add(
+                        Rectangle::new()
+                            .set("x", x1.min(x2))
+                            .set("y", y - 5.0)
+                            .set("width", (x2 - x1).abs().max(2.0))
+                            .set("height", 10)
+                            .set("fill", "#1d4ed8")
+                            .set("data-gentle-cds", transcript.transcript_id.as_str()),
+                    );
+                }
+                let peptide = metrics
+                    .expected_peptide_length_aa
+                    .map(|value| format!("{value} aa"))
+                    .unwrap_or_else(|| "n/a".to_string());
+                let metrics_text = format!(
+                    "exon {} nt | CDS {} nt | {} | {}{}",
+                    metrics.spliced_exon_length_bp,
+                    metrics.cds_length_bp,
+                    peptide,
+                    metrics.coding_status,
+                    if metrics.flags.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" | {}", metrics.flags.join(","))
+                    }
+                );
+                doc = doc.add(
+                    Text::new(isoform_evidence_compact_label(&metrics_text, 58))
+                        .set("x", metrics_left)
+                        .set("y", y + 4.0)
+                        .set("font-family", "monospace")
+                        .set("font-size", 8)
+                        .set("fill", "#475569"),
+                );
+            }
+            for marker in report
+                .codon_markers
+                .iter()
+                .filter(|marker| marker.transcript_id == transcript.transcript_id)
+            {
+                let x = x_for(marker.local_position_1based);
+                match marker.kind {
+                    GeneLocusCodonKind::Start => {
+                        let triangle = Data::new()
+                            .move_to((x, y - 12.0))
+                            .line_to((x - 5.0, y - 20.0))
+                            .line_to((x + 5.0, y - 20.0))
+                            .close();
+                        doc = doc.add(
+                            Path::new()
+                                .set("d", triangle)
+                                .set("fill", "#16a34a")
+                                .set("data-gentle-codon", "start"),
+                        );
+                    }
+                    GeneLocusCodonKind::Stop => {
+                        doc = doc.add(
+                            Rectangle::new()
+                                .set("x", x - 2.5)
+                                .set("y", y - 21.0)
+                                .set("width", 5)
+                                .set("height", 10)
+                                .set("fill", "#dc2626")
+                                .set("data-gentle-codon", "stop"),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    let mut occupancy_y = occupancy_top;
+    if !report.occupancy_groups.is_empty() {
+        doc = doc.add(
+            Text::new("Projected occupancy grouped by declared biological context")
+                .set("x", 34)
+                .set("y", occupancy_y - 14.0)
+                .set("font-family", "sans-serif")
+                .set("font-size", 13)
+                .set("font-weight", "bold")
+                .set("fill", "#1f2937"),
+        );
+    }
+    for group in &report.occupancy_groups {
+        doc = doc.add(
+            Text::new(format!(
+                "{} | {} | observed group max {:.3}",
+                group.label,
+                locus_scale_mode_label(group.scale_mode),
+                group.group_abs_max_score
+            ))
+            .set("x", 34)
+            .set("y", occupancy_y + 5.0)
+            .set("font-family", "sans-serif")
+            .set("font-size", 11)
+            .set("font-weight", "bold")
+            .set("fill", "#334155")
+            .set("data-gentle-occupancy-group", group.group_id.as_str()),
+        );
+        occupancy_y += 27.0;
+        for lane in &group.lanes {
+            let y = occupancy_y;
+            let (color, opacity) = locus_lane_role_style(lane.role);
+            let label = lane
+                .display_label
+                .as_deref()
+                .unwrap_or(&lane.lane.display_label);
+            let condition = lane
+                .condition_label
+                .as_deref()
+                .map(|value| format!(" | {value}"))
+                .unwrap_or_default();
+            doc = doc
+                .add(
+                    Text::new(format!(
+                        "{}{} ({})",
+                        isoform_evidence_compact_label(label, 30),
+                        condition,
+                        locus_role_label(lane.role)
+                    ))
+                    .set("x", 52)
+                    .set("y", y + 4.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set("fill", "#475569"),
+                )
+                .add(
+                    Line::new()
+                        .set("x1", plot_left)
+                        .set("x2", plot_right)
+                        .set("y1", y)
+                        .set("y2", y)
+                        .set("stroke", "#cbd5e1")
+                        .set("stroke-width", 1)
+                        .set("data-gentle-occupancy-lane", lane.lane.lane_id.as_str()),
+                );
+            for interval in &lane.lane.intervals {
+                let x1 = x_for(interval.local_start_1based);
+                let x2 = x_for(interval.local_end_1based);
+                let height = interval
+                    .score
+                    .filter(|value| value.is_finite())
+                    .map(|score| {
+                        ((score.abs() / lane.display_abs_max_score.max(f64::EPSILON)) as f32 * 10.0)
+                            .clamp(1.0, 10.0)
+                    })
+                    .unwrap_or(5.0);
+                let bar_y = if interval.score.unwrap_or(1.0) >= 0.0 {
+                    y - height
+                } else {
+                    y
+                };
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x1.min(x2))
+                        .set("y", bar_y)
+                        .set("width", (x2 - x1).abs().max(1.0))
+                        .set("height", height)
+                        .set("fill", color)
+                        .set("fill-opacity", opacity)
+                        .set(
+                            "data-gentle-occupancy-interval",
+                            interval.interval_id.as_str(),
+                        ),
+                );
+            }
+            doc = doc.add(
+                Text::new(format!("scale {:.3}", lane.display_abs_max_score))
+                    .set("x", metrics_left)
+                    .set("y", y + 4.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set("fill", "#64748b"),
+            );
+            occupancy_y += 29.0;
+        }
+        occupancy_y += 4.0;
+    }
+
+    if !report.motif_tracks.is_empty() {
+        doc = doc.add(
+            Text::new("Motif score tracks from the active local JASPAR registry")
+                .set("x", 34)
+                .set("y", motif_top - 14.0)
+                .set("font-family", "sans-serif")
+                .set("font-size", 13)
+                .set("font-weight", "bold")
+                .set("fill", "#1f2937"),
+        );
+    }
+    for (index, track) in report.motif_tracks.iter().enumerate() {
+        let y = motif_top + index as f32 * motif_pitch;
+        let baseline = y + 25.0;
+        let scores = track
+            .forward_scores
+            .iter()
+            .zip(track.reverse_scores.iter())
+            .map(|(forward, reverse)| forward.max(*reverse))
+            .collect::<Vec<_>>();
+        let min_score = scores
+            .iter()
+            .copied()
+            .filter(|value| value.is_finite())
+            .min_by(f64::total_cmp)
+            .unwrap_or(0.0);
+        let max_abs = scores
+            .iter()
+            .copied()
+            .map(f64::abs)
+            .filter(|value| value.is_finite())
+            .max_by(f64::total_cmp)
+            .unwrap_or(1.0)
+            .max(f64::EPSILON);
+        doc = doc
+            .add(
+                Text::new(format!(
+                    "{} {} | {} | threshold {}",
+                    track.motif_id,
+                    track.motif_name.as_deref().unwrap_or(""),
+                    track.score_kind,
+                    track
+                        .display_threshold
+                        .map(|value| format!("> {value:.3}"))
+                        .unwrap_or_else(|| "not set".to_string())
+                ))
+                .set("x", 34)
+                .set("y", y + 4.0)
+                .set("font-family", "monospace")
+                .set("font-size", 9)
+                .set("fill", "#374151"),
+            )
+            .add(
+                Line::new()
+                    .set("x1", plot_left)
+                    .set("x2", plot_right)
+                    .set("y1", baseline)
+                    .set("y2", baseline)
+                    .set("stroke", "#cbd5e1")
+                    .set("stroke-width", 1)
+                    .set("data-gentle-motif-track", track.motif_id.as_str()),
+            );
+        if !scores.is_empty() {
+            let bucket_count = (plot_right - plot_left).round().max(1.0) as usize;
+            let bucket_width = scores.len().div_ceil(bucket_count).max(1);
+            let sampled = scores
+                .chunks(bucket_width)
+                .enumerate()
+                .map(|(bucket, values)| {
+                    let score = values
+                        .iter()
+                        .copied()
+                        .filter(|value| value.is_finite())
+                        .max_by(|left, right| left.abs().total_cmp(&right.abs()))
+                        .unwrap_or(0.0);
+                    let source_index = bucket.saturating_mul(bucket_width);
+                    (source_index, score)
+                })
+                .collect::<Vec<_>>();
+            let mut data = Data::new();
+            for (sample_index, (source_index, score)) in sampled.iter().enumerate() {
+                let local_position = track.track_start_0based + source_index + 1;
+                let x = x_for(local_position);
+                let normalized = (*score / max_abs) as f32;
+                let score_y = if min_score < 0.0 {
+                    baseline - normalized * 20.0
+                } else {
+                    baseline - normalized.max(0.0) * 28.0
+                };
+                data = if sample_index == 0 {
+                    data.move_to((x, score_y))
+                } else {
+                    data.line_to((x, score_y))
+                };
+            }
+            doc = doc.add(
+                Path::new()
+                    .set("d", data)
+                    .set("fill", "none")
+                    .set("stroke", "#be123c")
+                    .set("stroke-width", 1.4),
+            );
+        }
+        for hit in &track.top_hits {
+            let x = x_for(hit.local_start_0based.saturating_add(1));
+            doc = doc
+                .add(
+                    Line::new()
+                        .set("x1", x)
+                        .set("x2", x)
+                        .set("y1", baseline - 31.0)
+                        .set("y2", baseline + 5.0)
+                        .set("stroke", "#9f1239")
+                        .set("stroke-width", 1)
+                        .set("stroke-dasharray", "2,2")
+                        .set("data-gentle-motif-hit", hit.rank),
+                )
+                .add(
+                    Text::new(format!("{}:{:.2}", hit.strand, hit.score))
+                        .set("x", x + 2.0)
+                        .set("y", baseline - 34.0)
+                        .set("font-family", "monospace")
+                        .set("font-size", 7)
+                        .set("fill", "#881337"),
+                );
+        }
+        doc = doc.add(
+            Text::new(isoform_evidence_compact_label(&track.provenance, 72))
+                .set("x", metrics_left)
+                .set("y", y + 4.0)
+                .set("font-family", "monospace")
+                .set("font-size", 7)
+                .set("fill", "#64748b"),
+        );
+    }
+
+    doc = doc.add(
+        Text::new("Warnings / interpretation checks")
+            .set("x", 34)
+            .set("y", warning_top)
+            .set("font-family", "sans-serif")
+            .set("font-size", 13)
+            .set("font-weight", "bold")
+            .set("fill", "#1f2937"),
+    );
+    for (index, warning) in warning_rows.iter().enumerate() {
+        doc = doc.add(
+            Text::new(format!(
+                "warning: {}",
+                isoform_evidence_compact_label(warning, 180)
+            ))
+            .set("x", 34)
+            .set("y", warning_top + 20.0 + index as f32 * 15.0)
+            .set("font-family", "monospace")
+            .set("font-size", 9)
+            .set("fill", "#92400e"),
+        );
+    }
+    doc = doc.add(
+        Text::new("Evidence provenance")
+            .set("x", 34)
+            .set("y", provenance_top)
+            .set("font-family", "sans-serif")
+            .set("font-size", 13)
+            .set("font-weight", "bold")
+            .set("fill", "#1f2937"),
+    );
+    for (index, source) in provenance_rows.iter().enumerate() {
+        let path = source
+            .path
+            .as_deref()
+            .map(|value| format!(" | {value}"))
+            .unwrap_or_default();
+        doc = doc.add(
+            Text::new(isoform_evidence_compact_label(
+                &format!("{}: {}{}", source.source_kind, source.source_id, path),
+                190,
+            ))
+            .set("x", 34)
+            .set("y", provenance_top + 19.0 + index as f32 * 14.0)
+            .set("font-family", "monospace")
+            .set("font-size", 8)
+            .set("fill", "#64748b")
+            .set("data-gentle-provenance-source", source.source_kind.as_str()),
+        );
+    }
+    doc.to_string()
+}
+
 pub fn render_feature_expert_svg(view: &FeatureExpertView) -> String {
     match view {
         FeatureExpertView::Tfbs(tfbs) => render_tfbs(tfbs),
@@ -4031,6 +4663,7 @@ pub fn render_feature_expert_svg(view: &FeatureExpertView) -> String {
         FeatureExpertView::Splicing(splicing) => render_splicing(splicing),
         FeatureExpertView::IsoformArchitecture(isoform) => render_isoform_architecture(isoform),
         FeatureExpertView::IsoformEvidence(report) => render_isoform_evidence(report),
+        FeatureExpertView::GeneLocusEvidence(report) => render_gene_locus_evidence(report),
     }
 }
 
@@ -4038,6 +4671,7 @@ pub fn render_feature_expert_svg(view: &FeatureExpertView) -> String {
 mod tests {
     use super::*;
     use gentle_protocol::{
+        GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA, GeneLocusCodonMarker, GeneLocusTranscriptMetrics,
         IsoformArchitectureCdsAaSegment, IsoformArchitectureProteinDomain,
         IsoformArchitectureProteinLane, IsoformArchitectureTranscriptLane, IsoformExpressionMatrix,
         IsoformExpressionRow, SplicingBoundaryMarker, SplicingEventSummary, SplicingExpertView,
@@ -4561,6 +5195,62 @@ mod tests {
             max_text_y < height - 8.0,
             "expected all text to stay inside SVG canvas: max_text_y={max_text_y}, height={height}"
         );
+    }
+
+    #[test]
+    fn gene_locus_renderer_marks_annotation_backed_start_and_stop_codons() {
+        let splicing = splicing_test_view_with_long_footer();
+        let report = GeneLocusEvidenceDisplayReport {
+            schema: GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.to_string(),
+            seq_id: "locus_demo".to_string(),
+            gene_symbol: "DEMO".to_string(),
+            panel_id: "demo_panel".to_string(),
+            instruction: "Distinct evidence layers remain non-causal.".to_string(),
+            gene_strand: "+".to_string(),
+            locus_local_start_1based: 90,
+            locus_local_end_1based: 270,
+            axis_left_genomic_1based: 90,
+            axis_right_genomic_1based: 270,
+            isoform_evidence: GeneIsoformEvidenceReport {
+                splicing: Some(splicing),
+                ..Default::default()
+            },
+            transcript_metrics: vec![GeneLocusTranscriptMetrics {
+                transcript_feature_id: 7,
+                transcript_id: "NM_demo_1".to_string(),
+                spliced_exon_length_bp: 48,
+                cds_length_bp: 48,
+                expected_peptide_length_aa: Some(15),
+                coding_status: "complete_cds".to_string(),
+                cds_ranges_local_1based: vec![(110, 130), (150, 176)],
+                ..Default::default()
+            }],
+            codon_markers: vec![
+                GeneLocusCodonMarker {
+                    transcript_id: "NM_demo_1".to_string(),
+                    kind: GeneLocusCodonKind::Start,
+                    local_position_1based: 110,
+                    genomic_position_1based: 110,
+                    strand: "+".to_string(),
+                    basis: "annotated CDS".to_string(),
+                },
+                GeneLocusCodonMarker {
+                    transcript_id: "NM_demo_1".to_string(),
+                    kind: GeneLocusCodonKind::Stop,
+                    local_position_1based: 176,
+                    genomic_position_1based: 176,
+                    strand: "+".to_string(),
+                    basis: "annotated CDS".to_string(),
+                },
+            ],
+            ..Default::default()
+        };
+
+        let svg = render_feature_expert_svg(&FeatureExpertView::GeneLocusEvidence(report));
+        assert!(svg.contains("data-gentle-codon=\"start\""));
+        assert!(svg.contains("data-gentle-codon=\"stop\""));
+        assert!(svg.contains("fill=\"#16a34a\""));
+        assert!(svg.contains("fill=\"#dc2626\""));
     }
 
     #[test]

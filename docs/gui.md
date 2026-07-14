@@ -944,6 +944,12 @@ Feature tree grouping:
   - existing qPCR rows are candidates only. New assay design remains an
     explicit action in the Structure tab, and the GUI does not promote array
     overlap or missing evidence into biological validation
+  - the GUI Shell can compose the same evidence into the publication-oriented
+    `gene-locus-evidence` feature-expert target. Its generic expert-result view
+    reports transcript, occupancy-group, motif-track, and assay-marker counts;
+    the shared SVG renderer provides the full aligned figure. The detailed
+    Evidence tab remains the audit surface, so no biological logic is duplicated
+    in the composed view
 - The Splicing Expert now also includes an `ATtRACT / RBP evidence` section:
   - engine-owned, splice-aware motif interpretation over the selected splicing
     group; the GUI is only a viewer/filter for the shared payload

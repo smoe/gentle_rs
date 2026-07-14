@@ -49,7 +49,8 @@ use crate::{
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine, EvidenceClass,
         ExonSkipReturnKind, ExonSkipSelectionCriterion, FactAtom, FactBasis, FactExpression,
         FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode, FeatureExpertTarget,
-        FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GeneIsoformEvidenceRequest,
+        FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
+        GeneIsoformEvidenceRequest, GeneLocusEvidenceDisplayRequest,
         GeneSetCohortRelationship, GeneSetProducerFilter, GeneSetPromoterCohortReport,
         GeneSetRequest, GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
         GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
@@ -13878,7 +13879,7 @@ fn parse_feature_expert_target_tokens(
 ) -> Result<FeatureExpertTarget, String> {
     if tokens.is_empty() {
         return Err(format!(
-            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--occupancy-track NAME]... [--qpcr-report-id ID]... | protein-comparison [--transcript ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | uniprot-projection PROJECTION_ID"
+            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | isoform-evidence PANEL_ID [evidence options] | gene-locus-evidence PANEL_ID [evidence options] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] | protein-comparison [--transcript ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | uniprot-projection PROJECTION_ID"
         ));
     }
     match tokens[0].trim().to_ascii_lowercase().as_str() {
@@ -14078,6 +14079,223 @@ fn parse_feature_expert_target_tokens(
             }
             request.occupancy_track_names = unique_occupancy_tracks;
             Ok(FeatureExpertTarget::IsoformEvidence { request })
+        }
+        "gene-locus-evidence" | "locus-evidence" => {
+            if tokens.len() < 2 {
+                return Err(format!(
+                    "{context} gene-locus-evidence target expects at least: gene-locus-evidence PANEL_ID"
+                ));
+            }
+            let panel_id = tokens[1].trim().to_string();
+            if panel_id.is_empty() {
+                return Err("gene-locus-evidence PANEL_ID must not be empty".to_string());
+            }
+            let mut request = GeneLocusEvidenceDisplayRequest {
+                isoform_evidence: GeneIsoformEvidenceRequest {
+                    panel_id,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--annotation-release" => {
+                        request.isoform_evidence.annotation_release = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--annotation-release",
+                            context,
+                        )?);
+                    }
+                    "--rna-read-report-id" => {
+                        request
+                            .isoform_evidence
+                            .rna_read_report_ids
+                            .push(parse_option_path(
+                                tokens,
+                                &mut idx,
+                                "--rna-read-report-id",
+                                context,
+                            )?);
+                    }
+                    "--qpcr-report-id" => {
+                        request
+                            .isoform_evidence
+                            .qpcr_report_ids
+                            .push(parse_option_path(
+                                tokens,
+                                &mut idx,
+                                "--qpcr-report-id",
+                                context,
+                            )?);
+                    }
+                    "--probe-evidence" => {
+                        request
+                            .isoform_evidence
+                            .probe_evidence_paths
+                            .push(parse_option_path(
+                                tokens,
+                                &mut idx,
+                                "--probe-evidence",
+                                context,
+                            )?);
+                    }
+                    "--cdna-est-resource" => {
+                        request
+                            .isoform_evidence
+                            .cdna_est_resource_paths
+                            .push(parse_option_path(
+                                tokens,
+                                &mut idx,
+                                "--cdna-est-resource",
+                                context,
+                            )?);
+                    }
+                    "--expression-tsv" => {
+                        request.isoform_evidence.expression_tsv_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--expression-tsv",
+                            context,
+                        )?);
+                    }
+                    "--occupancy-track" => {
+                        request
+                            .isoform_evidence
+                            .occupancy_track_names
+                            .push(parse_option_path(
+                                tokens,
+                                &mut idx,
+                                "--occupancy-track",
+                                context,
+                            )?);
+                    }
+                    "--occupancy-layout" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--occupancy-layout",
+                            context,
+                        )?;
+                        request.occupancy_layout = parse_required_json_payload(
+                            &raw,
+                            "gene locus occupancy layout",
+                        )?;
+                    }
+                    "--upstream-bp" | "--downstream-bp" | "--flank-bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        let value = raw
+                            .parse::<usize>()
+                            .map_err(|error| format!("Invalid {flag} value '{raw}': {error}"))?;
+                        match flag.as_str() {
+                            "--upstream-bp" => request.upstream_bp = value,
+                            "--downstream-bp" => request.downstream_bp = value,
+                            _ => {
+                                request.upstream_bp = value;
+                                request.downstream_bp = value;
+                            }
+                        }
+                    }
+                    "--motif" => {
+                        request.motifs.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--motif",
+                            context,
+                        )?);
+                    }
+                    "--motifs" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--motifs", context)?;
+                        request.motifs.extend(
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string),
+                        );
+                    }
+                    "--score-kind" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--score-kind", context)?;
+                        request.motif_score_kind =
+                            parse_tfbs_score_track_value_kind_shell(&raw, context)?
+                                .as_str()
+                                .to_string();
+                    }
+                    "--motif-threshold" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--motif-threshold",
+                            context,
+                        )?;
+                        request.motif_display_threshold = Some(raw.parse::<f64>().map_err(
+                            |error| format!("Invalid --motif-threshold value '{raw}': {error}"),
+                        )?);
+                    }
+                    "--motif-top-hits" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--motif-top-hits",
+                            context,
+                        )?;
+                        request.motif_top_hit_count = raw.parse::<usize>().map_err(|error| {
+                            format!("Invalid --motif-top-hits value '{raw}': {error}")
+                        })?;
+                    }
+                    "--allow-negative" => {
+                        request.motif_clip_negative = false;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {context} gene-locus-evidence"
+                        ));
+                    }
+                }
+            }
+            if !request.occupancy_layout.groups.is_empty()
+                && !request.isoform_evidence.occupancy_track_names.is_empty()
+            {
+                return Err(
+                    "gene-locus-evidence accepts either --occupancy-layout or --occupancy-track, not both"
+                        .to_string(),
+                );
+            }
+            request.isoform_evidence.rna_read_report_ids.sort();
+            request.isoform_evidence.rna_read_report_ids.dedup();
+            request.isoform_evidence.qpcr_report_ids.sort();
+            request.isoform_evidence.qpcr_report_ids.dedup();
+            request.isoform_evidence.probe_evidence_paths.sort();
+            request.isoform_evidence.probe_evidence_paths.dedup();
+            request.isoform_evidence.cdna_est_resource_paths.sort();
+            request.isoform_evidence.cdna_est_resource_paths.dedup();
+            let mut unique_occupancy_tracks = Vec::new();
+            for track_name in request
+                .isoform_evidence
+                .occupancy_track_names
+                .drain(..)
+            {
+                if !unique_occupancy_tracks
+                    .iter()
+                    .any(|value: &String| value.eq_ignore_ascii_case(&track_name))
+                {
+                    unique_occupancy_tracks.push(track_name);
+                }
+            }
+            request.isoform_evidence.occupancy_track_names = unique_occupancy_tracks;
+            let mut unique_motifs: Vec<String> = Vec::new();
+            for motif in request.motifs.drain(..) {
+                if !unique_motifs
+                    .iter()
+                    .any(|value: &String| value.eq_ignore_ascii_case(&motif))
+                {
+                    unique_motifs.push(motif);
+                }
+            }
+            request.motifs = unique_motifs;
+            Ok(FeatureExpertTarget::GeneLocusEvidence { request })
         }
         "protein-comparison" => {
             let mut transcript_id_filter: Option<String> = None;

@@ -65,11 +65,17 @@ pub use gene_sets::{
 pub use isoform_evidence::{
     CDNA_EST_EVIDENCE_RESOURCE_SCHEMA, CdnaEstEvidenceKind, CdnaEstEvidenceRecord,
     CdnaEstEvidenceResource, GENE_ISOFORM_EVIDENCE_INSTRUCTION, GENE_ISOFORM_EVIDENCE_SCHEMA,
-    GeneIsoformAssayCandidate, GeneIsoformEvidenceComponent, GeneIsoformEvidenceComponents,
-    GeneIsoformEvidenceItem, GeneIsoformEvidenceProvenanceSource, GeneIsoformEvidenceReport,
-    GeneIsoformEvidenceRequest, GeneIsoformExonFamilyRow, GeneIsoformFamilyRow,
-    GeneIsoformJunctionRow, GeneIsoformOccupancyInterval, GeneIsoformOccupancyLane,
-    GeneIsoformTranscriptRow, IsoformEvidenceAssessmentStatus, IsoformEvidenceSourceKind,
+    GENE_LOCUS_EVIDENCE_DISPLAY_INSTRUCTION, GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA,
+    GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA, GeneIsoformAssayCandidate, GeneIsoformEvidenceComponent,
+    GeneIsoformEvidenceComponents, GeneIsoformEvidenceItem, GeneIsoformEvidenceProvenanceSource,
+    GeneIsoformEvidenceReport, GeneIsoformEvidenceRequest, GeneIsoformExonFamilyRow,
+    GeneIsoformFamilyRow, GeneIsoformJunctionRow, GeneIsoformOccupancyInterval,
+    GeneIsoformOccupancyLane, GeneIsoformTranscriptRow, GeneLocusAssayOverlay, GeneLocusCodonKind,
+    GeneLocusCodonMarker, GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest,
+    GeneLocusMotifHit, GeneLocusMotifTrack, GeneLocusOccupancyGroup,
+    GeneLocusOccupancyGroupRequest, GeneLocusOccupancyLane, GeneLocusOccupancyLaneRequest,
+    GeneLocusOccupancyLaneRole, GeneLocusOccupancyLayout, GeneLocusOccupancyScaleMode,
+    GeneLocusTranscriptMetrics, IsoformEvidenceAssessmentStatus, IsoformEvidenceSourceKind,
 };
 pub use orthologs::{
     ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA,
@@ -2021,7 +2027,7 @@ pub struct ProteinFeatureFilter {
     pub exclude_feature_keys: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum FeatureExpertTarget {
     #[serde(alias = "TfbsFeature")]
@@ -2046,6 +2052,10 @@ pub enum FeatureExpertTarget {
     IsoformArchitecture { panel_id: String },
     #[serde(alias = "IsoformEvidence")]
     IsoformEvidence { request: GeneIsoformEvidenceRequest },
+    #[serde(alias = "GeneLocusEvidence")]
+    GeneLocusEvidence {
+        request: GeneLocusEvidenceDisplayRequest,
+    },
     #[serde(alias = "ProteinComparison")]
     ProteinComparison {
         #[serde(default)]
@@ -2107,6 +2117,14 @@ impl FeatureExpertTarget {
                 request.qpcr_report_ids.len(),
                 request.probe_evidence_paths.len(),
                 request.cdna_est_resource_paths.len()
+            ),
+            Self::GeneLocusEvidence { request } => format!(
+                "gene locus evidence panel '{}' (upstream={}, downstream={}, occupancy groups={}, motifs={})",
+                request.isoform_evidence.panel_id,
+                request.upstream_bp,
+                request.downstream_bp,
+                request.occupancy_layout.groups.len(),
+                request.motifs.len()
             ),
             Self::ProteinComparison {
                 transcript_id_filter,
@@ -3154,6 +3172,7 @@ pub enum FeatureExpertView {
     Splicing(SplicingExpertView),
     IsoformArchitecture(IsoformArchitectureExpertView),
     IsoformEvidence(GeneIsoformEvidenceReport),
+    GeneLocusEvidence(GeneLocusEvidenceDisplayReport),
 }
 
 impl FeatureExpertView {
@@ -3164,6 +3183,7 @@ impl FeatureExpertView {
             Self::Splicing(_) => SPLICING_EXPERT_INSTRUCTION,
             Self::IsoformArchitecture(_) => ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
             Self::IsoformEvidence(_) => GENE_ISOFORM_EVIDENCE_INSTRUCTION,
+            Self::GeneLocusEvidence(_) => GENE_LOCUS_EVIDENCE_DISPLAY_INSTRUCTION,
         }
     }
 }

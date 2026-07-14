@@ -3347,6 +3347,35 @@ external coding agent runtime, see:
   - provenance includes source ids plus file paths and SHA-256 digests. A
     report composes sequence evidence; it does not claim that an isoform is
     biologically validated
+- gene-locus evidence composition reuses that ledger without changing it:
+  - `inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [isoform-evidence options] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME ...] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--allow-negative]`
+  - `render-feature-expert-svg SEQ_ID gene-locus-evidence PANEL_ID [same options] OUTPUT.svg`
+  - the pure-read result schema is `gentle.gene_locus_evidence_display.v1`.
+    It embeds the `gentle.gene_isoform_evidence.v1` ledger and adds
+    `transcript_metrics[]`, annotation-backed `codon_markers[]`, grouped
+    `occupancy_groups[]`, continuous `motif_tracks[]`, deduplicated junction
+    `assay_overlays[]`, a combined `provenance[]` inventory, strand-aware
+    locus/flank coordinates, and warnings
+  - occupancy layout files use `gentle.gene_locus_occupancy_layout.v1`.
+    Each group declares `group_id`, label, `scale_mode`
+    (`shared_group`, `shared_all`, `independent`, or `fixed`), optional fixed
+    scale/comparability rationale, and lanes with exact projected track name,
+    optional display/condition labels, and role (`experimental`, `gfp_control`,
+    `input_control`, `igg_control`, `positive_control`, `negative_control`, or
+    `other`)
+  - GENtle never infers cell line, condition, lane role, or cross-group
+    comparability from a filename. `shared_all` without an explicit
+    `cross_group_scale_justification` is retained but warned about
+  - motif tracks reuse the existing TFBS scorer and active local JASPAR
+    registry. A threshold controls labeled top hits only; the machine-readable
+    continuous vectors remain in the report. Motif/occupancy colocation is not
+    promoted to binding or regulation
+  - transcript/CDS metrics reuse transcript derivation. Start/stop glyphs are
+    emitted only from annotated CDS translations; noncoding/no-CDS transcripts
+    are not mislabeled as incomplete CDS
+  - qPCR assays are display-deduplicated by stable junction id while retaining
+    every contributing assay id, transcript family, and transcript id. No assay
+    is designed or persisted by this read-only route
 - shared-shell UniProt routes:
   - `uniprot fetch QUERY [--entry-id ID]`
     - `QUERY` is a UniProtKB/Swiss-Prot accession or entry name, for example

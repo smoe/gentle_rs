@@ -34353,6 +34353,42 @@ fn parse_feature_expert_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
+    let locus_evidence = parse_shell_line(
+        "inspect-feature-expert s gene-locus-evidence patz1_v1 --annotation-release Ensembl116 --occupancy-layout '{\"schema\":\"gentle.gene_locus_occupancy_layout.v1\",\"groups\":[{\"group_id\":\"saos2\",\"label\":\"Saos-2\",\"scale_mode\":\"shared_group\",\"lanes\":[{\"track_name\":\"SAOS-2 TA\",\"condition_label\":\"TA\",\"role\":\"experimental\"}]}]}' --upstream-bp 5000 --downstream-bp 1200 --motif TP73 --motif SP1 --score-kind llr_bits --motif-threshold 2.5 --motif-top-hits 4 --allow-negative",
+    )
+    .expect("parse gene locus evidence target");
+    match locus_evidence {
+        ShellCommand::InspectFeatureExpert { seq_id, target } => {
+            assert_eq!(seq_id, "s");
+            let FeatureExpertTarget::GeneLocusEvidence { request } = target else {
+                panic!("expected gene locus evidence target");
+            };
+            assert_eq!(request.isoform_evidence.panel_id, "patz1_v1");
+            assert_eq!(
+                request.isoform_evidence.annotation_release.as_deref(),
+                Some("Ensembl116")
+            );
+            assert_eq!(request.upstream_bp, 5_000);
+            assert_eq!(request.downstream_bp, 1_200);
+            assert_eq!(
+                request.motifs,
+                vec!["TP73".to_string(), "SP1".to_string()]
+            );
+            assert_eq!(request.motif_score_kind, "llr_bits");
+            assert_eq!(request.motif_display_threshold, Some(2.5));
+            assert_eq!(request.motif_top_hit_count, 4);
+            assert!(!request.motif_clip_negative);
+            assert_eq!(
+                request.occupancy_layout.schema,
+                crate::engine::GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA
+            );
+            assert_eq!(request.occupancy_layout.groups.len(), 1);
+            assert_eq!(request.occupancy_layout.groups[0].group_id, "saos2");
+            assert_eq!(request.occupancy_layout.groups[0].lanes.len(), 1);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let protein_compare = parse_shell_line("inspect-feature-expert s protein-comparison")
         .expect("parse transcript protein comparison target");
     match protein_compare {

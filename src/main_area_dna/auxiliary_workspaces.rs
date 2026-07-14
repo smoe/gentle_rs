@@ -7241,6 +7241,20 @@ impl MainAreaDna {
             FeatureExpertView::IsoformEvidence(report) => {
                 Self::render_isoform_evidence_view_ui(ui, report)
             }
+            FeatureExpertView::GeneLocusEvidence(report) => {
+                ui.heading(format!("{} locus evidence", report.gene_symbol));
+                ui.label(&report.instruction);
+                ui.monospace(format!(
+                    "{} transcripts | {} occupancy groups | {} motif tracks | {} junction assays",
+                    report.transcript_metrics.len(),
+                    report.occupancy_groups.len(),
+                    report.motif_tracks.len(),
+                    report.assay_overlays.len()
+                ));
+                ui.small(
+                    "Use the shared SVG export for the composed publication view; this summary contains no GUI-local biological interpretation.",
+                );
+            }
         }
     }
 

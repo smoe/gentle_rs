@@ -988,7 +988,7 @@ impl GentleEngine {
             .collect()
     }
 
-    fn summarize_tfbs_score_tracks_internal(
+    pub(super) fn summarize_tfbs_score_tracks_internal(
         &self,
         target: SequenceScanTarget,
         motifs: &[String],

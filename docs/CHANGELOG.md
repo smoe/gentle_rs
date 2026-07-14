@@ -22,6 +22,11 @@ Maintenance rule:
   shared-scale transcript-aligned SVG rendering, GUI/CLI selection, and a local
   TA/DN CUT&RUN figure runbook without treating locus occupancy as isoform
   regulation.
+- Added the pure-read `gentle.gene_locus_evidence_display.v1` composition and
+  deterministic SVG target, aligning strand-aware transcript/CDS metrics,
+  annotated start/stop glyphs, explicitly grouped occupancy lanes, continuous
+  JASPAR motif scores, and deduplicated junction-qPCR markers; added a PATZ1
+  layout separating two cell lines and reproducible SVG/PNG/PDF commands.
 - Prepared the `v0.1.0-internal.10` release boundary for changes since
   `v0.1.0-internal.9` (2026-06-05), with the genome-anchored TP73 evidence
   viewer as the primary release story and a self-contained summary in

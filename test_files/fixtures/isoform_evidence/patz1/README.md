@@ -31,7 +31,8 @@ No Thermo Fisher row was copied into this synthetic bundle.
 ## GENtle use
 
 - Engine tests load the GenBank slice, import `patz1_isoform_panel.json`, and
-  inspect `FeatureExpertTarget::IsoformEvidence`.
+  inspect both `FeatureExpertTarget::IsoformEvidence` and the composed
+  `FeatureExpertTarget::GeneLocusEvidence` report.
 - The cDNA/EST resource tests observed-vs-unknown junction handling.
 - Its explicit GRCh37 mismatch row is a negative control: matching text in a
   geometry id must not override incompatible coordinate provenance.
@@ -39,3 +40,6 @@ No Thermo Fisher row was copied into this synthetic bundle.
   `constraint_only`, never direct validation.
 - The expression TSV tests dataset-relative abundance without inferring a
   cross-platform absolute scale.
+- Synthetic projected occupancy intervals, motif scoring, and a persisted
+  qPCR candidate are added by the engine test at runtime; they are not encoded
+  in these fixture files or presented as PATZ1 measurements.

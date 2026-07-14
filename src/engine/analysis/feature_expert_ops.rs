@@ -10020,7 +10020,8 @@ impl GentleEngine {
     fn isoform_evidence_occupancy_lanes(
         &self,
         dna: &DNAsequence,
-        splicing: &SplicingExpertView,
+        local_start_1based: usize,
+        local_end_1based: usize,
         anchor: Option<&SequenceGenomeAnchorSummary>,
         requested_track_names: &[String],
         warnings: &mut Vec<String>,
@@ -10043,8 +10044,8 @@ impl GentleEngine {
             .collect::<BTreeMap<_, _>>();
         let mut overlays = self.summarize_tfbs_score_track_overlay_tracks(
             dna,
-            splicing.region_start_1based.saturating_sub(1),
-            splicing.region_end_1based,
+            local_start_1based.saturating_sub(1),
+            local_end_1based,
         );
         overlays.retain(|track| {
             include_all
@@ -10477,7 +10478,8 @@ impl GentleEngine {
             })?;
         let occupancy_lanes = self.isoform_evidence_occupancy_lanes(
             dna,
-            &splicing,
+            splicing.region_start_1based,
+            splicing.region_end_1based,
             anchor.as_ref(),
             &request.occupancy_track_names,
             &mut warnings,
@@ -11127,6 +11129,769 @@ impl GentleEngine {
         })
     }
 
+    fn gene_locus_score_kind(raw: &str) -> Result<TfbsScoreTrackValueKind, EngineError> {
+        match raw.trim() {
+            "llr_bits" => Ok(TfbsScoreTrackValueKind::LlrBits),
+            "llr_quantile" => Ok(TfbsScoreTrackValueKind::LlrQuantile),
+            "llr_background_quantile" => Ok(TfbsScoreTrackValueKind::LlrBackgroundQuantile),
+            "llr_background_tail_log10" => {
+                Ok(TfbsScoreTrackValueKind::LlrBackgroundTailLog10)
+            }
+            "true_log_odds_bits" => Ok(TfbsScoreTrackValueKind::TrueLogOddsBits),
+            "true_log_odds_quantile" => Ok(TfbsScoreTrackValueKind::TrueLogOddsQuantile),
+            "true_log_odds_background_quantile" => {
+                Ok(TfbsScoreTrackValueKind::TrueLogOddsBackgroundQuantile)
+            }
+            "true_log_odds_background_tail_log10" => {
+                Ok(TfbsScoreTrackValueKind::TrueLogOddsBackgroundTailLog10)
+            }
+            other => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Unsupported gene-locus motif score kind '{other}'"),
+                cause_chain: vec![],
+            }),
+        }
+    }
+
+    fn gene_locus_local_span(
+        splicing: &SplicingExpertView,
+        sequence_length_bp: usize,
+        upstream_bp: usize,
+        downstream_bp: usize,
+    ) -> (usize, usize) {
+        if splicing.strand == "-" {
+            (
+                splicing
+                    .region_start_1based
+                    .saturating_sub(downstream_bp)
+                    .max(1),
+                splicing
+                    .region_end_1based
+                    .saturating_add(upstream_bp)
+                    .min(sequence_length_bp),
+            )
+        } else {
+            (
+                splicing
+                    .region_start_1based
+                    .saturating_sub(upstream_bp)
+                    .max(1),
+                splicing
+                    .region_end_1based
+                    .saturating_add(downstream_bp)
+                    .min(sequence_length_bp),
+            )
+        }
+    }
+
+    fn gene_locus_transcript_metrics(
+        &self,
+        seq_id: &str,
+        dna: &DNAsequence,
+        splicing: &SplicingExpertView,
+        anchor: Option<&SequenceGenomeAnchorSummary>,
+        warnings: &mut Vec<String>,
+    ) -> (Vec<GeneLocusTranscriptMetrics>, Vec<GeneLocusCodonMarker>) {
+        let source_sequence_upper = dna.get_forward_string().to_ascii_uppercase().into_bytes();
+        let features = dna.features();
+        let mut rows = Vec::new();
+        let mut markers = Vec::new();
+
+        for lane in &splicing.transcripts {
+            let Some(feature) = features.get(lane.transcript_feature_id) else {
+                warnings.push(format!(
+                    "Transcript '{}' references missing feature n-{} while composing locus metrics.",
+                    lane.transcript_id,
+                    lane.transcript_feature_id + 1
+                ));
+                continue;
+            };
+            let biotype = Self::first_nonempty_feature_qualifier(
+                feature,
+                &["transcript_biotype", "biotype", "gene_biotype"],
+            );
+            let biotype_lower = biotype.as_deref().unwrap_or_default().to_ascii_lowercase();
+            let qualifier_flag = |name: &str| {
+                feature
+                    .qualifiers
+                    .iter()
+                    .any(|(key, _)| key.as_ref().eq_ignore_ascii_case(name))
+            };
+            let retained_by_geometry = lane.exons.iter().any(|exon| {
+                splicing.transcripts.iter().any(|other| {
+                    other.transcript_feature_id != lane.transcript_feature_id
+                        && other.introns.iter().any(|intron| {
+                            exon.start_1based <= intron.start_1based
+                                && exon.end_1based >= intron.end_1based
+                        })
+                })
+            });
+            let derived = match Self::build_derived_protein_expert_transcript(
+                &source_sequence_upper,
+                feature,
+                features,
+                lane.transcript_feature_id,
+                seq_id,
+            ) {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    warnings.push(format!(
+                        "Transcript '{}' coding metrics could not be derived: {}",
+                        lane.transcript_id, error.message
+                    ));
+                    None
+                }
+            };
+            let derivation = derived.as_ref().and_then(|value| value.derivation.as_ref());
+            let annotated_cds = derivation.is_some_and(|value| {
+                value.derivation_mode
+                    == gentle_protocol::TranscriptProteinDerivationMode::AnnotatedCds
+            });
+            let explicitly_noncoding = [
+                "noncoding",
+                "non_coding",
+                "lncrna",
+                "lincrna",
+                "retained_intron",
+                "processed_transcript",
+                "mirna",
+                "snrna",
+                "snorna",
+                "rrna",
+                "pseudogene",
+            ]
+            .iter()
+            .any(|token| biotype_lower.contains(token));
+            let mut cds_ranges = derived
+                .as_ref()
+                .map(|value| value.genomic_cds_ranges_1based.clone())
+                .unwrap_or_default();
+            let mut cds_length_bp = derivation.map(|value| value.cds_length_bp).unwrap_or(0);
+            let mut expected_peptide_length_aa = derivation
+                .map(|value| value.protein_length_aa)
+                .filter(|value| *value > 0);
+            if explicitly_noncoding && !annotated_cds {
+                cds_ranges.clear();
+                cds_length_bp = 0;
+                expected_peptide_length_aa = None;
+            }
+            let has_start = annotated_cds
+                && derivation.is_some_and(|value| value.protein_sequence.starts_with('M'));
+            let has_stop =
+                annotated_cds && derivation.is_some_and(|value| value.terminal_stop_trimmed);
+            let frame_complete = cds_length_bp > 0 && cds_length_bp % 3 == 0;
+            let mut flags = Vec::new();
+            if retained_by_geometry || biotype_lower.contains("retained_intron") {
+                flags.push("annotated_retained_intron".to_string());
+            }
+            if explicitly_noncoding {
+                flags.push("noncoding_transcript_annotation".to_string());
+            }
+            if qualifier_flag("partial")
+                || qualifier_flag("5_partial")
+                || (annotated_cds && !has_start)
+            {
+                flags.push("incomplete_5prime_cds".to_string());
+            }
+            if qualifier_flag("3_partial") || (annotated_cds && !has_stop) {
+                flags.push("incomplete_3prime_cds".to_string());
+            }
+            if cds_length_bp > 0 && !frame_complete {
+                flags.push("cds_length_not_multiple_of_3".to_string());
+            }
+            if qualifier_flag("pseudo") || biotype_lower.contains("pseudogene") {
+                flags.push("pseudogene_annotation".to_string());
+            }
+            let coding_status = if annotated_cds && has_start && has_stop && frame_complete {
+                "complete_cds"
+            } else if annotated_cds {
+                "partial_cds"
+            } else if explicitly_noncoding {
+                "noncoding_or_no_cds"
+            } else if derivation.is_some() && !cds_ranges.is_empty() {
+                flags.push("protein_length_inferred_not_annotated".to_string());
+                "inferred_orf"
+            } else if biotype_lower.contains("protein_coding") {
+                "coding_annotation_unresolved"
+            } else {
+                "noncoding_or_no_cds"
+            }
+            .to_string();
+
+            if annotated_cds && !cds_ranges.is_empty() {
+                let mut transcript_order = cds_ranges.clone();
+                transcript_order.sort_unstable_by_key(|range| (range.0, range.1));
+                if lane.strand == "-" {
+                    transcript_order.reverse();
+                }
+                if has_start {
+                    let first = transcript_order[0];
+                    let codon_offset = derivation
+                        .map(|value| value.codon_start.saturating_sub(1))
+                        .unwrap_or(0);
+                    let local_position = if lane.strand == "-" {
+                        first.1.saturating_sub(codon_offset)
+                    } else {
+                        first.0.saturating_add(codon_offset)
+                    };
+                    markers.push(GeneLocusCodonMarker {
+                        transcript_id: lane.transcript_id.clone(),
+                        kind: GeneLocusCodonKind::Start,
+                        local_position_1based: local_position,
+                        genomic_position_1based:
+                            Self::isoform_evidence_local_position_to_report_1based(
+                                anchor,
+                                local_position,
+                            ),
+                        strand: lane.strand.clone(),
+                        basis: "annotated CDS translated with initiating methionine".to_string(),
+                    });
+                }
+                if has_stop {
+                    let last = transcript_order[transcript_order.len() - 1];
+                    let local_position = if lane.strand == "-" { last.0 } else { last.1 };
+                    markers.push(GeneLocusCodonMarker {
+                        transcript_id: lane.transcript_id.clone(),
+                        kind: GeneLocusCodonKind::Stop,
+                        local_position_1based: local_position,
+                        genomic_position_1based:
+                            Self::isoform_evidence_local_position_to_report_1based(
+                                anchor,
+                                local_position,
+                            ),
+                        strand: lane.strand.clone(),
+                        basis: "annotated CDS translation contained a terminal stop codon"
+                            .to_string(),
+                    });
+                }
+            }
+
+            flags.sort();
+            flags.dedup();
+            rows.push(GeneLocusTranscriptMetrics {
+                transcript_feature_id: lane.transcript_feature_id,
+                transcript_id: lane.transcript_id.clone(),
+                spliced_exon_length_bp: lane
+                    .exons
+                    .iter()
+                    .map(|range| {
+                        range
+                            .end_1based
+                            .saturating_sub(range.start_1based)
+                            .saturating_add(1)
+                    })
+                    .sum(),
+                cds_length_bp,
+                expected_peptide_length_aa,
+                coding_status,
+                biotype,
+                cds_ranges_local_1based: cds_ranges,
+                flags,
+            });
+        }
+        rows.sort_by(|left, right| left.transcript_id.cmp(&right.transcript_id));
+        markers.sort_by(|left, right| {
+            left.transcript_id
+                .cmp(&right.transcript_id)
+                .then((left.kind as u8).cmp(&(right.kind as u8)))
+        });
+        (rows, markers)
+    }
+
+    fn gene_locus_assay_overlays(report: &GeneIsoformEvidenceReport) -> Vec<GeneLocusAssayOverlay> {
+        let mut rows = BTreeMap::<String, GeneLocusAssayOverlay>::new();
+        for assay in &report.assay_candidates {
+            let assay_id = format!("{}:rank{}", assay.qpcr_report_id, assay.assay_rank);
+            for junction_id in &assay.target_junction_ids {
+                let Some(junction) = report
+                    .junctions
+                    .iter()
+                    .find(|row| row.junction_id == *junction_id)
+                else {
+                    continue;
+                };
+                let (local_donor, local_acceptor) = if junction.strand == "-" {
+                    (junction.local_high_1based, junction.local_low_1based)
+                } else {
+                    (junction.local_low_1based, junction.local_high_1based)
+                };
+                let row =
+                    rows.entry(junction_id.clone())
+                        .or_insert_with(|| GeneLocusAssayOverlay {
+                            junction_id: junction_id.clone(),
+                            local_donor_1based: local_donor,
+                            local_acceptor_1based: local_acceptor,
+                            genomic_donor_1based: junction.transcript_donor_1based,
+                            genomic_acceptor_1based: junction.transcript_acceptor_1based,
+                            assay_ids: vec![],
+                            family_ids: junction.family_ids.clone(),
+                            transcript_ids: junction.transcript_ids.clone(),
+                        });
+                row.assay_ids.push(assay_id.clone());
+                row.transcript_ids
+                    .extend(assay.supported_transcript_ids.iter().cloned());
+            }
+        }
+        let mut out = rows.into_values().collect::<Vec<_>>();
+        for row in &mut out {
+            row.assay_ids.sort();
+            row.assay_ids.dedup();
+            row.family_ids.sort();
+            row.family_ids.dedup();
+            row.transcript_ids.sort();
+            row.transcript_ids.dedup();
+        }
+        out.sort_by(|left, right| left.junction_id.cmp(&right.junction_id));
+        out
+    }
+
+    fn gene_locus_occupancy_groups(
+        &self,
+        dna: &DNAsequence,
+        local_start_1based: usize,
+        local_end_1based: usize,
+        anchor: Option<&SequenceGenomeAnchorSummary>,
+        request: &GeneLocusEvidenceDisplayRequest,
+        warnings: &mut Vec<String>,
+    ) -> Result<Vec<GeneLocusOccupancyGroup>, EngineError> {
+        if (!request.occupancy_layout.groups.is_empty()
+            || !request.occupancy_layout.schema.trim().is_empty())
+            && request.occupancy_layout.schema != GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Occupancy layout schema '{}' is not '{}'",
+                    request.occupancy_layout.schema, GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let mut group_requests = request.occupancy_layout.groups.clone();
+        if group_requests.is_empty() && !request.isoform_evidence.occupancy_track_names.is_empty() {
+            group_requests.push(GeneLocusOccupancyGroupRequest {
+                group_id: "occupancy".to_string(),
+                label: "Occupancy".to_string(),
+                lanes: request
+                    .isoform_evidence
+                    .occupancy_track_names
+                    .iter()
+                    .map(|track_name| GeneLocusOccupancyLaneRequest {
+                        track_name: track_name.clone(),
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            });
+        }
+        let mut group_ids = BTreeSet::new();
+        let mut requested_track_names = Vec::new();
+        for group in &group_requests {
+            if group.group_id.trim().is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "Occupancy group_id must not be empty".to_string(),
+                    cause_chain: vec![],
+                });
+            }
+            if !group_ids.insert(group.group_id.to_ascii_lowercase()) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Duplicate occupancy group_id '{}'", group.group_id),
+                    cause_chain: vec![],
+                });
+            }
+            if group.scale_mode == GeneLocusOccupancyScaleMode::Fixed
+                && !group
+                    .fixed_abs_max_score
+                    .is_some_and(|value| value.is_finite() && value > 0.0)
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Occupancy group '{}' uses fixed scaling but has no positive finite fixed_abs_max_score",
+                        group.group_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            if group.scale_mode == GeneLocusOccupancyScaleMode::SharedAll
+                && group
+                    .cross_group_scale_justification
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .is_none()
+            {
+                warnings.push(format!(
+                    "Occupancy group '{}' requests shared_all scaling without a cross-group normalization/comparability rationale.",
+                    group.group_id
+                ));
+            }
+            for lane in &group.lanes {
+                if lane.track_name.trim().is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Occupancy group '{}' contains an empty track_name",
+                            group.group_id
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+                if !requested_track_names
+                    .iter()
+                    .any(|value: &String| value.eq_ignore_ascii_case(&lane.track_name))
+                {
+                    requested_track_names.push(lane.track_name.clone());
+                }
+            }
+        }
+        let projected = self.isoform_evidence_occupancy_lanes(
+            dna,
+            local_start_1based,
+            local_end_1based,
+            anchor,
+            &requested_track_names,
+            warnings,
+        );
+        let global_abs_max = projected
+            .iter()
+            .flat_map(|lane| [lane.min_score, lane.max_score])
+            .flatten()
+            .map(f64::abs)
+            .filter(|value| value.is_finite())
+            .max_by(f64::total_cmp)
+            .unwrap_or(1.0)
+            .max(f64::EPSILON);
+        let mut groups = Vec::new();
+        for group_request in group_requests {
+            let mut lanes = Vec::new();
+            let mut seen_lane_ids = BTreeSet::new();
+            for lane_request in &group_request.lanes {
+                let matching = if lane_request.track_name == "*" {
+                    projected.iter().collect::<Vec<_>>()
+                } else {
+                    projected
+                        .iter()
+                        .filter(|lane| {
+                            lane.track_name
+                                .eq_ignore_ascii_case(&lane_request.track_name)
+                        })
+                        .collect::<Vec<_>>()
+                };
+                for lane in matching {
+                    if !seen_lane_ids.insert(lane.lane_id.clone()) {
+                        continue;
+                    }
+                    lanes.push(GeneLocusOccupancyLane {
+                        lane: lane.clone(),
+                        display_label: lane_request.display_label.clone(),
+                        condition_label: lane_request.condition_label.clone(),
+                        role: lane_request.role,
+                        display_abs_max_score: 1.0,
+                    });
+                }
+            }
+            let group_abs_max = lanes
+                .iter()
+                .flat_map(|lane| [lane.lane.min_score, lane.lane.max_score])
+                .flatten()
+                .map(f64::abs)
+                .filter(|value| value.is_finite())
+                .max_by(f64::total_cmp)
+                .unwrap_or(1.0)
+                .max(f64::EPSILON);
+            if group_request.scale_mode == GeneLocusOccupancyScaleMode::Fixed
+                && group_request
+                    .fixed_abs_max_score
+                    .is_some_and(|fixed| group_abs_max > fixed)
+            {
+                warnings.push(format!(
+                    "Occupancy group '{}' has observed |score| {:.3} above its fixed display scale; SVG bars are clipped at {:.3}.",
+                    group_request.group_id,
+                    group_abs_max,
+                    group_request.fixed_abs_max_score.unwrap_or(group_abs_max)
+                ));
+            }
+            for lane in &mut lanes {
+                let lane_abs_max = [lane.lane.min_score, lane.lane.max_score]
+                    .into_iter()
+                    .flatten()
+                    .map(f64::abs)
+                    .filter(|value| value.is_finite())
+                    .max_by(f64::total_cmp)
+                    .unwrap_or(1.0)
+                    .max(f64::EPSILON);
+                lane.display_abs_max_score = match group_request.scale_mode {
+                    GeneLocusOccupancyScaleMode::SharedGroup => group_abs_max,
+                    GeneLocusOccupancyScaleMode::SharedAll => global_abs_max,
+                    GeneLocusOccupancyScaleMode::Independent => lane_abs_max,
+                    GeneLocusOccupancyScaleMode::Fixed => {
+                        group_request.fixed_abs_max_score.unwrap_or(1.0)
+                    }
+                };
+            }
+            groups.push(GeneLocusOccupancyGroup {
+                group_id: group_request.group_id,
+                label: if group_request.label.trim().is_empty() {
+                    "Occupancy".to_string()
+                } else {
+                    group_request.label
+                },
+                scale_mode: group_request.scale_mode,
+                group_abs_max_score: group_abs_max,
+                cross_group_scale_justification: group_request.cross_group_scale_justification,
+                lanes,
+            });
+        }
+        Ok(groups)
+    }
+
+    fn gene_locus_motif_tracks(
+        &self,
+        seq_id: &str,
+        local_start_1based: usize,
+        local_end_1based: usize,
+        anchor: Option<&SequenceGenomeAnchorSummary>,
+        request: &GeneLocusEvidenceDisplayRequest,
+    ) -> Result<Vec<GeneLocusMotifTrack>, EngineError> {
+        if request.motifs.is_empty() {
+            return Ok(vec![]);
+        }
+        if request
+            .motif_display_threshold
+            .is_some_and(|value| !value.is_finite())
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "motif_display_threshold must be finite".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let score_kind = Self::gene_locus_score_kind(&request.motif_score_kind)?;
+        let score_report = self.summarize_tfbs_score_tracks_internal(
+            SequenceScanTarget::SeqId {
+                seq_id: seq_id.to_string(),
+                span_start_0based: Some(local_start_1based.saturating_sub(1)),
+                span_end_0based_exclusive: Some(local_end_1based),
+            },
+            &request.motifs,
+            score_kind,
+            request.motif_clip_negative,
+            false,
+        )?;
+        let top_hit_count = request.motif_top_hit_count.min(50);
+        Ok(score_report
+            .tracks
+            .into_iter()
+            .map(|track| {
+                let top_hits = track
+                    .top_peaks
+                    .iter()
+                    .filter(|peak| {
+                        request
+                            .motif_display_threshold
+                            .is_none_or(|threshold| peak.score > threshold)
+                    })
+                    .take(top_hit_count)
+                    .map(|peak| {
+                        let (genomic_start, genomic_end) =
+                            Self::isoform_evidence_local_range_to_report_1based(
+                                anchor,
+                                peak.start_0based.saturating_add(1),
+                                peak.end_0based_exclusive,
+                            );
+                        GeneLocusMotifHit {
+                            rank: peak.rank,
+                            local_start_0based: peak.start_0based,
+                            local_end_0based_exclusive: peak.end_0based_exclusive,
+                            genomic_start_1based: genomic_start,
+                            genomic_end_1based: genomic_end,
+                            strand: if peak.is_reverse { "-" } else { "+" }.to_string(),
+                            score: peak.score,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                GeneLocusMotifTrack {
+                    motif_id: track.tf_id.clone(),
+                    motif_name: track.tf_name,
+                    motif_length_bp: track.motif_length_bp,
+                    score_kind: score_kind.as_str().to_string(),
+                    track_start_0based: track.track_start_0based,
+                    max_score: track.max_score,
+                    display_threshold: request.motif_display_threshold,
+                    forward_scores: track.forward_scores,
+                    reverse_scores: track.reverse_scores,
+                    top_hits,
+                    provenance: format!(
+                        "active local JASPAR motif registry; matrix_id={}; score_kind={}; clip_negative={}",
+                        track.tf_id,
+                        score_kind.as_str(),
+                        request.motif_clip_negative
+                    ),
+                }
+            })
+            .collect())
+    }
+
+    pub fn build_gene_locus_evidence_display_report(
+        &self,
+        seq_id: &str,
+        request: &GeneLocusEvidenceDisplayRequest,
+    ) -> Result<GeneLocusEvidenceDisplayReport, EngineError> {
+        let mut base_request = request.isoform_evidence.clone();
+        base_request.occupancy_track_names.clear();
+        let isoform_evidence = self.build_gene_isoform_evidence_report(seq_id, &base_request)?;
+        let splicing = isoform_evidence
+            .splicing
+            .as_ref()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Gene locus evidence requires transcript splicing geometry".to_string(),
+                cause_chain: vec![],
+            })?;
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+                cause_chain: vec![],
+            })?;
+        let anchor = self.sequence_genome_anchor_summary(seq_id).ok();
+        let (local_start, local_end) = Self::gene_locus_local_span(
+            splicing,
+            dna.len(),
+            request.upstream_bp,
+            request.downstream_bp,
+        );
+        let mut warnings = isoform_evidence.warnings.clone();
+        if request.upstream_bp > 0
+            && ((splicing.strand == "-" && local_end == dna.len())
+                || (splicing.strand != "-" && local_start == 1))
+        {
+            warnings.push(
+                "Requested upstream flank was clipped by the loaded sequence boundary.".to_string(),
+            );
+        }
+        if request.downstream_bp > 0
+            && ((splicing.strand == "-" && local_start == 1)
+                || (splicing.strand != "-" && local_end == dna.len()))
+        {
+            warnings.push(
+                "Requested downstream flank was clipped by the loaded sequence boundary."
+                    .to_string(),
+            );
+        }
+        let (transcript_metrics, codon_markers) = self.gene_locus_transcript_metrics(
+            seq_id,
+            dna,
+            splicing,
+            anchor.as_ref(),
+            &mut warnings,
+        );
+        let occupancy_groups = self.gene_locus_occupancy_groups(
+            dna,
+            local_start,
+            local_end,
+            anchor.as_ref(),
+            request,
+            &mut warnings,
+        )?;
+        let motif_tracks =
+            self.gene_locus_motif_tracks(seq_id, local_start, local_end, anchor.as_ref(), request)?;
+        let assay_overlays = Self::gene_locus_assay_overlays(&isoform_evidence);
+        let mut provenance = isoform_evidence.provenance.clone();
+        if !request.occupancy_layout.groups.is_empty() {
+            provenance.push(GeneIsoformEvidenceProvenanceSource {
+                source_kind: "occupancy_layout".to_string(),
+                source_id: request
+                    .occupancy_layout
+                    .groups
+                    .iter()
+                    .map(|group| group.group_id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(","),
+                schema: Some(GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA.to_string()),
+                path: None,
+                sha256: None,
+            });
+        }
+        for group in &occupancy_groups {
+            for lane in &group.lanes {
+                provenance.push(GeneIsoformEvidenceProvenanceSource {
+                    source_kind: "projected_occupancy_track".to_string(),
+                    source_id: lane.lane.lane_id.clone(),
+                    schema: None,
+                    path: lane.lane.source_path.clone(),
+                    sha256: None,
+                });
+            }
+        }
+        for track in &motif_tracks {
+            provenance.push(GeneIsoformEvidenceProvenanceSource {
+                source_kind: "tfbs_motif_matrix".to_string(),
+                source_id: track.motif_id.clone(),
+                schema: None,
+                path: None,
+                sha256: None,
+            });
+        }
+        provenance.sort_by(|left, right| {
+            left.source_kind
+                .cmp(&right.source_kind)
+                .then(left.source_id.cmp(&right.source_id))
+                .then(left.path.cmp(&right.path))
+        });
+        provenance.dedup_by(|left, right| {
+            left.source_kind == right.source_kind
+                && left.source_id == right.source_id
+                && left.path == right.path
+        });
+        let (genomic_start, genomic_end) = Self::isoform_evidence_local_range_to_report_1based(
+            anchor.as_ref(),
+            local_start,
+            local_end,
+        );
+        let (axis_left_local, axis_right_local) = if splicing.strand == "-" {
+            (local_end, local_start)
+        } else {
+            (local_start, local_end)
+        };
+        Ok(GeneLocusEvidenceDisplayReport {
+            schema: GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.to_string(),
+            seq_id: seq_id.to_string(),
+            gene_symbol: isoform_evidence.gene_symbol.clone(),
+            panel_id: isoform_evidence.panel_id.clone(),
+            instruction: GENE_LOCUS_EVIDENCE_DISPLAY_INSTRUCTION.to_string(),
+            gene_strand: isoform_evidence.gene_strand.clone(),
+            upstream_bp: request.upstream_bp,
+            downstream_bp: request.downstream_bp,
+            locus_local_start_1based: local_start,
+            locus_local_end_1based: local_end,
+            locus_genomic_start_1based: genomic_start,
+            locus_genomic_end_1based: genomic_end,
+            axis_left_genomic_1based: Self::isoform_evidence_local_position_to_report_1based(
+                anchor.as_ref(),
+                axis_left_local,
+            ),
+            axis_right_genomic_1based: Self::isoform_evidence_local_position_to_report_1based(
+                anchor.as_ref(),
+                axis_right_local,
+            ),
+            isoform_evidence,
+            transcript_metrics,
+            codon_markers,
+            occupancy_groups,
+            motif_tracks,
+            assay_overlays,
+            provenance,
+            warnings,
+        })
+    }
+
     pub fn inspect_feature_expert(
         &self,
         seq_id: &str,
@@ -11159,6 +11924,9 @@ impl GentleEngine {
             FeatureExpertTarget::IsoformEvidence { request } => self
                 .build_gene_isoform_evidence_report(seq_id, request)
                 .map(FeatureExpertView::IsoformEvidence),
+            FeatureExpertTarget::GeneLocusEvidence { request } => self
+                .build_gene_locus_evidence_display_report(seq_id, request)
+                .map(FeatureExpertView::GeneLocusEvidence),
             FeatureExpertTarget::ProteinComparison {
                 transcript_id_filter,
                 protein_feature_filter,

@@ -3722,6 +3722,18 @@ Isoform architecture panel workflow:
       remain locus-level evidence rather than isoform-specific regulation
     - see `docs/gene_isoform_occupancy_figure_runbook.md` for a local
       TAp73alpha/DNp73beta CUT&RUN example
+  - publication-oriented gene-locus evidence composition:
+    - `inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [isoform-evidence options] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME ...] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--allow-negative]`
+    - `render-feature-expert-svg SEQ_ID gene-locus-evidence PANEL_ID [same options] OUTPUT.svg`
+    - this pure-read route aligns transcript/CDS metrics, annotation-backed
+      start/stop glyphs, grouped projected occupancy, continuous motif scores,
+      and one marker per qPCR-targeted junction on a strand-aware 5'->3' axis
+    - use a `gentle.gene_locus_occupancy_layout.v1` JSON file to keep cell
+      lines/conditions in separate declared groups and to choose
+      `shared_group`, `independent`, `fixed`, or explicitly justified
+      `shared_all` scaling; GENtle does not infer these meanings from filenames
+    - see `docs/gene_isoform_occupancy_figure_runbook.md` and
+      `docs/examples/gene_locus_evidence/patz1_cutrun_layout.json`
   - same command family for restriction-site details:
     - `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]`
     - JSON output includes `tooltip_lines[]` with the same concise

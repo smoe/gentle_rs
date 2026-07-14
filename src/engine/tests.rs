@@ -15141,7 +15141,7 @@ fn test_inspect_splicing_feature_expert_view() {
 }
 
 #[test]
-fn gene_isoform_evidence_inspector_composes_patz1_minus_strand_evidence_read_only() {
+fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_strand() {
     let fixture = "test_files/fixtures/isoform_evidence/patz1";
     let temp = tempdir().expect("temp dir");
     let mut engine = GentleEngine::default();
@@ -15202,6 +15202,19 @@ fn gene_isoform_evidence_inspector_composes_patz1_minus_strand_evidence_read_onl
             ],
         });
     }
+    let noncoding_transcript = dna
+        .features_mut()
+        .iter_mut()
+        .find(|feature| {
+            feature
+                .qualifier_values("transcript_id")
+                .any(|value| value == "PATZ1-202")
+        })
+        .expect("synthetic noncoding transcript");
+    noncoding_transcript.qualifiers.push((
+        "transcript_biotype".into(),
+        Some("retained_intron".to_string()),
+    ));
 
     let rna_report = RnaReadInterpretationReport {
         schema: RNA_READ_REPORT_SCHEMA.to_string(),
@@ -15456,7 +15469,9 @@ fn gene_isoform_evidence_inspector_composes_patz1_minus_strand_evidence_read_onl
     engine
         .render_feature_expert_svg_to_path(
             "patz1_isoform_evidence",
-            &FeatureExpertTarget::IsoformEvidence { request },
+            &FeatureExpertTarget::IsoformEvidence {
+                request: request.clone(),
+            },
             &svg_path.to_string_lossy(),
         )
         .expect("render isoform evidence SVG");
@@ -15469,6 +15484,166 @@ fn gene_isoform_evidence_inspector_composes_patz1_minus_strand_evidence_read_onl
     assert!(svg.contains("SAOS-2 TAp73alpha TP73"));
     assert!(svg.contains("SAOS-2 DNp73beta TP73"));
     assert!(svg.contains("locus occupancy is not isoform-specific regulation"));
+
+    let locus_request = GeneLocusEvidenceDisplayRequest {
+        isoform_evidence: request,
+        upstream_bp: 25,
+        downstream_bp: 15,
+        occupancy_layout: GeneLocusOccupancyLayout {
+            schema: GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA.to_string(),
+            groups: vec![
+                GeneLocusOccupancyGroupRequest {
+                    group_id: "saos2".to_string(),
+                    label: "Saos-2".to_string(),
+                    scale_mode: GeneLocusOccupancyScaleMode::SharedGroup,
+                    lanes: vec![
+                        GeneLocusOccupancyLaneRequest {
+                            track_name: "SAOS-2 TAp73alpha TP73".to_string(),
+                            display_label: Some("TAp73alpha".to_string()),
+                            condition_label: Some("TA".to_string()),
+                            role: GeneLocusOccupancyLaneRole::Experimental,
+                        },
+                        GeneLocusOccupancyLaneRequest {
+                            track_name: "SAOS-2 DNp73beta TP73".to_string(),
+                            display_label: Some("DNp73beta".to_string()),
+                            condition_label: Some("DN".to_string()),
+                            role: GeneLocusOccupancyLaneRole::Experimental,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                GeneLocusOccupancyGroupRequest {
+                    group_id: "comparison".to_string(),
+                    label: "Separate comparison context".to_string(),
+                    scale_mode: GeneLocusOccupancyScaleMode::Independent,
+                    lanes: vec![GeneLocusOccupancyLaneRequest {
+                        track_name: "unrelated occupancy track".to_string(),
+                        role: GeneLocusOccupancyLaneRole::Other,
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ],
+        },
+        motifs: vec!["TP73".to_string()],
+        motif_score_kind: "llr_bits".to_string(),
+        motif_clip_negative: false,
+        motif_display_threshold: None,
+        motif_top_hit_count: 3,
+    };
+    let locus_state_before =
+        serde_json::to_value(engine.state()).expect("serialize state before locus inspection");
+    let locus_view = engine
+        .inspect_feature_expert(
+            "patz1_isoform_evidence",
+            &FeatureExpertTarget::GeneLocusEvidence {
+                request: locus_request.clone(),
+            },
+        )
+        .expect("inspect composed PATZ1 locus evidence");
+    let locus_state_after =
+        serde_json::to_value(engine.state()).expect("serialize state after locus inspection");
+    assert_eq!(
+        locus_state_before, locus_state_after,
+        "locus composition must remain a pure read"
+    );
+    let FeatureExpertView::GeneLocusEvidence(locus_report) = locus_view else {
+        panic!("expected gene locus evidence view");
+    };
+    assert_eq!(locus_report.schema, GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA);
+    assert_eq!(locus_report.gene_strand, "-");
+    assert!(
+        locus_report.axis_left_genomic_1based > locus_report.axis_right_genomic_1based,
+        "minus-strand locus must read 5' to 3' while genomic coordinates descend"
+    );
+    assert_eq!(locus_report.isoform_evidence.occupancy_lanes.len(), 0);
+    assert_eq!(locus_report.transcript_metrics.len(), 3);
+    assert!(
+        locus_report
+            .transcript_metrics
+            .iter()
+            .all(|row| row.spliced_exon_length_bp > 0)
+    );
+    assert!(
+        locus_report.transcript_metrics.iter().all(|row| !row
+            .flags
+            .iter()
+            .any(|flag| flag == "incomplete_5prime_cds")),
+        "noncoding/no-CDS models must not be mislabeled as incomplete CDS"
+    );
+    let noncoding_metrics = locus_report
+        .transcript_metrics
+        .iter()
+        .find(|row| row.transcript_id == "PATZ1-202")
+        .expect("noncoding transcript metrics");
+    assert_eq!(noncoding_metrics.coding_status, "noncoding_or_no_cds");
+    assert_eq!(noncoding_metrics.cds_length_bp, 0);
+    assert_eq!(noncoding_metrics.expected_peptide_length_aa, None);
+    assert!(
+        noncoding_metrics
+            .flags
+            .iter()
+            .any(|flag| flag == "noncoding_transcript_annotation")
+    );
+    assert_eq!(locus_report.occupancy_groups.len(), 2);
+    assert_eq!(locus_report.occupancy_groups[0].group_abs_max_score, 12.0);
+    assert!(
+        locus_report.occupancy_groups[0]
+            .lanes
+            .iter()
+            .all(|lane| lane.display_abs_max_score == 12.0)
+    );
+    assert_eq!(
+        locus_report.occupancy_groups[1].lanes[0].display_abs_max_score,
+        30.0
+    );
+    assert_eq!(locus_report.assay_overlays.len(), 1);
+    assert_eq!(locus_report.assay_overlays[0].assay_ids.len(), 1);
+    assert_eq!(locus_report.motif_tracks.len(), 1);
+    assert_eq!(locus_report.motif_tracks[0].motif_id, "MA0861.2");
+    assert!(
+        locus_report.motif_tracks[0]
+            .provenance
+            .contains("active local JASPAR motif registry")
+    );
+    assert!(locus_report.provenance.iter().any(|source| {
+        source.source_kind == "occupancy_layout"
+            && source.schema.as_deref() == Some(GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA)
+    }));
+    assert!(locus_report.provenance.iter().any(|source| {
+        source.source_kind == "projected_occupancy_track"
+            && source
+                .path
+                .as_deref()
+                .is_some_and(|path| path.ends_with("tp73_saos2_TA_R1.bigWig"))
+    }));
+    assert!(locus_report.provenance.iter().any(|source| {
+        source.source_kind == "tfbs_motif_matrix" && source.source_id == "MA0861.2"
+    }));
+    assert!(
+        locus_report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("upstream flank was clipped"))
+    );
+
+    let locus_svg_path = temp.path().join("patz1_gene_locus_evidence.svg");
+    engine
+        .render_feature_expert_svg_to_path(
+            "patz1_isoform_evidence",
+            &FeatureExpertTarget::GeneLocusEvidence {
+                request: locus_request,
+            },
+            &locus_svg_path.to_string_lossy(),
+        )
+        .expect("render composed PATZ1 locus evidence SVG");
+    let locus_svg = fs::read_to_string(locus_svg_path).expect("read locus evidence SVG");
+    assert!(locus_svg.contains(GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA));
+    assert!(locus_svg.contains("data-gentle-occupancy-group=\"saos2\""));
+    assert!(locus_svg.contains("data-gentle-motif-track=\"MA0861.2\""));
+    assert_eq!(locus_svg.matches("data-gentle-assay-junction").count(), 1);
+    assert!(locus_svg.contains("Evidence provenance"));
+    assert!(locus_svg.contains("data-gentle-provenance-source"));
 }
 
 #[test]
