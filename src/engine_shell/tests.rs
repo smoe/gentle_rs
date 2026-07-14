@@ -37127,7 +37127,7 @@ fn parse_rna_reads_commands() {
     ));
 
     let allele_hash = parse_shell_line(
-        "rna-reads allele-hash-screen --gene FUS --transcript-fasta tx.fa --variant-table vars.tsv --read-file reads_1.fq --read-file reads_2.fq --read-id-allowlist ids.txt --kmer-len 9 --min-unique-kmer-hits 2 --out out/allele",
+        "rna-reads allele-hash-screen --gene FUS --transcript-fasta tx.fa --variant-table vars.tsv --read-file reads_single.fq --read-pair reads_1.fq,reads_2.fq --read-id-allowlist ids.txt --kmer-len 9 --min-unique-kmer-hits 2 --max-inline-read-calls 250 --out out/allele",
     )
     .expect("parse rna-reads allele-hash-screen");
     assert!(matches!(
@@ -37137,19 +37137,40 @@ fn parse_rna_reads_commands() {
             transcript_fasta,
             variant_table,
             read_files,
+            read_pairs,
             read_id_allowlist,
             out_dir,
             kmer_len,
             min_unique_kmer_hits,
+            max_inline_read_calls,
             ..
         } if gene == "FUS"
             && transcript_fasta == "tx.fa"
             && variant_table.as_deref() == Some("vars.tsv")
-            && read_files == vec!["reads_1.fq".to_string(), "reads_2.fq".to_string()]
+            && read_files == vec!["reads_single.fq".to_string()]
+            && read_pairs == vec![("reads_1.fq".to_string(), "reads_2.fq".to_string())]
             && read_id_allowlist.as_deref() == Some("ids.txt")
             && out_dir == "out/allele"
             && kmer_len == 9
             && min_unique_kmer_hits == 2
+            && max_inline_read_calls == 250
+    ));
+
+    let allele_hash_vcf = parse_shell_line(
+        "rna-reads allele-hash-screen --gene FUS --transcript-fasta tx.fa --vcf reviewed.vcf.gz --transcript-map transcript_map.tsv --vcf-sample ALS_SAMPLE --read-file reads.fq --out out/allele-vcf",
+    )
+    .expect("parse VCF-backed rna-reads allele-hash-screen");
+    assert!(matches!(
+        allele_hash_vcf,
+        ShellCommand::RnaReadsAlleleHashScreen {
+            variant_table: None,
+            vcf,
+            transcript_map,
+            vcf_sample,
+            ..
+        } if vcf.as_deref() == Some("reviewed.vcf.gz")
+            && transcript_map.as_deref() == Some("transcript_map.tsv")
+            && vcf_sample.as_deref() == Some("ALS_SAMPLE")
     ));
 
     let materialize_hits = parse_shell_line(

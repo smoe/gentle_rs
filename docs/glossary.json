@@ -4473,7 +4473,7 @@
          ],
          "path": "rna-reads allele-hash-screen",
          "summary": "Run a deterministic allele-aware RNA-read k-mer screen from transcript-coordinate variant evidence.",
-         "usage": "rna-reads allele-hash-screen --gene GENE --transcript-fasta PATH --variant-table PATH --read-file PATH [--read-file PATH ...] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] --out OUT_DIR"
+         "usage": "rna-reads allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--read-file PATH ...] [--read-pair R1,R2 ...] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--max-inline-read-calls N] --out OUT_DIR"
       },
       {
          "aliases": [],

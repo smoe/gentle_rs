@@ -28,7 +28,7 @@ use crate::{
     agent_transport::{
         agent_system_availability, discover_models_for_agent_system, load_agent_system_catalog,
     },
-    allele_hash_screen::{AlleleHashScreenRequest, run_allele_hash_screen},
+    allele_hash_screen::{AlleleHashScreenRequest, AlleleReadPairInput, run_allele_hash_screen},
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
     attract_motifs,
     dna_ladder::LadderMolecule,
@@ -2837,11 +2837,14 @@ pub enum ShellCommand {
         variant_table: Option<String>,
         vcf: Option<String>,
         transcript_map: Option<String>,
+        vcf_sample: Option<String>,
         read_files: Vec<String>,
+        read_pairs: Vec<(String, String)>,
         read_id_allowlist: Option<String>,
         out_dir: String,
         kmer_len: usize,
         min_unique_kmer_hits: u64,
+        max_inline_read_calls: usize,
     },
     RnaReadsMaterializeHits {
         report_id: String,
@@ -54177,11 +54180,14 @@ fn execute_rna_reads_command(
             variant_table,
             vcf,
             transcript_map,
+            vcf_sample,
             read_files,
+            read_pairs,
             read_id_allowlist,
             out_dir,
             kmer_len,
             min_unique_kmer_hits,
+            max_inline_read_calls,
         } => {
             let report = run_allele_hash_screen(AlleleHashScreenRequest {
                 gene: gene.clone(),
@@ -54189,11 +54195,20 @@ fn execute_rna_reads_command(
                 variant_table: variant_table.clone(),
                 vcf: vcf.clone(),
                 transcript_map: transcript_map.clone(),
+                vcf_sample: vcf_sample.clone(),
                 read_files: read_files.clone(),
+                read_pairs: read_pairs
+                    .iter()
+                    .map(|(read1, read2)| AlleleReadPairInput {
+                        read1: read1.clone(),
+                        read2: read2.clone(),
+                    })
+                    .collect(),
                 read_id_allowlist: read_id_allowlist.clone(),
                 out_dir: out_dir.clone(),
                 kmer_len: *kmer_len,
                 min_unique_kmer_hits: *min_unique_kmer_hits,
+                max_inline_read_calls: *max_inline_read_calls,
             })?;
             Ok(ShellRunResult {
                 state_changed: false,

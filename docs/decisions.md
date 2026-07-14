@@ -258,3 +258,17 @@ Read-only workers use a history-free engine clone and do not commit it. A raw
 hundreds of full-state history checkpoints. Persisted metadata mutations outside
 `apply` must advance the mutation revision and clear redo; otherwise a redo
 checkpoint captured before the side-edit can overwrite that metadata.
+
+## DEC-027: RNA Allele Evidence Does Not Invent Phase
+
+Status: active
+
+RNA-read allele screens may use reviewed local variants to extend reference
+hashes only when the variant can be projected to an explicit transcript
+coordinate and its reference allele matches that transcript. Unphased
+genotypes remain allele-level evidence, and disconnected phase sets remain
+independent blocks; neither may be combined into a synthetic gene-wide
+haplotype. Reports must distinguish physical reads, fragments, and evaluated
+evidence observations. Structural rescue matches are non-blocking candidate
+evidence and must not be labelled as novel exons, retained introns, fusions, or
+resolved isoforms without a separate alignment and junction-validation layer.

@@ -1,13 +1,16 @@
 //! Allele-aware RNA-read hash screen over transcript-coordinate variants.
 //!
-//! The screen materializes reference, hap1, and hap2 transcript FASTAs from a
-//! local transcript FASTA plus an explicit transcript-coordinate variant table,
-//! then classifies reads against haplotype-specific k-mer sets. It is a small
-//! deterministic evidence screen: it reports sequence support for allele
-//! imbalance, but it does not call biological significance.
+//! The screen builds allele-aware transcript hashes from a local transcript
+//! FASTA plus either an explicit transcript-coordinate variant table or a
+//! reviewed local VCF with an explicit transcript-coordinate map. It classifies
+//! reads and fragments against phase-block-specific k-mer sets without
+//! inventing phase for unphased genotypes. This is a deterministic evidence
+//! screen: it reports sequence support for allele imbalance, but it does not
+//! call biological significance.
 
 use crate::target_rescue::{
-    canonical_kmers_for_each, read_id_set_from_path, visit_fasta_records, visit_read_records,
+    canonical_kmers_for_each, open_maybe_gz_reader, read_id_set_from_path, visit_fasta_records,
+    visit_paired_read_records, visit_read_records,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -20,7 +23,12 @@ use std::{
 pub const ALLELE_HASH_SCREEN_SCHEMA: &str = "gentle.rna_allele_hash_screen.v1";
 const DEFAULT_KMER_LEN: usize = 21;
 const DEFAULT_MIN_UNIQUE_KMER_HITS: u64 = 1;
+const DEFAULT_MAX_INLINE_READ_CALLS: usize = 10_000;
 const GENE_SYMBOL_TAGS: &[&str] = &["gene_symbol", "gene_name", "symbol", "gene"];
+
+fn default_max_inline_read_calls() -> usize {
+    DEFAULT_MAX_INLINE_READ_CALLS
+}
 
 /// Request for the standalone allele-aware RNA-read screen.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,12 +41,18 @@ pub struct AlleleHashScreenRequest {
     pub vcf: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transcript_map: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vcf_sample: Option<String>,
     pub read_files: Vec<String>,
+    #[serde(default)]
+    pub read_pairs: Vec<AlleleReadPairInput>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub read_id_allowlist: Option<String>,
     pub out_dir: String,
     pub kmer_len: usize,
     pub min_unique_kmer_hits: u64,
+    #[serde(default = "default_max_inline_read_calls")]
+    pub max_inline_read_calls: usize,
 }
 
 impl Default for AlleleHashScreenRequest {
@@ -49,11 +63,14 @@ impl Default for AlleleHashScreenRequest {
             variant_table: None,
             vcf: None,
             transcript_map: None,
+            vcf_sample: None,
             read_files: Vec::new(),
+            read_pairs: Vec::new(),
             read_id_allowlist: None,
             out_dir: String::new(),
             kmer_len: DEFAULT_KMER_LEN,
             min_unique_kmer_hits: DEFAULT_MIN_UNIQUE_KMER_HITS,
+            max_inline_read_calls: DEFAULT_MAX_INLINE_READ_CALLS,
         }
     }
 }
@@ -69,6 +86,16 @@ pub struct AlleleHashScreenReport {
     pub variant_count: usize,
     pub read_count_total: u64,
     pub read_count_selected: u64,
+    #[serde(default)]
+    pub fragment_count_total: u64,
+    #[serde(default)]
+    pub fragment_count_selected: u64,
+    #[serde(default)]
+    pub evidence_observation_count_selected: u64,
+    #[serde(default)]
+    pub read_calls_truncated: bool,
+    #[serde(default)]
+    pub phase_blocks: Vec<AllelePhaseBlockSummary>,
     pub output_files: AlleleHashScreenOutputFiles,
     pub haplotype_fastas: Vec<HaplotypeFastaReport>,
     pub transcript_summaries: Vec<AlleleTranscriptSummary>,
@@ -87,11 +114,23 @@ pub struct AlleleHashScreenParams {
     pub vcf: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transcript_map: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vcf_sample: Option<String>,
     pub read_files: Vec<String>,
+    #[serde(default)]
+    pub read_pairs: Vec<AlleleReadPairInput>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub read_id_allowlist: Option<String>,
     pub kmer_len: usize,
     pub min_unique_kmer_hits: u64,
+    #[serde(default = "default_max_inline_read_calls")]
+    pub max_inline_read_calls: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AlleleReadPairInput {
+    pub read1: String,
+    pub read2: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,12 +147,16 @@ pub struct HaplotypeFastaReport {
     pub haplotype: String,
     pub path: String,
     pub transcript_count: usize,
+    #[serde(default)]
+    pub inferred: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AlleleHashPhaseMode {
     Phased,
+    PhasedBlocks,
+    Mixed,
     UnphasedAlleleLevelOnly,
 }
 
@@ -121,6 +164,8 @@ impl AlleleHashPhaseMode {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Phased => "phased",
+            Self::PhasedBlocks => "phased_blocks",
+            Self::Mixed => "mixed",
             Self::UnphasedAlleleLevelOnly => "unphased_allele_level_only",
         }
     }
@@ -131,6 +176,7 @@ impl AlleleHashPhaseMode {
 pub enum AlleleReadClassification {
     Hap1,
     Hap2,
+    Alternate,
     ReferenceOnly,
     Ambiguous,
     Uninformative,
@@ -142,6 +188,7 @@ impl AlleleReadClassification {
         match self {
             Self::Hap1 => "hap1",
             Self::Hap2 => "hap2",
+            Self::Alternate => "alternate",
             Self::ReferenceOnly => "reference_only",
             Self::Ambiguous => "ambiguous",
             Self::Uninformative => "uninformative",
@@ -154,6 +201,10 @@ impl AlleleReadClassification {
 pub struct AlleleReadCall {
     pub read_id: String,
     pub source_file: String,
+    #[serde(default)]
+    pub evidence_unit: AlleleEvidenceUnit,
+    #[serde(default = "default_input_read_count")]
+    pub input_read_count: u8,
     pub classification: AlleleReadClassification,
     pub read_length: usize,
     pub read_kmer_count: u64,
@@ -162,9 +213,84 @@ pub struct AlleleReadCall {
     pub hap2_hits: u64,
     pub hap1_unique_hits: u64,
     pub hap2_unique_hits: u64,
+    #[serde(default)]
+    pub alternate_unique_hits: u64,
     pub reference_only_hits: u64,
     pub matched_transcripts: Vec<String>,
     pub supporting_variants: Vec<String>,
+    #[serde(default)]
+    pub phase_block_calls: Vec<AllelePhaseBlockReadCall>,
+}
+
+fn default_input_read_count() -> u8 {
+    1
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AlleleEvidenceUnit {
+    #[default]
+    Read,
+    Fragment,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AllelePhaseBlockStatus {
+    Phased,
+    Unphased,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AllelePhaseBlockClassification {
+    Haplotype1,
+    Haplotype2,
+    Alternate,
+    Reference,
+    Ambiguous,
+    Uninformative,
+}
+
+impl AllelePhaseBlockClassification {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Haplotype1 => "haplotype1",
+            Self::Haplotype2 => "haplotype2",
+            Self::Alternate => "alternate",
+            Self::Reference => "reference",
+            Self::Ambiguous => "ambiguous",
+            Self::Uninformative => "uninformative",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AllelePhaseBlockReadCall {
+    pub block_id: String,
+    pub classification: AllelePhaseBlockClassification,
+    pub reference_unique_hits: u64,
+    pub hap1_unique_hits: u64,
+    pub hap2_unique_hits: u64,
+    pub alternate_unique_hits: u64,
+    pub variant_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AllelePhaseBlockSummary {
+    pub block_id: String,
+    pub transcript_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phase_set: Option<String>,
+    pub status: AllelePhaseBlockStatus,
+    pub variant_ids: Vec<String>,
+    pub informative_reads: u64,
+    pub hap1_reads: u64,
+    pub hap2_reads: u64,
+    pub alternate_reads: u64,
+    pub reference_reads: u64,
+    pub ambiguous_reads: u64,
+    pub uninformative_reads: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,6 +301,8 @@ pub struct AlleleTranscriptSummary {
     pub informative_reads: u64,
     pub hap1_reads: u64,
     pub hap2_reads: u64,
+    #[serde(default)]
+    pub alternate_reads: u64,
     pub reference_only_reads: u64,
     pub ambiguous_reads: u64,
     pub uninformative_reads: u64,
@@ -197,6 +325,8 @@ pub struct AlleleVariantSummary {
     pub informative_reads: u64,
     pub hap1_reads: u64,
     pub hap2_reads: u64,
+    #[serde(default)]
+    pub alternate_reads: u64,
     pub reference_only_reads: u64,
     pub ambiguous_reads: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -232,9 +362,11 @@ struct KmerIndex {
     reference: HashSet<u64>,
     hap1: HashSet<u64>,
     hap2: HashSet<u64>,
+    alternate: HashSet<u64>,
     reference_only: HashSet<u64>,
     hap1_unique: HashSet<u64>,
     hap2_unique: HashSet<u64>,
+    alternate_unique: HashSet<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -244,12 +376,18 @@ struct TranscriptKmerIndex {
 }
 
 #[derive(Debug, Clone)]
-struct VariantSupportKmers {
-    variant_id: String,
+struct PhaseBlockIndex {
+    block_id: String,
     transcript_id: String,
+    phase_set: Option<String>,
+    status: AllelePhaseBlockStatus,
+    variant_ids: Vec<String>,
+    variant_kmers: BTreeMap<String, HashSet<u64>>,
     reference_only: HashSet<u64>,
     hap1_unique: HashSet<u64>,
     hap2_unique: HashSet<u64>,
+    alternate_unique: HashSet<u64>,
+    all: HashSet<u64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -257,6 +395,7 @@ struct CountSummary {
     informative_reads: u64,
     hap1_reads: u64,
     hap2_reads: u64,
+    alternate_reads: u64,
     reference_only_reads: u64,
     ambiguous_reads: u64,
     uninformative_reads: u64,
@@ -270,23 +409,59 @@ pub fn run_allele_hash_screen(
     validate_request(&request)?;
     let mut warnings = Vec::<String>::new();
     let mut transcripts = load_gene_transcripts(&request.transcript_fasta, &request.gene)?;
-    let variant_table = request.variant_table.as_deref().ok_or_else(|| {
-        "allele-hash-screen requires --variant-table transcript-coordinate TSV in Phase 1"
-            .to_string()
-    })?;
-    let variants = load_variant_table(variant_table, &transcripts)?;
-    if variants.iter().any(|variant| !variant.phased) {
+    let variants = match (
+        request.variant_table.as_deref(),
+        request.vcf.as_deref(),
+        request.transcript_map.as_deref(),
+    ) {
+        (Some(variant_table), None, _) => load_variant_table(variant_table, &transcripts)?,
+        (None, Some(vcf), Some(transcript_map)) => load_vcf_variants(
+            vcf,
+            transcript_map,
+            request.vcf_sample.as_deref(),
+            &transcripts,
+            &mut warnings,
+        )?,
+        _ => {
+            return Err(
+                "allele-hash-screen requires either --variant-table PATH or --vcf PATH with --transcript-map PATH"
+                    .to_string(),
+            );
+        }
+    };
+    let phase_block_indexes = build_phase_block_indexes(&transcripts, &variants, request.kmer_len)?;
+    let phased_block_count = phase_block_indexes
+        .iter()
+        .filter(|block| block.status == AllelePhaseBlockStatus::Phased)
+        .count();
+    let unphased_block_count = phase_block_indexes.len() - phased_block_count;
+    let phase_mode = match (phased_block_count, unphased_block_count) {
+        (1, 0) => AlleleHashPhaseMode::Phased,
+        (n, 0) if n > 1 => AlleleHashPhaseMode::PhasedBlocks,
+        (0, _) => AlleleHashPhaseMode::UnphasedAlleleLevelOnly,
+        _ => AlleleHashPhaseMode::Mixed,
+    };
+    let has_global_haplotype = phase_mode == AlleleHashPhaseMode::Phased;
+    if unphased_block_count > 0 {
         warnings.push(
-            "At least one variant is unphased; report is unphased, allele-level only and does not fabricate haplotype phase."
+            "At least one variant is unphased; those rows are screened as reference-versus-alternate evidence and are not materialized as hap1/hap2."
                 .to_string(),
         );
     }
-    let phase_mode = if variants.iter().all(|variant| variant.phased) {
-        AlleleHashPhaseMode::Phased
+    if phase_block_indexes.len() > 1 {
+        warnings.push(format!(
+            "Variants resolve to {} disconnected phase block(s); GENtle reports block-local evidence and does not fabricate a gene-wide haplotype.",
+            phase_block_indexes.len()
+        ));
+    }
+    if has_global_haplotype {
+        apply_variants_to_haplotypes(&mut transcripts, &variants)?;
     } else {
-        AlleleHashPhaseMode::UnphasedAlleleLevelOnly
-    };
-    apply_variants_to_haplotypes(&mut transcripts, &variants, &mut warnings)?;
+        warnings.push(
+            "Legacy hap1/hap2 FASTA paths contain reference copies because no single global phase block is supported; use phase_blocks for allele interpretation."
+                .to_string(),
+        );
+    }
     let out_dir = Path::new(&request.out_dir);
     fs::create_dir_all(out_dir).map_err(|e| {
         format!(
@@ -297,9 +472,9 @@ pub fn run_allele_hash_screen(
     let output_files = output_files(out_dir, &request.gene);
     write_haplotype_fastas(&transcripts, &output_files)?;
 
-    let kmer_index = build_kmer_index(&transcripts, request.kmer_len);
-    let transcript_indexes = build_transcript_kmer_indexes(&transcripts, request.kmer_len);
-    let variant_support = build_variant_support_kmers(&transcripts, &variants, request.kmer_len);
+    let kmer_index = build_kmer_index(&transcripts, &phase_block_indexes, request.kmer_len);
+    let transcript_indexes =
+        build_transcript_kmer_indexes(&transcripts, &phase_block_indexes, request.kmer_len);
     let allowlist = request
         .read_id_allowlist
         .as_deref()
@@ -307,33 +482,87 @@ pub fn run_allele_hash_screen(
         .transpose()?;
     let mut read_count_total = 0u64;
     let mut read_count_selected = 0u64;
+    let mut fragment_count_total = 0u64;
+    let mut fragment_count_selected = 0u64;
+    let mut evidence_observation_count_selected = 0u64;
     let mut calls = Vec::<AlleleReadCall>::new();
-    for read_file in &request.read_files {
-        visit_read_records(read_file, |record| {
-            read_count_total = read_count_total.saturating_add(1);
+    let mut transcript_counts = BTreeMap::<String, CountSummary>::new();
+    let mut variant_counts = BTreeMap::<String, CountSummary>::new();
+    let mut phase_block_counts = BTreeMap::<String, CountSummary>::new();
+    let mut classification_counts = empty_classification_counts();
+    let mut reads_writer = BufWriter::new(File::create(&output_files.reads_tsv).map_err(|e| {
+        format!(
+            "Could not create read TSV '{}': {e}",
+            output_files.reads_tsv
+        )
+    })?);
+    write_read_calls_header(&mut reads_writer, &output_files.reads_tsv)?;
+    {
+        let mut process_record = |record: crate::target_rescue::SequenceRecord,
+                                  source_file: &str,
+                                  evidence_unit: AlleleEvidenceUnit,
+                                  input_read_count: u8|
+         -> Result<(), String> {
+            read_count_total = read_count_total.saturating_add(u64::from(input_read_count));
+            fragment_count_total = fragment_count_total.saturating_add(1);
             if let Some(allowlist) = &allowlist
                 && !allowlist.contains(&record.id)
             {
                 return Ok(());
             }
-            read_count_selected = read_count_selected.saturating_add(1);
+            read_count_selected = read_count_selected.saturating_add(u64::from(input_read_count));
+            fragment_count_selected = fragment_count_selected.saturating_add(1);
+            evidence_observation_count_selected =
+                evidence_observation_count_selected.saturating_add(1);
             let call = classify_read(
-                record.id,
-                read_file,
-                &record.sequence,
-                request.kmer_len,
-                request.min_unique_kmer_hits,
-                &kmer_index,
-                &transcript_indexes,
-                &variant_support,
+                ReadClassificationInput {
+                    read_id: record.id,
+                    source_file,
+                    evidence_unit,
+                    input_read_count,
+                    sequence: &record.sequence,
+                    source_length: record.source_length,
+                },
+                ReadClassificationContext {
+                    k: request.kmer_len,
+                    min_unique_hits: request.min_unique_kmer_hits,
+                    index: &kmer_index,
+                    transcript_indexes: &transcript_indexes,
+                    phase_blocks: &phase_block_indexes,
+                },
             );
-            calls.push(call);
+            write_read_call_tsv(&mut reads_writer, &output_files.reads_tsv, &call)?;
+            accumulate_read_call(
+                &call,
+                &mut transcript_counts,
+                &mut variant_counts,
+                &mut phase_block_counts,
+                &mut classification_counts,
+            );
+            if calls.len() < request.max_inline_read_calls {
+                calls.push(call);
+            }
             Ok(())
-        })?;
+        };
+        for read_file in &request.read_files {
+            visit_read_records(read_file, |record| {
+                process_record(record, read_file, AlleleEvidenceUnit::Read, 1)
+            })?;
+        }
+        for read_pair in &request.read_pairs {
+            let source_file = format!("{};{}", read_pair.read1, read_pair.read2);
+            visit_paired_read_records(&read_pair.read1, &read_pair.read2, |record| {
+                process_record(record, &source_file, AlleleEvidenceUnit::Fragment, 2)
+            })?;
+        }
     }
+    reads_writer
+        .flush()
+        .map_err(|e| format!("Could not flush read TSV '{}': {e}", output_files.reads_tsv))?;
 
-    let mut transcript_summaries = summarize_transcripts(&transcripts, &variants, &calls);
-    let mut variant_summaries = summarize_variants(&variants, &variant_support, &calls);
+    let mut transcript_summaries =
+        summarize_transcripts(&transcripts, &variants, &transcript_counts);
+    let mut variant_summaries = summarize_variants(&variants, &variant_counts);
     for summary in &mut transcript_summaries {
         if summary.informative_reads == 0 {
             summary
@@ -348,8 +577,14 @@ pub fn run_allele_hash_screen(
                 .push("no reads carried haplotype-informative k-mers for this variant".to_string());
         }
     }
-    let classification_counts = classification_counts(&calls);
-    write_read_calls_tsv(&output_files.reads_tsv, &calls)?;
+    let phase_blocks = summarize_phase_blocks(&phase_block_indexes, &phase_block_counts);
+    let read_calls_truncated = evidence_observation_count_selected > calls.len() as u64;
+    if read_calls_truncated {
+        warnings.push(format!(
+            "Inline JSON read calls were capped at {}; the complete selected-read table is in '{}'.",
+            request.max_inline_read_calls, output_files.reads_tsv
+        ));
+    }
     let report = AlleleHashScreenReport {
         schema: ALLELE_HASH_SCREEN_SCHEMA.to_string(),
         gene: request.gene.clone(),
@@ -359,31 +594,42 @@ pub fn run_allele_hash_screen(
             variant_table: request.variant_table.clone(),
             vcf: request.vcf.clone(),
             transcript_map: request.transcript_map.clone(),
+            vcf_sample: request.vcf_sample.clone(),
             read_files: request.read_files.clone(),
+            read_pairs: request.read_pairs.clone(),
             read_id_allowlist: request.read_id_allowlist.clone(),
             kmer_len: request.kmer_len,
             min_unique_kmer_hits: request.min_unique_kmer_hits,
+            max_inline_read_calls: request.max_inline_read_calls,
         },
         transcript_count: transcripts.len(),
         variant_count: variants.len(),
         read_count_total,
         read_count_selected,
+        fragment_count_total,
+        fragment_count_selected,
+        evidence_observation_count_selected,
+        read_calls_truncated,
+        phase_blocks,
         output_files: output_files.clone(),
         haplotype_fastas: vec![
             HaplotypeFastaReport {
                 haplotype: "reference".to_string(),
                 path: output_files.reference_fasta.clone(),
                 transcript_count: transcripts.len(),
+                inferred: false,
             },
             HaplotypeFastaReport {
                 haplotype: "hap1".to_string(),
                 path: output_files.hap1_fasta.clone(),
                 transcript_count: transcripts.len(),
+                inferred: has_global_haplotype,
             },
             HaplotypeFastaReport {
                 haplotype: "hap2".to_string(),
                 path: output_files.hap2_fasta.clone(),
                 transcript_count: transcripts.len(),
+                inferred: has_global_haplotype,
             },
         ],
         transcript_summaries,
@@ -403,23 +649,23 @@ fn validate_request(request: &AlleleHashScreenRequest) -> Result<(), String> {
     if request.transcript_fasta.trim().is_empty() {
         return Err("allele-hash-screen requires --transcript-fasta PATH".to_string());
     }
-    if request.variant_table.is_none() {
-        if request.vcf.is_some() {
-            return Err(
-                "allele-hash-screen VCF input requires an explicit transcript-coordinate mapping; use --variant-table for the deterministic Phase 1 path"
-                    .to_string(),
-            );
-        }
-        return Err("allele-hash-screen requires --variant-table PATH".to_string());
+    if request.variant_table.is_some() && request.vcf.is_some() {
+        return Err("allele-hash-screen accepts --variant-table or --vcf, not both".to_string());
     }
-    if request.vcf.is_some() {
+    if request.variant_table.is_none() && request.vcf.is_none() {
         return Err(
-            "allele-hash-screen VCF projection is not implemented in Phase 1; provide --variant-table transcript-coordinate TSV"
+            "allele-hash-screen requires --variant-table PATH or --vcf PATH with --transcript-map PATH"
                 .to_string(),
         );
     }
-    if request.read_files.is_empty() {
-        return Err("allele-hash-screen requires at least one --read-file PATH".to_string());
+    if request.vcf.is_some() && request.transcript_map.is_none() {
+        return Err("allele-hash-screen --vcf requires --transcript-map PATH".to_string());
+    }
+    if request.read_files.is_empty() && request.read_pairs.is_empty() {
+        return Err(
+            "allele-hash-screen requires at least one --read-file PATH or --read-pair R1,R2"
+                .to_string(),
+        );
     }
     if request.out_dir.trim().is_empty() {
         return Err("allele-hash-screen requires --out OUT_DIR".to_string());
@@ -583,7 +829,12 @@ fn load_variant_table(
             ));
         }
         let genotype = required_table_value(&row, "genotype", path, line_idx + 1)?.to_string();
-        let assignment = parse_genotype_assignment(&genotype);
+        let assignment = parse_genotype_assignment(&genotype).map_err(|detail| {
+            format!(
+                "Invalid genotype '{genotype}' in variant table '{path}' line {}: {detail}",
+                line_idx + 1
+            )
+        })?;
         let variant_id = row
             .get("variant_id")
             .or_else(|| row.get("id"))
@@ -603,7 +854,7 @@ fn load_variant_table(
             phase_set: row
                 .get("phase_set")
                 .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty()),
+                .filter(|value| !value.is_empty() && value != "."),
             hap1_alt: assignment.0,
             hap2_alt: assignment.1,
             phased: assignment.2,
@@ -615,6 +866,310 @@ fn load_variant_table(
         ));
     }
     Ok(variants)
+}
+
+#[derive(Debug, Clone)]
+struct TranscriptCoordinateProjection {
+    transcript_id: String,
+    cdna_pos_1based: usize,
+    strand: char,
+}
+
+fn load_vcf_variants(
+    vcf_path: &str,
+    transcript_map_path: &str,
+    requested_sample: Option<&str>,
+    transcripts: &[TranscriptRecord],
+    warnings: &mut Vec<String>,
+) -> Result<Vec<VariantRecord>, String> {
+    let projections = load_transcript_coordinate_map(transcript_map_path, transcripts)?;
+    let mut reader = open_maybe_gz_reader(vcf_path)?;
+    let mut line = String::new();
+    let mut sample_names = Vec::<String>::new();
+    let mut sample_index: Option<usize> = None;
+    let mut variants = Vec::new();
+    let mut skipped_filter_rows = 0usize;
+    let mut skipped_unprojected_rows = 0usize;
+    loop {
+        line.clear();
+        let bytes = reader
+            .read_line(&mut line)
+            .map_err(|e| format!("Could not read VCF '{vcf_path}': {e}"))?;
+        if bytes == 0 {
+            break;
+        }
+        let trimmed = line.trim_end_matches(['\r', '\n']);
+        if trimmed.starts_with("##") || trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.starts_with("#CHROM") {
+            let fields = trimmed.split('\t').collect::<Vec<_>>();
+            sample_names = fields
+                .iter()
+                .skip(9)
+                .map(|value| (*value).to_string())
+                .collect();
+            sample_index = Some(resolve_vcf_sample_index(
+                &sample_names,
+                requested_sample,
+                vcf_path,
+            )?);
+            continue;
+        }
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        let selected_sample = sample_index.ok_or_else(|| {
+            format!("VCF '{vcf_path}' is missing a #CHROM header with sample columns")
+        })?;
+        let fields = trimmed.split('\t').collect::<Vec<_>>();
+        if fields.len() < 10 + selected_sample {
+            return Err(format!(
+                "VCF '{vcf_path}' row has {} columns but sample '{}' requires column {}",
+                fields.len(),
+                sample_names[selected_sample],
+                10 + selected_sample
+            ));
+        }
+        if fields[6] != "PASS" {
+            skipped_filter_rows = skipped_filter_rows.saturating_add(1);
+            continue;
+        }
+        let genomic_pos_1based = fields[1].parse::<usize>().map_err(|e| {
+            format!(
+                "Invalid VCF position '{}' in '{vcf_path}' for {}: {e}",
+                fields[1], fields[0]
+            )
+        })?;
+        let Some(mapped) = projections.get(&(fields[0].to_string(), genomic_pos_1based)) else {
+            skipped_unprojected_rows = skipped_unprojected_rows.saturating_add(1);
+            continue;
+        };
+        let alt_values = fields[4].split(',').collect::<Vec<_>>();
+        if fields[3].len() != 1 || alt_values.len() != 1 || alt_values[0].len() != 1 {
+            return Err(format!(
+                "VCF '{vcf_path}' {}:{} is not a biallelic SNV: REF='{}' ALT='{}'",
+                fields[0], fields[1], fields[3], fields[4]
+            ));
+        }
+        let format_keys = fields[8].split(':').collect::<Vec<_>>();
+        let sample_values = fields[9 + selected_sample].split(':').collect::<Vec<_>>();
+        let genotype = vcf_sample_value(&format_keys, &sample_values, "GT").ok_or_else(|| {
+            format!(
+                "VCF '{vcf_path}' {}:{} sample '{}' is missing GT",
+                fields[0], fields[1], sample_names[selected_sample]
+            )
+        })?;
+        let assignment = parse_genotype_assignment(genotype).map_err(|detail| {
+            format!(
+                "Invalid VCF genotype '{genotype}' at {}:{} for sample '{}': {detail}",
+                fields[0], fields[1], sample_names[selected_sample]
+            )
+        })?;
+        let phase_set = vcf_sample_value(&format_keys, &sample_values, "PS")
+            .filter(|value| !value.is_empty() && *value != ".")
+            .map(str::to_string);
+        for projection in mapped {
+            let mut ref_allele = fields[3].as_bytes()[0].to_ascii_uppercase();
+            let mut alt_allele = alt_values[0].as_bytes()[0].to_ascii_uppercase();
+            if projection.strand == '-' {
+                ref_allele = complement_base(ref_allele)?;
+                alt_allele = complement_base(alt_allele)?;
+            }
+            let base_id = if fields[2].is_empty() || fields[2] == "." {
+                format!("{}:{}:{}>{}", fields[0], fields[1], fields[3], fields[4])
+            } else {
+                fields[2].to_string()
+            };
+            variants.push(VariantRecord {
+                variant_id: format!("{base_id}@{}", projection.transcript_id),
+                transcript_id: projection.transcript_id.clone(),
+                cdna_pos_1based: projection.cdna_pos_1based,
+                ref_allele: (ref_allele as char).to_string(),
+                alt_allele: (alt_allele as char).to_string(),
+                genotype: genotype.to_string(),
+                phase_set: phase_set.clone(),
+                hap1_alt: assignment.0,
+                hap2_alt: assignment.1,
+                phased: assignment.2,
+            });
+        }
+    }
+    if skipped_filter_rows > 0 {
+        warnings.push(format!(
+            "Skipped {skipped_filter_rows} non-PASS VCF row(s); only explicitly PASS rows enter allele hashes."
+        ));
+    }
+    if skipped_unprojected_rows > 0 {
+        warnings.push(format!(
+            "Skipped {skipped_unprojected_rows} VCF row(s) without a selected-transcript coordinate mapping."
+        ));
+    }
+    if variants.is_empty() {
+        return Err(format!(
+            "VCF '{vcf_path}' did not yield PASS biallelic SNVs for the selected transcripts through '{transcript_map_path}'"
+        ));
+    }
+    Ok(variants)
+}
+
+fn resolve_vcf_sample_index(
+    sample_names: &[String],
+    requested_sample: Option<&str>,
+    vcf_path: &str,
+) -> Result<usize, String> {
+    if let Some(requested) = requested_sample {
+        return sample_names
+            .iter()
+            .position(|sample| sample == requested)
+            .ok_or_else(|| {
+                format!(
+                    "VCF '{vcf_path}' does not contain requested sample '{requested}' (available: {})",
+                    sample_names.join(",")
+                )
+            });
+    }
+    match sample_names.len() {
+        1 => Ok(0),
+        0 => Err(format!(
+            "VCF '{vcf_path}' has no sample genotype column; a sample GT is required"
+        )),
+        _ => Err(format!(
+            "VCF '{vcf_path}' contains multiple samples ({}); select one with --vcf-sample",
+            sample_names.join(",")
+        )),
+    }
+}
+
+fn vcf_sample_value<'a>(
+    format_keys: &[&str],
+    sample_values: &'a [&str],
+    key: &str,
+) -> Option<&'a str> {
+    format_keys
+        .iter()
+        .position(|candidate| *candidate == key)
+        .and_then(|index| sample_values.get(index).copied())
+}
+
+fn load_transcript_coordinate_map(
+    path: &str,
+    transcripts: &[TranscriptRecord],
+) -> Result<BTreeMap<(String, usize), Vec<TranscriptCoordinateProjection>>, String> {
+    let selected_transcripts = transcripts
+        .iter()
+        .map(|record| record.id.as_str())
+        .collect::<HashSet<_>>();
+    let mut reader = open_maybe_gz_reader(path)?;
+    let mut line = String::new();
+    let mut header = Vec::<String>::new();
+    let mut projections = BTreeMap::<(String, usize), Vec<TranscriptCoordinateProjection>>::new();
+    loop {
+        line.clear();
+        let bytes = reader
+            .read_line(&mut line)
+            .map_err(|e| format!("Could not read transcript map '{path}': {e}"))?;
+        if bytes == 0 {
+            break;
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if header.is_empty() {
+            header = trimmed
+                .split('\t')
+                .map(|value| value.trim().to_ascii_lowercase())
+                .collect();
+            continue;
+        }
+        let values = trimmed.split('\t').collect::<Vec<_>>();
+        let chrom = mapped_column(&header, &values, &["chrom", "chromosome"], path)?;
+        let genomic_pos = mapped_column(
+            &header,
+            &values,
+            &["genomic_pos_1based", "pos_1based", "pos"],
+            path,
+        )?
+        .parse::<usize>()
+        .map_err(|e| format!("Invalid genomic position in transcript map '{path}': {e}"))?;
+        let transcript_id = mapped_column(&header, &values, &["transcript_id"], path)?;
+        if !selected_transcripts.contains(transcript_id) {
+            continue;
+        }
+        let cdna_pos = mapped_column(
+            &header,
+            &values,
+            &["cdna_pos_1based", "transcript_pos_1based"],
+            path,
+        )?
+        .parse::<usize>()
+        .map_err(|e| format!("Invalid cDNA position in transcript map '{path}': {e}"))?;
+        let strand = mapped_optional_column(&header, &values, &["strand"])
+            .unwrap_or("+")
+            .chars()
+            .next()
+            .unwrap_or('+');
+        if !matches!(strand, '+' | '-') {
+            return Err(format!(
+                "Invalid strand '{strand}' in transcript map '{path}': expected '+' or '-'"
+            ));
+        }
+        projections
+            .entry((chrom.to_string(), genomic_pos))
+            .or_default()
+            .push(TranscriptCoordinateProjection {
+                transcript_id: transcript_id.to_string(),
+                cdna_pos_1based: cdna_pos,
+                strand,
+            });
+    }
+    if projections.is_empty() {
+        return Err(format!(
+            "Transcript map '{path}' did not contain rows for the selected transcripts"
+        ));
+    }
+    Ok(projections)
+}
+
+fn mapped_column<'a>(
+    header: &[String],
+    values: &'a [&str],
+    aliases: &[&str],
+    path: &str,
+) -> Result<&'a str, String> {
+    mapped_optional_column(header, values, aliases).ok_or_else(|| {
+        format!(
+            "Transcript map '{path}' is missing required column {}",
+            aliases.join("/")
+        )
+    })
+}
+
+fn mapped_optional_column<'a>(
+    header: &[String],
+    values: &'a [&str],
+    aliases: &[&str],
+) -> Option<&'a str> {
+    header
+        .iter()
+        .position(|column| aliases.iter().any(|alias| column == alias))
+        .and_then(|index| values.get(index).copied())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn complement_base(base: u8) -> Result<u8, String> {
+    match base.to_ascii_uppercase() {
+        b'A' => Ok(b'T'),
+        b'C' => Ok(b'G'),
+        b'G' => Ok(b'C'),
+        b'T' | b'U' => Ok(b'A'),
+        other => Err(format!(
+            "Cannot complement non-ACGT VCF allele '{}'",
+            other as char
+        )),
+    }
 }
 
 fn required_table_value<'a>(
@@ -629,23 +1184,34 @@ fn required_table_value<'a>(
         .ok_or_else(|| format!("Variant table '{path}' line {line_number} is missing '{key}'"))
 }
 
-fn parse_genotype_assignment(genotype: &str) -> (bool, bool, bool) {
+fn parse_genotype_assignment(genotype: &str) -> Result<(bool, bool, bool), String> {
     let trimmed = genotype.trim();
     if let Some((left, right)) = trimmed.split_once('|') {
-        return (left.trim() == "1", right.trim() == "1", true);
+        let left = parse_biallelic_genotype_allele(left)?;
+        let right = parse_biallelic_genotype_allele(right)?;
+        return Ok((left, right, true));
     }
     if let Some((left, right)) = trimmed.split_once('/') {
-        let has_alt = left.trim() == "1" || right.trim() == "1";
-        return (has_alt, has_alt, false);
+        let has_alt =
+            parse_biallelic_genotype_allele(left)? || parse_biallelic_genotype_allele(right)?;
+        return Ok((has_alt, false, false));
     }
-    let has_alt = trimmed == "1";
-    (has_alt, has_alt, false)
+    Ok((parse_biallelic_genotype_allele(trimmed)?, false, false))
+}
+
+fn parse_biallelic_genotype_allele(raw: &str) -> Result<bool, String> {
+    match raw.trim() {
+        "0" => Ok(false),
+        "1" => Ok(true),
+        other => Err(format!(
+            "expected a biallelic 0/1 genotype allele, found '{other}'"
+        )),
+    }
 }
 
 fn apply_variants_to_haplotypes(
     transcripts: &mut [TranscriptRecord],
     variants: &[VariantRecord],
-    warnings: &mut Vec<String>,
 ) -> Result<(), String> {
     let mut by_id = transcripts
         .iter_mut()
@@ -671,8 +1237,8 @@ fn apply_variants_to_haplotypes(
         let observed = record.reference.as_bytes()[idx].to_ascii_uppercase();
         let expected = variant.ref_allele.as_bytes()[0].to_ascii_uppercase();
         if observed != expected {
-            warnings.push(format!(
-                "Variant '{}' expected ref '{}' at {}:{}, but transcript FASTA has '{}'; using supplied alternate only where requested.",
+            return Err(format!(
+                "Variant '{}' expected ref '{}' at {}:{}, but transcript FASTA has '{}'; refusing to build allele hashes from mismatched coordinates",
                 variant.variant_id,
                 variant.ref_allele,
                 record.id,
@@ -691,7 +1257,190 @@ fn apply_variants_to_haplotypes(
     Ok(())
 }
 
-fn build_kmer_index(transcripts: &[TranscriptRecord], k: usize) -> KmerIndex {
+fn phase_block_id(variant: &VariantRecord) -> String {
+    if variant.phased {
+        if let Some(phase_set) = variant.phase_set.as_deref() {
+            return format!("{}:phase_set:{phase_set}", variant.transcript_id);
+        }
+        return format!(
+            "{}:phased_variant:{}",
+            variant.transcript_id, variant.variant_id
+        );
+    }
+    format!(
+        "{}:unphased_variant:{}",
+        variant.transcript_id, variant.variant_id
+    )
+}
+
+fn build_phase_block_indexes(
+    transcripts: &[TranscriptRecord],
+    variants: &[VariantRecord],
+    k: usize,
+) -> Result<Vec<PhaseBlockIndex>, String> {
+    let by_transcript = transcripts
+        .iter()
+        .map(|record| (record.id.as_str(), record))
+        .collect::<HashMap<_, _>>();
+    let mut grouped = BTreeMap::<String, Vec<&VariantRecord>>::new();
+    for variant in variants {
+        grouped
+            .entry(phase_block_id(variant))
+            .or_default()
+            .push(variant);
+    }
+    grouped
+        .into_iter()
+        .map(|(block_id, block_variants)| {
+            let first = block_variants[0];
+            let transcript = by_transcript
+                .get(first.transcript_id.as_str())
+                .copied()
+                .ok_or_else(|| {
+                    format!(
+                        "Phase block '{block_id}' references missing transcript '{}'",
+                        first.transcript_id
+                    )
+                })?;
+            let status = if first.phased {
+                AllelePhaseBlockStatus::Phased
+            } else {
+                AllelePhaseBlockStatus::Unphased
+            };
+            let mut hap1 = transcript.reference.as_bytes().to_vec();
+            let mut hap2 = transcript.reference.as_bytes().to_vec();
+            let mut alternate = transcript.reference.as_bytes().to_vec();
+            for variant in &block_variants {
+                let idx = variant.cdna_pos_1based.checked_sub(1).ok_or_else(|| {
+                    format!("Variant '{}' has position 0", variant.variant_id)
+                })?;
+                if idx >= transcript.reference.len() {
+                    return Err(format!(
+                        "Variant '{}' position {} is outside transcript '{}' length {}",
+                        variant.variant_id,
+                        variant.cdna_pos_1based,
+                        transcript.id,
+                        transcript.reference.len()
+                    ));
+                }
+                let observed = transcript.reference.as_bytes()[idx].to_ascii_uppercase();
+                let expected = variant.ref_allele.as_bytes()[0].to_ascii_uppercase();
+                if observed != expected {
+                    return Err(format!(
+                        "Variant '{}' expected ref '{}' at {}:{}, but transcript FASTA has '{}'; refusing to build allele hashes from mismatched coordinates",
+                        variant.variant_id,
+                        variant.ref_allele,
+                        transcript.id,
+                        variant.cdna_pos_1based,
+                        observed as char
+                    ));
+                }
+                let alt = variant.alt_allele.as_bytes()[0].to_ascii_uppercase();
+                match status {
+                    AllelePhaseBlockStatus::Phased => {
+                        if variant.hap1_alt {
+                            hap1[idx] = alt;
+                        }
+                        if variant.hap2_alt {
+                            hap2[idx] = alt;
+                        }
+                    }
+                    AllelePhaseBlockStatus::Unphased => {
+                        if variant.hap1_alt || variant.hap2_alt {
+                            alternate[idx] = alt;
+                        }
+                    }
+                }
+            }
+            let reference = canonical_kmer_set(transcript.reference.as_bytes(), k);
+            let hap1_set = canonical_kmer_set(&hap1, k);
+            let hap2_set = canonical_kmer_set(&hap2, k);
+            let alternate_set = canonical_kmer_set(&alternate, k);
+            let (reference_only, hap1_unique, hap2_unique, alternate_unique) = match status {
+                AllelePhaseBlockStatus::Phased => (
+                    set_difference_from_two(&reference, &hap1_set, &hap2_set),
+                    set_difference_from_two(&hap1_set, &hap2_set, &reference),
+                    set_difference_from_two(&hap2_set, &hap1_set, &reference),
+                    HashSet::new(),
+                ),
+                AllelePhaseBlockStatus::Unphased => (
+                    reference.difference(&alternate_set).copied().collect(),
+                    HashSet::new(),
+                    HashSet::new(),
+                    alternate_set.difference(&reference).copied().collect(),
+                ),
+            };
+            let mut all = HashSet::new();
+            let mut variant_kmers = BTreeMap::new();
+            for variant in &block_variants {
+                let pos = variant.cdna_pos_1based - 1;
+                let mut local = overlapping_kmers(transcript.reference.as_bytes(), pos, k);
+                local.extend(overlapping_kmers(&hap1, pos, k));
+                local.extend(overlapping_kmers(&hap2, pos, k));
+                local.extend(overlapping_kmers(&alternate, pos, k));
+                all.extend(local.iter().copied());
+                variant_kmers.insert(variant.variant_id.clone(), local);
+            }
+            Ok(PhaseBlockIndex {
+                block_id,
+                transcript_id: first.transcript_id.clone(),
+                phase_set: first.phase_set.clone(),
+                status,
+                variant_ids: block_variants
+                    .iter()
+                    .map(|variant| variant.variant_id.clone())
+                    .collect(),
+                variant_kmers,
+                reference_only,
+                hap1_unique,
+                hap2_unique,
+                alternate_unique,
+                all,
+            })
+        })
+        .collect()
+}
+
+fn canonical_kmer_set(sequence: &[u8], k: usize) -> HashSet<u64> {
+    let mut kmers = HashSet::new();
+    canonical_kmers_for_each(sequence, k, |kmer| {
+        kmers.insert(kmer);
+    });
+    kmers
+}
+
+fn overlapping_kmers(sequence: &[u8], pos_0based: usize, k: usize) -> HashSet<u64> {
+    if k == 0 || sequence.len() < k {
+        return HashSet::new();
+    }
+    let min_start = pos_0based.saturating_add(1).saturating_sub(k);
+    let max_start = pos_0based.min(sequence.len().saturating_sub(k));
+    let mut kmers = HashSet::new();
+    for start in min_start..=max_start {
+        canonical_kmers_for_each(&sequence[start..start + k], k, |kmer| {
+            kmers.insert(kmer);
+        });
+    }
+    kmers
+}
+
+fn set_difference_from_two(
+    source: &HashSet<u64>,
+    other_a: &HashSet<u64>,
+    other_b: &HashSet<u64>,
+) -> HashSet<u64> {
+    source
+        .iter()
+        .filter(|kmer| !other_a.contains(kmer) && !other_b.contains(kmer))
+        .copied()
+        .collect()
+}
+
+fn build_kmer_index(
+    transcripts: &[TranscriptRecord],
+    phase_blocks: &[PhaseBlockIndex],
+    k: usize,
+) -> KmerIndex {
     let mut index = KmerIndex::default();
     for transcript in transcripts {
         canonical_kmers_for_each(transcript.reference.as_bytes(), k, |kmer| {
@@ -728,11 +1477,20 @@ fn build_kmer_index(transcripts: &[TranscriptRecord], k: usize) -> KmerIndex {
         .difference(&index.reference)
         .copied()
         .collect();
+    for block in phase_blocks {
+        if block.status == AllelePhaseBlockStatus::Unphased {
+            index
+                .alternate_unique
+                .extend(block.alternate_unique.iter().copied());
+            index.alternate.extend(block.all.iter().copied());
+        }
+    }
     index
 }
 
 fn build_transcript_kmer_indexes(
     transcripts: &[TranscriptRecord],
+    phase_blocks: &[PhaseBlockIndex],
     k: usize,
 ) -> Vec<TranscriptKmerIndex> {
     transcripts
@@ -748,6 +1506,12 @@ fn build_transcript_kmer_indexes(
             canonical_kmers_for_each(&transcript.hap2, k, |kmer| {
                 all.insert(kmer);
             });
+            for block in phase_blocks
+                .iter()
+                .filter(|block| block.transcript_id == transcript.id)
+            {
+                all.extend(block.all.iter().copied());
+            }
             TranscriptKmerIndex {
                 transcript_id: transcript.id.clone(),
                 all,
@@ -756,127 +1520,159 @@ fn build_transcript_kmer_indexes(
         .collect()
 }
 
-fn build_variant_support_kmers(
-    transcripts: &[TranscriptRecord],
-    variants: &[VariantRecord],
-    k: usize,
-) -> Vec<VariantSupportKmers> {
-    let by_id = transcripts
-        .iter()
-        .map(|record| (record.id.as_str(), record))
-        .collect::<HashMap<_, _>>();
-    variants
-        .iter()
-        .filter_map(|variant| {
-            let transcript = by_id.get(variant.transcript_id.as_str())?;
-            let pos = variant.cdna_pos_1based.checked_sub(1)?;
-            let reference = overlapping_kmers(transcript.reference.as_bytes(), pos, k);
-            let hap1 = overlapping_kmers(&transcript.hap1, pos, k);
-            let hap2 = overlapping_kmers(&transcript.hap2, pos, k);
-            let reference_only = reference
-                .difference(&hap1)
-                .copied()
-                .collect::<HashSet<_>>()
-                .difference(&hap2)
-                .copied()
-                .collect();
-            let hap1_unique = hap1
-                .difference(&hap2)
-                .copied()
-                .collect::<HashSet<_>>()
-                .difference(&reference)
-                .copied()
-                .collect();
-            let hap2_unique = hap2
-                .difference(&hap1)
-                .copied()
-                .collect::<HashSet<_>>()
-                .difference(&reference)
-                .copied()
-                .collect();
-            Some(VariantSupportKmers {
-                variant_id: variant.variant_id.clone(),
-                transcript_id: variant.transcript_id.clone(),
-                reference_only,
-                hap1_unique,
-                hap2_unique,
-            })
-        })
-        .collect()
+struct ReadClassificationInput<'a> {
+    read_id: String,
+    source_file: &'a str,
+    evidence_unit: AlleleEvidenceUnit,
+    input_read_count: u8,
+    sequence: &'a str,
+    source_length: usize,
 }
 
-fn overlapping_kmers(sequence: &[u8], pos_0based: usize, k: usize) -> HashSet<u64> {
-    if k == 0 || sequence.len() < k {
-        return HashSet::new();
-    }
-    let min_start = pos_0based.saturating_add(1).saturating_sub(k);
-    let max_start = pos_0based.min(sequence.len().saturating_sub(k));
-    let mut kmers = HashSet::new();
-    for start in min_start..=max_start {
-        canonical_kmers_for_each(&sequence[start..start + k], k, |kmer| {
-            kmers.insert(kmer);
-        });
-    }
-    kmers
+struct ReadClassificationContext<'a> {
+    k: usize,
+    min_unique_hits: u64,
+    index: &'a KmerIndex,
+    transcript_indexes: &'a [TranscriptKmerIndex],
+    phase_blocks: &'a [PhaseBlockIndex],
 }
 
 fn classify_read(
-    read_id: String,
-    source_file: &str,
-    sequence: &str,
-    k: usize,
-    min_unique_hits: u64,
-    index: &KmerIndex,
-    transcript_indexes: &[TranscriptKmerIndex],
-    variant_support: &[VariantSupportKmers],
+    input: ReadClassificationInput<'_>,
+    context: ReadClassificationContext<'_>,
 ) -> AlleleReadCall {
-    let normalized = normalize_sequence(sequence);
+    let normalized = normalize_sequence(input.sequence);
     let mut read_kmers = HashSet::<u64>::new();
-    canonical_kmers_for_each(normalized.as_bytes(), k, |kmer| {
+    canonical_kmers_for_each(normalized.as_bytes(), context.k, |kmer| {
         read_kmers.insert(kmer);
     });
     let read_kmer_count = read_kmers.len() as u64;
-    let reference_hits = intersection_count(&read_kmers, &index.reference);
-    let hap1_hits = intersection_count(&read_kmers, &index.hap1);
-    let hap2_hits = intersection_count(&read_kmers, &index.hap2);
-    let hap1_unique_hits = intersection_count(&read_kmers, &index.hap1_unique);
-    let hap2_unique_hits = intersection_count(&read_kmers, &index.hap2_unique);
-    let reference_only_hits = intersection_count(&read_kmers, &index.reference_only);
+    let reference_hits = intersection_count(&read_kmers, &context.index.reference);
+    let hap1_hits = intersection_count(&read_kmers, &context.index.hap1);
+    let hap2_hits = intersection_count(&read_kmers, &context.index.hap2);
+    let hap1_unique_hits = intersection_count(&read_kmers, &context.index.hap1_unique);
+    let hap2_unique_hits = intersection_count(&read_kmers, &context.index.hap2_unique);
+    let alternate_unique_hits = intersection_count(&read_kmers, &context.index.alternate_unique);
+    let reference_only_hits = intersection_count(&read_kmers, &context.index.reference_only);
+    let phase_block_calls = context
+        .phase_blocks
+        .iter()
+        .map(|block| classify_phase_block(&read_kmers, block, context.min_unique_hits))
+        .collect::<Vec<_>>();
+    let informative_block_calls = phase_block_calls
+        .iter()
+        .filter(|call| call.classification != AllelePhaseBlockClassification::Uninformative)
+        .collect::<Vec<_>>();
     let classification = if read_kmer_count == 0 {
         AlleleReadClassification::Uninformative
-    } else if hap1_unique_hits >= min_unique_hits && hap2_unique_hits < min_unique_hits {
-        AlleleReadClassification::Hap1
-    } else if hap2_unique_hits >= min_unique_hits && hap1_unique_hits < min_unique_hits {
-        AlleleReadClassification::Hap2
-    } else if hap1_unique_hits >= min_unique_hits && hap2_unique_hits >= min_unique_hits {
-        AlleleReadClassification::Ambiguous
-    } else if reference_only_hits >= min_unique_hits {
-        AlleleReadClassification::ReferenceOnly
-    } else if reference_hits >= min_unique_hits
-        || hap1_hits >= min_unique_hits
-        || hap2_hits >= min_unique_hits
+    } else if context.phase_blocks.len() == 1 {
+        match phase_block_calls[0].classification {
+            AllelePhaseBlockClassification::Haplotype1 => AlleleReadClassification::Hap1,
+            AllelePhaseBlockClassification::Haplotype2 => AlleleReadClassification::Hap2,
+            AllelePhaseBlockClassification::Alternate => AlleleReadClassification::Alternate,
+            AllelePhaseBlockClassification::Reference => AlleleReadClassification::ReferenceOnly,
+            AllelePhaseBlockClassification::Ambiguous => AlleleReadClassification::Ambiguous,
+            AllelePhaseBlockClassification::Uninformative => {
+                if reference_hits >= context.min_unique_hits {
+                    AlleleReadClassification::Ambiguous
+                } else {
+                    AlleleReadClassification::OffTarget
+                }
+            }
+        }
+    } else if informative_block_calls.is_empty() {
+        if reference_hits >= context.min_unique_hits {
+            AlleleReadClassification::Ambiguous
+        } else {
+            AlleleReadClassification::OffTarget
+        }
+    } else if informative_block_calls
+        .iter()
+        .all(|call| call.classification == AllelePhaseBlockClassification::Reference)
     {
-        AlleleReadClassification::Ambiguous
+        AlleleReadClassification::ReferenceOnly
+    } else if informative_block_calls
+        .iter()
+        .all(|call| call.classification == AllelePhaseBlockClassification::Alternate)
+    {
+        AlleleReadClassification::Alternate
     } else {
-        AlleleReadClassification::OffTarget
+        AlleleReadClassification::Ambiguous
     };
-    let supporting_variants =
-        supporting_variants_for_read(&read_kmers, classification, variant_support);
-    let matched_transcripts = matched_transcripts_for_read(&read_kmers, transcript_indexes);
+    let supporting_variants = informative_block_calls
+        .iter()
+        .flat_map(|call| call.variant_ids.iter().cloned())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let matched_transcripts = matched_transcripts_for_read(&read_kmers, context.transcript_indexes);
     AlleleReadCall {
-        read_id,
-        source_file: source_file.to_string(),
+        read_id: input.read_id,
+        source_file: input.source_file.to_string(),
+        evidence_unit: input.evidence_unit,
+        input_read_count: input.input_read_count,
         classification,
-        read_length: normalized.len(),
+        read_length: input.source_length,
         read_kmer_count,
         reference_hits,
         hap1_hits,
         hap2_hits,
         hap1_unique_hits,
         hap2_unique_hits,
+        alternate_unique_hits,
         reference_only_hits,
         matched_transcripts,
         supporting_variants,
+        phase_block_calls,
+    }
+}
+
+fn classify_phase_block(
+    read_kmers: &HashSet<u64>,
+    block: &PhaseBlockIndex,
+    min_unique_hits: u64,
+) -> AllelePhaseBlockReadCall {
+    let reference_unique_hits = intersection_count(read_kmers, &block.reference_only);
+    let hap1_unique_hits = intersection_count(read_kmers, &block.hap1_unique);
+    let hap2_unique_hits = intersection_count(read_kmers, &block.hap2_unique);
+    let alternate_unique_hits = intersection_count(read_kmers, &block.alternate_unique);
+    let all_hits = intersection_count(read_kmers, &block.all);
+    let passing = [
+        reference_unique_hits >= min_unique_hits,
+        hap1_unique_hits >= min_unique_hits,
+        hap2_unique_hits >= min_unique_hits,
+        alternate_unique_hits >= min_unique_hits,
+    ];
+    let passing_count = passing.iter().filter(|passes| **passes).count();
+    let classification = if passing_count > 1 {
+        AllelePhaseBlockClassification::Ambiguous
+    } else if hap1_unique_hits >= min_unique_hits {
+        AllelePhaseBlockClassification::Haplotype1
+    } else if hap2_unique_hits >= min_unique_hits {
+        AllelePhaseBlockClassification::Haplotype2
+    } else if alternate_unique_hits >= min_unique_hits {
+        AllelePhaseBlockClassification::Alternate
+    } else if reference_unique_hits >= min_unique_hits {
+        AllelePhaseBlockClassification::Reference
+    } else if all_hits >= min_unique_hits {
+        AllelePhaseBlockClassification::Ambiguous
+    } else {
+        AllelePhaseBlockClassification::Uninformative
+    };
+    let variant_ids = block
+        .variant_kmers
+        .iter()
+        .filter(|(_, kmers)| !read_kmers.is_disjoint(kmers))
+        .map(|(variant_id, _)| variant_id.clone())
+        .collect();
+    AllelePhaseBlockReadCall {
+        block_id: block.block_id.clone(),
+        classification,
+        reference_unique_hits,
+        hap1_unique_hits,
+        hap2_unique_hits,
+        alternate_unique_hits,
+        variant_ids,
     }
 }
 
@@ -903,49 +1699,20 @@ fn intersection_count(read_kmers: &HashSet<u64>, target: &HashSet<u64>) -> u64 {
         .count() as u64
 }
 
-fn supporting_variants_for_read(
-    read_kmers: &HashSet<u64>,
-    classification: AlleleReadClassification,
-    variant_support: &[VariantSupportKmers],
-) -> Vec<String> {
-    let mut ids = BTreeSet::new();
-    for variant in variant_support {
-        let supported = match classification {
-            AlleleReadClassification::Hap1 => !variant.hap1_unique.is_disjoint(read_kmers),
-            AlleleReadClassification::Hap2 => !variant.hap2_unique.is_disjoint(read_kmers),
-            AlleleReadClassification::ReferenceOnly => {
-                !variant.reference_only.is_disjoint(read_kmers)
-            }
-            AlleleReadClassification::Ambiguous => {
-                !variant.hap1_unique.is_disjoint(read_kmers)
-                    || !variant.hap2_unique.is_disjoint(read_kmers)
-                    || !variant.reference_only.is_disjoint(read_kmers)
-            }
-            AlleleReadClassification::Uninformative | AlleleReadClassification::OffTarget => false,
-        };
-        if supported {
-            ids.insert(variant.variant_id.clone());
-        }
-    }
-    ids.into_iter().collect()
-}
-
 fn summarize_transcripts(
     transcripts: &[TranscriptRecord],
     variants: &[VariantRecord],
-    calls: &[AlleleReadCall],
+    accumulated: &BTreeMap<String, CountSummary>,
 ) -> Vec<AlleleTranscriptSummary> {
     let mut summaries = transcripts
         .iter()
-        .map(|transcript| (transcript.id.as_str(), CountSummary::default()))
+        .map(|transcript| {
+            (
+                transcript.id.as_str(),
+                accumulated.get(&transcript.id).cloned().unwrap_or_default(),
+            )
+        })
         .collect::<BTreeMap<_, _>>();
-    for call in calls {
-        for transcript_id in &call.matched_transcripts {
-            if let Some(summary) = summaries.get_mut(transcript_id.as_str()) {
-                add_classification_count(summary, call.classification);
-            }
-        }
-    }
     let variant_counts =
         variants
             .iter()
@@ -971,35 +1738,118 @@ fn summarize_transcripts(
 
 fn summarize_variants(
     variants: &[VariantRecord],
-    support: &[VariantSupportKmers],
-    calls: &[AlleleReadCall],
+    accumulated: &BTreeMap<String, CountSummary>,
 ) -> Vec<AlleleVariantSummary> {
     let mut counts = variants
         .iter()
-        .map(|variant| (variant.variant_id.as_str(), CountSummary::default()))
+        .map(|variant| {
+            (
+                variant.variant_id.as_str(),
+                accumulated
+                    .get(&variant.variant_id)
+                    .cloned()
+                    .unwrap_or_default(),
+            )
+        })
         .collect::<BTreeMap<_, _>>();
-    let variant_transcripts = support
-        .iter()
-        .map(|row| (row.variant_id.as_str(), row.transcript_id.as_str()))
-        .collect::<BTreeMap<_, _>>();
-    for call in calls {
-        for variant_id in &call.supporting_variants {
-            if let Some(summary) = counts.get_mut(variant_id.as_str()) {
-                add_classification_count(summary, call.classification);
-            }
-        }
-    }
     variants
         .iter()
         .map(|variant| {
             let count = counts
                 .remove(variant.variant_id.as_str())
                 .unwrap_or_default();
-            let _transcript_id = variant_transcripts
-                .get(variant.variant_id.as_str())
-                .copied()
-                .unwrap_or(variant.transcript_id.as_str());
             variant_summary(variant, count)
+        })
+        .collect()
+}
+
+fn accumulate_read_call(
+    call: &AlleleReadCall,
+    transcript_counts: &mut BTreeMap<String, CountSummary>,
+    variant_counts: &mut BTreeMap<String, CountSummary>,
+    phase_block_counts: &mut BTreeMap<String, CountSummary>,
+    classification_counts: &mut BTreeMap<String, u64>,
+) {
+    *classification_counts
+        .entry(call.classification.as_str().to_string())
+        .or_insert(0) += 1;
+    for transcript_id in &call.matched_transcripts {
+        add_classification_count(
+            transcript_counts.entry(transcript_id.clone()).or_default(),
+            call.classification,
+        );
+    }
+    for block_call in &call.phase_block_calls {
+        add_phase_block_classification_count(
+            phase_block_counts
+                .entry(block_call.block_id.clone())
+                .or_default(),
+            block_call.classification,
+        );
+        for variant_id in &block_call.variant_ids {
+            add_phase_block_classification_count(
+                variant_counts.entry(variant_id.clone()).or_default(),
+                block_call.classification,
+            );
+        }
+    }
+}
+
+fn add_phase_block_classification_count(
+    count: &mut CountSummary,
+    classification: AllelePhaseBlockClassification,
+) {
+    match classification {
+        AllelePhaseBlockClassification::Haplotype1 => {
+            count.informative_reads = count.informative_reads.saturating_add(1);
+            count.hap1_reads = count.hap1_reads.saturating_add(1);
+        }
+        AllelePhaseBlockClassification::Haplotype2 => {
+            count.informative_reads = count.informative_reads.saturating_add(1);
+            count.hap2_reads = count.hap2_reads.saturating_add(1);
+        }
+        AllelePhaseBlockClassification::Alternate => {
+            count.informative_reads = count.informative_reads.saturating_add(1);
+            count.alternate_reads = count.alternate_reads.saturating_add(1);
+        }
+        AllelePhaseBlockClassification::Reference => {
+            count.informative_reads = count.informative_reads.saturating_add(1);
+            count.reference_only_reads = count.reference_only_reads.saturating_add(1);
+        }
+        AllelePhaseBlockClassification::Ambiguous => {
+            count.ambiguous_reads = count.ambiguous_reads.saturating_add(1);
+        }
+        AllelePhaseBlockClassification::Uninformative => {
+            count.uninformative_reads = count.uninformative_reads.saturating_add(1);
+        }
+    }
+}
+
+fn summarize_phase_blocks(
+    blocks: &[PhaseBlockIndex],
+    accumulated: &BTreeMap<String, CountSummary>,
+) -> Vec<AllelePhaseBlockSummary> {
+    blocks
+        .iter()
+        .map(|block| {
+            let counts = accumulated
+                .get(&block.block_id)
+                .cloned()
+                .unwrap_or_default();
+            AllelePhaseBlockSummary {
+                block_id: block.block_id.clone(),
+                transcript_id: block.transcript_id.clone(),
+                phase_set: block.phase_set.clone(),
+                status: block.status,
+                variant_ids: block.variant_ids.clone(),
+                informative_reads: counts.informative_reads,
+                hap1_reads: counts.hap1_reads,
+                hap2_reads: counts.hap2_reads,
+                alternate_reads: counts.alternate_reads,
+                reference_reads: counts.reference_only_reads,
+                ambiguous_reads: counts.ambiguous_reads,
+                uninformative_reads: counts.uninformative_reads,
+            }
         })
         .collect()
 }
@@ -1013,6 +1863,10 @@ fn add_classification_count(count: &mut CountSummary, classification: AlleleRead
         AlleleReadClassification::Hap2 => {
             count.informative_reads = count.informative_reads.saturating_add(1);
             count.hap2_reads = count.hap2_reads.saturating_add(1);
+        }
+        AlleleReadClassification::Alternate => {
+            count.informative_reads = count.informative_reads.saturating_add(1);
+            count.alternate_reads = count.alternate_reads.saturating_add(1);
         }
         AlleleReadClassification::ReferenceOnly => {
             count.reference_only_reads = count.reference_only_reads.saturating_add(1);
@@ -1041,6 +1895,7 @@ fn transcript_summary(
         informative_reads: count.informative_reads,
         hap1_reads: count.hap1_reads,
         hap2_reads: count.hap2_reads,
+        alternate_reads: count.alternate_reads,
         reference_only_reads: count.reference_only_reads,
         ambiguous_reads: count.ambiguous_reads,
         uninformative_reads: count.uninformative_reads,
@@ -1062,6 +1917,7 @@ fn variant_summary(variant: &VariantRecord, count: CountSummary) -> AlleleVarian
         informative_reads: count.informative_reads,
         hap1_reads: count.hap1_reads,
         hap2_reads: count.hap2_reads,
+        alternate_reads: count.alternate_reads,
         reference_only_reads: count.reference_only_reads,
         ambiguous_reads: count.ambiguous_reads,
         imbalance_ratio_hap1_over_informative: imbalance_ratio(count.hap1_reads, count.hap2_reads),
@@ -1074,22 +1930,18 @@ fn imbalance_ratio(hap1: u64, hap2: u64) -> Option<f64> {
     (total > 0).then(|| hap1 as f64 / total as f64)
 }
 
-fn classification_counts(calls: &[AlleleReadCall]) -> BTreeMap<String, u64> {
+fn empty_classification_counts() -> BTreeMap<String, u64> {
     let mut counts = BTreeMap::<String, u64>::new();
     for classification in [
         AlleleReadClassification::Hap1,
         AlleleReadClassification::Hap2,
+        AlleleReadClassification::Alternate,
         AlleleReadClassification::ReferenceOnly,
         AlleleReadClassification::Ambiguous,
         AlleleReadClassification::Uninformative,
         AlleleReadClassification::OffTarget,
     ] {
         counts.insert(classification.as_str().to_string(), 0);
-    }
-    for call in calls {
-        *counts
-            .entry(call.classification.as_str().to_string())
-            .or_insert(0) += 1;
     }
     counts
 }
@@ -1185,38 +2037,60 @@ fn write_haplotype_fasta(
         .map_err(|e| format!("Could not flush FASTA '{path}': {e}"))
 }
 
-fn write_read_calls_tsv(path: &str, calls: &[AlleleReadCall]) -> Result<(), String> {
-    let mut writer = BufWriter::new(
-        File::create(path).map_err(|e| format!("Could not create read TSV '{path}': {e}"))?,
-    );
+fn write_read_calls_header(writer: &mut impl Write, path: &str) -> Result<(), String> {
     writeln!(
         writer,
-        "read_id\tsource_file\tclassification\tread_length\tread_kmer_count\treference_hits\thap1_hits\thap2_hits\thap1_unique_hits\thap2_unique_hits\treference_only_hits\tmatched_transcripts\tsupporting_variants"
+        "read_id\tsource_file\tevidence_unit\tinput_read_count\tclassification\tread_length\tread_kmer_count\treference_hits\thap1_hits\thap2_hits\thap1_unique_hits\thap2_unique_hits\talternate_unique_hits\treference_only_hits\tmatched_transcripts\tsupporting_variants\tphase_block_calls"
     )
-    .map_err(|e| format!("Could not write read TSV '{path}': {e}"))?;
-    for call in calls {
-        writeln!(
-            writer,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            tsv_cell(&call.read_id),
-            tsv_cell(&call.source_file),
-            call.classification.as_str(),
-            call.read_length,
-            call.read_kmer_count,
-            call.reference_hits,
-            call.hap1_hits,
-            call.hap2_hits,
-            call.hap1_unique_hits,
-            call.hap2_unique_hits,
-            call.reference_only_hits,
-            tsv_cell(&call.matched_transcripts.join(";")),
-            tsv_cell(&call.supporting_variants.join(";"))
-        )
-        .map_err(|e| format!("Could not write read TSV '{path}': {e}"))?;
-    }
-    writer
-        .flush()
-        .map_err(|e| format!("Could not flush read TSV '{path}': {e}"))
+    .map_err(|e| format!("Could not write read TSV '{path}': {e}"))
+}
+
+fn write_read_call_tsv(
+    writer: &mut impl Write,
+    path: &str,
+    call: &AlleleReadCall,
+) -> Result<(), String> {
+    let block_calls = call
+        .phase_block_calls
+        .iter()
+        .map(|block| {
+            format!(
+                "{}:{}:ref={}:h1={}:h2={}:alt={}",
+                block.block_id,
+                block.classification.as_str(),
+                block.reference_unique_hits,
+                block.hap1_unique_hits,
+                block.hap2_unique_hits,
+                block.alternate_unique_hits
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(";");
+    writeln!(
+        writer,
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        tsv_cell(&call.read_id),
+        tsv_cell(&call.source_file),
+        match call.evidence_unit {
+            AlleleEvidenceUnit::Read => "read",
+            AlleleEvidenceUnit::Fragment => "fragment",
+        },
+        call.input_read_count,
+        call.classification.as_str(),
+        call.read_length,
+        call.read_kmer_count,
+        call.reference_hits,
+        call.hap1_hits,
+        call.hap2_hits,
+        call.hap1_unique_hits,
+        call.hap2_unique_hits,
+        call.alternate_unique_hits,
+        call.reference_only_hits,
+        tsv_cell(&call.matched_transcripts.join(";")),
+        tsv_cell(&call.supporting_variants.join(";")),
+        tsv_cell(&block_calls)
+    )
+    .map_err(|e| format!("Could not write read TSV '{path}': {e}"))
 }
 
 fn write_json_file<T: Serialize>(path: &str, value: &T) -> Result<(), String> {
@@ -1262,6 +2136,8 @@ mod tests {
         .expect("allele screen should run");
         assert_eq!(report.schema, ALLELE_HASH_SCREEN_SCHEMA);
         assert_eq!(report.phase_mode, AlleleHashPhaseMode::Phased);
+        assert_eq!(report.phase_blocks.len(), 1);
+        assert!(report.haplotype_fastas[1].inferred);
         assert_eq!(report.transcript_count, 2);
         assert_eq!(report.variant_count, 2);
         let by_id = report
@@ -1279,6 +2155,14 @@ mod tests {
         );
         assert_eq!(by_id["fus_hap2_alt_v1"].reference_hits, 0);
         assert!(by_id["fus_hap2_alt_v1"].hap2_unique_hits > 0);
+        assert_eq!(
+            by_id["fus_hap1_alt_v2"].supporting_variants,
+            vec!["v2".to_string()]
+        );
+        assert_eq!(
+            by_id["fus_hap2_alt_v1"].supporting_variants,
+            vec!["v1".to_string()]
+        );
         assert_eq!(
             by_id["fus_shared_region"].classification,
             AlleleReadClassification::Ambiguous
@@ -1327,5 +2211,210 @@ mod tests {
                 .iter()
                 .any(|warning| warning.contains("unphased"))
         );
+        let alternate = report
+            .reads
+            .iter()
+            .find(|call| call.read_id == "fus_hap2_alt_v1")
+            .expect("alternate-bearing read");
+        assert_eq!(
+            alternate.classification,
+            AlleleReadClassification::Alternate
+        );
+        assert!(alternate.alternate_unique_hits > 0);
+        assert_eq!(report.phase_blocks.len(), 1);
+        assert_eq!(report.phase_blocks[0].alternate_reads, 1);
+        assert!(!report.haplotype_fastas[1].inferred);
+        assert!(!report.haplotype_fastas[2].inferred);
+    }
+
+    #[test]
+    fn disconnected_phase_sets_remain_separate_blocks() {
+        let dir = tempdir().expect("temp dir");
+        let variant_table = dir.path().join("phase_blocks.tsv");
+        fs::write(
+            &variant_table,
+            concat!(
+                "variant_id\ttranscript_id\tcdna_pos_1based\tref\talt\tgenotype\tphase_set\n",
+                "v1\tFUS_TX1\t20\tC\tT\t0|1\tps_one\n",
+                "v2\tFUS_TX1\t45\tA\tG\t1|0\tps_two\n"
+            ),
+        )
+        .expect("write variant table");
+        let report = run_allele_hash_screen(AlleleHashScreenRequest {
+            gene: "FUS".to_string(),
+            transcript_fasta: fixture_path("fus_transcripts.fa"),
+            variant_table: Some(variant_table.display().to_string()),
+            read_files: vec![fixture_path("fus_reads.fastq")],
+            out_dir: dir.path().join("out").display().to_string(),
+            kmer_len: 9,
+            min_unique_kmer_hits: 1,
+            ..AlleleHashScreenRequest::default()
+        })
+        .expect("phase-block screen should run");
+        assert_eq!(report.phase_mode, AlleleHashPhaseMode::PhasedBlocks);
+        assert_eq!(report.phase_blocks.len(), 2);
+        assert_eq!(report.phase_blocks[0].phase_set.as_deref(), Some("ps_one"));
+        assert_eq!(report.phase_blocks[1].phase_set.as_deref(), Some("ps_two"));
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("does not fabricate a gene-wide haplotype"))
+        );
+        assert!(
+            report.haplotype_fastas[1..]
+                .iter()
+                .all(|fasta| !fasta.inferred)
+        );
+    }
+
+    #[test]
+    fn reference_mismatch_is_rejected_before_hashing() {
+        let dir = tempdir().expect("temp dir");
+        let variant_table = dir.path().join("mismatch.tsv");
+        fs::write(
+            &variant_table,
+            "variant_id\ttranscript_id\tcdna_pos_1based\tref\talt\tgenotype\tphase_set\nv1\tFUS_TX1\t20\tA\tT\t0|1\tps1\n",
+        )
+        .expect("write variant table");
+        let error = run_allele_hash_screen(AlleleHashScreenRequest {
+            gene: "FUS".to_string(),
+            transcript_fasta: fixture_path("fus_transcripts.fa"),
+            variant_table: Some(variant_table.display().to_string()),
+            read_files: vec![fixture_path("fus_reads.fastq")],
+            out_dir: dir.path().join("out").display().to_string(),
+            kmer_len: 9,
+            min_unique_kmer_hits: 1,
+            ..AlleleHashScreenRequest::default()
+        })
+        .expect_err("reference mismatch must fail");
+        assert!(error.contains("refusing to build allele hashes"));
+    }
+
+    #[test]
+    fn inline_read_calls_are_capped_but_tsv_remains_complete() {
+        let dir = tempdir().expect("temp dir");
+        let report = run_allele_hash_screen(AlleleHashScreenRequest {
+            gene: "FUS".to_string(),
+            transcript_fasta: fixture_path("fus_transcripts.fa"),
+            variant_table: Some(fixture_path("fus_variants.tsv")),
+            read_files: vec![fixture_path("fus_reads.fastq")],
+            out_dir: dir.path().display().to_string(),
+            kmer_len: 9,
+            min_unique_kmer_hits: 1,
+            max_inline_read_calls: 1,
+            ..AlleleHashScreenRequest::default()
+        })
+        .expect("bounded report should run");
+        assert_eq!(report.read_count_selected, 5);
+        assert_eq!(report.reads.len(), 1);
+        assert!(report.read_calls_truncated);
+        let tsv = fs::read_to_string(&report.output_files.reads_tsv).expect("read TSV");
+        assert_eq!(tsv.lines().count(), 6);
+    }
+
+    #[test]
+    fn paired_files_are_counted_as_one_fragment_observation() {
+        let dir = tempdir().expect("temp dir");
+        let read1 = dir.path().join("reads_1.fastq");
+        let read2 = dir.path().join("reads_2.fastq");
+        let mut alternate =
+            b"ATGACCAAGTTGACCTGACCGTACCGATGCTAGCTTACGATCGTACGATCTAGCTAGGCTA".to_vec();
+        alternate[19] = b'T';
+        let informative = std::str::from_utf8(&alternate[15..24]).expect("ASCII sequence");
+        fs::write(
+            &read1,
+            format!("@fragment_1/1\n{informative}\n+\nIIIIIIIII\n"),
+        )
+        .expect("write read 1");
+        fs::write(&read2, "@fragment_1/2\nNNNNNNNNN\n+\nIIIIIIIII\n").expect("write read 2");
+        let report = run_allele_hash_screen(AlleleHashScreenRequest {
+            gene: "FUS".to_string(),
+            transcript_fasta: fixture_path("fus_transcripts.fa"),
+            variant_table: Some(fixture_path("fus_variants.tsv")),
+            read_pairs: vec![AlleleReadPairInput {
+                read1: read1.display().to_string(),
+                read2: read2.display().to_string(),
+            }],
+            out_dir: dir.path().join("out").display().to_string(),
+            kmer_len: 9,
+            min_unique_kmer_hits: 1,
+            ..AlleleHashScreenRequest::default()
+        })
+        .expect("paired screen should run");
+        assert_eq!(report.read_count_total, 2);
+        assert_eq!(report.read_count_selected, 2);
+        assert_eq!(report.fragment_count_total, 1);
+        assert_eq!(report.fragment_count_selected, 1);
+        assert_eq!(report.evidence_observation_count_selected, 1);
+        assert_eq!(report.reads.len(), 1);
+        assert_eq!(report.reads[0].evidence_unit, AlleleEvidenceUnit::Fragment);
+        assert_eq!(report.reads[0].input_read_count, 2);
+        assert_eq!(
+            report.reads[0].classification,
+            AlleleReadClassification::Hap2
+        );
+    }
+
+    #[test]
+    fn local_pass_vcf_projects_into_transcript_allele_hashes() {
+        let dir = tempdir().expect("temp dir");
+        let vcf = dir.path().join("sample.vcf");
+        let transcript_map = dir.path().join("transcript_map.tsv");
+        fs::write(
+            &vcf,
+            concat!(
+                "##fileformat=VCFv4.2\n",
+                "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tALS_SAMPLE\n",
+                "chr1\t100\trs_demo\tC\tT\t60\tPASS\t.\tGT:PS\t0|1:ps_demo\n"
+            ),
+        )
+        .expect("write VCF");
+        fs::write(
+            &transcript_map,
+            concat!(
+                "chrom\tgenomic_pos_1based\ttranscript_id\tcdna_pos_1based\tstrand\n",
+                "chr1\t100\tFUS_TX1\t20\t+\n"
+            ),
+        )
+        .expect("write transcript map");
+        let report = run_allele_hash_screen(AlleleHashScreenRequest {
+            gene: "FUS".to_string(),
+            transcript_fasta: fixture_path("fus_transcripts.fa"),
+            vcf: Some(vcf.display().to_string()),
+            transcript_map: Some(transcript_map.display().to_string()),
+            vcf_sample: Some("ALS_SAMPLE".to_string()),
+            read_files: vec![fixture_path("fus_reads.fastq")],
+            out_dir: dir.path().join("out").display().to_string(),
+            kmer_len: 9,
+            min_unique_kmer_hits: 1,
+            ..AlleleHashScreenRequest::default()
+        })
+        .expect("VCF-backed screen should run");
+        assert_eq!(report.variant_count, 1);
+        assert_eq!(report.phase_mode, AlleleHashPhaseMode::Phased);
+        assert_eq!(report.phase_blocks[0].phase_set.as_deref(), Some("ps_demo"));
+        assert_eq!(report.variant_summaries[0].variant_id, "rs_demo@FUS_TX1");
+        assert!(
+            report
+                .reads
+                .iter()
+                .any(|call| call.classification == AlleleReadClassification::Hap2)
+        );
+    }
+
+    #[test]
+    fn old_request_payload_defaults_inline_call_cap() {
+        let request: AlleleHashScreenRequest = serde_json::from_value(serde_json::json!({
+            "gene": "FUS",
+            "transcript_fasta": "tx.fa",
+            "variant_table": "variants.tsv",
+            "read_files": ["reads.fq"],
+            "out_dir": "out",
+            "kmer_len": 21,
+            "min_unique_kmer_hits": 1
+        }))
+        .expect("old request payload");
+        assert_eq!(request.max_inline_read_calls, DEFAULT_MAX_INLINE_READ_CALLS);
     }
 }

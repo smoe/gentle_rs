@@ -1,7 +1,9 @@
 //! Direct `gentle_cli allele-hash-screen` adapter.
 
 use super::*;
-use gentle::allele_hash_screen::{AlleleHashScreenRequest, run_allele_hash_screen};
+use gentle::allele_hash_screen::{
+    AlleleHashScreenRequest, AlleleReadPairInput, run_allele_hash_screen,
+};
 
 pub(super) fn handle_allele_hash_screen(args: &[String], cmd_idx: usize) -> Result<(), String> {
     let mut idx = cmd_idx + 1;
@@ -58,6 +60,16 @@ pub(super) fn handle_allele_hash_screen(args: &[String], cmd_idx: usize) -> Resu
                 )?);
                 idx += 2;
             }
+            "--vcf-sample" => {
+                request.vcf_sample = Some(gentle_cli_args::required_value(
+                    args,
+                    idx,
+                    "--vcf-sample",
+                    "SAMPLE",
+                    "allele-hash-screen",
+                )?);
+                idx += 2;
+            }
             "--read-file" => {
                 request.read_files.push(gentle_cli_args::required_value(
                     args,
@@ -66,6 +78,28 @@ pub(super) fn handle_allele_hash_screen(args: &[String], cmd_idx: usize) -> Resu
                     "PATH",
                     "allele-hash-screen",
                 )?);
+                idx += 2;
+            }
+            "--read-pair" => {
+                let raw = gentle_cli_args::required_value(
+                    args,
+                    idx,
+                    "--read-pair",
+                    "R1,R2",
+                    "allele-hash-screen",
+                )?;
+                let (read1, read2) = raw
+                    .split_once(',')
+                    .ok_or_else(|| format!("Invalid --read-pair value '{raw}': expected R1,R2"))?;
+                if read1.trim().is_empty() || read2.trim().is_empty() {
+                    return Err(format!(
+                        "Invalid --read-pair value '{raw}': both paths are required"
+                    ));
+                }
+                request.read_pairs.push(AlleleReadPairInput {
+                    read1: read1.trim().to_string(),
+                    read2: read2.trim().to_string(),
+                });
                 idx += 2;
             }
             "--read-id-allowlist" => {
@@ -104,6 +138,17 @@ pub(super) fn handle_allele_hash_screen(args: &[String], cmd_idx: usize) -> Resu
                     args,
                     idx,
                     "--min-unique-kmer-hits",
+                    "N",
+                    "allele-hash-screen",
+                    Some("allele-hash-screen"),
+                )?;
+                idx += 2;
+            }
+            "--max-inline-read-calls" => {
+                request.max_inline_read_calls = gentle_cli_args::parse_required_value(
+                    args,
+                    idx,
+                    "--max-inline-read-calls",
                     "N",
                     "allele-hash-screen",
                     Some("allele-hash-screen"),

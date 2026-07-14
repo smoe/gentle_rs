@@ -9278,11 +9278,14 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             let mut variant_table: Option<String> = None;
             let mut vcf: Option<String> = None;
             let mut transcript_map: Option<String> = None;
+            let mut vcf_sample: Option<String> = None;
             let mut read_files = Vec::<String>::new();
+            let mut read_pairs = Vec::<(String, String)>::new();
             let mut read_id_allowlist: Option<String> = None;
             let mut out_dir: Option<String> = None;
             let mut kmer_len = 21usize;
             let mut min_unique_kmer_hits = 1u64;
+            let mut max_inline_read_calls = 10_000usize;
             let mut idx = 2usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -9326,6 +9329,14 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                             "rna-reads allele-hash-screen",
                         )?);
                     }
+                    "--vcf-sample" => {
+                        vcf_sample = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--vcf-sample",
+                            "rna-reads allele-hash-screen",
+                        )?);
+                    }
                     "--read-file" => {
                         read_files.push(parse_option_path(
                             tokens,
@@ -9333,6 +9344,23 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                             "--read-file",
                             "rna-reads allele-hash-screen",
                         )?);
+                    }
+                    "--read-pair" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--read-pair",
+                            "rna-reads allele-hash-screen",
+                        )?;
+                        let (read1, read2) = raw.split_once(',').ok_or_else(|| {
+                            format!("Invalid --read-pair value '{raw}': expected R1,R2")
+                        })?;
+                        if read1.trim().is_empty() || read2.trim().is_empty() {
+                            return Err(format!(
+                                "Invalid --read-pair value '{raw}': both paths are required"
+                            ));
+                        }
+                        read_pairs.push((read1.trim().to_string(), read2.trim().to_string()));
                     }
                     "--read-id-allowlist" => {
                         read_id_allowlist = Some(parse_option_path(
@@ -9376,6 +9404,19 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                             )
                         })?;
                     }
+                    "--max-inline-read-calls" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-inline-read-calls",
+                            "rna-reads allele-hash-screen",
+                        )?;
+                        max_inline_read_calls = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-inline-read-calls value '{raw}' for rna-reads allele-hash-screen: {e}"
+                            )
+                        })?;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for rna-reads allele-hash-screen"
@@ -9394,9 +9435,9 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             let out_dir = out_dir
                 .filter(|value| !value.trim().is_empty())
                 .ok_or_else(|| "rna-reads allele-hash-screen requires --out OUT_DIR".to_string())?;
-            if read_files.is_empty() {
+            if read_files.is_empty() && read_pairs.is_empty() {
                 return Err(
-                    "rna-reads allele-hash-screen requires at least one --read-file PATH"
+                    "rna-reads allele-hash-screen requires at least one --read-file PATH or --read-pair R1,R2"
                         .to_string(),
                 );
             }
@@ -9406,11 +9447,14 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 variant_table,
                 vcf,
                 transcript_map,
+                vcf_sample,
                 read_files,
+                read_pairs,
                 read_id_allowlist,
                 out_dir,
                 kmer_len,
                 min_unique_kmer_hits,
+                max_inline_read_calls,
             })
         }
         "preflight-isoforms" | "preflight-isoform" => {

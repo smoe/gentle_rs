@@ -9177,7 +9177,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
   - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]...`
   - `rna-reads build-transcript-index OUTPUT.json [--kmer-len N] --transcript-fasta PATH [--transcript-fasta PATH ...]`
-  - `rna-reads allele-hash-screen --gene GENE --transcript-fasta PATH --variant-table PATH --read-file PATH [--read-file PATH ...] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] --out OUT_DIR`
+  - `rna-reads allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--read-file PATH ...] [--read-pair R1,R2 ...] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--max-inline-read-calls N] --out OUT_DIR`
   - `rna-reads materialize-hits REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
@@ -9270,21 +9270,33 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - `rna-reads allele-hash-screen` returns the full
       `gentle.rna_allele_hash_screen.v1` payload directly and writes the same
       JSON, a read-call TSV, and reference/hap1/hap2 transcript FASTA files
-      under the requested output directory. The deterministic v1 path requires
+      under the requested output directory. The deterministic v1 path accepts
       an explicit transcript-coordinate variant TSV with columns
       `transcript_id`, `cdna_pos_1based`, `ref`, `alt`, and `genotype`;
       optional columns are `variant_id`/`id` and `phase_set`. Phased
       genotypes (`0|1`, `1|0`) materialize hap1/hap2 transcripts, while
       unphased slash genotypes are labelled `unphased_allele_level_only`
-      rather than inventing phase. VCF input is reserved but rejected unless a
-      future explicit transcript-coordinate projection is implemented.
+      rather than inventing phase. Distinct phase sets remain independent
+      `phase_blocks`; global haplotype FASTA output is marked `inferred=false`
+      unless one coherent phased block supports it. The alternative VCF path
+      accepts a local VCF plus a transcript-map TSV with `chrom`,
+      `genomic_pos_1based`, `transcript_id`, and `cdna_pos_1based` columns
+      (optional `strand`). Only explicit PASS biallelic SNVs are projected;
+      `--vcf-sample` is required when the VCF contains multiple samples, and
+      every projected reference allele must match the transcript sequence.
+      Repeated `--read-pair R1,R2` inputs are streamed in lockstep and counted
+      as fragments, with an invalid-base boundary preventing cross-mate k-mers.
       Report fields include `schema`, `gene`, `phase_mode`, `params`,
+      physical read/fragment/evidence-observation counts, `phase_blocks`,
       `output_files`, `haplotype_fastas`, `transcript_summaries`,
       `variant_summaries`, `classification_counts`, `reads[]`, and
-      `warnings[]`. Read calls classify reads as `hap1`, `hap2`,
+      `warnings[]`. `reads[]` is capped by `--max-inline-read-calls` (default
+      10,000), while the streamed TSV and aggregate counts remain complete.
+      Read calls classify evidence as `hap1`, `hap2`, `alternate`,
       `reference_only`, `ambiguous`, `uninformative`, or `off_target` and carry
-      matched transcript ids plus supporting variant ids. The report is
-      sequence evidence only and does not claim biological allelic imbalance.
+      matched transcript ids, supporting variant ids, and local phase-block
+      calls. The report is sequence evidence only and does not claim
+      biological allelic imbalance.
     - `rna-reads materialize-hits` returns a
       `gentle.rna_read_hit_materialization.v1` wrapper with:
       - the mutating `result` (`OpResult`) from

@@ -1,7 +1,9 @@
 //! Direct `gentle_cli rescue-screen` adapter.
 
 use super::*;
-use gentle::target_rescue::{TargetRescueRequest, run_target_rescue_screen};
+use gentle::target_rescue::{
+    StructuralEvidenceKind, StructuralEvidenceSource, TargetRescueRequest, run_target_rescue_screen,
+};
 
 pub(super) fn handle_rescue_screen(args: &[String], cmd_idx: usize) -> Result<(), String> {
     let mut idx = cmd_idx + 1;
@@ -54,6 +56,76 @@ pub(super) fn handle_rescue_screen(args: &[String], cmd_idx: usize) -> Result<()
                     "PATH",
                     "rescue-screen",
                 )?);
+                idx += 2;
+            }
+            "--exon-fasta" => {
+                push_structural_source(
+                    &mut request,
+                    StructuralEvidenceKind::Exon,
+                    gentle_cli_args::required_value(
+                        args,
+                        idx,
+                        "--exon-fasta",
+                        "PATH",
+                        "rescue-screen",
+                    )?,
+                );
+                idx += 2;
+            }
+            "--junction-fasta" => {
+                push_structural_source(
+                    &mut request,
+                    StructuralEvidenceKind::AnnotatedJunction,
+                    gentle_cli_args::required_value(
+                        args,
+                        idx,
+                        "--junction-fasta",
+                        "PATH",
+                        "rescue-screen",
+                    )?,
+                );
+                idx += 2;
+            }
+            "--exon-intron-boundary-fasta" => {
+                push_structural_source(
+                    &mut request,
+                    StructuralEvidenceKind::ExonIntronBoundary,
+                    gentle_cli_args::required_value(
+                        args,
+                        idx,
+                        "--exon-intron-boundary-fasta",
+                        "PATH",
+                        "rescue-screen",
+                    )?,
+                );
+                idx += 2;
+            }
+            "--intron-fasta" => {
+                push_structural_source(
+                    &mut request,
+                    StructuralEvidenceKind::Intron,
+                    gentle_cli_args::required_value(
+                        args,
+                        idx,
+                        "--intron-fasta",
+                        "PATH",
+                        "rescue-screen",
+                    )?,
+                );
+                idx += 2;
+            }
+            "--genomic-region-fasta" => {
+                push_structural_source(
+                    &mut request,
+                    StructuralEvidenceKind::GenomicRegion,
+                    gentle_cli_args::required_value(
+                        args,
+                        idx,
+                        "--genomic-region-fasta",
+                        "PATH",
+                        "rescue-screen",
+                    )?,
+                );
                 idx += 2;
             }
             "--read-id-allowlist" => {
@@ -135,4 +207,14 @@ pub(super) fn handle_rescue_screen(args: &[String], cmd_idx: usize) -> Result<()
     }
     let summary = run_target_rescue_screen(request)?;
     print_json(&summary)
+}
+
+fn push_structural_source(
+    request: &mut TargetRescueRequest,
+    kind: StructuralEvidenceKind,
+    path: String,
+) {
+    request
+        .structural_evidence
+        .push(StructuralEvidenceSource { kind, path });
 }

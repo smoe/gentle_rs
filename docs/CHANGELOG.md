@@ -70,6 +70,17 @@ Maintenance rule:
 - Added immediate Codex Local model selection backed by the CLI's visible local
   model metadata, with shared GUI/CLI discovery and `codex --model` forwarding.
 
+## 2026-07-13
+
+- Hardened the offline RNA allele hash screen with strict transcript-reference
+  validation, phase-block and unphased allele-level reporting, bounded inline
+  read calls with complete streamed TSV output, paired-fragment accounting,
+  and local PASS biallelic VCF projection through an explicit transcript map.
+- Extended the standalone target rescue screen with optional local exon,
+  junction, exon-intron-boundary, intron, and genomic-region k-mer catalogs;
+  matches are reported as conservative structural candidates rather than
+  transcript, fusion, or novelty calls.
+
 ## 2026-07-11
 
 - Reworked the repository landing documentation into a concise, visually

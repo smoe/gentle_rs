@@ -9,7 +9,7 @@
 use flate2::read::MultiGzDecoder;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fs::{self, File},
     io::{BufRead, BufReader, BufWriter, Write},
     path::Path,
@@ -28,6 +28,8 @@ pub struct TargetRescueRequest {
     pub transcript_fastas: Vec<String>,
     pub genes: Vec<String>,
     pub reads: Vec<String>,
+    #[serde(default)]
+    pub structural_evidence: Vec<StructuralEvidenceSource>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub read_id_allowlist: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -46,6 +48,7 @@ impl Default for TargetRescueRequest {
             transcript_fastas: Vec::new(),
             genes: Vec::new(),
             reads: Vec::new(),
+            structural_evidence: Vec::new(),
             read_id_allowlist: None,
             salmon_unmapped_names: None,
             salmon_mappings_sam: None,
@@ -62,6 +65,8 @@ impl Default for TargetRescueRequest {
 pub struct TargetRescueParams {
     pub transcript_fastas: Vec<String>,
     pub reads: Vec<String>,
+    #[serde(default)]
+    pub structural_evidence: Vec<StructuralEvidenceSource>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub read_id_allowlist: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -108,12 +113,67 @@ pub struct GeneHitSummary {
     pub total_matching_kmers: u64,
 }
 
+/// Kind of local sequence catalog used for a conservative structural screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StructuralEvidenceKind {
+    Exon,
+    AnnotatedJunction,
+    ExonIntronBoundary,
+    Intron,
+    GenomicRegion,
+}
+
+impl StructuralEvidenceKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Exon => "exon",
+            Self::AnnotatedJunction => "annotated_junction",
+            Self::ExonIntronBoundary => "exon_intron_boundary",
+            Self::Intron => "intron",
+            Self::GenomicRegion => "genomic_region",
+        }
+    }
+
+    fn candidate_label(self) -> &'static str {
+        match self {
+            Self::Exon => "known_exonic",
+            Self::AnnotatedJunction => "known_junction",
+            Self::ExonIntronBoundary => "retained_intron_candidate",
+            Self::Intron => "intronic_candidate",
+            Self::GenomicRegion => "genomic_region_candidate",
+        }
+    }
+}
+
+/// One local FASTA catalog used to screen reads for structural-region evidence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StructuralEvidenceSource {
+    pub kind: StructuralEvidenceKind,
+    pub path: String,
+}
+
+/// Aggregate matches to one gene and structural evidence class.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructuralEvidenceHitSummary {
+    pub universe: String,
+    pub gene_symbol: String,
+    pub evidence_kind: StructuralEvidenceKind,
+    pub candidate_label: String,
+    pub record_count: usize,
+    pub distinct_kmers: usize,
+    pub reads_hit: u64,
+    pub total_matching_kmers: u64,
+}
+
 /// Paths written by a target-rescue run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TargetRescueOutputFiles {
     pub gene_manifest_tsv: String,
     pub gene_hits_tsv: String,
     pub read_hits_tsv: String,
+    #[serde(default)]
+    pub structural_hits_tsv: String,
     pub run_metadata_json: String,
     pub summary_json: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -130,6 +190,8 @@ pub struct TargetRescueSummary {
     pub total_input_reads: u64,
     pub universes: Vec<UniverseSummary>,
     pub gene_hits: Vec<GeneHitSummary>,
+    #[serde(default)]
+    pub structural_hits: Vec<StructuralEvidenceHitSummary>,
     pub manifest: Vec<GeneManifestEntry>,
     pub output_files: TargetRescueOutputFiles,
 }
@@ -146,6 +208,8 @@ struct TargetRescueRunMetadata {
     total_input_reads: u64,
     universes: Vec<UniverseSummary>,
     gene_hits: Vec<GeneHitSummary>,
+    structural_hits: Vec<StructuralEvidenceHitSummary>,
+    structural_sources: Vec<StructuralEvidenceSourceReport>,
     manifest: Vec<GeneManifestEntry>,
     output_files: TargetRescueOutputFiles,
 }
@@ -162,6 +226,15 @@ struct TranscriptSourceReport {
 struct ReadSourceReport {
     path: String,
     bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StructuralEvidenceSourceReport {
+    kind: StructuralEvidenceKind,
+    path: String,
+    bytes: u64,
+    record_count: u64,
+    matched_record_count: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,6 +260,14 @@ struct GeneIndex {
     total_kmer_positions: u64,
 }
 
+#[derive(Debug, Clone)]
+struct StructuralEvidenceIndex {
+    gene_symbol: String,
+    kind: StructuralEvidenceKind,
+    record_ids: BTreeSet<String>,
+    kmers: HashSet<u64>,
+}
+
 #[derive(Debug, Clone, Default)]
 struct UniverseTally {
     selected_reads: u64,
@@ -203,12 +284,19 @@ struct GeneTally {
     total_matching_kmers: u64,
 }
 
+#[derive(Debug, Clone, Default)]
+struct StructuralEvidenceTally {
+    reads_hit: u64,
+    total_matching_kmers: u64,
+}
+
 #[derive(Debug, Clone)]
 struct UniverseState {
     name: String,
     selected_ids: Option<HashSet<String>>,
     tally: UniverseTally,
     gene_tallies: Vec<GeneTally>,
+    structural_tallies: Vec<StructuralEvidenceTally>,
 }
 
 impl UniverseState {
@@ -230,6 +318,164 @@ enum ReadFormat {
 pub(crate) struct SequenceRecord {
     pub(crate) id: String,
     pub(crate) sequence: String,
+    pub(crate) source_length: usize,
+}
+
+pub(crate) struct ReadRecordStream {
+    path: String,
+    reader: Box<dyn BufRead>,
+    format: ReadFormat,
+    pending_fasta_header: Option<String>,
+}
+
+impl ReadRecordStream {
+    pub(crate) fn open(path: &str) -> Result<Self, String> {
+        let mut reader = open_maybe_gz_reader(path)?;
+        let format = detect_read_format(path, reader.as_mut())?;
+        Ok(Self {
+            path: path.to_string(),
+            reader,
+            format,
+            pending_fasta_header: None,
+        })
+    }
+
+    pub(crate) fn next_record(&mut self) -> Result<Option<SequenceRecord>, String> {
+        match self.format {
+            ReadFormat::Fasta => self.next_fasta_record(),
+            ReadFormat::Fastq => self.next_fastq_record(),
+        }
+    }
+
+    fn next_fasta_record(&mut self) -> Result<Option<SequenceRecord>, String> {
+        let mut line = String::new();
+        if self.pending_fasta_header.is_none() {
+            loop {
+                line.clear();
+                let bytes = self
+                    .reader
+                    .read_line(&mut line)
+                    .map_err(|e| format!("Could not read FASTA reads '{}': {e}", self.path))?;
+                if bytes == 0 {
+                    return Ok(None);
+                }
+                let trimmed = line.trim_end_matches(['\r', '\n']);
+                if let Some(header) = trimmed.strip_prefix('>') {
+                    self.pending_fasta_header = Some(header.to_string());
+                    break;
+                }
+                if !trimmed.trim().is_empty() {
+                    return Err(format!(
+                        "Invalid FASTA reads '{}': sequence data appeared before the first '>' header",
+                        self.path
+                    ));
+                }
+            }
+        }
+        let header = self.pending_fasta_header.take().ok_or_else(|| {
+            format!(
+                "Could not establish a FASTA header while reading '{}'",
+                self.path
+            )
+        })?;
+        let mut sequence = String::new();
+        loop {
+            line.clear();
+            let bytes = self
+                .reader
+                .read_line(&mut line)
+                .map_err(|e| format!("Could not read FASTA reads '{}': {e}", self.path))?;
+            if bytes == 0 {
+                break;
+            }
+            let trimmed = line.trim_end_matches(['\r', '\n']);
+            if let Some(next_header) = trimmed.strip_prefix('>') {
+                self.pending_fasta_header = Some(next_header.to_string());
+                break;
+            }
+            sequence.push_str(trimmed.trim());
+        }
+        let source_length = sequence.len();
+        Ok(Some(SequenceRecord {
+            id: normalize_read_id(&header),
+            sequence,
+            source_length,
+        }))
+    }
+
+    fn next_fastq_record(&mut self) -> Result<Option<SequenceRecord>, String> {
+        let mut header = String::new();
+        loop {
+            header.clear();
+            let bytes = self
+                .reader
+                .read_line(&mut header)
+                .map_err(|e| format!("Could not read FASTQ reads '{}': {e}", self.path))?;
+            if bytes == 0 {
+                return Ok(None);
+            }
+            if !header.trim().is_empty() {
+                break;
+            }
+        }
+        if !header.starts_with('@') {
+            return Err(format!(
+                "Invalid FASTQ record in '{}': expected '@' header, got '{}'",
+                self.path,
+                header.trim_end()
+            ));
+        }
+        let mut sequence = String::new();
+        let mut plus = String::new();
+        let mut quality = String::new();
+        if self
+            .reader
+            .read_line(&mut sequence)
+            .map_err(|e| format!("Could not read FASTQ sequence from '{}': {e}", self.path))?
+            == 0
+        {
+            return Err(format!(
+                "Truncated FASTQ record in '{}' after header",
+                self.path
+            ));
+        }
+        if self
+            .reader
+            .read_line(&mut plus)
+            .map_err(|e| format!("Could not read FASTQ '+' line from '{}': {e}", self.path))?
+            == 0
+        {
+            return Err(format!(
+                "Truncated FASTQ record in '{}' before '+' line",
+                self.path
+            ));
+        }
+        if !plus.starts_with('+') {
+            return Err(format!(
+                "Invalid FASTQ record in '{}': expected '+' line, got '{}'",
+                self.path,
+                plus.trim_end()
+            ));
+        }
+        if self
+            .reader
+            .read_line(&mut quality)
+            .map_err(|e| format!("Could not read FASTQ quality from '{}': {e}", self.path))?
+            == 0
+        {
+            return Err(format!(
+                "Truncated FASTQ record in '{}' before quality line",
+                self.path
+            ));
+        }
+        let sequence = sequence.trim().to_string();
+        let source_length = sequence.len();
+        Ok(Some(SequenceRecord {
+            id: normalize_read_id(&header),
+            sequence,
+            source_length,
+        }))
+    }
 }
 
 /// Run the target-region rescue screen and write all requested reports.
@@ -246,6 +492,7 @@ pub fn run_target_rescue_screen(
     let params = TargetRescueParams {
         transcript_fastas: request.transcript_fastas.clone(),
         reads: request.reads.clone(),
+        structural_evidence: request.structural_evidence.clone(),
         read_id_allowlist: request.read_id_allowlist.clone(),
         salmon_unmapped_names: request.salmon_unmapped_names.clone(),
         salmon_mappings_sam: request.salmon_mappings_sam.clone(),
@@ -275,6 +522,13 @@ pub fn run_target_rescue_screen(
         &gene_lookup,
         &mut gene_indices,
     )?;
+    let (structural_indices, structural_sources) = build_structural_evidence_indexes(
+        &request.structural_evidence,
+        request.kmer_len,
+        &params.gene_symbol_tags,
+        &gene_lookup,
+        &requested_genes,
+    )?;
     let manifest = build_manifest(&gene_indices, request.kmer_len);
     let missing_genes = manifest
         .iter()
@@ -295,6 +549,7 @@ pub fn run_target_rescue_screen(
         &target_transcripts,
         allowlist.as_ref(),
         gene_indices.len(),
+        structural_indices.len(),
         salmon_bridge,
     )?;
     let output_files = output_files_for_prefix(
@@ -304,6 +559,9 @@ pub fn run_target_rescue_screen(
     ensure_output_parent(&request.output_prefix)?;
     let mut read_hits_writer = BufWriter::new(create_file(&output_files.read_hits_tsv)?);
     write_read_hits_header(&mut read_hits_writer)?;
+    let mut structural_hits_writer =
+        BufWriter::new(create_file(&output_files.structural_hits_tsv)?);
+    write_structural_hits_header(&mut structural_hits_writer)?;
 
     let mut total_input_reads = 0u64;
     for read_path in &request.reads {
@@ -319,6 +577,11 @@ pub fn run_target_rescue_screen(
             }
             let (read_kmer_count, gene_match_counts) =
                 count_gene_kmer_matches(&record.sequence, request.kmer_len, &gene_indices);
+            let structural_match_counts = count_structural_kmer_matches(
+                &record.sequence,
+                request.kmer_len,
+                &structural_indices,
+            );
             let hit_gene_indices = gene_match_counts
                 .iter()
                 .enumerate()
@@ -368,9 +631,31 @@ pub fn run_target_rescue_screen(
                         &gene_indices[*gene_idx].symbol,
                         matching_kmers,
                         read_kmer_count,
-                        record.sequence.len(),
+                        record.source_length,
                         ambiguous,
                         &hit_genes_joined,
+                    )?;
+                }
+                for (structural_idx, matching_kmers) in
+                    structural_match_counts.iter().copied().enumerate()
+                {
+                    if matching_kmers < request.min_kmer_hits {
+                        continue;
+                    }
+                    let evidence = &structural_indices[structural_idx];
+                    let tally = &mut universe.structural_tallies[structural_idx];
+                    tally.reads_hit = tally.reads_hit.saturating_add(1);
+                    tally.total_matching_kmers =
+                        tally.total_matching_kmers.saturating_add(matching_kmers);
+                    write_structural_hit_row(
+                        &mut structural_hits_writer,
+                        &universe.name,
+                        &record.id,
+                        read_path,
+                        evidence,
+                        matching_kmers,
+                        read_kmer_count,
+                        record.source_length,
                     )?;
                 }
             }
@@ -380,9 +665,13 @@ pub fn run_target_rescue_screen(
     read_hits_writer
         .flush()
         .map_err(|e| format!("Could not flush read hits TSV: {e}"))?;
+    structural_hits_writer
+        .flush()
+        .map_err(|e| format!("Could not flush structural hits TSV: {e}"))?;
 
     let universe_summaries = build_universe_summaries(&universes);
     let gene_hits = build_gene_hit_summaries(&universes, &gene_indices);
+    let structural_hits = build_structural_hit_summaries(&universes, &structural_indices);
     write_gene_manifest_tsv(&output_files.gene_manifest_tsv, &manifest)?;
     write_gene_hits_tsv(&output_files.gene_hits_tsv, &gene_hits)?;
     let read_sources = request
@@ -404,6 +693,7 @@ pub fn run_target_rescue_screen(
         total_input_reads,
         universes: universe_summaries.clone(),
         gene_hits: gene_hits.clone(),
+        structural_hits: structural_hits.clone(),
         manifest: manifest.clone(),
         output_files: output_files.clone(),
     };
@@ -418,6 +708,8 @@ pub fn run_target_rescue_screen(
         total_input_reads,
         universes: universe_summaries,
         gene_hits,
+        structural_hits,
+        structural_sources,
         manifest,
         output_files: output_files.clone(),
     };
@@ -533,6 +825,66 @@ fn build_gene_kmer_indexes(
     Ok(reports)
 }
 
+fn build_structural_evidence_indexes(
+    sources: &[StructuralEvidenceSource],
+    k: usize,
+    gene_symbol_tags: &[String],
+    gene_lookup: &HashMap<String, usize>,
+    requested_genes: &[String],
+) -> Result<
+    (
+        Vec<StructuralEvidenceIndex>,
+        Vec<StructuralEvidenceSourceReport>,
+    ),
+    String,
+> {
+    let mut indexes = BTreeMap::<(usize, StructuralEvidenceKind), StructuralEvidenceIndex>::new();
+    let mut reports = Vec::new();
+    for source in sources {
+        let mut record_count = 0u64;
+        let mut matched_record_count = 0u64;
+        visit_fasta_records(&source.path, |header, sequence| {
+            record_count = record_count.saturating_add(1);
+            let Some(symbol) = parse_gene_symbol_from_header(header, gene_symbol_tags) else {
+                return Ok(());
+            };
+            let Some(gene_idx) = gene_lookup.get(&normalize_gene_symbol(&symbol)).copied() else {
+                return Ok(());
+            };
+            matched_record_count = matched_record_count.saturating_add(1);
+            let index =
+                indexes
+                    .entry((gene_idx, source.kind))
+                    .or_insert_with(|| StructuralEvidenceIndex {
+                        gene_symbol: requested_genes[gene_idx].clone(),
+                        kind: source.kind,
+                        record_ids: BTreeSet::new(),
+                        kmers: HashSet::new(),
+                    });
+            let record_id = header
+                .split_ascii_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_start_matches('>');
+            if !record_id.is_empty() {
+                index.record_ids.insert(record_id.to_string());
+            }
+            canonical_kmers_for_each(sequence.as_bytes(), k, |kmer| {
+                index.kmers.insert(kmer);
+            });
+            Ok(())
+        })?;
+        reports.push(StructuralEvidenceSourceReport {
+            kind: source.kind,
+            path: source.path.clone(),
+            bytes: file_size(&source.path)?,
+            record_count,
+            matched_record_count,
+        });
+    }
+    Ok((indexes.into_values().collect(), reports))
+}
+
 fn build_manifest(gene_indices: &[GeneIndex], k: usize) -> Vec<GeneManifestEntry> {
     gene_indices
         .iter()
@@ -565,6 +917,7 @@ fn build_universes(
     target_transcripts: &HashSet<String>,
     allowlist: Option<&HashSet<String>>,
     gene_count: usize,
+    structural_count: usize,
     salmon_bridge: bool,
 ) -> Result<Vec<UniverseState>, String> {
     if salmon_bridge {
@@ -577,6 +930,7 @@ fn build_universes(
                 selected_ids: Some(ids),
                 tally: UniverseTally::default(),
                 gene_tallies: vec![GeneTally::default(); gene_count],
+                structural_tallies: vec![StructuralEvidenceTally::default(); structural_count],
             });
         }
         if let Some(path) = &request.salmon_mappings_sam {
@@ -587,6 +941,7 @@ fn build_universes(
                 selected_ids: Some(ids),
                 tally: UniverseTally::default(),
                 gene_tallies: vec![GeneTally::default(); gene_count],
+                structural_tallies: vec![StructuralEvidenceTally::default(); structural_count],
             });
         }
         if universes.is_empty() {
@@ -606,6 +961,7 @@ fn build_universes(
         selected_ids: allowlist.cloned(),
         tally: UniverseTally::default(),
         gene_tallies: vec![GeneTally::default(); gene_count],
+        structural_tallies: vec![StructuralEvidenceTally::default(); structural_count],
     }])
 }
 
@@ -620,6 +976,7 @@ fn output_files_for_prefix(prefix: &str, salmon_bridge: bool) -> TargetRescueOut
         gene_manifest_tsv: format!("{prefix}.gene_manifest.tsv"),
         gene_hits_tsv: format!("{prefix}.gene_hits.tsv"),
         read_hits_tsv: format!("{prefix}.read_hits.tsv"),
+        structural_hits_tsv: format!("{prefix}.structural_hits.tsv"),
         run_metadata_json: format!("{prefix}.run_metadata.json"),
         summary_json: format!("{prefix}.summary.json"),
         comparison_json: salmon_bridge.then(|| format!("{prefix}.comparison.json")),
@@ -674,6 +1031,29 @@ fn build_gene_hit_summaries(
                 reads_hit: tally.reads_hit,
                 reads_hit_unique: tally.reads_hit_unique,
                 reads_hit_ambiguous: tally.reads_hit_ambiguous,
+                total_matching_kmers: tally.total_matching_kmers,
+            });
+        }
+    }
+    rows
+}
+
+fn build_structural_hit_summaries(
+    universes: &[UniverseState],
+    indexes: &[StructuralEvidenceIndex],
+) -> Vec<StructuralEvidenceHitSummary> {
+    let mut rows = Vec::new();
+    for universe in universes {
+        for (index_idx, index) in indexes.iter().enumerate() {
+            let tally = &universe.structural_tallies[index_idx];
+            rows.push(StructuralEvidenceHitSummary {
+                universe: universe.name.clone(),
+                gene_symbol: index.gene_symbol.clone(),
+                evidence_kind: index.kind,
+                candidate_label: index.kind.candidate_label().to_string(),
+                record_count: index.record_ids.len(),
+                distinct_kmers: index.kmers.len(),
+                reads_hit: tally.reads_hit,
                 total_matching_kmers: tally.total_matching_kmers,
             });
         }
@@ -809,6 +1189,49 @@ fn write_read_hit_row(
     .map_err(|e| format!("Could not write read hits TSV row: {e}"))
 }
 
+fn write_structural_hits_header(writer: &mut dyn Write) -> Result<(), String> {
+    writeln!(
+        writer,
+        "universe\tread_id\tsource_file\tgene_symbol\tevidence_kind\tcandidate_label\tmatching_kmer_count\tread_kmer_count\tread_length\tevidence_record_ids"
+    )
+    .map_err(|e| format!("Could not write structural hits TSV header: {e}"))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_structural_hit_row(
+    writer: &mut dyn Write,
+    universe: &str,
+    read_id: &str,
+    source_file: &str,
+    evidence: &StructuralEvidenceIndex,
+    matching_kmer_count: u64,
+    read_kmer_count: u64,
+    read_length: usize,
+) -> Result<(), String> {
+    writeln!(
+        writer,
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        tsv_cell(universe),
+        tsv_cell(read_id),
+        tsv_cell(source_file),
+        tsv_cell(&evidence.gene_symbol),
+        evidence.kind.as_str(),
+        evidence.kind.candidate_label(),
+        matching_kmer_count,
+        read_kmer_count,
+        read_length,
+        tsv_cell(
+            &evidence
+                .record_ids
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(";")
+        )
+    )
+    .map_err(|e| format!("Could not write structural hits TSV row: {e}"))
+}
+
 fn tsv_cell(raw: &str) -> String {
     raw.replace('\\', "\\\\")
         .replace('\t', "\\t")
@@ -832,6 +1255,22 @@ fn count_gene_kmer_matches(
         }
     });
     (read_kmer_count, gene_counts)
+}
+
+fn count_structural_kmer_matches(
+    sequence: &str,
+    k: usize,
+    indexes: &[StructuralEvidenceIndex],
+) -> Vec<u64> {
+    let mut counts = vec![0u64; indexes.len()];
+    canonical_kmers_for_each(sequence.as_bytes(), k, |kmer| {
+        for (idx, evidence) in indexes.iter().enumerate() {
+            if evidence.kmers.contains(&kmer) {
+                counts[idx] = counts[idx].saturating_add(1);
+            }
+        }
+    });
+    counts
 }
 
 pub(crate) fn canonical_kmers_for_each(sequence: &[u8], k: usize, mut on_kmer: impl FnMut(u64)) {
@@ -1018,117 +1457,46 @@ pub(crate) fn visit_read_records(
     path: &str,
     mut on_record: impl FnMut(SequenceRecord) -> Result<(), String>,
 ) -> Result<(), String> {
-    let mut reader = open_maybe_gz_reader(path)?;
-    let format = detect_read_format(path, reader.as_mut())?;
-    match format {
-        ReadFormat::Fasta => visit_read_fasta_records(path, reader.as_mut(), &mut on_record),
-        ReadFormat::Fastq => visit_read_fastq_records(path, reader.as_mut(), &mut on_record),
+    let mut records = ReadRecordStream::open(path)?;
+    while let Some(record) = records.next_record()? {
+        on_record(record)?;
     }
+    Ok(())
 }
 
-fn visit_read_fasta_records(
-    path: &str,
-    reader: &mut dyn BufRead,
-    on_record: &mut dyn FnMut(SequenceRecord) -> Result<(), String>,
+pub(crate) fn visit_paired_read_records(
+    read1_path: &str,
+    read2_path: &str,
+    mut on_fragment: impl FnMut(SequenceRecord) -> Result<(), String>,
 ) -> Result<(), String> {
-    let mut line = String::new();
-    let mut header: Option<String> = None;
-    let mut sequence = String::new();
+    let mut read1 = ReadRecordStream::open(read1_path)?;
+    let mut read2 = ReadRecordStream::open(read2_path)?;
     loop {
-        line.clear();
-        let bytes = reader
-            .read_line(&mut line)
-            .map_err(|e| format!("Could not read FASTA reads '{path}': {e}"))?;
-        if bytes == 0 {
-            break;
-        }
-        let trimmed = line.trim_end_matches(['\r', '\n']);
-        if let Some(next_header) = trimmed.strip_prefix('>') {
-            if let Some(current_header) = header.replace(next_header.to_string()) {
-                let id = normalize_read_id(&current_header);
-                on_record(SequenceRecord {
-                    id,
-                    sequence: sequence.clone(),
-                })?;
-                sequence.clear();
+        match (read1.next_record()?, read2.next_record()?) {
+            (None, None) => return Ok(()),
+            (Some(_), None) | (None, Some(_)) => {
+                return Err(format!(
+                    "Paired read files '{read1_path}' and '{read2_path}' contain different record counts"
+                ));
             }
-        } else {
-            sequence.push_str(trimmed.trim());
+            (Some(left), Some(right)) => {
+                if left.id != right.id {
+                    return Err(format!(
+                        "Paired read files are out of sync: '{}' in '{read1_path}' does not match '{}' in '{read2_path}'",
+                        left.id, right.id
+                    ));
+                }
+                let mut sequence = left.sequence;
+                sequence.push('N');
+                sequence.push_str(&right.sequence);
+                on_fragment(SequenceRecord {
+                    id: left.id,
+                    sequence,
+                    source_length: left.source_length.saturating_add(right.source_length),
+                })?;
+            }
         }
     }
-    if let Some(current_header) = header {
-        let id = normalize_read_id(&current_header);
-        on_record(SequenceRecord { id, sequence })?;
-    }
-    Ok(())
-}
-
-fn visit_read_fastq_records(
-    path: &str,
-    reader: &mut dyn BufRead,
-    on_record: &mut dyn FnMut(SequenceRecord) -> Result<(), String>,
-) -> Result<(), String> {
-    let mut header = String::new();
-    let mut sequence = String::new();
-    let mut plus = String::new();
-    let mut quality = String::new();
-    loop {
-        header.clear();
-        let bytes = reader
-            .read_line(&mut header)
-            .map_err(|e| format!("Could not read FASTQ reads '{path}': {e}"))?;
-        if bytes == 0 {
-            break;
-        }
-        if header.trim().is_empty() {
-            continue;
-        }
-        if !header.starts_with('@') {
-            return Err(format!(
-                "Invalid FASTQ record in '{path}': expected '@' header, got '{}'",
-                header.trim_end()
-            ));
-        }
-        sequence.clear();
-        plus.clear();
-        quality.clear();
-        if reader
-            .read_line(&mut sequence)
-            .map_err(|e| format!("Could not read FASTQ sequence from '{path}': {e}"))?
-            == 0
-        {
-            return Err(format!("Truncated FASTQ record in '{path}' after header"));
-        }
-        if reader
-            .read_line(&mut plus)
-            .map_err(|e| format!("Could not read FASTQ '+' line from '{path}': {e}"))?
-            == 0
-        {
-            return Err(format!(
-                "Truncated FASTQ record in '{path}' before '+' line"
-            ));
-        }
-        if !plus.starts_with('+') {
-            return Err(format!(
-                "Invalid FASTQ record in '{path}': expected '+' line, got '{}'",
-                plus.trim_end()
-            ));
-        }
-        if reader
-            .read_line(&mut quality)
-            .map_err(|e| format!("Could not read FASTQ quality from '{path}': {e}"))?
-            == 0
-        {
-            return Err(format!(
-                "Truncated FASTQ record in '{path}' before quality line"
-            ));
-        }
-        on_record(SequenceRecord {
-            id: normalize_read_id(&header),
-            sequence: sequence.trim().to_string(),
-        })?;
-    }
-    Ok(())
 }
 
 fn detect_read_format(path: &str, reader: &mut dyn BufRead) -> Result<ReadFormat, String> {
@@ -1166,7 +1534,7 @@ fn strip_gz_suffix(path: &str) -> &str {
         .unwrap_or(path)
 }
 
-fn open_maybe_gz_reader(path: &str) -> Result<Box<dyn BufRead>, String> {
+pub(crate) fn open_maybe_gz_reader(path: &str) -> Result<Box<dyn BufRead>, String> {
     let file = File::open(path).map_err(|e| format!("Could not open '{path}': {e}"))?;
     if path.to_ascii_lowercase().ends_with(".gz") {
         Ok(Box::new(BufReader::new(MultiGzDecoder::new(file))))
@@ -1356,6 +1724,73 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(pure_rows.len(), 1);
         assert!(pure_rows[0].contains("\tfalse\tGENEA"));
+    }
+
+    #[test]
+    fn structural_catalogs_emit_candidate_evidence_without_novelty_claims() {
+        let dir = tempdir().expect("temp dir");
+        let transcripts = dir.path().join("transcripts.fasta");
+        let reads = dir.path().join("reads.fastq");
+        let exons = dir.path().join("exons.fasta");
+        let boundaries = dir.path().join("boundaries.fasta");
+        write_text(&transcripts, &synthetic_fasta());
+        write_text(&reads, &synthetic_fastq());
+        write_text(
+            &exons,
+            &format!(">GENEA_exon_1 gene_symbol:GENEA\n{}\n", &GENEA_SEQ[..36]),
+        );
+        write_text(
+            &boundaries,
+            &format!(
+                ">GENEB_exon_intron_1 gene_symbol:GENEB\n{}\n",
+                &GENEB_SEQ[..36]
+            ),
+        );
+
+        let summary = run_target_rescue_screen(TargetRescueRequest {
+            transcript_fastas: vec![transcripts.display().to_string()],
+            genes: vec!["GENEA".to_string(), "GENEB".to_string()],
+            reads: vec![reads.display().to_string()],
+            structural_evidence: vec![
+                StructuralEvidenceSource {
+                    kind: StructuralEvidenceKind::Exon,
+                    path: exons.display().to_string(),
+                },
+                StructuralEvidenceSource {
+                    kind: StructuralEvidenceKind::ExonIntronBoundary,
+                    path: boundaries.display().to_string(),
+                },
+            ],
+            kmer_len: 11,
+            min_kmer_hits: 3,
+            output_prefix: dir.path().join("structural").display().to_string(),
+            ..TargetRescueRequest::default()
+        })
+        .expect("structural evidence run should pass");
+
+        assert_eq!(summary.structural_hits.len(), 2);
+        let exon = summary
+            .structural_hits
+            .iter()
+            .find(|row| row.evidence_kind == StructuralEvidenceKind::Exon)
+            .expect("exon summary");
+        assert_eq!(exon.gene_symbol, "GENEA");
+        assert_eq!(exon.candidate_label, "known_exonic");
+        assert_eq!(exon.reads_hit, 2);
+        let boundary = summary
+            .structural_hits
+            .iter()
+            .find(|row| row.evidence_kind == StructuralEvidenceKind::ExonIntronBoundary)
+            .expect("boundary summary");
+        assert_eq!(boundary.gene_symbol, "GENEB");
+        assert_eq!(boundary.candidate_label, "retained_intron_candidate");
+        assert_eq!(boundary.reads_hit, 1);
+
+        let tsv = fs::read_to_string(&summary.output_files.structural_hits_tsv)
+            .expect("structural hit TSV should exist");
+        assert!(tsv.contains("\tknown_exonic\t"));
+        assert!(tsv.contains("\tretained_intron_candidate\t"));
+        assert!(!tsv.contains("novel_exon"));
     }
 
     #[test]
