@@ -282,6 +282,7 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
         "--state-mode" => "none".to_string(),
         "--status" => "pending".to_string(),
         "--regions" => "3utr,exon".to_string(),
+        "--read-pair" => "reads_1.fastq,reads_2.fastq".to_string(),
         "--seed-classes" => "8mer,7mer-A1".to_string(),
         "--strand" => "any".to_string(),
         "--strand-relation" => "any".to_string(),
@@ -450,6 +451,9 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         }
         "seq-confirm run" => Some("seq-confirm run expected --reads read1"),
         "seq-primer suggest" => Some("seq-primer suggest expected --primers primer1"),
+        "rna-reads allele-hash-screen" => Some(
+            "rna-reads allele-hash-screen --gene demo --transcript-fasta transcripts.fa --variant-table variants.tsv --read-file reads.fastq --out allele-hash-out",
+        ),
         "candidates generate-between-anchors" => Some(
             "candidates generate-between-anchors set seq --length 20 --anchor-a-pos 1 --anchor-b-pos 40",
         ),
