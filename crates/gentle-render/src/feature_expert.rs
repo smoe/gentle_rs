@@ -3,8 +3,8 @@
 use gentle_protocol::{
     FeatureExpertView, GeneIsoformEvidenceReport, GeneLocusCodonKind,
     GeneLocusEvidenceDisplayReport, GeneLocusOccupancyLaneRole, GeneLocusOccupancyScaleMode,
-    IsoformArchitectureExpertView, RestrictionSiteExpertView, SplicingExonSummary,
-    SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
+    GeneLocusProbeClass, IsoformArchitectureExpertView, RestrictionSiteExpertView,
+    SplicingExonSummary, SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
@@ -4058,6 +4058,33 @@ fn locus_role_label(role: GeneLocusOccupancyLaneRole) -> &'static str {
     }
 }
 
+fn locus_probe_class_label(probe_class: GeneLocusProbeClass) -> &'static str {
+    match probe_class {
+        GeneLocusProbeClass::Psr => "PSR",
+        GeneLocusProbeClass::Juc => "JUC",
+        GeneLocusProbeClass::Other => "other",
+    }
+}
+
+fn locus_probe_class_token(probe_class: GeneLocusProbeClass) -> &'static str {
+    match probe_class {
+        GeneLocusProbeClass::Psr => "psr",
+        GeneLocusProbeClass::Juc => "juc",
+        GeneLocusProbeClass::Other => "other",
+    }
+}
+
+fn locus_probe_effect_style(value: f64, abs_max: f64) -> (&'static str, f32) {
+    let opacity = (0.24 + 0.68 * (value.abs() / abs_max.max(f64::EPSILON)).min(1.0)) as f32;
+    if value < 0.0 {
+        ("#2563eb", opacity)
+    } else if value > 0.0 {
+        ("#dc2626", opacity)
+    } else {
+        ("#9ca3af", 0.34)
+    }
+}
+
 fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String {
     let width = 1400.0_f32;
     let plot_left = 255.0_f32;
@@ -4088,7 +4115,18 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
     let transcript_top = assay_top + assay_height + 30.0;
     let transcript_pitch = 42.0_f32;
     let transcript_height = transcript_count.max(1) as f32 * transcript_pitch;
-    let occupancy_top = transcript_top + transcript_height + 34.0;
+    let probe_top = transcript_top + transcript_height + 34.0;
+    let probe_pitch = 22.0_f32;
+    let probe_height = if report.probe_effect_overlays.is_empty() {
+        0.0
+    } else {
+        42.0 + report.probe_effect_overlays.len() as f32 * probe_pitch
+    };
+    let occupancy_top = if report.probe_effect_overlays.is_empty() {
+        probe_top
+    } else {
+        probe_top + probe_height + 28.0
+    };
     let occupancy_height = report
         .occupancy_groups
         .iter()
@@ -4354,6 +4392,177 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
                                 .set("data-gentle-codon", "stop"),
                         );
                     }
+                }
+            }
+        }
+    }
+
+    if !report.probe_effect_overlays.is_empty() {
+        doc = doc.add(
+            Text::new("Probe-set effects (raw activity differences; not significance)")
+                .set("x", 34)
+                .set("y", probe_top - 14.0)
+                .set("font-family", "sans-serif")
+                .set("font-size", 13)
+                .set("font-weight", "bold")
+                .set("fill", "#1f2937"),
+        );
+        let contrast_count = report.probe_effect_contrasts.len().max(1);
+        let effect_cell_width = (width - metrics_left - 20.0) / contrast_count as f32;
+        for (index, contrast) in report.probe_effect_contrasts.iter().enumerate() {
+            doc = doc.add(
+                Text::new(isoform_evidence_compact_label(&contrast.display_label, 19))
+                    .set("x", metrics_left + index as f32 * effect_cell_width + 3.0)
+                    .set("y", probe_top + 5.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set("fill", "#475569")
+                    .set(
+                        "data-gentle-probe-effect-contrast",
+                        contrast.contrast_id.as_str(),
+                    ),
+            );
+        }
+        let shared_abs_max = report
+            .probe_effect_shared_abs_max
+            .unwrap_or(1.0)
+            .max(f64::EPSILON);
+        for (index, overlay) in report.probe_effect_overlays.iter().enumerate() {
+            let y = probe_top + 27.0 + index as f32 * probe_pitch;
+            let class_label = locus_probe_class_label(overlay.probe_class);
+            let class_token = locus_probe_class_token(overlay.probe_class);
+            doc = doc.add(
+                Text::new(isoform_evidence_compact_label(
+                    &format!("{class_label} {}", overlay.feature_id),
+                    31,
+                ))
+                .set("x", 34)
+                .set("y", y + 4.0)
+                .set("font-family", "monospace")
+                .set("font-size", 8)
+                .set("fill", "#374151"),
+            );
+            let x1 = x_for(overlay.local_start_1based);
+            let x2 = x_for(overlay.local_end_1based);
+            doc = match overlay.probe_class {
+                GeneLocusProbeClass::Juc => {
+                    let control_y = y - 8.0 - ((x2 - x1).abs() / 180.0).min(11.0);
+                    let data = Data::new().move_to((x1, y + 4.0)).quadratic_curve_to((
+                        (x1 + x2) / 2.0,
+                        control_y,
+                        x2,
+                        y + 4.0,
+                    ));
+                    doc.add(
+                        Path::new()
+                            .set("d", data)
+                            .set("fill", "none")
+                            .set("stroke", "#d97706")
+                            .set("stroke-width", 2)
+                            .set(
+                                "data-gentle-probe-effect-feature",
+                                overlay.feature_id.as_str(),
+                            )
+                            .set("data-gentle-probe-class", class_token)
+                            .set(
+                                "data-gentle-probe-coordinate-system",
+                                overlay.coordinate_system.as_str(),
+                            )
+                            .set("data-gentle-probe-source", overlay.source_path.as_str()),
+                    )
+                }
+                GeneLocusProbeClass::Psr | GeneLocusProbeClass::Other => doc.add(
+                    Rectangle::new()
+                        .set("x", x1.min(x2))
+                        .set("y", y - 5.0)
+                        .set("width", (x2 - x1).abs().max(2.5))
+                        .set("height", 10)
+                        .set("rx", 1.5)
+                        .set(
+                            "fill",
+                            if overlay.probe_class == GeneLocusProbeClass::Psr {
+                                "#0f766e"
+                            } else {
+                                "#64748b"
+                            },
+                        )
+                        .set("fill-opacity", 0.68)
+                        .set(
+                            "data-gentle-probe-effect-feature",
+                            overlay.feature_id.as_str(),
+                        )
+                        .set("data-gentle-probe-class", class_token)
+                        .set(
+                            "data-gentle-probe-coordinate-system",
+                            overlay.coordinate_system.as_str(),
+                        )
+                        .set("data-gentle-probe-source", overlay.source_path.as_str()),
+                ),
+            };
+            for (contrast_index, contrast) in report.probe_effect_contrasts.iter().enumerate() {
+                let cell_x = metrics_left + contrast_index as f32 * effect_cell_width;
+                let effect = overlay
+                    .effects
+                    .iter()
+                    .find(|effect| effect.contrast_id == contrast.contrast_id);
+                if let Some(effect) = effect {
+                    let (fill, opacity) = locus_probe_effect_style(effect.value, shared_abs_max);
+                    doc = doc
+                        .add(
+                            Rectangle::new()
+                                .set("x", cell_x)
+                                .set("y", y - 8.0)
+                                .set("width", (effect_cell_width - 3.0).max(8.0))
+                                .set("height", 16)
+                                .set("rx", 1.5)
+                                .set("fill", fill)
+                                .set("fill-opacity", opacity)
+                                .set(
+                                    "data-gentle-probe-effect-feature",
+                                    overlay.feature_id.as_str(),
+                                )
+                                .set(
+                                    "data-gentle-probe-effect-contrast",
+                                    contrast.contrast_id.as_str(),
+                                )
+                                .set("data-gentle-probe-effect-value", effect.value),
+                        )
+                        .add(
+                            Text::new(format!("{:+.3}", effect.value))
+                                .set("x", cell_x + 4.0)
+                                .set("y", y + 4.0)
+                                .set("font-family", "monospace")
+                                .set("font-size", 8)
+                                .set("fill", "#111827"),
+                        );
+                } else {
+                    doc = doc
+                        .add(
+                            Rectangle::new()
+                                .set("x", cell_x)
+                                .set("y", y - 8.0)
+                                .set("width", (effect_cell_width - 3.0).max(8.0))
+                                .set("height", 16)
+                                .set("rx", 1.5)
+                                .set("fill", "#e5e7eb")
+                                .set(
+                                    "data-gentle-probe-effect-feature",
+                                    overlay.feature_id.as_str(),
+                                )
+                                .set(
+                                    "data-gentle-probe-effect-contrast",
+                                    contrast.contrast_id.as_str(),
+                                )
+                                .set("data-gentle-probe-effect-value", "NA"),
+                        )
+                        .add(
+                            Text::new("NA")
+                                .set("x", cell_x + 4.0)
+                                .set("y", y + 4.0)
+                                .set("font-family", "monospace")
+                                .set("font-size", 8)
+                                .set("fill", "#64748b"),
+                        );
                 }
             }
         }

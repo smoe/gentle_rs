@@ -54,11 +54,21 @@ the repository.
 
 ## GENtle use
 
-No runtime path or test consumes these TSVs at the time of import. They are the
-committed development fixture for the planned generic gene-locus probe-effect
-overlay and its parser, coordinate, contrast-preservation, and renderer tests.
-The existing locus-evidence engine continues to use the separate synthetic
-fixture under `test_files/fixtures/isoform_evidence/patz1/`.
+The generic gene-locus evidence parser and its deterministic tests consume
+`patz1_clariom_probe_effects.tsv` directly. It substitutes for the otherwise
+missing local `analysis/` directory when developing and verifying PSR/JUC
+classification, coordinate projection, contrast preservation, minus-strand
+ordering, and SVG structure. The broader transcript/evidence composition test
+continues to use the independent synthetic fixture under
+`test_files/fixtures/isoform_evidence/patz1/` and writes a two-row temporary
+effect table to exercise end-to-end composition.
+
+The fixture can be supplied to either `inspect-feature-expert` or
+`render-feature-expert-svg` with:
+
+```text
+--probe-effect-table test_files/fixtures/gene_locus_evidence/patz1_probe_effects/patz1_clariom_probe_effects.tsv --probe-effect-contrast TAp73alpha-GFP --probe-effect-contrast DNp73beta-GFP --probe-effect-coordinate-system GRCh38.p14
+```
 
 ## Biological sanity checks
 

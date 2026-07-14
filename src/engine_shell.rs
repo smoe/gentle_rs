@@ -13882,7 +13882,7 @@ fn parse_feature_expert_target_tokens(
 ) -> Result<FeatureExpertTarget, String> {
     if tokens.is_empty() {
         return Err(format!(
-            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | isoform-evidence PANEL_ID [evidence options] | gene-locus-evidence PANEL_ID [evidence options] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] | protein-comparison [--transcript ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | uniprot-projection PROJECTION_ID"
+            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | isoform-evidence PANEL_ID [evidence options] | gene-locus-evidence PANEL_ID [evidence options] [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] | protein-comparison [--transcript ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | uniprot-projection PROJECTION_ID"
         ));
     }
     match tokens[0].trim().to_ascii_lowercase().as_str() {
@@ -14163,6 +14163,30 @@ fn parse_feature_expert_target_tokens(
                             context,
                         )?);
                     }
+                    "--probe-effect-table" => {
+                        request.probe_effect_table_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--probe-effect-table",
+                            context,
+                        )?);
+                    }
+                    "--probe-effect-contrast" => {
+                        request.probe_effect_contrasts.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--probe-effect-contrast",
+                            context,
+                        )?);
+                    }
+                    "--probe-effect-coordinate-system" => {
+                        request.probe_effect_coordinate_system = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--probe-effect-coordinate-system",
+                            context,
+                        )?);
+                    }
                     "--occupancy-track" => {
                         request
                             .isoform_evidence
@@ -14274,6 +14298,18 @@ fn parse_feature_expert_target_tokens(
             request.isoform_evidence.probe_evidence_paths.dedup();
             request.isoform_evidence.cdna_est_resource_paths.sort();
             request.isoform_evidence.cdna_est_resource_paths.dedup();
+            request.probe_effect_table_paths.sort();
+            request.probe_effect_table_paths.dedup();
+            let mut unique_probe_effect_contrasts = Vec::new();
+            for contrast in request.probe_effect_contrasts.drain(..) {
+                if !unique_probe_effect_contrasts
+                    .iter()
+                    .any(|value: &String| value.eq_ignore_ascii_case(&contrast))
+                {
+                    unique_probe_effect_contrasts.push(contrast);
+                }
+            }
+            request.probe_effect_contrasts = unique_probe_effect_contrasts;
             let mut unique_occupancy_tracks = Vec::new();
             for track_name in request
                 .isoform_evidence

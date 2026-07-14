@@ -3744,11 +3744,19 @@ Isoform architecture panel workflow:
     - see `docs/gene_isoform_occupancy_figure_runbook.md` for a local
       TAp73alpha/DNp73beta CUT&RUN example
   - publication-oriented gene-locus evidence composition:
-    - `inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [isoform-evidence options] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME ...] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--allow-negative]`
+    - `inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [isoform-evidence options] [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME ...] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--allow-negative]`
     - `render-feature-expert-svg SEQ_ID gene-locus-evidence PANEL_ID [same options] OUTPUT.svg`
     - this pure-read route aligns transcript/CDS metrics, annotation-backed
       start/stop glyphs, grouped projected occupancy, continuous motif scores,
-      and one marker per qPCR-targeted junction on a strand-aware 5'->3' axis
+      optional coordinate-aligned PSR/JUC effect rows, and one marker per
+      qPCR-targeted junction on a strand-aware 5'->3' axis
+    - repeat `--probe-effect-table` for compact TSV sources whose effect columns
+      are named `log2_*_minus_*`; repeat `--probe-effect-contrast` to select
+      contrasts. `--probe-effect-coordinate-system` is required whenever a
+      table is supplied and must match the sequence genome anchor. PSR rows are
+      rendered as intervals, JUC rows as junction arcs, and values use one
+      zero-centered scale. GENtle labels these as raw activity differences,
+      not differential-expression significance or isoform validation
     - use a `gentle.gene_locus_occupancy_layout.v1` JSON file to keep cell
       lines/conditions in separate declared groups and to choose
       `shared_group`, `independent`, `fixed`, or explicitly justified

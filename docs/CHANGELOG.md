@@ -12,6 +12,14 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-14
+
+- Extended `gentle.gene_locus_evidence_display.v1` with a generic,
+  anchor-verified Clariom-style probe-effect overlay that preserves PSR
+  intervals, JUC spans, contrast values, source provenance, and one
+  zero-centered SVG scale; the committed 24-row PATZ1 fixture now substitutes
+  for the local CEL-analysis tree in CI.
+
 ## 2026-07-13 - `v0.1.0-internal.10`
 
 - Hardened construct reasoning with typed objective task intent, separate

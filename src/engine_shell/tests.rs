@@ -34395,7 +34395,7 @@ fn parse_feature_expert_commands() {
     }
 
     let locus_evidence = parse_shell_line(
-        "inspect-feature-expert s gene-locus-evidence patz1_v1 --annotation-release Ensembl116 --occupancy-layout '{\"schema\":\"gentle.gene_locus_occupancy_layout.v1\",\"groups\":[{\"group_id\":\"saos2\",\"label\":\"Saos-2\",\"scale_mode\":\"shared_group\",\"lanes\":[{\"track_name\":\"SAOS-2 TA\",\"condition_label\":\"TA\",\"role\":\"experimental\"}]}]}' --upstream-bp 5000 --downstream-bp 1200 --motif TP73 --motif SP1 --score-kind llr_bits --motif-threshold 2.5 --motif-top-hits 4 --allow-negative",
+        "inspect-feature-expert s gene-locus-evidence patz1_v1 --annotation-release Ensembl116 --probe-effect-table effects.tsv --probe-effect-contrast TAp73alpha-GFP --probe-effect-contrast DNp73beta-GFP --probe-effect-coordinate-system GRCh38.p14 --occupancy-layout '{\"schema\":\"gentle.gene_locus_occupancy_layout.v1\",\"groups\":[{\"group_id\":\"saos2\",\"label\":\"Saos-2\",\"scale_mode\":\"shared_group\",\"lanes\":[{\"track_name\":\"SAOS-2 TA\",\"condition_label\":\"TA\",\"role\":\"experimental\"}]}]}' --upstream-bp 5000 --downstream-bp 1200 --motif TP73 --motif SP1 --score-kind llr_bits --motif-threshold 2.5 --motif-top-hits 4 --allow-negative",
     )
     .expect("parse gene locus evidence target");
     match locus_evidence {
@@ -34411,6 +34411,15 @@ fn parse_feature_expert_commands() {
             );
             assert_eq!(request.upstream_bp, 5_000);
             assert_eq!(request.downstream_bp, 1_200);
+            assert_eq!(request.probe_effect_table_paths, vec!["effects.tsv"]);
+            assert_eq!(
+                request.probe_effect_contrasts,
+                vec!["TAp73alpha-GFP", "DNp73beta-GFP"]
+            );
+            assert_eq!(
+                request.probe_effect_coordinate_system.as_deref(),
+                Some("GRCh38.p14")
+            );
             assert_eq!(
                 request.motifs,
                 vec!["TP73".to_string(), "SP1".to_string()]

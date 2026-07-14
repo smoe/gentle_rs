@@ -3348,14 +3348,23 @@ external coding agent runtime, see:
     report composes sequence evidence; it does not claim that an isoform is
     biologically validated
 - gene-locus evidence composition reuses that ledger without changing it:
-  - `inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [isoform-evidence options] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME ...] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--allow-negative]`
+  - `inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [isoform-evidence options] [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME ...] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--allow-negative]`
   - `render-feature-expert-svg SEQ_ID gene-locus-evidence PANEL_ID [same options] OUTPUT.svg`
   - the pure-read result schema is `gentle.gene_locus_evidence_display.v1`.
     It embeds the `gentle.gene_isoform_evidence.v1` ledger and adds
-    `transcript_metrics[]`, annotation-backed `codon_markers[]`, grouped
-    `occupancy_groups[]`, continuous `motif_tracks[]`, deduplicated junction
-    `assay_overlays[]`, a combined `provenance[]` inventory, strand-aware
-    locus/flank coordinates, and warnings
+    `transcript_metrics[]`, annotation-backed `codon_markers[]`, optional
+    `probe_effect_overlays[]`, grouped `occupancy_groups[]`, continuous
+    `motif_tracks[]`, deduplicated junction `assay_overlays[]`, a combined
+    `provenance[]` inventory, strand-aware locus/flank coordinates, and warnings
+  - probe-effect tables are tab-separated and retain PSR intervals and JUC
+    junction-edge geometry as distinct classes. Effect columns follow the
+    `log2_*_minus_*` convention; repeat `--probe-effect-contrast` to select
+    columns by id, display label, or source-column spelling. The explicit
+    `--probe-effect-coordinate-system` must match the open sequence's genome
+    anchor before rows are projected. The report carries the original feature
+    ids, coordinates, contrast ids, values, PM-probe counts, row provenance,
+    and one shared absolute display scale. These raw activity differences are
+    visualization evidence, not significance estimates or direct isoform support
   - occupancy layout files use `gentle.gene_locus_occupancy_layout.v1`.
     Each group declares `group_id`, label, `scale_mode`
     (`shared_group`, `shared_all`, `independent`, or `fixed`), optional fixed

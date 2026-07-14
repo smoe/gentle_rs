@@ -150,6 +150,7 @@ impl GentleEngine {
                 evidence_id: item.evidence_id.clone(),
                 level: item.level.clone(),
                 feature_id: item.feature_id.clone(),
+                contrast: item.contrast.clone(),
                 parent_feature_id: item.parent_feature_id.clone(),
                 intensity_source: item.intensity_source.clone(),
                 chromosome: item.chromosome.clone(),
@@ -345,6 +346,7 @@ impl GentleEngine {
                 evidence_id,
                 level: feature_level,
                 feature_id,
+                contrast,
                 parent_feature_id: Self::probe_region_first_qualifier(
                     feature,
                     &["gentle_array_parent_feature_id"],
