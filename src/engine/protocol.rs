@@ -7699,6 +7699,110 @@ pub struct PlanningCloningSuggestedNextAction {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default, deny_unknown_fields)]
+/// Reviewed biological and delivery requirements for protein expression.
+pub struct ProteinExpressionRequirements {
+    pub schema: String,
+    pub requirements_id: Option<String>,
+    pub yield_goal: Option<ProteinExpressionYieldRequirement>,
+    pub chassis: Option<ProteinExpressionChassisRequirement>,
+    pub localization: Option<ProteinExpressionLocalizationRequirement>,
+    pub folding: Option<ProteinExpressionFoldingRequirement>,
+    pub toxicity_induction: Option<ProteinExpressionToxicityInductionRequirement>,
+    pub tag_policy: Option<ProteinExpressionTagPolicyRequirement>,
+    pub scale_purification: Option<ProteinExpressionScalePurificationRequirement>,
+    pub outsourcing: Option<ProteinExpressionOutsourcingRequirement>,
+    pub reviewed_by: Option<String>,
+    pub reviewed_at_unix_ms: Option<u128>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Yield endpoint reviewed for a protein-expression request.
+pub struct ProteinExpressionYieldRequirement {
+    pub metric: String,
+    pub target_amount: Option<f64>,
+    pub target_amount_unit: Option<String>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Acceptable expression chassis reviewed for a protein-expression request.
+pub struct ProteinExpressionChassisRequirement {
+    pub acceptable_chassis: Vec<String>,
+    pub provider_managed_allowed: bool,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Required cellular or extracellular destination of the expressed product.
+pub struct ProteinExpressionLocalizationRequirement {
+    pub target: String,
+    pub secretion_required: Option<bool>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Reviewed folding, processing, and cofactor requirements.
+pub struct ProteinExpressionFoldingRequirement {
+    pub required_ptms: Vec<String>,
+    pub required_cofactors: Vec<String>,
+    pub required_chaperones: Vec<String>,
+    pub disulfide_bonding_required: Option<bool>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Reviewed toxicity expectation and induction policy.
+pub struct ProteinExpressionToxicityInductionRequirement {
+    pub toxicity_expected: Option<bool>,
+    pub induction_policy: String,
+    pub maximum_temperature_c: Option<f64>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Reviewed affinity/solubility tag and cleavage policy.
+pub struct ProteinExpressionTagPolicyRequirement {
+    pub strategy: String,
+    pub preferred_tags: Vec<String>,
+    pub position: Option<String>,
+    pub cleavage_policy: Option<String>,
+    pub retention_policy: Option<String>,
+    pub preserve_annotated_tags: Option<bool>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Reviewed production scale, purification endpoint, and delivery specification.
+pub struct ProteinExpressionScalePurificationRequirement {
+    pub production_scale: String,
+    pub purification_endpoint: String,
+    pub target_purity_percent: Option<f64>,
+    pub endotoxin_control_required: Option<bool>,
+    pub delivery_buffer: Option<String>,
+    pub qc_requirements: Vec<String>,
+    pub delivery_format: Option<String>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Explicit permission boundary for external protein-expression work.
+pub struct ProteinExpressionOutsourcingRequirement {
+    pub allowed: Option<bool>,
+    pub approved_providers: Vec<String>,
+    pub data_sharing_notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
 /// Read-only protein-expression planning handoff for underspecified yield requests.
 pub struct ProteinExpressionHandoffReport {
     pub schema: String,
@@ -7707,6 +7811,7 @@ pub struct ProteinExpressionHandoffReport {
     pub biological_intent: String,
     pub product_definition: ProteinExpressionProductDefinition,
     pub product_readiness: ProteinExpressionProductReadiness,
+    pub requirements: Option<ProteinExpressionRequirements>,
     pub sequence_context: Option<ProteinExpressionSequenceContext>,
     pub cds_assessment: ProteinExpressionCdsAssessment,
     pub tag_assessment: ProteinExpressionTagAssessment,

@@ -1306,14 +1306,18 @@ task:
    - if the user asks for the maximal amount/yield of protein, call
      `planning protein-expression-handoff` with
      `biological_intent=protein_expression_max_yield` and quote
-     `biological_intent`, `product_definition`, `host_chassis_candidates`,
+     `biological_intent`, `product_definition`, `requirements`, `host_chassis_candidates`,
      `vector_route_candidates`, `missing_questions`,
      `service_handoff_candidates`, and `suggested_next_actions`; do not equate
      maximum yield with the strongest promoter until the product metric, host,
      folding, toxicity, and purification endpoint are explicit; treat
      `draft_example_review_required` as a template only, and use a
      `product_draft_review_required` preview or provider action only after its
-     `seq_id`/`protein_seq_id` matches the selected project product
+     `seq_id`/`protein_seq_id` matches the selected project product; pass
+     reviewed answers through `--requirements` using
+     `gentle.protein_expression_requirements.v1` rather than treating chat
+     prose as a durable requirement, and never suggest a provider action when
+     `outsourcing.allowed` is false
    - if the user asks for reporter selection, reporter catalog inspection,
      promoter-reporter handoff, or local-AI reporter-corpus preparation, prefer
      the reporter routes (`reporters list`, `reporters recommend`,

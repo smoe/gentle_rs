@@ -5504,17 +5504,23 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     explicit `missing_questions[]` until structured profile fields exist.
   - `--seq-id` is traceability-only in v1 and is not consumed as a
     construct-candidate graph input.
-- `planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
+- `planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--requirements JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
   - Returns a read-only protein-expression planning handoff for underspecified
     requests such as "give me the maximal amount of protein."
   - Emits `product_definition`, `product_readiness`, `sequence_context`,
-    `cds_assessment`, `tag_assessment`, ranked `host_chassis_candidates[]`,
+    `cds_assessment`, `tag_assessment`, optional reviewed `requirements`, ranked `host_chassis_candidates[]`,
     ranked `vector_route_candidates[]`, explicit `missing_questions[]`, a
     GeneArt protein-expression `service_handoff_candidates[]` preflight
     scaffold, and readiness-driven `suggested_next_actions[]`. Undefined
     products retain only the labelled bundled example; provider-ready selected
     products receive a project-bound request preview referencing `seq_id` or
     `protein_seq_id`.
+  - `--requirements` accepts inline JSON, a JSON path, or `@FILE` using schema
+    `gentle.protein_expression_requirements.v1`. Reviewed topic records resolve
+    only their matching missing questions; partial requirements remain partial.
+    Explicitly disallowing outsourcing removes provider preflight and quote
+    actions without removing in-house planning actions; the retained provider
+    row is marked `withheld_by_outsourcing_requirement` and is not executable.
   - If `--seq-id` is supplied, the route now performs read-only product-context
     analysis: annotated CDS features are summarized first, whole-sequence CDS
     sanity is used only as an explicit fallback, and the report records

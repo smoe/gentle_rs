@@ -20,6 +20,10 @@ Maintenance rule:
 - Distinguished generated probe-region evidence from prepared array datasets
   in live feature-tree grouping, and pinned backward-compatible inspection of
   coordinate-less v1 output while continuing to refuse its genome projection.
+- Added the engine-owned `gentle.protein_expression_requirements.v1` contract
+  and `planning protein-expression-handoff --requirements`, with strict schema
+  validation, topic-specific missing-question resolution, report replay, and an
+  explicit guard that withholds provider actions for in-house-only work.
 - Made protein-expression provider handoffs readiness-consistent across text
   and JSON, and replaced tutorial-protein commands with product-specific,
   project-referenced GeneArt review drafts when a selected DNA/protein product

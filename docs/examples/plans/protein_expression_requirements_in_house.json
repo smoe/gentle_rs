@@ -1,0 +1,61 @@
+{
+  "schema": "gentle.protein_expression_requirements.v1",
+  "requirements_id": "in-house-soluble-protein-example",
+  "yield_goal": {
+    "metric": "purified_active_protein",
+    "target_amount": 10.0,
+    "target_amount_unit": "mg"
+  },
+  "chassis": {
+    "acceptable_chassis": [
+      "e_coli"
+    ],
+    "provider_managed_allowed": false
+  },
+  "localization": {
+    "target": "cytosolic",
+    "secretion_required": false
+  },
+  "folding": {
+    "required_ptms": [],
+    "required_cofactors": [],
+    "required_chaperones": [],
+    "disulfide_bonding_required": false,
+    "notes": [
+      "Example asserts that no special folding requirement is currently known."
+    ]
+  },
+  "toxicity_induction": {
+    "toxicity_expected": false,
+    "induction_policy": "inducible"
+  },
+  "tag_policy": {
+    "strategy": "cleavable_affinity",
+    "preferred_tags": [
+      "6xHis"
+    ],
+    "position": "N-terminal",
+    "cleavage_policy": "TEV cleavage",
+    "retention_policy": "remove after purification",
+    "preserve_annotated_tags": false
+  },
+  "scale_purification": {
+    "production_scale": "1 L culture",
+    "purification_endpoint": "affinity capture",
+    "target_purity_percent": 90.0,
+    "delivery_buffer": "PBS",
+    "qc_requirements": [
+      "SDS-PAGE"
+    ],
+    "delivery_format": "soluble protein"
+  },
+  "outsourcing": {
+    "allowed": false,
+    "approved_providers": [],
+    "data_sharing_notes": "Keep sequence and production work inside the local laboratory."
+  },
+  "reviewed_by": "tutorial-user",
+  "notes": [
+    "Synthetic tutorial requirements; replace with reviewed project-specific answers."
+  ]
+}

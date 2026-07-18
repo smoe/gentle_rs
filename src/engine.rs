@@ -655,6 +655,8 @@ pub const PLANNING_SUGGESTION_SCHEMA: &str = "gentle.planning_suggestion.v1";
 pub const PLANNING_SYNC_STATUS_SCHEMA: &str = "gentle.planning_sync_status.v1";
 pub const PLANNING_CLONING_CONSULTATION_SCHEMA: &str = "gentle.planning_cloning_consultation.v1";
 pub const PROTEIN_EXPRESSION_HANDOFF_SCHEMA: &str = "gentle.protein_expression_handoff.v1";
+pub const PROTEIN_EXPRESSION_REQUIREMENTS_SCHEMA: &str =
+    "gentle.protein_expression_requirements.v1";
 const PLANNING_STORE_SCHEMA: &str = "gentle.planning_store.v1";
 pub const CONSTRUCT_REASONING_METADATA_KEY: &str = "construct_reasoning";
 pub const CONSTRUCT_OBJECTIVE_SCHEMA: &str = gentle_protocol::CONSTRUCT_OBJECTIVE_SCHEMA;

@@ -4090,13 +4090,13 @@ Adapter-equivalence guarantee for UI-intent tools:
     explicit `missing_questions[]`
   - `--seq-id` is accepted for traceability, but v1 does not yet consume
     construct-candidate graphs when ranking strategies or helper vectors
-- `planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
+- `planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--requirements JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
   - read-only handoff route for high-yield protein-expression requests
   - emits `gentle.protein_expression_handoff.v1`
   - records `biological_intent = protein_expression_max_yield` for phrase-like
     objectives such as "give me the maximal amount of protein"
   - fields include `product_definition`, `product_readiness`,
-    `sequence_context`, `cds_assessment`, `tag_assessment`,
+    optional `requirements`, `sequence_context`, `cds_assessment`, `tag_assessment`,
     `host_chassis_candidates[]`, `vector_route_candidates[]`,
     `missing_questions[]`, `service_handoff_candidates[]`, `warnings[]`, and
     `suggested_next_actions[]`
@@ -4114,6 +4114,23 @@ Adapter-equivalence guarantee for UI-intent tools:
   - `tag_assessment` summarizes annotated affinity/solubility/epitope/signal
     tag context and keeps tag preference, position, cleavage, and retention
     policy as explicit review inputs
+  - `--requirements` accepts exactly
+    `gentle.protein_expression_requirements.v1`; unknown fields and a missing or
+    different schema are rejected rather than silently upgraded
+  - the requirements record groups reviewed answers by biological topic:
+    `yield_goal`, `chassis`, `localization`, `folding`,
+    `toxicity_induction`, `tag_policy`, `scale_purification`, and
+    `outsourcing`, with optional reviewer/provenance notes
+  - topic presence means that topic was explicitly reviewed; this allows an
+    empty `folding` list to mean "reviewed, no special requirement known"
+    rather than "not answered"
+  - validated reviewed topics remove only their matching
+    `missing_questions[]` rows; partial records leave all unrelated questions
+    visible and do not alter host/vector ranking
+  - `outsourcing.allowed = false` withholds provider preflight and quote next
+    actions while preserving in-house cloning and product-review actions; the
+    retained provider provenance row is marked
+    `withheld_by_outsourcing_requirement` and carries no shell command
   - the bundled
     `docs/examples/external_services/geneart_protein_expression_request.json`
     remains the template/provenance source for the first V1 service scaffold

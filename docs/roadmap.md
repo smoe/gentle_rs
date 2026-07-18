@@ -144,25 +144,24 @@ yield/folding/chassis review questions without creating constructs.
 JSON outputs expose the same provider actions. A provider-ready selected
 product also produces a product-specific GeneArt review draft referencing its
 project `seq_id` or `protein_seq_id`, while undefined products retain only the
-clearly labelled bundled example and no provider action.
+clearly labelled bundled example and no provider action. The route now accepts
+the versioned `gentle.protein_expression_requirements.v1` record; reviewed
+topic records resolve matching questions, and an explicit in-house-only choice
+withholds provider actions.
 
 Keep the next synthetic-biology bridge slices in this order:
 
-1. Add an engine-owned, versioned protein-expression requirements record for
-   reviewed answers: yield endpoint, acceptable chassis, localization,
-   PTMs/cofactors, toxicity/induction, tag/cleavage policy, scale/purification,
-   and outsourcing permission.
-2. Derive a fully populated, review-only provider-neutral external-service
+1. Derive a fully populated, review-only provider-neutral external-service
    request draft from
    the selected product plus those reviewed requirements, then project it to
    GeneArt only after provider selection. Keep submission and ordering out of
    scope.
-3. Add a thin Synthetic Biology / Protein Expression Handoff inspector over
+2. Add a thin Synthetic Biology / Protein Expression Handoff inspector over
    the shared report. It should display readiness, unanswered requirements,
    sequence/CDS/tag evidence, candidates, and shared suggested actions; the
    same window can later expose existing reporter recommendation and reporter
    construct-handoff reports as sibling views.
-4. Only after the requirements contract exists, rank chassis, vector/tag
+3. Rank chassis, vector/tag
    routes, and provider candidates from structured biology, provider
    capabilities, and local inventory. Emit score components and rejection
    reasons; do not silently codon-optimize or create constructs.

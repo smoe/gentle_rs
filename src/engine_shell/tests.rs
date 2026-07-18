@@ -9139,7 +9139,7 @@ fn parse_planning_commands() {
     ));
 
     let handoff = parse_shell_line(
-        "planning protein-expression-handoff --seq-id protein_1 --objective @objective.json --profile-scope effective --format text",
+        "planning protein-expression-handoff --seq-id protein_1 --objective @objective.json --requirements @requirements.json --profile-scope effective --format text",
     )
     .expect("parse planning protein-expression-handoff");
     assert!(matches!(
@@ -9147,10 +9147,12 @@ fn parse_planning_commands() {
         ShellCommand::PlanningProteinExpressionHandoff {
             seq_id,
             objective_json,
+            requirements_json,
             profile_scope,
             output_format,
         } if seq_id.as_deref() == Some("protein_1")
             && objective_json.as_deref() == Some("@objective.json")
+            && requirements_json.as_deref() == Some("@requirements.json")
             && profile_scope == PlanningProfileScope::Effective
             && output_format == "text"
     ));
@@ -10555,6 +10557,7 @@ fn protein_expression_handoff_legacy_json_deserializes_without_readiness_fields(
     let report: crate::engine::ProteinExpressionHandoffReport =
         serde_json::from_value(legacy).expect("legacy handoff report remains readable");
     assert_eq!(report.schema, "gentle.protein_expression_handoff.v1");
+    assert!(report.requirements.is_none());
     assert!(report.sequence_context.is_none());
     assert_eq!(report.product_readiness.status, "");
     assert_eq!(report.product_definition.readiness.status, "");
@@ -10576,6 +10579,7 @@ fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
                 }"#
                 .to_string(),
             ),
+            requirements_json: None,
             profile_scope: PlanningProfileScope::Effective,
             output_format: "text".to_string(),
         },
@@ -10701,6 +10705,7 @@ fn execute_planning_protein_expression_handoff_seq_id_reports_cds_context() {
                 }"#
                 .to_string(),
             ),
+            requirements_json: None,
             profile_scope: PlanningProfileScope::Effective,
             output_format: "text".to_string(),
         },
@@ -10823,6 +10828,7 @@ fn execute_planning_protein_expression_handoff_whole_sequence_cds_suggests_prefl
                 }"#
                 .to_string(),
             ),
+            requirements_json: None,
             profile_scope: PlanningProfileScope::Effective,
             output_format: "json".to_string(),
         },
@@ -10854,6 +10860,188 @@ fn execute_planning_protein_expression_handoff_whole_sequence_cds_suggests_prefl
 }
 
 #[test]
+fn execute_planning_protein_expression_handoff_applies_reviewed_requirements() {
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence("ATGGCTGCTGAATAA").expect("synthetic CDS");
+    dna.set_name("requirements_cds");
+    state.sequences.insert("requirements_cds".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let requirements = r#"{
+      "schema":"gentle.protein_expression_requirements.v1",
+      "requirements_id":"requirements-1",
+      "yield_goal":{
+        "metric":"purified_protein",
+        "target_amount":10.0,
+        "target_amount_unit":"mg"
+      },
+      "chassis":{
+        "acceptable_chassis":["e_coli"],
+        "provider_managed_allowed":false
+      },
+      "localization":{
+        "target":"cytosolic",
+        "secretion_required":false
+      },
+      "folding":{
+        "required_ptms":[],
+        "required_cofactors":[],
+        "required_chaperones":[],
+        "disulfide_bonding_required":false
+      },
+      "toxicity_induction":{
+        "toxicity_expected":false,
+        "induction_policy":"inducible"
+      },
+      "tag_policy":{
+        "strategy":"cleavable_affinity",
+        "preferred_tags":["6xHis"],
+        "position":"N-terminal",
+        "cleavage_policy":"TEV cleavage",
+        "retention_policy":"remove after purification",
+        "preserve_annotated_tags":false
+      },
+      "scale_purification":{
+        "production_scale":"1 L culture",
+        "purification_endpoint":"affinity capture",
+        "target_purity_percent":90.0,
+        "delivery_buffer":"PBS",
+        "qc_requirements":["SDS-PAGE"],
+        "delivery_format":"soluble protein"
+      },
+      "outsourcing":{
+        "allowed":false,
+        "approved_providers":[]
+      },
+      "reviewed_by":"test-reviewer",
+      "reviewed_at_unix_ms":1
+    }"#;
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningProteinExpressionHandoff {
+            seq_id: Some("requirements_cds".to_string()),
+            objective_json: None,
+            requirements_json: Some(requirements.to_string()),
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "text".to_string(),
+        },
+    )
+    .expect("protein-expression handoff with reviewed requirements");
+    assert!(!out.state_changed);
+    let report: crate::engine::ProteinExpressionHandoffReport =
+        serde_json::from_value(out.output).expect("protein-expression handoff report");
+    let echoed = report.requirements.as_ref().expect("requirements echoed");
+    assert_eq!(
+        echoed.schema,
+        "gentle.protein_expression_requirements.v1"
+    );
+    assert_eq!(
+        echoed
+            .yield_goal
+            .as_ref()
+            .map(|yield_goal| yield_goal.metric.as_str()),
+        Some("purified_protein")
+    );
+    assert!(report.missing_questions.is_empty());
+    assert!(report.suggested_next_actions.iter().all(|action| {
+        !matches!(
+            action.action_id.as_str(),
+            "answer_yield_questions"
+                | "inspect_geneart_protein_expression_preflight"
+                | "prepare_geneart_quote_packet_after_review"
+        )
+    }));
+    assert!(
+        report
+            .suggested_next_actions
+            .iter()
+            .any(|action| action.action_id == "consult_cloning_strategy")
+    );
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains("Outsourcing is explicitly disallowed")
+    }));
+    let service = report
+        .service_handoff_candidates
+        .first()
+        .expect("withheld provider provenance row");
+    assert_eq!(
+        service.status,
+        "withheld_by_outsourcing_requirement"
+    );
+    assert!(service.shell_line.is_empty());
+    let text_report = report.text_report.as_deref().unwrap_or_default();
+    assert!(text_report.contains("Reviewed expression requirements: yield_goal, chassis"));
+    assert!(!text_report.contains("Questions before committing:"));
+    assert!(!text_report.contains("services project-preflight"));
+}
+
+#[test]
+fn execute_planning_protein_expression_handoff_partial_requirements_only_resolve_matching_questions()
+{
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "partial_requirements_cds".to_string(),
+        DNAsequence::from_sequence("ATGGCTGCTGAATAA").expect("synthetic CDS"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningProteinExpressionHandoff {
+            seq_id: Some("partial_requirements_cds".to_string()),
+            objective_json: None,
+            requirements_json: Some(
+                r#"{
+                  "schema":"gentle.protein_expression_requirements.v1",
+                  "yield_goal":{"metric":"active_protein"},
+                  "folding":{}
+                }"#
+                .to_string(),
+            ),
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "json".to_string(),
+        },
+    )
+    .expect("protein-expression handoff with partial requirements");
+    let report: crate::engine::ProteinExpressionHandoffReport =
+        serde_json::from_value(out.output).expect("protein-expression handoff report");
+    assert!(!report
+        .missing_questions
+        .iter()
+        .any(|question| question.question_id == "protein_yield_metric"));
+    assert!(!report
+        .missing_questions
+        .iter()
+        .any(|question| question.question_id == "protein_folding_requirements"));
+    assert!(report
+        .missing_questions
+        .iter()
+        .any(|question| question.question_id == "expression_chassis"));
+    assert!(report
+        .missing_questions
+        .iter()
+        .any(|question| question.question_id == "outsourcing_permission"));
+}
+
+#[test]
+fn execute_planning_protein_expression_handoff_rejects_invalid_requirements() {
+    let mut engine = GentleEngine::default();
+    let error = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningProteinExpressionHandoff {
+            seq_id: None,
+            objective_json: None,
+            requirements_json: Some(
+                r#"{"schema":"gentle.protein_expression_requirements.v2"}"#.to_string(),
+            ),
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "json".to_string(),
+        },
+    )
+    .expect_err("unsupported requirements schema should fail");
+    assert!(error.contains("Unsupported protein-expression requirements schema"));
+}
+
+#[test]
 fn execute_planning_protein_expression_handoff_protein_sequence_suggests_reverse_translation() {
     let mut state = ProjectState::default();
     let mut protein = DNAsequence::from_sequence("MSTNPKPQR").expect("synthetic protein");
@@ -10875,6 +11063,7 @@ fn execute_planning_protein_expression_handoff_protein_sequence_suggests_reverse
                 }"#
                 .to_string(),
             ),
+            requirements_json: None,
             profile_scope: PlanningProfileScope::Effective,
             output_format: "text".to_string(),
         },
@@ -10950,6 +11139,7 @@ fn execute_planning_protein_expression_handoff_ambiguous_noncoding_sequence_asks
                 }"#
                 .to_string(),
             ),
+            requirements_json: None,
             profile_scope: PlanningProfileScope::Effective,
             output_format: "json".to_string(),
         },

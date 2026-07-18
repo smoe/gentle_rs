@@ -1984,10 +1984,12 @@ Patterns menu:
     explicit follow-up questions instead of hidden heuristics.
   - high-yield protein-expression requests can use the separate read-only
     shell route (`planning protein-expression-handoff`) to surface product
-    context, chassis/route candidates, missing yield/folding/chassis questions,
+    context, optional reviewed `gentle.protein_expression_requirements.v1`,
+    chassis/route candidates, missing yield/folding/chassis questions,
     and a readiness-gated GeneArt preflight scaffold without creating or
     ordering constructs; provider-ready products use a project-bound draft,
-    while undefined products expose no provider action.
+    while undefined products and explicitly in-house-only requirements expose
+    no provider action.
   - supports registering pending planning sync suggestions (`pull`/`push`) from
     JSON payload and explicit `Accept`/`Reject` resolution in-window.
   - exposes sync status (`pending count`, latest pull/push timestamps, last

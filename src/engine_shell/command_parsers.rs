@@ -12688,6 +12688,7 @@ pub(super) fn parse_planning_command(tokens: &[String]) -> Result<ShellCommand, 
         "protein-expression-handoff" | "protein_expression_handoff" => {
             let mut seq_id: Option<String> = None;
             let mut objective_json: Option<String> = None;
+            let mut requirements_json: Option<String> = None;
             let mut profile_scope = PlanningProfileScope::Effective;
             let mut output_format = "json".to_string();
             let mut idx = 2usize;
@@ -12707,6 +12708,14 @@ pub(super) fn parse_planning_command(tokens: &[String]) -> Result<ShellCommand, 
                             tokens,
                             &mut idx,
                             "--objective",
+                            "planning protein-expression-handoff",
+                        )?);
+                    }
+                    "--requirements" => {
+                        requirements_json = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--requirements",
                             "planning protein-expression-handoff",
                         )?);
                     }
@@ -12750,6 +12759,7 @@ pub(super) fn parse_planning_command(tokens: &[String]) -> Result<ShellCommand, 
             Ok(ShellCommand::PlanningProteinExpressionHandoff {
                 seq_id,
                 objective_json,
+                requirements_json,
                 profile_scope,
                 output_format,
             })
