@@ -3213,6 +3213,9 @@ The `Help` menu now includes:
   `gentle_track_source=Array` plus dataset, platform, contrast, `logFC`,
   `adj_P_Val`, probeset, transcript-cluster, exon, and optional junction
   qualifiers.
+- Live feature-tree array groups include the `gentle_array_dataset` identity,
+  so freshly generated `probe_region_output` evidence remains visibly distinct
+  from prepared publication datasets even when platform and contrast match.
 - The linear DNA viewer has an `Array` layer toggle. Array intervals draw as
   contrast heat lanes in the coordinate-aligned feature stack rather than in
   the detached regulatory band at the top of the canvas: red for positive

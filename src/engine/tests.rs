@@ -645,6 +645,95 @@ fn project_probe_region_output_direct_anchor_materializes_array_features() {
 }
 
 #[test]
+fn probe_region_output_without_coordinate_metadata_is_inspectable_but_not_projectable() {
+    let temp = tempdir().expect("tempdir");
+    let output_dir = temp.path().join("legacy_probe_regions");
+    write_probe_region_projection_fixture(&output_dir);
+    fs::write(
+        output_dir.join("normalized_feature_matrix_manifest.json"),
+        r#"{
+  "schema": "gentle.probe_region_normalized_matrix_manifest.v1",
+  "platform": "Clariom_D_Human",
+  "normalization": "rma",
+  "targets": ["probeset"],
+  "artifacts": []
+}"#,
+    )
+    .expect("legacy manifest without coordinate metadata");
+    fs::write(
+        output_dir.join("provenance.json"),
+        r#"{
+  "schema": "gentle.probe_region_backend_provenance.v1",
+  "backend": "r_oligo",
+  "normalization": "rma",
+  "artifacts": []
+}"#,
+    )
+    .expect("legacy provenance without coordinate metadata");
+
+    let mut engine = microarray_anchored_engine("hg38", "+");
+    let inspection = engine
+        .inspect_probe_region_output(&output_dir.to_string_lossy())
+        .expect("legacy helper output remains inspectable");
+    assert!(inspection.usable);
+    assert_eq!(inspection.coordinate_system, None);
+    assert_eq!(inspection.genome_build, None);
+    assert!(!inspection.projection_ready);
+    assert!(
+        inspection
+            .projection_blockers
+            .iter()
+            .any(|blocker| blocker.contains("Missing coordinate_system"))
+    );
+    assert!(
+        inspection
+            .projection_blockers
+            .iter()
+            .any(|blocker| blocker.contains("Missing genome_build"))
+    );
+
+    let error = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec![],
+            level: None,
+            min_abs_logfc: None,
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect_err("coordinate-less helper output must not be projected");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("does not declare coordinate_system"));
+    assert!(
+        engine
+            .state()
+            .sequences
+            .get("array_slice")
+            .expect("anchored sequence")
+            .features()
+            .is_empty()
+    );
+}
+
+#[test]
+fn probe_region_output_inspection_v1_deserializes_without_additive_coordinate_fields() {
+    let legacy = serde_json::json!({
+        "schema": "gentle.probe_region_output_inspection.v1",
+        "output_dir": "analysis/probe_regions/legacy",
+        "usable": true
+    });
+    let inspection: ProbeRegionOutputInspection =
+        serde_json::from_value(legacy).expect("legacy v1 inspection payload");
+
+    assert!(inspection.usable);
+    assert_eq!(inspection.coordinate_system, None);
+    assert_eq!(inspection.genome_build, None);
+    assert!(inspection.coordinate_projections.is_empty());
+    assert!(!inspection.projection_ready);
+}
+
+#[test]
 fn project_probe_region_output_pm_probe_level_materializes_true_probe_features() {
     let temp = tempdir().expect("tempdir");
     let output_dir = temp.path().join("probe_regions");

@@ -7277,6 +7277,10 @@ fn feature_tree_model_groups_dense_regulatory_repeat_track_and_array_surfaces() 
                 Some("Clariom D".to_string()),
             ),
             (
+                "gentle_array_dataset".into(),
+                Some("probe_region_output".to_string()),
+            ),
+            (
                 "gentle_array_contrast".into(),
                 Some("AdTAp73alpha-AdGFP".to_string()),
             ),
@@ -7326,7 +7330,7 @@ fn feature_tree_model_groups_dense_regulatory_repeat_track_and_array_surfaces() 
         .expect("array group");
     assert_eq!(
         array_group.grouped_entries[0].label,
-        "Array: Clariom D (AdTAp73alpha-AdGFP)"
+        "Array: Probe-region output / Clariom D (AdTAp73alpha-AdGFP)"
     );
 }
 

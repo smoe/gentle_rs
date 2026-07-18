@@ -1319,10 +1319,20 @@ impl RenderDna {
         let platform = Self::feature_qualifier_text(feature, "gentle_array_platform")
             .or_else(|| Self::feature_qualifier_text(feature, "gentle_track_name"))
             .unwrap_or_else(|| "microarray".to_string());
+        let dataset = Self::feature_qualifier_text(feature, "gentle_array_dataset");
+        let source_label = match dataset {
+            Some(dataset) if dataset.eq_ignore_ascii_case("probe_region_output") => {
+                format!("Probe-region output / {platform}")
+            }
+            Some(dataset) if !dataset.eq_ignore_ascii_case(&platform) => {
+                format!("{dataset} / {platform}")
+            }
+            _ => platform,
+        };
         let contrast = Self::feature_qualifier_text(feature, "gentle_array_contrast");
         match contrast {
-            Some(contrast) => Some(format!("Array: {platform} ({contrast})")),
-            None => Some(format!("Array: {platform}")),
+            Some(contrast) => Some(format!("Array: {source_label} ({contrast})")),
+            None => Some(format!("Array: {source_label}")),
         }
     }
 
@@ -2273,7 +2283,7 @@ mod tests {
         assert!(RenderDna::is_array_track_feature(&feature));
         assert_eq!(
             RenderDna::array_group_label(&feature).as_deref(),
-            Some("Array: Clariom D human (AdTAp73alpha-AdGFP)")
+            Some("Array: E-MTAB-14704 / Clariom D human (AdTAp73alpha-AdGFP)")
         );
         let details = RenderDna::feature_detail_lines(&feature);
         assert!(details.contains(&"array_dataset: E-MTAB-14704".to_string()));
