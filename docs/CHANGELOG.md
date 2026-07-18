@@ -12,6 +12,13 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-18
+
+- Made protein-expression provider handoffs readiness-consistent across text
+  and JSON, and replaced tutorial-protein commands with product-specific,
+  project-referenced GeneArt review drafts when a selected DNA/protein product
+  is ready for provider preflight.
+
 ## 2026-07-14
 
 - Extended `gentle.gene_locus_evidence_display.v1` with a generic,

@@ -4114,10 +4114,22 @@ Adapter-equivalence guarantee for UI-intent tools:
   - `tag_assessment` summarizes annotated affinity/solubility/epitope/signal
     tag context and keeps tag preference, position, cleavage, and retention
     policy as explicit review inputs
-  - the first V1 service scaffold points at
+  - the bundled
     `docs/examples/external_services/geneart_protein_expression_request.json`
-    through a local `services project-preflight @...` command; no provider
-    network call, order, optimization, or construct mutation is made
+    remains the template/provenance source for the first V1 service scaffold
+  - without a provider-ready product, the service candidate is explicitly
+    `draft_example_review_required` and no provider command appears in either
+    text or structured suggested actions
+  - a provider-ready selected DNA or protein sequence produces a
+    `product_draft_review_required` request preview whose `source_target`
+    references the project `seq_id` or `protein_seq_id`; its preflight and,
+    where readiness permits, quote actions serialize that same request rather
+    than operating on the tutorial protein
+  - project-bound request commands do not inline sequence letters; exact CDS
+    boundaries, protein target, expression requirements, and outsourcing
+    permission remain review gates before external handoff
+  - no provider network call, order, optimization, or construct mutation is
+    made
   - if no usable CDS/protein context is found, `missing_questions[]` asks for
     coding sequence, ORF, CDS annotation, or target-protein boundaries rather
     than choosing an expression route
@@ -4133,6 +4145,9 @@ Adapter-equivalence guarantee for UI-intent tools:
     `protein_sequence_review_required` suggests reverse-translation or
     provider protein-target handoff review; `needs_cds_boundary` suggests
     inspecting or marking CDS/ORF boundaries before expression planning
+  - the optional text report renders provider commands from those same
+    structured actions, so it cannot advertise preflight or quote work that
+    JSON readiness withheld
   - this remains a review-gated handoff, not an autonomous construct designer:
     GENtle does not codon-optimize, mutate sequences, create constructs, query
     live providers, submit orders, or promise wet-lab yield

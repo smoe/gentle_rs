@@ -55,7 +55,9 @@ Expected outcome:
 
 This is the safest first response when no product sequence has been loaded.
 GENtle can still explain the choices, but it refuses to pretend that the
-product is already defined.
+product is already defined. The service candidate is a labelled bundled
+example in this state, and neither text nor `suggested_next_actions[]` offers a
+provider preflight or quote command.
 
 ## Step 2: Read The Missing Questions First
 
@@ -143,10 +145,24 @@ This analysis is read-only. GENtle does not infer that the product is
 expression-ready, codon-optimize it, mutate the sequence, create a construct,
 choose a final host/vector/tag, or submit anything to a provider.
 
-## Step 5: Inspect The GeneArt Preflight Scaffold
+## Step 5: Inspect The Product-Specific GeneArt Draft
 
-The handoff report includes a service scaffold pointing at the existing
-GeneArt protein-expression example:
+When the selected product is provider-ready for review, inspect
+`service_handoff_candidates[0]` before running anything. Its expected fields
+are:
+
+- `status = product_draft_review_required`
+- `draft_request_preview.source_target.seq_id` for a DNA/CDS product, or
+  `protein_seq_id` for a protein product
+- `request_metadata.human_review_only = true`
+- a `shell_line` that preflights that same product-specific preview
+
+The matching `suggested_next_actions[]` row carries the same command. Run it
+through the normal in-tree CLI only after checking that the project sequence id
+and product name are correct. The generated shell command references project
+state rather than embedding sequence letters.
+
+The existing bundled example remains useful for a tutorial-only rehearsal:
 
 ```bash
 cargo run --quiet --bin gentle_cli -- services project-preflight \
@@ -161,8 +177,11 @@ Expected outcome:
 - direct submission remains unavailable
 - warnings keep the human-review boundary visible
 
-After the product definition, outsourcing permission, and route constraints have
-been reviewed, prepare the local quote packet:
+After the product definition, outsourcing permission, and route constraints
+have been reviewed, use the
+`prepare_geneart_quote_packet_after_review` action from the handoff report.
+For a product-specific handoff, that action serializes the same reviewed draft
+used by preflight. The bundled example below is still only a rehearsal:
 
 ```bash
 cargo run --quiet --bin gentle_cli -- services project-quote \
@@ -172,8 +191,9 @@ cargo run --quiet --bin gentle_cli -- services project-quote \
 This remains a local handoff artifact. It does not upload data, request pricing
 from a provider API, or submit an order.
 
-Use this only as a scaffold. Replace the synthetic tutorial payload with a
-reviewed product definition before any real quote or provider handoff.
+Never substitute the bundled tutorial protein for the selected project
+product. If no product-specific action is present, return to the missing
+questions instead of preparing a quote packet.
 
 ## Step 6: Ask For Cloning Strategy Only After Expression Constraints
 
