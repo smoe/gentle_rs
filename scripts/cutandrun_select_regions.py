@@ -11,7 +11,8 @@ The default pilot chromosome policy keeps normalized chromosomes 2 through 22,
 X, and Y. It deliberately excludes chromosome 1, mitochondria, and alternative
 or unplaced contigs. Names are normalized only for policy matching: an optional
 ``chr`` prefix is removed, names are upper-cased, and M/MT/chrM all normalize to
-MT. Concrete names must still agree across candidates, BigWig, and FASTA index.
+MT. Concrete names and chromosome lengths must still agree across candidates,
+BigWig, and FASTA index.
 """
 
 from __future__ import annotations
@@ -531,7 +532,34 @@ def guard_assembly_chromosomes(
             ),
             file=sys.stderr,
         )
-    return [segment for segment in segments if segment.chrom not in missing_names], missing_rows
+    usable_segments = [
+        segment for segment in segments if segment.chrom not in missing_names
+    ]
+    for chrom in sorted({segment.chrom for segment in usable_segments}):
+        bigwig_length = int(bigwig_chromosomes[chrom])
+        fasta_length = fai_records[chrom].length
+        if bigwig_length != fasta_length:
+            raise RegionSelectionError(
+                "assembly/chromosome-length mismatch: "
+                f"{chrom} has length {bigwig_length} in the BigWig header but "
+                f"length {fasta_length} in the FASTA .fai. "
+                "--allow-missing-chroms does not waive conflicting assembly lengths."
+            )
+        invalid = next(
+            (
+                segment
+                for segment in usable_segments
+                if segment.chrom == chrom and segment.end > fasta_length
+            ),
+            None,
+        )
+        if invalid is not None:
+            raise RegionSelectionError(
+                "candidate interval is outside the assembly bounds: "
+                f"{invalid.chrom}:{invalid.start}-{invalid.end} exceeds chromosome "
+                f"length {fasta_length} recorded by both BigWig and FASTA .fai"
+            )
+    return usable_segments, missing_rows
 
 
 def _format_number(value: float) -> str:
@@ -665,7 +693,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Candidate BED/bedGraph. Required for this pilot; BigWig interval discovery is out of scope.",
     )
     parser.add_argument("--genome-fasta", required=True, type=Path, help="Assembly-matched indexed genome FASTA.")
-    parser.add_argument("--fai", type=Path, help="FASTA .fai; defaults to <genome-fasta>.fai.")
+    parser.add_argument(
+        "--fai",
+        type=Path,
+        help=(
+            "FASTA .fai; defaults to <genome-fasta>.fai. The adjacent default "
+            "is required with --fasta-tool bedtools."
+        ),
+    )
     parser.add_argument("--output-dir", required=True, type=Path, help="Directory for all selected-region artifacts.")
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--top-n", type=int, help="Retain at most this many ranked islands.")
@@ -679,7 +714,14 @@ def build_parser() -> argparse.ArgumentParser:
     threshold.add_argument("--score-percentile", type=float, help="Nearest-rank percentile over chromosome-filtered candidate scores.")
     parser.add_argument("--score-column", type=int, help="1-based coverage column; default col4 for bedGraph and col5 for BED (col4 for BED4).")
     parser.add_argument("--fasta-tool", choices=("internal", "bedtools"), default="internal", help="FASTA extraction implementation (default: internal .fai reader).")
-    parser.add_argument("--allow-missing-chroms", action="store_true", help="Warn and skip candidate chromosomes absent from BigWig or .fai instead of failing.")
+    parser.add_argument(
+        "--allow-missing-chroms",
+        action="store_true",
+        help=(
+            "Warn and skip candidate chromosomes absent from BigWig or .fai; "
+            "length and coordinate mismatches still fail."
+        ),
+    )
     parser.add_argument("--provenance", type=Path, help="Provenance JSON path; a flat TSV sibling is also written.")
     parser.add_argument("--prefix", default="cutandrun_regions", help="Output basename stem (default: cutandrun_regions).")
     return parser
@@ -699,6 +741,13 @@ def _validate_paths(args: argparse.Namespace, fai_path: Path) -> None:
         )
     if not args.candidates.is_file():
         raise RegionSelectionError(f"candidate file does not exist: {args.candidates}")
+    if args.fasta_tool == "bedtools":
+        adjacent_fai = Path(f"{args.genome_fasta}.fai")
+        if fai_path.resolve() != adjacent_fai.resolve():
+            raise RegionSelectionError(
+                "--fasta-tool bedtools requires the validated FASTA index at "
+                f"{adjacent_fai}; bedtools does not consume GENtle's separate --fai path"
+            )
     if Path(args.prefix).name != args.prefix or args.prefix in {"", ".", ".."}:
         raise RegionSelectionError("--prefix must be a non-empty basename, not a path")
 
@@ -805,6 +854,9 @@ def run(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, Path]:
             "normalized_include_after_exclude": sorted(included),
             "normalized_exclude": sorted(excluded),
             "concrete_chromosomes_used": concrete_chromosomes,
+            "concrete_chromosome_lengths": {
+                chrom: fai_records[chrom].length for chrom in concrete_chromosomes
+            },
             "missing_chromosomes_skipped": missing_chromosomes,
             "allow_missing_chromosomes": args.allow_missing_chroms,
         },

@@ -62,11 +62,13 @@ applied after inclusion. Both the resolved policy and the concrete chromosome
 names actually used are recorded in provenance.
 
 Every candidate chromosome that passes the allowlist must occur under the same
-concrete name in both the BigWig header and FASTA `.fai`. A candidate named
-`chr2` therefore does not silently match a BigWig and FASTA that call it `2`.
-The default is to fail with an assembly/chromosome-name mismatch. For an
-exploratory run, `--allow-missing-chroms` warns and skips unusable chromosomes;
-it does not reinterpret their names.
+concrete name and with the same chromosome length in both the BigWig header and
+FASTA `.fai`. Retained intervals must also fit within that shared length. A
+candidate named `chr2` therefore does not silently match a BigWig and FASTA that
+call it `2`. Conflicting lengths or out-of-bounds intervals always stop the run.
+For an exploratory run, `--allow-missing-chroms` warns and skips chromosomes
+that are absent from either source; it does not reinterpret names or waive
+conflicting assembly lengths.
 
 The genome FASTA must use the same assembly and naming as the signal and
 candidate tracks. For the example below, use Ensembl GRCh38 primary assembly
@@ -118,8 +120,10 @@ python3 -m pip install pyBigWig
 The import is lazy, so `--help` and the pure selection helpers remain usable
 without pyBigWig. The default FASTA extractor is an internal `.fai`-indexed
 reader that accounts for FASTA newline bytes. `--fasta-tool bedtools` uses
-`bedtools getfasta` as an alternative. Neither extractor changes sequence case,
-so soft masking is preserved.
+`bedtools getfasta` as an alternative and therefore requires the validated index
+at the conventional adjacent `<genome-fasta>.fai` path; bedtools cannot consume
+a separate `--fai` path. Neither extractor changes sequence case, so soft
+masking is preserved.
 
 ## TP73 SK-MEL-29 Pilot
 

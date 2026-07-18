@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -295,6 +296,10 @@ class CutAndRunRegionSelectionTests(unittest.TestCase):
                 provenance["chromosome_policy"]["concrete_chromosomes_used"],
                 ["2", "X", "Y"],
             )
+            self.assertEqual(
+                provenance["chromosome_policy"]["concrete_chromosome_lengths"],
+                {"2": 180, "X": 80, "Y": 70},
+            )
             self.assertEqual(provenance["tools"]["pyBigWig_version"], "synthetic-test")
             self.assertEqual(len(provenance["inputs"]["bigwig"]["sha256"]), 64)
             provenance_tsv = (output_dir / "pilot.provenance.tsv").read_text(
@@ -326,6 +331,89 @@ class CutAndRunRegionSelectionTests(unittest.TestCase):
             )
         self.assertEqual(usable, [])
         self.assertEqual(missing[0]["chromosome"], "chr2")
+
+    def test_assembly_guard_rejects_length_and_coordinate_mismatches(self) -> None:
+        fai = {"2": selector.FaiRecord("2", 10, 0, 10, 11)}
+        with self.assertRaisesRegex(
+            selector.RegionSelectionError,
+            "length 11 in the BigWig header.*length 10 in the FASTA .fai",
+        ):
+            selector.guard_assembly_chromosomes(
+                [selector.Segment("2", 1, 5, 1.0)],
+                {"2": 11},
+                fai,
+                allow_missing=True,
+            )
+
+        with self.assertRaisesRegex(
+            selector.RegionSelectionError, "2:8-11 exceeds chromosome length 10"
+        ):
+            selector.guard_assembly_chromosomes(
+                [selector.Segment("2", 8, 11, 1.0)],
+                {"2": 10},
+                fai,
+                allow_missing=False,
+            )
+
+    def test_bedtools_requires_the_validated_adjacent_fai(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            fasta_path, adjacent_fai, _sequences = write_synthetic_fasta(root)
+            separate_fai = root / "selected-index.fai"
+            separate_fai.write_bytes(adjacent_fai.read_bytes())
+            candidates = root / "candidates.bed"
+            write_synthetic_candidates(candidates)
+            bigwig = root / "signal.bw"
+            bigwig.write_bytes(b"placeholder\n")
+            args = selector.build_parser().parse_args(
+                [
+                    "--bigwig",
+                    str(bigwig),
+                    "--candidates",
+                    str(candidates),
+                    "--genome-fasta",
+                    str(fasta_path),
+                    "--fai",
+                    str(separate_fai),
+                    "--output-dir",
+                    str(root / "out"),
+                    "--top-n",
+                    "1",
+                    "--fasta-tool",
+                    "bedtools",
+                ]
+            )
+
+            with self.assertRaisesRegex(
+                selector.RegionSelectionError,
+                "bedtools requires the validated FASTA index",
+            ):
+                selector._validate_paths(args, separate_fai)
+
+    @unittest.skipUnless(shutil.which("bedtools"), "bedtools is not installed")
+    def test_bedtools_fasta_matches_internal_fai_extraction(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            fasta_path, fai_path, _sequences = write_synthetic_fasta(root)
+            records = selector.read_fai(fai_path)
+            windows = [
+                selector.CenteredWindow("2", 3, 18, "a", 1),
+                selector.CenteredWindow("Y", 60, 70, "b", 2),
+            ]
+            bed_path = root / "windows.bed"
+            selector._write_windows(bed_path, windows)
+            internal_path = root / "internal.fa"
+            bedtools_path = root / "bedtools.fa"
+            selector.write_internal_fasta(
+                fasta_path, internal_path, windows, records
+            )
+
+            version = selector.run_bedtools_getfasta(
+                shutil.which("bedtools"), fasta_path, bed_path, bedtools_path
+            )
+
+            self.assertIn("bedtools", version.lower())
+            self.assertEqual(bedtools_path.read_bytes(), internal_path.read_bytes())
 
     @unittest.skipUnless(pyBigWig is not None, "pyBigWig is not installed")
     def test_end_to_end_with_synthetic_bigwig(self) -> None:
