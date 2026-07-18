@@ -3,8 +3,12 @@
 //! This module implements a deliberately small, deterministic calibration
 //! screen for reads that should be compared against requested transcript
 //! targets without entering the shared RNA-read interpretation engine. It
-//! builds redundant per-gene k-mer sets, streams read records once, and writes
-//! TSV/JSON reports suitable for later folding into richer RNA reports.
+//! builds redundant per-gene k-mer sets, streams single reads or lockstep read
+//! pairs once, and writes TSV/JSON reports suitable for later folding into
+//! richer RNA reports. Junction and exon-intron-boundary catalogs contribute
+//! only k-mers that cross their declared boundary; retained-intron evidence
+//! remains a candidate and is reported separately with or without same-fragment
+//! annotated-junction support.
 
 use flate2::read::MultiGzDecoder;
 use serde::{Deserialize, Serialize};
@@ -27,7 +31,10 @@ const COMPARISON_SCHEMA: &str = "gentle.rna_target_rescue.comparison.v1";
 pub struct TargetRescueRequest {
     pub transcript_fastas: Vec<String>,
     pub genes: Vec<String>,
+    #[serde(default)]
     pub reads: Vec<String>,
+    #[serde(default)]
+    pub read_pairs: Vec<TargetRescueReadPairInput>,
     #[serde(default)]
     pub structural_evidence: Vec<StructuralEvidenceSource>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -48,6 +55,7 @@ impl Default for TargetRescueRequest {
             transcript_fastas: Vec::new(),
             genes: Vec::new(),
             reads: Vec::new(),
+            read_pairs: Vec::new(),
             structural_evidence: Vec::new(),
             read_id_allowlist: None,
             salmon_unmapped_names: None,
@@ -65,6 +73,8 @@ impl Default for TargetRescueRequest {
 pub struct TargetRescueParams {
     pub transcript_fastas: Vec<String>,
     pub reads: Vec<String>,
+    #[serde(default)]
+    pub read_pairs: Vec<TargetRescueReadPairInput>,
     #[serde(default)]
     pub structural_evidence: Vec<StructuralEvidenceSource>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -95,10 +105,48 @@ pub struct GeneManifestEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UniverseSummary {
     pub universe: String,
+    /// Legacy name retained for v1 compatibility; counts selected evidence units.
     pub selected_reads: u64,
+    /// Legacy name retained for v1 compatibility; counts evaluated evidence units.
     pub evaluated_reads: u64,
+    /// Legacy name retained for v1 compatibility; counts matching evidence units.
     pub reads_matching_any: u64,
+    /// Legacy name retained for v1 compatibility; counts ambiguous evidence units.
     pub ambiguous_reads: u64,
+    #[serde(default)]
+    pub selected_input_reads: u64,
+    #[serde(default)]
+    pub selected_evidence_units: u64,
+    #[serde(default)]
+    pub evaluated_evidence_units: u64,
+    #[serde(default)]
+    pub evidence_units_matching_any: u64,
+    #[serde(default)]
+    pub ambiguous_evidence_units: u64,
+}
+
+/// Lockstep paired-end input for the target-rescue screen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetRescueReadPairInput {
+    pub read1: String,
+    pub read2: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TargetRescueEvidenceUnit {
+    #[default]
+    Read,
+    Fragment,
+}
+
+impl TargetRescueEvidenceUnit {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Read => "read",
+            Self::Fragment => "fragment",
+        }
+    }
 }
 
 /// Per-gene rescue hit counts inside one read universe.
@@ -144,6 +192,10 @@ impl StructuralEvidenceKind {
             Self::GenomicRegion => "genomic_region_candidate",
         }
     }
+
+    fn requires_boundary_span(self) -> bool {
+        matches!(self, Self::AnnotatedJunction | Self::ExonIntronBoundary)
+    }
 }
 
 /// One local FASTA catalog used to screen reads for structural-region evidence.
@@ -164,6 +216,12 @@ pub struct StructuralEvidenceHitSummary {
     pub distinct_kmers: usize,
     pub reads_hit: u64,
     pub total_matching_kmers: u64,
+    #[serde(default)]
+    pub boundary_spanning_only: bool,
+    #[serde(default)]
+    pub rna_anchored_hits: u64,
+    #[serde(default)]
+    pub unanchored_hits: u64,
 }
 
 /// Paths written by a target-rescue run.
@@ -188,12 +246,16 @@ pub struct TargetRescueSummary {
     pub requested_genes: Vec<String>,
     pub missing_genes: Vec<String>,
     pub total_input_reads: u64,
+    #[serde(default)]
+    pub total_evidence_units: u64,
     pub universes: Vec<UniverseSummary>,
     pub gene_hits: Vec<GeneHitSummary>,
     #[serde(default)]
     pub structural_hits: Vec<StructuralEvidenceHitSummary>,
     pub manifest: Vec<GeneManifestEntry>,
     pub output_files: TargetRescueOutputFiles,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,12 +268,14 @@ struct TargetRescueRunMetadata {
     transcript_sources: Vec<TranscriptSourceReport>,
     read_sources: Vec<ReadSourceReport>,
     total_input_reads: u64,
+    total_evidence_units: u64,
     universes: Vec<UniverseSummary>,
     gene_hits: Vec<GeneHitSummary>,
     structural_hits: Vec<StructuralEvidenceHitSummary>,
     structural_sources: Vec<StructuralEvidenceSourceReport>,
     manifest: Vec<GeneManifestEntry>,
     output_files: TargetRescueOutputFiles,
+    warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -235,6 +299,8 @@ struct StructuralEvidenceSourceReport {
     bytes: u64,
     record_count: u64,
     matched_record_count: u64,
+    boundary_spanning_record_count: u64,
+    distinct_kmers: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -266,6 +332,7 @@ struct StructuralEvidenceIndex {
     kind: StructuralEvidenceKind,
     record_ids: BTreeSet<String>,
     kmers: HashSet<u64>,
+    boundary_spanning_only: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -274,6 +341,7 @@ struct UniverseTally {
     evaluated_reads: u64,
     reads_matching_any: u64,
     ambiguous_reads: u64,
+    selected_input_reads: u64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -288,6 +356,8 @@ struct GeneTally {
 struct StructuralEvidenceTally {
     reads_hit: u64,
     total_matching_kmers: u64,
+    rna_anchored_hits: u64,
+    unanchored_hits: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -492,6 +562,7 @@ pub fn run_target_rescue_screen(
     let params = TargetRescueParams {
         transcript_fastas: request.transcript_fastas.clone(),
         reads: request.reads.clone(),
+        read_pairs: request.read_pairs.clone(),
         structural_evidence: request.structural_evidence.clone(),
         read_id_allowlist: request.read_id_allowlist.clone(),
         salmon_unmapped_names: request.salmon_unmapped_names.clone(),
@@ -564,9 +635,15 @@ pub fn run_target_rescue_screen(
     write_structural_hits_header(&mut structural_hits_writer)?;
 
     let mut total_input_reads = 0u64;
-    for read_path in &request.reads {
-        visit_read_records(read_path, |record| {
-            total_input_reads = total_input_reads.saturating_add(1);
+    let mut total_evidence_units = 0u64;
+    {
+        let mut process_record = |record: SequenceRecord,
+                                  source_file: &str,
+                                  evidence_unit: TargetRescueEvidenceUnit,
+                                  input_read_count: u8|
+         -> Result<(), String> {
+            total_input_reads = total_input_reads.saturating_add(u64::from(input_read_count));
+            total_evidence_units = total_evidence_units.saturating_add(1);
             let selected_universes = universes
                 .iter()
                 .enumerate()
@@ -595,9 +672,26 @@ pub fn run_target_rescue_screen(
             let hit_genes_joined = hit_genes.join(";");
             let ambiguous = hit_gene_indices.len() > 1;
             let evaluated = read_kmer_count > 0;
+            let passing_structural_indices = structural_match_counts
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, count)| (*count >= request.min_kmer_hits).then_some(idx))
+                .collect::<Vec<_>>();
+            let rna_anchor_genes = passing_structural_indices
+                .iter()
+                .filter_map(|idx| {
+                    let evidence = &structural_indices[*idx];
+                    (evidence.kind == StructuralEvidenceKind::AnnotatedJunction)
+                        .then_some(evidence.gene_symbol.as_str())
+                })
+                .collect::<HashSet<_>>();
             for universe_idx in selected_universes {
                 let universe = &mut universes[universe_idx];
                 universe.tally.selected_reads = universe.tally.selected_reads.saturating_add(1);
+                universe.tally.selected_input_reads = universe
+                    .tally
+                    .selected_input_reads
+                    .saturating_add(u64::from(input_read_count));
                 if evaluated {
                     universe.tally.evaluated_reads =
                         universe.tally.evaluated_reads.saturating_add(1);
@@ -627,7 +721,9 @@ pub fn run_target_rescue_screen(
                         &mut read_hits_writer,
                         &universe.name,
                         &record.id,
-                        read_path,
+                        source_file,
+                        evidence_unit,
+                        input_read_count,
                         &gene_indices[*gene_idx].symbol,
                         matching_kmers,
                         read_kmer_count,
@@ -636,31 +732,56 @@ pub fn run_target_rescue_screen(
                         &hit_genes_joined,
                     )?;
                 }
-                for (structural_idx, matching_kmers) in
-                    structural_match_counts.iter().copied().enumerate()
-                {
-                    if matching_kmers < request.min_kmer_hits {
-                        continue;
-                    }
-                    let evidence = &structural_indices[structural_idx];
-                    let tally = &mut universe.structural_tallies[structural_idx];
+                for structural_idx in &passing_structural_indices {
+                    let matching_kmers = structural_match_counts[*structural_idx];
+                    let evidence = &structural_indices[*structural_idx];
+                    let rna_anchored = match evidence.kind {
+                        StructuralEvidenceKind::AnnotatedJunction => true,
+                        StructuralEvidenceKind::ExonIntronBoundary
+                        | StructuralEvidenceKind::Intron => {
+                            rna_anchor_genes.contains(evidence.gene_symbol.as_str())
+                        }
+                        StructuralEvidenceKind::Exon | StructuralEvidenceKind::GenomicRegion => {
+                            false
+                        }
+                    };
+                    let tally = &mut universe.structural_tallies[*structural_idx];
                     tally.reads_hit = tally.reads_hit.saturating_add(1);
                     tally.total_matching_kmers =
                         tally.total_matching_kmers.saturating_add(matching_kmers);
+                    if rna_anchored {
+                        tally.rna_anchored_hits = tally.rna_anchored_hits.saturating_add(1);
+                    } else {
+                        tally.unanchored_hits = tally.unanchored_hits.saturating_add(1);
+                    }
                     write_structural_hit_row(
                         &mut structural_hits_writer,
                         &universe.name,
                         &record.id,
-                        read_path,
+                        source_file,
+                        evidence_unit,
+                        input_read_count,
                         evidence,
                         matching_kmers,
                         read_kmer_count,
                         record.source_length,
+                        rna_anchored,
                     )?;
                 }
             }
             Ok(())
-        })?;
+        };
+        for read_path in &request.reads {
+            visit_read_records(read_path, |record| {
+                process_record(record, read_path, TargetRescueEvidenceUnit::Read, 1)
+            })?;
+        }
+        for read_pair in &request.read_pairs {
+            let source_file = format!("{};{}", read_pair.read1, read_pair.read2);
+            visit_paired_read_records(&read_pair.read1, &read_pair.read2, |record| {
+                process_record(record, &source_file, TargetRescueEvidenceUnit::Fragment, 2)
+            })?;
+        }
     }
     read_hits_writer
         .flush()
@@ -674,9 +795,13 @@ pub fn run_target_rescue_screen(
     let structural_hits = build_structural_hit_summaries(&universes, &structural_indices);
     write_gene_manifest_tsv(&output_files.gene_manifest_tsv, &manifest)?;
     write_gene_hits_tsv(&output_files.gene_hits_tsv, &gene_hits)?;
-    let read_sources = request
-        .reads
-        .iter()
+    let read_source_paths = request.reads.iter().chain(
+        request
+            .read_pairs
+            .iter()
+            .flat_map(|pair| [&pair.read1, &pair.read2]),
+    );
+    let read_sources = read_source_paths
         .map(|path| {
             Ok(ReadSourceReport {
                 path: path.clone(),
@@ -684,6 +809,7 @@ pub fn run_target_rescue_screen(
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
+    let warnings = structural_interpretation_warnings(&request.structural_evidence);
 
     let summary = TargetRescueSummary {
         schema: SUMMARY_SCHEMA.to_string(),
@@ -691,11 +817,13 @@ pub fn run_target_rescue_screen(
         requested_genes: requested_genes.clone(),
         missing_genes: missing_genes.clone(),
         total_input_reads,
+        total_evidence_units,
         universes: universe_summaries.clone(),
         gene_hits: gene_hits.clone(),
         structural_hits: structural_hits.clone(),
         manifest: manifest.clone(),
         output_files: output_files.clone(),
+        warnings: warnings.clone(),
     };
     let metadata = TargetRescueRunMetadata {
         schema: METADATA_SCHEMA.to_string(),
@@ -706,12 +834,14 @@ pub fn run_target_rescue_screen(
         transcript_sources,
         read_sources,
         total_input_reads,
+        total_evidence_units,
         universes: universe_summaries,
         gene_hits,
         structural_hits,
         structural_sources,
         manifest,
         output_files: output_files.clone(),
+        warnings,
     };
     write_json_file(&output_files.run_metadata_json, &metadata)?;
     write_json_file(&output_files.summary_json, &summary)?;
@@ -729,8 +859,10 @@ fn validate_request(request: &TargetRescueRequest) -> Result<(), String> {
     if request.genes.is_empty() {
         return Err("rescue-screen requires at least one --genes or --gene value".to_string());
     }
-    if request.reads.is_empty() {
-        return Err("rescue-screen requires at least one --reads PATH".to_string());
+    if request.reads.is_empty() && request.read_pairs.is_empty() {
+        return Err(
+            "rescue-screen requires at least one --reads PATH or --read-pair R1,R2".to_string(),
+        );
     }
     if request.output_prefix.trim().is_empty() {
         return Err("rescue-screen requires --output-prefix PREFIX".to_string());
@@ -843,6 +975,8 @@ fn build_structural_evidence_indexes(
     for source in sources {
         let mut record_count = 0u64;
         let mut matched_record_count = 0u64;
+        let mut boundary_spanning_record_count = 0u64;
+        let mut source_kmers = HashSet::new();
         visit_fasta_records(&source.path, |header, sequence| {
             record_count = record_count.saturating_add(1);
             let Some(symbol) = parse_gene_symbol_from_header(header, gene_symbol_tags) else {
@@ -850,6 +984,37 @@ fn build_structural_evidence_indexes(
             };
             let Some(gene_idx) = gene_lookup.get(&normalize_gene_symbol(&symbol)).copied() else {
                 return Ok(());
+            };
+            let record_id = header
+                .split_ascii_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_start_matches('>');
+            let record_kmers = if source.kind.requires_boundary_span() {
+                let raw_boundary = header_token_value(header, "boundary_after").ok_or_else(|| {
+                    format!(
+                        "Structural evidence record '{}' in '{}' requires boundary_after:N in its FASTA header",
+                        record_id, source.path
+                    )
+                })?;
+                let boundary_after = raw_boundary.parse::<usize>().map_err(|e| {
+                    format!(
+                        "Invalid boundary_after '{}' for structural evidence record '{}' in '{}': {e}",
+                        raw_boundary, record_id, source.path
+                    )
+                })?;
+                let kmers =
+                    canonical_kmers_crossing_boundary(sequence.as_bytes(), k, boundary_after)?;
+                if kmers.is_empty() {
+                    return Err(format!(
+                        "Structural evidence record '{}' in '{}' has no valid boundary-spanning {}-mers",
+                        record_id, source.path, k
+                    ));
+                }
+                boundary_spanning_record_count = boundary_spanning_record_count.saturating_add(1);
+                kmers
+            } else {
+                canonical_kmer_set(sequence.as_bytes(), k)
             };
             matched_record_count = matched_record_count.saturating_add(1);
             let index =
@@ -860,18 +1025,13 @@ fn build_structural_evidence_indexes(
                         kind: source.kind,
                         record_ids: BTreeSet::new(),
                         kmers: HashSet::new(),
+                        boundary_spanning_only: source.kind.requires_boundary_span(),
                     });
-            let record_id = header
-                .split_ascii_whitespace()
-                .next()
-                .unwrap_or("")
-                .trim_start_matches('>');
             if !record_id.is_empty() {
                 index.record_ids.insert(record_id.to_string());
             }
-            canonical_kmers_for_each(sequence.as_bytes(), k, |kmer| {
-                index.kmers.insert(kmer);
-            });
+            source_kmers.extend(record_kmers.iter().copied());
+            index.kmers.extend(record_kmers);
             Ok(())
         })?;
         reports.push(StructuralEvidenceSourceReport {
@@ -880,9 +1040,46 @@ fn build_structural_evidence_indexes(
             bytes: file_size(&source.path)?,
             record_count,
             matched_record_count,
+            boundary_spanning_record_count,
+            distinct_kmers: source_kmers.len(),
         });
     }
     Ok((indexes.into_values().collect(), reports))
+}
+
+fn canonical_kmer_set(sequence: &[u8], k: usize) -> HashSet<u64> {
+    let mut kmers = HashSet::new();
+    canonical_kmers_for_each(sequence, k, |kmer| {
+        kmers.insert(kmer);
+    });
+    kmers
+}
+
+fn canonical_kmers_crossing_boundary(
+    sequence: &[u8],
+    k: usize,
+    boundary_after: usize,
+) -> Result<HashSet<u64>, String> {
+    if boundary_after == 0 || boundary_after >= sequence.len() {
+        return Err(format!(
+            "boundary_after must be between 1 and sequence_length-1 (got {boundary_after} for length {})",
+            sequence.len()
+        ));
+    }
+    if k == 0 || k > 31 || sequence.len() < k {
+        return Ok(HashSet::new());
+    }
+    let min_start = boundary_after.saturating_sub(k.saturating_sub(1));
+    let max_start = boundary_after
+        .saturating_sub(1)
+        .min(sequence.len().saturating_sub(k));
+    let mut kmers = HashSet::new();
+    for start in min_start..=max_start {
+        canonical_kmers_for_each(&sequence[start..start + k], k, |kmer| {
+            kmers.insert(kmer);
+        });
+    }
+    Ok(kmers)
 }
 
 fn build_manifest(gene_indices: &[GeneIndex], k: usize) -> Vec<GeneManifestEntry> {
@@ -1012,6 +1209,11 @@ fn build_universe_summaries(universes: &[UniverseState]) -> Vec<UniverseSummary>
             evaluated_reads: universe.tally.evaluated_reads,
             reads_matching_any: universe.tally.reads_matching_any,
             ambiguous_reads: universe.tally.ambiguous_reads,
+            selected_input_reads: universe.tally.selected_input_reads,
+            selected_evidence_units: universe.tally.selected_reads,
+            evaluated_evidence_units: universe.tally.evaluated_reads,
+            evidence_units_matching_any: universe.tally.reads_matching_any,
+            ambiguous_evidence_units: universe.tally.ambiguous_reads,
         })
         .collect()
 }
@@ -1055,6 +1257,9 @@ fn build_structural_hit_summaries(
                 distinct_kmers: index.kmers.len(),
                 reads_hit: tally.reads_hit,
                 total_matching_kmers: tally.total_matching_kmers,
+                boundary_spanning_only: index.boundary_spanning_only,
+                rna_anchored_hits: tally.rna_anchored_hits,
+                unanchored_hits: tally.unanchored_hits,
             });
         }
     }
@@ -1155,7 +1360,7 @@ fn write_gene_hits_tsv(path: &str, gene_hits: &[GeneHitSummary]) -> Result<(), S
 fn write_read_hits_header(writer: &mut dyn Write) -> Result<(), String> {
     writeln!(
         writer,
-        "universe\tread_id\tsource_file\tgene_symbol\tmatching_kmer_count\tread_kmer_count\tread_length\tambiguous\thit_genes"
+        "universe\tread_id\tsource_file\tevidence_unit\tinput_read_count\tgene_symbol\tmatching_kmer_count\tread_kmer_count\tread_length\tambiguous\thit_genes"
     )
     .map_err(|e| format!("Could not write read hits TSV header: {e}"))
 }
@@ -1166,6 +1371,8 @@ fn write_read_hit_row(
     universe: &str,
     read_id: &str,
     source_file: &str,
+    evidence_unit: TargetRescueEvidenceUnit,
+    input_read_count: u8,
     gene_symbol: &str,
     matching_kmer_count: u64,
     read_kmer_count: u64,
@@ -1175,10 +1382,12 @@ fn write_read_hit_row(
 ) -> Result<(), String> {
     writeln!(
         writer,
-        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         tsv_cell(universe),
         tsv_cell(read_id),
         tsv_cell(source_file),
+        evidence_unit.as_str(),
+        input_read_count,
         tsv_cell(gene_symbol),
         matching_kmer_count,
         read_kmer_count,
@@ -1192,7 +1401,7 @@ fn write_read_hit_row(
 fn write_structural_hits_header(writer: &mut dyn Write) -> Result<(), String> {
     writeln!(
         writer,
-        "universe\tread_id\tsource_file\tgene_symbol\tevidence_kind\tcandidate_label\tmatching_kmer_count\tread_kmer_count\tread_length\tevidence_record_ids"
+        "universe\tread_id\tsource_file\tevidence_unit\tinput_read_count\tgene_symbol\tevidence_kind\tcandidate_label\tboundary_spanning_only\trna_anchored\tmatching_kmer_count\tread_kmer_count\tread_length\tevidence_record_ids"
     )
     .map_err(|e| format!("Could not write structural hits TSV header: {e}"))
 }
@@ -1203,20 +1412,27 @@ fn write_structural_hit_row(
     universe: &str,
     read_id: &str,
     source_file: &str,
+    evidence_unit: TargetRescueEvidenceUnit,
+    input_read_count: u8,
     evidence: &StructuralEvidenceIndex,
     matching_kmer_count: u64,
     read_kmer_count: u64,
     read_length: usize,
+    rna_anchored: bool,
 ) -> Result<(), String> {
     writeln!(
         writer,
-        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         tsv_cell(universe),
         tsv_cell(read_id),
         tsv_cell(source_file),
+        evidence_unit.as_str(),
+        input_read_count,
         tsv_cell(&evidence.gene_symbol),
         evidence.kind.as_str(),
         evidence.kind.candidate_label(),
+        evidence.boundary_spanning_only,
+        rna_anchored,
         matching_kmer_count,
         read_kmer_count,
         read_length,
@@ -1331,6 +1547,38 @@ fn parse_gene_symbol_from_header(header: &str, tags: &[String]) -> Option<String
         }
     }
     None
+}
+
+fn header_token_value<'a>(header: &'a str, requested_key: &str) -> Option<&'a str> {
+    header.split_ascii_whitespace().find_map(|token| {
+        let (key, value) = token.split_once(':')?;
+        key.eq_ignore_ascii_case(requested_key)
+            .then_some(value.trim())
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn structural_interpretation_warnings(sources: &[StructuralEvidenceSource]) -> Vec<String> {
+    let kinds = sources
+        .iter()
+        .map(|source| source.kind)
+        .collect::<BTreeSet<_>>();
+    let mut warnings = Vec::new();
+    if kinds.contains(&StructuralEvidenceKind::ExonIntronBoundary)
+        || kinds.contains(&StructuralEvidenceKind::Intron)
+    {
+        warnings.push(
+            "Retained-intron and intronic hits remain compatible with incompletely processed pre-mRNA or genomic-DNA contamination. rna_anchored_hits require an annotated splice-junction signal for the same gene in the same read or fragment, but are still candidate evidence rather than a retained-intron call."
+                .to_string(),
+        );
+    }
+    if kinds.contains(&StructuralEvidenceKind::GenomicRegion) {
+        warnings.push(
+            "A genomic-region catalog was explicitly enabled; genomic-region hits are not RNA-specific and should not be interpreted as transcript evidence."
+                .to_string(),
+        );
+    }
+    warnings
 }
 
 fn strip_transcript_version(transcript_id: &str) -> &str {
@@ -1742,7 +1990,7 @@ mod tests {
         write_text(
             &boundaries,
             &format!(
-                ">GENEB_exon_intron_1 gene_symbol:GENEB\n{}\n",
+                ">GENEB_exon_intron_1 gene_symbol:GENEB boundary_after:18\n{}\n",
                 &GENEB_SEQ[..36]
             ),
         );
@@ -1785,12 +2033,167 @@ mod tests {
         assert_eq!(boundary.gene_symbol, "GENEB");
         assert_eq!(boundary.candidate_label, "retained_intron_candidate");
         assert_eq!(boundary.reads_hit, 1);
+        assert!(boundary.boundary_spanning_only);
+        assert_eq!(boundary.rna_anchored_hits, 0);
+        assert_eq!(boundary.unanchored_hits, 1);
+        assert!(
+            summary
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("genomic-DNA contamination"))
+        );
 
         let tsv = fs::read_to_string(&summary.output_files.structural_hits_tsv)
             .expect("structural hit TSV should exist");
         assert!(tsv.contains("\tknown_exonic\t"));
         assert!(tsv.contains("\tretained_intron_candidate\t"));
         assert!(!tsv.contains("novel_exon"));
+    }
+
+    #[test]
+    fn boundary_catalog_indexes_only_kmers_that_cross_the_declared_boundary() {
+        let sequence = b"ACGTCAGTACGATTGGCCTAACGT";
+        let boundary_kmers = canonical_kmers_crossing_boundary(sequence, 7, 12)
+            .expect("declared boundary should be valid");
+        let left_flank = canonical_set("ACGTCAGTACGA", 7);
+        let crossing_read = canonical_set("GTACGATTGGCC", 7);
+
+        assert!(!boundary_kmers.is_empty());
+        assert!(boundary_kmers.is_disjoint(&left_flank));
+        assert!(!boundary_kmers.is_disjoint(&crossing_read));
+    }
+
+    #[test]
+    fn paired_fragments_distinguish_rna_anchored_and_unanchored_boundary_hits() {
+        let dir = tempdir().expect("temp dir");
+        let transcripts = dir.path().join("transcripts.fasta");
+        let boundaries = dir.path().join("boundaries.fasta");
+        let junctions = dir.path().join("junctions.fasta");
+        let read1 = dir.path().join("reads_1.fastq");
+        let read2 = dir.path().join("reads_2.fastq");
+        write_text(
+            &transcripts,
+            &format!(">ENSTA1.1 cdna gene_symbol:GENEA\n{GENEA_SEQ}\n"),
+        );
+        write_text(
+            &boundaries,
+            ">GENEA_retained_boundary gene_symbol:GENEA boundary_after:12\nACGTCAGTACGATTGGCCTAACGT\n",
+        );
+        write_text(
+            &junctions,
+            ">GENEA_known_junction gene_symbol:GENEA boundary_after:12\nGATCCGATAGCACCGTTAAGGCTT\n",
+        );
+        write_text(
+            &read1,
+            concat!(
+                "@rna_anchored/1\nGTACGATTGGCC\n+\nIIIIIIIIIIII\n",
+                "@boundary_only/1\nGTACGATTGGCC\n+\nIIIIIIIIIIII\n",
+                "@flank_only/1\nACGTCAGTACGA\n+\nIIIIIIIIIIII\n",
+            ),
+        );
+        write_text(
+            &read2,
+            concat!(
+                "@rna_anchored/2\nATAGCACCGTTA\n+\nIIIIIIIIIIII\n",
+                "@boundary_only/2\nNNNNNNNNNNNN\n+\nIIIIIIIIIIII\n",
+                "@flank_only/2\nNNNNNNNNNNNN\n+\nIIIIIIIIIIII\n",
+            ),
+        );
+
+        let summary = run_target_rescue_screen(TargetRescueRequest {
+            transcript_fastas: vec![transcripts.display().to_string()],
+            genes: vec!["GENEA".to_string()],
+            reads: Vec::new(),
+            read_pairs: vec![TargetRescueReadPairInput {
+                read1: read1.display().to_string(),
+                read2: read2.display().to_string(),
+            }],
+            structural_evidence: vec![
+                StructuralEvidenceSource {
+                    kind: StructuralEvidenceKind::AnnotatedJunction,
+                    path: junctions.display().to_string(),
+                },
+                StructuralEvidenceSource {
+                    kind: StructuralEvidenceKind::ExonIntronBoundary,
+                    path: boundaries.display().to_string(),
+                },
+            ],
+            kmer_len: 7,
+            min_kmer_hits: 1,
+            output_prefix: dir.path().join("paired").display().to_string(),
+            ..TargetRescueRequest::default()
+        })
+        .expect("paired structural rescue should run");
+
+        assert_eq!(summary.total_input_reads, 6);
+        assert_eq!(summary.total_evidence_units, 3);
+        assert_eq!(summary.universes[0].selected_reads, 3);
+        assert_eq!(summary.universes[0].selected_input_reads, 6);
+        assert_eq!(summary.universes[0].selected_evidence_units, 3);
+        let boundary = summary
+            .structural_hits
+            .iter()
+            .find(|row| row.evidence_kind == StructuralEvidenceKind::ExonIntronBoundary)
+            .expect("boundary summary");
+        assert_eq!(boundary.reads_hit, 2);
+        assert_eq!(boundary.rna_anchored_hits, 1);
+        assert_eq!(boundary.unanchored_hits, 1);
+        let junction = summary
+            .structural_hits
+            .iter()
+            .find(|row| row.evidence_kind == StructuralEvidenceKind::AnnotatedJunction)
+            .expect("junction summary");
+        assert_eq!(junction.reads_hit, 1);
+        assert_eq!(junction.rna_anchored_hits, 1);
+
+        let tsv = fs::read_to_string(&summary.output_files.structural_hits_tsv)
+            .expect("structural TSV should exist");
+        let retained_rows = tsv
+            .lines()
+            .filter(|line| line.contains("retained_intron_candidate"))
+            .collect::<Vec<_>>();
+        assert_eq!(retained_rows.len(), 2);
+        assert!(retained_rows.iter().any(|line| {
+            line.contains("rna_anchored")
+                && line.contains("\tfragment\t2\t")
+                && line.contains("\ttrue\t")
+        }));
+        assert!(retained_rows.iter().any(|line| {
+            line.contains("boundary_only")
+                && line.contains("\tfragment\t2\t")
+                && line.contains("\tfalse\t")
+        }));
+        assert!(!tsv.contains("flank_only\t"));
+    }
+
+    #[test]
+    fn legacy_request_defaults_to_no_paired_inputs() {
+        let request: TargetRescueRequest = serde_json::from_value(serde_json::json!({
+            "transcript_fastas": ["transcripts.fa"],
+            "genes": ["GENEA"],
+            "reads": ["reads.fq"],
+            "structural_evidence": [],
+            "kmer_len": 25,
+            "min_kmer_hits": 3,
+            "gene_symbol_tags": ["gene_symbol"],
+            "output_prefix": "out/rescue"
+        }))
+        .expect("legacy request should deserialize");
+        assert!(request.read_pairs.is_empty());
+
+        let paired_only: TargetRescueRequest = serde_json::from_value(serde_json::json!({
+            "transcript_fastas": ["transcripts.fa"],
+            "genes": ["GENEA"],
+            "read_pairs": [{"read1": "reads_1.fq", "read2": "reads_2.fq"}],
+            "structural_evidence": [],
+            "kmer_len": 25,
+            "min_kmer_hits": 3,
+            "gene_symbol_tags": ["gene_symbol"],
+            "output_prefix": "out/rescue"
+        }))
+        .expect("paired-only request should deserialize without an empty reads field");
+        assert!(paired_only.reads.is_empty());
+        assert_eq!(paired_only.read_pairs.len(), 1);
     }
 
     #[test]

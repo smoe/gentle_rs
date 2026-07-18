@@ -272,6 +272,12 @@ haplotype. Reports must distinguish physical reads, fragments, and evaluated
 evidence observations. Structural rescue matches are non-blocking candidate
 evidence and must not be labelled as novel exons, retained introns, fusions, or
 resolved isoforms without a separate alignment and junction-validation layer.
+Annotated-junction and exon-intron-boundary catalogs index only k-mers that
+cross an explicitly declared boundary. Retained-intron and intronic candidates
+remain reportable, but same-read or same-fragment support from an annotated
+splice junction for that gene is recorded separately as an RNA anchor. Such an
+anchor strengthens an RNA-derived interpretation without excluding pre-mRNA or
+genomic-DNA contamination and is not itself a retained-intron call.
 
 ## DEC-028: Construct Reasoning Outputs Are Fingerprinted Snapshots
 

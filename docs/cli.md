@@ -1900,6 +1900,9 @@ Accepted inputs include:
   `--gene SYM`
 - streamed FASTA or FASTQ reads, plain or gzip-compressed, through repeated
   `--reads PATH`
+- paired-end FASTA or FASTQ files through repeated `--read-pair R1,R2`; mates
+  are read in lockstep and screened as one fragment without creating k-mers
+  across the mate boundary
 - an optional read-id allowlist
 - optional Salmon bridge files through `--salmon-unmapped-names` and
   `--salmon-mappings-sam`
@@ -1926,6 +1929,28 @@ can be audited, not as a substitute for an aligner or transcript quantifier.
 Structural matches are labelled as known exon/junction evidence or as
 retained-intron, intronic, or genomic-region candidates. They are not novel
 exon, retained-intron, fusion, or isoform calls.
+
+Annotated-junction and exon-intron-boundary FASTA records must include a
+`boundary_after:N` header token, where `N` is the number of sequence bases to
+the left of the junction or boundary. Only k-mers containing bases from both
+sides are indexed, so a read matching only an adjacent exon or intron flank is
+not counted as boundary evidence. Exon, intron, and explicitly supplied
+genomic-region catalogs continue to use their full sequences.
+
+For retained-intron and intronic candidates, `rna_anchored_hits` means that the
+same read or paired fragment also passed the annotated-junction threshold for
+the same gene. This makes an RNA-derived explanation more plausible, but does
+not prove retention; unanchored hits remain visible because they may reflect
+pre-mRNA, while also remaining compatible with genomic-DNA contamination. A
+genomic-region catalog is never treated as RNA-specific and can simply be
+omitted from RNA-focused runs.
+
+The JSON and TSV reports distinguish physical input reads from evaluated
+evidence units. A single-end record contributes one read and one evidence unit;
+a paired fragment contributes two input reads and one evidence unit. Legacy v1
+fields such as `selected_reads` retain their evidence-unit meaning, while the
+additive `selected_input_reads` and `*_evidence_units` fields make the counting
+unit explicit.
 
 ### Commands
 

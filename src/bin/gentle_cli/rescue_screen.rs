@@ -2,7 +2,8 @@
 
 use super::*;
 use gentle::target_rescue::{
-    StructuralEvidenceKind, StructuralEvidenceSource, TargetRescueRequest, run_target_rescue_screen,
+    StructuralEvidenceKind, StructuralEvidenceSource, TargetRescueReadPairInput,
+    TargetRescueRequest, run_target_rescue_screen,
 };
 
 pub(super) fn handle_rescue_screen(args: &[String], cmd_idx: usize) -> Result<(), String> {
@@ -56,6 +57,28 @@ pub(super) fn handle_rescue_screen(args: &[String], cmd_idx: usize) -> Result<()
                     "PATH",
                     "rescue-screen",
                 )?);
+                idx += 2;
+            }
+            "--read-pair" => {
+                let raw = gentle_cli_args::required_value(
+                    args,
+                    idx,
+                    "--read-pair",
+                    "R1,R2",
+                    "rescue-screen",
+                )?;
+                let (read1, read2) = raw
+                    .split_once(',')
+                    .ok_or_else(|| format!("Invalid --read-pair value '{raw}': expected R1,R2"))?;
+                if read1.trim().is_empty() || read2.trim().is_empty() {
+                    return Err(format!(
+                        "Invalid --read-pair value '{raw}': both paths are required"
+                    ));
+                }
+                request.read_pairs.push(TargetRescueReadPairInput {
+                    read1: read1.trim().to_string(),
+                    read2: read2.trim().to_string(),
+                });
                 idx += 2;
             }
             "--exon-fasta" => {

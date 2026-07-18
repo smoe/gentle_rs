@@ -78,6 +78,13 @@ Maintenance rule:
   wrapping cards that keep each `Run` control and validation reason visible;
   invalid, empty, and chat-only suggestions remain non-executable.
 
+## 2026-07-18
+
+- Made RNA target-rescue junction and exon-intron-boundary catalogs
+  boundary-specific, separated RNA-anchored from unanchored retained-intron
+  evidence, and added lockstep paired-end fragment screening with explicit
+  physical-read and evidence-unit counts.
+
 ## 2026-07-12
 
 - Added the same content inset to the DNA viewer's feature-description pane as
