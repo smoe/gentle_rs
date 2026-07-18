@@ -140,31 +140,29 @@ read-only `planning protein-expression-handoff` route, which now surfaces
 product-readiness context for stored DNA/protein sequences, chassis/route
 candidates, GeneArt service preflight scaffolding, and the required
 yield/folding/chassis review questions without creating constructs.
-`product_definition.readiness` now drives `suggested_next_actions[]`, but the
-service candidate still embeds the bundled synthetic GeneArt example rather
-than a request derived from the selected product. The text report also shows
-that example's preflight/quote scaffold when structured next actions correctly
-withhold provider work for an undefined product.
+`product_definition.readiness` now drives `suggested_next_actions[]`; text and
+JSON outputs expose the same provider actions. A provider-ready selected
+product also produces a product-specific GeneArt review draft referencing its
+project `seq_id` or `protein_seq_id`, while undefined products retain only the
+clearly labelled bundled example and no provider action.
 
 Keep the next synthetic-biology bridge slices in this order:
 
-1. Restore text/JSON action parity by showing provider preflight and quote
-   lines only when product readiness permits the corresponding structured
-   action.
-2. Add an engine-owned, versioned protein-expression requirements record for
+1. Add an engine-owned, versioned protein-expression requirements record for
    reviewed answers: yield endpoint, acceptable chassis, localization,
    PTMs/cofactors, toxicity/induction, tag/cleavage policy, scale/purification,
    and outsourcing permission.
-3. Derive a review-only provider-neutral external-service request draft from
+2. Derive a fully populated, review-only provider-neutral external-service
+   request draft from
    the selected product plus those reviewed requirements, then project it to
    GeneArt only after provider selection. Keep submission and ordering out of
    scope.
-4. Add a thin Synthetic Biology / Protein Expression Handoff inspector over
+3. Add a thin Synthetic Biology / Protein Expression Handoff inspector over
    the shared report. It should display readiness, unanswered requirements,
    sequence/CDS/tag evidence, candidates, and shared suggested actions; the
    same window can later expose existing reporter recommendation and reporter
    construct-handoff reports as sibling views.
-5. Only after the requirements contract exists, rank chassis, vector/tag
+4. Only after the requirements contract exists, rank chassis, vector/tag
    routes, and provider candidates from structured biology, provider
    capabilities, and local inventory. Emit score components and rejection
    reasons; do not silently codon-optimize or create constructs.

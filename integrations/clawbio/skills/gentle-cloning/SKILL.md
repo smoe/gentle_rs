@@ -1310,7 +1310,10 @@ task:
      `vector_route_candidates`, `missing_questions`,
      `service_handoff_candidates`, and `suggested_next_actions`; do not equate
      maximum yield with the strongest promoter until the product metric, host,
-     folding, toxicity, and purification endpoint are explicit
+     folding, toxicity, and purification endpoint are explicit; treat
+     `draft_example_review_required` as a template only, and use a
+     `product_draft_review_required` preview or provider action only after its
+     `seq_id`/`protein_seq_id` matches the selected project product
    - if the user asks for reporter selection, reporter catalog inspection,
      promoter-reporter handoff, or local-AI reporter-corpus preparation, prefer
      the reporter routes (`reporters list`, `reporters recommend`,

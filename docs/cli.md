@@ -5486,7 +5486,10 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     `cds_assessment`, `tag_assessment`, ranked `host_chassis_candidates[]`,
     ranked `vector_route_candidates[]`, explicit `missing_questions[]`, a
     GeneArt protein-expression `service_handoff_candidates[]` preflight
-    scaffold, and readiness-driven `suggested_next_actions[]`.
+    scaffold, and readiness-driven `suggested_next_actions[]`. Undefined
+    products retain only the labelled bundled example; provider-ready selected
+    products receive a project-bound request preview referencing `seq_id` or
+    `protein_seq_id`.
   - If `--seq-id` is supplied, the route now performs read-only product-context
     analysis: annotated CDS features are summarized first, whole-sequence CDS
     sanity is used only as an explicit fallback, and the report records
@@ -5505,6 +5508,9 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     preparation; `protein_sequence_review_required` points to reverse
     translation or provider protein-target handoff review; `needs_cds_boundary`
     points to CDS/ORF boundary inspection.
+  - Text output derives provider lines from the same structured action rows,
+    and product-specific preflight/quote actions serialize the same request
+    preview instead of pointing at the tutorial protein.
   - The route never designs, optimizes, orders, mutates constructs, queries
     live providers, or promises wet-lab yield. GUI exposure for this richer
     handoff remains a future Synthetic Biology inspector slice rather than a

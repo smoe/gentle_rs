@@ -10627,6 +10627,7 @@ fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
         .expect("GeneArt handoff scaffold");
     assert_eq!(service.provider, "geneart");
     assert_eq!(service.service_kind, "protein_expression");
+    assert_eq!(service.status, "draft_example_review_required");
     assert_eq!(
         service.draft_request_preview["schema"].as_str(),
         Some("gentle.external_service_request.v1")
@@ -10650,11 +10651,20 @@ fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
             .contains("GENtle protein-expression handoff")
     );
     assert!(
-        report
+        !report
             .text_report
             .as_deref()
             .unwrap_or_default()
-            .contains("Quote packet after review: services project-quote")
+            .contains("services project-quote"),
+        "text output must not advertise a provider action withheld by the structured action list"
+    );
+    assert!(
+        !report
+            .text_report
+            .as_deref()
+            .unwrap_or_default()
+            .contains("services project-preflight"),
+        "text output must not advertise preflight for an undefined product"
     );
 }
 
@@ -10764,6 +10774,34 @@ fn execute_planning_protein_expression_handoff_seq_id_reports_cds_context() {
         action.action_id == "prepare_geneart_quote_packet_after_review"
             && action.shell_line.contains("services project-quote")
     }));
+    let service = report
+        .service_handoff_candidates
+        .first()
+        .expect("product-specific GeneArt draft");
+    assert_eq!(service.status, "product_draft_review_required");
+    assert_eq!(
+        service.draft_request_preview["source_target"]["seq_id"].as_str(),
+        Some("cds_product")
+    );
+    assert_eq!(
+        service.draft_request_preview["source_target"]["name"].as_str(),
+        Some("obvious_cds")
+    );
+    assert_eq!(
+        service.draft_request_preview["request_metadata"]["tutorial"].as_bool(),
+        Some(false)
+    );
+    assert!(service.shell_line.contains("cds_product"));
+    assert!(!service.shell_line.contains("@docs/examples"));
+    let preflight_command = parse_shell_line(&service.shell_line)
+        .expect("product-specific preflight command should parse");
+    let preflight = execute_shell_command(&mut engine, &preflight_command)
+        .expect("product-specific preflight should execute");
+    assert_eq!(preflight.output["eligible"].as_bool(), Some(true));
+    let text_report = report.text_report.as_deref().unwrap_or_default();
+    assert!(text_report.contains("services project-preflight"));
+    assert!(text_report.contains("services project-quote"));
+    assert!(text_report.contains("cds_product"));
 }
 
 #[test]
@@ -10838,7 +10876,7 @@ fn execute_planning_protein_expression_handoff_protein_sequence_suggests_reverse
                 .to_string(),
             ),
             profile_scope: PlanningProfileScope::Effective,
-            output_format: "json".to_string(),
+            output_format: "text".to_string(),
         },
     )
     .expect("planning protein-expression handoff with protein sequence");
@@ -10867,6 +10905,30 @@ fn execute_planning_protein_expression_handoff_protein_sequence_suggests_reverse
             .iter()
             .any(|action| action.action_id == "inspect_provider_protein_target_handoff")
     );
+    let service = report
+        .service_handoff_candidates
+        .first()
+        .expect("product-specific provider target draft");
+    assert_eq!(service.status, "product_draft_review_required");
+    assert_eq!(
+        service.draft_request_preview["source_target"]["protein_seq_id"].as_str(),
+        Some("protein_product")
+    );
+    assert_eq!(
+        service.draft_request_preview["source_target"]["length_aa"].as_u64(),
+        Some(9)
+    );
+    assert!(service.shell_line.contains("protein_product"));
+    assert!(
+        !report
+            .suggested_next_actions
+            .iter()
+            .any(|action| action.action_id == "prepare_geneart_quote_packet_after_review"),
+        "a protein-only target should remain preflight-only until its coding route is reviewed"
+    );
+    let text_report = report.text_report.as_deref().unwrap_or_default();
+    assert!(text_report.contains("services project-preflight"));
+    assert!(!text_report.contains("services project-quote"));
 }
 
 #[test]

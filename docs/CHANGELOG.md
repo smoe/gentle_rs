@@ -17,6 +17,10 @@ Maintenance rule:
 - Upgraded the optional embedded Lua adapter to `mlua 0.12`/`mlua-sys 0.11`
   and the current vendored Lua and LuaJIT sources while retaining Lua 5.4,
   Serde conversion, and the shared engine/shell behavior.
+- Made protein-expression provider handoffs readiness-consistent across text
+  and JSON, and replaced tutorial-protein commands with product-specific,
+  project-referenced GeneArt review drafts when a selected DNA/protein product
+  is ready for provider preflight.
 
 ## 2026-07-14
 
