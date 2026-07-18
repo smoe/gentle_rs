@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-18
+
+- Upgraded the optional embedded Lua adapter to `mlua 0.12`/`mlua-sys 0.11`
+  and the current vendored Lua and LuaJIT sources while retaining Lua 5.4,
+  Serde conversion, and the shared engine/shell behavior.
+
 ## 2026-07-14
 
 - Extended `gentle.gene_locus_evidence_display.v1` with a generic,

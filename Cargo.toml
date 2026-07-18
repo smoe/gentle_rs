@@ -32,7 +32,7 @@ bio = "=4.0.1"
 egui = "=0.35.0"
 image = "=0.25.10"
 itertools = "=0.15.0"
-mlua = "=0.11.6"
+mlua = "=0.12.0"
 rayon = "=1.12.0"
 reqwest = "=0.13.4"
 rfd = "=0.17.2"
@@ -141,8 +141,10 @@ puffin_http = { version = "=0.17.0", optional = true }
 
 # For feature-gated JS/Lua shells
 rustyline = { workspace = true, optional = true }
-mlua = { workspace = true, optional = true, features = ["lua54", "vendored", "serialize"] }
+mlua = { workspace = true, optional = true, features = ["lua54", "vendored", "serde"] }
 # Keep the JS shell on a Deno/Temporal stack that is known to compile together.
+# `deno_core` is maintained in the `denoland/deno` monorepo; assess upgrades
+# against that workspace and its release tags, not the retired standalone repo.
 # `temporal_rs 0.1.2` expects the ICU 2.1 API; without these explicit pins,
 # cargo can legally float the transitive ICU crates to 2.2.x and break CI.
 deno_core = { version = "=0.387.0", optional = true }
