@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-19
+
+- Made `gentle_examples_docs tutorial-check` treat CRLF and LF as equivalent
+  for known text artifacts while retaining byte-exact drift checks for binary
+  files, so normal Windows checkouts pass tutorial validation.
+
 ## 2026-07-18
 
 - Upgraded the optional embedded Lua adapter to `mlua 0.12`/`mlua-sys 0.11`

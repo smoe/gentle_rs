@@ -3,6 +3,7 @@
 use crate::engine::{Engine, GentleEngine, Operation, OperationProgress, ProjectState, Workflow};
 use serde::{Deserialize, Serialize};
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
     path::{Path, PathBuf},
@@ -4341,6 +4342,43 @@ fn directory_bytes_map(root: &Path) -> Result<BTreeMap<String, Vec<u8>>, String>
     Ok(map)
 }
 
+fn is_tutorial_text_artifact(path: &str) -> bool {
+    Path::new(path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            ["csv", "json", "md", "svg", "txt"]
+                .iter()
+                .any(|candidate| extension.eq_ignore_ascii_case(candidate))
+        })
+}
+
+fn normalize_crlf(bytes: &[u8]) -> Cow<'_, [u8]> {
+    if !bytes.windows(2).any(|pair| pair == b"\r\n") {
+        return Cow::Borrowed(bytes);
+    }
+
+    let mut normalized = Vec::with_capacity(bytes.len());
+    let mut offset = 0;
+    while offset < bytes.len() {
+        if bytes.get(offset..offset + 2) == Some(b"\r\n") {
+            normalized.push(b'\n');
+            offset += 2;
+        } else {
+            normalized.push(bytes[offset]);
+            offset += 1;
+        }
+    }
+    Cow::Owned(normalized)
+}
+
+fn tutorial_generated_bytes_equal(path: &str, expected: &[u8], actual: &[u8]) -> bool {
+    if !is_tutorial_text_artifact(path) {
+        return expected == actual;
+    }
+    normalize_crlf(expected) == normalize_crlf(actual)
+}
+
 fn summarize_path_list(paths: Vec<String>) -> String {
     const MAX_PATHS: usize = 12;
     if paths.is_empty() {
@@ -5027,7 +5065,7 @@ pub fn check_tutorial_generated(
                 )
             )
         })?;
-        if expected_bytes != actual_bytes {
+        if !tutorial_generated_bytes_equal(path, expected_bytes, actual_bytes) {
             return Err(format!(
                 "{}{}",
                 format!(
@@ -6890,6 +6928,46 @@ mod tests {
         assert!(!normalized.contains("1777756509715"));
         assert!(!normalized.contains("1777756511961"));
         assert!(!normalized.ends_with("\n\n"));
+    }
+
+    #[test]
+    fn tutorial_generated_text_comparison_accepts_crlf_checkout_content() {
+        for path in [
+            "README.md",
+            "report.json",
+            "artifacts/export.csv",
+            "artifacts/figure.svg",
+            "artifacts/protocol.txt",
+        ] {
+            assert!(
+                tutorial_generated_bytes_equal(path, b"first\nsecond\n", b"first\r\nsecond\r\n"),
+                "expected line-ending-insensitive comparison for {path}"
+            );
+        }
+        assert!(!tutorial_generated_bytes_equal(
+            "README.md",
+            b"first\nsecond\n",
+            b"first\r\nchanged\r\n"
+        ));
+        assert!(!tutorial_generated_bytes_equal(
+            "README.md",
+            b"first\nsecond\n",
+            b"first\rsecond\r"
+        ));
+    }
+
+    #[test]
+    fn tutorial_generated_binary_comparison_remains_byte_exact() {
+        assert!(!tutorial_generated_bytes_equal(
+            "artifacts/preview.png",
+            b"binary\nbytes",
+            b"binary\r\nbytes"
+        ));
+        assert!(tutorial_generated_bytes_equal(
+            "artifacts/preview.png",
+            b"same\r\nbytes",
+            b"same\r\nbytes"
+        ));
     }
 
     #[test]
