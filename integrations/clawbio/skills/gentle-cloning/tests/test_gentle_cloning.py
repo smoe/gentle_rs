@@ -9,6 +9,8 @@ import shutil
 import subprocess
 import sys
 
+import pytest
+
 
 def _skill_script() -> Path:
     return Path(__file__).resolve().parents[1] / "gentle_cloning.py"
@@ -2697,6 +2699,10 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
     assert "## Artifact Bundle Summary" in report
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX-only Apptainer Bash launcher; Windows uses gentle_cloning.py",
+)
 def test_apptainer_launcher_wraps_gentle_cli_with_bind_mount(tmp_path: Path) -> None:
     fake_runtime = tmp_path / "apptainer"
     capture_path = tmp_path / "apptainer_args.txt"
@@ -2738,6 +2744,10 @@ def test_apptainer_launcher_wraps_gentle_cli_with_bind_mount(tmp_path: Path) -> 
     ]
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX-only local-checkout Bash launcher; Windows uses gentle_cloning.py",
+)
 def test_local_checkout_launcher_uses_repo_root_defaults(tmp_path: Path) -> None:
     fake_repo = tmp_path / "GENtle"
     (fake_repo / "src" / "bin").mkdir(parents=True)

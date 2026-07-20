@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-20
+
+- Kept portable ClawBio parity coverage active on Windows while excluding the
+  two POSIX-only Bash launcher tests that cannot run from a normal CRLF
+  checkout; macOS and Linux retain launcher coverage.
+
 ## 2026-07-19
 
 - Made `gentle_examples_docs tutorial-check` treat CRLF and LF as equivalent
