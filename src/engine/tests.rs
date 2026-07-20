@@ -3757,11 +3757,63 @@ exit 2
 }
 
 #[cfg(unix)]
+fn install_fake_native_primer3_about(path: &Path) -> String {
+    let script_path = path.join("fake_native_primer3.sh");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--about" ]; then
+  echo "libprimer3 release 2.6.1"
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "Copyright (c) 1996-2022"
+  exit 255
+fi
+echo "unexpected args: $@" >&2
+exit 2
+"#;
+    std::fs::write(&script_path, script).expect("write native-like fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata native-like fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod native-like fake primer3");
+    script_path.display().to_string()
+}
+
+#[cfg(unix)]
+fn install_fake_primer3_failed_version_probes(path: &Path) -> String {
+    let script_path = path.join("fake_failed_primer3.sh");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--about" ]; then
+  echo "unknown option: --about" >&2
+  exit 2
+fi
+if [ "$1" = "--version" ]; then
+  echo "Copyright (c) 1996-2022"
+  exit 255
+fi
+echo "unexpected args: $@" >&2
+exit 2
+"#;
+    std::fs::write(&script_path, script).expect("write failed fake primer3");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata failed fake primer3")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod failed fake primer3");
+    script_path.display().to_string()
+}
+
+#[cfg(unix)]
 fn install_fake_primer3_zero_pairs(path: &Path) -> (String, String) {
     let script_path = path.join("fake_primer3_zero_pairs.sh");
     let request_capture_path = path.join("fake_primer3_request_capture.txt");
     let script = format!(
         r#"#!/bin/sh
+if [ "$1" = "--about" ]; then
+  echo "unknown option: --about" >&2
+  exit 2
+fi
 if [ "$1" = "--version" ]; then
   echo "primer3_core synthetic-fixture 2.6.1"
   exit 0
@@ -9531,10 +9583,48 @@ fn test_primer3_preflight_report_success() {
     );
     assert!(report.reachable);
     assert!(report.version_probe_ok);
+    assert_eq!(report.status_code, Some(0));
     assert_eq!(
         report.version.as_deref(),
         Some("primer3_core synthetic-fixture 2.6.1")
     );
+    assert!(report.detail.is_none());
+    assert!(report.error.is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_primer3_preflight_prefers_native_about_probe() {
+    let mut engine = GentleEngine::new();
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let tmp = tempdir().expect("tempdir");
+    let fake_primer3 = install_fake_native_primer3_about(tmp.path());
+    let report = engine.primer3_preflight_report(None, Some(fake_primer3.as_str()));
+    assert!(report.reachable);
+    assert!(report.version_probe_ok);
+    assert_eq!(report.status_code, Some(0));
+    assert_eq!(report.version.as_deref(), Some("libprimer3 release 2.6.1"));
+    assert!(report.detail.is_none());
+    assert!(report.error.is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_primer3_preflight_preserves_diagnostics_when_both_probes_fail() {
+    let mut engine = GentleEngine::new();
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let tmp = tempdir().expect("tempdir");
+    let fake_primer3 = install_fake_primer3_failed_version_probes(tmp.path());
+    let report = engine.primer3_preflight_report(None, Some(fake_primer3.as_str()));
+    assert!(report.reachable);
+    assert!(!report.version_probe_ok);
+    assert_eq!(report.status_code, Some(255));
+    assert!(report.version.is_none());
+    let detail = report.detail.as_deref().expect("failed-probe diagnostics");
+    assert!(detail.contains("--about"));
+    assert!(detail.contains("unknown option: --about"));
+    assert!(detail.contains("--version"));
+    assert!(detail.contains("Copyright (c) 1996-2022"));
     assert!(report.error.is_none());
 }
 
@@ -9585,6 +9675,20 @@ fn test_real_primer3_preflight_is_opt_in() {
         report.reachable,
         "expected a reachable primer3 executable when {} is set, got {:?}",
         EXTERNAL_PRIMER_BINARY_TEST_ENV, report
+    );
+    assert!(
+        report.version_probe_ok,
+        "expected a successful Primer3 version probe when {} is set, got {:?}",
+        EXTERNAL_PRIMER_BINARY_TEST_ENV, report
+    );
+    assert!(
+        report
+            .version
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty()),
+        "expected a non-empty Primer3 version when {} is set, got {:?}",
+        EXTERNAL_PRIMER_BINARY_TEST_ENV,
+        report
     );
 }
 

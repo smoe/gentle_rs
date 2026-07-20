@@ -6894,6 +6894,61 @@ impl GentleEngine {
             .map(|line| line.to_string())
     }
 
+    fn credible_primer3_version_line(stdout: &[u8], stderr: &[u8]) -> Option<String> {
+        for bytes in [stdout, stderr] {
+            for line in String::from_utf8_lossy(bytes).lines().map(str::trim) {
+                if line.is_empty() {
+                    continue;
+                }
+                let lower = line.to_ascii_lowercase();
+                if ["copyright", "licence", "license", "warranty"]
+                    .iter()
+                    .any(|marker| lower.contains(marker))
+                {
+                    continue;
+                }
+                let line_bytes = line.as_bytes();
+                let has_dotted_number = line_bytes.windows(3).any(|window| {
+                    window[0].is_ascii_digit() && window[1] == b'.' && window[2].is_ascii_digit()
+                });
+                let has_version_context = lower.contains("primer3")
+                    || lower.contains("release")
+                    || lower.contains("version");
+                let bare_version = line
+                    .strip_prefix('v')
+                    .or_else(|| line.strip_prefix('V'))
+                    .unwrap_or(line);
+                let is_bare_version = bare_version
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || matches!(byte, b'.' | b'-' | b'+'));
+                if has_dotted_number && (has_version_context || is_bare_version) {
+                    return Some(line.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    fn primer3_probe_failure_detail(argument: &str, output: &std::process::Output) -> String {
+        let status = output
+            .status
+            .code()
+            .map(|code| code.to_string())
+            .unwrap_or_else(|| "terminated without an exit code".to_string());
+        let stdout_line = Self::first_nonempty_utf8_line(&output.stdout);
+        let stderr_line = Self::first_nonempty_utf8_line(&output.stderr);
+        let mut detail = format!("Primer3 {argument} probe exited {status}");
+        if let Some(line) = stdout_line.as_deref() {
+            detail.push_str(&format!("; stdout: {line}"));
+        }
+        if let Some(line) = stderr_line.as_deref()
+            && stdout_line.as_deref() != Some(line)
+        {
+            detail.push_str(&format!("; stderr: {line}"));
+        }
+        detail
+    }
+
     fn primer3_preflight_display_path(path: &Path) -> String {
         std::fs::canonicalize(path)
             .unwrap_or_else(|_| path.to_path_buf())
@@ -6929,20 +6984,35 @@ impl GentleEngine {
             ..Primer3PreflightReport::default()
         };
         let started = Instant::now();
-        match Command::new(executable).arg("--version").output() {
-            Ok(output) => {
-                report.reachable = true;
-                report.status_code = output.status.code();
-                report.version_probe_ok = output.status.success();
-                let stdout_line = Self::first_nonempty_utf8_line(&output.stdout);
-                let stderr_line = Self::first_nonempty_utf8_line(&output.stderr);
-                report.version = stdout_line.or_else(|| stderr_line.clone());
-                if !report.version_probe_ok {
-                    report.detail = stderr_line.or_else(|| report.version.clone());
+        let mut failure_details = Vec::new();
+        let mut spawn_errors = Vec::new();
+        for argument in ["--about", "--version"] {
+            match Command::new(executable).arg(argument).output() {
+                Ok(output) => {
+                    report.reachable = true;
+                    report.status_code = output.status.code();
+                    let version =
+                        Self::credible_primer3_version_line(&output.stdout, &output.stderr);
+                    if output.status.success() && version.is_some() {
+                        report.version_probe_ok = true;
+                        report.version = version;
+                        break;
+                    }
+                    failure_details.push(Self::primer3_probe_failure_detail(argument, &output));
+                }
+                Err(err) => {
+                    spawn_errors.push(format!(
+                        "Primer3 {argument} probe could not be started: {err}"
+                    ));
                 }
             }
-            Err(err) => {
-                report.error = Some(err.to_string());
+        }
+        if !report.version_probe_ok {
+            if !failure_details.is_empty() {
+                report.detail = Some(failure_details.join(" | "));
+            }
+            if !spawn_errors.is_empty() {
+                report.error = Some(spawn_errors.join(" | "));
             }
         }
         report.probe_time_ms = started.elapsed().as_millis();

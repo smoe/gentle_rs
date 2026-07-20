@@ -1165,7 +1165,7 @@ fn write_shell_prepared_cache_install(root: &Path, genome_id: &str) -> std::path
 fn install_fake_primer3(path: &Path, fixture_path: &Path) -> String {
     let script_path = path.join("fake_primer3.sh");
     let script = format!(
-        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo \"primer3_core synthetic-fixture 2.6.1\"\n  exit 0\nfi\ncat >/dev/null\ncat \"{}\"\n",
+        "#!/bin/sh\nif [ \"$1\" = \"--about\" ]; then\n  echo \"unknown option: --about\" >&2\n  exit 2\nfi\nif [ \"$1\" = \"--version\" ]; then\n  echo \"primer3_core synthetic-fixture 2.6.1\"\n  exit 0\nfi\ncat >/dev/null\ncat \"{}\"\n",
         fixture_path.display()
     );
     std::fs::write(&script_path, script).expect("write fake primer3");
@@ -16851,6 +16851,13 @@ fn execute_primers_preflight_reports_reachable_primer3() {
         out.output["preflight"]["version_probe_ok"].as_bool(),
         Some(true)
     );
+    assert_eq!(out.output["preflight"]["status_code"].as_i64(), Some(0));
+    assert_eq!(
+        out.output["preflight"]["version"].as_str(),
+        Some("primer3_core synthetic-fixture 2.6.1")
+    );
+    assert!(out.output["preflight"]["detail"].is_null());
+    assert!(out.output["preflight"]["error"].is_null());
     assert_eq!(out.output["preflight"]["backend"].as_str(), Some("primer3"));
     assert_eq!(
         out.output["preflight"]["configured_executable"].as_str(),
