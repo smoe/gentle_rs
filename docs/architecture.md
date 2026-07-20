@@ -1712,7 +1712,7 @@ inspection/export paths:
   - `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path?, materialize_products?, product_output_prefix?, product_gel_svg_path?, product_gel_ladders? }`
   - `TestCdnaQpcr { seq_id, source_feature_id, forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path?, materialize_products?, product_output_prefix?, product_gel_svg_path?, product_gel_ladders? }`
   - `BuildTranscriptQpcrPanel { seq_id, source_feature_id, shared_qpcr_report_id, path? }`
-  - `DesignTranscriptAssayPanel { seq_id, source_feature_id, objective, coverage_policy, forward, reverse, probe, pair_constraints?, min_amplicon_bp?, max_amplicon_bp?, max_tm_delta_c?, max_probe_tm_delta_c?, max_assays_per_class?, max_mismatches?, require_3prime_exact_bases?, report_id?, path? }`
+  - `DesignTranscriptAssayPanel { seq_id, source_feature_id, assay_kind?, cdna_synthesis?, objective, coverage_policy, forward, reverse, probe, pair_constraints?, min_amplicon_bp?, max_amplicon_bp?, max_tm_delta_c?, max_probe_tm_delta_c?, max_assays_per_class?, max_mismatches?, require_3prime_exact_bases?, junctions[], junction_evidence_paths[], junction_evidence_priority?, min_3prime_junction_overlap_bp?, min_5prime_junction_overlap_bp?, annotation_release?, report_id?, path? }`
   - `TestCdnaQpcrFasta { cdna_fasta_paths[], forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path? }`
   - `forward`/`reverse` side constraints now include optional sequence-level filters:
     `fixed_5prime`, `fixed_3prime`, `required_motifs[]`, `forbidden_motifs[]`,
@@ -1726,6 +1726,11 @@ inspection/export paths:
   - multi-transcript assay panels group transcripts as fundamentally
     indistinguishable only when their normalized mature cDNA bytes are
     identical. Near matches remain separate design classes.
+  - multi-transcript assay kind is additive and backward compatible: omitted
+    mode remains TaqMan, while endpoint RT-PCR and SYBR qPCR use primer-only
+    records. Endpoint first x terminal combinations come only from annotated
+    mature transcripts; requested junctions are evaluated outside the bounded
+    automatic-anchor search and retain explicit required/preferred outcomes.
   - exact-hit prefilters may only prove negative cases. When mismatch-tolerant
     amplification is permitted, the full cDNA assay scanner remains the source
     of truth and candidates are not discarded for lacking an exact hit.

@@ -25,7 +25,7 @@
 use crate::{
     DNA_LADDERS, RNA_LADDERS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
-    digest_utils::{sha256_prefixed_str, short_sha256_id},
+    digest_utils::{sha256_prefixed_bytes, sha256_prefixed_str, short_sha256_id},
     dna_sequence::DNAsequence,
     ensembl_protein::EnsemblProteinEntry,
     enzymes::{
@@ -4103,6 +4103,11 @@ pub enum Operation {
         seq_id: SeqId,
         /// Zero-based feature index into the source sequence feature table.
         source_feature_id: usize,
+        /// Omitted by older callers; defaults to the original TaqMan behavior.
+        #[serde(default)]
+        assay_kind: TranscriptAssayKind,
+        #[serde(default)]
+        cdna_synthesis: TranscriptAssayCdnaSynthesis,
         #[serde(default)]
         objective: TranscriptAssayPanelObjective,
         #[serde(default)]
@@ -4129,6 +4134,20 @@ pub enum Operation {
         max_mismatches: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         require_3prime_exact_bases: Option<usize>,
+        #[serde(default)]
+        junctions: Vec<TranscriptAssayJunctionRequest>,
+        /// Existing probe-evidence interpretation reports whose JUC rows
+        /// should become explicit junction requests.
+        #[serde(default)]
+        junction_evidence_paths: Vec<String>,
+        #[serde(default)]
+        junction_evidence_priority: TranscriptAssayJunctionPriority,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_3prime_junction_overlap_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_5prime_junction_overlap_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotation_release: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         report_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -12027,6 +12046,7 @@ impl GentleEngine {
                 source_seq_id: report.source_seq_id.clone(),
                 source_feature_id: report.source_feature_id,
                 generated_at_unix_ms: report.generated_at_unix_ms,
+                assay_kind: report.assay_kind,
                 objective: report.objective,
                 coverage_policy: report.coverage_policy,
                 completion_status: report.completion_status,

@@ -9051,6 +9051,8 @@ fn transcript_assay_panel_operation(
     Operation::DesignTranscriptAssayPanel {
         seq_id: "panel_src".to_string(),
         source_feature_id: 0,
+        assay_kind: TranscriptAssayKind::TaqmanQpcr,
+        cdna_synthesis: TranscriptAssayCdnaSynthesis::Unspecified,
         objective: TranscriptAssayPanelObjective::PanTranscript,
         coverage_policy,
         forward: side.clone(),
@@ -9064,6 +9066,12 @@ fn transcript_assay_panel_operation(
         max_assays_per_class: Some(2),
         max_mismatches: Some(max_mismatches),
         require_3prime_exact_bases: Some(8),
+        junctions: vec![],
+        junction_evidence_paths: vec![],
+        junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+        min_3prime_junction_overlap_bp: None,
+        min_5prime_junction_overlap_bp: None,
+        annotation_release: None,
         report_id: Some(report_id.to_string()),
         path: None,
     }
@@ -9111,6 +9119,12 @@ fn transcript_assay_panel_groups_only_byte_identical_cdna_and_persists_matrix() 
         );
     }
     assert!(report.candidate_assay_count > 0);
+    assert_eq!(report.assay_kind, TranscriptAssayKind::TaqmanQpcr);
+    assert!(report.selected_assays.iter().all(|assay| {
+        assay.assay_kind == TranscriptAssayKind::TaqmanQpcr
+            && assay.probe.is_some()
+            && assay.assay.is_some()
+    }));
     assert!(
         report
             .backend_runs
@@ -9213,6 +9227,8 @@ fn transcript_assay_panel_does_not_equate_one_base_near_matches() {
         .apply(Operation::DesignTranscriptAssayPanel {
             seq_id: "near_match_qpcr".to_string(),
             source_feature_id: 0,
+            assay_kind: TranscriptAssayKind::TaqmanQpcr,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::Unspecified,
             objective: TranscriptAssayPanelObjective::PanTranscript,
             coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
             forward: impossible_side.clone(),
@@ -9226,6 +9242,12 @@ fn transcript_assay_panel_does_not_equate_one_base_near_matches() {
             max_assays_per_class: Some(1),
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
+            junctions: vec![],
+            junction_evidence_paths: vec![],
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+            min_3prime_junction_overlap_bp: None,
+            min_5prime_junction_overlap_bp: None,
+            annotation_release: None,
             report_id: Some("near_match_classes".to_string()),
             path: None,
         })
@@ -9247,6 +9269,382 @@ fn transcript_assay_panel_does_not_equate_one_base_near_matches() {
             .iter()
             .all(|row| row.status != TranscriptAssayMemberStatus::NotDistinguishableBetweenMembers)
     );
+}
+
+#[test]
+fn transcript_assay_panel_old_payload_defaults_to_taqman_mode() {
+    let report: TranscriptAssayPanelReport = serde_json::from_value(serde_json::json!({
+        "schema": "gentle.transcript_assay_panel.v2",
+        "report_id": "legacy_panel",
+        "source_seq_id": "legacy_seq",
+        "source_feature_id": 0,
+        "objective": "pan_transcript"
+    }))
+    .expect("deserialize pre-assay-kind panel payload");
+    assert_eq!(report.assay_kind, TranscriptAssayKind::TaqmanQpcr);
+    assert_eq!(
+        report.cdna_synthesis,
+        TranscriptAssayCdnaSynthesis::Unspecified
+    );
+}
+
+#[test]
+fn transcript_assay_endpoint_end_matrix_is_primer_only_and_warns_for_oligo_dt() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let side = transcript_assay_panel_relaxed_side();
+    let report = engine
+        .apply(Operation::DesignTranscriptAssayPanel {
+            seq_id: "panel_src".to_string(),
+            source_feature_id: 0,
+            assay_kind: TranscriptAssayKind::EndpointRtPcr,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+            objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
+            coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            forward: side.clone(),
+            reverse: side.clone(),
+            probe: side,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: Some(50),
+            max_amplicon_bp: Some(10_000),
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: None,
+            max_assays_per_class: Some(4),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            junctions: vec![],
+            junction_evidence_paths: vec![],
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+            min_3prime_junction_overlap_bp: None,
+            min_5prime_junction_overlap_bp: None,
+            annotation_release: Some("synthetic-test".to_string()),
+            report_id: Some("endpoint_end_matrix".to_string()),
+            path: None,
+        })
+        .expect("endpoint end-matrix design")
+        .transcript_assay_panel
+        .expect("endpoint report");
+    assert_eq!(report.assay_kind, TranscriptAssayKind::EndpointRtPcr);
+    assert_eq!(report.max_amplicon_bp, 10_000);
+    assert!(report.end_classes.len() >= 3);
+    assert_eq!(report.end_reactions.len(), 2);
+    let represented_reactions = report
+        .selected_assays
+        .iter()
+        .flat_map(|assay| assay.end_reaction_ids.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(represented_reactions.len(), report.end_reactions.len());
+    assert!(!report.selected_assays.is_empty());
+    assert!(report.selected_assays.iter().all(|assay| {
+        assay.probe.is_none()
+            && assay.assay.is_none()
+            && assay.assay_kind == TranscriptAssayKind::EndpointRtPcr
+    }));
+    assert!(
+        report
+            .order_ready_primers
+            .iter()
+            .all(|primer| primer.role == "forward" || primer.role == "reverse")
+    );
+    assert!(!report.band_size_matrix.is_empty());
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("reverse-transcription completeness"))
+    );
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("must not be interpreted as isoform absence"))
+    );
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("5' RACE"))
+    );
+}
+
+#[test]
+fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
+    let sequence_fixture = "test_files/fixtures/transcript_assay_panel/patz1";
+    let evidence_fixture = "test_files/fixtures/isoform_evidence/patz1";
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: format!("{sequence_fixture}/patz1_assay_minus_strand.gb"),
+            as_id: Some("patz1_juc_assay".to_string()),
+        })
+        .expect("load synthetic PATZ1 locus");
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    let side = PrimerDesignSideConstraint {
+        min_length: 12,
+        max_length: 20,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..Default::default()
+    };
+    let report = engine
+        .apply(Operation::DesignTranscriptAssayPanel {
+            seq_id: "patz1_juc_assay".to_string(),
+            source_feature_id: 1,
+            assay_kind: TranscriptAssayKind::SybrQpcr,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+            objective: TranscriptAssayPanelObjective::OnePerClass,
+            coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            forward: side.clone(),
+            reverse: side.clone(),
+            probe: side,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: Some(30),
+            max_amplicon_bp: Some(120),
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: None,
+            max_assays_per_class: Some(4),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(6),
+            junctions: vec![
+                TranscriptAssayJunctionRequest {
+                    junction_id: "PATZ1-202_local_40".to_string(),
+                    priority: TranscriptAssayJunctionPriority::Preferred,
+                    coordinate_kind: TranscriptAssayJunctionCoordinateKind::TranscriptLocal,
+                    transcript_id: Some("PATZ1-202".to_string()),
+                    transcript_local_position_0based: Some(40),
+                    source_kind: "explicit_transcript_local".to_string(),
+                    ..Default::default()
+                },
+                TranscriptAssayJunctionRequest {
+                    junction_id: "PATZ1-202_genomic_intron".to_string(),
+                    priority: TranscriptAssayJunctionPriority::Preferred,
+                    coordinate_kind: TranscriptAssayJunctionCoordinateKind::GenomicIntronSpan,
+                    transcript_id: Some("PATZ1-202".to_string()),
+                    genomic_start_1based: Some(31_325_860),
+                    genomic_end_1based: Some(31_325_979),
+                    source_kind: "explicit_genomic".to_string(),
+                    ..Default::default()
+                },
+            ],
+            junction_evidence_paths: vec![format!("{evidence_fixture}/patz1_probe_evidence.json")],
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Required,
+            min_3prime_junction_overlap_bp: Some(4),
+            min_5prime_junction_overlap_bp: Some(7),
+            annotation_release: Some("synthetic GRCh38.p14 fixture".to_string()),
+            report_id: Some("patz1_sybr_juc".to_string()),
+            path: None,
+        })
+        .expect("PATZ1 SYBR junction design")
+        .transcript_assay_panel
+        .expect("PATZ1 SYBR report");
+    assert_eq!(report.assay_kind, TranscriptAssayKind::SybrQpcr);
+    assert_eq!(report.provenance.junction_sources.len(), 1);
+    assert_eq!(report.junction_evaluations.len(), 3);
+    for source_kind in [
+        "explicit_transcript_local",
+        "explicit_genomic",
+        "clariom_juc",
+    ] {
+        let evaluation = report
+            .junction_evaluations
+            .iter()
+            .find(|row| row.source_kind == source_kind)
+            .unwrap_or_else(|| panic!("missing {source_kind} junction evaluation"));
+        assert_eq!(evaluation.status, "selected_spanning_assay");
+    }
+    assert!(!report.short_sybr_junction_assays.is_empty());
+    assert!(
+        report
+            .short_sybr_junction_assays
+            .iter()
+            .all(|assay| assay.probe.is_none() && assay.assay.is_none())
+    );
+    assert!(report.short_sybr_junction_assays.iter().any(|assay| {
+        assay
+            .junction_matches
+            .iter()
+            .any(|junction| junction.forward_spans || junction.reverse_spans)
+    }));
+}
+
+#[cfg(unix)]
+#[test]
+fn transcript_assay_primer3_emits_native_junction_overlap_tags() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let tmp = tempdir().expect("tempdir");
+    let (fake_primer3, _capture_path) = install_fake_primer3_zero_pairs(tmp.path());
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    engine.state_mut().parameters.primer3_executable = fake_primer3;
+    let side = transcript_assay_panel_relaxed_side();
+    let report = engine
+        .apply(Operation::DesignTranscriptAssayPanel {
+            seq_id: "panel_src".to_string(),
+            source_feature_id: 0,
+            assay_kind: TranscriptAssayKind::SybrQpcr,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+            objective: TranscriptAssayPanelObjective::OnePerClass,
+            coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            forward: side.clone(),
+            reverse: side.clone(),
+            probe: side,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: Some(50),
+            max_amplicon_bp: Some(180),
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: None,
+            max_assays_per_class: Some(1),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            junctions: vec![TranscriptAssayJunctionRequest {
+                junction_id: "TX1_exon_1_2".to_string(),
+                priority: TranscriptAssayJunctionPriority::Required,
+                coordinate_kind: TranscriptAssayJunctionCoordinateKind::ExonOrdinals,
+                transcript_id: Some("TX1".to_string()),
+                from_exon_ordinal: Some(1),
+                to_exon_ordinal: Some(2),
+                source_kind: "test".to_string(),
+                ..Default::default()
+            }],
+            junction_evidence_paths: vec![],
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+            min_3prime_junction_overlap_bp: Some(5),
+            min_5prime_junction_overlap_bp: Some(8),
+            annotation_release: Some("synthetic-test".to_string()),
+            report_id: Some("primer3_junction_tags".to_string()),
+            path: None,
+        })
+        .expect("Primer3 junction request")
+        .transcript_assay_panel
+        .expect("Primer3 transcript panel report");
+    let request = report
+        .backend_runs
+        .iter()
+        .filter_map(|run| run.backend.primer3_request_boulder_io.as_deref())
+        .find(|request| request.contains("SEQUENCE_OVERLAP_JUNCTION_LIST="))
+        .expect("junction-target Primer3 request");
+    assert!(request.contains("PRIMER_MIN_3_PRIME_OVERLAP_OF_JUNCTION=5"));
+    assert!(request.contains("PRIMER_MIN_5_PRIME_OVERLAP_OF_JUNCTION=8"));
+    assert!(
+        !request.contains("SEQUENCE_TARGET="),
+        "a flanked target would conflict with a primer-overlap junction request"
+    );
+}
+
+fn long_endpoint_transcript_engine() -> GentleEngine {
+    let first = "ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAACGCTAGTCGATCGTACCGTACGATCGTACGA";
+    let middle = "ACGT".repeat(2_300);
+    let terminal = "GCTAACGATCCGATGCTAACGTCGATCGTAGCTAACCGATGCTAGCTTACCGATGCTAGGCTACGATCGGATCCGTAC";
+    let intron = "N".repeat(20);
+    let first_start = 0usize;
+    let first_end = first.len();
+    let middle_start = first_end + intron.len();
+    let middle_end = middle_start + middle.len();
+    let terminal_start = middle_end + intron.len();
+    let terminal_end = terminal_start + terminal.len();
+    let mut dna = seq(&format!("{first}{intron}{middle}{intron}{terminal}"));
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(first_start as i64, first_end as i64),
+            gb_io::seq::Location::simple_range(middle_start as i64, middle_end as i64),
+            gb_io::seq::Location::simple_range(terminal_start as i64, terminal_end as i64),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("LONGTX1".to_string())),
+            ("transcript_id".into(), Some("LONGTX1-201".to_string())),
+            (
+                "label".into(),
+                Some("LONGTX1 synthetic long transcript".to_string()),
+            ),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("long_endpoint".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
+#[test]
+fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
+    let mut engine = long_endpoint_transcript_engine();
+    let side = transcript_assay_panel_relaxed_side();
+    let report = engine
+        .apply(Operation::DesignTranscriptAssayPanel {
+            seq_id: "long_endpoint".to_string(),
+            source_feature_id: 0,
+            assay_kind: TranscriptAssayKind::EndpointRtPcr,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+            objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
+            coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+            forward: side.clone(),
+            reverse: side.clone(),
+            probe: side,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: Some(9_000),
+            max_amplicon_bp: Some(10_000),
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: None,
+            max_assays_per_class: Some(3),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            junctions: vec![],
+            junction_evidence_paths: vec![],
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+            min_3prime_junction_overlap_bp: None,
+            min_5prime_junction_overlap_bp: None,
+            annotation_release: Some("synthetic-long-transcript".to_string()),
+            report_id: Some("long_endpoint_10kb".to_string()),
+            path: None,
+        })
+        .expect("long endpoint design below 10 kb ceiling")
+        .transcript_assay_panel
+        .expect("long endpoint report");
+    assert!(
+        report
+            .selected_assays
+            .iter()
+            .any(|assay| { (9_000..=10_000).contains(&assay.primer_pair.amplicon_length_bp) })
+    );
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Oligo-dT"))
+    );
+
+    let error = engine
+        .apply(Operation::DesignTranscriptAssayPanel {
+            seq_id: "long_endpoint".to_string(),
+            source_feature_id: 0,
+            assay_kind: TranscriptAssayKind::EndpointRtPcr,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+            objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
+            coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            forward: transcript_assay_panel_relaxed_side(),
+            reverse: transcript_assay_panel_relaxed_side(),
+            probe: transcript_assay_panel_relaxed_side(),
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: Some(9_000),
+            max_amplicon_bp: Some(10_001),
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: None,
+            max_assays_per_class: Some(1),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            junctions: vec![],
+            junction_evidence_paths: vec![],
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+            min_3prime_junction_overlap_bp: None,
+            min_5prime_junction_overlap_bp: None,
+            annotation_release: None,
+            report_id: Some("over_ceiling".to_string()),
+            path: None,
+        })
+        .expect_err("endpoint products above 10 kb must be refused");
+    assert!(error.message.contains("10,000 bp ceiling"));
 }
 
 fn write_gzip_fasta_records(path: &Path, records: &[(&str, &str)]) {

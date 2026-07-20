@@ -76,19 +76,17 @@ use crate::{
         ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
         ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
         ProteinExpressionProductReadiness, ProteinExpressionRequirements,
-        ProteinExpressionSequenceContext,
-        ProteinExpressionServiceHandoffCandidate, ProteinExpressionTagAssessment,
-        ProteinExpressionVectorRouteCandidate, ProteinExternalOpinionSource, ProteinFeatureFilter,
-        ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
-        QpcrTranscriptTargetingMode, RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA,
-        TranscriptAssayCoveragePolicy, TranscriptAssayPanelObjective,
-        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, ReadAcquisitionAnalysisFormat,
-        ReadAcquisitionReadLayout, RenderSvgMode, RepeatAnnotationFilter,
-        RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode, ReporterConstraints,
-        ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode, RestrictionSiteScanReport,
-        ReverseTranslationReport, ReverseTranslationReportSummary, RnaReadAlignConfig,
-        RnaReadAlignmentDisplayBatch, RnaReadAlignmentInspectionEffectFilter,
+        ProteinExpressionSequenceContext, ProteinExpressionServiceHandoffCandidate,
+        ProteinExpressionTagAssessment, ProteinExpressionVectorRouteCandidate,
+        ProteinExternalOpinionSource, ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal,
+        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
+        RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA, RackAuthoringTemplate, RackCarrierLabelPreset,
+        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+        RackProfileKind, ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RenderSvgMode,
+        RepeatAnnotationFilter, RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode,
+        ReporterConstraints, ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode,
+        RestrictionSiteScanReport, ReverseTranslationReport, ReverseTranslationReportSummary,
+        RnaReadAlignConfig, RnaReadAlignmentDisplayBatch, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
         RnaReadConcatemerInspectionSettings, RnaReadGeneSupportAuditCohortFilter,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -100,10 +98,12 @@ use crate::{
         SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingRange,
         SplicingScopePreset, TfThresholdOverride, TfbsRegionSummaryRequest,
         TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
-        TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranslationSpeedMark,
-        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
-        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
-        WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
+        TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis,
+        TranscriptAssayCoveragePolicy, TranscriptAssayJunctionPriority,
+        TranscriptAssayJunctionRequest, TranscriptAssayKind, TranscriptAssayPanelObjective,
+        TranslationSpeedMark, TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
+        VariantAlleleChoice, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow,
+        WorkflowMacroTemplate, WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
         construct_reasoning_action_dotplot_request, parse_feature_coordinate_term_on_sequence,
         project_fact_type_specs, resolve_selection_formula_range_0based_on_sequence,
         split_feature_formula_range_expression,
@@ -2408,6 +2408,8 @@ pub enum ShellCommand {
     PrimersDesignTranscriptAssayPanel {
         seq_id: String,
         feature_id: usize,
+        assay_kind: TranscriptAssayKind,
+        cdna_synthesis: TranscriptAssayCdnaSynthesis,
         objective: TranscriptAssayPanelObjective,
         coverage_policy: TranscriptAssayCoveragePolicy,
         min_amplicon_bp: Option<usize>,
@@ -2415,6 +2417,12 @@ pub enum ShellCommand {
         max_assays_per_class: Option<usize>,
         max_mismatches: Option<usize>,
         require_3prime_exact_bases: Option<usize>,
+        junctions_json: Option<String>,
+        junction_evidence_paths: Vec<String>,
+        junction_evidence_priority: TranscriptAssayJunctionPriority,
+        min_3prime_junction_overlap_bp: Option<usize>,
+        min_5prime_junction_overlap_bp: Option<usize>,
+        annotation_release: Option<String>,
         report_id: Option<String>,
         path: Option<String>,
         backend: Option<PrimerDesignBackend>,
@@ -11020,15 +11028,19 @@ impl ShellCommand {
             Self::PrimersDesignTranscriptAssayPanel {
                 seq_id,
                 feature_id,
+                assay_kind,
+                cdna_synthesis,
                 objective,
                 coverage_policy,
                 report_id,
                 path,
                 ..
             } => format!(
-                "design transcript assay panel on '{}' feature n-{} (objective={}, coverage_policy={}, report_id={}, path={})",
+                "design transcript assay panel on '{}' feature n-{} (assay_kind={}, cdna_synthesis={}, objective={}, coverage_policy={}, report_id={}, path={})",
                 seq_id,
                 feature_id + 1,
+                assay_kind.as_str(),
+                cdna_synthesis.as_str(),
                 objective.as_str(),
                 coverage_policy.as_str(),
                 report_id
@@ -14683,8 +14695,49 @@ fn parse_transcript_assay_panel_objective(
         "minimal_discrimination_panel" | "minimal_discrimination" | "minimal" => {
             Ok(TranscriptAssayPanelObjective::MinimalDiscriminationPanel)
         }
+        "isoform_end_matrix" | "end_matrix" | "first_last_matrix" => {
+            Ok(TranscriptAssayPanelObjective::IsoformEndMatrix)
+        }
         other => Err(format!(
-            "Unsupported transcript assay objective '{other}' (expected pan-transcript|one-per-class|minimal-discrimination-panel)"
+            "Unsupported transcript assay objective '{other}' (expected pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix)"
+        )),
+    }
+}
+
+fn parse_transcript_assay_kind(value: &str) -> Result<TranscriptAssayKind, String> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "endpoint_rt_pcr" | "endpoint" | "rt_pcr" => Ok(TranscriptAssayKind::EndpointRtPcr),
+        "sybr_qpcr" | "sybr" => Ok(TranscriptAssayKind::SybrQpcr),
+        "taqman_qpcr" | "taqman" | "probe" => Ok(TranscriptAssayKind::TaqmanQpcr),
+        other => Err(format!(
+            "Unsupported transcript assay kind '{other}' (expected endpoint-rt-pcr|sybr-qpcr|taqman-qpcr)"
+        )),
+    }
+}
+
+fn parse_transcript_assay_cdna_synthesis(
+    value: &str,
+) -> Result<TranscriptAssayCdnaSynthesis, String> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "unspecified" | "unknown" => Ok(TranscriptAssayCdnaSynthesis::Unspecified),
+        "oligo_dt" | "oligodt" => Ok(TranscriptAssayCdnaSynthesis::OligoDt),
+        "random_hexamers" | "random" => Ok(TranscriptAssayCdnaSynthesis::RandomHexamers),
+        "gene_specific" => Ok(TranscriptAssayCdnaSynthesis::GeneSpecific),
+        "mixed" | "mixture" => Ok(TranscriptAssayCdnaSynthesis::Mixed),
+        other => Err(format!(
+            "Unsupported cDNA synthesis method '{other}' (expected unspecified|oligo-dt|random-hexamers|gene-specific|mixed)"
+        )),
+    }
+}
+
+fn parse_transcript_assay_junction_priority(
+    value: &str,
+) -> Result<TranscriptAssayJunctionPriority, String> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "required" | "must" => Ok(TranscriptAssayJunctionPriority::Required),
+        "preferred" | "prefer" => Ok(TranscriptAssayJunctionPriority::Preferred),
+        other => Err(format!(
+            "Unsupported junction priority '{other}' (expected required|preferred)"
         )),
     }
 }
@@ -50868,6 +50921,8 @@ fn execute_primers_command(
         ShellCommand::PrimersDesignTranscriptAssayPanel {
             seq_id,
             feature_id,
+            assay_kind,
+            cdna_synthesis,
             objective,
             coverage_policy,
             min_amplicon_bp,
@@ -50875,6 +50930,12 @@ fn execute_primers_command(
             max_assays_per_class,
             max_mismatches,
             require_3prime_exact_bases,
+            junctions_json,
+            junction_evidence_paths,
+            junction_evidence_priority,
+            min_3prime_junction_overlap_bp,
+            min_5prime_junction_overlap_bp,
+            annotation_release,
             report_id,
             path,
             backend,
@@ -50885,6 +50946,26 @@ fn execute_primers_command(
                 .metadata
                 .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
                 .cloned();
+            let junctions = if let Some(raw) = junctions_json.as_deref() {
+                let payload = parse_json_payload(raw)?;
+                serde_json::from_str::<Vec<TranscriptAssayJunctionRequest>>(&payload)
+                    .or_else(|_| {
+                        #[derive(Deserialize)]
+                        struct JunctionRequestEnvelope {
+                            junctions: Vec<TranscriptAssayJunctionRequest>,
+                        }
+                        serde_json::from_str::<JunctionRequestEnvelope>(&payload)
+                            .map(|value| value.junctions)
+                    })
+                    .map_err(|error| {
+                        format!(
+                            "Could not parse transcript junction request JSON from '{}': {error}",
+                            raw
+                        )
+                    })?
+            } else {
+                vec![]
+            };
             let previous_backend = engine.state().parameters.primer_design_backend;
             let previous_executable = engine.state().parameters.primer3_executable.clone();
             if let Some(override_backend) = backend {
@@ -50900,6 +50981,8 @@ fn execute_primers_command(
             let operation = Operation::DesignTranscriptAssayPanel {
                 seq_id: seq_id.clone(),
                 source_feature_id: *feature_id,
+                assay_kind: *assay_kind,
+                cdna_synthesis: *cdna_synthesis,
                 objective: *objective,
                 coverage_policy: *coverage_policy,
                 forward: PrimerDesignSideConstraint::default(),
@@ -50913,6 +50996,12 @@ fn execute_primers_command(
                 max_assays_per_class: *max_assays_per_class,
                 max_mismatches: *max_mismatches,
                 require_3prime_exact_bases: *require_3prime_exact_bases,
+                junctions,
+                junction_evidence_paths: junction_evidence_paths.clone(),
+                junction_evidence_priority: *junction_evidence_priority,
+                min_3prime_junction_overlap_bp: *min_3prime_junction_overlap_bp,
+                min_5prime_junction_overlap_bp: *min_5prime_junction_overlap_bp,
+                annotation_release: annotation_release.clone(),
                 report_id: report_id.clone(),
                 path: path.clone(),
             };

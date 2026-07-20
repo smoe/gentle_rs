@@ -21,6 +21,18 @@ pub(crate) struct PrimerDesignProgressContext<'a> {
     pub(crate) max_output: usize,
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Primer3PairDesignOptions {
+    /// Primer3 junction positions are one-based base indexes: a value N means
+    /// the splice boundary immediately after template base N.
+    pub(crate) overlap_junction_positions_1based: Vec<usize>,
+    pub(crate) min_3prime_overlap_bp: usize,
+    pub(crate) min_5prime_overlap_bp: usize,
+    /// Zero-based half-open allowed windows for left and right primers.
+    pub(crate) left_window_0based: Option<(usize, usize)>,
+    pub(crate) right_window_0based: Option<(usize, usize)>,
+}
+
 fn fact_subject(kind: FactSubjectKind, id: impl Into<String>) -> FactSubject {
     FactSubject {
         kind,
@@ -6232,6 +6244,45 @@ impl GentleEngine {
         progress_context: Option<&PrimerDesignProgressContext<'_>>,
         on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
     ) -> Result<(Vec<PrimerDesignPairRecord>, PrimerDesignRejectionSummary), EngineError> {
+        Self::design_primer_pairs_internal_core_with_filter(
+            template_bytes,
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            forward_sequence_constraints,
+            reverse,
+            reverse_sequence_constraints,
+            pair_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_pairs,
+            None,
+            progress_context,
+            on_progress,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn design_primer_pairs_internal_core_with_filter(
+        template_bytes: &[u8],
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+        candidate_pair_filter: Option<
+            &dyn Fn(&PrimerDesignCandidate, &PrimerDesignCandidate) -> bool,
+        >,
+        progress_context: Option<&PrimerDesignProgressContext<'_>>,
+        on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
+    ) -> Result<(Vec<PrimerDesignPairRecord>, PrimerDesignRejectionSummary), EngineError> {
         let mut rejection_summary = PrimerDesignRejectionSummary::default();
         let forward_candidates = Self::generate_primer_side_candidates(
             template_bytes,
@@ -6323,11 +6374,26 @@ impl GentleEngine {
         )?;
         'pair_search: for fwd in &forward_candidates {
             for rev in &reverse_candidates {
+                if candidate_pair_filter.is_some_and(|filter| !filter(fwd, rev)) {
+                    continue;
+                }
                 if pair_evaluations >= pair_evaluation_limit {
                     pair_evaluation_limited = true;
                     break 'pair_search;
                 }
                 pair_evaluations = pair_evaluations.saturating_add(1);
+                let amplicon_length_bp = rev.end_0based_exclusive.saturating_sub(fwd.start_0based);
+                if rev.end_0based_exclusive <= fwd.start_0based
+                    || amplicon_length_bp < min_amplicon_bp
+                    || amplicon_length_bp > max_amplicon_bp
+                    || fwd.start_0based > roi_start_0based
+                    || rev.end_0based_exclusive < roi_end_0based
+                    || (fwd.tm_c - rev.tm_c).abs() > max_tm_delta_c
+                {
+                    rejection_summary.amplicon_or_roi_failure =
+                        rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                    continue;
+                }
                 let Some(pair) = Self::build_primer_design_pair_record(
                     PrimerDesignPrimerRecord {
                         sequence: fwd.sequence.clone(),
@@ -7069,6 +7135,50 @@ impl GentleEngine {
         ),
         EngineError,
     > {
+        Self::design_primer_pairs_primer3_with_options(
+            template_seq,
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            forward_sequence_constraints,
+            reverse,
+            reverse_sequence_constraints,
+            pair_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_pairs,
+            primer3_executable,
+            &Primer3PairDesignOptions::default(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn design_primer_pairs_primer3_with_options(
+        template_seq: &str,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+        primer3_executable: &str,
+        options: &Primer3PairDesignOptions,
+    ) -> Result<
+        (
+            Vec<PrimerDesignPairRecord>,
+            PrimerDesignRejectionSummary,
+            Option<String>,
+            Option<String>,
+            String,
+        ),
+        EngineError,
+    > {
         let template_bytes = template_seq.as_bytes();
         let template_len = template_bytes.len();
         let target_len = roi_end_0based.saturating_sub(roi_start_0based);
@@ -7080,8 +7190,39 @@ impl GentleEngine {
         let max_gc_percent = forward.max_gc_fraction.max(reverse.max_gc_fraction) * 100.0;
         let num_return = max_pairs.saturating_mul(5).clamp(50, 1000);
 
+        let mut sequence_tags = String::new();
+        if !options.overlap_junction_positions_1based.is_empty() {
+            let positions = options
+                .overlap_junction_positions_1based
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            sequence_tags.push_str(&format!(
+                "SEQUENCE_OVERLAP_JUNCTION_LIST={positions}\nPRIMER_MIN_3_PRIME_OVERLAP_OF_JUNCTION={}\nPRIMER_MIN_5_PRIME_OVERLAP_OF_JUNCTION={}\n",
+                options.min_3prime_overlap_bp, options.min_5prime_overlap_bp
+            ));
+        }
+        if let (Some((left_start, left_end)), Some((right_start, right_end))) =
+            (options.left_window_0based, options.right_window_0based)
+        {
+            let left_len = left_end.saturating_sub(left_start);
+            let right_len = right_end.saturating_sub(right_start);
+            if left_len > 0 && right_len > 0 {
+                sequence_tags.push_str(&format!(
+                    "SEQUENCE_PRIMER_PAIR_OK_REGION_LIST={left_start},{left_len},{right_start},{right_len}\n"
+                ));
+            }
+        }
+        // A Primer3 target must be flanked by the pair, which conflicts with
+        // requiring either primer to overlap a splice junction at that target.
+        let target_tag = options
+            .overlap_junction_positions_1based
+            .is_empty()
+            .then(|| format!("SEQUENCE_TARGET={roi_start_0based},{target_len}\n"))
+            .unwrap_or_default();
         let input = format!(
-            "SEQUENCE_ID=gentle_primer_design\nSEQUENCE_TEMPLATE={template_seq}\nSEQUENCE_TARGET={roi_start_0based},{target_len}\nPRIMER_TASK=generic\nPRIMER_PICK_LEFT_PRIMER=1\nPRIMER_PICK_RIGHT_PRIMER=1\nPRIMER_PICK_INTERNAL_OLIGO=0\nPRIMER_MIN_SIZE={min_size}\nPRIMER_MAX_SIZE={max_size}\nPRIMER_MIN_TM={min_tm:.3}\nPRIMER_MAX_TM={max_tm:.3}\nPRIMER_MIN_GC={min_gc_percent:.3}\nPRIMER_MAX_GC={max_gc_percent:.3}\nPRIMER_PRODUCT_SIZE_RANGE={min_amplicon_bp}-{max_amplicon_bp}\nPRIMER_NUM_RETURN={num_return}\nPRIMER_EXPLAIN_FLAG=1\n=\n"
+            "SEQUENCE_ID=gentle_primer_design\nSEQUENCE_TEMPLATE={template_seq}\n{target_tag}{sequence_tags}PRIMER_TASK=generic\nPRIMER_PICK_LEFT_PRIMER=1\nPRIMER_PICK_RIGHT_PRIMER=1\nPRIMER_PICK_INTERNAL_OLIGO=0\nPRIMER_MIN_SIZE={min_size}\nPRIMER_MAX_SIZE={max_size}\nPRIMER_MIN_TM={min_tm:.3}\nPRIMER_MAX_TM={max_tm:.3}\nPRIMER_MIN_GC={min_gc_percent:.3}\nPRIMER_MAX_GC={max_gc_percent:.3}\nPRIMER_PRODUCT_SIZE_RANGE={min_amplicon_bp}-{max_amplicon_bp}\nPRIMER_NUM_RETURN={num_return}\nPRIMER_EXPLAIN_FLAG=1\n=\n"
         );
         let mut child = Command::new(primer3_executable)
             .stdin(Stdio::piped())

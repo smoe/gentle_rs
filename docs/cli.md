@@ -3000,7 +3000,7 @@ Shared shell command:
     - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
-    - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--objective pan-transcript|one-per-class|minimal-discrimination-panel] [--coverage-policy require-all|best-effort] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
+    - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
       - returns `gentle.primer3_preflight.v1` with configured/effective
@@ -3542,6 +3542,23 @@ Shared shell command:
         receive deterministic `not_found` rows instead of silent omission
     - Transcript assay panel v2 notes
       (`primers design-transcript-assay-panel`):
+      - `--assay-kind` selects `endpoint-rt-pcr`, primer-only `sybr-qpcr`, or
+        `taqman-qpcr`; omission preserves the original TaqMan-compatible
+        forward/reverse/probe behavior for existing callers
+      - endpoint mode requires `--objective isoform-end-matrix`, constructs
+        only annotated first-end x terminal-end combinations, defaults to a
+        10,000 bp ceiling, and reports the predicted band sizes for every
+        selected assay against every transcript
+      - SYBR mode never fabricates an internal probe; its selected assays keep
+        primer Tm/structure checks and the same full transcript product matrix
+      - explicit junctions can be supplied with `--junctions` in transcript-
+        local, genomic-intron-span, or exon-ordinal coordinates; repeat
+        `--junction-evidence` to turn every Clariom-style JUC mapping in an
+        interpretation report into an audited required/preferred target
+      - Primer3 receives `SEQUENCE_OVERLAP_JUNCTION_LIST` plus the configured
+        3-prime/5-prime overlap minima; GENtle independently records whether
+        the selected forward primer, reverse primer, or neither spans each
+        requested junction
       - defaults to `--objective pan-transcript --coverage-policy require-all`;
         an assay that omits any exact cDNA class is rejected rather than saved
       - `--coverage-policy best-effort` is an explicit opt-in that saves a
@@ -3553,6 +3570,17 @@ Shared shell command:
         shortcut when mismatch tolerance is zero
       - reports carry `gentle.transcript_assay_panel.v2` and persist through the
         existing project save/load path; list/show/export use the commands above
+      - reports also expose order-ready primer rows, endpoint reaction/band
+        matrices, a separate short-SYBR junction table, unresolved targets with
+        reasons, annotation/JUC provenance, and prepared-genome specificity
+        follow-up commands
+      - with `--cdna-synthesis oligo-dt`, long endpoint reports warn that 5-prime
+        reverse-transcription completeness can be limiting even when the PCR
+        polymerase accepts 10 kb products; a missing long band is not called
+        isoform absence without short end-specific assays or 5-prime RACE
+      - deterministic worked example:
+        `docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json`
+        (synthetic sequence; not orderable human PATZ1 primers)
     - Restriction-cloning handoff notes (`primers prepare-restriction-cloning`):
       - expects an `Operation` payload whose root variant is
         `PrepareRestrictionCloningPcrHandoff`

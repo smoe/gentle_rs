@@ -14,6 +14,11 @@ Maintenance rule:
 
 ## 2026-07-20
 
+- Extended `gentle.transcript_assay_panel.v2` with backward-compatible endpoint
+  RT-PCR, primer-only SYBR, and TaqMan modes; annotated first x terminal reaction
+  and band matrices; required/preferred explicit or Clariom JUC targets;
+  Primer3 junction tags; order/provenance/specificity rows; oligo-dT cautions;
+  and a deterministic synthetic PATZ1 endpoint-plus-SYBR workflow.
 - Added persisted `gentle.transcript_assay_panel.v2` reports with exact mature-cDNA
   equivalence classes, transcript-by-assay product matrices, strict-by-default
   pan-transcript coverage, explicit best-effort partials, and shared shell

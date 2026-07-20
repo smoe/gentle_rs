@@ -7009,6 +7009,9 @@ pub enum TranscriptAssayPanelObjective {
     OnePerClass,
     /// Select a small assay set that separates every distinguishable class pair.
     MinimalDiscriminationPanel,
+    /// Design one endpoint RT-PCR reaction for each annotated first-end x
+    /// terminal-end combination represented by a mature transcript.
+    IsoformEndMatrix,
 }
 
 impl TranscriptAssayPanelObjective {
@@ -7017,8 +7020,256 @@ impl TranscriptAssayPanelObjective {
             Self::PanTranscript => "pan_transcript",
             Self::OnePerClass => "one_per_class",
             Self::MinimalDiscriminationPanel => "minimal_discrimination_panel",
+            Self::IsoformEndMatrix => "isoform_end_matrix",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Laboratory/readout mode for a multi-transcript assay panel.
+pub enum TranscriptAssayKind {
+    EndpointRtPcr,
+    SybrQpcr,
+    /// Backward-compatible mode used when older requests omit `assay_kind`.
+    #[default]
+    TaqmanQpcr,
+}
+
+impl TranscriptAssayKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::EndpointRtPcr => "endpoint_rt_pcr",
+            Self::SybrQpcr => "sybr_qpcr",
+            Self::TaqmanQpcr => "taqman_qpcr",
+        }
+    }
+
+    pub fn uses_probe(self) -> bool {
+        self == Self::TaqmanQpcr
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Reverse-transcription priming method relevant to assay interpretation.
+pub enum TranscriptAssayCdnaSynthesis {
+    #[default]
+    Unspecified,
+    OligoDt,
+    RandomHexamers,
+    GeneSpecific,
+    Mixed,
+}
+
+impl TranscriptAssayCdnaSynthesis {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unspecified => "unspecified",
+            Self::OligoDt => "oligo_dt",
+            Self::RandomHexamers => "random_hexamers",
+            Self::GeneSpecific => "gene_specific",
+            Self::Mixed => "mixed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether failure to span a requested exon-exon junction blocks that target.
+pub enum TranscriptAssayJunctionPriority {
+    Required,
+    #[default]
+    Preferred,
+}
+
+impl TranscriptAssayJunctionPriority {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Required => "required",
+            Self::Preferred => "preferred",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Coordinate representation supplied for an exon-exon junction request.
+pub enum TranscriptAssayJunctionCoordinateKind {
+    #[default]
+    TranscriptLocal,
+    /// Genomic coordinates describe the inclusive intron span between exons.
+    GenomicIntronSpan,
+    /// One-based exon ordinals in transcript 5'-to-3' order.
+    ExonOrdinals,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Explicit exon-exon junction target for primer placement.
+pub struct TranscriptAssayJunctionRequest {
+    pub junction_id: String,
+    #[serde(default)]
+    pub priority: TranscriptAssayJunctionPriority,
+    #[serde(default)]
+    pub coordinate_kind: TranscriptAssayJunctionCoordinateKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_local_position_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_end_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_exon_ordinal: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_exon_ordinal: Option<usize>,
+    #[serde(default)]
+    pub source_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// How one selected primer pair overlaps one requested cDNA junction.
+pub struct TranscriptAssayJunctionMatch {
+    pub junction_id: String,
+    pub transcript_id: String,
+    pub transcript_local_position_0based: usize,
+    pub forward_spans: bool,
+    pub reverse_spans: bool,
+    pub spanning_role: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Audit row proving that a required/preferred junction was evaluated.
+pub struct TranscriptAssayJunctionEvaluation {
+    pub junction_id: String,
+    #[serde(default)]
+    pub priority: TranscriptAssayJunctionPriority,
+    pub source_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    pub status: String,
+    #[serde(default)]
+    pub resolved_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub local_positions_0based: Vec<usize>,
+    #[serde(default)]
+    pub assay_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Transcript end represented by an endpoint RT-PCR primer class.
+pub enum TranscriptAssayEndKind {
+    #[default]
+    First,
+    Terminal,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One distinct first- or terminal-exon/junction class.
+pub struct TranscriptAssayEndClass {
+    pub end_class_id: String,
+    #[serde(default)]
+    pub kind: TranscriptAssayEndKind,
+    pub exon_source_start_0based: usize,
+    pub exon_source_end_0based_exclusive: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adjacent_exon_source_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adjacent_exon_source_end_0based_exclusive: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub junction_local_position_0based: Option<usize>,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One annotated first-end x terminal-end reaction represented by transcripts.
+pub struct TranscriptAssayEndReaction {
+    pub reaction_id: String,
+    pub first_end_class_id: String,
+    pub terminal_end_class_id: String,
+    #[serde(default)]
+    pub supported_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub assay_ids: Vec<String>,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Explicit gel-band prediction for one reaction/assay against one transcript.
+pub struct TranscriptAssayBandSizeRow {
+    pub reaction_id: String,
+    pub assay_id: String,
+    pub transcript_id: String,
+    pub product_count: usize,
+    #[serde(default)]
+    pub predicted_band_sizes_bp: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Procurement-oriented primer row. No random identifier is used.
+pub struct TranscriptAssayOrderPrimer {
+    pub line_id: String,
+    pub assay_id: String,
+    pub assay_rank: usize,
+    pub name: String,
+    pub role: String,
+    pub sequence_5_to_3: String,
+    pub length_nt: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Follow-up route for prepared-genome BLAST/e-PCR confirmation.
+pub struct TranscriptAssaySpecificityFollowup {
+    pub assay_id: String,
+    pub local_cdna_matrix_status: String,
+    pub genomic_confirmation_status: String,
+    pub shell_command_template: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Provenance source used while resolving junction evidence.
+pub struct TranscriptAssayPanelSourceProvenance {
+    pub source_kind: String,
+    pub source_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Machine-readable annotation and assay-input provenance.
+pub struct TranscriptAssayPanelProvenance {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_release: Option<String>,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub junction_sources: Vec<TranscriptAssayPanelSourceProvenance>,
+    pub primer_backend: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -7098,13 +7349,33 @@ pub struct TranscriptAssayEquivalenceGroup {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
-/// One selected qPCR assay and the exact cDNA classes it detects once.
+/// One selected transcript assay and the exact cDNA classes it detects once.
 pub struct TranscriptAssayPanelAssay {
     pub assay_id: String,
     pub rank: usize,
+    #[serde(default)]
+    pub assay_kind: TranscriptAssayKind,
     pub design_equivalence_group_id: String,
     pub design_transcript_id: String,
-    pub assay: QpcrAssayRecord,
+    /// Canonical primer-only representation shared by all assay kinds.
+    #[serde(default)]
+    pub primer_pair: PrimerDesignPairRecord,
+    /// Internal hydrolysis probe; absent for endpoint and SYBR modes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe: Option<PrimerDesignPrimerRecord>,
+    /// Backward-compatible TaqMan record. Existing TaqMan callers still receive
+    /// this object; primer-only modes do not fabricate one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assay: Option<QpcrAssayRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_reaction_id: Option<String>,
+    /// All annotated first-end x terminal-end reactions represented by this
+    /// physical primer pair. `end_reaction_id` retains the first entry for
+    /// readers predating this additive field.
+    #[serde(default)]
+    pub end_reaction_ids: Vec<String>,
+    #[serde(default)]
+    pub junction_matches: Vec<TranscriptAssayJunctionMatch>,
     #[serde(default)]
     pub single_product_equivalence_group_ids: Vec<String>,
 }
@@ -7176,6 +7447,10 @@ pub struct TranscriptAssayPanelReport {
     pub group_label: String,
     pub strand: String,
     #[serde(default)]
+    pub assay_kind: TranscriptAssayKind,
+    #[serde(default)]
+    pub cdna_synthesis: TranscriptAssayCdnaSynthesis,
+    #[serde(default)]
     pub objective: TranscriptAssayPanelObjective,
     #[serde(default)]
     pub coverage_policy: TranscriptAssayCoveragePolicy,
@@ -7206,6 +7481,22 @@ pub struct TranscriptAssayPanelReport {
     #[serde(default)]
     pub backend_runs: Vec<TranscriptAssayPanelBackendRun>,
     #[serde(default)]
+    pub end_classes: Vec<TranscriptAssayEndClass>,
+    #[serde(default)]
+    pub end_reactions: Vec<TranscriptAssayEndReaction>,
+    #[serde(default)]
+    pub band_size_matrix: Vec<TranscriptAssayBandSizeRow>,
+    #[serde(default)]
+    pub junction_evaluations: Vec<TranscriptAssayJunctionEvaluation>,
+    #[serde(default)]
+    pub short_sybr_junction_assays: Vec<TranscriptAssayPanelAssay>,
+    #[serde(default)]
+    pub order_ready_primers: Vec<TranscriptAssayOrderPrimer>,
+    #[serde(default)]
+    pub specificity_followups: Vec<TranscriptAssaySpecificityFollowup>,
+    #[serde(default)]
+    pub provenance: TranscriptAssayPanelProvenance,
+    #[serde(default)]
     pub warnings: Vec<String>,
 }
 
@@ -7217,6 +7508,8 @@ pub struct TranscriptAssayPanelReportSummary {
     pub source_seq_id: String,
     pub source_feature_id: usize,
     pub generated_at_unix_ms: u128,
+    #[serde(default)]
+    pub assay_kind: TranscriptAssayKind,
     #[serde(default)]
     pub objective: TranscriptAssayPanelObjective,
     #[serde(default)]

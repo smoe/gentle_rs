@@ -28,7 +28,9 @@ use crate::engine::{
     RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
     RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceOrigin,
     SequenceScanTarget, TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource,
-    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
+    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis,
+    TranscriptAssayCoveragePolicy, TranscriptAssayJunctionPriority, TranscriptAssayKind,
+    TranscriptAssayPanelObjective,
 };
 use crate::ensembl_gene::{
     EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
@@ -6593,6 +6595,39 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && report_id.as_deref() == Some("panel_v2")
             && path.as_deref() == Some("panel_v2.json")
             && backend == Some(PrimerDesignBackend::Internal)
+    ));
+    let endpoint_panel = parse_shell_line(
+        "primers design-transcript-assay-panel seq_a 17 --assay-kind endpoint-rt-pcr --cdna-synthesis oligo-dt --objective isoform-end-matrix --junctions @junctions.json --junction-evidence clariom_juc.json --junction-evidence-priority required --min-3prime-junction-overlap-bp 5 --min-5prime-junction-overlap-bp 8 --annotation-release Ensembl116 --max-amplicon-bp 10000",
+    )
+    .expect("parse endpoint transcript assay panel");
+    assert!(matches!(
+        endpoint_panel,
+        ShellCommand::PrimersDesignTranscriptAssayPanel {
+            seq_id,
+            feature_id,
+            assay_kind,
+            cdna_synthesis,
+            objective,
+            junctions_json,
+            junction_evidence_paths,
+            junction_evidence_priority,
+            min_3prime_junction_overlap_bp,
+            min_5prime_junction_overlap_bp,
+            annotation_release,
+            max_amplicon_bp,
+            ..
+        } if seq_id == "seq_a"
+            && feature_id == 17
+            && assay_kind == TranscriptAssayKind::EndpointRtPcr
+            && cdna_synthesis == TranscriptAssayCdnaSynthesis::OligoDt
+            && objective == TranscriptAssayPanelObjective::IsoformEndMatrix
+            && junctions_json.as_deref() == Some("@junctions.json")
+            && junction_evidence_paths == vec!["clariom_juc.json".to_string()]
+            && junction_evidence_priority == TranscriptAssayJunctionPriority::Required
+            && min_3prime_junction_overlap_bp == Some(5)
+            && min_5prime_junction_overlap_bp == Some(8)
+            && annotation_release.as_deref() == Some("Ensembl116")
+            && max_amplicon_bp == Some(10_000)
     ));
     assert!(matches!(
         parse_shell_line("primers list-transcript-assay-panels")

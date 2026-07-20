@@ -2469,6 +2469,21 @@ fn rewrite_example_paths_for_execution(
             }
             continue;
         }
+        if let Operation::DesignTranscriptAssayPanel {
+            junction_evidence_paths,
+            path,
+            ..
+        } = op
+        {
+            for source_path in junction_evidence_paths {
+                *source_path = resolve_input_path(source_path, repo_root);
+            }
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
         if let Operation::ExportDnaLadders { path, .. } = op {
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
@@ -5279,9 +5294,12 @@ pub fn generate_workflow_example_docs(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{SequenceFeatureQualifierFilter, SequenceFeatureQuery};
-    use std::path::Path;
+    use crate::engine::{
+        SequenceFeatureQualifierFilter, SequenceFeatureQuery, TranscriptAssayKind,
+        TranscriptAssayPanelCompletionStatus, TranscriptAssayPanelReport,
+    };
     use std::sync::Mutex;
+    use std::{collections::BTreeSet, path::Path};
 
     static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -5525,6 +5543,86 @@ mod tests {
         }
         assert!(svg.contains("31326038") && svg.contains("31325801"));
         assert!(!svg.contains("Probe evidence report targets sequence"));
+    }
+
+    #[test]
+    fn workflow_examples_patz1_endpoint_and_sybr_panels_are_explicit_and_primer_only() {
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| {
+                loaded.example.id == "patz1_endpoint_sybr_transcript_assay_panel_offline"
+            })
+            .expect("PATZ1 endpoint/SYBR example should exist");
+        let run_dir = TempDir::new().expect("temp run dir");
+        run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
+            .expect("PATZ1 endpoint/SYBR workflow should execute");
+
+        let endpoint: TranscriptAssayPanelReport = serde_json::from_slice(
+            &fs::read(
+                run_dir
+                    .path()
+                    .join("artifacts/patz1_endpoint_end_matrix.report.json"),
+            )
+            .expect("read endpoint report"),
+        )
+        .expect("parse endpoint report");
+        assert_eq!(endpoint.assay_kind, TranscriptAssayKind::EndpointRtPcr);
+        assert_eq!(
+            endpoint.completion_status,
+            TranscriptAssayPanelCompletionStatus::Complete
+        );
+        assert_eq!(endpoint.max_amplicon_bp, 10_000);
+        assert!(
+            endpoint
+                .selected_assays
+                .iter()
+                .all(|assay| { assay.probe.is_none() && assay.assay.is_none() })
+        );
+        assert!(
+            endpoint
+                .end_reactions
+                .iter()
+                .all(|reaction| reaction.status == "designed")
+        );
+        let band_sizes = endpoint
+            .band_size_matrix
+            .iter()
+            .flat_map(|row| row.predicted_band_sizes_bp.iter().copied())
+            .collect::<BTreeSet<_>>();
+        assert!(
+            band_sizes.len() >= 3,
+            "expected isoform-resolving band sizes"
+        );
+        assert!(
+            endpoint
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("reverse-transcription completeness"))
+        );
+
+        let sybr: TranscriptAssayPanelReport = serde_json::from_slice(
+            &fs::read(
+                run_dir
+                    .path()
+                    .join("artifacts/patz1_sybr_juc_panel.report.json"),
+            )
+            .expect("read SYBR report"),
+        )
+        .expect("parse SYBR report");
+        assert_eq!(sybr.assay_kind, TranscriptAssayKind::SybrQpcr);
+        assert!(
+            sybr.selected_assays
+                .iter()
+                .all(|assay| { assay.probe.is_none() && assay.assay.is_none() })
+        );
+        assert!(
+            sybr.junction_evaluations
+                .iter()
+                .any(|row| row.source_kind == "clariom_juc"
+                    && row.status == "selected_spanning_assay")
+        );
+        assert!(!sybr.short_sybr_junction_assays.is_empty());
     }
 
     #[test]

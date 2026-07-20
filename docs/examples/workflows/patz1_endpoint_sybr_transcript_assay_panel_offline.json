@@ -1,0 +1,118 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "patz1_endpoint_sybr_transcript_assay_panel_offline",
+  "title": "PATZ1 endpoint and SYBR transcript assay panels (offline)",
+  "summary": "Uses a sequence-diverse synthetic PATZ1 minus-strand locus to design a primer-only first-end x terminal-end RT-PCR matrix with explicit transcript band sizes, then a separate short SYBR assay required to span a synthetic Clariom JUC-supported junction. The fixture demonstrates mechanics only and does not provide orderable human PATZ1 primers.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_minus_strand.gb",
+    "test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json"
+  ],
+  "tags": [
+    "primer",
+    "endpoint-rt-pcr",
+    "sybr-qpcr",
+    "junction",
+    "clariom",
+    "oligo-dt",
+    "offline",
+    "patz1"
+  ],
+  "workflow": {
+    "run_id": "example_patz1_endpoint_sybr_transcript_assay_panel_offline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_minus_strand.gb",
+          "as_id": "patz1_transcript_assay_demo"
+        }
+      },
+      {
+        "SetParameter": {
+          "name": "primer_design_backend",
+          "value": "internal"
+        }
+      },
+      {
+        "DesignTranscriptAssayPanel": {
+          "seq_id": "patz1_transcript_assay_demo",
+          "source_feature_id": 1,
+          "assay_kind": "endpoint_rt_pcr",
+          "cdna_synthesis": "oligo_dt",
+          "objective": "isoform_end_matrix",
+          "coverage_policy": "require_all",
+          "forward": {
+            "min_length": 18,
+            "max_length": 22,
+            "min_tm_c": 30.0,
+            "max_tm_c": 90.0,
+            "min_gc_fraction": 0.15,
+            "max_gc_fraction": 0.85,
+            "max_anneal_hits": 100
+          },
+          "reverse": {
+            "min_length": 18,
+            "max_length": 22,
+            "min_tm_c": 30.0,
+            "max_tm_c": 90.0,
+            "min_gc_fraction": 0.15,
+            "max_gc_fraction": 0.85,
+            "max_anneal_hits": 100
+          },
+          "min_amplicon_bp": 70,
+          "max_amplicon_bp": 10000,
+          "max_tm_delta_c": 20.0,
+          "max_assays_per_class": 4,
+          "max_mismatches": 0,
+          "require_3prime_exact_bases": 8,
+          "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",
+          "report_id": "patz1_endpoint_end_matrix",
+          "path": "artifacts/patz1_endpoint_end_matrix.report.json"
+        }
+      },
+      {
+        "DesignTranscriptAssayPanel": {
+          "seq_id": "patz1_transcript_assay_demo",
+          "source_feature_id": 1,
+          "assay_kind": "sybr_qpcr",
+          "cdna_synthesis": "oligo_dt",
+          "objective": "one_per_class",
+          "coverage_policy": "require_all",
+          "forward": {
+            "min_length": 18,
+            "max_length": 22,
+            "min_tm_c": 30.0,
+            "max_tm_c": 90.0,
+            "min_gc_fraction": 0.15,
+            "max_gc_fraction": 0.85,
+            "max_anneal_hits": 100
+          },
+          "reverse": {
+            "min_length": 18,
+            "max_length": 22,
+            "min_tm_c": 30.0,
+            "max_tm_c": 90.0,
+            "min_gc_fraction": 0.15,
+            "max_gc_fraction": 0.85,
+            "max_anneal_hits": 100
+          },
+          "min_amplicon_bp": 30,
+          "max_amplicon_bp": 120,
+          "max_tm_delta_c": 20.0,
+          "max_assays_per_class": 4,
+          "max_mismatches": 0,
+          "require_3prime_exact_bases": 8,
+          "junction_evidence_paths": [
+            "test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json"
+          ],
+          "junction_evidence_priority": "required",
+          "min_3prime_junction_overlap_bp": 4,
+          "min_5prime_junction_overlap_bp": 7,
+          "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",
+          "report_id": "patz1_sybr_juc_panel",
+          "path": "artifacts/patz1_sybr_juc_panel.report.json"
+        }
+      }
+    ]
+  }
+}

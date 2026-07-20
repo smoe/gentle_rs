@@ -7973,7 +7973,7 @@ Primer-design shell command family (implemented):
   - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
-  - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--objective pan-transcript|one-per-class|minimal-discrimination-panel] [--coverage-policy require-all|best-effort] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
   - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
@@ -8052,10 +8052,44 @@ Primer-design shell command family (implemented):
   - `gentle.transcript_assay_panel.v2`
   - `DesignTranscriptAssayPanel` derives mature cDNA templates from the shared
     splicing engine, groups only byte-identical sequences into exact
-    equivalence classes, generates candidate qPCR assays from one representative
-    per class, and confirms candidates with the mismatch-aware cDNA assay path.
-  - objectives are `pan_transcript`, `one_per_class`, and
-    `minimal_discrimination_panel`.
+    equivalence classes, generates mode-appropriate primer candidates from one
+    representative per class, and confirms candidates with the mismatch-aware
+    cDNA assay path.
+  - `assay_kind` is `endpoint_rt_pcr`, `sybr_qpcr`, or `taqman_qpcr`.
+    Requests and older reports that omit it retain the original
+    `taqman_qpcr` forward/reverse/probe behavior. Endpoint and SYBR records
+    always carry the canonical primer pair and leave `probe` plus the legacy
+    TaqMan `assay` object absent.
+  - objectives are `pan_transcript`, `one_per_class`,
+    `minimal_discrimination_panel`, and endpoint-only `isoform_end_matrix`.
+    The endpoint objective derives first-exon/first-junction and terminal-exon/
+    last-junction classes, retains only combinations supported by an annotated
+    mature transcript, and permits one physical primer pair to reference more
+    than one supported end reaction.
+  - endpoint mode defaults to `200..10000` bp and refuses a configured ceiling
+    above 10,000 bp. Its `end_classes[]`, `end_reactions[]`, and
+    `band_size_matrix[]` make differently sized transcript products explicit.
+  - SYBR mode defaults to short products and never fabricates an internal
+    probe. `short_sybr_junction_assays[]` is the primer-only subset whose
+    selected forward or reverse primer satisfies a requested junction overlap.
+  - `junctions[]` accepts transcript-local boundaries, genomic inclusive intron
+    spans, or one-based adjacent exon ordinals. `junction_evidence_paths[]`
+    consumes `gentle.probe_region_evidence_interpretation.v2` reports and turns
+    each JUC row with junction geometry into an explicit audited junction target;
+    raw array activity remains design evidence, not isoform validation.
+  - requested junctions bypass the six-anchor automatic-search cap. Each
+    request receives a `junction_evaluations[]` row with resolved transcripts,
+    local positions, selected assay ids, and a reason when it cannot be
+    assayed. `required` targets participate in strict completion; `preferred`
+    targets are reported but non-blocking.
+  - Primer3 requests use `SEQUENCE_OVERLAP_JUNCTION_LIST`,
+    `PRIMER_MIN_3_PRIME_OVERLAP_OF_JUNCTION`, and
+    `PRIMER_MIN_5_PRIME_OVERLAP_OF_JUNCTION`. Junction-driven requests omit
+    `SEQUENCE_TARGET`, because Primer3 requires pairs to flank a target and
+    that would conflict with requiring a primer to overlap the same boundary.
+    The internal backend enforces the same overlap geometry before ranking,
+    and both paths are independently checked when the report records
+    `forward`, `reverse`, or `neither`.
   - coverage policy defaults to `require_all`. An unsatisfied strict request is
     an error that enumerates uncovered equivalence classes and persists no
     report. `best_effort` must be selected explicitly and returns
@@ -8069,6 +8103,17 @@ Primer-design shell command family (implemented):
     when mismatch tolerance is zero and all binding sequences are unambiguous
     DNA. Every retained candidate is evaluated by the full cDNA assay path;
     mismatch-tolerant requests are never discarded for lacking an exact hit.
+  - `order_ready_primers[]` contains deterministic forward/reverse rows (plus a
+    probe only for TaqMan), while `specificity_followups[]` records that the
+    local cDNA matrix ran and provides the existing prepared-genome BLAST route
+    for genomic confirmation. It does not claim that BLAST/e-PCR confirmation
+    has already run.
+  - `provenance` records the annotation release, admitted transcript ids,
+    primer backend, and SHA-256 identified Clariom/JUC inputs.
+  - when `cdna_synthesis = oligo_dt`, endpoint reports warn that incomplete
+    reverse transcription can underrepresent long 5-prime regions, that a
+    missing long band is not proof of isoform absence, and that short end-
+    specific assays or 5-prime RACE may be required.
   - reports are stored in the existing `gentle.primer_design_reports.v1`
     project metadata store without changing that store schema. The individual
     report carries the v2 schema above and is available through list/show/export

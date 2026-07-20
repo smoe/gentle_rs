@@ -18,7 +18,9 @@ use crate::engine::{
     QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
     ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode,
     TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
-    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
+    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis,
+    TranscriptAssayCoveragePolicy, TranscriptAssayJunctionPriority, TranscriptAssayKind,
+    TranscriptAssayPanelObjective,
 };
 
 fn parse_read_acquisition_analysis_format(
@@ -5185,7 +5187,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
         "design-transcript-assay-panel" => {
             if tokens.len() < 4 {
                 return Err(
-                    "primers design-transcript-assay-panel requires SEQ_ID FEATURE_ID [--objective pan-transcript|one-per-class|minimal-discrimination-panel] [--coverage-policy require-all|best-effort] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]"
+                    "primers design-transcript-assay-panel requires SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]"
                         .to_string(),
                 );
             }
@@ -5196,6 +5198,8 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                     tokens[3]
                 )
             })?;
+            let mut assay_kind = TranscriptAssayKind::default();
+            let mut cdna_synthesis = TranscriptAssayCdnaSynthesis::default();
             let mut objective = TranscriptAssayPanelObjective::default();
             let mut coverage_policy = TranscriptAssayCoveragePolicy::default();
             let mut min_amplicon_bp = None;
@@ -5203,6 +5207,12 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             let mut max_assays_per_class = None;
             let mut max_mismatches = None;
             let mut require_3prime_exact_bases = None;
+            let mut junctions_json = None;
+            let mut junction_evidence_paths = vec![];
+            let mut junction_evidence_priority = TranscriptAssayJunctionPriority::default();
+            let mut min_3prime_junction_overlap_bp = None;
+            let mut min_5prime_junction_overlap_bp = None;
+            let mut annotation_release = None;
             let mut report_id = None;
             let mut path = None;
             let mut backend = None;
@@ -5211,6 +5221,15 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
+                    "--assay-kind" | "--mode" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        assay_kind = parse_transcript_assay_kind(&raw)?;
+                    }
+                    "--cdna-synthesis" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--cdna-synthesis", context)?;
+                        cdna_synthesis = parse_transcript_assay_cdna_synthesis(&raw)?;
+                    }
                     "--objective" => {
                         let raw = parse_option_path(tokens, &mut idx, "--objective", context)?;
                         objective = parse_transcript_assay_panel_objective(&raw)?;
@@ -5268,13 +5287,63 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                             "--require-3prime-exact-bases",
                         )?);
                     }
-                    "--report-id" => {
-                        report_id = Some(parse_option_path(
+                    "--junctions" => {
+                        junctions_json =
+                            Some(parse_option_path(tokens, &mut idx, "--junctions", context)?);
+                    }
+                    "--junction-evidence" => {
+                        junction_evidence_paths.push(parse_option_path(
                             tokens,
                             &mut idx,
-                            "--report-id",
+                            "--junction-evidence",
                             context,
                         )?);
+                    }
+                    "--junction-evidence-priority" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--junction-evidence-priority",
+                            context,
+                        )?;
+                        junction_evidence_priority =
+                            parse_transcript_assay_junction_priority(&raw)?;
+                    }
+                    "--min-3prime-junction-overlap-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-3prime-junction-overlap-bp",
+                            context,
+                        )?;
+                        min_3prime_junction_overlap_bp = Some(parse_usize_option_value(
+                            &raw,
+                            "--min-3prime-junction-overlap-bp",
+                        )?);
+                    }
+                    "--min-5prime-junction-overlap-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-5prime-junction-overlap-bp",
+                            context,
+                        )?;
+                        min_5prime_junction_overlap_bp = Some(parse_usize_option_value(
+                            &raw,
+                            "--min-5prime-junction-overlap-bp",
+                        )?);
+                    }
+                    "--annotation-release" => {
+                        annotation_release = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--annotation-release",
+                            context,
+                        )?);
+                    }
+                    "--report-id" => {
+                        report_id =
+                            Some(parse_option_path(tokens, &mut idx, "--report-id", context)?);
                     }
                     "--path" => {
                         path = Some(parse_option_path(tokens, &mut idx, "--path", context)?);
@@ -5300,6 +5369,8 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             Ok(ShellCommand::PrimersDesignTranscriptAssayPanel {
                 seq_id,
                 feature_id,
+                assay_kind,
+                cdna_synthesis,
                 objective,
                 coverage_policy,
                 min_amplicon_bp,
@@ -5307,6 +5378,12 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 max_assays_per_class,
                 max_mismatches,
                 require_3prime_exact_bases,
+                junctions_json,
+                junction_evidence_paths,
+                junction_evidence_priority,
+                min_3prime_junction_overlap_bp,
+                min_5prime_junction_overlap_bp,
+                annotation_release,
                 report_id,
                 path,
                 backend,
