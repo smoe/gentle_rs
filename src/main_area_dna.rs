@@ -156,11 +156,12 @@ use crate::{
     enzymes::active_restriction_enzymes,
     exon_frame::{ExonLengthFrameCue, phase_entry_hint, transcript_entry_phase},
     feature_expert::{
-        FeatureExpertTarget, FeatureExpertView, GeneIsoformEvidenceReport,
-        GeneIsoformEvidenceRequest, IsoformArchitectureExpertView,
-        IsoformEvidenceAssessmentStatus, RestrictionSiteExpertView, SplicingBoundaryMarker,
-        SplicingExonSummary, SplicingExpertView, SplicingIntronSignal, TfbsExpertView,
-        compute_supported_splicing_exon_transitions,
+        FeatureExpertTarget, FeatureExpertView, GeneIsoformAssayCandidate,
+        GeneIsoformEvidenceReport, GeneIsoformEvidenceRequest, GeneIsoformJunctionRow,
+        GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest, GeneLocusOccupancyLayout,
+        IsoformArchitectureExpertView, IsoformEvidenceAssessmentStatus, RestrictionSiteExpertView,
+        SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView, SplicingIntronSignal,
+        TfbsExpertView, compute_supported_splicing_exon_transitions,
     },
     feature_location::{
         collect_location_ranges_usize, feature_is_reverse, location_overlaps_usize,
@@ -1057,6 +1058,7 @@ enum SplicingExpertTab {
     #[default]
     Structure,
     Evidence,
+    LocusFigure,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1637,6 +1639,22 @@ pub struct MainAreaDna {
     splicing_isoform_evidence_svg_path: String,
     splicing_isoform_evidence_report: Option<Arc<GeneIsoformEvidenceReport>>,
     splicing_isoform_evidence_status: String,
+    splicing_locus_upstream_bp: String,
+    splicing_locus_downstream_bp: String,
+    splicing_locus_probe_effect_paths: String,
+    splicing_locus_probe_effect_contrasts: String,
+    splicing_locus_probe_effect_coordinate_system: String,
+    splicing_locus_occupancy_layout_path: String,
+    splicing_locus_motifs: String,
+    splicing_locus_motif_score_kind: String,
+    splicing_locus_motif_clip_negative: bool,
+    splicing_locus_motif_threshold: String,
+    splicing_locus_motif_top_hits: String,
+    splicing_locus_svg_path: String,
+    splicing_locus_report: Option<Arc<GeneLocusEvidenceDisplayReport>>,
+    splicing_locus_preview_png: Option<Arc<[u8]>>,
+    splicing_locus_preview_generation: u64,
+    splicing_locus_status: String,
     cached_splicing_expert_presentations: Vec<CachedSplicingExpertPresentation>,
     splicing_expert_presentation_cache_hits: u64,
     splicing_expert_presentation_cache_misses: u64,
@@ -2395,6 +2413,22 @@ impl MainAreaDna {
             splicing_isoform_evidence_svg_path: "isoform-evidence.svg".to_string(),
             splicing_isoform_evidence_report: None,
             splicing_isoform_evidence_status: String::new(),
+            splicing_locus_upstream_bp: "5000".to_string(),
+            splicing_locus_downstream_bp: "1000".to_string(),
+            splicing_locus_probe_effect_paths: String::new(),
+            splicing_locus_probe_effect_contrasts: String::new(),
+            splicing_locus_probe_effect_coordinate_system: String::new(),
+            splicing_locus_occupancy_layout_path: String::new(),
+            splicing_locus_motifs: "TP73".to_string(),
+            splicing_locus_motif_score_kind: "llr_background_tail_log10".to_string(),
+            splicing_locus_motif_clip_negative: true,
+            splicing_locus_motif_threshold: String::new(),
+            splicing_locus_motif_top_hits: "5".to_string(),
+            splicing_locus_svg_path: "gene-locus-evidence.svg".to_string(),
+            splicing_locus_report: None,
+            splicing_locus_preview_png: None,
+            splicing_locus_preview_generation: 0,
+            splicing_locus_status: String::new(),
             cached_splicing_expert_presentations: Vec::new(),
             splicing_expert_presentation_cache_hits: 0,
             splicing_expert_presentation_cache_misses: 0,
@@ -18094,10 +18128,19 @@ impl MainAreaDna {
                 SplicingExpertTab::Evidence,
                 "Evidence",
             );
+            ui.selectable_value(
+                &mut self.splicing_expert_tab,
+                SplicingExpertTab::LocusFigure,
+                "Locus figure",
+            );
         });
         ui.separator();
         if self.splicing_expert_tab == SplicingExpertTab::Evidence {
             self.render_splicing_isoform_evidence_tab(ui, view);
+            return;
+        }
+        if self.splicing_expert_tab == SplicingExpertTab::LocusFigure {
+            self.render_splicing_locus_evidence_tab(ui, view);
             return;
         }
         self.render_splicing_expert_transcript_quick_actions(ui, view);

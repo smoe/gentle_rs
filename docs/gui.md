@@ -786,7 +786,9 @@ Feature tree grouping:
   default; override it with `GENTLE_GUI_PROFILE_ADDR=127.0.0.1:PORT` and inspect
   the frame spans with `puffin_viewer`. The profiling spans are coarse by
   design and focus on app-frame, DNA-window shell, DNA-map, sequence-text, and
-  feature-tree costs.
+  feature-tree costs. Gene-locus investigations additionally expose separate
+  scopes for GUI composition/preview rendering and the engine's occupancy,
+  motif, probe-effect, and complete report-building phases.
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
 - The Agent Assistant window uses its own window-styling slot (`agent assistant`)
@@ -922,8 +924,8 @@ Feature tree grouping:
     `Junction-targeting array probes` preview before the full geometry table
   - this is a review-only array design/alignment constraint layer, separate
     from RNA-read evidence; it does not infer isoform support by itself
-- The Splicing Expert has `Structure` and `Evidence` tabs. `Evidence` is a thin
-  GUI over `FeatureExpertTarget::IsoformEvidence`:
+- The Splicing Expert has `Structure`, `Evidence`, and `Locus figure` tabs.
+  `Evidence` is a thin GUI over `FeatureExpertTarget::IsoformEvidence`:
   - choose an imported isoform panel and optionally supply annotation-release
     text, persisted RNA-read/qPCR report ids, probe-evidence JSON, cDNA/EST
     resource JSON, an expression TSV, and projected occupancy track names
@@ -944,12 +946,33 @@ Feature tree grouping:
   - existing qPCR rows are candidates only. New assay design remains an
     explicit action in the Structure tab, and the GUI does not promote array
     overlap or missing evidence into biological validation
-  - the GUI Shell can compose the same evidence into the publication-oriented
-    `gene-locus-evidence` feature-expert target. Its generic expert-result view
-    reports transcript, occupancy-group, motif-track, and assay-marker counts;
-    the shared SVG renderer provides the full aligned figure. The detailed
-    Evidence tab remains the audit surface, so no biological logic is duplicated
-    in the composed view
+  - evidence status labels use one shared vocabulary: `observed evidence`,
+    `candidate association`, `design constraint`, `not evaluated`, and
+    `unresolved evidence`. These labels interpret the existing stable wire
+    values; they do not promote candidates or overlaps into validation
+- `Locus figure` is the graphical composition surface for the same shared
+  `FeatureExpertTarget::GeneLocusEvidence` operation:
+  - reuses the panel, expression, RNA/cDNA, probe, occupancy, and qPCR inputs
+    entered under `Evidence`, then adds strand-aware flanks, probe-effect
+    tables/contrasts, an explicit coordinate system, an occupancy-layout JSON,
+    motif-score settings, and an output path
+  - a readiness table distinguishes genome anchors, local files, imported
+    panels, and projected occupancy-track names. Missing file-backed resources
+    can be browsed to their relocated copy; the engine still performs schema,
+    coordinate, and provenance validation during composition
+  - `Compose / refresh` calls the shared pure-read feature-expert operation and
+    renders its SVG through the shared renderer into the live GUI preview;
+    transcript metrics, PSR/JUC effects, occupancy/motif summaries, warnings,
+    and provenance remain inspectable beside the figure
+  - report JSON, SVG, and PDF exports reuse shared operation/render paths. The
+    GUI does not implement a second locus-composition algorithm
+  - existing qPCR candidates can open their persisted report or create a
+    deterministic reviewed oligo-order form. Junction evidence can seed the
+    existing transcript-aware qPCR designer; this is assay planning, not a
+    claim that the candidate validates the displayed relationship
+  - the offline PATZ1 example is generated from
+    `docs/examples/workflows/patz1_gene_locus_evidence_offline.json`; its tiny
+    committed tracks are synthetic and are not experimental PATZ1 evidence
 - The Splicing Expert now also includes an `ATtRACT / RBP evidence` section:
   - engine-owned, splice-aware motif interpretation over the selected splicing
     group; the GUI is only a viewer/filter for the shared payload

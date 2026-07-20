@@ -3788,6 +3788,10 @@ Isoform architecture panel workflow:
       `shared_all` scaling; GENtle does not infer these meanings from filenames
     - see `docs/gene_isoform_occupancy_figure_runbook.md` and
       `docs/examples/gene_locus_evidence/patz1_cutrun_layout.json`
+    - the fully offline structural/visual proof is:
+      `cargo run --bin gentle_cli -- workflow @docs/examples/workflows/patz1_gene_locus_evidence_offline.json`;
+      it writes `patz1_gene_locus_evidence.svg` from committed synthetic
+      negative-strand PATZ1, PSR/JUC, and occupancy fixtures
   - same command family for restriction-site details:
     - `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]`
     - JSON output includes `tooltip_lines[]` with the same concise

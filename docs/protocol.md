@@ -3327,6 +3327,11 @@ external coding agent runtime, see:
     family ids, and one of `observed`, `candidate`, `constraint_only`,
     `not_evaluated`, or `unknown`. Array-probe overlap is always
     `constraint_only`; it does not establish isoform support
+  - human-facing adapters use the shared labels `observed evidence`,
+    `candidate association`, `design constraint`, `not evaluated`, and
+    `unresolved evidence` for those stable wire values. The labels are an
+    interpretation aid only; the schema spellings and evidence status are not
+    rewritten by the GUI
   - optional `occupancy_track_names[]` selects already projected BED/BigWig
     track names (`*` selects all overlapping projected tracks). The additive
     `occupancy_lanes[]` records source-specific local/genomic intervals and
@@ -3385,6 +3390,10 @@ external coding agent runtime, see:
   - qPCR assays are display-deduplicated by stable junction id while retaining
     every contributing assay id, transcript family, and transcript id. No assay
     is designed or persisted by this read-only route
+  - the GUI `Locus figure` tab is a thin client of this same report and shared
+    SVG renderer. The deterministic offline example and synthetic fixture are
+    `docs/examples/workflows/patz1_gene_locus_evidence_offline.json` and
+    `test_files/fixtures/gene_locus_evidence/patz1_offline_composer/`
 - shared-shell UniProt routes:
   - `uniprot fetch QUERY [--entry-id ID]`
     - `QUERY` is a UniProtKB/Swiss-Prot accession or entry name, for example

@@ -1,0 +1,161 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "patz1_gene_locus_evidence_offline",
+  "title": "PATZ1 gene-locus evidence composition (offline)",
+  "summary": "Composes a synthetic negative-strand PATZ1 locus from transcript models, PSR/JUC effects, grouped CUT&RUN-style intervals, and a TP73 motif score track, then renders one deterministic evidence SVG.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/fixtures/isoform_evidence/patz1/patz1_minus_strand.gb",
+    "test_files/fixtures/isoform_evidence/patz1/patz1_isoform_panel.json",
+    "test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
+    "test_files/fixtures/isoform_evidence/patz1/patz1_cdna_est.json",
+    "test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv",
+    "test_files/fixtures/gene_locus_evidence/patz1_offline_composer/patz1_probe_effects.tsv",
+    "test_files/fixtures/gene_locus_evidence/patz1_offline_composer/saos2_tap73alpha.bed",
+    "test_files/fixtures/gene_locus_evidence/patz1_offline_composer/saos2_dnp73beta.bed",
+    "test_files/fixtures/gene_locus_evidence/patz1_offline_composer/skmel29_tap73alpha.bed",
+    "test_files/fixtures/gene_locus_evidence/patz1_offline_composer/skmel29_dnp73beta.bed"
+  ],
+  "tags": [
+    "gene-locus-evidence",
+    "isoform",
+    "array",
+    "cutrun",
+    "tfbs",
+    "offline",
+    "patz1"
+  ],
+  "workflow": {
+    "run_id": "example_patz1_gene_locus_evidence_offline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/fixtures/isoform_evidence/patz1/patz1_minus_strand.gb",
+          "as_id": "patz1_isoform_evidence"
+        }
+      },
+      {
+        "ImportIsoformPanel": {
+          "seq_id": "patz1_isoform_evidence",
+          "panel_path": "test_files/fixtures/isoform_evidence/patz1/patz1_isoform_panel.json",
+          "panel_id": "patz1_synthetic_v1",
+          "strict": false
+        }
+      },
+      {
+        "ImportGenomeBedTrack": {
+          "seq_id": "patz1_isoform_evidence",
+          "path": "test_files/fixtures/gene_locus_evidence/patz1_offline_composer/saos2_tap73alpha.bed",
+          "track_name": "SAOS-2 TP73 TAp73alpha",
+          "clear_existing": true
+        }
+      },
+      {
+        "ImportGenomeBedTrack": {
+          "seq_id": "patz1_isoform_evidence",
+          "path": "test_files/fixtures/gene_locus_evidence/patz1_offline_composer/saos2_dnp73beta.bed",
+          "track_name": "SAOS-2 TP73 DNp73beta",
+          "clear_existing": false
+        }
+      },
+      {
+        "ImportGenomeBedTrack": {
+          "seq_id": "patz1_isoform_evidence",
+          "path": "test_files/fixtures/gene_locus_evidence/patz1_offline_composer/skmel29_tap73alpha.bed",
+          "track_name": "SK-MEL-29 TP73 TAp73alpha",
+          "clear_existing": false
+        }
+      },
+      {
+        "ImportGenomeBedTrack": {
+          "seq_id": "patz1_isoform_evidence",
+          "path": "test_files/fixtures/gene_locus_evidence/patz1_offline_composer/skmel29_dnp73beta.bed",
+          "track_name": "SK-MEL-29 TP73 DNp73beta",
+          "clear_existing": false
+        }
+      },
+      {
+        "RenderFeatureExpertSvg": {
+          "seq_id": "patz1_isoform_evidence",
+          "target": {
+            "gene_locus_evidence": {
+              "request": {
+                "isoform_evidence": {
+                  "panel_id": "patz1_synthetic_v1",
+                  "annotation_release": "synthetic Ensembl116-like fixture",
+                  "probe_evidence_paths": [
+                    "test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json"
+                  ],
+                  "cdna_est_resource_paths": [
+                    "test_files/fixtures/isoform_evidence/patz1/patz1_cdna_est.json"
+                  ],
+                  "expression_tsv_path": "test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv"
+                },
+                "upstream_bp": 19,
+                "downstream_bp": 19,
+                "probe_effect_table_paths": [
+                  "test_files/fixtures/gene_locus_evidence/patz1_offline_composer/patz1_probe_effects.tsv"
+                ],
+                "probe_effect_contrasts": [
+                  "TAp73alpha-GFP",
+                  "DNp73beta-GFP"
+                ],
+                "probe_effect_coordinate_system": "GRCh38.p14",
+                "occupancy_layout": {
+                  "schema": "gentle.gene_locus_occupancy_layout.v1",
+                  "groups": [
+                    {
+                      "group_id": "saos2",
+                      "label": "Saos-2 synthetic occupancy",
+                      "scale_mode": "shared_group",
+                      "lanes": [
+                        {
+                          "track_name": "SAOS-2 TP73 TAp73alpha",
+                          "display_label": "TP73 TAp73alpha",
+                          "condition_label": "TA",
+                          "role": "experimental"
+                        },
+                        {
+                          "track_name": "SAOS-2 TP73 DNp73beta",
+                          "display_label": "TP73 DNp73beta",
+                          "condition_label": "DN",
+                          "role": "experimental"
+                        }
+                      ]
+                    },
+                    {
+                      "group_id": "skmel29",
+                      "label": "SK-MEL-29 synthetic occupancy",
+                      "scale_mode": "shared_group",
+                      "lanes": [
+                        {
+                          "track_name": "SK-MEL-29 TP73 TAp73alpha",
+                          "display_label": "TP73 TAp73alpha",
+                          "condition_label": "TA",
+                          "role": "experimental"
+                        },
+                        {
+                          "track_name": "SK-MEL-29 TP73 DNp73beta",
+                          "display_label": "TP73 DNp73beta",
+                          "condition_label": "DN",
+                          "role": "experimental"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "motifs": [
+                  "TP73"
+                ],
+                "motif_score_kind": "llr_background_tail_log10",
+                "motif_clip_negative": true,
+                "motif_top_hit_count": 5
+              }
+            }
+          },
+          "path": "patz1_gene_locus_evidence.svg"
+        }
+      }
+    ]
+  }
+}

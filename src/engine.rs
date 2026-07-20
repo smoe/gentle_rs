@@ -11256,6 +11256,15 @@ impl GentleEngine {
             })
     }
 
+    /// Returns whether an isoform panel is imported for the given sequence.
+    ///
+    /// GUI readiness checks use this lightweight query before invoking the
+    /// full feature-expert operation; report construction remains the
+    /// authoritative schema and transcript-geometry validation path.
+    pub fn isoform_panel_is_available(&self, seq_id: &str, panel_id: &str) -> bool {
+        self.get_isoform_panel_record(seq_id, panel_id).is_ok()
+    }
+
     fn read_primer_design_store_from_metadata(
         value: Option<&serde_json::Value>,
     ) -> PrimerDesignStore {

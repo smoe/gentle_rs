@@ -1009,6 +1009,37 @@
       "notes": "Machine-checked generated chapter for offline gene-set and ortholog promoter cohort relationship flags.",
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-06-25"
+    },
+    {
+      "id": "patz1_gene_locus_evidence_offline",
+      "title": "PATZ1 Gene-Locus Evidence Composition (Offline Synthetic Demo)",
+      "path": "docs/tutorial/generated/chapters/06-06_patz1_gene_locus_evidence_offline.md",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 6,
+      "decimal_id": "06.06",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "isoform_analysis",
+        "contributors"
+      ],
+      "notes": "Machine-checked offline chapter for the shared Gene Locus Evidence composer; all plotted values are synthetic.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-07-19",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg",
+          "caption": "A strand-aware synthetic PATZ1 locus composition with transcript models, distinct PSR/JUC effects, grouped occupancy lanes, and a TP73 motif score track. The aligned layers are evidence for inspection, not proof of isoform-specific regulation.",
+          "illustrates_step": 6,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ]
     }
   ]
 }

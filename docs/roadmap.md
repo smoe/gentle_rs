@@ -1,7 +1,9 @@
 # GENtle Roadmap
 
-Last session: 2026-07-13 - prepared `v0.1.0-internal.10` release notes and
-aligned the interim release gate; manual GUI smoke remains post-release work
+Last session: 2026-07-19 - extended the unreleased
+`v0.1.0-internal.10` evidence story with a graphical Gene Locus Evidence
+composer and a deterministic offline PATZ1 tutorial; manual GUI smoke remains
+before the tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -27,9 +29,10 @@ inspect exons, introns, repeats, array/evidence tracks, CUT&RUN-style BED
 intervals, TFBS/regulatory annotations, and coordinate-build provenance in the
 DNA viewer.
 
-Smoke status: deterministic headless proof and automated release checks define
-the cut condition for `v0.1.0-internal.10`. Manual GUI smoke is deliberately
-deferred until after this interim release and is not a tag blocker.
+Smoke status: deterministic headless proofs and automated release checks are
+green-path requirements for `v0.1.0-internal.10`. Before tagging, run the
+manual DNA-viewer and Gene Locus Evidence composer smoke so the graphical
+release story is inspected as well as regenerated.
 
 Proof path:
 
@@ -37,6 +40,10 @@ Proof path:
   loads `test_files/tp73.ncbi.gb`, overlays tiny local repeat, Clariom-style
   array, CUT&RUN-style BED, and TFBS fixtures, and emits SVG/report artifacts.
 - Public [TP73 evidence-viewer runbook](tp73_genome_evidence_viewer_runbook.md).
+- Offline [PATZ1 Gene Locus Evidence workflow](examples/workflows/patz1_gene_locus_evidence_offline.json)
+  and generated tutorial align transcript models, PSR/JUC effects, grouped
+  occupancy, TP73 motif scoring, provenance, and assay continuation on one
+  negative-strand axis.
 - [Fixture provenance and regeneration notes](../test_files/fixtures/evidence_viewer/README.md).
 - Draft [`v0.1.0-internal.10` release notes](release_notes/release_notes_v0.1.0-internal.10.md).
 
@@ -48,33 +55,30 @@ Release acceptance:
   deterministic proof workflow pass the pre-tag validation recorded in the
   versioned release notes.
 - Full UCSC `rmsk`, raw CEL, full SRA, and genome downloads remain optional
-  external resources; CI uses only tiny local fixtures.
+  external resources; CI uses tiny local fixtures without restricting the
+  engine or GUI contracts to those fixture sizes.
 
 Release cut line:
 
-- `v0.1.0-internal.10` may be tagged after the automated pre-tag matrix is
-  recorded. The manual DNA-viewer/Splicing Expert smoke is intentionally not
-  part of this interim cut.
+- `v0.1.0-internal.10` may be tagged after the automated pre-tag matrix and the
+  manual DNA-viewer/Splicing Expert locus-composer smoke are recorded.
 
-Post-release scope:
+Pre-release finishing scope:
 
-- Run the manual GUI smoke from the TP73 runbook and use any findings as input
-  to the next internal release.
-- Coordinate a stable macOS bundle identifier and project URL with Magnus
-  Manske before replacing the interim `com.example.gentle` identifier.
+- Run the manual GUI smoke from the TP73 and PATZ1 runbooks and fix only
+  evidence-inspection or composition problems supported by that review.
 - Discuss the deprecated ClawBio shell-normalizer modes before their earliest
   possible removal in `v0.1.0-internal.11`.
 
 ## Next Session Priorities
 
-1. Keep the TP73 evidence-viewer proof workflow green and offline-safe through
-   the `v0.1.0-internal.10` tag.
-2. After the interim release, run the manual GUI smoke from the runbook and fix
-   only evidence-viewer inspection problems supported by that review.
-3. Coordinate the stable macOS bundle identity/project URL with Magnus Manske.
-4. Review the ClawBio shell-normalizer deprecations before deciding whether any
+1. Keep the TP73 evidence-viewer and PATZ1 locus-composer proof workflows green
+   and offline-safe through the `v0.1.0-internal.10` tag.
+2. Run the manual GUI smoke from both runbooks, including file relocation,
+   graphical preview, JSON/SVG/PDF export, and evidence-to-assay continuation.
+3. Review the ClawBio shell-normalizer deprecations before deciding whether any
    compatibility modes should be removed in `v0.1.0-internal.11`.
-5. Preserve headless/GUI parity for repeat, array, CUT&RUN-style BED, TFBS, and
+4. Preserve headless/GUI parity for repeat, array, CUT&RUN-style BED, TFBS, and
    feature-detail views without promoting evidence overlap into conclusions.
 
 Current non-goals:

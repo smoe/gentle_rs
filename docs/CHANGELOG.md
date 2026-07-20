@@ -23,6 +23,17 @@ Maintenance rule:
 - Made `gentle_examples_docs tutorial-check` treat CRLF and LF as equivalent
   for known text artifacts while retaining byte-exact drift checks for binary
   files, so normal Windows checkouts pass tutorial validation.
+- Added a graphical `Locus figure` tab to Splicing Expert that composes the
+  shared `gentle.gene_locus_evidence_display.v1` report, previews it in the
+  GUI, reports local-resource readiness, supports relocation and JSON/SVG/PDF
+  export, and continues selected junction/qPCR evidence into existing assay
+  design and reviewed oligo-order paths.
+- Added a deterministic offline PATZ1 locus-composer workflow, synthetic
+  PSR/JUC and grouped-occupancy fixtures, generated tutorial/SVG, structural
+  visual-regression checks, and focused Puffin scopes for composition costs.
+- Standardized GUI evidence wording around observed evidence, candidate
+  association, design constraint, not evaluated, and unresolved evidence
+  without changing the stable wire spellings.
 
 ## 2026-07-18
 
@@ -49,7 +60,7 @@ Maintenance rule:
   zero-centered SVG scale; the committed 24-row PATZ1 fixture now substitutes
   for the local CEL-analysis tree in CI.
 
-## 2026-07-13 - `v0.1.0-internal.10`
+## 2026-07-13 - `v0.1.0-internal.10` release candidate
 
 - Hardened construct reasoning with typed objective task intent, separate
   intrinsic/applicability/effective severity fields, typed multi-family repeat

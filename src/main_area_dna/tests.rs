@@ -5,6 +5,7 @@ use super::{
     RnaReadTaskOutcome, SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD,
     SequencingConfirmationOverviewSelection, SequencingConfirmationReviewFocusKind,
     SplicingIntronSignalKey, SplicingIntronSignalRow, ViewSvgExportProfile,
+    auxiliary_workspaces::LocusEvidenceResourceReadiness,
 };
 use crate::{
     dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
@@ -45,9 +46,10 @@ use crate::{
     engine_shell::ShellCommand,
     enzymes::active_restriction_enzymes,
     feature_expert::{
-        FeatureExpertView, IsoformArchitectureExpertView, RestrictionSiteExpertView,
-        SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView, SplicingIntronSignal,
-        SplicingJunctionArc, SplicingMatrixRow, SplicingRange, SplicingTranscriptLane,
+        FeatureExpertView, GeneLocusEvidenceDisplayReport, IsoformArchitectureExpertView,
+        RestrictionSiteExpertView, SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView,
+        SplicingIntronSignal, SplicingJunctionArc, SplicingMatrixRow, SplicingRange,
+        SplicingTranscriptLane,
     },
     linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
     protocol_cartoon::pcr_oe_substitution_geometry_bindings,
@@ -3765,10 +3767,7 @@ fn poll_rna_read_task_keeps_live_progress_out_of_dna_window_status() {
     area.poll_rna_read_task(&egui::Context::default());
 
     assert_eq!(area.op_status, "keep this status in the DNA window");
-    assert_eq!(
-        area.rna_read_task_repaint_delay,
-        Duration::from_millis(120)
-    );
+    assert_eq!(area.rna_read_task_repaint_delay, Duration::from_millis(120));
 
     area.poll_rna_read_task(&egui::Context::default());
     assert_eq!(
@@ -8363,6 +8362,120 @@ fn splicing_isoform_evidence_request_normalizes_gui_source_lists() {
 }
 
 #[test]
+fn splicing_locus_evidence_request_reuses_isoform_inputs_and_parses_layout() {
+    let temp = tempfile::tempdir().expect("temporary locus UI fixture");
+    let layout_path = temp.path().join("occupancy.json");
+    std::fs::write(
+        &layout_path,
+        r#"{
+          "schema":"gentle.gene_locus_occupancy_layout.v1",
+          "groups":[{
+            "group_id":"saos2",
+            "label":"Saos-2",
+            "scale_mode":"shared_group",
+            "lanes":[{"track_name":"SAOS-2 TA","role":"experimental"}]
+          }]
+        }"#,
+    )
+    .expect("write occupancy layout");
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.splicing_isoform_evidence_panel_id = " patz1_panel ".to_string();
+    area.splicing_isoform_evidence_probe_paths = "probe-b.json,probe-a.json".to_string();
+    area.splicing_isoform_evidence_occupancy_tracks = "ignored direct track".to_string();
+    area.splicing_locus_upstream_bp = "2500".to_string();
+    area.splicing_locus_downstream_bp = "750".to_string();
+    area.splicing_locus_probe_effect_paths = "effects-b.tsv,effects-a.tsv".to_string();
+    area.splicing_locus_probe_effect_contrasts =
+        "TAp73alpha-GFP,DNp73beta-GFP,TAp73alpha-GFP".to_string();
+    area.splicing_locus_probe_effect_coordinate_system = "GRCh38.p14".to_string();
+    area.splicing_locus_occupancy_layout_path = layout_path.to_string_lossy().to_string();
+    area.splicing_locus_motifs = "TP73,SP1,TP73".to_string();
+    area.splicing_locus_motif_score_kind = "llr_bits".to_string();
+    area.splicing_locus_motif_threshold = "2.5".to_string();
+    area.splicing_locus_motif_top_hits = "7".to_string();
+    area.splicing_locus_motif_clip_negative = false;
+
+    let request = area
+        .splicing_locus_evidence_request()
+        .expect("locus GUI request");
+    assert_eq!(request.isoform_evidence.panel_id, "patz1_panel");
+    assert_eq!(
+        request.isoform_evidence.probe_evidence_paths,
+        vec!["probe-a.json", "probe-b.json"]
+    );
+    assert!(request.isoform_evidence.occupancy_track_names.is_empty());
+    assert_eq!(request.upstream_bp, 2500);
+    assert_eq!(request.downstream_bp, 750);
+    assert_eq!(
+        request.probe_effect_table_paths,
+        vec!["effects-a.tsv", "effects-b.tsv"]
+    );
+    assert_eq!(
+        request.probe_effect_contrasts,
+        vec!["TAp73alpha-GFP", "DNp73beta-GFP"]
+    );
+    assert_eq!(request.occupancy_layout.groups.len(), 1);
+    assert_eq!(request.motifs, vec!["TP73", "SP1"]);
+    assert_eq!(request.motif_display_threshold, Some(2.5));
+    assert_eq!(request.motif_top_hit_count, 7);
+    assert!(!request.motif_clip_negative);
+}
+
+#[test]
+fn splicing_locus_resource_rows_distinguish_ready_and_relocated_files() {
+    let fixture = "test_files/fixtures/isoform_evidence/patz1";
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: format!("{fixture}/patz1_minus_strand.gb"),
+            as_id: Some("patz1_ui".to_string()),
+        })
+        .expect("load anchored PATZ1 fixture");
+    engine
+        .apply(Operation::ImportIsoformPanel {
+            seq_id: "patz1_ui".to_string(),
+            panel_path: format!("{fixture}/patz1_isoform_panel.json"),
+            panel_id: Some("patz1_synthetic_v1".to_string()),
+            strict: false,
+        })
+        .expect("import PATZ1 panel");
+    let dna = engine
+        .state()
+        .sequences
+        .get("patz1_ui")
+        .expect("loaded sequence")
+        .clone();
+    let mut area = MainAreaDna::new(
+        dna,
+        Some("patz1_ui".to_string()),
+        Some(Arc::new(RwLock::new(engine))),
+    );
+    area.splicing_isoform_evidence_panel_id = "patz1_synthetic_v1".to_string();
+    area.splicing_isoform_evidence_cdna_est_paths = format!("{fixture}/patz1_cdna_est.json");
+    area.splicing_locus_probe_effect_paths = "missing/relocated-effects.tsv".to_string();
+
+    let rows = area.splicing_locus_resource_rows();
+    assert!(rows.iter().any(|row| {
+        row.kind == "genome anchor"
+            && row.readiness == LocusEvidenceResourceReadiness::Ready
+            && row.reference.contains("GRCh38.p14")
+    }));
+    assert!(rows.iter().any(|row| {
+        row.kind == "cDNA/EST evidence" && row.readiness == LocusEvidenceResourceReadiness::Ready
+    }));
+    assert!(rows.iter().any(|row| {
+        row.kind == "isoform panel"
+            && row.readiness == LocusEvidenceResourceReadiness::EngineValidated
+    }));
+    assert!(rows.iter().any(|row| {
+        row.kind == "probe-effect table"
+            && row.readiness == LocusEvidenceResourceReadiness::Missing
+            && row.detail.contains("relocated copy")
+    }));
+}
+
+#[test]
 fn opening_a_splicing_group_clears_cached_isoform_evidence() {
     let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
     let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -8373,14 +8486,19 @@ fn opening_a_splicing_group_clears_cached_isoform_evidence() {
         .expect("seeded view")
         .as_ref()
         .clone();
-    area.splicing_isoform_evidence_report =
-        Some(Arc::new(GeneIsoformEvidenceReport::default()));
+    area.splicing_isoform_evidence_report = Some(Arc::new(GeneIsoformEvidenceReport::default()));
     area.splicing_isoform_evidence_status = "stale".to_string();
+    area.splicing_locus_report = Some(Arc::new(GeneLocusEvidenceDisplayReport::default()));
+    area.splicing_locus_preview_png = Some(Arc::from([1_u8, 2, 3]));
+    area.splicing_locus_status = "stale locus".to_string();
 
     area.open_splicing_expert_window_for_view(&view);
 
     assert!(area.splicing_isoform_evidence_report.is_none());
     assert!(area.splicing_isoform_evidence_status.is_empty());
+    assert!(area.splicing_locus_report.is_none());
+    assert!(area.splicing_locus_preview_png.is_none());
+    assert!(area.splicing_locus_status.is_empty());
 }
 
 #[test]

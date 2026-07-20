@@ -17,6 +17,31 @@ use crate::engine::{
 const SPLICING_EXPERT_PRESENTATION_CACHE_CAPACITY: usize = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum LocusEvidenceResourceReadiness {
+    Ready,
+    Missing,
+    EngineValidated,
+}
+
+impl LocusEvidenceResourceReadiness {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Missing => "missing",
+            Self::EngineValidated => "checked on inspect",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct LocusEvidenceResourceRow {
+    pub(super) kind: String,
+    pub(super) reference: String,
+    pub(super) readiness: LocusEvidenceResourceReadiness,
+    pub(super) detail: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct SplicingExpertPresentationKey {
     view_identity: usize,
     target_feature_id: usize,
@@ -5231,13 +5256,11 @@ impl MainAreaDna {
         let transition_rows = exons
             .iter()
             .enumerate()
-            .map(|(from_idx, exon)| {
-                SplicingExpertTransitionPresentationRow {
-                    label: exon.transition_label.clone(),
-                    length_mod3: exon.length_mod3,
-                    length_tooltip: exon.transition_tooltip.clone(),
-                    cells: std::mem::take(&mut transition_cells_by_from[from_idx]),
-                }
+            .map(|(from_idx, exon)| SplicingExpertTransitionPresentationRow {
+                label: exon.transition_label.clone(),
+                length_mod3: exon.length_mod3,
+                length_tooltip: exon.transition_tooltip.clone(),
+                cells: std::mem::take(&mut transition_cells_by_from[from_idx]),
             })
             .collect::<Vec<_>>();
 
@@ -6857,6 +6880,268 @@ impl MainAreaDna {
         })
     }
 
+    fn parse_locus_usize(value: &str, label: &str) -> Result<usize, String> {
+        value
+            .trim()
+            .parse::<usize>()
+            .map_err(|error| format!("Invalid {label} '{}': {error}", value.trim()))
+    }
+
+    fn parse_locus_optional_f64(value: &str, label: &str) -> Result<Option<f64>, String> {
+        let value = value.trim();
+        if value.is_empty() {
+            return Ok(None);
+        }
+        let parsed = value
+            .parse::<f64>()
+            .map_err(|error| format!("Invalid {label} '{value}': {error}"))?;
+        if !parsed.is_finite() {
+            return Err(format!("Invalid {label} '{value}': value must be finite"));
+        }
+        Ok(Some(parsed))
+    }
+
+    fn load_locus_occupancy_layout(&self) -> Result<GeneLocusOccupancyLayout, String> {
+        let path = self.splicing_locus_occupancy_layout_path.trim();
+        if path.is_empty() {
+            return Ok(GeneLocusOccupancyLayout::default());
+        }
+        let bytes = std::fs::read(path)
+            .map_err(|error| format!("Could not read occupancy layout '{path}': {error}"))?;
+        serde_json::from_slice(&bytes)
+            .map_err(|error| format!("Could not parse occupancy layout '{path}': {error}"))
+    }
+
+    pub(super) fn splicing_locus_evidence_request(
+        &self,
+    ) -> Result<GeneLocusEvidenceDisplayRequest, String> {
+        let mut isoform_evidence = self.splicing_isoform_evidence_request()?;
+        let occupancy_layout = self.load_locus_occupancy_layout()?;
+        if !occupancy_layout.groups.is_empty() {
+            isoform_evidence.occupancy_track_names.clear();
+        }
+        let probe_effect_table_paths =
+            Self::isoform_evidence_list(&self.splicing_locus_probe_effect_paths);
+        let probe_effect_coordinate_system = (!self
+            .splicing_locus_probe_effect_coordinate_system
+            .trim()
+            .is_empty())
+        .then(|| {
+            self.splicing_locus_probe_effect_coordinate_system
+                .trim()
+                .to_string()
+        });
+        if !probe_effect_table_paths.is_empty() && probe_effect_coordinate_system.is_none() {
+            return Err(
+                "Probe-effect tables require an explicit coordinate system matching the sequence anchor"
+                    .to_string(),
+            );
+        }
+        Ok(GeneLocusEvidenceDisplayRequest {
+            isoform_evidence,
+            upstream_bp: Self::parse_locus_usize(
+                &self.splicing_locus_upstream_bp,
+                "upstream flank",
+            )?,
+            downstream_bp: Self::parse_locus_usize(
+                &self.splicing_locus_downstream_bp,
+                "downstream flank",
+            )?,
+            probe_effect_table_paths,
+            probe_effect_contrasts: Self::isoform_evidence_ordered_list(
+                &self.splicing_locus_probe_effect_contrasts,
+            ),
+            probe_effect_coordinate_system,
+            occupancy_layout,
+            motifs: Self::isoform_evidence_ordered_list(&self.splicing_locus_motifs),
+            motif_score_kind: self.splicing_locus_motif_score_kind.trim().to_string(),
+            motif_clip_negative: self.splicing_locus_motif_clip_negative,
+            motif_display_threshold: Self::parse_locus_optional_f64(
+                &self.splicing_locus_motif_threshold,
+                "motif display threshold",
+            )?,
+            motif_top_hit_count: Self::parse_locus_usize(
+                &self.splicing_locus_motif_top_hits,
+                "motif top-hit count",
+            )?,
+        })
+    }
+
+    fn locus_file_resource_rows(
+        rows: &mut Vec<LocusEvidenceResourceRow>,
+        kind: &str,
+        paths: impl IntoIterator<Item = String>,
+    ) {
+        for path in paths {
+            let ready = std::path::Path::new(&path).is_file();
+            rows.push(LocusEvidenceResourceRow {
+                kind: kind.to_string(),
+                reference: path.clone(),
+                readiness: if ready {
+                    LocusEvidenceResourceReadiness::Ready
+                } else {
+                    LocusEvidenceResourceReadiness::Missing
+                },
+                detail: if ready {
+                    "Readable local file; format and provenance are validated by the shared engine when inspected."
+                        .to_string()
+                } else {
+                    "File is not available at this path. Browse to its relocated copy before inspection."
+                        .to_string()
+                },
+            });
+        }
+    }
+
+    pub(super) fn splicing_locus_resource_rows(&self) -> Vec<LocusEvidenceResourceRow> {
+        let mut rows = Vec::new();
+        let anchor = self.engine.as_ref().and_then(|engine| {
+            let seq_id = self.seq_id.as_deref()?;
+            engine
+                .read()
+                .ok()?
+                .sequence_genome_anchor_summary(seq_id)
+                .ok()
+        });
+        rows.push(LocusEvidenceResourceRow {
+            kind: "genome anchor".to_string(),
+            reference: anchor
+                .as_ref()
+                .map(|anchor| {
+                    format!(
+                        "{} {}:{}..{}",
+                        anchor.genome_id, anchor.chromosome, anchor.start_1based, anchor.end_1based
+                    )
+                })
+                .unwrap_or_else(|| self.seq_id.clone().unwrap_or_default()),
+            readiness: if anchor.is_some() {
+                LocusEvidenceResourceReadiness::Ready
+            } else {
+                LocusEvidenceResourceReadiness::Missing
+            },
+            detail: if anchor.is_some() {
+                "Genome build and coordinates are available for strict effect-table projection."
+                    .to_string()
+            } else {
+                "No genome anchor is available; probe effects cannot be projected safely."
+                    .to_string()
+            },
+        });
+        let panel_id = self.splicing_isoform_evidence_panel_id.trim();
+        let panel_available = self.engine.as_ref().is_some_and(|engine| {
+            let Some(seq_id) = self.seq_id.as_deref() else {
+                return false;
+            };
+            engine
+                .read()
+                .ok()
+                .is_some_and(|engine| engine.isoform_panel_is_available(seq_id, panel_id))
+        });
+        rows.push(LocusEvidenceResourceRow {
+            kind: "isoform panel".to_string(),
+            reference: panel_id.to_string(),
+            readiness: if panel_available {
+                LocusEvidenceResourceReadiness::EngineValidated
+            } else {
+                LocusEvidenceResourceReadiness::Missing
+            },
+            detail: if panel_available {
+                "Imported panel id is present for the active sequence; full geometry validation remains part of composition."
+            } else {
+                "This panel id is not imported for the active sequence. Import the panel before composition."
+            }
+            .to_string(),
+        });
+        Self::locus_file_resource_rows(
+            &mut rows,
+            "probe interpretation",
+            Self::isoform_evidence_list(&self.splicing_isoform_evidence_probe_paths),
+        );
+        Self::locus_file_resource_rows(
+            &mut rows,
+            "cDNA/EST evidence",
+            Self::isoform_evidence_list(&self.splicing_isoform_evidence_cdna_est_paths),
+        );
+        if !self
+            .splicing_isoform_evidence_expression_path
+            .trim()
+            .is_empty()
+        {
+            Self::locus_file_resource_rows(
+                &mut rows,
+                "expression matrix",
+                [self
+                    .splicing_isoform_evidence_expression_path
+                    .trim()
+                    .to_string()],
+            );
+        }
+        Self::locus_file_resource_rows(
+            &mut rows,
+            "probe-effect table",
+            Self::isoform_evidence_list(&self.splicing_locus_probe_effect_paths),
+        );
+        if !self.splicing_locus_occupancy_layout_path.trim().is_empty() {
+            Self::locus_file_resource_rows(
+                &mut rows,
+                "occupancy layout",
+                [self.splicing_locus_occupancy_layout_path.trim().to_string()],
+            );
+        }
+        let mut requested_tracks =
+            Self::isoform_evidence_ordered_list(&self.splicing_isoform_evidence_occupancy_tracks);
+        if let Ok(layout) = self.load_locus_occupancy_layout() {
+            for track_name in layout
+                .groups
+                .iter()
+                .flat_map(|group| group.lanes.iter())
+                .map(|lane| lane.track_name.trim())
+                .filter(|track_name| !track_name.is_empty())
+            {
+                if !requested_tracks
+                    .iter()
+                    .any(|value| value.eq_ignore_ascii_case(track_name))
+                {
+                    requested_tracks.push(track_name.to_string());
+                }
+            }
+        }
+        let available_tracks = self
+            .dna
+            .read()
+            .ok()
+            .map(|dna| {
+                dna.features()
+                    .iter()
+                    .flat_map(|feature| feature.qualifier_values("gentle_track_name"))
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        for track_name in requested_tracks {
+            let ready = track_name == "*"
+                || available_tracks
+                    .iter()
+                    .any(|value| value.eq_ignore_ascii_case(&track_name));
+            rows.push(LocusEvidenceResourceRow {
+                kind: "occupancy track".to_string(),
+                reference: track_name,
+                readiness: if ready {
+                    LocusEvidenceResourceReadiness::Ready
+                } else {
+                    LocusEvidenceResourceReadiness::Missing
+                },
+                detail: if ready {
+                    "Projected track is available on the active sequence."
+                } else {
+                    "No projected track with this exact name is present on the active sequence."
+                }
+                .to_string(),
+            });
+        }
+        rows
+    }
+
     fn inspect_splicing_isoform_evidence(&mut self) {
         let request = match self.splicing_isoform_evidence_request() {
             Ok(request) => request,
@@ -6886,6 +7171,164 @@ impl MainAreaDna {
                 self.splicing_isoform_evidence_status = err;
             }
         }
+    }
+
+    fn cache_splicing_locus_preview(
+        &mut self,
+        report: &GeneLocusEvidenceDisplayReport,
+    ) -> Result<(), String> {
+        let svg = render_feature_expert_svg(&FeatureExpertView::GeneLocusEvidence(report.clone()));
+        let rendered = crate::svg_png::render_svg_to_png_bytes(
+            &svg,
+            crate::svg_png::SvgPngRenderOptions {
+                scale: 0.75,
+                drop_dotplot_metadata: false,
+            },
+        )?;
+        self.splicing_locus_preview_generation =
+            self.splicing_locus_preview_generation.wrapping_add(1);
+        self.splicing_locus_preview_png = Some(rendered.bytes.into());
+        Ok(())
+    }
+
+    fn inspect_splicing_locus_evidence(&mut self) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::inspect_splicing_locus_evidence");
+        let request = match self.splicing_locus_evidence_request() {
+            Ok(request) => request,
+            Err(error) => {
+                self.splicing_locus_report = None;
+                self.splicing_locus_preview_png = None;
+                self.splicing_locus_status = error;
+                return;
+            }
+        };
+        match self
+            .inspect_feature_expert_target(&FeatureExpertTarget::GeneLocusEvidence { request })
+        {
+            Ok(FeatureExpertView::GeneLocusEvidence(report)) => {
+                let preview_status = self.cache_splicing_locus_preview(&report);
+                self.splicing_locus_status = format!(
+                    "Composed {} transcript(s), {} occupancy group(s), {} motif track(s), {} probe-effect row(s), and {} assay marker(s)",
+                    report.transcript_metrics.len(),
+                    report.occupancy_groups.len(),
+                    report.motif_tracks.len(),
+                    report.probe_effect_overlays.len(),
+                    report.assay_overlays.len()
+                );
+                if let Err(error) = preview_status {
+                    self.splicing_locus_status.push_str(&format!(
+                        "; report is available, but the in-window preview could not be rasterized: {error}"
+                    ));
+                }
+                self.splicing_locus_report = Some(Arc::new(report));
+            }
+            Ok(other) => {
+                self.splicing_locus_report = None;
+                self.splicing_locus_preview_png = None;
+                self.splicing_locus_status =
+                    format!("Expected gene-locus evidence, received {other:?}");
+            }
+            Err(error) => {
+                self.splicing_locus_report = None;
+                self.splicing_locus_preview_png = None;
+                self.splicing_locus_status = error;
+            }
+        }
+    }
+
+    fn render_splicing_locus_svg_to_path(&mut self, path: &str) -> Result<(), String> {
+        let request = self.splicing_locus_evidence_request()?;
+        let seq_id = self
+            .seq_id
+            .clone()
+            .ok_or_else(|| "Sequence id is unavailable for locus SVG export".to_string())?;
+        let path = path.trim();
+        if path.is_empty() {
+            return Err("Provide an SVG output path".to_string());
+        }
+        let engine = self
+            .engine
+            .clone()
+            .ok_or_else(|| "Engine is unavailable for locus SVG export".to_string())?;
+        let result = engine
+            .write()
+            .map_err(|_| "Engine lock poisoned while exporting locus SVG".to_string())?
+            .apply(Operation::RenderFeatureExpertSvg {
+                seq_id,
+                target: FeatureExpertTarget::GeneLocusEvidence { request },
+                path: path.to_string(),
+            })
+            .map_err(|error| error.message)?;
+        self.splicing_locus_status = if result.messages.is_empty() {
+            format!("Wrote {path}")
+        } else {
+            result.messages.join(" ")
+        };
+        Ok(())
+    }
+
+    fn export_splicing_locus_report_json_dialog(&mut self) {
+        let Some(report) = self.splicing_locus_report.as_ref() else {
+            self.splicing_locus_status = "Compose the locus report before exporting JSON".into();
+            return;
+        };
+        let default_name = format!("{}-locus-evidence.json", report.gene_symbol.to_lowercase());
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("JSON", &["json"])
+            .save_file()
+        else {
+            return;
+        };
+        self.splicing_locus_status = match serde_json::to_vec_pretty(report.as_ref())
+            .map_err(|error| format!("Could not serialize locus report: {error}"))
+            .and_then(|bytes| {
+                std::fs::write(&path, bytes).map_err(|error| {
+                    format!("Could not write locus report '{}': {error}", path.display())
+                })
+            }) {
+            Ok(()) => format!("Wrote {}", path.display()),
+            Err(error) => error,
+        };
+    }
+
+    fn export_splicing_locus_pdf_dialog(&mut self) {
+        let Some(report) = self.splicing_locus_report.as_ref() else {
+            self.splicing_locus_status = "Compose the locus report before exporting PDF".into();
+            return;
+        };
+        let default_name = format!("{}-locus-evidence.pdf", report.gene_symbol.to_lowercase());
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("PDF", &["pdf"])
+            .save_file()
+        else {
+            return;
+        };
+        let svg = render_feature_expert_svg(&FeatureExpertView::GeneLocusEvidence(
+            report.as_ref().clone(),
+        ));
+        let temp_svg = std::env::temp_dir().join(format!(
+            "gentle_locus_{}_{}_{}.svg",
+            std::process::id(),
+            self.splicing_expert_window_feature_id.unwrap_or_default(),
+            self.splicing_locus_preview_generation
+        ));
+        let result = std::fs::write(&temp_svg, svg)
+            .map_err(|error| format!("Could not write temporary locus SVG: {error}"))
+            .and_then(|()| {
+                crate::svg_pdf::render_svg_file_to_pdf(
+                    &temp_svg,
+                    &path,
+                    crate::svg_png::SvgPngRenderOptions::default(),
+                )
+                .map(|_| ())
+            });
+        let _ = std::fs::remove_file(&temp_svg);
+        self.splicing_locus_status = match result {
+            Ok(()) => format!("Wrote {}", path.display()),
+            Err(error) => error,
+        };
     }
 
     fn render_splicing_isoform_evidence_svg(&mut self) {
@@ -6930,13 +7373,38 @@ impl MainAreaDna {
     }
 
     fn isoform_evidence_status_label(status: IsoformEvidenceAssessmentStatus) -> &'static str {
+        status.display_label()
+    }
+
+    fn isoform_evidence_status_color(status: IsoformEvidenceAssessmentStatus) -> egui::Color32 {
         match status {
-            IsoformEvidenceAssessmentStatus::Observed => "observed",
-            IsoformEvidenceAssessmentStatus::Candidate => "candidate",
-            IsoformEvidenceAssessmentStatus::ConstraintOnly => "constraint only",
-            IsoformEvidenceAssessmentStatus::NotEvaluated => "not evaluated",
-            IsoformEvidenceAssessmentStatus::Unknown => "unknown",
+            IsoformEvidenceAssessmentStatus::Observed => egui::Color32::from_rgb(22, 101, 52),
+            IsoformEvidenceAssessmentStatus::Candidate => egui::Color32::from_rgb(29, 78, 216),
+            IsoformEvidenceAssessmentStatus::ConstraintOnly => {
+                egui::Color32::from_rgb(124, 58, 237)
+            }
+            IsoformEvidenceAssessmentStatus::NotEvaluated => egui::Color32::from_rgb(100, 116, 139),
+            IsoformEvidenceAssessmentStatus::Unknown => egui::Color32::from_rgb(180, 83, 9),
         }
+    }
+
+    fn render_isoform_evidence_status_legend(ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.small("Evidence vocabulary:");
+            for status in [
+                IsoformEvidenceAssessmentStatus::Observed,
+                IsoformEvidenceAssessmentStatus::Candidate,
+                IsoformEvidenceAssessmentStatus::ConstraintOnly,
+                IsoformEvidenceAssessmentStatus::NotEvaluated,
+                IsoformEvidenceAssessmentStatus::Unknown,
+            ] {
+                ui.colored_label(
+                    Self::isoform_evidence_status_color(status),
+                    status.display_label(),
+                )
+                .on_hover_text(status.interpretation());
+            }
+        });
     }
 
     pub(super) fn render_isoform_evidence_view_ui(
@@ -6984,9 +7452,7 @@ impl MainAreaDna {
                             ui.monospace(&transcript.transcript_id);
                             ui.label(transcript.family_ids.join(", "));
                             ui.monospace(transcript.exon_family_ids_5_to_3.join(" -> "));
-                            ui.monospace(
-                                transcript.exon_family_ids_genomic_ascending.join(" | "),
-                            );
+                            ui.monospace(transcript.exon_family_ids_genomic_ascending.join(" | "));
                             ui.end_row();
                         }
                     });
@@ -7105,8 +7571,9 @@ impl MainAreaDna {
             }
         });
 
-        egui::CollapsingHeader::new(format!("Provenance ({})", report.provenance.len()))
-            .show(ui, |ui| {
+        egui::CollapsingHeader::new(format!("Provenance ({})", report.provenance.len())).show(
+            ui,
+            |ui| {
                 for source in &report.provenance {
                     ui.horizontal_wrapped(|ui| {
                         ui.monospace(&source.source_kind);
@@ -7116,7 +7583,8 @@ impl MainAreaDna {
                         }
                     });
                 }
-            });
+            },
+        );
     }
 
     pub(super) fn render_splicing_isoform_evidence_tab(
@@ -7222,6 +7690,636 @@ impl MainAreaDna {
         }
     }
 
+    fn append_locus_resource_path(field: &mut String, path: &std::path::Path) {
+        let path = path.to_string_lossy();
+        let mut values = Self::isoform_evidence_ordered_list(field);
+        if !values
+            .iter()
+            .any(|value| value.eq_ignore_ascii_case(path.as_ref()))
+        {
+            values.push(path.into_owned());
+        }
+        *field = values.join("\n");
+    }
+
+    fn pick_locus_resource_file(title: &str, extensions: &[&str]) -> Option<std::path::PathBuf> {
+        rfd::FileDialog::new()
+            .set_title(title)
+            .add_filter(title, extensions)
+            .pick_file()
+    }
+
+    fn render_locus_resource_readiness(&self, ui: &mut egui::Ui) {
+        let rows = self.splicing_locus_resource_rows();
+        let missing = rows
+            .iter()
+            .filter(|row| row.readiness == LocusEvidenceResourceReadiness::Missing)
+            .count();
+        egui::CollapsingHeader::new(format!(
+            "Resource readiness ({} ready/pending, {} missing)",
+            rows.len().saturating_sub(missing),
+            missing
+        ))
+        .default_open(missing > 0)
+        .show(ui, |ui| {
+            egui::Grid::new("splicing_locus_resource_readiness")
+                .num_columns(3)
+                .striped(true)
+                .spacing([12.0, 5.0])
+                .show(ui, |ui| {
+                    ui.strong("resource");
+                    ui.strong("status");
+                    ui.strong("reference");
+                    ui.end_row();
+                    for row in rows {
+                        ui.label(&row.kind).on_hover_text(&row.detail);
+                        let color = match row.readiness {
+                            LocusEvidenceResourceReadiness::Ready => {
+                                egui::Color32::from_rgb(22, 101, 52)
+                            }
+                            LocusEvidenceResourceReadiness::Missing => {
+                                egui::Color32::from_rgb(185, 28, 28)
+                            }
+                            LocusEvidenceResourceReadiness::EngineValidated => {
+                                egui::Color32::from_rgb(71, 85, 105)
+                            }
+                        };
+                        ui.colored_label(color, row.readiness.label())
+                            .on_hover_text(&row.detail);
+                        ui.monospace(if row.reference.is_empty() {
+                            "-"
+                        } else {
+                            row.reference.as_str()
+                        })
+                        .on_hover_text(&row.detail);
+                        ui.end_row();
+                    }
+                });
+        });
+    }
+
+    fn seed_qpcr_from_isoform_junction(
+        &mut self,
+        view: &SplicingExpertView,
+        junction: &GeneIsoformJunctionRow,
+    ) -> Result<(), String> {
+        let selected = if junction.transcript_ids.len() == 1 {
+            let transcript_id = &junction.transcript_ids[0];
+            view.transcripts
+                .iter()
+                .find(|row| row.transcript_id.eq_ignore_ascii_case(transcript_id))
+                .map(|row| row.transcript_feature_id)
+        } else {
+            None
+        };
+        self.splicing_expert_selected_transcript_feature_id = selected;
+        self.qpcr_design_ui
+            .transcript_targeting
+            .specificity_evidence = QpcrTranscriptSpecificityEvidence::JunctionOnly;
+        let intent = if selected.is_some() {
+            QpcrTranscriptIntentUiMode::SpecificTranscript
+        } else {
+            QpcrTranscriptIntentUiMode::SharedAcrossTranscripts
+        };
+        self.seed_qpcr_from_splicing_view(view, intent)?;
+        self.op_status = format!(
+            "Seeded qPCR design from junction '{}' with junction-only specificity requested. The designer ranks compatible assays; this handoff does not guarantee that a primer or probe crosses this exact junction.",
+            junction.junction_id
+        );
+        Ok(())
+    }
+
+    fn create_locus_assay_order_form(&mut self, candidate: &GeneIsoformAssayCandidate) {
+        let form_id = format!(
+            "{}_assay_{}_oligo_order",
+            candidate.qpcr_report_id, candidate.assay_rank
+        );
+        let Some(engine) = self.engine.clone() else {
+            self.splicing_locus_status = "Engine is unavailable for oligo-order creation".into();
+            return;
+        };
+        let result = engine
+            .write()
+            .map_err(|_| "Engine lock poisoned while creating oligo order form".to_string())
+            .and_then(|mut engine| {
+                engine
+                    .create_oligo_order_form_from_qpcr_report(
+                        &candidate.qpcr_report_id,
+                        &[candidate.assay_rank],
+                        true,
+                        Some(&form_id),
+                        None,
+                        None,
+                        &[],
+                    )
+                    .map_err(|error| error.message)
+            });
+        self.splicing_locus_status = match result {
+            Ok(form) => format!(
+                "Created reviewed-order draft '{}' with {} separate line item(s); this does not submit an order",
+                form.form_id,
+                form.line_items.len()
+            ),
+            Err(error) => error,
+        };
+    }
+
+    fn render_splicing_locus_report_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+        report: &GeneLocusEvidenceDisplayReport,
+    ) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::render_splicing_locus_report_ui");
+        ui.heading(format!("{} locus evidence", report.gene_symbol));
+        ui.label(&report.instruction);
+        Self::render_isoform_evidence_status_legend(ui);
+        ui.monospace(format!(
+            "{}:{}..{} | strand {} | transcript axis {} -> {}",
+            report.isoform_evidence.chromosome.as_deref().unwrap_or("?"),
+            report.locus_genomic_start_1based,
+            report.locus_genomic_end_1based,
+            report.gene_strand,
+            report.axis_left_genomic_1based,
+            report.axis_right_genomic_1based
+        ));
+        if let Some(bytes) = self.splicing_locus_preview_png.clone() {
+            ui.add(
+                egui::Image::from_bytes(
+                    format!(
+                        "bytes://gentle-locus-preview-{}-{}.png",
+                        view.target_feature_id, self.splicing_locus_preview_generation
+                    ),
+                    bytes,
+                )
+                .max_width(ui.available_width())
+                .max_height(620.0)
+                .shrink_to_fit(),
+            );
+        } else {
+            ui.small("The machine-readable report is available, but no raster preview is cached.");
+        }
+
+        if !report.warnings.is_empty() {
+            egui::CollapsingHeader::new(format!("Warnings ({})", report.warnings.len()))
+                .default_open(true)
+                .show(ui, |ui| {
+                    for warning in &report.warnings {
+                        ui.colored_label(egui::Color32::from_rgb(180, 83, 9), warning);
+                    }
+                });
+        }
+
+        egui::CollapsingHeader::new(format!(
+            "Transcript metrics ({})",
+            report.transcript_metrics.len()
+        ))
+        .show(ui, |ui| {
+            egui::Grid::new("splicing_locus_transcript_metrics")
+                .num_columns(5)
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("transcript");
+                    ui.strong("spliced bp");
+                    ui.strong("CDS bp");
+                    ui.strong("peptide aa");
+                    ui.strong("flags");
+                    ui.end_row();
+                    for row in &report.transcript_metrics {
+                        ui.monospace(&row.transcript_id);
+                        ui.label(row.spliced_exon_length_bp.to_string());
+                        ui.label(row.cds_length_bp.to_string());
+                        ui.label(
+                            row.expected_peptide_length_aa
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|| "-".to_string()),
+                        );
+                        ui.small(if row.flags.is_empty() {
+                            "-".to_string()
+                        } else {
+                            row.flags.join(", ")
+                        });
+                        ui.end_row();
+                    }
+                });
+        });
+
+        egui::CollapsingHeader::new(format!(
+            "Probe effects ({} geometry row(s), {} contrast(s))",
+            report.probe_effect_overlays.len(),
+            report.probe_effect_contrasts.len()
+        ))
+        .default_open(!report.probe_effect_overlays.is_empty())
+        .show(ui, |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(300.0)
+                .show(ui, |ui| {
+                    egui::Grid::new("splicing_locus_probe_effects")
+                        .num_columns(5)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("feature");
+                            ui.strong("class");
+                            ui.strong("genomic span");
+                            ui.strong("effects");
+                            ui.strong("mapping");
+                            ui.end_row();
+                            for row in &report.probe_effect_overlays {
+                                ui.monospace(&row.feature_id);
+                                ui.label(format!("{:?}", row.probe_class).to_ascii_uppercase());
+                                ui.monospace(format!(
+                                    "{}:{}..{} ({})",
+                                    row.chromosome,
+                                    row.genomic_start_1based,
+                                    row.genomic_end_1based,
+                                    row.strand
+                                ));
+                                ui.small(
+                                    row.effects
+                                        .iter()
+                                        .map(|effect| {
+                                            format!(
+                                                "{} {:+.3}",
+                                                effect.display_label, effect.value
+                                            )
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join(" | "),
+                                )
+                                .on_hover_text(
+                                    "Raw probe-set activity differences are visualization evidence, not formal differential-expression significance.",
+                                );
+                                ui.small(&row.mapping_status);
+                                ui.end_row();
+                            }
+                        });
+                });
+        });
+
+        egui::CollapsingHeader::new(format!(
+            "Occupancy and motifs ({} group(s), {} motif track(s))",
+            report.occupancy_groups.len(),
+            report.motif_tracks.len()
+        ))
+        .show(ui, |ui| {
+            for group in &report.occupancy_groups {
+                ui.horizontal_wrapped(|ui| {
+                    ui.strong(&group.label);
+                    ui.small(format!(
+                        "{:?}; |score| max {:.3}; {} lane(s)",
+                        group.scale_mode,
+                        group.group_abs_max_score,
+                        group.lanes.len()
+                    ));
+                });
+            }
+            for track in &report.motif_tracks {
+                ui.horizontal_wrapped(|ui| {
+                    ui.monospace(&track.motif_id);
+                    if let Some(name) = track.motif_name.as_deref() {
+                        ui.label(name);
+                    }
+                    ui.small(format!(
+                        "{} | max {:.3} | {} labeled hit(s)",
+                        track.score_kind,
+                        track.max_score,
+                        track.top_hits.len()
+                    ));
+                });
+            }
+        });
+
+        let mut open_report: Option<String> = None;
+        let mut order_candidate: Option<GeneIsoformAssayCandidate> = None;
+        let mut design_junction: Option<GeneIsoformJunctionRow> = None;
+        egui::CollapsingHeader::new(format!(
+            "Validation assays ({} existing candidate(s), {} junction(s))",
+            report.isoform_evidence.assay_candidates.len(),
+            report.isoform_evidence.junctions.len()
+        ))
+        .default_open(true)
+        .show(ui, |ui| {
+            ui.small(
+                "Existing assays retain report provenance. New junction handoffs request junction-only specificity but remain candidates until reviewed experimentally.",
+            );
+            for candidate in &report.isoform_evidence.assay_candidates {
+                ui.horizontal_wrapped(|ui| {
+                    ui.monospace(format!(
+                        "{} rank {}",
+                        candidate.qpcr_report_id, candidate.assay_rank
+                    ));
+                    ui.label(&candidate.assay_class_label);
+                    if ui.button("Open report").clicked() {
+                        open_report = Some(candidate.qpcr_report_id.clone());
+                    }
+                    if ui
+                        .button("Create oligo order form")
+                        .on_hover_text(
+                            "Create a persisted review draft with forward, reverse, and probe lines; no vendor submission occurs",
+                        )
+                        .clicked()
+                    {
+                        order_candidate = Some(candidate.clone());
+                    }
+                });
+            }
+            egui::ScrollArea::vertical()
+                .max_height(240.0)
+                .show(ui, |ui| {
+                    for junction in &report.isoform_evidence.junctions {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.monospace(&junction.junction_id);
+                            ui.small(format!(
+                                "{} transcript model(s) | {}",
+                                junction.annotation_model_count, junction.specificity_class
+                            ));
+                            if ui
+                                .button("Design junction assay")
+                                .on_hover_text(
+                                    "Open the shared qPCR designer with junction-only specificity requested for this splicing context",
+                                )
+                                .clicked()
+                            {
+                                design_junction = Some(junction.clone());
+                            }
+                        });
+                    }
+                });
+        });
+        if let Some(report_id) = open_report {
+            self.show_qpcr_design_report(&report_id);
+        }
+        if let Some(candidate) = order_candidate.as_ref() {
+            self.create_locus_assay_order_form(candidate);
+        }
+        if let Some(junction) = design_junction.as_ref()
+            && let Err(error) = self.seed_qpcr_from_isoform_junction(view, junction)
+        {
+            self.splicing_locus_status = error;
+        }
+
+        egui::CollapsingHeader::new(format!("Provenance ({})", report.provenance.len())).show(
+            ui,
+            |ui| {
+                for source in &report.provenance {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.monospace(&source.source_kind);
+                        ui.label(&source.source_id);
+                        if let Some(path) = source.path.as_deref() {
+                            ui.monospace(path);
+                        }
+                    });
+                }
+            },
+        );
+    }
+
+    pub(super) fn render_splicing_locus_evidence_tab(
+        &mut self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+    ) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::render_splicing_locus_evidence_tab");
+        ui.label(
+            egui::RichText::new(
+                "Compose transcript architecture, occupancy, motif scores, probe effects, and validation assays through the shared gene-locus evidence contract.",
+            )
+            .size(10.0)
+            .color(egui::Color32::from_rgb(71, 85, 105)),
+        );
+        egui::CollapsingHeader::new("Composition inputs")
+            .default_open(true)
+            .show(ui, |ui| {
+                egui::Grid::new("splicing_locus_evidence_inputs")
+                    .num_columns(3)
+                    .spacing([12.0, 5.0])
+                    .show(ui, |ui| {
+                        ui.label("Isoform panel");
+                        ui.text_edit_singleline(&mut self.splicing_isoform_evidence_panel_id);
+                        if ui.button("Use panel control").clicked() {
+                            self.splicing_isoform_evidence_panel_id = self.isoform_panel_id.clone();
+                        }
+                        ui.end_row();
+                        ui.label("Annotation release");
+                        ui.text_edit_singleline(
+                            &mut self.splicing_isoform_evidence_annotation_release,
+                        );
+                        ui.label("");
+                        ui.end_row();
+                        ui.label("Probe interpretation JSON");
+                        ui.text_edit_singleline(&mut self.splicing_isoform_evidence_probe_paths);
+                        if ui.button("Browse / relocate...").clicked()
+                            && let Some(path) =
+                                Self::pick_locus_resource_file("Probe evidence JSON", &["json"])
+                        {
+                            Self::append_locus_resource_path(
+                                &mut self.splicing_isoform_evidence_probe_paths,
+                                &path,
+                            );
+                        }
+                        ui.end_row();
+                        ui.label("cDNA/EST resource JSON");
+                        ui.text_edit_singleline(&mut self.splicing_isoform_evidence_cdna_est_paths);
+                        if ui.button("Browse / relocate...").clicked()
+                            && let Some(path) = Self::pick_locus_resource_file(
+                                "cDNA or EST evidence JSON",
+                                &["json"],
+                            )
+                        {
+                            Self::append_locus_resource_path(
+                                &mut self.splicing_isoform_evidence_cdna_est_paths,
+                                &path,
+                            );
+                        }
+                        ui.end_row();
+                        ui.label("Expression TSV");
+                        ui.text_edit_singleline(
+                            &mut self.splicing_isoform_evidence_expression_path,
+                        );
+                        if ui.button("Browse / relocate...").clicked()
+                            && let Some(path) = Self::pick_locus_resource_file(
+                                "Isoform expression TSV",
+                                &["tsv", "txt"],
+                            )
+                        {
+                            self.splicing_isoform_evidence_expression_path =
+                                path.to_string_lossy().to_string();
+                        }
+                        ui.end_row();
+                        ui.label("qPCR report ids");
+                        ui.text_edit_singleline(
+                            &mut self.splicing_isoform_evidence_qpcr_report_ids,
+                        );
+                        ui.label("");
+                        ui.end_row();
+                        ui.label("Occupancy track names");
+                        ui.text_edit_singleline(
+                            &mut self.splicing_isoform_evidence_occupancy_tracks,
+                        );
+                        ui.small("Exact projected names, or use a layout below");
+                        ui.end_row();
+                        ui.label("Occupancy layout JSON");
+                        ui.text_edit_singleline(&mut self.splicing_locus_occupancy_layout_path);
+                        if ui.button("Browse / relocate...").clicked()
+                            && let Some(path) =
+                                Self::pick_locus_resource_file("Occupancy layout JSON", &["json"])
+                        {
+                            self.splicing_locus_occupancy_layout_path =
+                                path.to_string_lossy().to_string();
+                        }
+                        ui.end_row();
+                        ui.label("Probe-effect TSV");
+                        ui.text_edit_singleline(&mut self.splicing_locus_probe_effect_paths);
+                        if ui.button("Browse / relocate...").clicked()
+                            && let Some(path) =
+                                Self::pick_locus_resource_file("Probe-effect TSV", &["tsv", "txt"])
+                        {
+                            Self::append_locus_resource_path(
+                                &mut self.splicing_locus_probe_effect_paths,
+                                &path,
+                            );
+                        }
+                        ui.end_row();
+                        ui.label("Probe-effect contrasts");
+                        ui.text_edit_singleline(&mut self.splicing_locus_probe_effect_contrasts);
+                        ui.small("Comma/newline separated");
+                        ui.end_row();
+                        ui.label("Probe coordinate system");
+                        ui.text_edit_singleline(
+                            &mut self.splicing_locus_probe_effect_coordinate_system,
+                        );
+                        if ui.button("Use sequence anchor").clicked()
+                            && let Some(engine) = self.engine.as_ref()
+                            && let Some(seq_id) = self.seq_id.as_deref()
+                            && let Ok(engine) = engine.read()
+                            && let Ok(anchor) = engine.sequence_genome_anchor_summary(seq_id)
+                        {
+                            self.splicing_locus_probe_effect_coordinate_system = anchor.genome_id;
+                        }
+                        ui.end_row();
+                        ui.label("Flanks (upstream / downstream)");
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.splicing_locus_upstream_bp)
+                                    .desired_width(80.0),
+                            );
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.splicing_locus_downstream_bp)
+                                    .desired_width(80.0),
+                            );
+                        });
+                        ui.small("bp, transcript-direction aware");
+                        ui.end_row();
+                        ui.label("Motifs");
+                        ui.text_edit_singleline(&mut self.splicing_locus_motifs);
+                        ui.small("Names or matrix ids");
+                        ui.end_row();
+                        ui.label("Motif score kind");
+                        ui.text_edit_singleline(&mut self.splicing_locus_motif_score_kind);
+                        ui.checkbox(
+                            &mut self.splicing_locus_motif_clip_negative,
+                            "clip negative",
+                        );
+                        ui.end_row();
+                        ui.label("Motif threshold / top hits");
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(
+                                    &mut self.splicing_locus_motif_threshold,
+                                )
+                                .desired_width(80.0),
+                            );
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.splicing_locus_motif_top_hits)
+                                    .desired_width(60.0),
+                            );
+                        });
+                        ui.small("blank threshold keeps all scores");
+                        ui.end_row();
+                    });
+            });
+
+        self.render_locus_resource_readiness(ui);
+        let mut compose = false;
+        let mut render_svg = false;
+        let mut export_json = false;
+        let mut export_pdf = false;
+        ui.horizontal_wrapped(|ui| {
+            compose = ui.button("Compose and preview").clicked();
+            if ui
+                .add_enabled(
+                    self.splicing_locus_report.is_some(),
+                    egui::Button::new("Copy report JSON"),
+                )
+                .clicked()
+                && let Some(report) = self.splicing_locus_report.as_ref()
+                && let Ok(json) = serde_json::to_string_pretty(report.as_ref())
+            {
+                ui.ctx().copy_text(json);
+                self.splicing_locus_status = "Copied locus report JSON".to_string();
+            }
+            export_json = ui
+                .add_enabled(
+                    self.splicing_locus_report.is_some(),
+                    egui::Button::new("Save JSON..."),
+                )
+                .clicked();
+            export_pdf = ui
+                .add_enabled(
+                    self.splicing_locus_report.is_some(),
+                    egui::Button::new("Save PDF..."),
+                )
+                .clicked();
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("SVG path");
+            ui.text_edit_singleline(&mut self.splicing_locus_svg_path);
+            if ui.button("Choose...").clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .set_file_name("gene-locus-evidence.svg")
+                    .add_filter("SVG", &["svg"])
+                    .save_file()
+            {
+                self.splicing_locus_svg_path = path.to_string_lossy().to_string();
+            }
+            render_svg = ui.button("Render SVG").clicked();
+        });
+        if compose {
+            self.inspect_splicing_locus_evidence();
+        }
+        if render_svg {
+            let path = self.splicing_locus_svg_path.clone();
+            if let Err(error) = self.render_splicing_locus_svg_to_path(&path) {
+                self.splicing_locus_status = error;
+            }
+        }
+        if export_json {
+            self.export_splicing_locus_report_json_dialog();
+        }
+        if export_pdf {
+            self.export_splicing_locus_pdf_dialog();
+        }
+        if !self.splicing_locus_status.is_empty() {
+            ui.label(
+                egui::RichText::new(&self.splicing_locus_status)
+                    .size(10.0)
+                    .color(egui::Color32::from_rgb(51, 65, 85)),
+            );
+        }
+        ui.separator();
+        if let Some(report) = self.splicing_locus_report.clone() {
+            self.render_splicing_locus_report_ui(ui, view, report.as_ref());
+        } else {
+            ui.label(
+                egui::RichText::new(
+                    "No locus composition cached. Resolve the resources above, then compose the shared report.",
+                )
+                .italics()
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        }
+    }
+
     pub(super) fn render_feature_expert_view_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -7244,6 +8342,7 @@ impl MainAreaDna {
             FeatureExpertView::GeneLocusEvidence(report) => {
                 ui.heading(format!("{} locus evidence", report.gene_symbol));
                 ui.label(&report.instruction);
+                Self::render_isoform_evidence_status_legend(ui);
                 ui.monospace(format!(
                     "{} transcripts | {} occupancy groups | {} motif tracks | {} junction assays",
                     report.transcript_metrics.len(),
@@ -7284,6 +8383,9 @@ impl MainAreaDna {
             self.splicing_expert_window_view = Some(Arc::new(view.clone()));
             self.splicing_isoform_evidence_report = None;
             self.splicing_isoform_evidence_status.clear();
+            self.splicing_locus_report = None;
+            self.splicing_locus_preview_png = None;
+            self.splicing_locus_status.clear();
             self.splicing_expert_window_pending_initial_render = true;
             self.log_splicing_expert_status(&view, "window state refreshed", true);
         }

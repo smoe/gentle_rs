@@ -62,6 +62,22 @@ fixture README records its public dataset and derived-table provenance. GENtle
 uses this compact table directly; the uncommitted analysis directory is only an
 optional source-level cross-check and is not required by the command or tests.
 
+## Offline proof before real data
+
+Run the committed synthetic negative-strand acceptance case first:
+
+```text
+cargo run --bin gentle_cli -- workflow @docs/examples/workflows/patz1_gene_locus_evidence_offline.json
+```
+
+It writes `patz1_gene_locus_evidence.svg` without network access. The workflow
+uses one synthetic PSR row, one synthetic JUC row, two raw-effect contrasts,
+four small BED tracks in two declared groups, and the local TP73 JASPAR matrix.
+Fixture origin and deterministic recreation are documented in
+`test_files/fixtures/gene_locus_evidence/patz1_offline_composer/README.md`.
+The generated tutorial chapter embeds the same SVG. This proof checks
+composition and provenance only; it is not experimental PATZ1 evidence.
+
 ## Inspect and render
 
 Use the exact registered track names in an explicit occupancy layout. The
@@ -109,8 +125,25 @@ its derived translation. Junction-qPCR candidates are deduplicated into one
 junction-spanning marker carrying all supported transcript families.
 
 The shared Shell panel can run the same commands in the GUI. The Splicing
-Expert Evidence tab remains the detailed evidence-ledger view; the composed
-publication SVG is the compact locus-level view.
+Expert now also provides a graphical `Locus figure` tab:
+
+1. Enter the imported panel and optional RNA/cDNA, probe, expression, and qPCR
+   sources under `Evidence`.
+2. In `Locus figure`, add probe-effect table paths and contrasts, the explicit
+   coordinate system, occupancy-layout path, motifs, flanks, and score options.
+3. Review the resource table. Missing local files can be relocated with the
+   adjacent browse action; panel and projected-track identities remain
+   engine-validated project objects.
+4. Use `Compose / refresh` to run the shared pure-read operation and inspect
+   the in-GUI SVG preview, metrics, effects, warnings, and provenance.
+5. Export report JSON, SVG, or PDF. Existing qPCR rows can open their stored
+   report or create a deterministic oligo-order form; junction rows can seed
+   the established transcript-aware qPCR designer.
+
+The detailed `Evidence` tab remains the audit surface and `Locus figure` the
+compact composition surface. Relocation changes the requested source path; it
+does not bypass schema, anchor, or coordinate checks. Assay continuations are
+planning actions and do not turn a displayed association into validation.
 
 ## Reproducibility checklist
 

@@ -457,6 +457,40 @@ pub enum IsoformEvidenceAssessmentStatus {
     Unknown,
 }
 
+impl IsoformEvidenceAssessmentStatus {
+    /// Stable human-facing label shared by evidence-ledger frontends.
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Observed => "observed evidence",
+            Self::Candidate => "candidate association",
+            Self::ConstraintOnly => "design constraint",
+            Self::NotEvaluated => "not evaluated",
+            Self::Unknown => "unresolved evidence",
+        }
+    }
+
+    /// Conservative interpretation boundary for the corresponding status.
+    pub const fn interpretation(self) -> &'static str {
+        match self {
+            Self::Observed => {
+                "A source record or measurement was attached to this geometry; this does not by itself establish causality or isoform-specific regulation."
+            }
+            Self::Candidate => {
+                "A computed or projected association is available for review and is not a validation claim."
+            }
+            Self::ConstraintOnly => {
+                "This evidence constrains assay or feature geometry but does not demonstrate biological support."
+            }
+            Self::NotEvaluated => {
+                "The applicable analysis was not run or no comparable source was supplied."
+            }
+            Self::Unknown => {
+                "A source was supplied, but its relationship to this geometry could not be resolved confidently."
+            }
+        }
+    }
+}
+
 /// One evidence statement attached to one or more geometry objects or families.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
@@ -680,6 +714,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn isoform_evidence_status_language_keeps_observation_distinct_from_validation() {
+        assert_eq!(
+            IsoformEvidenceAssessmentStatus::Observed.display_label(),
+            "observed evidence"
+        );
+        assert!(
+            IsoformEvidenceAssessmentStatus::Observed
+                .interpretation()
+                .contains("does not by itself establish causality")
+        );
+        assert!(
+            IsoformEvidenceAssessmentStatus::ConstraintOnly
+                .interpretation()
+                .contains("does not demonstrate biological support")
+        );
+        assert_ne!(
+            IsoformEvidenceAssessmentStatus::NotEvaluated.display_label(),
+            IsoformEvidenceAssessmentStatus::Unknown.display_label()
+        );
+    }
+
+    #[test]
     fn pre_probe_overlay_locus_payloads_keep_empty_defaults() {
         let request: GeneLocusEvidenceDisplayRequest = serde_json::from_value(serde_json::json!({
             "isoform_evidence": { "panel_id": "patz1" },
@@ -691,13 +747,12 @@ mod tests {
         assert!(request.probe_effect_contrasts.is_empty());
         assert_eq!(request.probe_effect_coordinate_system, None);
 
-        let report: GeneLocusEvidenceDisplayReport =
-            serde_json::from_value(serde_json::json!({
-                "schema": GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA,
-                "seq_id": "patz1",
-                "gene_symbol": "PATZ1"
-            }))
-            .expect("deserialize pre-overlay locus report");
+        let report: GeneLocusEvidenceDisplayReport = serde_json::from_value(serde_json::json!({
+            "schema": GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA,
+            "seq_id": "patz1",
+            "gene_symbol": "PATZ1"
+        }))
+        .expect("deserialize pre-overlay locus report");
         assert!(report.probe_effect_contrasts.is_empty());
         assert!(report.probe_effect_overlays.is_empty());
         assert_eq!(report.probe_effect_shared_abs_max, None);

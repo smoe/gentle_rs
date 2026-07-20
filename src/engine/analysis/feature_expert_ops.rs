@@ -11603,6 +11603,7 @@ impl GentleEngine {
         ),
         EngineError,
     > {
+        crate::gentle_gui_profile_scope!("GentleEngine::gene_locus_probe_effect_overlays");
         if request.probe_effect_table_paths.is_empty() {
             return Ok((vec![], vec![], None));
         }
@@ -12152,6 +12153,7 @@ impl GentleEngine {
         request: &GeneLocusEvidenceDisplayRequest,
         warnings: &mut Vec<String>,
     ) -> Result<Vec<GeneLocusOccupancyGroup>, EngineError> {
+        crate::gentle_gui_profile_scope!("GentleEngine::gene_locus_occupancy_groups");
         if (!request.occupancy_layout.groups.is_empty()
             || !request.occupancy_layout.schema.trim().is_empty())
             && request.occupancy_layout.schema != GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA
@@ -12354,6 +12356,7 @@ impl GentleEngine {
         anchor: Option<&SequenceGenomeAnchorSummary>,
         request: &GeneLocusEvidenceDisplayRequest,
     ) -> Result<Vec<GeneLocusMotifTrack>, EngineError> {
+        crate::gentle_gui_profile_scope!("GentleEngine::gene_locus_motif_tracks");
         if request.motifs.is_empty() {
             return Ok(vec![]);
         }
@@ -12438,6 +12441,9 @@ impl GentleEngine {
         seq_id: &str,
         request: &GeneLocusEvidenceDisplayRequest,
     ) -> Result<GeneLocusEvidenceDisplayReport, EngineError> {
+        crate::gentle_gui_profile_scope!(
+            "GentleEngine::build_gene_locus_evidence_display_report"
+        );
         let mut base_request = request.isoform_evidence.clone();
         base_request.occupancy_track_names.clear();
         let isoform_evidence = self.build_gene_isoform_evidence_report(seq_id, &base_request)?;

@@ -56,6 +56,9 @@ impl MainAreaDna {
         self.splicing_expert_window_view = Some(Arc::new(view.clone()));
         self.splicing_isoform_evidence_report = None;
         self.splicing_isoform_evidence_status.clear();
+        self.splicing_locus_report = None;
+        self.splicing_locus_preview_png = None;
+        self.splicing_locus_status.clear();
         self.splicing_exon_skip_selected_candidate_ids.clear();
         self.splicing_exon_skip_plan = None;
         self.splicing_expert_window_pending_initial_render = true;

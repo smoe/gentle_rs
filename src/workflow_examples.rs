@@ -1,6 +1,7 @@
 //! Curated workflow example payloads and templates.
 
 use crate::engine::{Engine, GentleEngine, Operation, OperationProgress, ProjectState, Workflow};
+use gentle_protocol::FeatureExpertTarget;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
@@ -2361,7 +2362,26 @@ fn rewrite_example_paths_for_execution(
             ensure_parent_exists(path)?;
             continue;
         }
-        if let Operation::RenderFeatureExpertSvg { path, .. } = op {
+        if let Operation::RenderFeatureExpertSvg { target, path, .. } = op {
+            let isoform_request = match target {
+                FeatureExpertTarget::IsoformEvidence { request } => Some(request),
+                FeatureExpertTarget::GeneLocusEvidence { request } => {
+                    for source_path in &mut request.probe_effect_table_paths {
+                        *source_path = resolve_input_path(source_path, repo_root);
+                    }
+                    Some(&mut request.isoform_evidence)
+                }
+                _ => None,
+            };
+            if let Some(request) = isoform_request {
+                for source_path in &mut request.probe_evidence_paths {
+                    *source_path = resolve_input_path(source_path, repo_root);
+                }
+                for source_path in &mut request.cdna_est_resource_paths {
+                    *source_path = resolve_input_path(source_path, repo_root);
+                }
+                rewrite_optional_input_path(&mut request.expression_tsv_path, repo_root);
+            }
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
             continue;
@@ -5472,6 +5492,39 @@ mod tests {
         assert!(svg.contains("Protein Gel Preview"));
         assert!(svg.contains("Proteases: Trypsin"));
         assert!(svg.contains("Peptides shown"));
+    }
+
+    #[test]
+    fn workflow_examples_patz1_locus_evidence_preserves_visual_evidence_classes() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload_builtin_for_test();
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "patz1_gene_locus_evidence_offline")
+            .expect("PATZ1 locus-evidence example should exist");
+        let run_dir = TempDir::new().expect("temp run dir");
+        run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
+            .expect("PATZ1 locus-evidence workflow should execute");
+
+        let svg_path = run_dir.path().join("patz1_gene_locus_evidence.svg");
+        let svg = fs::read_to_string(&svg_path).expect("read PATZ1 locus-evidence SVG");
+        for marker in [
+            "gentle.gene_locus_evidence_display.v1",
+            "data-gentle-probe-class=\"psr\"",
+            "data-gentle-probe-class=\"juc\"",
+            "data-gentle-probe-effect-contrast=\"TAp73alpha_minus_GFP\"",
+            "data-gentle-probe-effect-contrast=\"DNp73beta_minus_GFP\"",
+            "data-gentle-occupancy-group=\"saos2\"",
+            "data-gentle-occupancy-group=\"skmel29\"",
+            "data-gentle-motif-track=\"MA0861.2\"",
+            "data-gentle-provenance-source",
+            "raw activity differences; not significance",
+        ] {
+            assert!(svg.contains(marker), "expected SVG marker {marker}");
+        }
+        assert!(svg.contains("31326038") && svg.contains("31325801"));
+        assert!(!svg.contains("Probe evidence report targets sequence"));
     }
 
     #[test]

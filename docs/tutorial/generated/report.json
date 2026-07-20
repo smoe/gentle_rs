@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 22,
+  "chapter_count": 23,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -13,6 +13,7 @@
     "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt",
+    "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json",
@@ -42,6 +43,7 @@
     "chapters/06-03_tp53_isoform_architecture_online.md",
     "chapters/06-04_tp53_uniprot_projection_online.md",
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md",
+    "chapters/06-06_patz1_gene_locus_evidence_offline.md",
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md",
     "chapters/08-03_promoter_design_artifact_slice_offline.md",
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md",
@@ -49,7 +51,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "af06dff4619f008d72fa0d6f8ad8eedef56571b8c5fbe0c6aa2b5f9b8f413216",
+    "README.md": "81545bcaff6accb666d442254144504d8a68a75709a3b8f47eab2f10d0d67dc5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "192366db4be8257527c7322d91b988fd9c11ac4c11a57ae14b85d75f3902de90",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "f324456edd43ceb5f6c0f263e085844cddb27da1a454b40b63a68e8d69bc9a0e",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "cd022dd682970b1ac77006f069f2b6e14bf7c0294281d7a6f3d71762711ceacc",
@@ -57,6 +59,7 @@
     "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md": "e4b7e229f41b122dbbb6e4d8d1fe8feca090e1fed779a4ca5cb403a3b7c69512",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "49e60ce8db8fee3b193398ef6831f280017bbcfe34ea4732c2d19aea97e7adeb",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "beecd9e82a0336053bf82d63fd54fed530f3357f94f0ff29a7c46ac33d74a092",
+    "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg": "fcd7acb4c9868d6c0e098930a44f1808392b6cd8b9562a0cdfcbbbcd47052482",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json": "fcdcdcec09c3d595220276e1dd0a542d876634897ef6c270952c6b40d08c6f54",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json": "a29e3031ecde6dd9f945860bda0be48fbced440bb62f464381d42c331e35db25",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json": "2a23e46ce8c76b8352cb5c2b8dffe3dbd05b8e229dd7da6a50de17de81dc03ef",
@@ -86,6 +89,7 @@
     "chapters/06-03_tp53_isoform_architecture_online.md": "32291f972a2c4bf7cd61dd3b34824da79b9a1ee14aa07a13832962ee9e46b9a2",
     "chapters/06-04_tp53_uniprot_projection_online.md": "f30fadf1131f7e49ec281741b92d2e74f243e290c62c81680566e773d4b81d8c",
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "bfbbeb700eea96654ff2b446128f7dc774429fc0106b2b3a64a71c987f9ac605",
+    "chapters/06-06_patz1_gene_locus_evidence_offline.md": "616b52a6d45b52899d013bd6db20e81ff70150d14ebee388cddf15d10fbce905",
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "9def3fb7d79ccf23e05f994bd738cf248e379c185f4eb8ce4cca15672bacdb5c",
     "chapters/08-03_promoter_design_artifact_slice_offline.md": "4b637cae27975403c10a6b298d9f9163a1f4c28e5b6860e37ad0afc0cb859166",
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md": "1d5c822a6427c7237f839b55642501224e37119aaac21112a9d3800e77feacc8",
@@ -654,6 +658,41 @@
         "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json",
         "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json",
         "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_comparison.json"
+      ]
+    },
+    {
+      "id": "patz1_gene_locus_evidence_offline",
+      "order": 27,
+      "title": "PATZ1 Gene-Locus Evidence Composition (Offline Synthetic Demo)",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 6,
+      "decimal_id": "06.06",
+      "tier": "core",
+      "example_id": "patz1_gene_locus_evidence_offline",
+      "example_source": "docs/examples/workflows/patz1_gene_locus_evidence_offline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "genome_catalog_targeting",
+        "artifact_exports",
+        "tutorial_drift_checks"
+      ],
+      "executed": true,
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-07-19",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg",
+          "caption": "A strand-aware synthetic PATZ1 locus composition with transcript models, distinct PSR/JUC effects, grouped occupancy lanes, and a TP73 motif score track. The aligned layers are evidence for inspection, not proof of isoform-specific regulation.",
+          "illustrates_step": 6,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ],
+      "retained_artifacts": [
+        "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg"
       ]
     }
   ]

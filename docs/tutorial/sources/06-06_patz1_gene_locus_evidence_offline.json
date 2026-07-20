@@ -1,0 +1,122 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "patz1_gene_locus_evidence_offline",
+  "title": "PATZ1 Gene-Locus Evidence Composition (Offline Synthetic Demo)",
+  "graphics": [
+    {
+      "kind": "generated",
+      "path": "docs/tutorial/generated/artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg",
+      "caption": "A strand-aware synthetic PATZ1 locus composition with transcript models, distinct PSR/JUC effects, grouped occupancy lanes, and a TP73 motif score track. The aligned layers are evidence for inspection, not proof of isoform-specific regulation.",
+      "illustrates_step": 6,
+      "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+    }
+  ],
+  "catalog": {
+    "order": 48,
+    "path": "docs/tutorial/generated/chapters/06-06_patz1_gene_locus_evidence_offline.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "gui_first",
+      "cli_first",
+      "isoform_analysis",
+      "contributors"
+    ],
+    "notes": "Machine-checked offline chapter for the shared Gene Locus Evidence composer; all plotted values are synthetic.",
+    "group": "06",
+    "group_position": 6
+  },
+  "generated_chapter": {
+    "order": 27,
+    "example_id": "patz1_gene_locus_evidence_offline",
+    "tier": "core",
+    "summary": "Compose one reproducible, strand-aware locus figure from PATZ1-like transcript models, cDNA/EST and array constraints, two probe-effect contrasts, grouped occupancy tracks, and a TP73 motif score track without network access.",
+    "narrative": "Gene-centered interpretation becomes difficult when transcript order, genomic coordinates, probe geometry, occupancy tracks, and assay evidence are inspected in separate tools. GENtle's Gene Locus Evidence composer keeps these sources distinct but aligns them on one axis. This chapter uses an artificial 240 bp region labelled as a negative-strand PATZ1 locus. Its transcript models, PSR/JUC rows, effect values, occupancy intervals, and expression values are synthetic and exist only to make every transformation inspectable offline.\n\nRead the figure as a structured evidence ledger. A probe interval or junction marker identifies where an array design interrogates the locus; its colored cells show raw activity differences, not statistical significance. An occupancy interval reports a projected experimental track at the locus, not the affected isoform. A motif score is a sequence-model result, not proof of binding. The shared visual axis helps formulate validation experiments while preserving those boundaries.",
+    "use_cases": [
+      "You want to inspect transcript architecture and multiple evidence layers in one gene-centered figure.",
+      "You need a deterministic negative-strand example before loading a full Ensembl locus.",
+      "You want to verify that PSR exon probes and JUC junction probes remain visually distinct.",
+      "You want grouped occupancy lanes whose scaling policy is declared rather than inferred from filenames.",
+      "You want a reproducible SVG and machine-readable report path before designing a junction assay."
+    ],
+    "gui_steps": [
+      "Open `test_files/fixtures/isoform_evidence/patz1/patz1_minus_strand.gb`, import `patz1_isoform_panel.json` as panel `patz1_synthetic_v1`, and open Splicing Expert for the PATZ1 gene group.",
+      "Select the `Evidence` tab and enter the committed probe-evidence JSON, cDNA/EST JSON, and expression TSV. Inspect the ledger before composing the figure; observed evidence, candidate association, design constraint, and unresolved evidence remain separate statuses.",
+      "Import the four small BED files from `test_files/fixtures/gene_locus_evidence/patz1_offline_composer/` with the exact Saos-2 and SK-MEL-29 track names used by the workflow.",
+      "Select `Locus figure`, choose the committed probe-effect TSV, enter contrasts `TAp73alpha-GFP, DNp73beta-GFP`, set coordinate system `GRCh38.p14`, and choose `docs/examples/gene_locus_evidence/patz1_cutrun_layout.json`.",
+      "Set upstream and downstream flanks to `19`, motif to `TP73`, score kind to `llr_background_tail_log10`, clipping on, and top hits to `5`. Confirm the readiness table reports the anchor and local resources before composing.",
+      "Click `Compose / refresh`. Inspect the graphical preview, warnings, provenance, and assay continuations; then export SVG, PDF, or report JSON through the shared renderer/operation paths."
+    ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/patz1_gene_locus_evidence_offline.json"
+    ],
+    "step_expectations": [
+      "The loaded 240 bp sequence reports a GRCh38.p14 chromosome-22 anchor and the gene/transcript rows remain on the negative strand.",
+      "The evidence ledger keeps cDNA/EST observations separate from array design constraints and retains the synthetic missing/mismatched evidence warnings.",
+      "Four projected occupancy tracks are present with explicit Saos-2 and SK-MEL-29 identities.",
+      "The request carries one PSR row, one JUC row, and two exact effect contrasts without inferring significance.",
+      "Resource readiness distinguishes readable files from engine-validated project objects, and the motif request resolves through the local JASPAR registry.",
+      "The SVG contains transcript rows, separate PSR/JUC geometry, both effect columns, two occupancy groups, a TP73 motif track, warnings, and source provenance."
+    ],
+    "prerequisites": [
+      "tp53_isoform_architecture_online",
+      "pcr_selection_batch_primer_pairs_offline"
+    ],
+    "learning_objectives": [
+      "Distinguish transcript 5'-to-3' display order from ascending genomic coordinates on a negative-strand gene.",
+      "Read PSR intervals and JUC junction markers as different array geometries.",
+      "Interpret raw probe effects, motif scores, occupancy tracks, and sequence support as separate evidence layers.",
+      "Use resource readiness and provenance to relocate local evidence files without silently changing coordinate systems.",
+      "Move from an evidence row to an existing qPCR report or transcript-aware junction-assay design without claiming validation."
+    ],
+    "concepts": [
+      "shared_engine_contract",
+      "deterministic_workflows",
+      "genome_catalog_targeting",
+      "artifact_exports",
+      "tutorial_drift_checks"
+    ],
+    "parameter_notes": [
+      {
+        "parameter": "upstream_bp=19 / downstream_bp=19",
+        "where_used": "GeneLocusEvidenceDisplayRequest",
+        "why_it_matters": "The synthetic gene spans local bases 21..220; 19 bp flanks retain the full requested context without clipping at the 240 bp sequence boundaries.",
+        "how_to_derive": "Use the fixture gene span and subtract one base from each 20 bp boundary margin."
+      },
+      {
+        "parameter": "probe_effect_coordinate_system=GRCh38.p14",
+        "where_used": "Probe-effect overlay projection",
+        "why_it_matters": "GENtle rejects effect geometry when its declared coordinate system does not match the sequence anchor.",
+        "how_to_derive": "Read the genome id from the loaded sequence anchor and the fixture README; do not infer it from the filename."
+      },
+      {
+        "parameter": "occupancy scale_mode=shared_group",
+        "where_used": "Saos-2 and SK-MEL-29 occupancy groups",
+        "why_it_matters": "TA and DN lanes are comparable within each declared synthetic context, while the two contexts are not silently forced onto one common scale.",
+        "how_to_derive": "Use the explicit occupancy layout rather than grouping tracks by filename heuristics."
+      },
+      {
+        "parameter": "motif=TP73 / score_kind=llr_background_tail_log10",
+        "where_used": "Motif score track",
+        "why_it_matters": "The score track shows where the local sequence model ranks TP73-like sites; it is not an occupancy or causality call.",
+        "how_to_derive": "Use the local JASPAR TP73 entry resolved by GENtle and retain its matrix id in report provenance."
+      }
+    ],
+    "follow_up_commands": [
+      "cargo run --bin gentle_examples_docs -- tutorial-generate",
+      "cargo run --bin gentle_examples_docs -- tutorial-check",
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/patz1_gene_locus_evidence_offline.json"
+    ],
+    "retain_outputs": [
+      "patz1_gene_locus_evidence.svg"
+    ],
+    "checkpoints": [
+      "The canonical workflow runs offline and writes `patz1_gene_locus_evidence.svg`.",
+      "The SVG reports `gentle.gene_locus_evidence_display.v1` and preserves the negative-strand axis.",
+      "Stable SVG attributes identify PSR, JUC, both effect contrasts, both occupancy groups, and the TP73 motif matrix.",
+      "The figure labels probe effects as raw activity differences rather than significance.",
+      "Warnings and provenance remain visible instead of being replaced by a biological verdict."
+    ]
+  }
+}
