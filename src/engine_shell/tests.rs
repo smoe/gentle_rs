@@ -6597,7 +6597,7 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && backend == Some(PrimerDesignBackend::Internal)
     ));
     let endpoint_panel = parse_shell_line(
-        "primers design-transcript-assay-panel seq_a 17 --assay-kind endpoint-rt-pcr --cdna-synthesis oligo-dt --objective isoform-end-matrix --junctions @junctions.json --junction-evidence clariom_juc.json --junction-evidence-priority required --min-3prime-junction-overlap-bp 5 --min-5prime-junction-overlap-bp 8 --annotation-release Ensembl116 --max-amplicon-bp 10000",
+        "primers design-transcript-assay-panel seq_a 17 --assay-kind endpoint-rt-pcr --cdna-synthesis oligo-dt --objective isoform-end-matrix --junctions @junctions.json --junction-evidence clariom_juc.json --junction-evidence-priority required --min-3prime-junction-overlap-bp 5 --min-5prime-junction-overlap-bp 8 --annotation-release Ensembl116 --max-amplicon-bp 10000 --oligo-dt-5prime-risk-threshold-bp 5000",
     )
     .expect("parse endpoint transcript assay panel");
     assert!(matches!(
@@ -6615,6 +6615,7 @@ fn parse_primers_seed_from_feature_and_splicing() {
             min_5prime_junction_overlap_bp,
             annotation_release,
             max_amplicon_bp,
+            oligo_dt_5prime_risk_threshold_bp,
             ..
         } if seq_id == "seq_a"
             && feature_id == 17
@@ -6628,6 +6629,7 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && min_5prime_junction_overlap_bp == Some(8)
             && annotation_release.as_deref() == Some("Ensembl116")
             && max_amplicon_bp == Some(10_000)
+            && oligo_dt_5prime_risk_threshold_bp == Some(5_000)
     ));
     assert!(matches!(
         parse_shell_line("primers list-transcript-assay-panels")

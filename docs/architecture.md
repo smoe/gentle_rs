@@ -1712,7 +1712,7 @@ inspection/export paths:
   - `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path?, materialize_products?, product_output_prefix?, product_gel_svg_path?, product_gel_ladders? }`
   - `TestCdnaQpcr { seq_id, source_feature_id, forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path?, materialize_products?, product_output_prefix?, product_gel_svg_path?, product_gel_ladders? }`
   - `BuildTranscriptQpcrPanel { seq_id, source_feature_id, shared_qpcr_report_id, path? }`
-  - `DesignTranscriptAssayPanel { seq_id, source_feature_id, assay_kind?, cdna_synthesis?, objective, coverage_policy, forward, reverse, probe, pair_constraints?, min_amplicon_bp?, max_amplicon_bp?, max_tm_delta_c?, max_probe_tm_delta_c?, max_assays_per_class?, max_mismatches?, require_3prime_exact_bases?, junctions[], junction_evidence_paths[], junction_evidence_priority?, min_3prime_junction_overlap_bp?, min_5prime_junction_overlap_bp?, annotation_release?, report_id?, path? }`
+  - `DesignTranscriptAssayPanel { seq_id, source_feature_id, assay_kind?, cdna_synthesis?, objective, coverage_policy, forward, reverse, probe, pair_constraints?, min_amplicon_bp?, max_amplicon_bp?, max_tm_delta_c?, max_probe_tm_delta_c?, max_assays_per_class?, max_mismatches?, require_3prime_exact_bases?, oligo_dt_5prime_risk_threshold_bp?, junctions[], junction_evidence_paths[], junction_evidence_priority?, min_3prime_junction_overlap_bp?, min_5prime_junction_overlap_bp?, annotation_release?, report_id?, path? }`
   - `TestCdnaQpcrFasta { cdna_fasta_paths[], forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path? }`
   - `forward`/`reverse` side constraints now include optional sequence-level filters:
     `fixed_5prime`, `fixed_3prime`, `required_motifs[]`, `forbidden_motifs[]`,
@@ -1731,6 +1731,10 @@ inspection/export paths:
     records. Endpoint first x terminal combinations come only from annotated
     mature transcripts; requested junctions are evaluated outside the bounded
     automatic-anchor search and retain explicit required/preferred outcomes.
+  - oligo-dT RT completeness is represented per transcript-by-assay cell as
+    annotation-derived 3-prime-to-5-prime reach. Categorical risk requires an
+    explicit experiment-specific threshold; structural target absence and
+    geometrically indeterminate no-product outcomes remain distinct.
   - exact-hit prefilters may only prove negative cases. When mismatch-tolerant
     amplification is permitted, the full cDNA assay scanner remains the source
     of truth and candidates are not discarded for lacking an exact hit.

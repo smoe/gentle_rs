@@ -7076,6 +7076,60 @@ impl TranscriptAssayCdnaSynthesis {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+/// Interpretation of annotation-derived oligo-dT 5-prime reach for one
+/// transcript-by-assay matrix cell.
+pub enum TranscriptAssayOligoDtReachStatus {
+    /// The cDNA synthesis method is not oligo-dT, or was not declared.
+    #[default]
+    NotApplicable,
+    /// A required primer/probe target is absent from this transcript model;
+    /// reverse-transcription falloff is not the primary explanation.
+    StructuralTargetAbsent,
+    /// Product reach is reported, but no experiment-specific threshold was
+    /// supplied and GENtle therefore makes no categorical risk call.
+    DistanceReportedUnthresholded,
+    /// Every predicted product remains within the user-supplied reach
+    /// threshold. This is not a guarantee of complete reverse transcription.
+    WithinConfiguredThreshold,
+    /// At least one predicted product reaches beyond the user-supplied
+    /// threshold toward the transcript 5' end.
+    Elevated5PrimeRisk,
+    /// Primer targets exist, but no compatible product geometry was found, so
+    /// oligo-dT 5-prime reach cannot be classified.
+    Indeterminate,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Reverse-transcription reach associated with one predicted product.
+pub struct TranscriptAssayOligoDtProductReach {
+    pub amplicon_start_0based: usize,
+    pub amplicon_end_0based_exclusive: usize,
+    pub amplicon_length_bp: usize,
+    /// Bases from the annotated transcript 3' end to the most 5' base needed
+    /// by this product. This is sequence geometry, not an observed RT length.
+    pub required_cdna_reach_from_3prime_end_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exceeds_configured_threshold: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Per-cell annotation-derived oligo-dT 5-prime reach assessment.
+pub struct TranscriptAssayOligoDtReachAssessment {
+    #[serde(default)]
+    pub status: TranscriptAssayOligoDtReachStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configured_risk_threshold_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_required_cdna_reach_from_3prime_end_bp: Option<usize>,
+    #[serde(default)]
+    pub product_reaches: Vec<TranscriptAssayOligoDtProductReach>,
+    pub basis: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 /// Whether failure to span a requested exon-exon junction blocks that target.
 pub enum TranscriptAssayJunctionPriority {
     Required,
@@ -7395,6 +7449,8 @@ pub struct TranscriptAssayDetectionCell {
     #[serde(default)]
     pub amplicon_lengths_bp: Vec<usize>,
     pub exact_negative_prefiltered: bool,
+    #[serde(default)]
+    pub oligo_dt_5prime_reach: TranscriptAssayOligoDtReachAssessment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -7466,6 +7522,8 @@ pub struct TranscriptAssayPanelReport {
     pub max_amplicon_bp: usize,
     pub max_mismatches: usize,
     pub require_3prime_exact_bases: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oligo_dt_5prime_risk_threshold_bp: Option<usize>,
     #[serde(default)]
     pub equivalence_groups: Vec<TranscriptAssayEquivalenceGroup>,
     #[serde(default)]

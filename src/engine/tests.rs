@@ -9066,6 +9066,7 @@ fn transcript_assay_panel_operation(
         max_assays_per_class: Some(2),
         max_mismatches: Some(max_mismatches),
         require_3prime_exact_bases: Some(8),
+        oligo_dt_5prime_risk_threshold_bp: None,
         junctions: vec![],
         junction_evidence_paths: vec![],
         junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -9242,6 +9243,7 @@ fn transcript_assay_panel_does_not_equate_one_base_near_matches() {
             max_assays_per_class: Some(1),
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
+            oligo_dt_5prime_risk_threshold_bp: None,
             junctions: vec![],
             junction_evidence_paths: vec![],
             junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -9286,6 +9288,20 @@ fn transcript_assay_panel_old_payload_defaults_to_taqman_mode() {
         report.cdna_synthesis,
         TranscriptAssayCdnaSynthesis::Unspecified
     );
+    assert_eq!(report.oligo_dt_5prime_risk_threshold_bp, None);
+
+    let cell: TranscriptAssayDetectionCell = serde_json::from_value(serde_json::json!({
+        "assay_id": "legacy_assay",
+        "equivalence_group_id": "legacy_group",
+        "transcript_feature_id": 1,
+        "transcript_id": "legacy_tx",
+        "status": "no_product"
+    }))
+    .expect("deserialize pre-RT-assessment detection cell");
+    assert_eq!(
+        cell.oligo_dt_5prime_reach.status,
+        TranscriptAssayOligoDtReachStatus::NotApplicable
+    );
 }
 
 #[test]
@@ -9311,6 +9327,7 @@ fn transcript_assay_endpoint_end_matrix_is_primer_only_and_warns_for_oligo_dt() 
             max_assays_per_class: Some(4),
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
+            oligo_dt_5prime_risk_threshold_bp: None,
             junctions: vec![],
             junction_evidence_paths: vec![],
             junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -9364,6 +9381,14 @@ fn transcript_assay_endpoint_end_matrix_is_primer_only_and_warns_for_oligo_dt() 
             .iter()
             .any(|warning| warning.contains("5' RACE"))
     );
+    assert!(report.detection_matrix.iter().any(|cell| {
+        cell.oligo_dt_5prime_reach.status
+            == TranscriptAssayOligoDtReachStatus::DistanceReportedUnthresholded
+            && cell
+                .oligo_dt_5prime_reach
+                .maximum_required_cdna_reach_from_3prime_end_bp
+                .is_some()
+    }));
 }
 
 #[test]
@@ -9407,6 +9432,7 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
             max_assays_per_class: Some(4),
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(6),
+            oligo_dt_5prime_risk_threshold_bp: Some(200),
             junctions: vec![
                 TranscriptAssayJunctionRequest {
                     junction_id: "PATZ1-202_local_40".to_string(),
@@ -9467,6 +9493,11 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
             .iter()
             .any(|junction| junction.forward_spans || junction.reverse_spans)
     }));
+    assert!(report.detection_matrix.iter().all(|cell| {
+        cell.product_count == 0
+            || cell.oligo_dt_5prime_reach.status
+                == TranscriptAssayOligoDtReachStatus::WithinConfiguredThreshold
+    }));
 }
 
 #[cfg(unix)]
@@ -9497,6 +9528,7 @@ fn transcript_assay_primer3_emits_native_junction_overlap_tags() {
             max_assays_per_class: Some(1),
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
+            oligo_dt_5prime_risk_threshold_bp: None,
             junctions: vec![TranscriptAssayJunctionRequest {
                 junction_id: "TX1_exon_1_2".to_string(),
                 priority: TranscriptAssayJunctionPriority::Required,
@@ -9590,6 +9622,7 @@ fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
             max_assays_per_class: Some(3),
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
+            oligo_dt_5prime_risk_threshold_bp: Some(5_000),
             junctions: vec![],
             junction_evidence_paths: vec![],
             junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
@@ -9614,6 +9647,19 @@ fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
             .iter()
             .any(|warning| warning.contains("Oligo-dT"))
     );
+    assert_eq!(report.oligo_dt_5prime_risk_threshold_bp, Some(5_000));
+    assert!(report.detection_matrix.iter().any(|cell| {
+        cell.oligo_dt_5prime_reach.status == TranscriptAssayOligoDtReachStatus::Elevated5PrimeRisk
+            && cell
+                .oligo_dt_5prime_reach
+                .maximum_required_cdna_reach_from_3prime_end_bp
+                .is_some_and(|reach| reach > 5_000)
+            && cell
+                .oligo_dt_5prime_reach
+                .product_reaches
+                .iter()
+                .any(|product| product.exceeds_configured_threshold == Some(true))
+    }));
 
     let error = engine
         .apply(Operation::DesignTranscriptAssayPanel {
@@ -9634,6 +9680,7 @@ fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
             max_assays_per_class: Some(1),
             max_mismatches: Some(0),
             require_3prime_exact_bases: Some(8),
+            oligo_dt_5prime_risk_threshold_bp: None,
             junctions: vec![],
             junction_evidence_paths: vec![],
             junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,

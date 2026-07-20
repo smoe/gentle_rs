@@ -5187,7 +5187,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
         "design-transcript-assay-panel" => {
             if tokens.len() < 4 {
                 return Err(
-                    "primers design-transcript-assay-panel requires SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]"
+                    "primers design-transcript-assay-panel requires SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]"
                         .to_string(),
                 );
             }
@@ -5207,6 +5207,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             let mut max_assays_per_class = None;
             let mut max_mismatches = None;
             let mut require_3prime_exact_bases = None;
+            let mut oligo_dt_5prime_risk_threshold_bp = None;
             let mut junctions_json = None;
             let mut junction_evidence_paths = vec![];
             let mut junction_evidence_priority = TranscriptAssayJunctionPriority::default();
@@ -5285,6 +5286,18 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                         require_3prime_exact_bases = Some(parse_usize_option_value(
                             &raw,
                             "--require-3prime-exact-bases",
+                        )?);
+                    }
+                    "--oligo-dt-5prime-risk-threshold-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--oligo-dt-5prime-risk-threshold-bp",
+                            context,
+                        )?;
+                        oligo_dt_5prime_risk_threshold_bp = Some(parse_usize_option_value(
+                            &raw,
+                            "--oligo-dt-5prime-risk-threshold-bp",
                         )?);
                     }
                     "--junctions" => {
@@ -5378,6 +5391,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 max_assays_per_class,
                 max_mismatches,
                 require_3prime_exact_bases,
+                oligo_dt_5prime_risk_threshold_bp,
                 junctions_json,
                 junction_evidence_paths,
                 junction_evidence_priority,

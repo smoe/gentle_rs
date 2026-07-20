@@ -131,6 +131,7 @@ struct TranscriptAssayGroupEvaluation {
     product_count: usize,
     amplicon_lengths_bp: Vec<usize>,
     exact_negative_prefiltered: bool,
+    oligo_dt_5prime_reach: TranscriptAssayOligoDtReachAssessment,
 }
 
 #[derive(Debug, Clone)]
@@ -12613,6 +12614,8 @@ impl GentleEngine {
     fn transcript_assay_group_evaluation(
         template: &TranscriptQpcrDesignTemplate,
         request: &NormalizedCdnaAssayTestRequest,
+        cdna_synthesis: TranscriptAssayCdnaSynthesis,
+        oligo_dt_5prime_risk_threshold_bp: Option<usize>,
     ) -> TranscriptAssayGroupEvaluation {
         if Self::transcript_assay_is_certain_exact_negative(template, request) {
             return TranscriptAssayGroupEvaluation {
@@ -12621,6 +12624,12 @@ impl GentleEngine {
                 product_count: 0,
                 amplicon_lengths_bp: vec![],
                 exact_negative_prefiltered: true,
+                oligo_dt_5prime_reach: Self::transcript_assay_oligo_dt_5prime_reach_assessment(
+                    template,
+                    None,
+                    cdna_synthesis,
+                    oligo_dt_5prime_risk_threshold_bp,
+                ),
             };
         }
         let result = Self::cdna_assay_scan_template(template, request, true);
@@ -12631,7 +12640,7 @@ impl GentleEngine {
         };
         TranscriptAssayGroupEvaluation {
             status,
-            detail_status: result.status,
+            detail_status: result.status.clone(),
             product_count: result.products.len(),
             amplicon_lengths_bp: result
                 .products
@@ -12639,6 +12648,99 @@ impl GentleEngine {
                 .map(|product| product.amplicon_length_bp)
                 .collect(),
             exact_negative_prefiltered: false,
+            oligo_dt_5prime_reach: Self::transcript_assay_oligo_dt_5prime_reach_assessment(
+                template,
+                Some(&result),
+                cdna_synthesis,
+                oligo_dt_5prime_risk_threshold_bp,
+            ),
+        }
+    }
+
+    fn transcript_assay_oligo_dt_5prime_reach_assessment(
+        template: &TranscriptQpcrDesignTemplate,
+        result: Option<&CdnaAssayTranscriptResult>,
+        cdna_synthesis: TranscriptAssayCdnaSynthesis,
+        configured_risk_threshold_bp: Option<usize>,
+    ) -> TranscriptAssayOligoDtReachAssessment {
+        if cdna_synthesis != TranscriptAssayCdnaSynthesis::OligoDt {
+            return TranscriptAssayOligoDtReachAssessment {
+                status: TranscriptAssayOligoDtReachStatus::NotApplicable,
+                basis: "cDNA synthesis was not declared as oligo-dT primed".to_string(),
+                ..Default::default()
+            };
+        }
+        let Some(result) = result else {
+            return TranscriptAssayOligoDtReachAssessment {
+                status: TranscriptAssayOligoDtReachStatus::StructuralTargetAbsent,
+                configured_risk_threshold_bp,
+                basis: "exact-negative prefilter found at least one required oligo target absent from this transcript model"
+                    .to_string(),
+                ..Default::default()
+            };
+        };
+        let product_reaches = result
+            .products
+            .iter()
+            .map(|product| {
+                let reach = template
+                    .sequence
+                    .len()
+                    .saturating_sub(product.amplicon_start_0based);
+                TranscriptAssayOligoDtProductReach {
+                    amplicon_start_0based: product.amplicon_start_0based,
+                    amplicon_end_0based_exclusive: product.amplicon_end_0based_exclusive,
+                    amplicon_length_bp: product.amplicon_length_bp,
+                    required_cdna_reach_from_3prime_end_bp: reach,
+                    exceeds_configured_threshold: configured_risk_threshold_bp
+                        .map(|threshold| reach > threshold),
+                }
+            })
+            .collect::<Vec<_>>();
+        let maximum_reach = product_reaches
+            .iter()
+            .map(|product| product.required_cdna_reach_from_3prime_end_bp)
+            .max();
+        if !product_reaches.is_empty() {
+            let status = match configured_risk_threshold_bp {
+                Some(threshold) if maximum_reach.is_some_and(|reach| reach > threshold) => {
+                    TranscriptAssayOligoDtReachStatus::Elevated5PrimeRisk
+                }
+                Some(_) => TranscriptAssayOligoDtReachStatus::WithinConfiguredThreshold,
+                None => TranscriptAssayOligoDtReachStatus::DistanceReportedUnthresholded,
+            };
+            return TranscriptAssayOligoDtReachAssessment {
+                status,
+                configured_risk_threshold_bp,
+                maximum_required_cdna_reach_from_3prime_end_bp: maximum_reach,
+                product_reaches,
+                basis: "required reach is measured from the annotated transcript 3' end to each predicted amplicon's most 5' base; it is not an observed reverse-transcription length"
+                    .to_string(),
+            };
+        }
+        let structural_target_absent = matches!(
+            result.status.as_str(),
+            "no_forward_primer_hit" | "no_reverse_primer_hit" | "no_probe_hit"
+        );
+        TranscriptAssayOligoDtReachAssessment {
+            status: if structural_target_absent {
+                TranscriptAssayOligoDtReachStatus::StructuralTargetAbsent
+            } else {
+                TranscriptAssayOligoDtReachStatus::Indeterminate
+            },
+            configured_risk_threshold_bp,
+            basis: if structural_target_absent {
+                format!(
+                    "{}; at least one required oligo target is absent from this transcript model",
+                    result.status
+                )
+            } else {
+                format!(
+                    "{}; no compatible product geometry is available for an RT-completeness classification",
+                    result.status
+                )
+            },
+            ..Default::default()
         }
     }
 
@@ -13436,6 +13538,7 @@ impl GentleEngine {
         max_assays_per_class: Option<usize>,
         max_mismatches: Option<usize>,
         require_3prime_exact_bases: Option<usize>,
+        oligo_dt_5prime_risk_threshold_bp: Option<usize>,
         mut junctions: Vec<TranscriptAssayJunctionRequest>,
         junction_evidence_paths: Vec<String>,
         junction_evidence_priority: TranscriptAssayJunctionPriority,
@@ -13497,6 +13600,14 @@ impl GentleEngine {
                     "Transcript assay panel amplicon range must satisfy 1 <= min <= max (received {min_amplicon_bp}..{max_amplicon_bp})"
                 ),
 
+                cause_chain: vec![],
+            });
+        }
+        if oligo_dt_5prime_risk_threshold_bp == Some(0) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Oligo-dT 5-prime risk threshold must be >= 1 bp when supplied"
+                    .to_string(),
                 cause_chain: vec![],
             });
         }
@@ -13589,6 +13700,14 @@ impl GentleEngine {
             Self::normalize_primer_pair_constraints(&pair_constraints)?;
         let equivalence_groups = Self::transcript_assay_exact_equivalence_groups(&templates);
         let mut warnings = vec![];
+        if oligo_dt_5prime_risk_threshold_bp.is_some()
+            && cdna_synthesis != TranscriptAssayCdnaSynthesis::OligoDt
+        {
+            warnings.push(
+                "An oligo-dT 5-prime risk threshold was supplied, but cDNA synthesis is not oligo-dT; per-cell oligo-dT reach status remains not_applicable."
+                    .to_string(),
+            );
+        }
         let mut junction_sources = vec![];
         for evidence_path in &junction_evidence_paths {
             let (mut evidence_junctions, provenance, evidence_warnings) =
@@ -13938,6 +14057,8 @@ impl GentleEngine {
                     Self::transcript_assay_group_evaluation(
                         &templates[group.representative_template_index],
                         &request,
+                        cdna_synthesis,
+                        oligo_dt_5prime_risk_threshold_bp,
                     )
                 })
                 .collect();
@@ -14309,6 +14430,7 @@ impl GentleEngine {
                         product_count: evaluation.product_count,
                         amplicon_lengths_bp: evaluation.amplicon_lengths_bp.clone(),
                         exact_negative_prefiltered: evaluation.exact_negative_prefiltered,
+                        oligo_dt_5prime_reach: evaluation.oligo_dt_5prime_reach.clone(),
                     });
                 }
             }
@@ -14590,6 +14712,7 @@ impl GentleEngine {
             max_amplicon_bp,
             max_mismatches,
             require_3prime_exact_bases,
+            oligo_dt_5prime_risk_threshold_bp,
             equivalence_groups: equivalence_groups
                 .iter()
                 .map(|group| group.report.clone())
@@ -24615,6 +24738,7 @@ impl GentleEngine {
                     max_assays_per_class,
                     max_mismatches,
                     require_3prime_exact_bases,
+                    oligo_dt_5prime_risk_threshold_bp,
                     junctions,
                     junction_evidence_paths,
                     junction_evidence_priority,
@@ -24646,6 +24770,7 @@ impl GentleEngine {
                         max_assays_per_class,
                         max_mismatches,
                         require_3prime_exact_bases,
+                        oligo_dt_5prime_risk_threshold_bp,
                         junctions,
                         junction_evidence_paths,
                         junction_evidence_priority,

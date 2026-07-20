@@ -4134,6 +4134,10 @@ pub enum Operation {
         max_mismatches: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         require_3prime_exact_bases: Option<usize>,
+        /// Optional experiment-specific threshold for classifying the cDNA
+        /// reach reported in oligo-dT transcript-by-assay cells.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        oligo_dt_5prime_risk_threshold_bp: Option<usize>,
         #[serde(default)]
         junctions: Vec<TranscriptAssayJunctionRequest>,
         /// Existing probe-evidence interpretation reports whose JUC rows

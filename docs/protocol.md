@@ -7973,7 +7973,7 @@ Primer-design shell command family (implemented):
   - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
-  - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
   - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
@@ -8099,6 +8099,19 @@ Primer-design shell command family (implemented):
     `multiple_products` for every selected assay and transcript row. Transcript
     interpretation is typed as `specific`, `shared_family`, `no_product`, or
     `not_distinguishable_between_members`.
+  - each matrix cell also carries `oligo_dt_5prime_reach`. For oligo-dT cDNA
+    and each predicted product, `required_cdna_reach_from_3prime_end_bp`
+    measures from the annotated mature-transcript 3-prime end to the product's
+    most 5-prime required base. This is sequence geometry, not a measured
+    reverse-transcription length. Without
+    `oligo_dt_5prime_risk_threshold_bp`, GENtle reports the distance as
+    `distance_reported_unthresholded` and makes no categorical risk call. With
+    an explicit positive threshold, product-bearing cells are classified as
+    `within_configured_threshold` or `elevated_5prime_risk`; the former does
+    not guarantee complete reverse transcription. Cells lacking a required
+    oligo target are `structural_target_absent`, while cells with targets but
+    without compatible product geometry are `indeterminate`. Non-oligo-dT
+    requests remain `not_applicable`.
   - exact-match filtering is a negative-only optimization: GENtle uses it only
     when mismatch tolerance is zero and all binding sequences are unambiguous
     DNA. Every retained candidate is evaluated by the full cDNA assay path;
