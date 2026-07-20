@@ -3388,6 +3388,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "DesignTranscriptAssayPanel"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers design-transcript-assay-panel",
+         "summary": "Design and persist an exact-cDNA-equivalence-aware transcript assay panel with an explicit strict or best-effort coverage policy.",
+         "usage": "primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--objective pan-transcript|one-per-class|minimal-discrimination-panel] [--coverage-policy require-all|best-effort] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "TestCdnaPcr"
          ],
          "interfaces": [
@@ -3610,6 +3624,42 @@
          "path": "primers export-qpcr-report",
          "summary": "Write one persisted qPCR assay report to JSON.",
          "usage": "primers export-qpcr-report REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers list-transcript-assay-panels",
+         "summary": "List persisted transcript assay panel reports.",
+         "usage": "primers list-transcript-assay-panels"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers show-transcript-assay-panel",
+         "summary": "Inspect one persisted transcript assay panel report by report ID.",
+         "usage": "primers show-transcript-assay-panel REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers export-transcript-assay-panel",
+         "summary": "Write one persisted transcript assay panel report to JSON.",
+         "usage": "primers export-transcript-assay-panel REPORT_ID OUTPUT.json"
       },
       {
          "aliases": [],

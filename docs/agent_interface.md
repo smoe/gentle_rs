@@ -457,13 +457,16 @@ an agent has selected a deterministic operation.
 - `planning sync push`
 - `planning sync status`
 - `primers design`
+- `primers design-transcript-assay-panel`
 - `primers design-qpcr`
 - `primers export-qpcr-report`
 - `primers export-report`
 - `primers export-restriction-cloning-handoff`
+- `primers export-transcript-assay-panel`
 - `primers list-qpcr-reports`
 - `primers list-reports`
 - `primers list-restriction-cloning-handoffs`
+- `primers list-transcript-assay-panels`
 - `primers preflight`
 - `primers prepare-restriction-cloning`
 - `primers restriction-cloning-vector-suggestions`
@@ -473,6 +476,7 @@ an agent has selected a deterministic operation.
 - `primers show-qpcr-report`
 - `primers show-report`
 - `primers show-restriction-cloning-handoff`
+- `primers show-transcript-assay-panel`
 - `primers test-cdna-pcr`
 - `primers test-cdna-qpcr`
 - `primers test-cdna-qpcr-fasta`

@@ -14,6 +14,11 @@ Maintenance rule:
 
 ## 2026-07-20
 
+- Added persisted `gentle.transcript_assay_panel.v2` reports with exact mature-cDNA
+  equivalence classes, transcript-by-assay product matrices, strict-by-default
+  pan-transcript coverage, explicit best-effort partials, and shared shell
+  list/show/export lifecycle commands; the legacy fixed-component panel now
+  uses canonical primer candidate generation and labels byte-identical models.
 - Kept portable ClawBio parity coverage active on Windows while excluding the
   two POSIX-only Bash launcher tests that cannot run from a normal CRLF
   checkout; macOS and Linux retain launcher coverage.

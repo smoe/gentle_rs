@@ -4444,6 +4444,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_qpcr_panel: Option<Box<TranscriptQpcrPanelReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_assay_panel: Option<Box<TranscriptAssayPanelReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_specificity_report: Option<Box<PrimerSpecificityReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub construct_reasoning_graph: Option<Box<ConstructReasoningGraph>>,
@@ -6994,6 +6996,236 @@ pub struct TranscriptQpcrPanelReport {
     pub transcript_rows: Vec<TranscriptQpcrPanelTranscriptRow>,
     #[serde(default)]
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Selection objective for an equivalence-aware transcript assay panel.
+pub enum TranscriptAssayPanelObjective {
+    /// Select one assay that detects every exact mature-cDNA equivalence class.
+    #[default]
+    PanTranscript,
+    /// Select at least one useful assay for each exact mature-cDNA class.
+    OnePerClass,
+    /// Select a small assay set that separates every distinguishable class pair.
+    MinimalDiscriminationPanel,
+}
+
+impl TranscriptAssayPanelObjective {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PanTranscript => "pan_transcript",
+            Self::OnePerClass => "one_per_class",
+            Self::MinimalDiscriminationPanel => "minimal_discrimination_panel",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Coverage policy for transcript assay-panel selection.
+pub enum TranscriptAssayCoveragePolicy {
+    /// Refuse a report when the requested objective cannot cover all classes.
+    #[default]
+    RequireAll,
+    /// Return the best explicit partial result and enumerate what remains uncovered.
+    BestEffort,
+}
+
+impl TranscriptAssayCoveragePolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RequireAll => "require_all",
+            Self::BestEffort => "best_effort",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Product-level outcome for one assay against one transcript equivalence class.
+pub enum TranscriptAssayDetectionStatus {
+    #[default]
+    NoProduct,
+    SingleProduct,
+    MultipleProducts,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Interpretation of selected assays for one transcript row.
+pub enum TranscriptAssayMemberStatus {
+    Specific,
+    SharedFamily,
+    #[default]
+    NoProduct,
+    /// Members have byte-identical mature cDNA and cannot be separated by sequence assays.
+    NotDistinguishableBetweenMembers,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Whether the selected panel satisfies its requested objective.
+pub enum TranscriptAssayPanelCompletionStatus {
+    #[default]
+    Complete,
+    Partial,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One transcript member of a byte-identical mature-cDNA equivalence class.
+pub struct TranscriptAssayEquivalenceMember {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub cdna_length_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Exact mature-cDNA identity class used as the unit of assay distinguishability.
+pub struct TranscriptAssayEquivalenceGroup {
+    pub equivalence_group_id: String,
+    pub cdna_sha256: String,
+    pub cdna_length_bp: usize,
+    pub representative_transcript_id: String,
+    pub member_count: usize,
+    #[serde(default)]
+    pub members: Vec<TranscriptAssayEquivalenceMember>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One selected qPCR assay and the exact cDNA classes it detects once.
+pub struct TranscriptAssayPanelAssay {
+    pub assay_id: String,
+    pub rank: usize,
+    pub design_equivalence_group_id: String,
+    pub design_transcript_id: String,
+    pub assay: QpcrAssayRecord,
+    #[serde(default)]
+    pub single_product_equivalence_group_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One transcript-by-assay matrix cell.
+pub struct TranscriptAssayDetectionCell {
+    pub assay_id: String,
+    pub equivalence_group_id: String,
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    #[serde(default)]
+    pub status: TranscriptAssayDetectionStatus,
+    pub detail_status: String,
+    pub product_count: usize,
+    #[serde(default)]
+    pub amplicon_lengths_bp: Vec<usize>,
+    pub exact_negative_prefiltered: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Final interpretation row for one transcript model.
+pub struct TranscriptAssayPanelTranscriptRow {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub equivalence_group_id: String,
+    #[serde(default)]
+    pub status: TranscriptAssayMemberStatus,
+    #[serde(default)]
+    pub covering_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One still-unresolved pair of distinguishable cDNA equivalence classes.
+pub struct TranscriptAssayUnresolvedPair {
+    pub left_equivalence_group_id: String,
+    pub right_equivalence_group_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Primer backend used while generating candidates from one representative cDNA.
+pub struct TranscriptAssayPanelBackendRun {
+    pub equivalence_group_id: String,
+    pub transcript_id: String,
+    pub backend: PrimerDesignBackendInfo,
+    pub generated_candidate_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Persisted, matrix-centered transcript assay panel report.
+pub struct TranscriptAssayPanelReport {
+    pub schema: String,
+    pub report_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub source_seq_id: String,
+    pub source_feature_id: usize,
+    pub group_label: String,
+    pub strand: String,
+    #[serde(default)]
+    pub objective: TranscriptAssayPanelObjective,
+    #[serde(default)]
+    pub coverage_policy: TranscriptAssayCoveragePolicy,
+    #[serde(default)]
+    pub completion_status: TranscriptAssayPanelCompletionStatus,
+    pub transcript_count: usize,
+    pub equivalence_group_count: usize,
+    pub candidate_assay_count: usize,
+    pub selected_assay_count: usize,
+    pub exact_negative_prefilter_count: usize,
+    pub full_assay_evaluation_count: usize,
+    pub min_amplicon_bp: usize,
+    pub max_amplicon_bp: usize,
+    pub max_mismatches: usize,
+    pub require_3prime_exact_bases: usize,
+    #[serde(default)]
+    pub equivalence_groups: Vec<TranscriptAssayEquivalenceGroup>,
+    #[serde(default)]
+    pub selected_assays: Vec<TranscriptAssayPanelAssay>,
+    #[serde(default)]
+    pub detection_matrix: Vec<TranscriptAssayDetectionCell>,
+    #[serde(default)]
+    pub transcript_rows: Vec<TranscriptAssayPanelTranscriptRow>,
+    #[serde(default)]
+    pub uncovered_equivalence_group_ids: Vec<String>,
+    #[serde(default)]
+    pub unresolved_group_pairs: Vec<TranscriptAssayUnresolvedPair>,
+    #[serde(default)]
+    pub backend_runs: Vec<TranscriptAssayPanelBackendRun>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Compact persisted-report listing row for transcript assay panels.
+pub struct TranscriptAssayPanelReportSummary {
+    pub report_id: String,
+    pub source_seq_id: String,
+    pub source_feature_id: usize,
+    pub generated_at_unix_ms: u128,
+    #[serde(default)]
+    pub objective: TranscriptAssayPanelObjective,
+    #[serde(default)]
+    pub coverage_policy: TranscriptAssayCoveragePolicy,
+    #[serde(default)]
+    pub completion_status: TranscriptAssayPanelCompletionStatus,
+    pub transcript_count: usize,
+    pub equivalence_group_count: usize,
+    pub selected_assay_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

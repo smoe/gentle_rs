@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 21 | 589 | 0 |
-| gentle_cli | 366 | 269 | 0 |
-| MCP | 75 | 418 | 45 |
-| JS | 78 | 401 | 48 |
-| Lua | 77 | 402 | 48 |
+| GUI | 21 | 594 | 0 |
+| gentle_cli | 370 | 270 | 0 |
+| MCP | 75 | 420 | 48 |
+| JS | 78 | 403 | 51 |
+| Lua | 77 | 404 | 51 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -283,6 +283,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | guides protocol-export | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers design | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers design-qpcr | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers design-transcript-assay-panel | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers test-cdna-pcr | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers test-cdna-qpcr | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers test-cdna-qpcr-fasta | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -301,6 +302,9 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | primers list-qpcr-reports | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers show-qpcr-report | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers export-qpcr-report | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers list-transcript-assay-panels | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers show-transcript-assay-panel | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers export-transcript-assay-panel | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features tfbs-summary | glossary-command | shell-only | shell-only | n/a | n/a | n/a | n/a | MCP: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features repeat-query | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features repeat-overlaps | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -609,6 +613,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | PrepareRestrictionCloningPcrHandoff | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PcrOverlapExtensionMutagenesis | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | DesignQpcrAssays | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| DesignTranscriptAssayPanel | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | TestCdnaPcr | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | TestCdnaQpcr | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | TestCdnaQpcrFasta | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
@@ -791,12 +796,15 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | JS | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers export-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | primers export-transcript-assay-panel | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers list-qpcr-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers list-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | primers list-transcript-assay-panels | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers preflight | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers restriction-cloning-vector-suggestions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers show-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | primers show-transcript-assay-panel | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | racks show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | rna-reads allele-hash-screen | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | rna-reads inspect-alignments | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -839,12 +847,15 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | Lua | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers export-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | primers export-transcript-assay-panel | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers list-qpcr-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers list-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | primers list-transcript-assay-panels | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers preflight | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers restriction-cloning-vector-suggestions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers show-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | primers show-transcript-assay-panel | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | racks show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | rna-reads allele-hash-screen | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | rna-reads inspect-alignments | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -885,12 +896,15 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | MCP | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers export-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | primers export-transcript-assay-panel | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers list-qpcr-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers list-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | primers list-transcript-assay-panels | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers preflight | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers restriction-cloning-vector-suggestions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers show-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | primers show-transcript-assay-panel | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | racks show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | rna-reads allele-hash-screen | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | rna-reads inspect-alignments | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |

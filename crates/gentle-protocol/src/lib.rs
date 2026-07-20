@@ -5061,6 +5061,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PrepareRestrictionCloningPcrHandoff",
     "PcrOverlapExtensionMutagenesis",
     "DesignQpcrAssays",
+    "DesignTranscriptAssayPanel",
     "TestCdnaPcr",
     "TestCdnaQpcr",
     "TestCdnaQpcrFasta",

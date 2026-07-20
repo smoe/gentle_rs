@@ -81,6 +81,7 @@ use crate::{
         ProteinExpressionVectorRouteCandidate, ProteinExternalOpinionSource, ProteinFeatureFilter,
         ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
         QpcrTranscriptTargetingMode, RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA,
+        TranscriptAssayCoveragePolicy, TranscriptAssayPanelObjective,
         RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, ReadAcquisitionAnalysisFormat,
         ReadAcquisitionReadLayout, RenderSvgMode, RepeatAnnotationFilter,
@@ -2404,6 +2405,21 @@ pub enum ShellCommand {
         shared_qpcr_report_id: String,
         path: Option<String>,
     },
+    PrimersDesignTranscriptAssayPanel {
+        seq_id: String,
+        feature_id: usize,
+        objective: TranscriptAssayPanelObjective,
+        coverage_policy: TranscriptAssayCoveragePolicy,
+        min_amplicon_bp: Option<usize>,
+        max_amplicon_bp: Option<usize>,
+        max_assays_per_class: Option<usize>,
+        max_mismatches: Option<usize>,
+        require_3prime_exact_bases: Option<usize>,
+        report_id: Option<String>,
+        path: Option<String>,
+        backend: Option<PrimerDesignBackend>,
+        primer3_executable: Option<String>,
+    },
     PrimersTestCdnaQpcrFasta {
         cdna_fasta_paths: Vec<String>,
         forward_primer: String,
@@ -2458,6 +2474,14 @@ pub enum ShellCommand {
         report_id: String,
     },
     PrimersExportQpcrReport {
+        report_id: String,
+        path: String,
+    },
+    PrimersListTranscriptAssayPanels,
+    PrimersShowTranscriptAssayPanel {
+        report_id: String,
+    },
+    PrimersExportTranscriptAssayPanel {
         report_id: String,
         path: String,
     },
@@ -10993,6 +11017,30 @@ impl ShellCommand {
                     .filter(|value| !value.is_empty())
                     .unwrap_or("none"),
             ),
+            Self::PrimersDesignTranscriptAssayPanel {
+                seq_id,
+                feature_id,
+                objective,
+                coverage_policy,
+                report_id,
+                path,
+                ..
+            } => format!(
+                "design transcript assay panel on '{}' feature n-{} (objective={}, coverage_policy={}, report_id={}, path={})",
+                seq_id,
+                feature_id + 1,
+                objective.as_str(),
+                coverage_policy.as_str(),
+                report_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("auto"),
+                path.as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("none"),
+            ),
             Self::PrimersTestCdnaQpcrFasta {
                 cdna_fasta_paths,
                 forward_primer,
@@ -11084,6 +11132,16 @@ impl ShellCommand {
             }
             Self::PrimersExportQpcrReport { report_id, path } => format!(
                 "export stored qPCR-design report '{}' to '{}'",
+                report_id, path
+            ),
+            Self::PrimersListTranscriptAssayPanels => {
+                "list stored transcript assay panel reports".to_string()
+            }
+            Self::PrimersShowTranscriptAssayPanel { report_id } => {
+                format!("show stored transcript assay panel report '{}'", report_id)
+            }
+            Self::PrimersExportTranscriptAssayPanel { report_id, path } => format!(
+                "export stored transcript assay panel report '{}' to '{}'",
                 report_id, path
             ),
             Self::PrimersOligoOrderCreate { request_json } => format!(
@@ -14616,6 +14674,33 @@ fn parse_primer_design_backend(value: &str) -> Result<PrimerDesignBackend, Strin
     }
 }
 
+fn parse_transcript_assay_panel_objective(
+    value: &str,
+) -> Result<TranscriptAssayPanelObjective, String> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "pan_transcript" | "pan" => Ok(TranscriptAssayPanelObjective::PanTranscript),
+        "one_per_class" | "per_class" => Ok(TranscriptAssayPanelObjective::OnePerClass),
+        "minimal_discrimination_panel" | "minimal_discrimination" | "minimal" => {
+            Ok(TranscriptAssayPanelObjective::MinimalDiscriminationPanel)
+        }
+        other => Err(format!(
+            "Unsupported transcript assay objective '{other}' (expected pan-transcript|one-per-class|minimal-discrimination-panel)"
+        )),
+    }
+}
+
+fn parse_transcript_assay_coverage_policy(
+    value: &str,
+) -> Result<TranscriptAssayCoveragePolicy, String> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "require_all" | "strict" => Ok(TranscriptAssayCoveragePolicy::RequireAll),
+        "best_effort" => Ok(TranscriptAssayCoveragePolicy::BestEffort),
+        other => Err(format!(
+            "Unsupported transcript assay coverage policy '{other}' (expected require-all|best-effort)"
+        )),
+    }
+}
+
 fn parse_anchor_side(value: &str) -> Result<GenomeAnchorSide, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "5" | "5p" | "5prime" | "5'" | "five_prime" | "five-prime" => {
@@ -15218,6 +15303,12 @@ fn push_introspection_report_facts(graph: &mut ProjectFactGraph, engine: &Gentle
             .list_qpcr_design_reports()
             .into_iter()
             .map(|row| introspection_report_fact(row.report_id, "qpcr_design")),
+    );
+    graph.facts.extend(
+        engine
+            .list_transcript_assay_panel_reports()
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "transcript_assay_panel")),
     );
     graph.facts.extend(
         engine
@@ -21483,6 +21574,36 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "qpcr_design",
             "Generate and persist a ranked qPCR assay design report through the shared engine operation.",
         ),
+        json!({
+            "id": "DesignTranscriptAssayPanel",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying transcript annotations"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit transcript assay panel report id carried by the operation payload; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "report_kind": "transcript_assay_panel",
+                    "equals": "transcript_assay_panel",
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Generate and persist an exact-cDNA-equivalence-aware transcript assay panel through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("DesignTranscriptAssayPanel")
+        }),
         cdna_assay_test_descriptor(
             "TestCdnaPcr",
             "Test supplied PCR primers against transcript-derived cDNA templates for one loaded splicing group.",
@@ -21580,6 +21701,99 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Export one persisted qPCR assay design report to an external JSON file.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers export-qpcr-report")
+        }),
+        json!({
+            "id": "primers design-transcript-assay-panel",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying transcript annotations"},
+                {"name": "FEATURE_ID", "required": true, "subject_kind": "feature", "detail": "zero-based transcript/gene feature used to resolve the splicing group"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit transcript assay panel report id; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "report_kind": "transcript_assay_panel",
+                    "equals": "transcript_assay_panel",
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Generate and persist an exact-cDNA-equivalence-aware transcript assay panel; require_all is the default coverage policy.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers design-transcript-assay-panel")
+        }),
+        json!({
+            "id": "primers list-transcript-assay-panels",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List persisted transcript assay panel reports.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers list-transcript-assay-panels")
+        }),
+        json!({
+            "id": "primers show-transcript-assay-panel",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay panel report id"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "transcript_assay_panel"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "transcript_assay_panel"}
+                ]
+            },
+            "description": "Inspect one persisted transcript assay panel report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers show-transcript-assay-panel")
+        }),
+        json!({
+            "id": "primers export-transcript-assay-panel",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay panel report id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "transcript_assay_panel"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "transcript_assay_panel"}
+                ]
+            },
+            "description": "Export one persisted transcript assay panel report to an external JSON file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers export-transcript-assay-panel")
         }),
         report_export_any_kind_operation_descriptor(
             "ExportPrimerDesignReport",
@@ -25952,6 +26166,15 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "primers export-qpcr-report" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "qpcr_design"}),
         ]),
+        "primers design-transcript-assay-panel" | "DesignTranscriptAssayPanel" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "primers list-transcript-assay-panels" => Some(vec![]),
+        "primers show-transcript-assay-panel" | "primers export-transcript-assay-panel" => {
+            Some(vec![
+                json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "transcript_assay_panel"}),
+            ])
+        }
         "primers prepare-restriction-cloning" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
             json!({"fact": "report.exists", "subject": {"arg": "PRIMER_REPORT_ID"}, "equals": "primer_design"}),
@@ -50642,6 +50865,91 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersDesignTranscriptAssayPanel {
+            seq_id,
+            feature_id,
+            objective,
+            coverage_policy,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_assays_per_class,
+            max_mismatches,
+            require_3prime_exact_bases,
+            report_id,
+            path,
+            backend,
+            primer3_executable,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let previous_backend = engine.state().parameters.primer_design_backend;
+            let previous_executable = engine.state().parameters.primer3_executable.clone();
+            if let Some(override_backend) = backend {
+                engine.state_mut().parameters.primer_design_backend = *override_backend;
+            }
+            if let Some(override_exec) = primer3_executable
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                engine.state_mut().parameters.primer3_executable = override_exec.to_string();
+            }
+            let operation = Operation::DesignTranscriptAssayPanel {
+                seq_id: seq_id.clone(),
+                source_feature_id: *feature_id,
+                objective: *objective,
+                coverage_policy: *coverage_policy,
+                forward: PrimerDesignSideConstraint::default(),
+                reverse: PrimerDesignSideConstraint::default(),
+                probe: PrimerDesignSideConstraint::default(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: *min_amplicon_bp,
+                max_amplicon_bp: *max_amplicon_bp,
+                max_tm_delta_c: None,
+                max_probe_tm_delta_c: None,
+                max_assays_per_class: *max_assays_per_class,
+                max_mismatches: *max_mismatches,
+                require_3prime_exact_bases: *require_3prime_exact_bases,
+                report_id: report_id.clone(),
+                path: path.clone(),
+            };
+            let op_result = if options.progress_callback.is_some() {
+                engine
+                    .apply_with_progress(operation, |progress| {
+                        forward_shell_progress(options, progress).unwrap_or(false)
+                    })
+                    .map_err(|e| e.to_string())
+            } else {
+                engine.apply(operation).map_err(|e| e.to_string())
+            };
+            engine.state_mut().parameters.primer_design_backend = previous_backend;
+            engine.state_mut().parameters.primer3_executable = previous_executable;
+            let op_result = op_result?;
+            let report = op_result
+                .transcript_assay_panel
+                .as_ref()
+                .map(|report| (**report).clone())
+                .ok_or_else(|| {
+                    "Transcript assay panel operation did not return its report".to_string()
+                })?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.transcript_assay_panel_command.v2",
+                    "report": report,
+                    "path": path,
+                    "result": op_result,
+                }),
+            })
+        }
         ShellCommand::PrimersTestCdnaQpcrFasta {
             cdna_fasta_paths,
             forward_primer,
@@ -50954,6 +51262,42 @@ fn execute_primers_command(
                     "report_id": report.report_id,
                     "path": path,
                     "assay_count": report.assay_count,
+                }),
+            })
+        }
+        ShellCommand::PrimersListTranscriptAssayPanels => {
+            let reports = engine.list_transcript_assay_panel_reports();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_panel_list.v2",
+                    "report_count": reports.len(),
+                    "reports": reports,
+                }),
+            })
+        }
+        ShellCommand::PrimersShowTranscriptAssayPanel { report_id } => {
+            let report = engine
+                .get_transcript_assay_panel_report(report_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::PrimersExportTranscriptAssayPanel { report_id, path } => {
+            let report = engine
+                .export_transcript_assay_panel_report(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_panel_export.v2",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "selected_assay_count": report.selected_assay_count,
                 }),
             })
         }
@@ -56131,6 +56475,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersTestCdnaPcr { .. }
             | ShellCommand::PrimersTestCdnaQpcr { .. }
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
+            | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
             | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
             | ShellCommand::PrimersPrepareRestrictionCloning { .. }
             | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }
@@ -56145,6 +56490,9 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersListQpcrReports
             | ShellCommand::PrimersShowQpcrReport { .. }
             | ShellCommand::PrimersExportQpcrReport { .. }
+            | ShellCommand::PrimersListTranscriptAssayPanels
+            | ShellCommand::PrimersShowTranscriptAssayPanel { .. }
+            | ShellCommand::PrimersExportTranscriptAssayPanel { .. }
             | ShellCommand::PrimersOligoOrderCreate { .. }
             | ShellCommand::PrimersOligoOrderFromPrimerReport { .. }
             | ShellCommand::PrimersOligoOrderFromQpcrReport { .. }
@@ -57841,6 +58189,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersTestCdnaPcr { .. }
         | ShellCommand::PrimersTestCdnaQpcr { .. }
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }
+        | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
         | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
         | ShellCommand::PrimersPrepareRestrictionCloning { .. }
         | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }
@@ -57855,6 +58204,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersListQpcrReports
         | ShellCommand::PrimersShowQpcrReport { .. }
         | ShellCommand::PrimersExportQpcrReport { .. }
+        | ShellCommand::PrimersListTranscriptAssayPanels
+        | ShellCommand::PrimersShowTranscriptAssayPanel { .. }
+        | ShellCommand::PrimersExportTranscriptAssayPanel { .. }
         | ShellCommand::PrimersOligoOrderCreate { .. }
         | ShellCommand::PrimersOligoOrderFromPrimerReport { .. }
         | ShellCommand::PrimersOligoOrderFromQpcrReport { .. }

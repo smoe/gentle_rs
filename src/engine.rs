@@ -625,6 +625,7 @@ const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
 const OLIGO_QC_REPORT_SCHEMA: &str = "gentle.oligo_qc_report.v1";
 const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v1";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
+pub const TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_assay_panel.v2";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
     "gentle.restriction_cloning_pcr_handoff.v1";
 pub const PROTEIN_DERIVATION_REPORTS_METADATA_KEY: &str = "protein_derivation_reports";
@@ -2518,6 +2519,7 @@ struct PrimerDesignStore {
     updated_at_unix_ms: u128,
     reports: HashMap<String, PrimerDesignReport>,
     qpcr_reports: HashMap<String, QpcrDesignReport>,
+    transcript_assay_panels: HashMap<String, TranscriptAssayPanelReport>,
     restriction_cloning_handoffs: HashMap<String, RestrictionCloningPcrHandoffReport>,
     oligo_order_forms: HashMap<String, OligoOrderForm>,
 }
@@ -4094,6 +4096,41 @@ pub enum Operation {
         /// Zero-based feature index into the source sequence feature table.
         source_feature_id: usize,
         shared_qpcr_report_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    DesignTranscriptAssayPanel {
+        seq_id: SeqId,
+        /// Zero-based feature index into the source sequence feature table.
+        source_feature_id: usize,
+        #[serde(default)]
+        objective: TranscriptAssayPanelObjective,
+        #[serde(default)]
+        coverage_policy: TranscriptAssayCoveragePolicy,
+        #[serde(default)]
+        forward: PrimerDesignSideConstraint,
+        #[serde(default)]
+        reverse: PrimerDesignSideConstraint,
+        #[serde(default)]
+        probe: PrimerDesignSideConstraint,
+        #[serde(default)]
+        pair_constraints: PrimerDesignPairConstraint,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_amplicon_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_amplicon_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_tm_delta_c: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_probe_tm_delta_c: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_assays_per_class: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_mismatches: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        require_3prime_exact_bases: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        report_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -11290,6 +11327,7 @@ impl GentleEngine {
     ) -> Result<(), EngineError> {
         if store.reports.is_empty()
             && store.qpcr_reports.is_empty()
+            && store.transcript_assay_panels.is_empty()
             && store.restriction_cloning_handoffs.is_empty()
             && store.oligo_order_forms.is_empty()
         {
@@ -11966,6 +12004,75 @@ impl GentleEngine {
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write qPCR design report to '{path}': {e}"),
+
+            cause_chain: vec![],
+        })?;
+        Ok(report)
+    }
+
+    pub fn list_transcript_assay_panel_reports(
+        &self,
+    ) -> Vec<TranscriptAssayPanelReportSummary> {
+        let store = self.read_primer_design_store();
+        let mut ids = store
+            .transcript_assay_panels
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids.into_iter()
+            .filter_map(|id| store.transcript_assay_panels.get(&id))
+            .map(|report| TranscriptAssayPanelReportSummary {
+                report_id: report.report_id.clone(),
+                source_seq_id: report.source_seq_id.clone(),
+                source_feature_id: report.source_feature_id,
+                generated_at_unix_ms: report.generated_at_unix_ms,
+                objective: report.objective,
+                coverage_policy: report.coverage_policy,
+                completion_status: report.completion_status,
+                transcript_count: report.transcript_count,
+                equivalence_group_count: report.equivalence_group_count,
+                selected_assay_count: report.selected_assay_count,
+            })
+            .collect()
+    }
+
+    pub fn get_transcript_assay_panel_report(
+        &self,
+        report_id: &str,
+    ) -> Result<TranscriptAssayPanelReport, EngineError> {
+        let report_id = Self::normalize_primer_design_report_id(report_id)?;
+        let store = self.read_primer_design_store();
+        store
+            .transcript_assay_panels
+            .get(&report_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Transcript assay panel report '{}' not found", report_id),
+
+                cause_chain: vec![],
+            })
+    }
+
+    pub fn export_transcript_assay_panel_report(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<TranscriptAssayPanelReport, EngineError> {
+        let report = self.get_transcript_assay_panel_report(report_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize transcript assay panel report '{}': {e}",
+                report.report_id
+            ),
+
+            cause_chain: vec![],
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write transcript assay panel report to '{path}': {e}"),
 
             cause_chain: vec![],
         })?;

@@ -7973,6 +7973,7 @@ Primer-design shell command family (implemented):
   - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
+  - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--objective pan-transcript|one-per-class|minimal-discrimination-panel] [--coverage-policy require-all|best-effort] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
   - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
@@ -7991,6 +7992,9 @@ Primer-design shell command family (implemented):
   - `primers list-qpcr-reports`
   - `primers show-qpcr-report REPORT_ID`
   - `primers export-qpcr-report REPORT_ID OUTPUT.json`
+  - `primers list-transcript-assay-panels`
+  - `primers show-transcript-assay-panel REPORT_ID`
+  - `primers export-transcript-assay-panel REPORT_ID OUTPUT.json`
   - `primers oligo-order create REQUEST_JSON_OR_@FILE`
   - `primers oligo-order from-primer-report REPORT_ID --pair-rank N[,N...] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]`
   - `primers oligo-order from-qpcr-report REPORT_ID --assay-rank N[,N...] [--include-probe true|false] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]`
@@ -8028,8 +8032,8 @@ Primer-design shell command family (implemented):
   gel. Shell output then includes `materialization` plus gel-first
   `preferred_artifacts[]` so ClawBio can show nonspecific products as bands
   before the transcript map.
-- `primers transcript-qpcr-panel` is a non-mutating table/report helper for
-  transcript-targeted qPCR panels. It consumes a stored shared-gene qPCR report,
+- `primers transcript-qpcr-panel` is a non-mutating compatibility helper for
+  fixed-component transcript-targeted qPCR panels. It consumes a stored shared-gene qPCR report,
   reuses that assay's shared reverse primer and probe, and emits
   `gentle.transcript_qpcr_panel.v1` with shared oligo records plus one
   transcript row per admitted cDNA template. Rows prefer a transcript-specific
@@ -8037,9 +8041,38 @@ Primer-design shell command family (implemented):
   characteristic forward primer when that is the valid/efficient evidence, and
   emit deterministic `not_found` rows when no single forward primer can
   distinguish the transcript while retaining the shared reverse/probe product.
+  Byte-identical mature cDNAs instead receive
+  `not_distinguishable_between_members`; this statement is never inferred for
+  merely similar or difficult-to-prime transcripts. New multi-transcript work
+  should prefer `primers design-transcript-assay-panel`.
   All source positions are machine-readable as local 0-based/exclusive ranges
   plus 1-based/inclusive display ranges; genomic 1-based/inclusive ranges and
   reference strand labels are included when a genome anchor is available.
+- Transcript assay panel schema:
+  - `gentle.transcript_assay_panel.v2`
+  - `DesignTranscriptAssayPanel` derives mature cDNA templates from the shared
+    splicing engine, groups only byte-identical sequences into exact
+    equivalence classes, generates candidate qPCR assays from one representative
+    per class, and confirms candidates with the mismatch-aware cDNA assay path.
+  - objectives are `pan_transcript`, `one_per_class`, and
+    `minimal_discrimination_panel`.
+  - coverage policy defaults to `require_all`. An unsatisfied strict request is
+    an error that enumerates uncovered equivalence classes and persists no
+    report. `best_effort` must be selected explicitly and returns
+    `completion_status = partial`, warnings, uncovered class ids, and unresolved
+    class pairs where applicable.
+  - the detection matrix records `no_product`, `single_product`, or
+    `multiple_products` for every selected assay and transcript row. Transcript
+    interpretation is typed as `specific`, `shared_family`, `no_product`, or
+    `not_distinguishable_between_members`.
+  - exact-match filtering is a negative-only optimization: GENtle uses it only
+    when mismatch tolerance is zero and all binding sequences are unambiguous
+    DNA. Every retained candidate is evaluated by the full cDNA assay path;
+    mismatch-tolerant requests are never discarded for lacking an exact hit.
+  - reports are stored in the existing `gentle.primer_design_reports.v1`
+    project metadata store without changing that store schema. The individual
+    report carries the v2 schema above and is available through list/show/export
+    shell routes.
 - `primers preflight` returns `gentle.primer3_preflight.v1` with the requested
   backend plus configured-executable token, default-fallback marker, effective
   executable, resolved path, working directory, and reachability/version/error

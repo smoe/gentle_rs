@@ -6561,6 +6561,57 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && path.as_deref() == Some("panel.json")
     ));
 
+    let panel_v2 = parse_shell_line(
+        "primers design-transcript-assay-panel seq_a 17 --objective minimal-discrimination-panel --coverage-policy best-effort --min-amplicon-bp 70 --max-amplicon-bp 220 --max-assays-per-class 4 --max-mismatches 1 --require-3prime-exact-bases 8 --report-id panel_v2 --path panel_v2.json --backend internal",
+    )
+    .expect("parse transcript assay panel v2");
+    assert!(matches!(
+        panel_v2,
+        ShellCommand::PrimersDesignTranscriptAssayPanel {
+            seq_id,
+            feature_id,
+            objective,
+            coverage_policy,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_assays_per_class,
+            max_mismatches,
+            require_3prime_exact_bases,
+            report_id,
+            path,
+            backend,
+            ..
+        } if seq_id == "seq_a"
+            && feature_id == 17
+            && objective == TranscriptAssayPanelObjective::MinimalDiscriminationPanel
+            && coverage_policy == TranscriptAssayCoveragePolicy::BestEffort
+            && min_amplicon_bp == Some(70)
+            && max_amplicon_bp == Some(220)
+            && max_assays_per_class == Some(4)
+            && max_mismatches == Some(1)
+            && require_3prime_exact_bases == Some(8)
+            && report_id.as_deref() == Some("panel_v2")
+            && path.as_deref() == Some("panel_v2.json")
+            && backend == Some(PrimerDesignBackend::Internal)
+    ));
+    assert!(matches!(
+        parse_shell_line("primers list-transcript-assay-panels")
+            .expect("parse transcript panel list"),
+        ShellCommand::PrimersListTranscriptAssayPanels
+    ));
+    assert!(matches!(
+        parse_shell_line("primers show-transcript-assay-panel panel_v2")
+            .expect("parse transcript panel show"),
+        ShellCommand::PrimersShowTranscriptAssayPanel { report_id }
+            if report_id == "panel_v2"
+    ));
+    assert!(matches!(
+        parse_shell_line("primers export-transcript-assay-panel panel_v2 panel.json")
+            .expect("parse transcript panel export"),
+        ShellCommand::PrimersExportTranscriptAssayPanel { report_id, path }
+            if report_id == "panel_v2" && path == "panel.json"
+    ));
+
     let ordered_cdna = parse_shell_line(
         "primers test-cdna-pcr seq_a 17 --forward AAACCC --reverse CCCAAG --transcript-order antisense_first_exon --map-coordinate-mode genomic_aligned --svg ordered.svg --materialize-products --product-output-prefix cdna_products --product-gel-svg products.gel.svg --product-gel-ladder \"NEB 100bp DNA Ladder\"",
     )

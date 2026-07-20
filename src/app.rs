@@ -11628,6 +11628,7 @@ Error: `{err}`"
                 cdna_assay_product_materialization: None,
                 primer_specificity_report: None,
                 transcript_qpcr_panel: None,
+                transcript_assay_panel: None,
                 construct_reasoning_graph: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,

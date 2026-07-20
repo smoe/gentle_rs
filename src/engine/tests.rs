@@ -8895,6 +8895,38 @@ fn transcript_qpcr_single_exon_fallback_engine() -> GentleEngine {
     engine
 }
 
+fn transcript_assay_near_match_engine() -> GentleEngine {
+    let tx_a = "ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAACGCTAGTCGATCGTACCGTACGATCGTACGAGGCTAACGATCCGATGCTAACG";
+    let mut tx_b = tx_a.as_bytes().to_vec();
+    tx_b[37] = if tx_b[37] == b'A' { b'C' } else { b'A' };
+    let tx_b = String::from_utf8(tx_b).expect("ASCII cDNA");
+    let spacer = "N".repeat(24);
+    let tx_a_start = 0usize;
+    let tx_a_end = tx_a.len();
+    let tx_b_start = tx_a_end + spacer.len();
+    let tx_b_end = tx_b_start + tx_b.len();
+    let mut dna = seq(&format!("{tx_a}{spacer}{tx_b}"));
+    for (transcript_id, start, end) in [
+        ("TX_NEAR_A", tx_a_start, tx_a_end),
+        ("TX_NEAR_B", tx_b_start, tx_b_end),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(start as i64, end as i64),
+            qualifiers: vec![
+                ("gene".into(), Some("NEAR1".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(format!("NEAR1 {transcript_id}"))),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("near_match_qpcr".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
 #[test]
 fn transcript_qpcr_panel_reports_shared_components_and_characteristic_forward_rows() {
     let mut engine = transcript_qpcr_panel_test_engine();
@@ -8970,12 +9002,15 @@ fn transcript_qpcr_panel_reports_shared_components_and_characteristic_forward_ro
             .iter()
             .find(|row| row.transcript_id == transcript_id)
             .expect("duplicate transcript row");
-        assert_eq!(row.characteristic_status, "not_found");
+        assert_eq!(
+            row.characteristic_status,
+            "not_distinguishable_between_members"
+        );
         assert!(row.characteristic_forward.is_none());
         assert!(
             row.notes
                 .iter()
-                .any(|note| note.contains("No single forward primer"))
+                .any(|note| note.contains("byte-identical"))
         );
     }
 
@@ -8992,6 +9027,226 @@ fn transcript_qpcr_panel_reports_shared_components_and_characteristic_forward_ro
         .expect("operation returns panel report");
     assert_eq!(op_report.shared_qpcr_report_id, "panel_shared");
     assert_eq!(op_report.transcript_rows.len(), 3);
+}
+
+fn transcript_assay_panel_relaxed_side() -> PrimerDesignSideConstraint {
+    PrimerDesignSideConstraint {
+        min_length: 18,
+        max_length: 24,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..Default::default()
+    }
+}
+
+fn transcript_assay_panel_operation(
+    coverage_policy: TranscriptAssayCoveragePolicy,
+    side: PrimerDesignSideConstraint,
+    max_mismatches: usize,
+    report_id: &str,
+) -> Operation {
+    Operation::DesignTranscriptAssayPanel {
+        seq_id: "panel_src".to_string(),
+        source_feature_id: 0,
+        objective: TranscriptAssayPanelObjective::PanTranscript,
+        coverage_policy,
+        forward: side.clone(),
+        reverse: side.clone(),
+        probe: side,
+        pair_constraints: PrimerDesignPairConstraint::default(),
+        min_amplicon_bp: Some(50),
+        max_amplicon_bp: Some(240),
+        max_tm_delta_c: Some(100.0),
+        max_probe_tm_delta_c: Some(100.0),
+        max_assays_per_class: Some(2),
+        max_mismatches: Some(max_mismatches),
+        require_3prime_exact_bases: Some(8),
+        report_id: Some(report_id.to_string()),
+        path: None,
+    }
+}
+
+#[test]
+fn transcript_assay_panel_groups_only_byte_identical_cdna_and_persists_matrix() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let result = engine
+        .apply(transcript_assay_panel_operation(
+            TranscriptAssayCoveragePolicy::BestEffort,
+            transcript_assay_panel_relaxed_side(),
+            1,
+            "panel_v2_equivalence",
+        ))
+        .expect("best-effort transcript assay panel");
+    let report = result
+        .transcript_assay_panel
+        .expect("transcript assay panel report");
+    assert_eq!(report.schema, "gentle.transcript_assay_panel.v2");
+    assert_eq!(report.transcript_count, 3);
+    assert_eq!(report.equivalence_group_count, 2);
+    let duplicate_group = report
+        .equivalence_groups
+        .iter()
+        .find(|group| group.member_count == 2)
+        .expect("byte-identical TX2/TX3 group");
+    assert_eq!(
+        duplicate_group
+            .members
+            .iter()
+            .map(|member| member.transcript_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["TX2", "TX3"]
+    );
+    for transcript_id in ["TX2", "TX3"] {
+        let row = report
+            .transcript_rows
+            .iter()
+            .find(|row| row.transcript_id == transcript_id)
+            .expect("duplicate transcript row");
+        assert_eq!(
+            row.status,
+            TranscriptAssayMemberStatus::NotDistinguishableBetweenMembers
+        );
+    }
+    assert!(report.candidate_assay_count > 0);
+    assert!(
+        report
+            .backend_runs
+            .iter()
+            .all(|run| run.generated_candidate_count <= 2),
+        "max_assays_per_class must cap unique candidates across all candidate windows"
+    );
+    assert_eq!(
+        report.exact_negative_prefilter_count, 0,
+        "mismatch-aware scans must not be discarded by exact-match absence"
+    );
+    assert!(report.full_assay_evaluation_count > 0);
+
+    let persisted = engine
+        .get_transcript_assay_panel_report("panel_v2_equivalence")
+        .expect("persisted transcript assay panel");
+    assert_eq!(persisted.equivalence_groups.len(), 2);
+    let saved: ProjectState = serde_json::from_str(
+        &serde_json::to_string(engine.state()).expect("serialize project state"),
+    )
+    .expect("deserialize project state");
+    let reloaded = GentleEngine::from_state(saved);
+    assert_eq!(
+        reloaded
+            .get_transcript_assay_panel_report("panel_v2_equivalence")
+            .expect("reloaded transcript assay panel")
+            .schema,
+        "gentle.transcript_assay_panel.v2"
+    );
+}
+
+#[test]
+fn transcript_assay_panel_require_all_refuses_and_best_effort_is_explicit() {
+    let impossible_side = PrimerDesignSideConstraint {
+        min_length: 500,
+        max_length: 500,
+        min_tm_c: 0.0,
+        max_tm_c: 1000.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..Default::default()
+    };
+    let mut strict_engine = transcript_qpcr_panel_test_engine();
+    let error = strict_engine
+        .apply(transcript_assay_panel_operation(
+            TranscriptAssayCoveragePolicy::RequireAll,
+            impossible_side.clone(),
+            0,
+            "strict_must_not_persist",
+        ))
+        .expect_err("require_all must refuse an uncovered pan-transcript panel");
+    assert!(error.message.contains("coverage policy 'require_all'"));
+    assert!(error.message.contains("Uncovered equivalence classes"));
+    assert!(
+        strict_engine
+            .get_transcript_assay_panel_report("strict_must_not_persist")
+            .is_err()
+    );
+
+    let mut best_effort_engine = transcript_qpcr_panel_test_engine();
+    let result = best_effort_engine
+        .apply(transcript_assay_panel_operation(
+            TranscriptAssayCoveragePolicy::BestEffort,
+            impossible_side,
+            0,
+            "explicit_partial",
+        ))
+        .expect("explicit best-effort panel");
+    let report = result
+        .transcript_assay_panel
+        .expect("partial transcript assay panel report");
+    assert_eq!(
+        report.completion_status,
+        TranscriptAssayPanelCompletionStatus::Partial
+    );
+    assert_eq!(report.coverage_policy, TranscriptAssayCoveragePolicy::BestEffort);
+    assert_eq!(report.selected_assay_count, 0);
+    assert_eq!(
+        report.uncovered_equivalence_group_ids.len(),
+        report.equivalence_group_count
+    );
+    assert!(report.warnings.iter().any(|warning| warning.contains("best_effort")));
+}
+
+#[test]
+fn transcript_assay_panel_does_not_equate_one_base_near_matches() {
+    let impossible_side = PrimerDesignSideConstraint {
+        min_length: 500,
+        max_length: 500,
+        min_tm_c: 0.0,
+        max_tm_c: 1000.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..Default::default()
+    };
+    let mut engine = transcript_assay_near_match_engine();
+    let result = engine
+        .apply(Operation::DesignTranscriptAssayPanel {
+            seq_id: "near_match_qpcr".to_string(),
+            source_feature_id: 0,
+            objective: TranscriptAssayPanelObjective::PanTranscript,
+            coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            forward: impossible_side.clone(),
+            reverse: impossible_side.clone(),
+            probe: impossible_side,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: Some(40),
+            max_amplicon_bp: Some(200),
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: Some(100.0),
+            max_assays_per_class: Some(1),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            report_id: Some("near_match_classes".to_string()),
+            path: None,
+        })
+        .expect("best-effort near-match panel");
+    let report = result
+        .transcript_assay_panel
+        .expect("near-match transcript panel report");
+    assert_eq!(report.transcript_count, 2);
+    assert_eq!(report.equivalence_group_count, 2);
+    assert!(
+        report
+            .equivalence_groups
+            .iter()
+            .all(|group| group.member_count == 1)
+    );
+    assert!(
+        report
+            .transcript_rows
+            .iter()
+            .all(|row| row.status != TranscriptAssayMemberStatus::NotDistinguishableBetweenMembers)
+    );
 }
 
 fn write_gzip_fasta_records(path: &Path, records: &[(&str, &str)]) {

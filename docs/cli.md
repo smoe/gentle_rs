@@ -3000,6 +3000,7 @@ Shared shell command:
     - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
+    - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--objective pan-transcript|one-per-class|minimal-discrimination-panel] [--coverage-policy require-all|best-effort] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
       - returns `gentle.primer3_preflight.v1` with configured/effective
@@ -3019,6 +3020,9 @@ Shared shell command:
       - persisted qPCR report output now includes `best_assay_summary` plus
         machine-readable `best_assay_probe_placement`
     - `primers export-qpcr-report REPORT_ID OUTPUT.json`
+    - `primers list-transcript-assay-panels`
+    - `primers show-transcript-assay-panel REPORT_ID`
+    - `primers export-transcript-assay-panel REPORT_ID OUTPUT.json`
     - `primers oligo-order create REQUEST_JSON_OR_@FILE`
       - creates and persists a first-class `gentle.oligo_order_form.v1` from
         supplied line items; duplicate line items are kept and reported
@@ -3518,6 +3522,10 @@ Shared shell command:
         the materialization summary
     - Transcript qPCR panel notes
       (`primers transcript-qpcr-panel`):
+      - this is the compatibility route for fitting a characteristic forward
+        primer to one stored shared reverse/probe assay; use
+        `primers design-transcript-assay-panel` for matrix-centered all-transcript
+        design
       - consumes a stored shared-gene qPCR report and the zero-based source
         `FEATURE_ID`
       - returns `gentle.transcript_qpcr_panel.v1` with shared forward/reverse/
@@ -3529,8 +3537,22 @@ Shared shell command:
       - source coordinates are always local 0-based/exclusive plus display
         1-based/inclusive; genomic 1-based/inclusive coordinates are included
         when the source sequence has a genome anchor
-      - indistinguishable transcripts receive deterministic `not_found` rows
-        instead of silent omission
+      - byte-identical mature cDNAs receive
+        `not_distinguishable_between_members`; other unresolved transcripts
+        receive deterministic `not_found` rows instead of silent omission
+    - Transcript assay panel v2 notes
+      (`primers design-transcript-assay-panel`):
+      - defaults to `--objective pan-transcript --coverage-policy require-all`;
+        an assay that omits any exact cDNA class is rejected rather than saved
+      - `--coverage-policy best-effort` is an explicit opt-in that saves a
+        visibly partial report with uncovered class ids and warnings
+      - exact cDNA equivalence means byte identity only; near matches remain
+        separate classes even when a single assay is difficult to design
+      - each selected assay is shown against every transcript in a typed
+        product matrix, and exact-hit absence is used only as a certain-negative
+        shortcut when mismatch tolerance is zero
+      - reports carry `gentle.transcript_assay_panel.v2` and persist through the
+        existing project save/load path; list/show/export use the commands above
     - Restriction-cloning handoff notes (`primers prepare-restriction-cloning`):
       - expects an `Operation` payload whose root variant is
         `PrepareRestrictionCloningPcrHandoff`

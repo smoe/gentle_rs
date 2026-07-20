@@ -117,6 +117,31 @@ struct TranscriptQpcrPanelCandidate {
     score: f64,
 }
 
+#[derive(Debug, Clone)]
+struct TranscriptAssayEquivalenceInternal {
+    report: TranscriptAssayEquivalenceGroup,
+    representative_template_index: usize,
+    member_template_indices: Vec<usize>,
+}
+
+#[derive(Debug, Clone)]
+struct TranscriptAssayGroupEvaluation {
+    status: TranscriptAssayDetectionStatus,
+    detail_status: String,
+    product_count: usize,
+    amplicon_lengths_bp: Vec<usize>,
+    exact_negative_prefiltered: bool,
+}
+
+#[derive(Debug, Clone)]
+struct TranscriptAssayEvaluatedCandidate {
+    assay_id: String,
+    design_equivalence_group_id: String,
+    design_transcript_id: String,
+    assay: QpcrAssayRecord,
+    group_evaluations: Vec<TranscriptAssayGroupEvaluation>,
+}
+
 impl GentleEngine {
     fn gibson_arrangement_insert_seq_ids(plan: &GibsonAssemblyPlan) -> Vec<String> {
         let fragments_by_id = plan
@@ -12060,6 +12085,206 @@ impl GentleEngine {
         (target_hits, competitor_hits, hit_transcript_ids)
     }
 
+    fn transcript_assay_exact_equivalence_groups(
+        templates: &[TranscriptQpcrDesignTemplate],
+    ) -> Vec<TranscriptAssayEquivalenceInternal> {
+        let mut indices_by_cdna = BTreeMap::<String, Vec<usize>>::new();
+        for (index, template) in templates.iter().enumerate() {
+            indices_by_cdna
+                .entry(template.sequence.clone())
+                .or_default()
+                .push(index);
+        }
+        let mut groups = indices_by_cdna
+            .into_iter()
+            .map(|(cdna, mut member_template_indices)| {
+                member_template_indices.sort_by(|left, right| {
+                    templates[*left]
+                        .transcript_id
+                        .cmp(&templates[*right].transcript_id)
+                        .then(
+                            templates[*left]
+                                .transcript_feature_id
+                                .cmp(&templates[*right].transcript_feature_id),
+                        )
+                });
+                let representative_template_index = member_template_indices[0];
+                let representative = &templates[representative_template_index];
+                let members = member_template_indices
+                    .iter()
+                    .map(|index| {
+                        let template = &templates[*index];
+                        TranscriptAssayEquivalenceMember {
+                            transcript_feature_id: template.transcript_feature_id,
+                            transcript_id: template.transcript_id.clone(),
+                            transcript_label: template.transcript_label.clone(),
+                            strand: template.strand.clone(),
+                            cdna_length_bp: template.sequence.len(),
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                TranscriptAssayEquivalenceInternal {
+                    report: TranscriptAssayEquivalenceGroup {
+                        equivalence_group_id: short_sha256_id("cdna_eq", &cdna),
+                        cdna_sha256: sha256_prefixed_str(&cdna),
+                        cdna_length_bp: cdna.len(),
+                        representative_transcript_id: representative.transcript_id.clone(),
+                        member_count: members.len(),
+                        members,
+                    },
+                    representative_template_index,
+                    member_template_indices,
+                }
+            })
+            .collect::<Vec<_>>();
+        groups.sort_by(|left, right| {
+            left.report
+                .equivalence_group_id
+                .cmp(&right.report.equivalence_group_id)
+        });
+        groups
+    }
+
+    fn transcript_assay_candidate_rois(
+        template: &TranscriptQpcrDesignTemplate,
+    ) -> Vec<(usize, usize)> {
+        let len = template.sequence.len();
+        if len < 2 {
+            return vec![];
+        }
+        let mut anchors = template
+            .local_exon_segments
+            .iter()
+            .take(template.local_exon_segments.len().saturating_sub(1))
+            .map(|segment| segment.local_end_0based_exclusive)
+            .filter(|position| *position > 0 && *position < len)
+            .collect::<Vec<_>>();
+        for numerator in 1..=3usize {
+            let position = len.saturating_mul(numerator) / 4;
+            if position > 0 && position < len {
+                anchors.push(position);
+            }
+        }
+        anchors.sort_unstable();
+        anchors.dedup();
+        anchors.truncate(6);
+        anchors
+            .into_iter()
+            .map(|position| {
+                let start = position.saturating_sub(1);
+                let end = position.saturating_add(1).min(len);
+                (start, end.max(start.saturating_add(1)))
+            })
+            .collect()
+    }
+
+    fn transcript_assay_is_strict_dna(sequence: &str) -> bool {
+        sequence
+            .as_bytes()
+            .iter()
+            .all(|base| matches!(base, b'A' | b'C' | b'G' | b'T'))
+    }
+
+    /// Exact-absence is only a safe negative shortcut when mismatch tolerance
+    /// is zero and every binding sequence is unambiguous DNA.
+    fn transcript_assay_is_certain_exact_negative(
+        template: &TranscriptQpcrDesignTemplate,
+        request: &NormalizedCdnaAssayTestRequest,
+    ) -> bool {
+        if request.max_mismatches != 0
+            || !Self::transcript_assay_is_strict_dna(&request.forward_primer)
+            || !Self::transcript_assay_is_strict_dna(&request.reverse_binding)
+            || request
+                .probe
+                .as_deref()
+                .is_some_and(|probe| !Self::transcript_assay_is_strict_dna(probe))
+            || request
+                .probe_reverse_binding
+                .as_deref()
+                .is_some_and(|probe| !Self::transcript_assay_is_strict_dna(probe))
+        {
+            return false;
+        }
+        let template_bytes = template.sequence.as_bytes();
+        if Self::find_all_subsequences(template_bytes, request.forward_primer.as_bytes()).is_empty()
+            || Self::find_all_subsequences(template_bytes, request.reverse_binding.as_bytes())
+                .is_empty()
+        {
+            return true;
+        }
+        if let Some(probe) = request.probe.as_deref() {
+            let forward_present =
+                !Self::find_all_subsequences(template_bytes, probe.as_bytes()).is_empty();
+            let reverse_present = request
+                .probe_reverse_binding
+                .as_deref()
+                .is_some_and(|reverse_probe| {
+                    !Self::find_all_subsequences(template_bytes, reverse_probe.as_bytes())
+                        .is_empty()
+                });
+            if !(forward_present || reverse_present) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn transcript_assay_group_evaluation(
+        template: &TranscriptQpcrDesignTemplate,
+        request: &NormalizedCdnaAssayTestRequest,
+    ) -> TranscriptAssayGroupEvaluation {
+        if Self::transcript_assay_is_certain_exact_negative(template, request) {
+            return TranscriptAssayGroupEvaluation {
+                status: TranscriptAssayDetectionStatus::NoProduct,
+                detail_status: "exact_negative_prefilter".to_string(),
+                product_count: 0,
+                amplicon_lengths_bp: vec![],
+                exact_negative_prefiltered: true,
+            };
+        }
+        let result = Self::cdna_assay_scan_template(template, request, true);
+        let status = match result.products.len() {
+            0 => TranscriptAssayDetectionStatus::NoProduct,
+            1 => TranscriptAssayDetectionStatus::SingleProduct,
+            _ => TranscriptAssayDetectionStatus::MultipleProducts,
+        };
+        TranscriptAssayGroupEvaluation {
+            status,
+            detail_status: result.status,
+            product_count: result.products.len(),
+            amplicon_lengths_bp: result
+                .products
+                .iter()
+                .map(|product| product.amplicon_length_bp)
+                .collect(),
+            exact_negative_prefiltered: false,
+        }
+    }
+
+    fn transcript_assay_candidate_id(assay: &QpcrAssayRecord) -> String {
+        short_sha256_id(
+            "transcript_assay",
+            &format!(
+                "{}|{}|{}",
+                assay.forward.sequence, assay.reverse.sequence, assay.probe.sequence
+            ),
+        )
+    }
+
+    fn transcript_assay_detected_group_indices(
+        candidate: &TranscriptAssayEvaluatedCandidate,
+    ) -> BTreeSet<usize> {
+        candidate
+            .group_evaluations
+            .iter()
+            .enumerate()
+            .filter_map(|(index, evaluation)| {
+                (evaluation.status == TranscriptAssayDetectionStatus::SingleProduct)
+                    .then_some(index)
+            })
+            .collect()
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn transcript_qpcr_panel_find_characteristic_forward(
         &self,
@@ -12072,8 +12297,11 @@ impl GentleEngine {
         reverse_source_ranges_0based: &[SequenceRange0Based],
         probe_source_ranges_0based: &[SequenceRange0Based],
         forward_constraints: &PrimerDesignSideConstraint,
+        pair_constraints: &NormalizedPrimerPairConstraints,
         min_amplicon_bp: usize,
         max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_probe_tm_delta_c: f64,
     ) -> Option<TranscriptQpcrPanelCandidate> {
         let reverse_local_ranges = Self::transcript_qpcr_panel_source_ranges_to_local_ranges(
             template,
@@ -12087,110 +12315,139 @@ impl GentleEngine {
         let probe_local = probe_local_ranges.first().copied();
         let template_len = template.sequence.len();
         let min_len = forward_constraints.min_length.max(1);
-        let max_len = forward_constraints.max_length.max(min_len);
-        let (scan_start, scan_end) = if let Some((reverse_start, reverse_end)) = reverse_local {
-            (
-                reverse_end.saturating_sub(max_amplicon_bp),
-                reverse_start.saturating_sub(min_len),
-            )
-        } else {
-            (0, template_len.saturating_sub(min_len))
-        };
+        let (reverse_start, reverse_end) = reverse_local?;
+        let (probe_start, probe_end) = probe_local?;
+        let scan_start = reverse_end.saturating_sub(max_amplicon_bp);
+        let scan_end = reverse_start.saturating_sub(min_len);
         if scan_end < scan_start {
             return None;
         }
 
+        let mut effective_forward = forward_constraints.clone();
+        effective_forward.start_0based = Some(
+            effective_forward
+                .start_0based
+                .map_or(scan_start, |value| value.max(scan_start)),
+        );
+        effective_forward.end_0based = Some(
+            effective_forward
+                .end_0based
+                .map_or(reverse_start, |value| value.min(reverse_start)),
+        );
+        if effective_forward
+            .start_0based
+            .zip(effective_forward.end_0based)
+            .is_some_and(|(start, end)| start >= end)
+        {
+            return None;
+        }
+        Self::validate_primer_design_side_constraints("forward", &effective_forward).ok()?;
+        let normalized_forward =
+            Self::normalize_primer_side_sequence_constraints(&effective_forward).ok()?;
+        let mut rejection_summary = PrimerDesignRejectionSummary::default();
+        let generated = Self::generate_primer_side_candidates(
+            template.sequence.as_bytes(),
+            &effective_forward,
+            &normalized_forward,
+            false,
+            &mut rejection_summary,
+        );
+        let fixed_reverse = Self::annotate_primer_record_heuristics(
+            PrimerDesignPrimerRecord {
+                start_0based: reverse_start,
+                end_0based_exclusive: reverse_end,
+                ..shared_reverse.clone()
+            },
+            reverse_end.saturating_sub(reverse_start),
+        );
+        let fixed_probe = Self::annotate_primer_record_heuristics(
+            PrimerDesignPrimerRecord {
+                start_0based: probe_start,
+                end_0based_exclusive: probe_end,
+                ..shared_probe.clone()
+            },
+            probe_end.saturating_sub(probe_start),
+        );
+        let target_amplicon_bp = (min_amplicon_bp + max_amplicon_bp) / 2;
         let mut candidates = vec![];
-        for start in scan_start..=scan_end.min(template_len.saturating_sub(min_len)) {
-            for len in min_len..=max_len {
-                let end = start.saturating_add(len);
-                if end > template_len {
-                    break;
-                }
-                if let Some((reverse_start, reverse_end)) = reverse_local {
-                    if end > reverse_start {
-                        continue;
-                    }
-                    let amplicon_len = reverse_end.saturating_sub(start);
-                    if amplicon_len < min_amplicon_bp || amplicon_len > max_amplicon_bp {
-                        continue;
-                    }
-                }
-                if let Some((probe_start, probe_end)) = probe_local {
-                    if end > probe_start {
-                        continue;
-                    }
-                    if let Some((reverse_start, _)) = reverse_local
-                        && probe_end > reverse_start
-                    {
-                        continue;
-                    }
-                }
-                let sequence = template.sequence[start..end].to_ascii_uppercase();
-                let tm_c = Self::estimate_primer_tm_c(sequence.as_bytes());
-                let gc_fraction = Self::sequence_gc_fraction(sequence.as_bytes()).unwrap_or(0.0);
-                if tm_c < forward_constraints.min_tm_c
-                    || tm_c > forward_constraints.max_tm_c
-                    || gc_fraction < forward_constraints.min_gc_fraction
-                    || gc_fraction > forward_constraints.max_gc_fraction
-                {
-                    continue;
-                }
-                let metrics = Self::compute_primer_heuristic_metrics(sequence.as_bytes());
-                if metrics.longest_homopolymer_run_bp > PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
-                    || metrics.self_complementary_run_bp
-                        > PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP
-                {
-                    continue;
-                }
-                let (target_hits, competitor_hits, hit_ids) =
-                    Self::transcript_qpcr_panel_exact_forward_hits(
-                        all_templates,
-                        &template.transcript_id,
-                        &sequence,
-                    );
-                if target_hits != 1 || competitor_hits != 0 {
-                    continue;
-                }
-                let mapping = Self::map_transcript_local_interval(
-                    &template.local_exon_segments,
-                    template.strand.trim() == "-",
-                    start,
-                    end,
-                );
-                let realized_specificity_evidence = if mapping.spans_junction {
-                    QpcrTranscriptSpecificityEvidence::JunctionOnly
-                } else {
-                    QpcrTranscriptSpecificityEvidence::UniqueExonOrChain
-                };
-                let primer = Self::annotate_primer_record_heuristics(
-                    PrimerDesignPrimerRecord {
-                        sequence,
-                        start_0based: start,
-                        end_0based_exclusive: end,
-                        tm_c,
-                        gc_fraction,
-                        anneal_hits: target_hits,
-                        ..PrimerDesignPrimerRecord::default()
-                    },
-                    len,
-                );
-                let score = if mapping.spans_junction { 1_000.0 } else { 0.0 }
-                    - (tm_c - 60.0).abs() * 10.0
-                    - (gc_fraction - 0.5).abs() * 25.0
-                    - metrics.longest_homopolymer_run_bp as f64;
-                candidates.push(TranscriptQpcrPanelCandidate {
-                    primer,
-                    source_ranges_0based: mapping.source_ranges_0based,
-                    covered_junction_labels: mapping.covered_junction_labels,
-                    spans_junction: mapping.spans_junction,
-                    realized_specificity_evidence,
-                    exact_target_hit_count: target_hits,
-                    exact_competitor_hit_count: competitor_hits,
-                    exact_hit_transcript_ids: hit_ids,
-                    score,
-                });
+        for generated_forward in generated {
+            let start = generated_forward.start_0based;
+            let end = generated_forward.end_0based_exclusive;
+            if end > probe_start || probe_end > reverse_start || end > template_len {
+                continue;
             }
+            let primer = Self::annotate_primer_record_heuristics(
+                PrimerDesignPrimerRecord {
+                    sequence: generated_forward.sequence,
+                    start_0based: start,
+                    end_0based_exclusive: end,
+                    tm_c: generated_forward.tm_c,
+                    gc_fraction: generated_forward.gc_fraction,
+                    anneal_hits: generated_forward.anneal_hits,
+                    ..PrimerDesignPrimerRecord::default()
+                },
+                end.saturating_sub(start),
+            );
+            let Some(pair) = Self::build_primer_design_pair_record(
+                primer.clone(),
+                fixed_reverse.clone(),
+                probe_start,
+                probe_end,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                max_tm_delta_c,
+                target_amplicon_bp,
+            ) else {
+                continue;
+            };
+            if !(pair.rule_flags.amplicon_size_in_range
+                && pair.rule_flags.roi_covered
+                && pair.rule_flags.tm_delta_in_range)
+                || !Self::primer_pair_matches_constraints(
+                    template.sequence.as_bytes(),
+                    &pair,
+                    probe_start,
+                    probe_end,
+                    pair_constraints,
+                )
+            {
+                continue;
+            }
+            let primer_mean_tm_c = (pair.forward.tm_c + pair.reverse.tm_c) / 2.0;
+            if (fixed_probe.tm_c - primer_mean_tm_c).abs() > max_probe_tm_delta_c {
+                continue;
+            }
+            let (target_hits, competitor_hits, hit_ids) =
+                Self::transcript_qpcr_panel_exact_forward_hits(
+                    all_templates,
+                    &template.transcript_id,
+                    &primer.sequence,
+                );
+            if target_hits != 1 || competitor_hits != 0 {
+                continue;
+            }
+            let mapping = Self::map_transcript_local_interval(
+                &template.local_exon_segments,
+                template.strand.trim() == "-",
+                start,
+                end,
+            );
+            let realized_specificity_evidence = if mapping.spans_junction {
+                QpcrTranscriptSpecificityEvidence::JunctionOnly
+            } else {
+                QpcrTranscriptSpecificityEvidence::UniqueExonOrChain
+            };
+            candidates.push(TranscriptQpcrPanelCandidate {
+                primer,
+                source_ranges_0based: mapping.source_ranges_0based,
+                covered_junction_labels: mapping.covered_junction_labels,
+                spans_junction: mapping.spans_junction,
+                realized_specificity_evidence,
+                exact_target_hit_count: target_hits,
+                exact_competitor_hit_count: competitor_hits,
+                exact_hit_transcript_ids: hit_ids,
+                score: pair.score + if mapping.spans_junction { 1_000.0 } else { 0.0 },
+            });
         }
         candidates.sort_by(|left, right| {
             right
@@ -12362,9 +12619,55 @@ impl GentleEngine {
             ));
         }
 
+        let pair_constraints_normalized =
+            Self::normalize_primer_pair_constraints(&shared_report.pair_constraints)?;
+        let equivalence_groups = Self::transcript_assay_exact_equivalence_groups(&templates);
+        let mut equivalence_group_by_template = HashMap::<usize, usize>::new();
+        for (group_index, group) in equivalence_groups.iter().enumerate() {
+            for template_index in &group.member_template_indices {
+                equivalence_group_by_template.insert(*template_index, group_index);
+            }
+        }
+
         let transcript_rows = templates
             .iter()
-            .map(|template| {
+            .enumerate()
+            .map(|(template_index, template)| {
+                let equivalence_group = equivalence_group_by_template
+                    .get(&template_index)
+                    .and_then(|index| equivalence_groups.get(*index));
+                if let Some(group) = equivalence_group
+                    && group.member_template_indices.len() > 1
+                {
+                    return TranscriptQpcrPanelTranscriptRow {
+                        transcript_feature_id: template.transcript_feature_id,
+                        transcript_id: template.transcript_id.clone(),
+                        transcript_label: template.transcript_label.clone(),
+                        strand: template.strand.clone(),
+                        cdna_length_bp: template.sequence.len(),
+                        characteristic_status: "not_distinguishable_between_members".to_string(),
+                        characteristic_forward: None,
+                        realized_specificity_evidence: None,
+                        exact_target_hit_count: 0,
+                        exact_competitor_hit_count: 0,
+                        exact_hit_transcript_ids: group
+                            .report
+                            .members
+                            .iter()
+                            .map(|member| member.transcript_id.clone())
+                            .collect(),
+                        notes: vec![format!(
+                            "Mature cDNA is byte-identical across equivalence-group members {}; no sequence assay can distinguish these members.",
+                            group
+                                .report
+                                .members
+                                .iter()
+                                .map(|member| member.transcript_id.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )],
+                    };
+                }
                 let candidate = self.transcript_qpcr_panel_find_characteristic_forward(
                     seq_id,
                     source_feature_id,
@@ -12375,8 +12678,11 @@ impl GentleEngine {
                     &reverse_ranges,
                     &probe_ranges,
                     &shared_report.forward,
+                    &pair_constraints_normalized,
                     shared_report.min_amplicon_bp,
                     shared_report.max_amplicon_bp,
+                    shared_report.max_tm_delta_c,
+                    shared_report.max_probe_tm_delta_c,
                 );
                 if let Some(candidate) = candidate {
                     let oligo = Self::transcript_qpcr_panel_oligo_record(
@@ -12441,6 +12747,648 @@ impl GentleEngine {
             transcript_rows,
             warnings,
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn execute_design_transcript_assay_panel(
+        &mut self,
+        result: &mut OpResult,
+        run_id: &str,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+        seq_id: SeqId,
+        source_feature_id: usize,
+        objective: TranscriptAssayPanelObjective,
+        coverage_policy: TranscriptAssayCoveragePolicy,
+        forward: PrimerDesignSideConstraint,
+        reverse: PrimerDesignSideConstraint,
+        probe: PrimerDesignSideConstraint,
+        pair_constraints: PrimerDesignPairConstraint,
+        min_amplicon_bp: Option<usize>,
+        max_amplicon_bp: Option<usize>,
+        max_tm_delta_c: Option<f64>,
+        max_probe_tm_delta_c: Option<f64>,
+        max_assays_per_class: Option<usize>,
+        max_mismatches: Option<usize>,
+        require_3prime_exact_bases: Option<usize>,
+        report_id: Option<String>,
+        path: Option<String>,
+    ) -> Result<(), EngineError> {
+        let source_dna = self
+            .state
+            .sequences
+            .get(&seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
+            })?
+            .clone();
+        let splicing = self.build_splicing_expert_view(
+            &seq_id,
+            source_feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )?;
+        let templates = Self::build_qpcr_transcript_design_templates(&source_dna, &splicing)?;
+        if templates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No transcript-derived cDNA templates were found for feature n-{} on '{}'",
+                    source_feature_id + 1,
+                    seq_id
+                ),
+
+                cause_chain: vec![],
+            });
+        }
+
+        let min_amplicon_bp = min_amplicon_bp.unwrap_or(70);
+        let max_amplicon_bp = max_amplicon_bp.unwrap_or(250);
+        let max_tm_delta_c = max_tm_delta_c.unwrap_or(2.0);
+        let max_probe_tm_delta_c = max_probe_tm_delta_c.unwrap_or(10.0);
+        let max_assays_per_class = max_assays_per_class.unwrap_or(12);
+        let max_mismatches = max_mismatches.unwrap_or(0);
+        let require_3prime_exact_bases = require_3prime_exact_bases.unwrap_or(8);
+        if min_amplicon_bp == 0 || min_amplicon_bp > max_amplicon_bp {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Transcript assay panel amplicon range must satisfy 1 <= min <= max (received {min_amplicon_bp}..{max_amplicon_bp})"
+                ),
+
+                cause_chain: vec![],
+            });
+        }
+        if max_tm_delta_c < 0.0 || max_probe_tm_delta_c < 0.0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Transcript assay panel Tm tolerances must be non-negative".to_string(),
+
+                cause_chain: vec![],
+            });
+        }
+        if max_assays_per_class == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Transcript assay panel max_assays_per_class must be >= 1".to_string(),
+
+                cause_chain: vec![],
+            });
+        }
+        if forward.location_0based.is_some()
+            || forward.start_0based.is_some()
+            || forward.end_0based.is_some()
+            || reverse.location_0based.is_some()
+            || reverse.start_0based.is_some()
+            || reverse.end_0based.is_some()
+            || probe.location_0based.is_some()
+            || probe.start_0based.is_some()
+            || probe.end_0based.is_some()
+            || pair_constraints.fixed_amplicon_start_0based.is_some()
+            || pair_constraints
+                .fixed_amplicon_end_0based_exclusive
+                .is_some()
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Transcript assay panel design uses transcript-local candidate windows and therefore requires unconstrained primer/probe positions and no fixed amplicon coordinates".to_string(),
+
+                cause_chain: vec![],
+            });
+        }
+
+        Self::validate_primer_design_side_constraints("forward", &forward)?;
+        Self::validate_primer_design_side_constraints("reverse", &reverse)?;
+        Self::validate_primer_design_side_constraints("probe", &probe)?;
+        let forward_sequence_constraints =
+            Self::normalize_primer_side_sequence_constraints(&forward)?;
+        let reverse_sequence_constraints =
+            Self::normalize_primer_side_sequence_constraints(&reverse)?;
+        let probe_sequence_constraints = Self::normalize_primer_side_sequence_constraints(&probe)?;
+        let pair_constraints_normalized =
+            Self::normalize_primer_pair_constraints(&pair_constraints)?;
+        let equivalence_groups = Self::transcript_assay_exact_equivalence_groups(&templates);
+
+        let mut candidate_by_id = BTreeMap::<String, TranscriptAssayEvaluatedCandidate>::new();
+        let mut backend_runs = vec![];
+        let mut warnings = vec![];
+        for group in &equivalence_groups {
+            let template = &templates[group.representative_template_index];
+            let mut group_candidate_ids = BTreeSet::<String>::new();
+            let mut group_backend: Option<PrimerDesignBackendInfo> = None;
+            for (roi_start, roi_end) in Self::transcript_assay_candidate_rois(template) {
+                let remaining = max_assays_per_class.saturating_sub(group_candidate_ids.len());
+                if remaining == 0 {
+                    break;
+                }
+                let progress_id = format!("{}:{}", seq_id, template.transcript_id);
+                let (assays, _rejections, backend, backend_warnings) = self
+                    .run_qpcr_generation_with_backend(
+                        &progress_id,
+                        &template.sequence,
+                        roi_start,
+                        roi_end,
+                        &forward,
+                        &forward_sequence_constraints,
+                        &reverse,
+                        &reverse_sequence_constraints,
+                        &probe,
+                        &probe_sequence_constraints,
+                        &pair_constraints_normalized,
+                        min_amplicon_bp,
+                        max_amplicon_bp,
+                        max_tm_delta_c,
+                        max_probe_tm_delta_c,
+                        remaining,
+                        on_progress,
+                    )?;
+                if group_backend.is_none() {
+                    group_backend = Some(backend);
+                }
+                warnings.extend(backend_warnings);
+                for assay in assays {
+                    let assay_id = Self::transcript_assay_candidate_id(&assay);
+                    if !group_candidate_ids.insert(assay_id.clone()) {
+                        continue;
+                    }
+                    candidate_by_id.entry(assay_id.clone()).or_insert_with(|| {
+                        TranscriptAssayEvaluatedCandidate {
+                            assay_id,
+                            design_equivalence_group_id: group
+                                .report
+                                .equivalence_group_id
+                                .clone(),
+                            design_transcript_id: template.transcript_id.clone(),
+                            assay,
+                            group_evaluations: vec![],
+                        }
+                    });
+                }
+            }
+            backend_runs.push(TranscriptAssayPanelBackendRun {
+                equivalence_group_id: group.report.equivalence_group_id.clone(),
+                transcript_id: template.transcript_id.clone(),
+                backend: group_backend.unwrap_or_default(),
+                generated_candidate_count: group_candidate_ids.len(),
+            });
+        }
+
+        let mut evaluated_candidates = candidate_by_id.into_values().collect::<Vec<_>>();
+        for candidate in &mut evaluated_candidates {
+            let request = Self::normalize_cdna_assay_test_request(
+                &candidate.assay.forward.sequence,
+                &candidate.assay.reverse.sequence,
+                Some(&candidate.assay.probe.sequence),
+                Some(min_amplicon_bp),
+                Some(max_amplicon_bp),
+                Some(max_mismatches),
+                Some(require_3prime_exact_bases),
+            )?;
+            candidate.group_evaluations = equivalence_groups
+                .iter()
+                .map(|group| {
+                    Self::transcript_assay_group_evaluation(
+                        &templates[group.representative_template_index],
+                        &request,
+                    )
+                })
+                .collect();
+        }
+        evaluated_candidates.sort_by(|left, right| {
+            right
+                .assay
+                .score
+                .total_cmp(&left.assay.score)
+                .then(left.assay_id.cmp(&right.assay_id))
+        });
+
+        let all_group_indices = (0..equivalence_groups.len()).collect::<BTreeSet<_>>();
+        let detected_indices = |candidate: &TranscriptAssayEvaluatedCandidate| {
+            Self::transcript_assay_detected_group_indices(candidate)
+        };
+        let mut selected_indices = vec![];
+        match objective {
+            TranscriptAssayPanelObjective::PanTranscript => {
+                let full = evaluated_candidates
+                    .iter()
+                    .position(|candidate| detected_indices(candidate) == all_group_indices);
+                let best_partial = evaluated_candidates
+                    .iter()
+                    .enumerate()
+                    .max_by(|(left_index, left), (right_index, right)| {
+                        detected_indices(left)
+                            .len()
+                            .cmp(&detected_indices(right).len())
+                            .then(left.assay.score.total_cmp(&right.assay.score))
+                            .then(right_index.cmp(left_index))
+                    })
+                    .map(|(index, _)| index);
+                if let Some(index) = full.or(best_partial) {
+                    selected_indices.push(index);
+                }
+            }
+            TranscriptAssayPanelObjective::OnePerClass => {
+                let mut seen = BTreeSet::new();
+                for group_index in 0..equivalence_groups.len() {
+                    let best = evaluated_candidates
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, candidate)| {
+                            candidate.group_evaluations[group_index].status
+                                == TranscriptAssayDetectionStatus::SingleProduct
+                        })
+                        .min_by(|(left_index, left), (right_index, right)| {
+                            detected_indices(left)
+                                .len()
+                                .cmp(&detected_indices(right).len())
+                                .then(right.assay.score.total_cmp(&left.assay.score))
+                                .then(left_index.cmp(right_index))
+                        })
+                        .map(|(index, _)| index);
+                    if let Some(index) = best
+                        && seen.insert(index)
+                    {
+                        selected_indices.push(index);
+                    }
+                }
+            }
+            TranscriptAssayPanelObjective::MinimalDiscriminationPanel => {
+                let mut unresolved_pairs = BTreeSet::new();
+                for left in 0..equivalence_groups.len() {
+                    for right in left.saturating_add(1)..equivalence_groups.len() {
+                        unresolved_pairs.insert((left, right));
+                    }
+                }
+                let mut covered = BTreeSet::new();
+                let mut selected = BTreeSet::new();
+                loop {
+                    let mut best: Option<(usize, usize, usize, f64)> = None;
+                    for (index, candidate) in evaluated_candidates.iter().enumerate() {
+                        if selected.contains(&index) {
+                            continue;
+                        }
+                        let detected = detected_indices(candidate);
+                        let separation_gain = unresolved_pairs
+                            .iter()
+                            .filter(|(left, right)| {
+                                detected.contains(left) != detected.contains(right)
+                            })
+                            .count();
+                        let coverage_gain = detected.difference(&covered).count();
+                        if separation_gain == 0 && coverage_gain == 0 {
+                            continue;
+                        }
+                        let candidate_key =
+                            (index, separation_gain, coverage_gain, candidate.assay.score);
+                        let replace = best.as_ref().is_none_or(
+                            |(_, best_separation, best_coverage, best_score)| {
+                                separation_gain > *best_separation
+                                    || (separation_gain == *best_separation
+                                        && coverage_gain > *best_coverage)
+                                    || (separation_gain == *best_separation
+                                        && coverage_gain == *best_coverage
+                                        && candidate.assay.score > *best_score)
+                            },
+                        );
+                        if replace {
+                            best = Some(candidate_key);
+                        }
+                    }
+                    let Some((index, _, _, _)) = best else {
+                        break;
+                    };
+                    selected.insert(index);
+                    selected_indices.push(index);
+                    let detected = detected_indices(&evaluated_candidates[index]);
+                    covered.extend(detected.iter().copied());
+                    unresolved_pairs.retain(|(left, right)| {
+                        detected.contains(left) == detected.contains(right)
+                    });
+                    if unresolved_pairs.is_empty() && covered == all_group_indices {
+                        break;
+                    }
+                }
+            }
+        }
+
+        let mut covered_group_indices = BTreeSet::new();
+        for index in &selected_indices {
+            covered_group_indices.extend(detected_indices(&evaluated_candidates[*index]));
+        }
+        let uncovered_group_indices = all_group_indices
+            .difference(&covered_group_indices)
+            .copied()
+            .collect::<Vec<_>>();
+        let mut unresolved_group_index_pairs = vec![];
+        if objective == TranscriptAssayPanelObjective::MinimalDiscriminationPanel {
+            for left in 0..equivalence_groups.len() {
+                for right in left.saturating_add(1)..equivalence_groups.len() {
+                    let separated = selected_indices.iter().any(|index| {
+                        let detected = detected_indices(&evaluated_candidates[*index]);
+                        detected.contains(&left) != detected.contains(&right)
+                    });
+                    if !separated {
+                        unresolved_group_index_pairs.push((left, right));
+                    }
+                }
+            }
+        }
+        let complete = uncovered_group_indices.is_empty()
+            && unresolved_group_index_pairs.is_empty()
+            && match objective {
+                TranscriptAssayPanelObjective::PanTranscript => selected_indices
+                    .first()
+                    .is_some_and(|index| {
+                        detected_indices(&evaluated_candidates[*index]) == all_group_indices
+                    }),
+                _ => true,
+            };
+        if coverage_policy == TranscriptAssayCoveragePolicy::RequireAll && !complete {
+            let uncovered = uncovered_group_indices
+                .iter()
+                .map(|index| {
+                    let group = &equivalence_groups[*index].report;
+                    format!(
+                        "{} [{}]",
+                        group.equivalence_group_id,
+                        group
+                            .members
+                            .iter()
+                            .map(|member| member.transcript_id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                })
+                .collect::<Vec<_>>();
+            let unresolved = unresolved_group_index_pairs
+                .iter()
+                .map(|(left, right)| {
+                    format!(
+                        "{} <-> {}",
+                        equivalence_groups[*left].report.equivalence_group_id,
+                        equivalence_groups[*right].report.equivalence_group_id
+                    )
+                })
+                .collect::<Vec<_>>();
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Transcript assay panel objective '{}' with coverage policy 'require_all' could not be satisfied. Uncovered equivalence classes: {}. Unresolved class pairs: {}.",
+                    objective.as_str(),
+                    if uncovered.is_empty() {
+                        "none".to_string()
+                    } else {
+                        uncovered.join("; ")
+                    },
+                    if unresolved.is_empty() {
+                        "none".to_string()
+                    } else {
+                        unresolved.join("; ")
+                    }
+                ),
+
+                cause_chain: vec![],
+            });
+        }
+        if !complete {
+            warnings.push(format!(
+                "best_effort returned a partial '{}' panel; inspect uncovered_equivalence_group_ids and unresolved_group_pairs before using the assays.",
+                objective.as_str()
+            ));
+        }
+
+        let mut selected_assays = vec![];
+        let mut detection_matrix = vec![];
+        for (rank_index, candidate_index) in selected_indices.iter().enumerate() {
+            let candidate = &evaluated_candidates[*candidate_index];
+            let mut assay = candidate.assay.clone();
+            assay.rank = rank_index.saturating_add(1);
+            let single_product_equivalence_group_ids = candidate
+                .group_evaluations
+                .iter()
+                .enumerate()
+                .filter_map(|(group_index, evaluation)| {
+                    (evaluation.status == TranscriptAssayDetectionStatus::SingleProduct)
+                        .then(|| {
+                            equivalence_groups[group_index]
+                                .report
+                                .equivalence_group_id
+                                .clone()
+                        })
+                })
+                .collect::<Vec<_>>();
+            selected_assays.push(TranscriptAssayPanelAssay {
+                assay_id: candidate.assay_id.clone(),
+                rank: rank_index.saturating_add(1),
+                design_equivalence_group_id: candidate.design_equivalence_group_id.clone(),
+                design_transcript_id: candidate.design_transcript_id.clone(),
+                assay,
+                single_product_equivalence_group_ids,
+            });
+            for (group_index, group) in equivalence_groups.iter().enumerate() {
+                let evaluation = &candidate.group_evaluations[group_index];
+                for member in &group.report.members {
+                    detection_matrix.push(TranscriptAssayDetectionCell {
+                        assay_id: candidate.assay_id.clone(),
+                        equivalence_group_id: group.report.equivalence_group_id.clone(),
+                        transcript_feature_id: member.transcript_feature_id,
+                        transcript_id: member.transcript_id.clone(),
+                        status: evaluation.status,
+                        detail_status: evaluation.detail_status.clone(),
+                        product_count: evaluation.product_count,
+                        amplicon_lengths_bp: evaluation.amplicon_lengths_bp.clone(),
+                        exact_negative_prefiltered: evaluation.exact_negative_prefiltered,
+                    });
+                }
+            }
+        }
+
+        let mut transcript_rows = vec![];
+        for (group_index, group) in equivalence_groups.iter().enumerate() {
+            let covering_assay_ids = selected_indices
+                .iter()
+                .filter_map(|candidate_index| {
+                    let candidate = &evaluated_candidates[*candidate_index];
+                    (candidate.group_evaluations[group_index].status
+                        == TranscriptAssayDetectionStatus::SingleProduct)
+                        .then_some(candidate.assay_id.clone())
+                })
+                .collect::<Vec<_>>();
+            let has_specific_assay = selected_indices.iter().any(|candidate_index| {
+                let candidate = &evaluated_candidates[*candidate_index];
+                candidate.group_evaluations[group_index].status
+                    == TranscriptAssayDetectionStatus::SingleProduct
+                    && Self::transcript_assay_detected_group_indices(candidate).len() == 1
+            });
+            for member in &group.report.members {
+                let status = if group.report.member_count > 1 {
+                    TranscriptAssayMemberStatus::NotDistinguishableBetweenMembers
+                } else if covering_assay_ids.is_empty() {
+                    TranscriptAssayMemberStatus::NoProduct
+                } else if has_specific_assay {
+                    TranscriptAssayMemberStatus::Specific
+                } else {
+                    TranscriptAssayMemberStatus::SharedFamily
+                };
+                let notes = if status
+                    == TranscriptAssayMemberStatus::NotDistinguishableBetweenMembers
+                {
+                    vec![
+                        "Members of this equivalence class have byte-identical mature cDNA; GENtle does not claim they can be sequence-distinguished."
+                            .to_string(),
+                    ]
+                } else {
+                    vec![]
+                };
+                transcript_rows.push(TranscriptAssayPanelTranscriptRow {
+                    transcript_feature_id: member.transcript_feature_id,
+                    transcript_id: member.transcript_id.clone(),
+                    transcript_label: member.transcript_label.clone(),
+                    equivalence_group_id: group.report.equivalence_group_id.clone(),
+                    status,
+                    covering_assay_ids: covering_assay_ids.clone(),
+                    notes,
+                });
+            }
+        }
+        transcript_rows.sort_by(|left, right| {
+            left.transcript_id
+                .cmp(&right.transcript_id)
+                .then(left.transcript_feature_id.cmp(&right.transcript_feature_id))
+        });
+
+        let exact_negative_prefilter_count = evaluated_candidates
+            .iter()
+            .flat_map(|candidate| candidate.group_evaluations.iter())
+            .filter(|evaluation| evaluation.exact_negative_prefiltered)
+            .count();
+        let full_assay_evaluation_count = evaluated_candidates
+            .len()
+            .saturating_mul(equivalence_groups.len())
+            .saturating_sub(exact_negative_prefilter_count);
+        let uncovered_equivalence_group_ids = uncovered_group_indices
+            .iter()
+            .map(|index| {
+                equivalence_groups[*index]
+                    .report
+                    .equivalence_group_id
+                    .clone()
+            })
+            .collect::<Vec<_>>();
+        let unresolved_group_pairs = unresolved_group_index_pairs
+            .iter()
+            .map(|(left, right)| TranscriptAssayUnresolvedPair {
+                left_equivalence_group_id: equivalence_groups[*left]
+                    .report
+                    .equivalence_group_id
+                    .clone(),
+                right_equivalence_group_id: equivalence_groups[*right]
+                    .report
+                    .equivalence_group_id
+                    .clone(),
+            })
+            .collect::<Vec<_>>();
+        let default_report_id = short_sha256_id(
+            "transcript_assay_panel",
+            &format!(
+                "{}|{}|{}|{}|{}",
+                seq_id,
+                source_feature_id,
+                objective.as_str(),
+                coverage_policy.as_str(),
+                equivalence_groups
+                    .iter()
+                    .map(|group| group.report.cdna_sha256.as_str())
+                    .collect::<Vec<_>>()
+                    .join("|")
+            ),
+        );
+        let report_id = Self::normalize_primer_design_report_id(
+            report_id.as_deref().unwrap_or(&default_report_id),
+        )?;
+        let report = TranscriptAssayPanelReport {
+            schema: TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA.to_string(),
+            report_id: report_id.clone(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: Some(result.op_id.clone()),
+            run_id: Some(run_id.to_string()),
+            source_seq_id: seq_id.clone(),
+            source_feature_id,
+            group_label: splicing.group_label,
+            strand: splicing.strand,
+            objective,
+            coverage_policy,
+            completion_status: if complete {
+                TranscriptAssayPanelCompletionStatus::Complete
+            } else {
+                TranscriptAssayPanelCompletionStatus::Partial
+            },
+            transcript_count: templates.len(),
+            equivalence_group_count: equivalence_groups.len(),
+            candidate_assay_count: evaluated_candidates.len(),
+            selected_assay_count: selected_assays.len(),
+            exact_negative_prefilter_count,
+            full_assay_evaluation_count,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_mismatches,
+            require_3prime_exact_bases,
+            equivalence_groups: equivalence_groups
+                .iter()
+                .map(|group| group.report.clone())
+                .collect(),
+            selected_assays,
+            detection_matrix,
+            transcript_rows,
+            uncovered_equivalence_group_ids,
+            unresolved_group_pairs,
+            backend_runs,
+            warnings: warnings.clone(),
+        };
+        let mut store = self.read_primer_design_store();
+        let replaced = store
+            .transcript_assay_panels
+            .insert(report.report_id.clone(), report.clone())
+            .is_some();
+        self.write_primer_design_store(store)?;
+        result.messages.push(format!(
+            "{} transcript assay panel '{}' for '{}' (transcripts={}, exact classes={}, selected assays={})",
+            if replaced { "Updated" } else { "Created" },
+            report.report_id,
+            report.group_label,
+            report.transcript_count,
+            report.equivalence_group_count,
+            report.selected_assay_count
+        ));
+        result.warnings.extend(warnings);
+        if let Some(path) = path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let file = File::create(path).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not create transcript assay panel report '{path}': {e}"),
+
+                cause_chain: vec![],
+            })?;
+            serde_json::to_writer_pretty(BufWriter::new(file), &report).map_err(|e| {
+                EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not serialize transcript assay panel report '{path}': {e}"
+                    ),
+
+                    cause_chain: vec![],
+                }
+            })?;
+            result
+                .messages
+                .push(format!("Wrote transcript assay panel report to '{path}'"));
+        }
+        result.transcript_assay_panel = Some(Box::new(report));
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -16420,6 +17368,7 @@ impl GentleEngine {
             cdna_assay_test_report: None,
             cdna_assay_product_materialization: None,
             transcript_qpcr_panel: None,
+            transcript_assay_panel: None,
             primer_specificity_report: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
@@ -22372,6 +23321,49 @@ impl GentleEngine {
                             .push(format!("Wrote transcript qPCR panel report to '{path}'"));
                     }
                     result.transcript_qpcr_panel = Some(Box::new(report));
+                }
+                Operation::DesignTranscriptAssayPanel {
+                    seq_id,
+                    source_feature_id,
+                    objective,
+                    coverage_policy,
+                    forward,
+                    reverse,
+                    probe,
+                    pair_constraints,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_tm_delta_c,
+                    max_probe_tm_delta_c,
+                    max_assays_per_class,
+                    max_mismatches,
+                    require_3prime_exact_bases,
+                    report_id,
+                    path,
+                } => {
+                    parent_seq_ids.push(seq_id.clone());
+                    self.execute_design_transcript_assay_panel(
+                        &mut result,
+                        run_id,
+                        on_progress,
+                        seq_id,
+                        source_feature_id,
+                        objective,
+                        coverage_policy,
+                        forward,
+                        reverse,
+                        probe,
+                        pair_constraints,
+                        min_amplicon_bp,
+                        max_amplicon_bp,
+                        max_tm_delta_c,
+                        max_probe_tm_delta_c,
+                        max_assays_per_class,
+                        max_mismatches,
+                        require_3prime_exact_bases,
+                        report_id,
+                        path,
+                    )?;
                 }
                 Operation::TestCdnaQpcrFasta {
                     cdna_fasta_paths,
