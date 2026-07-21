@@ -1402,8 +1402,9 @@ mod tests {
     };
     use crate::engine_shell::execute_shell_command;
     use crate::test_support::{
-        decision_trace_fixture_state, transcript_assay_panel_adapter_fixture,
-        write_demo_jaspar_pfm, write_demo_pool_json, write_demo_rebase_withrefm,
+        decision_trace_fixture_state, primer_specificity_import_adapter_fixture,
+        transcript_assay_panel_adapter_fixture, write_demo_jaspar_pfm, write_demo_pool_json,
+        write_demo_rebase_withrefm,
     };
     use std::fs;
     use tempfile::tempdir;
@@ -1456,6 +1457,25 @@ mod tests {
                 .metadata
                 .contains_key("primer_design_reports")
         );
+    }
+
+    #[test]
+    fn js_apply_operation_imports_primer_specificity_handoff() {
+        let temp = tempdir().expect("tempdir");
+        let operation = primer_specificity_import_adapter_fixture(temp.path());
+        let response = apply_operation_impl(
+            ProjectState::default(),
+            &serde_json::to_string(&operation).expect("serialize specificity import operation"),
+        )
+        .expect("JS apply_operation specificity import");
+        let report = response
+            .result
+            .primer_specificity_report
+            .as_deref()
+            .expect("specificity import report");
+        assert_eq!(report.schema, "gentle.primer_specificity_report.v1");
+        assert_eq!(report.forward_hits.len(), 0);
+        assert_eq!(report.reverse_hits.len(), 0);
     }
 
     #[test]

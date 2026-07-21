@@ -3385,7 +3385,9 @@ mod tests {
         },
         engine_shell::{execute_shell_command, parse_shell_tokens},
         genomes::GenomeCatalog,
-        test_support::transcript_assay_panel_adapter_fixture,
+        test_support::{
+            primer_specificity_import_adapter_fixture, transcript_assay_panel_adapter_fixture,
+        },
     };
     use std::{fs, io::Cursor, path::Path, thread, time::Duration};
     use tempfile::tempdir;
@@ -4310,6 +4312,41 @@ mod tests {
         assert_eq!(report.schema, "gentle.transcript_assay_panel.v2");
         assert_eq!(report.assay_kind.as_str(), "endpoint_rt_pcr");
         assert_eq!(report.objective.as_str(), "isoform_end_matrix");
+    }
+
+    #[test]
+    fn mcp_op_imports_primer_specificity_handoff() {
+        let temp = tempdir().expect("tempdir");
+        let state_path = temp.path().join("mcp_specificity_import_state.gentle.json");
+        ProjectState::default()
+            .save_to_path(&state_path.to_string_lossy())
+            .expect("save specificity import state");
+        let operation = primer_specificity_import_adapter_fixture(temp.path());
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 92,
+            "method": "tools/call",
+            "params": {
+                "name": "op",
+                "arguments": {
+                    "confirm": true,
+                    "state_path": state_path.to_string_lossy(),
+                    "operation": serde_json::to_value(operation)
+                        .expect("serialize specificity import operation")
+                }
+            }
+        });
+        let response = run_single(DEFAULT_MCP_STATE_PATH, request);
+        assert_eq!(
+            response.pointer("/result/isError").and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            response
+                .pointer("/result/structuredContent/result/primer_specificity_report/schema")
+                .and_then(Value::as_str),
+            Some("gentle.primer_specificity_report.v1")
+        );
     }
 
     #[test]

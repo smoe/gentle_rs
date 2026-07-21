@@ -2360,8 +2360,17 @@ impl GentleEngine {
             }
             Operation::AssessPrimerPairSpecificity {
                 target_genome_id, ..
+            }
+            | Operation::PreparePrimerPairSpecificityHandoff {
+                target_genome_id, ..
             } => {
                 Self::push_unique_token(&mut summary.genome_ids, target_genome_id);
+            }
+            Operation::ImportPrimerPairSpecificityHandoff { handoff_path, path } => {
+                Self::push_unique_token(&mut summary.file_paths, handoff_path);
+                if let Some(path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
             }
             Operation::ImportUniprotSwissProt { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
@@ -2615,6 +2624,9 @@ impl GentleEngine {
             | Operation::AssessPrimerPairSpecificity {
                 path: Some(path), ..
             }
+            | Operation::ImportPrimerPairSpecificityHandoff {
+                path: Some(path), ..
+            }
             | Operation::ExportRnaReadReport { path, .. }
             | Operation::ExportRnaReadHitsFasta { path, .. }
             | Operation::ExportRnaReadSampleSheet { path, .. }
@@ -2628,7 +2640,8 @@ impl GentleEngine {
             | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. } => {
                 push(path);
             }
-            Operation::ExportSequenceContextBundle { output_dir, .. } => push(output_dir),
+            Operation::ExportSequenceContextBundle { output_dir, .. }
+            | Operation::PreparePrimerPairSpecificityHandoff { output_dir, .. } => push(output_dir),
             Operation::SummarizeRnaReadGeneSupport {
                 path: Some(path), ..
             } => push(path),

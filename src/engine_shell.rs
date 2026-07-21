@@ -18838,6 +18838,25 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path carried by path"}),
             ],
         ),
+        pool_artifact_descriptor(
+            "PreparePrimerPairSpecificityHandoff",
+            "Prepare deterministic primer BLAST commands and query files without running the BLAST searches.",
+            vec![
+                json!({"name": "PRIMER_REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional primer-design report id carried by primer_report_id"}),
+                json!({"name": "FORWARD_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit forward primer sequence alternative"}),
+                json!({"name": "REVERSE_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit reverse primer sequence alternative"}),
+                json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference genome id used to resolve the BLAST database"}),
+                json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external handoff bundle directory carried by output_dir"}),
+            ],
+        ),
+        pool_artifact_descriptor(
+            "ImportPrimerPairSpecificityHandoff",
+            "Import completed primer BLAST TSVs from a deterministic handoff and apply the shared specificity interpretation.",
+            vec![
+                json!({"name": "HANDOFF_PATH", "required": true, "subject_kind": "other", "detail": "existing gentle.primer_specificity_handoff.v1 JSON path"}),
+                json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path carried by path"}),
+            ],
+        ),
         arrangement_create_descriptor(
             "arrange-serial",
             "Create a persisted serial arrangement from one or more existing containers.",
@@ -26213,6 +26232,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "BuildRepeatEnvironmentCohort"
         | "features window-cohort-tfbs" => Some(vec![]),
         "AssessPrimerPairSpecificity"
+        | "PreparePrimerPairSpecificityHandoff"
+        | "ImportPrimerPairSpecificityHandoff"
         | "ExportPool"
         | "FilterByDesignConstraints"
         | "FilterByMolecularWeight"
@@ -50868,20 +50889,26 @@ fn execute_primers_command(
             cache_dir,
             output_dir,
         } => {
-            let handoff = engine
-                .prepare_primer_pair_specificity_handoff(
-                    primer_report_id.as_deref(),
-                    *pair_rank,
-                    *pair_index,
-                    forward_primer.as_deref(),
-                    reverse_primer.as_deref(),
-                    target_genome_id,
-                    policy.clone(),
-                    catalog_path.as_deref(),
-                    cache_dir.as_deref(),
-                    output_dir,
-                )
+            let op_result = engine
+                .apply(Operation::PreparePrimerPairSpecificityHandoff {
+                    primer_report_id: primer_report_id.clone(),
+                    pair_rank: *pair_rank,
+                    pair_index: *pair_index,
+                    forward_primer: forward_primer.clone(),
+                    reverse_primer: reverse_primer.clone(),
+                    target_genome_id: target_genome_id.clone(),
+                    policy: policy.clone(),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    output_dir: output_dir.clone(),
+                })
                 .map_err(|error| error.to_string())?;
+            let handoff = op_result
+                .primer_specificity_handoff
+                .map(|handoff| *handoff)
+                .ok_or_else(|| {
+                    "Primer specificity handoff operation returned no handoff".to_string()
+                })?;
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
@@ -50891,21 +50918,18 @@ fn execute_primers_command(
             })
         }
         ShellCommand::PrimersSpecificityImport { handoff_path, path } => {
-            let report = engine
-                .import_primer_pair_specificity_handoff(handoff_path)
+            let op_result = engine
+                .apply(Operation::ImportPrimerPairSpecificityHandoff {
+                    handoff_path: handoff_path.clone(),
+                    path: path.clone(),
+                })
                 .map_err(|error| error.to_string())?;
-            if let Some(path) = path
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                let json_text = serde_json::to_string_pretty(&report).map_err(|error| {
-                    format!("Could not serialize primer specificity report: {error}")
+            let report = op_result
+                .primer_specificity_report
+                .map(|report| *report)
+                .ok_or_else(|| {
+                    "Primer specificity handoff import operation returned no report".to_string()
                 })?;
-                fs::write(path, json_text).map_err(|error| {
-                    format!("Could not write primer specificity report to '{path}': {error}")
-                })?;
-            }
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({

@@ -3995,6 +3995,31 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    PreparePrimerPairSpecificityHandoff {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        primer_report_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pair_rank: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pair_index: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        forward_primer: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reverse_primer: Option<String>,
+        target_genome_id: String,
+        #[serde(default)]
+        policy: PrimerSpecificityPolicy,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        output_dir: String,
+    },
+    ImportPrimerPairSpecificityHandoff {
+        handoff_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     PrepareRestrictionCloningPcrHandoff {
         template: SeqId,
         primer_report_id: String,
@@ -8843,6 +8868,8 @@ impl GentleEngine {
                 | Operation::RenderProtein2dGelSvg { .. }
                 | Operation::ExportPrimerDesignReport { .. }
                 | Operation::AssessPrimerPairSpecificity { .. }
+                | Operation::PreparePrimerPairSpecificityHandoff { .. }
+                | Operation::ImportPrimerPairSpecificityHandoff { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::RenderProtocolCartoonTemplateSvg { .. }
                 | Operation::ValidateProtocolCartoonTemplate { .. }

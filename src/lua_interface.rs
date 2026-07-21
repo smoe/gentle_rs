@@ -2162,6 +2162,44 @@ mod tests {
     }
 
     #[test]
+    fn lua_apply_operation_imports_primer_specificity_handoff() {
+        let temp = tempdir().expect("tempdir");
+        let operation = crate::test_support::primer_specificity_import_adapter_fixture(temp.path());
+        let lua = LuaInterface::new();
+        lua.register_rust_functions()
+            .expect("register rust functions");
+        lua.lua()
+            .globals()
+            .set(
+                "state_in",
+                lua.lua()
+                    .to_value(&ProjectState::default())
+                    .expect("serialize project state"),
+            )
+            .expect("set project state");
+        lua.lua()
+            .globals()
+            .set(
+                "op_json",
+                serde_json::to_string(&operation).expect("serialize specificity import operation"),
+            )
+            .expect("set operation JSON");
+        lua.lua()
+            .load("out = apply_operation(state_in, op_json)")
+            .exec()
+            .expect("Lua apply_operation specificity import");
+        let out_value: Value = lua.lua().globals().get("out").expect("out value");
+        let out_json: serde_json::Value = lua
+            .lua()
+            .from_value(out_value)
+            .expect("Lua output JSON conversion");
+        assert_eq!(
+            out_json["result"]["primer_specificity_report"]["schema"].as_str(),
+            Some("gentle.primer_specificity_report.v1")
+        );
+    }
+
+    #[test]
     fn lua_sync_rebase_wrapper_writes_snapshot() {
         let td = tempdir().expect("tempdir");
         let input_path = write_demo_rebase_withrefm(td.path());

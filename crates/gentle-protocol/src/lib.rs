@@ -5187,6 +5187,8 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "DesignInsertionPrimerPairs",
     "ExportPrimerDesignReport",
     "AssessPrimerPairSpecificity",
+    "PreparePrimerPairSpecificityHandoff",
+    "ImportPrimerPairSpecificityHandoff",
     "PrepareRestrictionCloningPcrHandoff",
     "PcrOverlapExtensionMutagenesis",
     "DesignQpcrAssays",
@@ -6701,6 +6703,8 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation == "FindRestrictionSites"
         || operation == "AlignSequences"
         || operation == "AssessPrimerPairSpecificity"
+        || operation == "PreparePrimerPairSpecificityHandoff"
+        || operation == "ImportPrimerPairSpecificityHandoff"
         || operation == "TestCdnaPcr"
         || operation == "TestCdnaQpcr"
         || operation == "TestCdnaQpcrFasta"

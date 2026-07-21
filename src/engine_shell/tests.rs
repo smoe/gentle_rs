@@ -26283,12 +26283,18 @@ fn execute_introspect_capabilities_projects_full_registry_with_fact_annotations(
         }),
         "MergeContainersById should have a list-bound container-input transform descriptor"
     );
-    assert!(capabilities.iter().any(|descriptor| {
-        descriptor["id"].as_str() == Some("AssessPrimerPairSpecificity")
-            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
-            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
-            && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
-    }));
+    for id in [
+        "AssessPrimerPairSpecificity",
+        "PreparePrimerPairSpecificityHandoff",
+        "ImportPrimerPairSpecificityHandoff",
+    ] {
+        assert!(capabilities.iter().any(|descriptor| {
+            descriptor["id"].as_str() == Some(id)
+                && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+        }));
+    }
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("screenshot-window")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")

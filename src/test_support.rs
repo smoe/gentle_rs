@@ -12,7 +12,10 @@ use crate::engine::{
     RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore,
 };
 #[cfg(test)]
-use crate::engine::{Engine, Operation};
+use crate::engine::{
+    Engine, Operation, PrimerSpecificityHandoff, PrimerSpecificityHandoffCommand,
+    PrimerSpecificityInputPrimer, PrimerSpecificityPolicy, PrimerSpecificityPrimerRole,
+};
 #[cfg(test)]
 use crate::enzymes::Enzymes;
 #[cfg(test)]
@@ -52,6 +55,70 @@ pub fn transcript_assay_panel_adapter_fixture() -> (ProjectState, Operation) {
     };
     *path = None;
     (engine.state().clone(), operation)
+}
+
+#[cfg(test)]
+pub fn primer_specificity_import_adapter_fixture(root: &Path) -> Operation {
+    let forward_output = root.join("forward.tsv");
+    let reverse_output = root.join("reverse.tsv");
+    fs::write(&forward_output, "").expect("write empty forward BLAST fixture");
+    fs::write(&reverse_output, "").expect("write empty reverse BLAST fixture");
+    let handoff_path = root.join("primer_specificity_handoff.json");
+    let primer = |role: PrimerSpecificityPrimerRole, sequence: &str| PrimerSpecificityInputPrimer {
+        role,
+        full_sequence: sequence.to_string(),
+        annealing_sequence: sequence.to_string(),
+        annealing_length_bp: sequence.len(),
+        non_annealing_5prime_tail: String::new(),
+        non_annealing_5prime_tail_bp: 0,
+    };
+    let command =
+        |role: PrimerSpecificityPrimerRole, output_path: &Path| PrimerSpecificityHandoffCommand {
+            command_id: format!("{}_blast", role.as_str()),
+            role,
+            query_label: format!("{}_annealing_segment", role.as_str()),
+            query_length_bp: 20,
+            query_fasta_path: root
+                .join(format!("{}.fa", role.as_str()))
+                .to_string_lossy()
+                .to_string(),
+            output_tsv_path: output_path.to_string_lossy().to_string(),
+            program: "blastn".to_string(),
+            args: vec![],
+            command_line: "blastn".to_string(),
+            success_exit_codes: vec![0],
+        };
+    let handoff = PrimerSpecificityHandoff {
+        schema: "gentle.primer_specificity_handoff.v1".to_string(),
+        handoff_id: "adapter_specificity_handoff".to_string(),
+        bundle_dir: root.to_string_lossy().to_string(),
+        handoff_path: handoff_path.to_string_lossy().to_string(),
+        requested_target_genome_id: "GRCh38.p14".to_string(),
+        resolved_target_genome_id: "GRCh38.p14".to_string(),
+        policy: PrimerSpecificityPolicy::default(),
+        primers: vec![
+            primer(PrimerSpecificityPrimerRole::Forward, "ACGTACGTACGTACGTACGT"),
+            primer(PrimerSpecificityPrimerRole::Reverse, "CCCCCCCCCCCCCCCCCCCC"),
+        ],
+        blast_db_prefix: root.join("blastdb").to_string_lossy().to_string(),
+        commands: vec![
+            command(PrimerSpecificityPrimerRole::Forward, &forward_output),
+            command(PrimerSpecificityPrimerRole::Reverse, &reverse_output),
+        ],
+        completion_policy: "all_commands_success".to_string(),
+        import_command: vec![],
+        import_command_line: String::new(),
+        ..PrimerSpecificityHandoff::default()
+    };
+    fs::write(
+        &handoff_path,
+        serde_json::to_vec_pretty(&handoff).expect("serialize specificity handoff fixture"),
+    )
+    .expect("write specificity handoff fixture");
+    Operation::ImportPrimerPairSpecificityHandoff {
+        handoff_path: handoff_path.to_string_lossy().to_string(),
+        path: None,
+    }
 }
 #[cfg(test)]
 const DENSE_PLASMID_VISUAL_BENCHMARK: &str =

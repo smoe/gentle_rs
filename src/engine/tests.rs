@@ -8229,20 +8229,23 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
         })
         .expect("prepare toy specificity genome");
     let bundle = root.join("handoff");
-    let handoff = engine
-        .prepare_primer_pair_specificity_handoff(
-            None,
-            None,
-            None,
-            Some("ACGTACGTACGTACGTACGT"),
-            Some("CCCCCCCCCCCCCCCCCCCC"),
-            "ToyGenome",
-            PrimerSpecificityPolicy::default(),
-            Some(&catalog.to_string_lossy()),
-            None,
-            &bundle.to_string_lossy(),
-        )
-        .expect("prepare specificity handoff");
+    let handoff_result = engine
+        .apply(Operation::PreparePrimerPairSpecificityHandoff {
+            primer_report_id: None,
+            pair_rank: None,
+            pair_index: None,
+            forward_primer: Some("ACGTACGTACGTACGTACGT".to_string()),
+            reverse_primer: Some("CCCCCCCCCCCCCCCCCCCC".to_string()),
+            target_genome_id: "ToyGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            output_dir: bundle.to_string_lossy().to_string(),
+        })
+        .expect("prepare specificity handoff operation");
+    let handoff = *handoff_result
+        .primer_specificity_handoff
+        .expect("handoff operation result");
     assert_eq!(handoff.schema, "gentle.primer_specificity_handoff.v1");
     assert_eq!(handoff.completion_policy, "all_commands_success");
     assert_eq!(handoff.commands.len(), 2);
@@ -8259,20 +8262,25 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
         );
         fs::write(&command.output_tsv_path, "stale\n").expect("seed stale BLAST output");
     }
-    let replanned = engine
-        .prepare_primer_pair_specificity_handoff(
-            None,
-            None,
-            None,
-            Some("ACGTACGTACGTACGTACGT"),
-            Some("CCCCCCCCCCCCCCCCCCCC"),
-            "ToyGenome",
-            PrimerSpecificityPolicy::default(),
-            Some(&catalog.to_string_lossy()),
-            None,
-            &bundle.to_string_lossy(),
-        )
-        .expect("replan specificity handoff");
+    let replanned = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersSpecificityPlan {
+            primer_report_id: None,
+            pair_rank: None,
+            pair_index: None,
+            forward_primer: Some("ACGTACGTACGTACGTACGT".to_string()),
+            reverse_primer: Some("CCCCCCCCCCCCCCCCCCCC".to_string()),
+            target_genome_id: "ToyGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            output_dir: bundle.to_string_lossy().to_string(),
+        },
+    )
+    .expect("replan specificity handoff through shell");
+    let replanned =
+        serde_json::from_value::<PrimerSpecificityHandoff>(replanned.output["handoff"].clone())
+            .expect("replanned shell handoff output");
     assert_eq!(replanned.handoff_id, handoff.handoff_id);
     assert!(
         replanned
@@ -8303,9 +8311,17 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
         "reverse_annealing_segment\tchr1\t100\t20\t0\t0\t1\t20\t119\t100\t1e-20\t80\t100\n",
     )
     .expect("write reverse BLAST output");
+    let report_path = root.join("specificity_report.json");
     let report = engine
-        .import_primer_pair_specificity_handoff(&handoff.handoff_path)
-        .expect("import completed specificity handoff");
+        .apply(Operation::ImportPrimerPairSpecificityHandoff {
+            handoff_path: handoff.handoff_path.clone(),
+            path: Some(report_path.to_string_lossy().to_string()),
+        })
+        .expect("import completed specificity handoff operation")
+        .primer_specificity_report
+        .map(|report| *report)
+        .expect("specificity import operation result");
+    assert!(report_path.is_file());
     assert!(report.summary.specificity_pass);
     assert_eq!(report.summary.intended_amplicon_count, 1);
     assert_eq!(report.forward_hits.len(), 1);

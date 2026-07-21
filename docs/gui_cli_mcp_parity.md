@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 22 | 593 | 0 |
-| gentle_cli | 370 | 270 | 0 |
-| MCP | 75 | 420 | 48 |
-| JS | 78 | 403 | 51 |
-| Lua | 77 | 404 | 51 |
+| GUI | 22 | 595 | 0 |
+| gentle_cli | 370 | 272 | 0 |
+| MCP | 75 | 422 | 48 |
+| JS | 78 | 405 | 51 |
+| Lua | 77 | 406 | 51 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -610,6 +610,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | DesignInsertionPrimerPairs | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportPrimerDesignReport | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | AssessPrimerPairSpecificity | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| PreparePrimerPairSpecificityHandoff | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| ImportPrimerPairSpecificityHandoff | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PrepareRestrictionCloningPcrHandoff | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PcrOverlapExtensionMutagenesis | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | DesignQpcrAssays | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |

@@ -20270,6 +20270,7 @@ impl GentleEngine {
             cdna_assay_product_materialization: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
+            primer_specificity_handoff: None,
             primer_specificity_report: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
@@ -25976,6 +25977,69 @@ impl GentleEngine {
                         catalog_path.as_deref(),
                         cache_dir.as_deref(),
                     )?;
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let file = File::create(path).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create primer specificity report '{path}': {e}"
+                            ),
+
+                            cause_chain: vec![],
+                        })?;
+                        let writer = BufWriter::new(file);
+                        serde_json::to_writer_pretty(writer, &report).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not serialize primer specificity report '{path}': {e}"
+                            ),
+
+                            cause_chain: vec![],
+                        })?;
+                        result
+                            .messages
+                            .push(format!("Wrote primer specificity report to '{path}'"));
+                    }
+                    result.messages.push(report.summary.summary.clone());
+                    result.primer_specificity_report = Some(Box::new(report));
+                }
+                Operation::PreparePrimerPairSpecificityHandoff {
+                    primer_report_id,
+                    pair_rank,
+                    pair_index,
+                    forward_primer,
+                    reverse_primer,
+                    target_genome_id,
+                    policy,
+                    catalog_path,
+                    cache_dir,
+                    output_dir,
+                } => {
+                    let handoff = self.prepare_primer_pair_specificity_handoff(
+                        primer_report_id.as_deref(),
+                        pair_rank,
+                        pair_index,
+                        forward_primer.as_deref(),
+                        reverse_primer.as_deref(),
+                        &target_genome_id,
+                        policy,
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                        &output_dir,
+                    )?;
+                    result.messages.push(format!(
+                        "Prepared primer specificity handoff '{}' with {} command(s) at '{}'",
+                        handoff.handoff_id,
+                        handoff.commands.len(),
+                        handoff.handoff_path
+                    ));
+                    result.primer_specificity_handoff = Some(Box::new(handoff));
+                }
+                Operation::ImportPrimerPairSpecificityHandoff { handoff_path, path } => {
+                    let report = self.import_primer_pair_specificity_handoff(&handoff_path)?;
                     if let Some(path) = path
                         .as_deref()
                         .map(str::trim)

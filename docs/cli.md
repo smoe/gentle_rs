@@ -3475,6 +3475,11 @@ Shared shell command:
         exit rather than file size as its completion signal
       - regenerating the same deterministic handoff clears its old declared
         output TSVs, preventing a fresh run from importing stale results
+      - the plan/import convenience commands dispatch the shared
+        `PreparePrimerPairSpecificityHandoff` and
+        `ImportPrimerPairSpecificityHandoff` operations. The same operation
+        JSON is accepted by CLI `op`/`workflow`, MCP `op`, JavaScript
+        `apply_operation`, and Lua `apply_operation`
       - for a persisted transcript-assay panel, `primers
         transcript-assay-specificity-plan` emits one aggregate handoff plus a
         process-manifest template covering every selected assay and both primer

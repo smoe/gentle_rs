@@ -7540,6 +7540,17 @@ Operation progress/cancellation semantics:
 
 External BLAST handoff for wrapper-owned execution:
 
+- The handoff lifecycle is also available through the shared engine contract:
+  - `PreparePrimerPairSpecificityHandoff` returns
+    `OpResult.primer_specificity_handoff` and writes the deterministic command
+    bundle without launching `blastn`;
+  - `ImportPrimerPairSpecificityHandoff` returns
+    `OpResult.primer_specificity_report` after reading the completed declared
+    TSVs and can optionally write that report through `path`.
+  - These operation payloads can be submitted unchanged through CLI `op` or
+    `workflow`, MCP `op`, JavaScript `apply_operation`, and Lua
+    `apply_operation`; the convenience shell commands below use the same
+    operations.
 - `primers specificity-plan` resolves the same saved or explicit primer pair,
   prepared genome, BLAST database, and effective policy without launching
   `blastn`.
