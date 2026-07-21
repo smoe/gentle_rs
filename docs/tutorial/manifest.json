@@ -2129,12 +2129,13 @@
       "tier": "core",
       "guide_path": null,
       "summary": "Use one synthetic minus-strand PATZ1 locus to generate an endpoint first-end x terminal-end band matrix and a separate Clariom-JUC-directed primer-only SYBR panel, then inspect and export both persisted reports entirely from the command line.",
-      "narrative": "A multi-transcript PCR experiment has two distinct jobs. Long endpoint RT-PCR can expose transcript families as differently sized first-end x terminal-end products on a gel. Short SYBR assays can then test selected exon-exon junctions without requiring an internal hydrolysis probe. GENtle keeps both jobs in one `gentle.transcript_assay_panel.v2` contract while preserving their different assay rules.\n\nThis chapter uses a deliberately sequence-diverse, synthetic PATZ1-like locus on the minus strand. It demonstrates operation mechanics, exact mature-cDNA equivalence classes, a 10 kb endpoint ceiling, oligo-dT reverse-transcription warnings, and a required synthetic Clariom JUC junction. It does not produce orderable primers for the human PATZ1 locus and does not claim that a missing long product proves isoform absence. The canonical workflow is the deterministic reference; the direct CLI steps extract the same two operation objects and submit them unchanged through `primers design-transcript-assay-panel`.",
+      "narrative": "A multi-transcript PCR experiment has two distinct jobs. Long endpoint RT-PCR can expose transcript families as differently sized first-end x terminal-end products on a gel. Short SYBR assays can then test selected exon-exon junctions without requiring an internal hydrolysis probe. GENtle keeps both jobs in one `gentle.transcript_assay_panel.v2` contract while preserving their different assay rules.\n\nThis chapter uses a deliberately sequence-diverse, synthetic PATZ1-like locus on the minus strand. It demonstrates operation mechanics, exact mature-cDNA equivalence classes, a 10 kb endpoint ceiling, oligo-dT reverse-transcription warnings, and a required synthetic Clariom JUC junction. It does not produce orderable primers for the human PATZ1 locus and does not claim that a missing long product proves isoform absence. The canonical workflow is the deterministic reference; the direct CLI steps extract the same two operation objects and submit them unchanged through `primers design-transcript-assay-panel`.\n\nEach selected assay also records a `primers specificity-plan` follow-up template. Planning creates structured BLAST jobs but does not execute them. An external scheduler can run each returned `program` with its `args[]`, wait for exit code 0, and then call `primers specificity-import`; until that happens, `genomic_confirmation_status` remains `not_run`.",
       "use_cases": [
         "You want a command-line-only route for endpoint RT-PCR, SYBR qPCR, or TaqMan-compatible transcript-panel design.",
         "You want a first-end x terminal-end reaction matrix with predicted band sizes across every annotated mature transcript.",
         "You want short primer-only assays directed at required or preferred exon-exon junction evidence.",
         "You need to preserve every shared operation field instead of relying only on convenience flags.",
+        "You want an external scheduler to own BLAST process completion while GENtle retains deterministic specificity inputs and interpretation.",
         "You want persisted reports that can be listed, shown, exported, or consumed through MCP, JavaScript, Lua, and workflows."
       ],
       "gui_steps": [
@@ -2144,7 +2145,8 @@
         "Review Primer3 preflight only when using the external backend; the deterministic tutorial itself uses the internal backend.",
         "Inspect the endpoint reaction and band-size matrices, including the reverse-transcription-completeness warning for long 5-prime reach.",
         "Use primer-only SYBR mode with required junction evidence to mirror the second CLI operation; no probe should be created.",
-        "Inspect the persisted panel rows and export the same report JSON used by the CLI path."
+        "Inspect the persisted panel rows and export the same report JSON used by the CLI path.",
+        "Inspect the per-assay specificity handoff templates; replace `GENOME_ID` and `OUTPUT_DIR` only when a prepared reference and an external BLAST runner are available."
       ],
       "cli_steps": [
         "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json",
@@ -2153,7 +2155,8 @@
         "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers preflight --backend primer3",
         "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers design-transcript-assay-panel @/tmp/patz1_endpoint.operation.json --backend internal",
         "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers design-transcript-assay-panel @/tmp/patz1_sybr.operation.json --backend internal",
-        "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers list-transcript-assay-panels && cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_endpoint_end_matrix && cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_sybr_juc_panel /tmp/patz1_sybr_juc_panel.export.json"
+        "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers list-transcript-assay-panels && cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_endpoint_end_matrix && cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_sybr_juc_panel /tmp/patz1_sybr_juc_panel.export.json",
+        "jq '.specificity_followups' docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json"
       ],
       "step_expectations": [
         "The canonical offline workflow writes complete endpoint and SYBR `gentle.transcript_assay_panel.v2` reports from committed synthetic inputs.",
@@ -2162,7 +2165,8 @@
         "Primer3 preflight reports whether the external executable is reachable; its result does not alter the internal-backend tutorial run.",
         "The endpoint report is complete, primer-only, uses the 10,000 bp ceiling, and contains designed end reactions plus at least three distinct predicted band sizes.",
         "The SYBR report is primer-only and includes a selected assay spanning the required synthetic Clariom JUC junction.",
-        "Both report ids are persisted in the selected state; list/show/export operate without reconstructing or hand-editing the reports."
+        "Both report ids are persisted in the selected state; list/show/export operate without reconstructing or hand-editing the reports.",
+        "Every selected assay exposes a non-executing `primers specificity-plan` template, and the report honestly retains `genomic_confirmation_status: not_run` in this offline tutorial."
       ],
       "prerequisites": [
         "pcr_selection_batch_primer_pairs_offline"
@@ -2173,6 +2177,7 @@
         "Interpret exact mature-cDNA equivalence classes and transcript-by-assay product matrices conservatively.",
         "Read first-end x terminal-end reactions and predicted band sizes without treating a missing long product as proof of transcript absence.",
         "Require every supplied junction to be evaluated or returned with an explicit unresolved reason.",
+        "Separate BLAST job planning and execution from GENtle's import-time specificity interpretation.",
         "Persist, list, inspect, and export transcript assay reports from one explicit project state."
       ],
       "concepts": [
@@ -2216,6 +2221,13 @@
           "why_it_matters": "The backend override changes candidate generation while leaving the operation and report contract unchanged.",
           "how_to_derive": "Use the internal backend for this deterministic tutorial; use `primers preflight --backend primer3` before selecting Primer3 for real designs.",
           "omit_when": ""
+        },
+        {
+          "parameter": "primers specificity-plan / specificity-import",
+          "where_used": "Per-assay genomic-confirmation follow-up",
+          "why_it_matters": "The handoff lets an outer workflow own long-running BLAST processes and use their exit status as the completion signal, while GENtle remains responsible for deterministic queries, policy, provenance, and interpretation.",
+          "how_to_derive": "Generate the handoff against a prepared genome, run every returned `program` with its exact `args[]`, require exit code 0, and only then import the handoff. Do not infer completion from a non-empty output file.",
+          "omit_when": ""
         }
       ],
       "follow_up_commands": [
@@ -2224,6 +2236,7 @@
         "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_endpoint_end_matrix /tmp/patz1_endpoint_end_matrix.export.json",
         "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_sybr_juc_panel /tmp/patz1_sybr_juc_panel.export.json",
         "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers preflight --backend primer3",
+        "jq '.specificity_followups' docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json",
         "cargo run --bin gentle_examples_docs -- tutorial-check"
       ],
       "retain_outputs": [
@@ -2236,6 +2249,7 @@
         "The endpoint warnings explain that oligo-dT reverse-transcription completeness can limit long 5-prime products independently of PCR capacity.",
         "The SYBR report has `assay_kind: sybr_qpcr`, no internal probes, and a non-empty short-junction assay table.",
         "At least one SYBR junction-evaluation row has `source_kind: clariom_juc` and `status: selected_spanning_assay`.",
+        "Every selected assay has a `specificity-plan` follow-up template, while this offline run leaves genomic confirmation explicitly `not_run`.",
         "The fixture is identified as synthetic and is not presented as an order-ready human PATZ1 design.",
         "The same operation JSON remains callable through workflows, MCP `op`, JavaScript `apply_operation`, and Lua `apply_operation`."
       ]

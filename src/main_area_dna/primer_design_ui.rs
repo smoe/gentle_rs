@@ -1278,6 +1278,7 @@ impl MainAreaDna {
             )?,
             annotation_release: (!ui.annotation_release.trim().is_empty())
                 .then(|| ui.annotation_release.trim().to_string()),
+            specificity: None,
             report_id: (!ui.report_id.trim().is_empty()).then(|| ui.report_id.trim().to_string()),
             path: None,
         })

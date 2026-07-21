@@ -123,9 +123,9 @@ pub use gentle_protocol::{
     SequencingTraceChannelData, SequencingTraceChannelSummary, SequencingTraceFormat,
     SequencingTraceImportReport, SequencingTraceRecord, SequencingTraceSummary,
     SharedAssetActivityStatus, SplicingScopePreset, TfThresholdOverride, TfbsProgress,
-    TranscriptProteinDerivation, TranscriptProteinDerivationMode,
-    TranscriptProteinTranslationTableSource, TranslationSpeedMark, TranslationSpeedProfile,
-    TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
+    TranscriptAssaySpecificityRequest, TranscriptProteinDerivation,
+    TranscriptProteinDerivationMode, TranscriptProteinTranslationTableSource, TranslationSpeedMark,
+    TranslationSpeedProfile, TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
     UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
     UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
     UniprotFeatureCodingDnaSegment,
@@ -5738,6 +5738,73 @@ pub struct PrimerSpecificityReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One externally runnable BLAST command in a primer-specificity handoff.
+///
+/// `program` and `args` are authoritative. `command_line` is a copy/paste
+/// convenience and must not be reparsed by adapters when dispatching the job.
+pub struct PrimerSpecificityHandoffCommand {
+    pub command_id: String,
+    pub role: PrimerSpecificityPrimerRole,
+    pub query_label: String,
+    pub query_length_bp: usize,
+    pub query_fasta_path: String,
+    pub output_tsv_path: String,
+    pub program: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub command_line: String,
+    #[serde(default)]
+    pub success_exit_codes: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Deterministic, non-executing handoff for local primer BLAST searches.
+///
+/// An outer scheduler runs every structured command and invokes
+/// `primers specificity-import` only after each process exits successfully.
+pub struct PrimerSpecificityHandoff {
+    pub schema: String,
+    pub handoff_id: String,
+    pub bundle_dir: String,
+    pub handoff_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_rank: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_amplicon_length_bp: Option<usize>,
+    pub requested_target_genome_id: String,
+    pub resolved_target_genome_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+    #[serde(default)]
+    pub policy: PrimerSpecificityPolicy,
+    #[serde(default)]
+    pub primers: Vec<PrimerSpecificityInputPrimer>,
+    #[serde(default)]
+    pub blast_preflight: BlastExternalBinaryPreflightReport,
+    pub blast_db_prefix: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_blast_options: Option<BlastResolvedOptions>,
+    #[serde(default)]
+    pub commands: Vec<PrimerSpecificityHandoffCommand>,
+    /// Import readiness requires every command to finish with one of its
+    /// declared successful exit codes.
+    pub completion_policy: String,
+    #[serde(default)]
+    pub import_command: Vec<String>,
+    pub import_command_line: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Deterministic exact-run QC for one assay oligo.
 pub struct OligoQcOligoRecord {
     pub label: String,
@@ -7301,6 +7368,17 @@ pub struct TranscriptAssaySpecificityFollowup {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Prepared-genome BLAST assessment attached to one selected transcript assay.
+pub struct TranscriptAssayGenomicSpecificityAssessment {
+    pub assay_id: String,
+    pub assay_rank: usize,
+    pub status: String,
+    #[serde(default)]
+    pub report: PrimerSpecificityReport,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Provenance source used while resolving junction evidence.
 pub struct TranscriptAssayPanelSourceProvenance {
     pub source_kind: String,
@@ -7550,6 +7628,10 @@ pub struct TranscriptAssayPanelReport {
     pub short_sybr_junction_assays: Vec<TranscriptAssayPanelAssay>,
     #[serde(default)]
     pub order_ready_primers: Vec<TranscriptAssayOrderPrimer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specificity_request: Option<TranscriptAssaySpecificityRequest>,
+    #[serde(default)]
+    pub genomic_specificity_assessments: Vec<TranscriptAssayGenomicSpecificityAssessment>,
     #[serde(default)]
     pub specificity_followups: Vec<TranscriptAssaySpecificityFollowup>,
     #[serde(default)]

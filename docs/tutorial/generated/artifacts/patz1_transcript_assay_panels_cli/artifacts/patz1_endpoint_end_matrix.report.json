@@ -671,18 +671,19 @@
       "length_nt": 20
     }
   ],
+  "genomic_specificity_assessments": [],
   "specificity_followups": [
     {
       "assay_id": "transcript_assay_27362fde0b95ba9d",
       "local_cdna_matrix_status": "completed",
       "genomic_confirmation_status": "not_run",
-      "shell_command_template": "primers specificity --forward GGATCCGATCGTAGCCTAGC --reverse ACGATCCGTTAGCGTACCTG --target-genome GENOME_ID"
+      "shell_command_template": "primers specificity-plan --forward GGATCCGATCGTAGCCTAGC --reverse ACGATCCGTTAGCGTACCTG --target-genome GENOME_ID --output-dir OUTPUT_DIR/transcript_assay_27362fde0b95ba9d"
     },
     {
       "assay_id": "transcript_assay_46b04036f2ccda49",
       "local_cdna_matrix_status": "completed",
       "genomic_confirmation_status": "not_run",
-      "shell_command_template": "primers specificity --forward GATCCGATCGTAGCCTAGCATC --reverse ATGCCGTAGCTTACGATCCG --target-genome GENOME_ID"
+      "shell_command_template": "primers specificity-plan --forward GATCCGATCGTAGCCTAGCATC --reverse ATGCCGTAGCTTACGATCCG --target-genome GENOME_ID --output-dir OUTPUT_DIR/transcript_assay_46b04036f2ccda49"
     }
   ],
   "provenance": {

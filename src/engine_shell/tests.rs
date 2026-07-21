@@ -6382,6 +6382,42 @@ fn parse_primers_specificity_saved_report_and_explicit_pair() {
 }
 
 #[test]
+fn parse_primers_specificity_plan_and_import() {
+    let plan = parse_shell_line(
+        "primers specificity-plan --forward ACGTACGTACGTACGTAC --reverse TTTTCCCCAAAAGGGGTT --target-genome GRCh38.p14 --output-dir specificity_run --max-hits-per-primer 75",
+    )
+    .expect("parse specificity plan command");
+    match plan {
+        ShellCommand::PrimersSpecificityPlan {
+            forward_primer,
+            reverse_primer,
+            target_genome_id,
+            output_dir,
+            policy,
+            ..
+        } => {
+            assert_eq!(forward_primer.as_deref(), Some("ACGTACGTACGTACGTAC"));
+            assert_eq!(reverse_primer.as_deref(), Some("TTTTCCCCAAAAGGGGTT"));
+            assert_eq!(target_genome_id, "GRCh38.p14");
+            assert_eq!(output_dir, "specificity_run");
+            assert_eq!(policy.max_hits_per_primer, 75);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let import = parse_shell_line(
+        "primers specificity-import specificity_run/handoff.json --path specificity.json",
+    )
+    .expect("parse specificity import command");
+    assert!(matches!(
+        import,
+        ShellCommand::PrimersSpecificityImport { handoff_path, path }
+            if handoff_path == "specificity_run/handoff.json"
+                && path.as_deref() == Some("specificity.json")
+    ));
+}
+
+#[test]
 fn parse_primers_prepare_restriction_cloning_request() {
     let cmd = parse_shell_line("primers prepare-restriction-cloning @handoff_request.json")
         .expect("parse restriction-cloning handoff");
@@ -6564,7 +6600,7 @@ fn parse_primers_seed_from_feature_and_splicing() {
     ));
 
     let panel_v2 = parse_shell_line(
-        "primers design-transcript-assay-panel seq_a 17 --objective minimal-discrimination-panel --coverage-policy best-effort --min-amplicon-bp 70 --max-amplicon-bp 220 --max-assays-per-class 4 --max-mismatches 1 --require-3prime-exact-bases 8 --report-id panel_v2 --path panel_v2.json --backend internal",
+        "primers design-transcript-assay-panel seq_a 17 --objective minimal-discrimination-panel --coverage-policy best-effort --min-amplicon-bp 70 --max-amplicon-bp 220 --max-assays-per-class 4 --max-mismatches 1 --require-3prime-exact-bases 8 --specificity-check require-pass --specificity-target-genome GRCh38 --specificity-catalog genomes.json --specificity-cache-dir genome-cache --report-id panel_v2 --path panel_v2.json --backend internal",
     )
     .expect("parse transcript assay panel v2");
     assert!(matches!(
@@ -6579,6 +6615,7 @@ fn parse_primers_seed_from_feature_and_splicing() {
             max_assays_per_class,
             max_mismatches,
             require_3prime_exact_bases,
+            specificity,
             report_id,
             path,
             backend,
@@ -6592,6 +6629,12 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && max_assays_per_class == Some(4)
             && max_mismatches == Some(1)
             && require_3prime_exact_bases == Some(8)
+            && specificity.as_ref().is_some_and(|request|
+                request.policy.specificity_check == PrimerSpecificityCheckMode::RequirePass
+                    && request.policy.specificity_target_genome_id.as_deref() == Some("GRCh38")
+                    && request.catalog_path.as_deref() == Some("genomes.json")
+                    && request.cache_dir.as_deref() == Some("genome-cache")
+            )
             && report_id.as_deref() == Some("panel_v2")
             && path.as_deref() == Some("panel_v2.json")
             && backend == Some(PrimerDesignBackend::Internal)
@@ -6645,6 +6688,11 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && backend == Some(PrimerDesignBackend::Internal)
             && primer3_executable.as_deref() == Some("primer3_core")
     ));
+    let missing_specificity_target = parse_shell_line(
+        "primers design-transcript-assay-panel seq_a 17 --specificity-check require-pass",
+    )
+    .expect_err("specificity gate requires a prepared target genome");
+    assert!(missing_specificity_target.contains("--specificity-target-genome"));
     assert!(matches!(
         parse_shell_line("primers list-transcript-assay-panels")
             .expect("parse transcript panel list"),

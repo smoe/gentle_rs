@@ -7521,6 +7521,31 @@ Operation progress/cancellation semantics:
     rejection by genome-wide specificity and binding-site masks remains a
     follow-up.
 
+External BLAST handoff for wrapper-owned execution:
+
+- `primers specificity-plan` resolves the same saved or explicit primer pair,
+  prepared genome, BLAST database, and effective policy without launching
+  `blastn`.
+- It writes a deterministic `gentle.primer_specificity_handoff.v1` bundle with:
+  - one query FASTA and one structured command for each primer;
+  - authoritative `program` plus `args[]` fields (the rendered `command_line`
+    is convenience text only);
+  - explicit `-out` paths, accepted exit code `0`, database identity, resolved
+    genome/catalog/cache provenance, policy, an
+    `all_commands_success` completion policy, and an import command.
+- An outer scheduler owns process lifetime and completion. It should run both
+  commands, require a successful exit code, and only then call
+  `primers specificity-import HANDOFF.json`.
+- Replanning the same deterministic handoff removes its previously declared
+  output TSVs before returning, so a fresh plan cannot silently reuse stale
+  BLAST results.
+- Import requires the declared output files but does not infer process state
+  from their size: an empty BLAST TSV is a valid no-hit result. It parses the
+  completed outputs and applies the same hit, amplicon, and pass/fail logic as
+  the inline `AssessPrimerPairSpecificity` path.
+- GENtle never executes a `command_line` read from a handoff. Adapters should
+  dispatch the stored `program` and `args[]` directly.
+
 Simple PCR constraint handoff:
 
 - ClawBio should treat a simple PCR request as four explicit constraints before

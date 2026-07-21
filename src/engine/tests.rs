@@ -8127,6 +8127,186 @@ fn primer_specificity_pairs_forward_reverse_and_same_primer_warning_products() {
     assert_eq!(same_primer_warning.end_1based, 719);
 }
 
+#[cfg(unix)]
+#[test]
+fn primer_specificity_handoff_plans_without_running_and_imports_completed_outputs() {
+    let _env_lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let temp = tempdir().expect("temporary specificity handoff directory");
+    let root = temp.path();
+    let fasta = root.join("toy.fa");
+    let annotation = root.join("toy.gtf");
+    let cache = root.join("cache");
+    let catalog = root.join("catalog.json");
+    let mut chromosome = vec![b'A'; 220];
+    chromosome[9..29].copy_from_slice(b"ACGTACGTACGTACGTACGT");
+    chromosome[99..119].copy_from_slice(b"GGGGGGGGGGGGGGGGGGGG");
+    fs::write(
+        &fasta,
+        format!(
+            ">chr1\n{}\n",
+            String::from_utf8(chromosome).expect("ASCII chromosome")
+        ),
+    )
+    .expect("write toy FASTA");
+    fs::write(
+        &annotation,
+        "chr1\ttest\tgene\t1\t220\t.\t+\t.\tgene_id \"TOY1\"; gene_name \"TOY1\";\n",
+    )
+    .expect("write toy annotation");
+    fs::write(
+        &catalog,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "primer specificity handoff fixture",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            annotation.display(),
+            cache.display()
+        ),
+    )
+    .expect("write toy catalog");
+
+    let fake_makeblastdb = root.join("fake_makeblastdb.sh");
+    fs::write(
+        &fake_makeblastdb,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'makeblastdb: fake 1.0'; exit 0; fi\nout=''\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = '-out' ]; then out=\"$2\"; shift 2; else shift; fi\ndone\nmkdir -p \"$(dirname \"$out\")\"\nprintf nhr > \"${out}.nhr\"\nprintf nin > \"${out}.nin\"\nprintf nsq > \"${out}.nsq\"\n",
+    )
+    .expect("write fake makeblastdb");
+    let mut permissions = fs::metadata(&fake_makeblastdb)
+        .expect("fake makeblastdb metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_makeblastdb, permissions).expect("make fake makeblastdb executable");
+    let blast_was_run = root.join("blast_was_run");
+    let fake_blastn = root.join("fake_blastn.sh");
+    fs::write(
+        &fake_blastn,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastn: fake 1.0'; exit 0; fi\nprintf ran > '{}'\nexit 99\n",
+            blast_was_run.display()
+        ),
+    )
+    .expect("write fake blastn");
+    let mut permissions = fs::metadata(&fake_blastn)
+        .expect("fake blastn metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_blastn, permissions).expect("make fake blastn executable");
+    let _makeblastdb = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        &fake_makeblastdb.to_string_lossy(),
+    );
+    let _blastn = EnvVarGuard::set(
+        crate::genomes::BLASTN_ENV_BIN,
+        &fake_blastn.to_string_lossy(),
+    );
+
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare toy specificity genome");
+    let bundle = root.join("handoff");
+    let handoff = engine
+        .prepare_primer_pair_specificity_handoff(
+            None,
+            None,
+            None,
+            Some("ACGTACGTACGTACGTACGT"),
+            Some("CCCCCCCCCCCCCCCCCCCC"),
+            "ToyGenome",
+            PrimerSpecificityPolicy::default(),
+            Some(&catalog.to_string_lossy()),
+            None,
+            &bundle.to_string_lossy(),
+        )
+        .expect("prepare specificity handoff");
+    assert_eq!(handoff.schema, "gentle.primer_specificity_handoff.v1");
+    assert_eq!(handoff.completion_policy, "all_commands_success");
+    assert_eq!(handoff.commands.len(), 2);
+    assert!(!blast_was_run.exists(), "planning must not launch blastn");
+    assert!(Path::new(&handoff.handoff_path).is_file());
+    for command in &handoff.commands {
+        assert!(Path::new(&command.query_fasta_path).is_file());
+        assert!(!Path::new(&command.output_tsv_path).exists());
+        assert!(
+            command
+                .args
+                .windows(2)
+                .any(|row| row[0] == "-out" && row[1] == command.output_tsv_path)
+        );
+        fs::write(&command.output_tsv_path, "stale\n").expect("seed stale BLAST output");
+    }
+    let replanned = engine
+        .prepare_primer_pair_specificity_handoff(
+            None,
+            None,
+            None,
+            Some("ACGTACGTACGTACGTACGT"),
+            Some("CCCCCCCCCCCCCCCCCCCC"),
+            "ToyGenome",
+            PrimerSpecificityPolicy::default(),
+            Some(&catalog.to_string_lossy()),
+            None,
+            &bundle.to_string_lossy(),
+        )
+        .expect("replan specificity handoff");
+    assert_eq!(replanned.handoff_id, handoff.handoff_id);
+    assert!(
+        replanned
+            .commands
+            .iter()
+            .all(|command| !Path::new(&command.output_tsv_path).exists()),
+        "replanning must invalidate stale BLAST outputs"
+    );
+    let handoff = replanned;
+
+    let forward = handoff
+        .commands
+        .iter()
+        .find(|command| command.role == PrimerSpecificityPrimerRole::Forward)
+        .expect("forward command");
+    let reverse = handoff
+        .commands
+        .iter()
+        .find(|command| command.role == PrimerSpecificityPrimerRole::Reverse)
+        .expect("reverse command");
+    fs::write(
+        &forward.output_tsv_path,
+        "forward_annealing_segment\tchr1\t100\t20\t0\t0\t1\t20\t10\t29\t1e-20\t80\t100\n",
+    )
+    .expect("write forward BLAST output");
+    fs::write(
+        &reverse.output_tsv_path,
+        "reverse_annealing_segment\tchr1\t100\t20\t0\t0\t1\t20\t119\t100\t1e-20\t80\t100\n",
+    )
+    .expect("write reverse BLAST output");
+    let report = engine
+        .import_primer_pair_specificity_handoff(&handoff.handoff_path)
+        .expect("import completed specificity handoff");
+    assert!(report.summary.specificity_pass);
+    assert_eq!(report.summary.intended_amplicon_count, 1);
+    assert_eq!(report.forward_hits.len(), 1);
+    assert_eq!(report.reverse_hits.len(), 1);
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("did not launch or monitor"))
+    );
+}
+
 #[test]
 fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
     let engine = cdna_assay_test_engine();
@@ -9073,6 +9253,7 @@ fn transcript_assay_panel_operation(
         min_3prime_junction_overlap_bp: None,
         min_5prime_junction_overlap_bp: None,
         annotation_release: None,
+        specificity: None,
         report_id: Some(report_id.to_string()),
         path: None,
     }
@@ -9250,6 +9431,7 @@ fn transcript_assay_panel_does_not_equate_one_base_near_matches() {
             min_3prime_junction_overlap_bp: None,
             min_5prime_junction_overlap_bp: None,
             annotation_release: None,
+            specificity: None,
             report_id: Some("near_match_classes".to_string()),
             path: None,
         })
@@ -9334,6 +9516,7 @@ fn transcript_assay_endpoint_end_matrix_is_primer_only_and_warns_for_oligo_dt() 
             min_3prime_junction_overlap_bp: None,
             min_5prime_junction_overlap_bp: None,
             annotation_release: Some("synthetic-test".to_string()),
+            specificity: None,
             report_id: Some("endpoint_end_matrix".to_string()),
             path: None,
         })
@@ -9459,6 +9642,7 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
             min_3prime_junction_overlap_bp: Some(4),
             min_5prime_junction_overlap_bp: Some(7),
             annotation_release: Some("synthetic GRCh38.p14 fixture".to_string()),
+            specificity: None,
             report_id: Some("patz1_sybr_juc".to_string()),
             path: None,
         })
@@ -9544,6 +9728,7 @@ fn transcript_assay_primer3_emits_native_junction_overlap_tags() {
             min_3prime_junction_overlap_bp: Some(5),
             min_5prime_junction_overlap_bp: Some(8),
             annotation_release: Some("synthetic-test".to_string()),
+            specificity: None,
             report_id: Some("primer3_junction_tags".to_string()),
             path: None,
         })
@@ -9629,6 +9814,7 @@ fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
             min_3prime_junction_overlap_bp: None,
             min_5prime_junction_overlap_bp: None,
             annotation_release: Some("synthetic-long-transcript".to_string()),
+            specificity: None,
             report_id: Some("long_endpoint_10kb".to_string()),
             path: None,
         })
@@ -9687,6 +9873,7 @@ fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
             min_3prime_junction_overlap_bp: None,
             min_5prime_junction_overlap_bp: None,
             annotation_release: None,
+            specificity: None,
             report_id: Some("over_ceiling".to_string()),
             path: None,
         })

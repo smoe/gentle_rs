@@ -81,7 +81,7 @@ const HTTP_RETRY_ATTEMPTS: usize = 4;
 const HTTP_RETRY_BASE_BACKOFF_MS: u64 = 1000;
 const HTTP_CONNECT_TIMEOUT_SECS: u64 = 20;
 const HTTP_READ_TIMEOUT_SECS: u64 = 120;
-const BLASTN_OUTFMT_FIELDS: &str =
+pub(crate) const BLASTN_OUTFMT_FIELDS: &str =
     "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs";
 const PREPARE_CANCELLED_BY_CALLER: &str = "Genome preparation cancelled by caller";
 const BLAST_CANCELLED_BY_CALLER: &str = "BLAST search cancelled by caller";
@@ -10251,7 +10251,7 @@ fn normalize_blast_query_sequence(raw: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
-fn parse_blastn_tabular_hits(stdout: &str) -> (Vec<BlastHit>, Vec<String>) {
+pub(crate) fn parse_blastn_tabular_hits(stdout: &str) -> (Vec<BlastHit>, Vec<String>) {
     let mut hits: Vec<BlastHit> = vec![];
     let mut warnings: Vec<String> = vec![];
     for (idx, line) in stdout.lines().enumerate() {

@@ -9,6 +9,8 @@
 //! - state mutations, `OpResult` messages, and journal side effects
 //! - cross-cutting operation glue that does not belong in adapter code
 
+use std::fs;
+
 use super::*;
 use crate::engine::sequence_ops::{Primer3PairDesignOptions, PrimerDesignProgressContext};
 use crate::{
@@ -19,7 +21,10 @@ use crate::{
         ExonCodingFrameCue, ExonLengthFrameCue, exon_cds_phase_cues,
         intron_length_between_exons_0based, phase_entry_kind, transcript_entry_phase,
     },
-    genomes::{BlastHit, default_catalog_discovery_label, default_catalog_discovery_token},
+    genomes::{
+        BLASTN_OUTFMT_FIELDS, BlastHit, GenomeBlastReport, default_catalog_discovery_label,
+        default_catalog_discovery_token, parse_blastn_tabular_hits,
+    },
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
     protein_gel::{
         Protein2dGelSpot, ProteinGelGroup, ProteinGelSample, build_grouped_protein_gel_layout,
@@ -10045,47 +10050,10 @@ impl GentleEngine {
         forward_primer: Option<&str>,
         reverse_primer: Option<&str>,
         target_genome_id: &str,
-        mut policy: PrimerSpecificityPolicy,
+        policy: PrimerSpecificityPolicy,
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
     ) -> Result<PrimerSpecificityReport, EngineError> {
-        let target_genome_id = target_genome_id.trim();
-        if target_genome_id.is_empty() {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: "AssessPrimerPairSpecificity requires target_genome_id".to_string(),
-
-                cause_chain: vec![],
-            });
-        }
-        if policy.max_hits_per_primer == 0 {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: "max_hits_per_primer must be >= 1".to_string(),
-
-                cause_chain: vec![],
-            });
-        }
-        if policy.max_target_amplicon_bp == 0 {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: "max_target_amplicon_bp must be >= 1".to_string(),
-
-                cause_chain: vec![],
-            });
-        }
-        if !(0.0..=1.0).contains(&policy.min_primer_coverage_fraction) {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: "min_primer_coverage_fraction must be between 0.0 and 1.0".to_string(),
-
-                cause_chain: vec![],
-            });
-        }
-        if policy.specificity_target_genome_id.is_none() {
-            policy.specificity_target_genome_id = Some(target_genome_id.to_string());
-        }
-
         let resolved_input = self.resolve_primer_specificity_input(
             primer_report_id,
             pair_rank,
@@ -10093,10 +10061,550 @@ impl GentleEngine {
             forward_primer,
             reverse_primer,
         )?;
+        self.assess_primer_pair_specificity_resolved(
+            resolved_input,
+            target_genome_id,
+            policy,
+            catalog_path,
+            cache_dir,
+        )
+    }
+
+    fn assess_primer_design_pair_specificity(
+        &self,
+        pair: &PrimerDesignPairRecord,
+        target_genome_id: &str,
+        policy: PrimerSpecificityPolicy,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<PrimerSpecificityReport, EngineError> {
+        let resolved_input = PrimerSpecificityResolvedInput {
+            primer_report_id: None,
+            pair_rank: Some(pair.rank),
+            pair_index: None,
+            expected_amplicon_length_bp: Some(pair.amplicon_length_bp),
+            forward: Self::primer_specificity_input_from_record(
+                PrimerSpecificityPrimerRole::Forward,
+                &pair.forward,
+            )?,
+            reverse: Self::primer_specificity_input_from_record(
+                PrimerSpecificityPrimerRole::Reverse,
+                &pair.reverse,
+            )?,
+        };
+        self.assess_primer_pair_specificity_resolved(
+            resolved_input,
+            target_genome_id,
+            policy,
+            catalog_path,
+            cache_dir,
+        )
+    }
+
+    fn normalize_primer_specificity_policy(
+        target_genome_id: &str,
+        mut policy: PrimerSpecificityPolicy,
+    ) -> Result<(String, PrimerSpecificityPolicy), EngineError> {
+        let target_genome_id = target_genome_id.trim().to_string();
+        if target_genome_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Primer specificity requires target_genome_id".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        if policy.max_hits_per_primer == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "max_hits_per_primer must be >= 1".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        if policy.max_target_amplicon_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "max_target_amplicon_bp must be >= 1".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        if !(0.0..=1.0).contains(&policy.min_primer_coverage_fraction) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "min_primer_coverage_fraction must be between 0.0 and 1.0".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        if policy.specificity_target_genome_id.is_none() {
+            policy.specificity_target_genome_id = Some(target_genome_id.clone());
+        }
+        Ok((target_genome_id, policy))
+    }
+
+    fn primer_specificity_shell_quote(raw: &str) -> String {
+        if !raw.is_empty()
+            && raw
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"_./:@%+=,-".contains(&byte))
+        {
+            return raw.to_string();
+        }
+        format!("'{}'", raw.replace('\'', "'\\''"))
+    }
+
+    fn primer_specificity_command_line(program: &str, args: &[String]) -> String {
+        std::iter::once(program)
+            .chain(args.iter().map(String::as_str))
+            .map(Self::primer_specificity_shell_quote)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_primer_pair_specificity_handoff(
+        &self,
+        primer_report_id: Option<&str>,
+        pair_rank: Option<usize>,
+        pair_index: Option<usize>,
+        forward_primer: Option<&str>,
+        reverse_primer: Option<&str>,
+        target_genome_id: &str,
+        policy: PrimerSpecificityPolicy,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        output_dir: &str,
+    ) -> Result<PrimerSpecificityHandoff, EngineError> {
+        let resolved_input = self.resolve_primer_specificity_input(
+            primer_report_id,
+            pair_rank,
+            pair_index,
+            forward_primer,
+            reverse_primer,
+        )?;
+        self.prepare_primer_specificity_handoff_resolved(
+            resolved_input,
+            target_genome_id,
+            policy,
+            catalog_path,
+            cache_dir,
+            output_dir,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_primer_specificity_handoff_resolved(
+        &self,
+        resolved_input: PrimerSpecificityResolvedInput,
+        target_genome_id: &str,
+        policy: PrimerSpecificityPolicy,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        output_dir: &str,
+    ) -> Result<PrimerSpecificityHandoff, EngineError> {
+        let (target_genome_id, policy) =
+            Self::normalize_primer_specificity_policy(target_genome_id, policy)?;
+        let output_dir = output_dir.trim();
+        if output_dir.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Primer specificity handoff requires a non-empty output_dir".to_string(),
+                cause_chain: vec![],
+            });
+        }
+
+        let (catalog, resolved_catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        let resolution = catalog
+            .resolve_prepared_genome_id(
+                &target_genome_id,
+                cache_dir.map(str::trim).filter(|value| !value.is_empty()),
+            )
+            .map_err(|error| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not resolve prepared genome '{}' for primer specificity handoff: {}",
+                    target_genome_id, error
+                ),
+                cause_chain: vec![],
+            })?;
+        let inspection = catalog
+            .inspect_prepared_genome(
+                &resolution.resolved_genome_id,
+                cache_dir.map(str::trim).filter(|value| !value.is_empty()),
+            )
+            .map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not inspect prepared genome '{}' for primer specificity handoff: {}",
+                    resolution.resolved_genome_id, error
+                ),
+                cause_chain: vec![],
+            })?
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Prepared genome '{}' has no install manifest",
+                    resolution.resolved_genome_id
+                ),
+                cause_chain: vec![],
+            })?;
+        if !inspection.blast_index_ready {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Prepared genome '{}' has no ready BLAST index; prepare or reindex it before creating the handoff",
+                    resolution.resolved_genome_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let blast_db_prefix = inspection
+            .blast_db_prefix
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Prepared genome '{}' does not declare a BLAST database prefix",
+                    resolution.resolved_genome_id
+                ),
+                cause_chain: vec![],
+            })?;
+        let effective_options = self.resolve_blast_options_for_request(
+            None,
+            Some("blastn-short"),
+            Some(policy.max_hits_per_primer),
+        )?;
+        let identity = serde_json::to_string(&json!({
+            "primer_report_id": resolved_input.primer_report_id,
+            "pair_rank": resolved_input.pair_rank,
+            "pair_index": resolved_input.pair_index,
+            "expected_amplicon_length_bp": resolved_input.expected_amplicon_length_bp,
+            "requested_target_genome_id": target_genome_id,
+            "resolved_target_genome_id": resolution.resolved_genome_id,
+            "policy": policy,
+            "forward": resolved_input.forward,
+            "reverse": resolved_input.reverse,
+        }))
+        .map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not identify primer specificity handoff: {error}"),
+            cause_chain: vec![],
+        })?;
+        let handoff_id = short_sha256_id("primer_specificity_handoff", &identity);
+
+        let requested_bundle_dir = PathBuf::from(output_dir);
+        fs::create_dir_all(&requested_bundle_dir).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create primer specificity handoff directory '{}': {}",
+                requested_bundle_dir.display(),
+                error
+            ),
+            cause_chain: vec![],
+        })?;
+        let bundle_dir = fs::canonicalize(&requested_bundle_dir).unwrap_or(requested_bundle_dir);
+        let handoff_path = bundle_dir.join(format!("{handoff_id}.json"));
+        let blast_preflight = self.blast_external_binary_preflight_report();
+        let program = if blast_preflight.blastn.executable.trim().is_empty() {
+            "blastn".to_string()
+        } else {
+            blast_preflight.blastn.executable.clone()
+        };
+
+        let mut commands = vec![];
+        for primer in [&resolved_input.forward, &resolved_input.reverse] {
+            let role = primer.role.as_str();
+            let query_label = format!("{role}_annealing_segment");
+            let query_fasta_path = bundle_dir.join(format!("{handoff_id}.{role}.fa"));
+            let output_tsv_path = bundle_dir.join(format!("{handoff_id}.{role}.blast.tsv"));
+            match fs::remove_file(&output_tsv_path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not clear stale primer specificity output '{}': {}",
+                            output_tsv_path.display(),
+                            error
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+            }
+            fs::write(
+                &query_fasta_path,
+                format!(">{}\n{}\n", query_label, primer.annealing_sequence),
+            )
+            .map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not write primer specificity query '{}': {}",
+                    query_fasta_path.display(),
+                    error
+                ),
+                cause_chain: vec![],
+            })?;
+            let query_fasta_path = query_fasta_path.to_string_lossy().to_string();
+            let output_tsv_path = output_tsv_path.to_string_lossy().to_string();
+            let args = vec![
+                "-db".to_string(),
+                blast_db_prefix.clone(),
+                "-query".to_string(),
+                query_fasta_path.clone(),
+                "-task".to_string(),
+                effective_options.task.clone(),
+                "-outfmt".to_string(),
+                BLASTN_OUTFMT_FIELDS.to_string(),
+                "-max_target_seqs".to_string(),
+                effective_options.max_hits.to_string(),
+                "-out".to_string(),
+                output_tsv_path.clone(),
+            ];
+            commands.push(PrimerSpecificityHandoffCommand {
+                command_id: format!("{handoff_id}:{role}"),
+                role: primer.role,
+                query_label,
+                query_length_bp: primer.annealing_sequence.len(),
+                query_fasta_path,
+                output_tsv_path,
+                program: program.clone(),
+                command_line: Self::primer_specificity_command_line(&program, &args),
+                args,
+                success_exit_codes: vec![0],
+            });
+        }
+
+        let handoff_path_text = handoff_path.to_string_lossy().to_string();
+        let import_command = vec![
+            "primers".to_string(),
+            "specificity-import".to_string(),
+            handoff_path_text.clone(),
+        ];
+        let mut warnings = vec![
+            "No BLAST process was started. The caller owns scheduling, process completion, and successful exit-code checks before import.".to_string(),
+        ];
+        if let Some(warning) = resolution.fallback_warning {
+            warnings.push(warning);
+        }
+        if !blast_preflight.blastn.found {
+            warnings.push(format!(
+                "The planned blastn executable '{}' was not found during local preflight; the execution environment must provide it or regenerate the handoff with GENTLE_BLASTN_BIN set.",
+                program
+            ));
+        }
+        let handoff = PrimerSpecificityHandoff {
+            schema: PRIMER_SPECIFICITY_HANDOFF_SCHEMA.to_string(),
+            handoff_id,
+            bundle_dir: bundle_dir.to_string_lossy().to_string(),
+            handoff_path: handoff_path_text,
+            primer_report_id: resolved_input.primer_report_id,
+            pair_rank: resolved_input.pair_rank,
+            pair_index: resolved_input.pair_index,
+            expected_amplicon_length_bp: resolved_input.expected_amplicon_length_bp,
+            requested_target_genome_id: target_genome_id,
+            resolved_target_genome_id: resolution.resolved_genome_id,
+            catalog_path: Some(resolved_catalog_path),
+            cache_dir: cache_dir
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            policy,
+            primers: vec![resolved_input.forward, resolved_input.reverse],
+            blast_preflight,
+            blast_db_prefix,
+            effective_blast_options: Some(effective_options),
+            commands,
+            completion_policy: "all_commands_success".to_string(),
+            import_command_line: import_command
+                .iter()
+                .map(|token| Self::primer_specificity_shell_quote(token))
+                .collect::<Vec<_>>()
+                .join(" "),
+            import_command,
+            warnings,
+        };
+        let writer = BufWriter::new(File::create(&handoff_path).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create primer specificity handoff '{}': {}",
+                handoff_path.display(),
+                error
+            ),
+            cause_chain: vec![],
+        })?);
+        serde_json::to_writer_pretty(writer, &handoff).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not serialize primer specificity handoff '{}': {}",
+                handoff_path.display(),
+                error
+            ),
+            cause_chain: vec![],
+        })?;
+        Ok(handoff)
+    }
+
+    fn primer_specificity_blast_from_handoff(
+        handoff: &PrimerSpecificityHandoff,
+        command: &PrimerSpecificityHandoffCommand,
+    ) -> Result<GenomeBlastReport, EngineError> {
+        let output = fs::read_to_string(&command.output_tsv_path).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not read completed BLAST output '{}' for command '{}': {}. Run the structured command successfully before importing the handoff.",
+                command.output_tsv_path, command.command_id, error
+            ),
+            cause_chain: vec![],
+        })?;
+        let (hits, warnings) = parse_blastn_tabular_hits(&output);
+        let effective =
+            handoff
+                .effective_blast_options
+                .clone()
+                .unwrap_or_else(|| BlastResolvedOptions {
+                    task: "blastn-short".to_string(),
+                    max_hits: handoff.policy.max_hits_per_primer,
+                    thresholds: BlastThresholdOptions::default(),
+                });
+        let mut report = GenomeBlastReport {
+            genome_id: handoff.resolved_target_genome_id.clone(),
+            query_length: command.query_length_bp,
+            max_hits: effective.max_hits,
+            task: effective.task.clone(),
+            blastn_executable: command.program.clone(),
+            blast_db_prefix: handoff.blast_db_prefix.clone(),
+            command: command.args.clone(),
+            hit_count: hits.len(),
+            hits,
+            warnings,
+            stderr: String::new(),
+            options_override_json: None,
+            effective_options_json: serde_json::to_value(&effective).ok(),
+        };
+        Self::apply_blast_thresholds_to_report(&mut report, &effective.thresholds)?;
+        Ok(report)
+    }
+
+    pub fn import_primer_pair_specificity_handoff(
+        &self,
+        handoff_path: &str,
+    ) -> Result<PrimerSpecificityReport, EngineError> {
+        let handoff_path = handoff_path.trim();
+        if handoff_path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "primers specificity-import requires HANDOFF.json".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let text = fs::read_to_string(handoff_path).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not read primer specificity handoff '{}': {}",
+                handoff_path, error
+            ),
+            cause_chain: vec![],
+        })?;
+        let handoff = serde_json::from_str::<PrimerSpecificityHandoff>(&text).map_err(|error| {
+            EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not parse primer specificity handoff '{}': {}",
+                    handoff_path, error
+                ),
+                cause_chain: vec![],
+            }
+        })?;
+        if handoff.schema != PRIMER_SPECIFICITY_HANDOFF_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported primer specificity handoff schema '{}' (expected '{}')",
+                    handoff.schema, PRIMER_SPECIFICITY_HANDOFF_SCHEMA
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let primer_for_role = |role| {
+            handoff
+                .primers
+                .iter()
+                .find(|primer| primer.role == role)
+                .cloned()
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer specificity handoff '{}' has no {} primer",
+                        handoff.handoff_id,
+                        role.as_str()
+                    ),
+                    cause_chain: vec![],
+                })
+        };
+        let command_for_role = |role| {
+            handoff
+                .commands
+                .iter()
+                .find(|command| command.role == role)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer specificity handoff '{}' has no {} BLAST command",
+                        handoff.handoff_id,
+                        role.as_str()
+                    ),
+                    cause_chain: vec![],
+                })
+        };
+        let forward = primer_for_role(PrimerSpecificityPrimerRole::Forward)?;
+        let reverse = primer_for_role(PrimerSpecificityPrimerRole::Reverse)?;
+        let forward_blast = Self::primer_specificity_blast_from_handoff(
+            &handoff,
+            command_for_role(PrimerSpecificityPrimerRole::Forward)?,
+        )?;
+        let reverse_blast = Self::primer_specificity_blast_from_handoff(
+            &handoff,
+            command_for_role(PrimerSpecificityPrimerRole::Reverse)?,
+        )?;
+        let resolved_input = PrimerSpecificityResolvedInput {
+            primer_report_id: handoff.primer_report_id.clone(),
+            pair_rank: handoff.pair_rank,
+            pair_index: handoff.pair_index,
+            expected_amplicon_length_bp: handoff.expected_amplicon_length_bp,
+            forward,
+            reverse,
+        };
+        self.primer_specificity_report_from_blast_reports(
+            resolved_input,
+            &handoff.requested_target_genome_id,
+            handoff.policy,
+            handoff.catalog_path.as_deref(),
+            handoff.cache_dir.as_deref(),
+            handoff.blast_preflight,
+            forward_blast,
+            reverse_blast,
+            vec![format!(
+                "Imported externally executed BLAST outputs from handoff '{}'; GENtle did not launch or monitor those processes.",
+                handoff.handoff_id
+            )],
+        )
+    }
+
+    fn assess_primer_pair_specificity_resolved(
+        &self,
+        resolved_input: PrimerSpecificityResolvedInput,
+        target_genome_id: &str,
+        policy: PrimerSpecificityPolicy,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<PrimerSpecificityReport, EngineError> {
+        let (target_genome_id, policy) =
+            Self::normalize_primer_specificity_policy(target_genome_id, policy)?;
+
         let blast_preflight = self.blast_external_binary_preflight_report();
         let forward_blast = self.blast_reference_genome_with_project_and_request_options(
             catalog_path,
-            target_genome_id,
+            &target_genome_id,
             &resolved_input.forward.annealing_sequence,
             None,
             Some("blastn-short"),
@@ -10105,15 +10613,40 @@ impl GentleEngine {
         )?;
         let reverse_blast = self.blast_reference_genome_with_project_and_request_options(
             catalog_path,
-            target_genome_id,
+            &target_genome_id,
             &resolved_input.reverse.annealing_sequence,
             None,
             Some("blastn-short"),
             Some(policy.max_hits_per_primer),
             cache_dir,
         )?;
+        self.primer_specificity_report_from_blast_reports(
+            resolved_input,
+            &target_genome_id,
+            policy,
+            catalog_path,
+            cache_dir,
+            blast_preflight,
+            forward_blast,
+            reverse_blast,
+            vec![],
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn primer_specificity_report_from_blast_reports(
+        &self,
+        resolved_input: PrimerSpecificityResolvedInput,
+        target_genome_id: &str,
+        policy: PrimerSpecificityPolicy,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        blast_preflight: BlastExternalBinaryPreflightReport,
+        forward_blast: GenomeBlastReport,
+        reverse_blast: GenomeBlastReport,
+        mut warnings: Vec<String>,
+    ) -> Result<PrimerSpecificityReport, EngineError> {
         let (catalog, resolved_catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
-        let mut warnings = vec![];
         if policy.avoid_known_variants || policy.avoid_rmsk_repeats || policy.avoid_low_complexity {
             warnings.push(
                 "Primer binding-site mask policy was recorded in the specificity report; v1 local BLAST confirmation does not yet reject hits by variant/repeat/low-complexity masks."
@@ -10141,7 +10674,7 @@ impl GentleEngine {
             .map(|(idx, hit)| {
                 Self::primer_specificity_hit_from_blast(
                     &catalog,
-                    target_genome_id,
+                    &forward_blast.genome_id,
                     cache_dir,
                     PrimerSpecificityPrimerRole::Forward,
                     idx,
@@ -10159,7 +10692,7 @@ impl GentleEngine {
             .map(|(idx, hit)| {
                 Self::primer_specificity_hit_from_blast(
                     &catalog,
-                    target_genome_id,
+                    &reverse_blast.genome_id,
                     cache_dir,
                     PrimerSpecificityPrimerRole::Reverse,
                     idx,
@@ -13545,6 +14078,7 @@ impl GentleEngine {
         min_3prime_junction_overlap_bp: Option<usize>,
         min_5prime_junction_overlap_bp: Option<usize>,
         annotation_release: Option<String>,
+        specificity: Option<TranscriptAssaySpecificityRequest>,
         report_id: Option<String>,
         path: Option<String>,
     ) -> Result<(), EngineError> {
@@ -14394,13 +14928,14 @@ impl GentleEngine {
                 .iter()
                 .enumerate()
                 .filter_map(|(group_index, evaluation)| {
-                    (evaluation.status == TranscriptAssayDetectionStatus::SingleProduct)
-                        .then(|| {
+                    (evaluation.status == TranscriptAssayDetectionStatus::SingleProduct).then(
+                        || {
                             equivalence_groups[group_index]
                                 .report
                                 .equivalence_group_id
                                 .clone()
-                        })
+                        },
+                    )
                 })
                 .collect::<Vec<_>>();
             selected_assays.push(TranscriptAssayPanelAssay {
@@ -14644,15 +15179,111 @@ impl GentleEngine {
                 });
             }
         }
+        let mut genomic_specificity_assessments = vec![];
+        if let Some(request) = specificity.as_ref()
+            && request.policy.specificity_check != PrimerSpecificityCheckMode::None
+        {
+            let target_genome_id = request
+                .policy
+                .specificity_target_genome_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "Transcript assay specificity requires specificity_target_genome_id when specificity_check is report_only or require_pass"
+                        .to_string(),
+                    cause_chain: vec![],
+                })?;
+            for assay in &selected_assays {
+                let report = self
+                    .assess_primer_design_pair_specificity(
+                        &assay.primer_pair,
+                        target_genome_id,
+                        request.policy.clone(),
+                        request.catalog_path.as_deref(),
+                        request.cache_dir.as_deref(),
+                    )
+                    .map_err(|error| EngineError {
+                        code: error.code,
+                        message: format!(
+                            "Local BLAST specificity assessment failed for transcript assay '{}': {}",
+                            assay.assay_id, error.message
+                        ),
+                        cause_chain: error.cause_chain,
+                    })?;
+                genomic_specificity_assessments.push(TranscriptAssayGenomicSpecificityAssessment {
+                    assay_id: assay.assay_id.clone(),
+                    assay_rank: assay.rank,
+                    status: if report.summary.specificity_pass {
+                        "local_blast_pass".to_string()
+                    } else {
+                        "local_blast_fail".to_string()
+                    },
+                    report,
+                });
+            }
+            let failing = genomic_specificity_assessments
+                .iter()
+                .filter(|assessment| !assessment.report.summary.specificity_pass)
+                .map(|assessment| {
+                    format!(
+                        "{} ({})",
+                        assessment.assay_id, assessment.report.summary.summary
+                    )
+                })
+                .collect::<Vec<_>>();
+            if request.policy.specificity_check == PrimerSpecificityCheckMode::RequirePass
+                && !failing.is_empty()
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Transcript assay panel local BLAST specificity gate rejected {} selected assay(s); no panel was persisted: {}",
+                        failing.len(),
+                        failing.join("; ")
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            if !failing.is_empty() {
+                warnings.push(format!(
+                    "Local BLAST report_only specificity found {} selected assay(s) that do not pass the configured policy: {}",
+                    failing.len(),
+                    failing.join("; ")
+                ));
+            }
+            warnings.push(
+                "Local BLAST confirmation is genomic sequence evidence; independent e-PCR/Primer-BLAST review remains a separate optional confirmation step."
+                    .to_string(),
+            );
+        }
+        let genomic_status_by_assay = genomic_specificity_assessments
+            .iter()
+            .map(|assessment| (assessment.assay_id.as_str(), assessment.status.as_str()))
+            .collect::<HashMap<_, _>>();
+        let specificity_target_label = specificity
+            .as_ref()
+            .and_then(|request| request.policy.specificity_target_genome_id.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("GENOME_ID");
         let specificity_followups = selected_assays
             .iter()
             .map(|assay| TranscriptAssaySpecificityFollowup {
                 assay_id: assay.assay_id.clone(),
                 local_cdna_matrix_status: "completed".to_string(),
-                genomic_confirmation_status: "not_run".to_string(),
+                genomic_confirmation_status: genomic_status_by_assay
+                    .get(assay.assay_id.as_str())
+                    .copied()
+                    .unwrap_or("not_run")
+                    .to_string(),
                 shell_command_template: format!(
-                    "primers specificity --forward {} --reverse {} --target-genome GENOME_ID",
-                    assay.primer_pair.forward.sequence, assay.primer_pair.reverse.sequence
+                    "primers specificity-plan --forward {} --reverse {} --target-genome {} --output-dir OUTPUT_DIR/{}",
+                    assay.primer_pair.forward.sequence,
+                    assay.primer_pair.reverse.sequence,
+                    specificity_target_label,
+                    assay.assay_id,
                 ),
             })
             .collect::<Vec<_>>();
@@ -14735,6 +15366,8 @@ impl GentleEngine {
             junction_evaluations,
             short_sybr_junction_assays,
             order_ready_primers,
+            specificity_request: specificity,
+            genomic_specificity_assessments,
             specificity_followups,
             provenance: TranscriptAssayPanelProvenance {
                 annotation_release,
@@ -24745,6 +25378,7 @@ impl GentleEngine {
                     min_3prime_junction_overlap_bp,
                     min_5prime_junction_overlap_bp,
                     annotation_release,
+                    specificity,
                     report_id,
                     path,
                 } => {
@@ -24777,6 +25411,7 @@ impl GentleEngine {
                         min_3prime_junction_overlap_bp,
                         min_5prime_junction_overlap_bp,
                         annotation_release,
+                        specificity,
                         report_id,
                         path,
                     )?;

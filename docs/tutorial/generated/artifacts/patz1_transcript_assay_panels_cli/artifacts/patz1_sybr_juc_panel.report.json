@@ -906,30 +906,31 @@
       "length_nt": 20
     }
   ],
+  "genomic_specificity_assessments": [],
   "specificity_followups": [
     {
       "assay_id": "transcript_assay_6b15970fa7d866ef",
       "local_cdna_matrix_status": "completed",
       "genomic_confirmation_status": "not_run",
-      "shell_command_template": "primers specificity --forward GTAAGCTAGCATCGGGATCCG --reverse GATCCGTTAGCGTACCTGATCG --target-genome GENOME_ID"
+      "shell_command_template": "primers specificity-plan --forward GTAAGCTAGCATCGGGATCCG --reverse GATCCGTTAGCGTACCTGATCG --target-genome GENOME_ID --output-dir OUTPUT_DIR/transcript_assay_6b15970fa7d866ef"
     },
     {
       "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
       "local_cdna_matrix_status": "completed",
       "genomic_confirmation_status": "not_run",
-      "shell_command_template": "primers specificity --forward TAAGCTAGCATCGGGATCCG --reverse TACGATCCGTTAGCGTACCTG --target-genome GENOME_ID"
+      "shell_command_template": "primers specificity-plan --forward TAAGCTAGCATCGGGATCCG --reverse TACGATCCGTTAGCGTACCTG --target-genome GENOME_ID --output-dir OUTPUT_DIR/transcript_assay_e9e8cd8b25a1adb7"
     },
     {
       "assay_id": "transcript_assay_b3964ace800b1035",
       "local_cdna_matrix_status": "completed",
       "genomic_confirmation_status": "not_run",
-      "shell_command_template": "primers specificity --forward TCGTAGCCTAGCATCGGTAAGC --reverse ATCCGTTAGCGTACCTGATCGG --target-genome GENOME_ID"
+      "shell_command_template": "primers specificity-plan --forward TCGTAGCCTAGCATCGGTAAGC --reverse ATCCGTTAGCGTACCTGATCGG --target-genome GENOME_ID --output-dir OUTPUT_DIR/transcript_assay_b3964ace800b1035"
     },
     {
       "assay_id": "transcript_assay_928afef051d25781",
       "local_cdna_matrix_status": "completed",
       "genomic_confirmation_status": "not_run",
-      "shell_command_template": "primers specificity --forward GTAGCCTAGCATCGGTAAGC --reverse GATCGGATCGCTAACGATCC --target-genome GENOME_ID"
+      "shell_command_template": "primers specificity-plan --forward GTAGCCTAGCATCGGTAAGC --reverse GATCGGATCGCTAACGATCC --target-genome GENOME_ID --output-dir OUTPUT_DIR/transcript_assay_928afef051d25781"
     }
   ],
   "provenance": {

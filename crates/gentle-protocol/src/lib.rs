@@ -788,6 +788,23 @@ impl Default for PrimerSpecificityPolicy {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// Optional local-BLAST confirmation requested as part of transcript assay
+/// panel design.
+///
+/// Omitting this record preserves the offline design-only path. When present,
+/// the target genome must name a prepared reference unless the check mode is
+/// `none`.
+pub struct TranscriptAssaySpecificityRequest {
+    #[serde(default)]
+    pub policy: PrimerSpecificityPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 /// Transcript-aware qPCR design intent for splicing-driven assays.

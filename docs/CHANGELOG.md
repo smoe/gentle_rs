@@ -14,6 +14,11 @@ Maintenance rule:
 
 ## 2026-07-21
 
+- Added deterministic `primers specificity-plan` / `specificity-import`
+  handoffs so external schedulers can own BLAST process completion while GENtle
+  retains query, database, policy, and result-interpretation provenance; the
+  transcript-assay panel can also request inline report-only or required-pass
+  local BLAST confirmation.
 - Added a deterministic offline CLI tutorial for the synthetic PATZ1 endpoint
   RT-PCR and primer-only SYBR transcript panels, including full-operation
   `@FILE` execution, persisted report inspection/export, oligo-dT interpretation

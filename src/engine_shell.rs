@@ -69,7 +69,8 @@ use crate::{
         PlanningCloningSuggestedNextAction, PlanningCloningVectorCandidate, PlanningEstimate,
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
-        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProbeRegionRequest, ProjectFact,
+        PrimerDesignSideConstraint, PrimerSpecificityCheckMode, PrimerSpecificityPolicy,
+        ProbeRegionRequest, ProjectFact,
         ProjectFactDomain, ProjectFactGraph, ProjectFactTypeSpec, ProjectState,
         PromoterArtifactManifestEntry, PromoterCohortKind, PromoterExpressionEvidenceInput,
         PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
@@ -101,7 +102,8 @@ use crate::{
         TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis,
         TranscriptAssayCoveragePolicy, TranscriptAssayJunctionPriority,
         TranscriptAssayJunctionRequest, TranscriptAssayKind, TranscriptAssayPanelObjective,
-        TranslationSpeedMark, TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
+        TranscriptAssaySpecificityRequest, TranslationSpeedMark, TranslationSpeedProfile,
+        UniprotFeatureCodingDnaQueryMode,
         VariantAlleleChoice, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow,
         WorkflowMacroTemplate, WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
         construct_reasoning_action_dotplot_request, parse_feature_coordinate_term_on_sequence,
@@ -2360,6 +2362,22 @@ pub enum ShellCommand {
         cache_dir: Option<String>,
         path: Option<String>,
     },
+    PrimersSpecificityPlan {
+        primer_report_id: Option<String>,
+        pair_rank: Option<usize>,
+        pair_index: Option<usize>,
+        forward_primer: Option<String>,
+        reverse_primer: Option<String>,
+        target_genome_id: String,
+        policy: PrimerSpecificityPolicy,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        output_dir: String,
+    },
+    PrimersSpecificityImport {
+        handoff_path: String,
+        path: Option<String>,
+    },
     PrimersTestCdnaPcr {
         seq_id: String,
         feature_id: usize,
@@ -2424,6 +2442,7 @@ pub enum ShellCommand {
         min_3prime_junction_overlap_bp: Option<usize>,
         min_5prime_junction_overlap_bp: Option<usize>,
         annotation_release: Option<String>,
+        specificity: Option<TranscriptAssaySpecificityRequest>,
         report_id: Option<String>,
         path: Option<String>,
         backend: Option<PrimerDesignBackend>,
@@ -10968,6 +10987,30 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("none"),
             ),
+            Self::PrimersSpecificityPlan {
+                primer_report_id,
+                forward_primer,
+                reverse_primer,
+                target_genome_id,
+                output_dir,
+                ..
+            } => format!(
+                "prepare external primer-pair specificity BLAST commands against genome '{}' (source={}, explicit_pair={}, output_dir='{}')",
+                target_genome_id,
+                primer_report_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("explicit"),
+                forward_primer.is_some() && reverse_primer.is_some(),
+                output_dir,
+            ),
+            Self::PrimersSpecificityImport { handoff_path, path } => format!(
+                "import completed external primer-specificity BLAST outputs from '{}' (path={})",
+                handoff_path,
+                path.as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
             Self::PrimersTestCdnaPcr {
                 seq_id,
                 feature_id,
@@ -12483,6 +12526,8 @@ impl ShellCommand {
                 | Self::PrimersDesign { .. }
                 | Self::PrimersDesignQpcr { .. }
                 | Self::PrimersSpecificity { .. }
+                | Self::PrimersSpecificityPlan { .. }
+                | Self::PrimersSpecificityImport { .. }
                 | Self::PrimersPrepareRestrictionCloning { .. }
                 | Self::PrimersSeedRestrictionCloningHandoff { .. }
                 | Self::PrimersListRestrictionCloningHandoffs
@@ -14704,6 +14749,19 @@ fn parse_primer_design_backend(value: &str) -> Result<PrimerDesignBackend, Strin
         other => Err(format!(
             "Unsupported primer backend '{}' (expected auto|internal|primer3)",
             other
+        )),
+    }
+}
+
+fn parse_primer_specificity_check_mode(
+    value: &str,
+) -> Result<PrimerSpecificityCheckMode, String> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "none" | "off" => Ok(PrimerSpecificityCheckMode::None),
+        "report_only" | "report" => Ok(PrimerSpecificityCheckMode::ReportOnly),
+        "require_pass" | "required" | "gate" => Ok(PrimerSpecificityCheckMode::RequirePass),
+        other => Err(format!(
+            "Unsupported primer specificity check '{other}' (expected none|report-only|require-pass)"
         )),
     }
 }
@@ -50704,6 +50762,65 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersSpecificityPlan {
+            primer_report_id,
+            pair_rank,
+            pair_index,
+            forward_primer,
+            reverse_primer,
+            target_genome_id,
+            policy,
+            catalog_path,
+            cache_dir,
+            output_dir,
+        } => {
+            let handoff = engine
+                .prepare_primer_pair_specificity_handoff(
+                    primer_report_id.as_deref(),
+                    *pair_rank,
+                    *pair_index,
+                    forward_primer.as_deref(),
+                    reverse_primer.as_deref(),
+                    target_genome_id,
+                    policy.clone(),
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                    output_dir,
+                )
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_specificity_plan_command.v1",
+                    "handoff": handoff,
+                }),
+            })
+        }
+        ShellCommand::PrimersSpecificityImport { handoff_path, path } => {
+            let report = engine
+                .import_primer_pair_specificity_handoff(handoff_path)
+                .map_err(|error| error.to_string())?;
+            if let Some(path) = path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let json_text = serde_json::to_string_pretty(&report).map_err(|error| {
+                    format!("Could not serialize primer specificity report: {error}")
+                })?;
+                fs::write(path, json_text).map_err(|error| {
+                    format!("Could not write primer specificity report to '{path}': {error}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_specificity_import_command.v1",
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
         ShellCommand::PrimersTestCdnaPcr {
             seq_id,
             feature_id,
@@ -51043,6 +51160,7 @@ fn execute_primers_command(
             min_3prime_junction_overlap_bp,
             min_5prime_junction_overlap_bp,
             annotation_release,
+            specificity,
             report_id,
             path,
             backend,
@@ -51093,6 +51211,7 @@ fn execute_primers_command(
                 min_3prime_junction_overlap_bp: *min_3prime_junction_overlap_bp,
                 min_5prime_junction_overlap_bp: *min_5prime_junction_overlap_bp,
                 annotation_release: annotation_release.clone(),
+                specificity: specificity.clone(),
                 report_id: report_id.clone(),
                 path: path.clone(),
             };
@@ -56641,6 +56760,8 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersDesign { .. }
             | ShellCommand::PrimersDesignQpcr { .. }
             | ShellCommand::PrimersSpecificity { .. }
+            | ShellCommand::PrimersSpecificityPlan { .. }
+            | ShellCommand::PrimersSpecificityImport { .. }
             | ShellCommand::PrimersTestCdnaPcr { .. }
             | ShellCommand::PrimersTestCdnaQpcr { .. }
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
@@ -58356,6 +58477,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersDesign { .. }
         | ShellCommand::PrimersDesignQpcr { .. }
         | ShellCommand::PrimersSpecificity { .. }
+        | ShellCommand::PrimersSpecificityPlan { .. }
+        | ShellCommand::PrimersSpecificityImport { .. }
         | ShellCommand::PrimersTestCdnaPcr { .. }
         | ShellCommand::PrimersTestCdnaQpcr { .. }
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }

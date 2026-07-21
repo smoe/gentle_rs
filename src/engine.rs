@@ -624,6 +624,7 @@ const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
     "gentle.cdna_assay_product_materialization.v1";
 const OLIGO_QC_REPORT_SCHEMA: &str = "gentle.oligo_qc_report.v1";
 const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v1";
+const PRIMER_SPECIFICITY_HANDOFF_SCHEMA: &str = "gentle.primer_specificity_handoff.v1";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
 pub const TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_assay_panel.v2";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
@@ -4152,6 +4153,10 @@ pub enum Operation {
         min_5prime_junction_overlap_bp: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         annotation_release: Option<String>,
+        /// Optional prepared-genome BLAST confirmation for the selected panel.
+        /// Absent preserves the deterministic design-only path.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        specificity: Option<TranscriptAssaySpecificityRequest>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         report_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -15,12 +15,13 @@ use super::*;
 use crate::engine::{
     CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
-    QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
+    PrimerSpecificityCheckMode, PrimerSpecificityPolicy, QpcrTranscriptSpecificityEvidence,
+    QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
     ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode,
     TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
     TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis,
     TranscriptAssayCoveragePolicy, TranscriptAssayJunctionPriority, TranscriptAssayKind,
-    TranscriptAssayPanelObjective,
+    TranscriptAssayPanelObjective, TranscriptAssaySpecificityRequest,
 };
 
 fn parse_read_acquisition_analysis_format(
@@ -4765,7 +4766,7 @@ fn parse_primers_oligo_order_command(tokens: &[String]) -> Result<ShellCommand, 
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, design-transcript-assay-panel, specificity, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
+            "primers requires a subcommand: design, design-qpcr, design-transcript-assay-panel, specificity, specificity-plan, specificity-import, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
                 .to_string(),
         );
     }
@@ -4851,16 +4852,22 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 primer3_executable,
             })
         }
-        "specificity" => {
+        "specificity" | "specificity-plan" => {
+            let plan_only = tokens[1] == "specificity-plan";
+            let command_name = if plan_only {
+                "primers specificity-plan"
+            } else {
+                "primers specificity"
+            };
             if tokens.len() < 3 {
-                return Err(
-                    "primers specificity requires REPORT_ID --pair-rank N --target-genome GENOME_ID or --forward SEQ --reverse SEQ --target-genome GENOME_ID"
-                        .to_string(),
-                );
+                return Err(format!(
+                    "{command_name} requires REPORT_ID --pair-rank N --target-genome GENOME_ID or --forward SEQ --reverse SEQ --target-genome GENOME_ID{}",
+                    if plan_only { " --output-dir DIR" } else { "" }
+                ));
             }
             let mut primer_report_id: Option<String> = None;
             let mut idx = 2usize;
-            if idx < tokens.len() && !tokens[idx].starts_with("--") {
+            if !tokens[idx].starts_with("--") {
                 primer_report_id = Some(tokens[idx].clone());
                 idx += 1;
             }
@@ -4873,15 +4880,11 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             let mut catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
             let mut path: Option<String> = None;
+            let mut output_dir: Option<String> = None;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
                     "--pair-rank" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--pair-rank",
-                            "primers specificity",
-                        )?;
+                        let raw = parse_option_path(tokens, &mut idx, "--pair-rank", command_name)?;
                         let rank = parse_usize_option_value(&raw, "--pair-rank")?;
                         if rank == 0 {
                             return Err("--pair-rank must be >= 1".to_string());
@@ -4889,45 +4892,28 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                         pair_rank = Some(rank);
                     }
                     "--pair-index" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--pair-index",
-                            "primers specificity",
-                        )?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--pair-index", command_name)?;
                         pair_index = Some(parse_usize_option_value(&raw, "--pair-index")?);
                     }
                     "--forward" | "--forward-primer" => {
                         let flag = tokens[idx].clone();
-                        forward_primer = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            &flag,
-                            "primers specificity",
-                        )?);
+                        forward_primer =
+                            Some(parse_option_path(tokens, &mut idx, &flag, command_name)?);
                     }
                     "--reverse" | "--reverse-primer" => {
                         let flag = tokens[idx].clone();
-                        reverse_primer = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            &flag,
-                            "primers specificity",
-                        )?);
+                        reverse_primer =
+                            Some(parse_option_path(tokens, &mut idx, &flag, command_name)?);
                     }
                     "--target-genome" | "--target-genome-id" => {
                         let flag = tokens[idx].clone();
-                        target_genome_id = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            &flag,
-                            "primers specificity",
-                        )?);
+                        target_genome_id =
+                            Some(parse_option_path(tokens, &mut idx, &flag, command_name)?);
                     }
                     "--max-target-amplicon-bp" | "--max-amplicon-bp" => {
                         let flag = tokens[idx].clone();
-                        let raw =
-                            parse_option_path(tokens, &mut idx, &flag, "primers specificity")?;
+                        let raw = parse_option_path(tokens, &mut idx, &flag, command_name)?;
                         policy.max_target_amplicon_bp = parse_usize_option_value(&raw, &flag)?;
                     }
                     "--min-primer-coverage-fraction" => {
@@ -4935,21 +4921,19 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                             tokens,
                             &mut idx,
                             "--min-primer-coverage-fraction",
-                            "primers specificity",
+                            command_name,
                         )?;
                         policy.min_primer_coverage_fraction =
                             parse_f64_option_value(&raw, "--min-primer-coverage-fraction")?;
                     }
                     "--max-3prime-mismatches" | "--max-3-prime-mismatches" => {
                         let flag = tokens[idx].clone();
-                        let raw =
-                            parse_option_path(tokens, &mut idx, &flag, "primers specificity")?;
+                        let raw = parse_option_path(tokens, &mut idx, &flag, command_name)?;
                         policy.max_3prime_mismatches = parse_usize_option_value(&raw, &flag)?;
                     }
                     "--three-prime-window-bp" | "--3prime-window-bp" => {
                         let flag = tokens[idx].clone();
-                        let raw =
-                            parse_option_path(tokens, &mut idx, &flag, "primers specificity")?;
+                        let raw = parse_option_path(tokens, &mut idx, &flag, command_name)?;
                         policy.three_prime_window_bp = parse_usize_option_value(&raw, &flag)?;
                     }
                     "--min-total-mismatches-to-unintended-target" => {
@@ -4957,7 +4941,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                             tokens,
                             &mut idx,
                             "--min-total-mismatches-to-unintended-target",
-                            "primers specificity",
+                            command_name,
                         )?;
                         policy.min_total_mismatches_to_unintended_target =
                             parse_usize_option_value(
@@ -4974,7 +4958,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                             tokens,
                             &mut idx,
                             "--max-hits-per-primer",
-                            "primers specificity",
+                            command_name,
                         )?;
                         policy.max_hits_per_primer =
                             parse_usize_option_value(&raw, "--max-hits-per-primer")?;
@@ -4993,47 +4977,43 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                     }
                     "--catalog" | "--catalog-path" => {
                         let flag = tokens[idx].clone();
-                        catalog_path = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            &flag,
-                            "primers specificity",
-                        )?);
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, command_name)?);
                     }
                     "--cache-dir" => {
                         cache_dir = Some(parse_option_path(
                             tokens,
                             &mut idx,
                             "--cache-dir",
-                            "primers specificity",
+                            command_name,
                         )?);
                     }
-                    "--path" | "--output" => {
+                    "--path" | "--output" if !plan_only => {
                         let flag = tokens[idx].clone();
-                        path = Some(parse_option_path(
+                        path = Some(parse_option_path(tokens, &mut idx, &flag, command_name)?);
+                    }
+                    "--output-dir" if plan_only => {
+                        output_dir = Some(parse_option_path(
                             tokens,
                             &mut idx,
-                            &flag,
-                            "primers specificity",
+                            "--output-dir",
+                            command_name,
                         )?);
                     }
                     other => {
-                        return Err(format!("Unknown option '{other}' for primers specificity"));
+                        return Err(format!("Unknown option '{other}' for {command_name}"));
                     }
                 }
             }
             let target_genome_id = target_genome_id
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
-                .ok_or_else(|| {
-                    "primers specificity requires --target-genome GENOME_ID".to_string()
-                })?;
+                .ok_or_else(|| format!("{command_name} requires --target-genome GENOME_ID"))?;
             if primer_report_id.is_some() && (forward_primer.is_some() || reverse_primer.is_some())
             {
-                return Err(
-                    "primers specificity accepts either REPORT_ID or --forward/--reverse, not both"
-                        .to_string(),
-                );
+                return Err(format!(
+                    "{command_name} accepts either REPORT_ID or --forward/--reverse, not both"
+                ));
             }
             if primer_report_id.is_none()
                 && (forward_primer
@@ -5047,24 +5027,74 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                         .trim()
                         .is_empty())
             {
+                return Err(format!(
+                    "{command_name} without REPORT_ID requires --forward SEQ --reverse SEQ"
+                ));
+            }
+            policy.specificity_target_genome_id = Some(target_genome_id.clone());
+            if plan_only {
+                let output_dir = output_dir
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| {
+                        "primers specificity-plan requires --output-dir DIR".to_string()
+                    })?;
+                Ok(ShellCommand::PrimersSpecificityPlan {
+                    primer_report_id,
+                    pair_rank,
+                    pair_index,
+                    forward_primer,
+                    reverse_primer,
+                    target_genome_id,
+                    policy,
+                    catalog_path,
+                    cache_dir,
+                    output_dir,
+                })
+            } else {
+                Ok(ShellCommand::PrimersSpecificity {
+                    primer_report_id,
+                    pair_rank,
+                    pair_index,
+                    forward_primer,
+                    reverse_primer,
+                    target_genome_id,
+                    policy,
+                    catalog_path,
+                    cache_dir,
+                    path,
+                })
+            }
+        }
+        "specificity-import" => {
+            if tokens.len() < 3 {
                 return Err(
-                    "primers specificity without REPORT_ID requires --forward SEQ --reverse SEQ"
+                    "primers specificity-import requires HANDOFF.json [--path OUTPUT.json]"
                         .to_string(),
                 );
             }
-            policy.specificity_target_genome_id = Some(target_genome_id.clone());
-            Ok(ShellCommand::PrimersSpecificity {
-                primer_report_id,
-                pair_rank,
-                pair_index,
-                forward_primer,
-                reverse_primer,
-                target_genome_id,
-                policy,
-                catalog_path,
-                cache_dir,
-                path,
-            })
+            let handoff_path = tokens[2].clone();
+            let mut path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers specificity-import",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers specificity-import"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersSpecificityImport { handoff_path, path })
         }
         "test-cdna-pcr" => {
             if tokens.len() < 4 {
@@ -5185,7 +5215,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         "design-transcript-assay-panel" => {
-            const USAGE: &str = "primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]\n       primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]";
+            const USAGE: &str = "primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--specificity-check none|report-only|require-pass] [--specificity-target-genome ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]\n       primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]";
             if tokens.len() < 3 {
                 return Err(format!(
                     "primers design-transcript-assay-panel requires either:\n       {USAGE}"
@@ -5250,6 +5280,10 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             let mut min_3prime_junction_overlap_bp = None;
             let mut min_5prime_junction_overlap_bp = None;
             let mut annotation_release = None;
+            let mut specificity_check = None;
+            let mut specificity_target_genome_id = None;
+            let mut specificity_catalog_path = None;
+            let mut specificity_cache_dir = None;
             let mut report_id = None;
             let mut path = None;
             let mut backend = None;
@@ -5390,6 +5424,39 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                             context,
                         )?);
                     }
+                    "--specificity-check" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--specificity-check",
+                            context,
+                        )?;
+                        specificity_check = Some(parse_primer_specificity_check_mode(&raw)?);
+                    }
+                    "--specificity-target-genome" => {
+                        specificity_target_genome_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--specificity-target-genome",
+                            context,
+                        )?);
+                    }
+                    "--specificity-catalog" => {
+                        specificity_catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--specificity-catalog",
+                            context,
+                        )?);
+                    }
+                    "--specificity-cache-dir" => {
+                        specificity_cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--specificity-cache-dir",
+                            context,
+                        )?);
+                    }
                     "--report-id" => {
                         report_id =
                             Some(parse_option_path(tokens, &mut idx, "--report-id", context)?);
@@ -5415,6 +5482,35 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                     }
                 }
             }
+            let specificity_requested = specificity_check.is_some()
+                || specificity_target_genome_id.is_some()
+                || specificity_catalog_path.is_some()
+                || specificity_cache_dir.is_some();
+            let specificity = if specificity_requested {
+                let check = specificity_check.unwrap_or(PrimerSpecificityCheckMode::ReportOnly);
+                if check != PrimerSpecificityCheckMode::None
+                    && specificity_target_genome_id
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .is_none()
+                {
+                    return Err(format!(
+                        "{context} requires --specificity-target-genome ID when --specificity-check is report-only or require-pass"
+                    ));
+                }
+                Some(TranscriptAssaySpecificityRequest {
+                    policy: PrimerSpecificityPolicy {
+                        specificity_check: check,
+                        specificity_target_genome_id,
+                        ..PrimerSpecificityPolicy::default()
+                    },
+                    catalog_path: specificity_catalog_path,
+                    cache_dir: specificity_cache_dir,
+                })
+            } else {
+                None
+            };
             Ok(ShellCommand::PrimersDesignTranscriptAssayPanel {
                 seq_id,
                 feature_id,
@@ -5434,6 +5530,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 min_3prime_junction_overlap_bp,
                 min_5prime_junction_overlap_bp,
                 annotation_release,
+                specificity,
                 report_id,
                 path,
                 backend,
