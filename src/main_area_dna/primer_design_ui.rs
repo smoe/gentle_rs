@@ -326,6 +326,86 @@ pub(super) struct QpcrDesignOpsUiState {
     pub(super) selected_assay_rank_1based: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub(super) struct TranscriptAssayPanelUiState {
+    pub(super) source_feature_id: String,
+    pub(super) assay_kind: TranscriptAssayKind,
+    pub(super) cdna_synthesis: TranscriptAssayCdnaSynthesis,
+    pub(super) objective: TranscriptAssayPanelObjective,
+    pub(super) coverage_policy: TranscriptAssayCoveragePolicy,
+    pub(super) forward: PrimerSideConstraintUiState,
+    pub(super) reverse: PrimerSideConstraintUiState,
+    pub(super) probe: PrimerSideConstraintUiState,
+    pub(super) pair_constraints: PrimerPairConstraintUiState,
+    pub(super) min_amplicon_bp: String,
+    pub(super) max_amplicon_bp: String,
+    pub(super) max_tm_delta_c: String,
+    pub(super) max_probe_tm_delta_c: String,
+    pub(super) max_assays_per_class: String,
+    pub(super) max_mismatches: String,
+    pub(super) require_3prime_exact_bases: String,
+    pub(super) oligo_dt_5prime_risk_threshold_bp: String,
+    pub(super) explicit_junctions_json: String,
+    pub(super) junction_evidence_paths: String,
+    pub(super) junction_evidence_priority: TranscriptAssayJunctionPriority,
+    pub(super) min_3prime_junction_overlap_bp: String,
+    pub(super) min_5prime_junction_overlap_bp: String,
+    pub(super) annotation_release: String,
+    pub(super) report_id: String,
+}
+
+impl Default for TranscriptAssayPanelUiState {
+    fn default() -> Self {
+        Self {
+            source_feature_id: String::new(),
+            assay_kind: TranscriptAssayKind::EndpointRtPcr,
+            cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
+            objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
+            coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+            forward: PrimerSideConstraintUiState::default(),
+            reverse: PrimerSideConstraintUiState::default(),
+            probe: PrimerSideConstraintUiState::qpcr_probe_default(),
+            pair_constraints: PrimerPairConstraintUiState::default(),
+            min_amplicon_bp: "200".to_string(),
+            max_amplicon_bp: "10000".to_string(),
+            max_tm_delta_c: "2.0".to_string(),
+            max_probe_tm_delta_c: "10.0".to_string(),
+            max_assays_per_class: "12".to_string(),
+            max_mismatches: "0".to_string(),
+            require_3prime_exact_bases: "8".to_string(),
+            oligo_dt_5prime_risk_threshold_bp: String::new(),
+            explicit_junctions_json: String::new(),
+            junction_evidence_paths: String::new(),
+            junction_evidence_priority: TranscriptAssayJunctionPriority::Preferred,
+            min_3prime_junction_overlap_bp: "4".to_string(),
+            min_5prime_junction_overlap_bp: "7".to_string(),
+            annotation_release: String::new(),
+            report_id: "transcript_assay_panel_gui".to_string(),
+        }
+    }
+}
+
+impl TranscriptAssayPanelUiState {
+    fn apply_assay_kind_defaults(&mut self, assay_kind: TranscriptAssayKind) {
+        self.assay_kind = assay_kind;
+        match assay_kind {
+            TranscriptAssayKind::EndpointRtPcr => {
+                self.objective = TranscriptAssayPanelObjective::IsoformEndMatrix;
+                self.min_amplicon_bp = "200".to_string();
+                self.max_amplicon_bp = "10000".to_string();
+            }
+            TranscriptAssayKind::SybrQpcr | TranscriptAssayKind::TaqmanQpcr => {
+                if self.objective == TranscriptAssayPanelObjective::IsoformEndMatrix {
+                    self.objective = TranscriptAssayPanelObjective::OnePerClass;
+                }
+                self.min_amplicon_bp = "70".to_string();
+                self.max_amplicon_bp = "250".to_string();
+            }
+        }
+    }
+}
+
 impl Default for QpcrDesignOpsUiState {
     fn default() -> Self {
         Self {
@@ -474,6 +554,7 @@ pub(super) enum PcrDesignerMode {
     #[default]
     PrimerPairs,
     QpcrAssays,
+    TranscriptPanels,
 }
 
 impl PcrDesignerMode {
@@ -481,6 +562,7 @@ impl PcrDesignerMode {
         match self {
             Self::PrimerPairs => "Pair PCR",
             Self::QpcrAssays => "qPCR",
+            Self::TranscriptPanels => "Transcript panels",
         }
     }
 
@@ -491,6 +573,9 @@ impl PcrDesignerMode {
             }
             Self::QpcrAssays => {
                 "qPCR mode reuses the same template and ROI context, then adds probe-side constraints and assay scoring on top of retained primer pairs."
+            }
+            Self::TranscriptPanels => {
+                "Transcript panels compare one assay set against every annotated mature-transcript class and retain the full product matrix."
             }
         }
     }
@@ -1105,6 +1190,96 @@ impl MainAreaDna {
             } else {
                 Some(ui.report_id.trim().to_string())
             },
+        })
+    }
+
+    pub(super) fn build_design_transcript_assay_panel_operation(
+        &self,
+        seq_id: &str,
+    ) -> Result<Operation, String> {
+        let ui = &self.transcript_assay_panel_ui;
+        let source_feature_id = Self::parse_optional_usize_text(
+            &ui.source_feature_id,
+            "source_feature_id",
+        )?
+        .ok_or_else(|| {
+            "Transcript panel requires a source feature id from Splicing Expert or the feature tree"
+                .to_string()
+        })?;
+        let max_assays_per_class =
+            Self::parse_optional_usize_text(&ui.max_assays_per_class, "max_assays_per_class")?;
+        if max_assays_per_class == Some(0) {
+            return Err("Invalid max_assays_per_class: expected >= 1".to_string());
+        }
+        let explicit_junctions = if ui.explicit_junctions_json.trim().is_empty() {
+            vec![]
+        } else {
+            serde_json::from_str::<Vec<TranscriptAssayJunctionRequest>>(
+                ui.explicit_junctions_json.trim(),
+            )
+            .map_err(|error| format!("Invalid explicit junction JSON: {error}"))?
+        };
+        let junction_evidence_paths = ui
+            .junction_evidence_paths
+            .lines()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+        let probe = if ui.assay_kind.uses_probe() {
+            Self::parse_primer_side_constraint_ui(&ui.probe, "probe")?
+        } else {
+            PrimerDesignSideConstraint::default()
+        };
+        Ok(Operation::DesignTranscriptAssayPanel {
+            seq_id: seq_id.to_string(),
+            source_feature_id,
+            assay_kind: ui.assay_kind,
+            cdna_synthesis: ui.cdna_synthesis,
+            objective: ui.objective,
+            coverage_policy: ui.coverage_policy,
+            forward: Self::parse_primer_side_constraint_ui(&ui.forward, "forward")?,
+            reverse: Self::parse_primer_side_constraint_ui(&ui.reverse, "reverse")?,
+            probe,
+            pair_constraints: Self::parse_primer_pair_constraint_ui(&ui.pair_constraints)?,
+            min_amplicon_bp: Self::parse_optional_usize_text(
+                &ui.min_amplicon_bp,
+                "min_amplicon_bp",
+            )?,
+            max_amplicon_bp: Self::parse_optional_usize_text(
+                &ui.max_amplicon_bp,
+                "max_amplicon_bp",
+            )?,
+            max_tm_delta_c: Self::parse_optional_f64_text(&ui.max_tm_delta_c, "max_tm_delta_c")?,
+            max_probe_tm_delta_c: Self::parse_optional_f64_text(
+                &ui.max_probe_tm_delta_c,
+                "max_probe_tm_delta_c",
+            )?,
+            max_assays_per_class,
+            max_mismatches: Self::parse_optional_usize_text(&ui.max_mismatches, "max_mismatches")?,
+            require_3prime_exact_bases: Self::parse_optional_usize_text(
+                &ui.require_3prime_exact_bases,
+                "require_3prime_exact_bases",
+            )?,
+            oligo_dt_5prime_risk_threshold_bp: Self::parse_optional_usize_text(
+                &ui.oligo_dt_5prime_risk_threshold_bp,
+                "oligo_dt_5prime_risk_threshold_bp",
+            )?,
+            junctions: explicit_junctions,
+            junction_evidence_paths,
+            junction_evidence_priority: ui.junction_evidence_priority,
+            min_3prime_junction_overlap_bp: Self::parse_optional_usize_text(
+                &ui.min_3prime_junction_overlap_bp,
+                "min_3prime_junction_overlap_bp",
+            )?,
+            min_5prime_junction_overlap_bp: Self::parse_optional_usize_text(
+                &ui.min_5prime_junction_overlap_bp,
+                "min_5prime_junction_overlap_bp",
+            )?,
+            annotation_release: (!ui.annotation_release.trim().is_empty())
+                .then(|| ui.annotation_release.trim().to_string()),
+            report_id: (!ui.report_id.trim().is_empty()).then(|| ui.report_id.trim().to_string()),
+            path: None,
         })
     }
 
@@ -3608,6 +3783,439 @@ impl MainAreaDna {
         }
     }
 
+    pub(super) fn list_transcript_assay_panel_reports(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let reports = engine
+            .read()
+            .expect("Engine lock poisoned")
+            .list_transcript_assay_panel_reports();
+        if reports.is_empty() {
+            self.op_status = "No persisted transcript assay-panel reports".to_string();
+            return;
+        }
+        let ids = reports
+            .iter()
+            .take(8)
+            .map(|row| row.report_id.clone())
+            .collect::<Vec<_>>();
+        let suffix = (reports.len() > ids.len()).then_some(", ...").unwrap_or("");
+        self.op_status = format!(
+            "Transcript assay-panel reports: {} total [{}{}]",
+            reports.len(),
+            ids.join(", "),
+            suffix
+        );
+    }
+
+    pub(super) fn load_transcript_assay_panel_report(
+        &self,
+        report_id: &str,
+    ) -> Result<TranscriptAssayPanelReport, String> {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            return Err("Transcript assay-panel report_id is empty".to_string());
+        }
+        let Some(engine) = self.engine.clone() else {
+            return Err("No engine attached".to_string());
+        };
+        engine
+            .read()
+            .expect("Engine lock poisoned")
+            .get_transcript_assay_panel_report(report_id)
+            .map_err(|err| {
+                format!(
+                    "Could not load transcript assay-panel report '{report_id}': {}",
+                    err.message
+                )
+            })
+    }
+
+    pub(super) fn show_transcript_assay_panel_report(&mut self, report_id: &str) {
+        match self.load_transcript_assay_panel_report(report_id) {
+            Ok(report) => {
+                self.pcr_designer_mode = PcrDesignerMode::TranscriptPanels;
+                self.transcript_assay_panel_ui.report_id = report.report_id.clone();
+                self.transcript_assay_panel_ui.source_feature_id =
+                    report.source_feature_id.to_string();
+                self.transcript_assay_panel_ui.assay_kind = report.assay_kind;
+                self.transcript_assay_panel_ui.cdna_synthesis = report.cdna_synthesis;
+                self.transcript_assay_panel_ui.objective = report.objective;
+                self.transcript_assay_panel_ui.coverage_policy = report.coverage_policy;
+                self.cached_transcript_assay_panel_report = Some(Arc::new(report.clone()));
+                self.op_status = format!(
+                    "Loaded transcript assay-panel report '{}' ({} transcripts, {} classes, {} selected assays)",
+                    report.report_id,
+                    report.transcript_count,
+                    report.equivalence_group_count,
+                    report.selected_assay_count
+                );
+            }
+            Err(message) => self.op_status = message,
+        }
+    }
+
+    pub(super) fn export_transcript_assay_panel_report_dialog(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Transcript assay-panel report_id is empty".to_string();
+            return;
+        }
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(format!("{report_id}.transcript_assay_panel.json"))
+            .save_file()
+        else {
+            self.op_status = "Transcript assay-panel report export canceled".to_string();
+            return;
+        };
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let path_text = path.to_string_lossy().to_string();
+        match engine
+            .read()
+            .expect("Engine lock poisoned")
+            .export_transcript_assay_panel_report(report_id, &path_text)
+        {
+            Ok(report) => {
+                self.op_status = format!(
+                    "Exported transcript assay-panel report '{}' (assays={}) to {}",
+                    report.report_id, report.selected_assay_count, path_text
+                );
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not export transcript assay-panel report '{report_id}': {}",
+                    err.message
+                );
+            }
+        }
+    }
+
+    fn transcript_assay_kind_label(kind: TranscriptAssayKind) -> &'static str {
+        match kind {
+            TranscriptAssayKind::EndpointRtPcr => "Endpoint RT-PCR",
+            TranscriptAssayKind::SybrQpcr => "SYBR qPCR",
+            TranscriptAssayKind::TaqmanQpcr => "TaqMan qPCR",
+        }
+    }
+
+    fn transcript_assay_objective_label(objective: TranscriptAssayPanelObjective) -> &'static str {
+        match objective {
+            TranscriptAssayPanelObjective::PanTranscript => "Pan-transcript",
+            TranscriptAssayPanelObjective::OnePerClass => "One per cDNA class",
+            TranscriptAssayPanelObjective::MinimalDiscriminationPanel => {
+                "Minimal discrimination panel"
+            }
+            TranscriptAssayPanelObjective::IsoformEndMatrix => "First x terminal exon matrix",
+        }
+    }
+
+    fn transcript_assay_cdna_label(method: TranscriptAssayCdnaSynthesis) -> &'static str {
+        match method {
+            TranscriptAssayCdnaSynthesis::Unspecified => "Unspecified",
+            TranscriptAssayCdnaSynthesis::OligoDt => "Oligo-dT",
+            TranscriptAssayCdnaSynthesis::RandomHexamers => "Random hexamers",
+            TranscriptAssayCdnaSynthesis::GeneSpecific => "Gene-specific",
+            TranscriptAssayCdnaSynthesis::Mixed => "Mixed",
+        }
+    }
+
+    pub(super) fn transcript_assay_detection_label(
+        status: TranscriptAssayDetectionStatus,
+        amplicon_lengths_bp: &[usize],
+    ) -> String {
+        match status {
+            TranscriptAssayDetectionStatus::NoProduct => "-".to_string(),
+            TranscriptAssayDetectionStatus::SingleProduct => amplicon_lengths_bp
+                .first()
+                .map(|length| format!("{length} bp"))
+                .unwrap_or_else(|| "1 product".to_string()),
+            TranscriptAssayDetectionStatus::MultipleProducts => {
+                if amplicon_lengths_bp.is_empty() {
+                    "multiple".to_string()
+                } else {
+                    format!(
+                        "multi {}",
+                        amplicon_lengths_bp
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join("/")
+                    )
+                }
+            }
+        }
+    }
+
+    pub(super) fn transcript_assay_reach_short_label(
+        status: TranscriptAssayOligoDtReachStatus,
+    ) -> &'static str {
+        match status {
+            TranscriptAssayOligoDtReachStatus::NotApplicable => "",
+            TranscriptAssayOligoDtReachStatus::StructuralTargetAbsent => "target absent",
+            TranscriptAssayOligoDtReachStatus::DistanceReportedUnthresholded => "RT distance",
+            TranscriptAssayOligoDtReachStatus::WithinConfiguredThreshold => "RT within",
+            TranscriptAssayOligoDtReachStatus::Elevated5PrimeRisk => "RT risk",
+            TranscriptAssayOligoDtReachStatus::Indeterminate => "RT ?",
+        }
+    }
+
+    pub(super) fn render_transcript_assay_panel_report(
+        ui: &mut egui::Ui,
+        report: &TranscriptAssayPanelReport,
+    ) {
+        ui.separator();
+        ui.heading("Transcript assay-panel result");
+        egui::Grid::new("transcript_assay_panel_summary")
+            .num_columns(4)
+            .spacing([12.0, 4.0])
+            .show(ui, |ui| {
+                ui.label("Report");
+                ui.monospace(&report.report_id);
+                ui.label("Mode");
+                ui.label(Self::transcript_assay_kind_label(report.assay_kind));
+                ui.end_row();
+                ui.label("Transcripts / classes");
+                ui.monospace(format!(
+                    "{} / {}",
+                    report.transcript_count, report.equivalence_group_count
+                ));
+                ui.label("Selected / candidates");
+                ui.monospace(format!(
+                    "{} / {}",
+                    report.selected_assay_count, report.candidate_assay_count
+                ));
+                ui.end_row();
+                ui.label("Objective");
+                ui.label(Self::transcript_assay_objective_label(report.objective));
+                ui.label("Coverage");
+                ui.monospace(format!(
+                    "{} / {}",
+                    report.coverage_policy.as_str(),
+                    match report.completion_status {
+                        crate::engine::TranscriptAssayPanelCompletionStatus::Complete => "complete",
+                        crate::engine::TranscriptAssayPanelCompletionStatus::Partial => "partial",
+                    }
+                ));
+                ui.end_row();
+            });
+
+        egui::CollapsingHeader::new("Transcript x assay product matrix")
+            .default_open(true)
+            .show(ui, |ui| {
+                let assays = report.selected_assays.iter().take(24).collect::<Vec<_>>();
+                let transcripts = report.transcript_rows.iter().take(40).collect::<Vec<_>>();
+                let cells_by_key = report
+                    .detection_matrix
+                    .iter()
+                    .map(|cell| ((cell.transcript_feature_id, cell.assay_id.as_str()), cell))
+                    .collect::<HashMap<_, _>>();
+                egui::ScrollArea::horizontal()
+                    .id_salt("transcript_assay_product_matrix_scroll")
+                    .show(ui, |ui| {
+                        egui::Grid::new("transcript_assay_product_matrix")
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.strong("Transcript");
+                                for assay in &assays {
+                                    ui.strong(format!("A{}", assay.rank))
+                                        .on_hover_text(&assay.assay_id);
+                                }
+                                ui.end_row();
+                                for transcript in &transcripts {
+                                    ui.monospace(&transcript.transcript_id).on_hover_text(format!(
+                                        "{} | class={} | status={:?}",
+                                        transcript.transcript_label,
+                                        transcript.equivalence_group_id,
+                                        transcript.status
+                                    ));
+                                    for assay in &assays {
+                                        let cell = cells_by_key.get(&(
+                                            transcript.transcript_feature_id,
+                                            assay.assay_id.as_str(),
+                                        ));
+                                        if let Some(cell) = cell {
+                                            let label = Self::transcript_assay_detection_label(
+                                                cell.status,
+                                                &cell.amplicon_lengths_bp,
+                                            );
+                                            let color = match cell.status {
+                                                TranscriptAssayDetectionStatus::NoProduct => {
+                                                    egui::Color32::from_gray(110)
+                                                }
+                                                TranscriptAssayDetectionStatus::SingleProduct => {
+                                                    egui::Color32::from_rgb(36, 128, 82)
+                                                }
+                                                TranscriptAssayDetectionStatus::MultipleProducts => {
+                                                    egui::Color32::from_rgb(180, 82, 64)
+                                                }
+                                            };
+                                            let reach = Self::transcript_assay_reach_short_label(
+                                                cell.oligo_dt_5prime_reach.status,
+                                            );
+                                            let display = if reach.is_empty() {
+                                                label
+                                            } else {
+                                                format!("{label} | {reach}")
+                                            };
+                                            ui.colored_label(color, display).on_hover_text(format!(
+                                                "{}\n{}\nmaximum oligo-dT reach: {}",
+                                                cell.detail_status,
+                                                cell.oligo_dt_5prime_reach.basis,
+                                                cell.oligo_dt_5prime_reach
+                                                    .maximum_required_cdna_reach_from_3prime_end_bp
+                                                    .map(|value| format!("{value} bp"))
+                                                    .unwrap_or_else(|| "n/a".to_string())
+                                            ));
+                                        } else {
+                                            ui.label("n/a");
+                                        }
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+                    });
+                if report.selected_assays.len() > assays.len()
+                    || report.transcript_rows.len() > transcripts.len()
+                {
+                    ui.small(format!(
+                        "Showing {} of {} assays and {} of {} transcript rows; JSON export retains the complete matrix.",
+                        assays.len(),
+                        report.selected_assays.len(),
+                        transcripts.len(),
+                        report.transcript_rows.len()
+                    ));
+                }
+            });
+
+        if !report.band_size_matrix.is_empty() {
+            egui::CollapsingHeader::new("Endpoint band-size matrix")
+                .default_open(report.assay_kind == TranscriptAssayKind::EndpointRtPcr)
+                .show(ui, |ui| {
+                    egui::Grid::new("transcript_assay_band_matrix")
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("Reaction");
+                            ui.strong("Assay");
+                            ui.strong("Transcript");
+                            ui.strong("Predicted bands (bp)");
+                            ui.end_row();
+                            for row in report.band_size_matrix.iter().take(80) {
+                                ui.monospace(&row.reaction_id);
+                                ui.monospace(&row.assay_id);
+                                ui.monospace(&row.transcript_id);
+                                ui.monospace(
+                                    row.predicted_band_sizes_bp
+                                        .iter()
+                                        .map(ToString::to_string)
+                                        .collect::<Vec<_>>()
+                                        .join(", "),
+                                );
+                                ui.end_row();
+                            }
+                        });
+                });
+        }
+
+        if !report.junction_evaluations.is_empty() {
+            egui::CollapsingHeader::new("Requested junctions")
+                .default_open(true)
+                .show(ui, |ui| {
+                    egui::Grid::new("transcript_assay_junction_evaluations")
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("Junction");
+                            ui.strong("Priority");
+                            ui.strong("Status");
+                            ui.strong("Assays");
+                            ui.strong("Reason");
+                            ui.end_row();
+                            for row in &report.junction_evaluations {
+                                ui.monospace(&row.junction_id);
+                                ui.monospace(row.priority.as_str());
+                                ui.monospace(&row.status);
+                                ui.monospace(row.assay_ids.join(", "));
+                                ui.label(row.reason.as_deref().unwrap_or("-"));
+                                ui.end_row();
+                            }
+                        });
+                });
+        }
+
+        if !report.short_sybr_junction_assays.is_empty() {
+            egui::CollapsingHeader::new("Short SYBR junction assays")
+                .default_open(report.assay_kind == TranscriptAssayKind::SybrQpcr)
+                .show(ui, |ui| {
+                    egui::Grid::new("transcript_assay_short_sybr_junctions")
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("Assay");
+                            ui.strong("Transcript");
+                            ui.strong("Forward 5' to 3'");
+                            ui.strong("Reverse 5' to 3'");
+                            ui.strong("Spanning junctions");
+                            ui.end_row();
+                            for assay in &report.short_sybr_junction_assays {
+                                ui.monospace(&assay.assay_id);
+                                ui.monospace(&assay.design_transcript_id);
+                                ui.monospace(&assay.primer_pair.forward.sequence);
+                                ui.monospace(&assay.primer_pair.reverse.sequence);
+                                ui.monospace(
+                                    assay
+                                        .junction_matches
+                                        .iter()
+                                        .filter(|row| row.forward_spans || row.reverse_spans)
+                                        .map(|row| {
+                                            format!("{}:{}", row.junction_id, row.spanning_role)
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join(", "),
+                                );
+                                ui.end_row();
+                            }
+                        });
+                });
+        }
+
+        egui::CollapsingHeader::new("Order-ready primers")
+            .default_open(false)
+            .show(ui, |ui| {
+                egui::Grid::new("transcript_assay_order_primers")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("Assay");
+                        ui.strong("Role");
+                        ui.strong("Name");
+                        ui.strong("Sequence 5' to 3'");
+                        ui.end_row();
+                        for primer in &report.order_ready_primers {
+                            ui.monospace(&primer.assay_id);
+                            ui.monospace(&primer.role);
+                            ui.label(&primer.name);
+                            ui.monospace(&primer.sequence_5_to_3);
+                            ui.end_row();
+                        }
+                    });
+            });
+
+        if !report.uncovered_equivalence_group_ids.is_empty() {
+            ui.colored_label(
+                egui::Color32::from_rgb(176, 92, 48),
+                format!(
+                    "Uncovered cDNA classes: {}",
+                    report.uncovered_equivalence_group_ids.join(", ")
+                ),
+            );
+        }
+        for warning in &report.warnings {
+            ui.colored_label(egui::Color32::from_rgb(176, 92, 48), warning);
+        }
+    }
+
     pub(super) fn render_primer_side_constraint_editor(
         ui: &mut egui::Ui,
         id_prefix: &str,
@@ -3822,6 +4430,360 @@ impl MainAreaDna {
         });
     }
 
+    pub(super) fn seed_transcript_assay_panel_from_splicing_view(
+        &mut self,
+        view: &SplicingExpertView,
+    ) {
+        self.pcr_designer_mode = PcrDesignerMode::TranscriptPanels;
+        self.transcript_assay_panel_ui.source_feature_id = view.target_feature_id.to_string();
+        self.transcript_assay_panel_ui.report_id = format!(
+            "{}_transcript_panel",
+            Self::sanitize_id_component(&view.group_label, "transcript")
+        );
+        self.request_open_pcr_design_for_current_sequence();
+        self.op_status = format!(
+            "Seeded all-transcript assay design from splicing group '{}' on '{}' (feature n-{})",
+            view.group_label,
+            view.seq_id,
+            view.target_feature_id + 1
+        );
+        self.save_engine_ops_state();
+    }
+
+    fn render_transcript_assay_panel_form(
+        &mut self,
+        ui: &mut egui::Ui,
+        template: &str,
+        primer_task_running: bool,
+    ) {
+        let current_splicing_view = self.relevant_qpcr_splicing_view_for_template(template);
+        ui.group(|ui| {
+            ui.label("Transcript source");
+            ui.horizontal_wrapped(|ui| {
+                ui.label("feature id").on_hover_text(
+                    "Zero-based feature id used by the shared Splicing Expert transcript group.",
+                );
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut self.transcript_assay_panel_ui.source_feature_id,
+                    )
+                    .desired_width(72.0),
+                );
+                if ui
+                    .add_enabled(
+                        current_splicing_view.is_some(),
+                        egui::Button::new("Use Splicing Expert group"),
+                    )
+                    .on_hover_text("Use the current Splicing Expert group as the transcript source")
+                    .clicked()
+                    && let Some(view) = current_splicing_view.as_ref()
+                {
+                    self.seed_transcript_assay_panel_from_splicing_view(view);
+                }
+                if ui
+                    .button("Use selected feature")
+                    .on_hover_text(
+                        "Use the selected transcript-linked feature from the feature tree",
+                    )
+                    .clicked()
+                {
+                    match self
+                        .get_selected_feature_id()
+                        .filter(|feature_id| self.feature_supports_splicing_expert(*feature_id))
+                    {
+                        Some(feature_id) => {
+                            self.transcript_assay_panel_ui.source_feature_id =
+                                feature_id.to_string();
+                            self.op_status = format!(
+                                "Selected feature n-{} as transcript assay-panel source",
+                                feature_id + 1
+                            );
+                        }
+                        None => {
+                            self.op_status = "Select a transcript-linked feature first".to_string();
+                        }
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("report id");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.transcript_assay_panel_ui.report_id)
+                        .desired_width(220.0),
+                );
+                ui.label("annotation release");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut self.transcript_assay_panel_ui.annotation_release,
+                    )
+                    .desired_width(130.0)
+                    .hint_text("e.g. Ensembl 116"),
+                );
+            });
+        });
+
+        ui.group(|ui| {
+            ui.label("Assay mode");
+            ui.horizontal_wrapped(|ui| {
+                for kind in [
+                    TranscriptAssayKind::EndpointRtPcr,
+                    TranscriptAssayKind::SybrQpcr,
+                    TranscriptAssayKind::TaqmanQpcr,
+                ] {
+                    let selected = self.transcript_assay_panel_ui.assay_kind == kind;
+                    if ui
+                        .selectable_label(selected, Self::transcript_assay_kind_label(kind))
+                        .clicked()
+                        && !selected
+                    {
+                        self.transcript_assay_panel_ui
+                            .apply_assay_kind_defaults(kind);
+                        self.save_engine_ops_state();
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Objective");
+                for objective in [
+                    TranscriptAssayPanelObjective::PanTranscript,
+                    TranscriptAssayPanelObjective::OnePerClass,
+                    TranscriptAssayPanelObjective::MinimalDiscriminationPanel,
+                    TranscriptAssayPanelObjective::IsoformEndMatrix,
+                ] {
+                    let enabled = objective != TranscriptAssayPanelObjective::IsoformEndMatrix
+                        || self.transcript_assay_panel_ui.assay_kind
+                            == TranscriptAssayKind::EndpointRtPcr;
+                    ui.add_enabled_ui(enabled, |ui| {
+                        ui.selectable_value(
+                            &mut self.transcript_assay_panel_ui.objective,
+                            objective,
+                            Self::transcript_assay_objective_label(objective),
+                        );
+                    });
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("cDNA synthesis");
+                egui::ComboBox::from_id_salt("transcript_assay_cdna_synthesis")
+                    .selected_text(Self::transcript_assay_cdna_label(
+                        self.transcript_assay_panel_ui.cdna_synthesis,
+                    ))
+                    .show_ui(ui, |ui| {
+                        for method in [
+                            TranscriptAssayCdnaSynthesis::Unspecified,
+                            TranscriptAssayCdnaSynthesis::OligoDt,
+                            TranscriptAssayCdnaSynthesis::RandomHexamers,
+                            TranscriptAssayCdnaSynthesis::GeneSpecific,
+                            TranscriptAssayCdnaSynthesis::Mixed,
+                        ] {
+                            ui.selectable_value(
+                                &mut self.transcript_assay_panel_ui.cdna_synthesis,
+                                method,
+                                Self::transcript_assay_cdna_label(method),
+                            );
+                        }
+                    });
+                ui.label("Coverage");
+                ui.radio_value(
+                    &mut self.transcript_assay_panel_ui.coverage_policy,
+                    TranscriptAssayCoveragePolicy::RequireAll,
+                    "Require all",
+                )
+                .on_hover_text("Fail when any exact mature-cDNA class remains uncovered");
+                ui.radio_value(
+                    &mut self.transcript_assay_panel_ui.coverage_policy,
+                    TranscriptAssayCoveragePolicy::BestEffort,
+                    "Best effort",
+                )
+                .on_hover_text("Return a partial panel and enumerate uncovered classes");
+            });
+        });
+
+        egui::Grid::new("transcript_assay_panel_numeric_constraints")
+            .num_columns(6)
+            .spacing([10.0, 5.0])
+            .show(ui, |ui| {
+                ui.label("Amplicon min");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.transcript_assay_panel_ui.min_amplicon_bp)
+                        .desired_width(70.0),
+                );
+                ui.label("Amplicon max");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.transcript_assay_panel_ui.max_amplicon_bp)
+                        .desired_width(70.0),
+                );
+                ui.label("Assays / class");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut self.transcript_assay_panel_ui.max_assays_per_class,
+                    )
+                    .desired_width(56.0),
+                );
+                ui.end_row();
+                ui.label("Max mismatches");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.transcript_assay_panel_ui.max_mismatches)
+                        .desired_width(56.0),
+                );
+                ui.label("3' exact bases");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut self.transcript_assay_panel_ui.require_3prime_exact_bases,
+                    )
+                    .desired_width(56.0),
+                );
+                ui.label("Max Tm delta");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.transcript_assay_panel_ui.max_tm_delta_c)
+                        .desired_width(56.0),
+                );
+                ui.end_row();
+            });
+        if self.transcript_assay_panel_ui.cdna_synthesis == TranscriptAssayCdnaSynthesis::OligoDt {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Oligo-dT 5' reach threshold (bp)").on_hover_text(
+                    "Optional experiment-specific threshold. Leave blank to report distances without classifying risk.",
+                );
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut self
+                            .transcript_assay_panel_ui
+                            .oligo_dt_5prime_risk_threshold_bp,
+                    )
+                    .desired_width(90.0)
+                    .hint_text("unthresholded"),
+                );
+            });
+        }
+
+        egui::CollapsingHeader::new("Junction targets")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Evidence priority");
+                    ui.radio_value(
+                        &mut self.transcript_assay_panel_ui.junction_evidence_priority,
+                        TranscriptAssayJunctionPriority::Preferred,
+                        "Preferred",
+                    );
+                    ui.radio_value(
+                        &mut self.transcript_assay_panel_ui.junction_evidence_priority,
+                        TranscriptAssayJunctionPriority::Required,
+                        "Required",
+                    );
+                    ui.label("3' / 5' overlap");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self
+                                .transcript_assay_panel_ui
+                                .min_3prime_junction_overlap_bp,
+                        )
+                        .desired_width(48.0),
+                    );
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self
+                                .transcript_assay_panel_ui
+                                .min_5prime_junction_overlap_bp,
+                        )
+                        .desired_width(48.0),
+                    );
+                });
+                ui.label("Probe-evidence report paths (one per line)");
+                ui.add(
+                    egui::TextEdit::multiline(
+                        &mut self.transcript_assay_panel_ui.junction_evidence_paths,
+                    )
+                    .desired_rows(2)
+                    .desired_width(f32::INFINITY),
+                );
+                ui.label("Explicit junction request JSON array");
+                ui.add(
+                    egui::TextEdit::multiline(
+                        &mut self.transcript_assay_panel_ui.explicit_junctions_json,
+                    )
+                    .desired_rows(3)
+                    .desired_width(f32::INFINITY)
+                    .code_editor(),
+                );
+            });
+
+        egui::CollapsingHeader::new("Primer constraints")
+            .default_open(false)
+            .show(ui, |ui| {
+                Self::render_primer_pair_constraint_editor(
+                    ui,
+                    "transcript_panel_pair",
+                    &mut self.transcript_assay_panel_ui.pair_constraints,
+                );
+                Self::render_primer_side_constraint_editor(
+                    ui,
+                    "transcript_panel_forward",
+                    "Forward side",
+                    &mut self.transcript_assay_panel_ui.forward,
+                );
+                Self::render_primer_side_constraint_editor(
+                    ui,
+                    "transcript_panel_reverse",
+                    "Reverse side",
+                    &mut self.transcript_assay_panel_ui.reverse,
+                );
+                if self.transcript_assay_panel_ui.assay_kind == TranscriptAssayKind::TaqmanQpcr {
+                    Self::render_primer_side_constraint_editor(
+                        ui,
+                        "transcript_panel_probe",
+                        "Probe side",
+                        &mut self.transcript_assay_panel_ui.probe,
+                    );
+                    ui.horizontal(|ui| {
+                        ui.label("Max probe Tm delta");
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.transcript_assay_panel_ui.max_probe_tm_delta_c,
+                            )
+                            .desired_width(64.0),
+                        );
+                    });
+                }
+            });
+
+        let run_label = if primer_task_running {
+            "Design transcript panel (running...)"
+        } else {
+            "Design transcript panel"
+        };
+        if ui
+            .add_enabled(!primer_task_running, egui::Button::new(run_label))
+            .on_hover_text("Run DesignTranscriptAssayPanel through the shared engine")
+            .clicked()
+        {
+            match self.build_design_transcript_assay_panel_operation(template) {
+                Ok(operation) => {
+                    self.save_engine_ops_state();
+                    self.start_primer_design_operation(operation, "Transcript assay-panel design");
+                }
+                Err(error) => self.op_status = error,
+            }
+        }
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("List reports").clicked() {
+                self.list_transcript_assay_panel_reports();
+            }
+            if ui.button("Show report_id").clicked() {
+                let report_id = self.transcript_assay_panel_ui.report_id.clone();
+                self.show_transcript_assay_panel_report(&report_id);
+            }
+            if ui.button("Export report_id...").clicked() {
+                let report_id = self.transcript_assay_panel_ui.report_id.clone();
+                self.export_transcript_assay_panel_report_dialog(&report_id);
+            }
+        });
+        if let Some(report) = self.cached_transcript_assay_panel_report.clone() {
+            Self::render_transcript_assay_panel_report(ui, report.as_ref());
+        }
+    }
+
     pub(super) fn render_primer_design_ops(
         &mut self,
         ui: &mut egui::Ui,
@@ -3957,7 +4919,11 @@ impl MainAreaDna {
             ui.group(|ui| {
                 ui.label("PCR Designer mode");
                 ui.horizontal(|ui| {
-                    for mode in [PcrDesignerMode::PrimerPairs, PcrDesignerMode::QpcrAssays] {
+                    for mode in [
+                        PcrDesignerMode::PrimerPairs,
+                        PcrDesignerMode::QpcrAssays,
+                        PcrDesignerMode::TranscriptPanels,
+                    ] {
                         let selected = self.pcr_designer_mode == mode;
                         if ui
                             .selectable_label(selected, mode.label())
@@ -4816,6 +5782,14 @@ impl MainAreaDna {
                 self.render_qpcr_design_report_preview(ui);
                 });
         }
+
+        if include_qpcr_section && self.pcr_designer_mode == PcrDesignerMode::TranscriptPanels {
+            egui::CollapsingHeader::new("Design across transcript isoforms")
+                .default_open(true)
+                .show(ui, |ui| {
+                    self.render_transcript_assay_panel_form(ui, &template, primer_task_running);
+                });
+        }
     }
 
     pub(super) fn render_pcr_queue_compact_table(&mut self, ui: &mut egui::Ui) {
@@ -4881,72 +5855,106 @@ impl MainAreaDna {
         });
     }
 
+    fn render_pcr_designer_reference_map_panel(&mut self, ui: &mut egui::Ui) {
+        let width = ui.available_width().max(320.0);
+        let response = ui.add_sized(egui::Vec2::new(width, 220.0), self.map_dna.to_owned());
+        if response.rect.width().is_finite() && response.rect.width() > 0.0 {
+            self.last_linear_map_width_px = response.rect.width();
+        }
+    }
+
     pub fn render_pcr_designer_specialist(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.label(
-            "Paint-first PCR/qPCR designer. Drag on the linear DNA map with fixed semantic colors: ROI (green), upstream window (red), downstream window (blue).",
-        );
-        self.render_pcr_paint_role_controls(ui, true);
-        ui.small(
-            "Mouse shortcuts: drag paints selected role; Shift+drag on ROI queues immediately; Option/Alt+drag pans.",
-        );
+        if self.pcr_designer_mode == PcrDesignerMode::TranscriptPanels {
+            ui.label("Transcript assay-panel designer");
+        } else {
+            ui.label(
+                "Paint-first PCR/qPCR designer. Drag on the linear DNA map with fixed semantic colors: ROI (green), upstream window (red), downstream window (blue).",
+            );
+            self.render_pcr_paint_role_controls(ui, true);
+            ui.small(
+                "Mouse shortcuts: drag paints selected role; Shift+drag on ROI queues immediately; Option/Alt+drag pans.",
+            );
+        }
         ui.separator();
         ui.columns(2, |columns| {
+            let active_seq_id = self.seq_id.clone().unwrap_or_default();
             columns[0].heading(match self.pcr_designer_mode {
                 PcrDesignerMode::PrimerPairs => "Paint + Queue",
                 PcrDesignerMode::QpcrAssays => "Paint + ROI",
+                PcrDesignerMode::TranscriptPanels => "Transcript context",
             });
-            self.render_selection_formula_inline_controls(&mut columns[0], 280.0);
-            let selection_roi = self.current_selection_range_0based();
-            columns[0].horizontal_wrapped(|ui| {
-                let set_clicked = ui
-                    .add_enabled(
-                        selection_roi.is_some(),
-                        egui::Button::new("Set ROI from selection"),
-                    )
-                    .on_hover_text("Copy current map/text selection into pair-PCR ROI form fields")
-                    .clicked();
-                if set_clicked
-                    && let Err(err) = self
-                        .set_primer_design_roi_from_current_selection("current sequence selection")
+            if self.pcr_designer_mode == PcrDesignerMode::TranscriptPanels {
+                if let Some(view) =
+                    self.relevant_qpcr_splicing_view_for_template(&active_seq_id)
+                {
+                    columns[0].monospace(format!(
+                        "{} | feature n-{} | {} transcripts | strand {}",
+                        view.group_label,
+                        view.target_feature_id + 1,
+                        view.transcript_count,
+                        view.strand
+                    ));
+                } else {
+                    columns[0].small("No matching Splicing Expert group is currently open.");
+                }
+                columns[0].separator();
+                self.render_pcr_designer_reference_map_panel(&mut columns[0]);
+            } else {
+                self.render_selection_formula_inline_controls(&mut columns[0], 280.0);
+                let selection_roi = self.current_selection_range_0based();
+                columns[0].horizontal_wrapped(|ui| {
+                    let set_clicked = ui
+                        .add_enabled(
+                            selection_roi.is_some(),
+                            egui::Button::new("Set ROI from selection"),
+                        )
+                        .on_hover_text(
+                            "Copy current map/text selection into pair-PCR ROI form fields",
+                        )
+                        .clicked();
+                    if set_clicked
+                        && let Err(err) = self.set_primer_design_roi_from_current_selection(
+                            "current sequence selection",
+                        )
                     {
                         self.op_status = err;
                     }
-                if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs {
-                    let queue_clicked = ui
-                        .add_enabled(
-                            selection_roi.is_some(),
-                            egui::Button::new("Queue selection"),
-                        )
-                        .on_hover_text("Queue current map/text selection as one PCR region")
-                        .clicked();
-                    if queue_clicked {
-                        self.queue_current_selection_for_pcr();
+                    if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs {
+                        let queue_clicked = ui
+                            .add_enabled(
+                                selection_roi.is_some(),
+                                egui::Button::new("Queue selection"),
+                            )
+                            .on_hover_text("Queue current map/text selection as one PCR region")
+                            .clicked();
+                        if queue_clicked {
+                            self.queue_current_selection_for_pcr();
+                        }
                     }
+                });
+                if let Some((start, end_exclusive)) = selection_roi {
+                    columns[0].small(format!(
+                        "Active selection: {start}..{end_exclusive} (len {} bp)",
+                        end_exclusive.saturating_sub(start)
+                    ));
+                } else {
+                    columns[0].small("No active selection. Use formula or drag-select on map.");
                 }
-            });
-            if let Some((start, end_exclusive)) = selection_roi {
-                columns[0].small(format!(
-                    "Active selection: {start}..{end_exclusive} (len {} bp)",
-                    end_exclusive.saturating_sub(start)
-                ));
-            } else {
-                columns[0].small("No active selection. Use formula or drag-select on map.");
-            }
-            if self.pcr_designer_mode == PcrDesignerMode::QpcrAssays {
-                columns[0].small(
-                    "qPCR mode reuses the same ROI painting and selection workflow, but queued batch-region actions remain pair-PCR-only in this first pass.",
-                );
-            }
-            columns[0].separator();
-            self.render_pcr_designer_map_panel(&mut columns[0], ctx);
-            columns[0].separator();
-            self.render_pcr_paint_interval_summary(&mut columns[0]);
-            columns[0].horizontal(|ui| {
-                if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs
-                    && ui
-                        .button("Queue painted ROI")
-                        .on_hover_text("Queue the currently painted ROI interval")
-                        .clicked()
+                if self.pcr_designer_mode == PcrDesignerMode::QpcrAssays {
+                    columns[0].small(
+                        "qPCR mode reuses the same ROI painting and selection workflow, but queued batch-region actions remain pair-PCR-only in this first pass.",
+                    );
+                }
+                columns[0].separator();
+                self.render_pcr_designer_map_panel(&mut columns[0], ctx);
+                columns[0].separator();
+                self.render_pcr_paint_interval_summary(&mut columns[0]);
+                columns[0].horizontal(|ui| {
+                    if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs
+                        && ui
+                            .button("Queue painted ROI")
+                            .on_hover_text("Queue the currently painted ROI interval")
+                            .clicked()
                     {
                         if let Some((start, end_exclusive)) = self.pcr_paint_intervals.roi {
                             self.queue_painted_roi_from_interval(
@@ -4960,32 +5968,36 @@ impl MainAreaDna {
                                     .to_string();
                         }
                     }
-                if ui
-                    .button("Set form ROI from paint")
-                    .on_hover_text("Copy painted ROI interval into the active PCR/qPCR ROI form fields")
-                    .clicked()
-                {
-                    if let Some((start, end_exclusive)) = self.pcr_paint_intervals.roi {
-                        self.set_primer_design_roi_fields_0based(start, end_exclusive);
-                        self.op_status = format!(
-                            "Set PCR Designer ROI fields from painted interval: {}..{}",
-                            start, end_exclusive
-                        );
-                        self.save_engine_ops_state();
-                    } else {
-                        self.op_status =
-                            "Paint an ROI interval first (green role) before setting form ROI"
-                                .to_string();
+                    if ui
+                        .button("Set form ROI from paint")
+                        .on_hover_text(
+                            "Copy painted ROI interval into the active PCR/qPCR ROI form fields",
+                        )
+                        .clicked()
+                    {
+                        if let Some((start, end_exclusive)) = self.pcr_paint_intervals.roi {
+                            self.set_primer_design_roi_fields_0based(start, end_exclusive);
+                            self.op_status = format!(
+                                "Set PCR Designer ROI fields from painted interval: {}..{}",
+                                start, end_exclusive
+                            );
+                            self.save_engine_ops_state();
+                        } else {
+                            self.op_status =
+                                "Paint an ROI interval first (green role) before setting form ROI"
+                                    .to_string();
+                        }
                     }
+                });
+                if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs {
+                    self.render_pcr_queue_compact_table(&mut columns[0]);
                 }
-            });
-            if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs {
-                self.render_pcr_queue_compact_table(&mut columns[0]);
             }
 
             columns[1].heading(match self.pcr_designer_mode {
                 PcrDesignerMode::PrimerPairs => "Pair-PCR Constraints + Run",
                 PcrDesignerMode::QpcrAssays => "qPCR Constraints + Run",
+                PcrDesignerMode::TranscriptPanels => "Transcript Panel + Matrix",
             });
             egui::ScrollArea::vertical()
                 .id_salt("pcr_designer_pair_scroll")

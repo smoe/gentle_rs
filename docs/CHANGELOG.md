@@ -14,6 +14,11 @@ Maintenance rule:
 
 ## 2026-07-20
 
+- Added GUI parity for `gentle.transcript_assay_panel.v2` in PCR Designer:
+  endpoint/SYBR/TaqMan setup from Splicing Expert, strict or best-effort
+  coverage, explicit/Clariom junction inputs, background execution, persisted
+  report load/export, and graphical product/band matrices with per-cell
+  oligo-dT reach interpretation.
 - Extended `gentle.transcript_assay_panel.v2` with backward-compatible endpoint
   RT-PCR, primer-only SYBR, and TaqMan modes; annotated first x terminal reaction
   and band matrices; required/preferred explicit or Clariom JUC targets;

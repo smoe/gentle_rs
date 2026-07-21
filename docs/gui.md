@@ -2464,9 +2464,10 @@ Controls:
 - direct ROI seeding now opens or focuses the dedicated `PCR Designer`
   specialist so pair-PCR and qPCR setup can stay out of the crowded lower
   `Engine Ops` pane.
-- the dedicated `PCR Designer` now has an explicit `Pair PCR | qPCR` mode
-  switch; ROI seeding is shared, while the queued batch-region helpers still
-  remain pair-PCR-focused in this first pass.
+- the dedicated `PCR Designer` now has an explicit
+  `Pair PCR | qPCR | Transcript panels` mode switch; ROI seeding is shared for
+  the first two modes, while transcript panels use a complete annotated
+  Splicing Expert group.
    - after paint-dragging on the linear map, the post-drag chip now includes
      direct coordinate editing (`start..end`) for the painted interval, with
      explicit apply action (0-based, end-exclusive).
@@ -3987,8 +3988,8 @@ qPCR form:
   coordinate fields so large genomic positions remain easy to enter
 - in the dedicated `PCR Designer`, qPCR is now a first-class mode rather than
   an Engine-Ops-only appendix:
-  - `Pair PCR | qPCR` selector switches the right-hand constraints/run panel
-    between the two workflows
+  - `Pair PCR | qPCR | Transcript panels` selector switches the right-hand
+    constraints/run panel between the three workflows
   - the left-hand paint/selection workflow stays shared so the same painted or
     formula-defined ROI can feed either pair-PCR or qPCR without switching
     windows
@@ -4021,6 +4022,22 @@ qPCR form:
     - the live qPCR cartoon-geometry summary is still derived from the selected
       saved report when available, or from the current ROI + constraint
       defaults otherwise
+- `Transcript panels` is a thin GUI over the shared
+  `DesignTranscriptAssayPanel` operation:
+  - Splicing Expert's `Design all-transcript panel` action supplies the source
+    feature/group and opens the PCR Designer in the new mode
+  - endpoint RT-PCR, primer-only SYBR qPCR, and TaqMan qPCR are selectable
+    without changing the engine defaults used by older callers
+  - strict `Require all` coverage is the GUI default; `Best effort` remains an
+    explicit choice that preserves uncovered cDNA classes in the report
+  - Clariom JUC/probe-evidence reports can be supplied as junction-target paths,
+    with required/preferred priority and Primer3 overlap controls
+  - the saved-report view shows the transcript-by-assay product matrix,
+    endpoint band sizes, junction evaluations, short SYBR junction assays,
+    order-ready primers, and the per-cell oligo-dT 5-prime reach status
+  - an empty oligo-dT threshold reports annotation-derived distances without
+    making a categorical risk call; a user-supplied threshold enables the
+    corresponding within/elevated matrix labels
 
 Buttons:
 
@@ -4046,6 +4063,10 @@ Beginner tutorial:
   - in-panel `Primer report preview`
 - qPCR-report helpers (uses current qPCR `report_id` field):
   - `List qPCR Reports`
+  - `Show report_id`
+  - `Export report_id...`
+- transcript-panel report helpers (uses current transcript-panel `report_id`):
+  - `List reports`
   - `Show report_id`
   - `Export report_id...`
 

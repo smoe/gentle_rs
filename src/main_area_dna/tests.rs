@@ -9165,6 +9165,169 @@ fn pcr_designer_mode_defaults_when_missing_in_serialized_engine_ops_state() {
 }
 
 #[test]
+fn transcript_assay_panel_gui_defaults_to_strict_endpoint_oligo_dt_design() {
+    let dna = DNAsequence::from_sequence("ACGT").unwrap();
+    let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+
+    assert_eq!(
+        area.transcript_assay_panel_ui.assay_kind,
+        crate::engine::TranscriptAssayKind::EndpointRtPcr
+    );
+    assert_eq!(
+        area.transcript_assay_panel_ui.objective,
+        crate::engine::TranscriptAssayPanelObjective::IsoformEndMatrix
+    );
+    assert_eq!(
+        area.transcript_assay_panel_ui.coverage_policy,
+        crate::engine::TranscriptAssayCoveragePolicy::RequireAll
+    );
+    assert_eq!(
+        area.transcript_assay_panel_ui.cdna_synthesis,
+        crate::engine::TranscriptAssayCdnaSynthesis::OligoDt
+    );
+    assert_eq!(area.transcript_assay_panel_ui.max_amplicon_bp, "10000");
+    assert!(
+        area.transcript_assay_panel_ui
+            .oligo_dt_5prime_risk_threshold_bp
+            .is_empty()
+    );
+}
+
+#[test]
+fn transcript_assay_panel_gui_builds_shared_sybr_operation_with_junction_evidence() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.transcript_assay_panel_ui.source_feature_id = "7".to_string();
+    area.transcript_assay_panel_ui.assay_kind = crate::engine::TranscriptAssayKind::SybrQpcr;
+    area.transcript_assay_panel_ui.objective =
+        crate::engine::TranscriptAssayPanelObjective::OnePerClass;
+    area.transcript_assay_panel_ui.min_amplicon_bp = "70".to_string();
+    area.transcript_assay_panel_ui.max_amplicon_bp = "250".to_string();
+    area.transcript_assay_panel_ui
+        .oligo_dt_5prime_risk_threshold_bp = "1800".to_string();
+    area.transcript_assay_panel_ui.junction_evidence_paths =
+        "first.json\nsecond.json\n".to_string();
+    area.transcript_assay_panel_ui.explicit_junctions_json =
+        r#"[{"junction_id":"JUC:test","transcript_local_position_0based":42}]"#.to_string();
+    area.transcript_assay_panel_ui.report_id = "panel_gui_test".to_string();
+
+    let operation = area
+        .build_design_transcript_assay_panel_operation("seq1")
+        .expect("operation");
+    let Operation::DesignTranscriptAssayPanel {
+        seq_id,
+        source_feature_id,
+        assay_kind,
+        objective,
+        coverage_policy,
+        probe,
+        oligo_dt_5prime_risk_threshold_bp,
+        junctions,
+        junction_evidence_paths,
+        report_id,
+        ..
+    } = operation
+    else {
+        panic!("expected DesignTranscriptAssayPanel");
+    };
+    assert_eq!(seq_id, "seq1");
+    assert_eq!(source_feature_id, 7);
+    assert_eq!(assay_kind, crate::engine::TranscriptAssayKind::SybrQpcr);
+    assert_eq!(
+        objective,
+        crate::engine::TranscriptAssayPanelObjective::OnePerClass
+    );
+    assert_eq!(
+        coverage_policy,
+        crate::engine::TranscriptAssayCoveragePolicy::RequireAll
+    );
+    assert_eq!(
+        serde_json::to_value(probe).unwrap(),
+        serde_json::to_value(PrimerDesignSideConstraint::default()).unwrap()
+    );
+    assert_eq!(oligo_dt_5prime_risk_threshold_bp, Some(1800));
+    assert_eq!(junctions.len(), 1);
+    assert_eq!(junctions[0].junction_id, "JUC:test");
+    assert_eq!(junction_evidence_paths, vec!["first.json", "second.json"]);
+    assert_eq!(report_id.as_deref(), Some("panel_gui_test"));
+}
+
+#[test]
+fn transcript_assay_panel_gui_splicing_handoff_selects_group_and_mode() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(20)).unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let view = splicing_expert_presentation_test_view();
+
+    area.seed_transcript_assay_panel_from_splicing_view(&view);
+
+    assert_eq!(area.pcr_designer_mode, PcrDesignerMode::TranscriptPanels);
+    assert_eq!(area.transcript_assay_panel_ui.source_feature_id, "7");
+    assert_eq!(
+        area.transcript_assay_panel_ui.report_id,
+        "TEST_transcript_panel"
+    );
+}
+
+#[test]
+fn transcript_assay_panel_gui_reach_labels_keep_structural_absence_separate_from_rt_risk() {
+    assert_eq!(
+        MainAreaDna::transcript_assay_reach_short_label(
+            crate::engine::TranscriptAssayOligoDtReachStatus::StructuralTargetAbsent,
+        ),
+        "target absent"
+    );
+    assert_eq!(
+        MainAreaDna::transcript_assay_reach_short_label(
+            crate::engine::TranscriptAssayOligoDtReachStatus::Elevated5PrimeRisk,
+        ),
+        "RT risk"
+    );
+    assert_eq!(
+        MainAreaDna::transcript_assay_detection_label(
+            crate::engine::TranscriptAssayDetectionStatus::SingleProduct,
+            &[873],
+        ),
+        "873 bp"
+    );
+}
+
+#[test]
+fn transcript_assay_panel_gui_state_round_trips_without_cached_report() {
+    let dna = DNAsequence::from_sequence("ACGT").unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.transcript_assay_panel_ui.source_feature_id = "9".to_string();
+    area.pcr_designer_mode = PcrDesignerMode::TranscriptPanels;
+
+    let encoded = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+    let decoded: super::EngineOpsUiState = serde_json::from_value(encoded).unwrap();
+
+    assert_eq!(decoded.pcr_designer_mode, PcrDesignerMode::TranscriptPanels);
+    assert_eq!(decoded.transcript_assay_panel_ui.source_feature_id, "9");
+}
+
+#[test]
+fn transcript_assay_panel_gui_state_defaults_when_missing_from_saved_window_state() {
+    let dna = DNAsequence::from_sequence("ACGT").unwrap();
+    let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+    value
+        .as_object_mut()
+        .unwrap()
+        .remove("transcript_assay_panel_ui");
+
+    let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+
+    assert_eq!(
+        decoded.transcript_assay_panel_ui.assay_kind,
+        crate::engine::TranscriptAssayKind::EndpointRtPcr
+    );
+    assert_eq!(
+        decoded.transcript_assay_panel_ui.coverage_policy,
+        crate::engine::TranscriptAssayCoveragePolicy::RequireAll
+    );
+}
+
+#[test]
 fn contextual_transcript_toggle_defaults_when_missing_in_serialized_engine_ops_state() {
     let dna = DNAsequence::from_sequence("ACGT").unwrap();
     let area = MainAreaDna::new(dna, None, None);

@@ -144,8 +144,12 @@ use crate::{
         SplicingScopePreset, TfThresholdOverride, TfbsHitScanReport, TfbsProgress,
         TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
         TfbsScoreTrackReport, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
-        TfbsTrackSimilarityReport, TfbsTrackSimilarityRow, VariantAlleleChoice,
-        VariantPromoterContextReport, Workflow, construct_reasoning_action_dotplot_request,
+        TfbsTrackSimilarityReport, TfbsTrackSimilarityRow, TranscriptAssayCdnaSynthesis,
+        TranscriptAssayCoveragePolicy, TranscriptAssayDetectionStatus,
+        TranscriptAssayJunctionPriority, TranscriptAssayJunctionRequest, TranscriptAssayKind,
+        TranscriptAssayOligoDtReachStatus, TranscriptAssayPanelObjective,
+        TranscriptAssayPanelReport, VariantAlleleChoice, VariantPromoterContextReport, Workflow,
+        construct_reasoning_action_dotplot_request,
         resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
     },
@@ -397,6 +401,8 @@ struct EngineOpsUiState {
     selection_formula_text: String,
     #[serde(default)]
     qpcr_design_ui: QpcrDesignOpsUiState,
+    #[serde(default)]
+    transcript_assay_panel_ui: TranscriptAssayPanelUiState,
     #[serde(default)]
     sequencing_confirmation_ui: SequencingConfirmationUiState,
     #[serde(default = "default_primer_backend_auto")]
@@ -1380,6 +1386,8 @@ pub struct MainAreaDna {
     pcr_paint_last_drag_start_text: String,
     pcr_paint_last_drag_end_text: String,
     qpcr_design_ui: QpcrDesignOpsUiState,
+    transcript_assay_panel_ui: TranscriptAssayPanelUiState,
+    cached_transcript_assay_panel_report: Option<Arc<TranscriptAssayPanelReport>>,
     sequencing_confirmation_ui: SequencingConfirmationUiState,
     primer_backend: PrimerDesignBackend,
     primer3_executable: String,
@@ -2149,6 +2157,8 @@ impl MainAreaDna {
             pcr_paint_last_drag_start_text: String::new(),
             pcr_paint_last_drag_end_text: String::new(),
             qpcr_design_ui: QpcrDesignOpsUiState::default(),
+            transcript_assay_panel_ui: TranscriptAssayPanelUiState::default(),
+            cached_transcript_assay_panel_report: None,
             sequencing_confirmation_ui: SequencingConfirmationUiState::default(),
             primer_backend: PrimerDesignBackend::Auto,
             primer3_executable: "primer3_core".to_string(),
@@ -18306,8 +18316,17 @@ impl MainAreaDna {
             {
                 self.op_status = err;
             }
+            if ui
+                .button("Design all-transcript panel")
+                .on_hover_text(
+                    "Open PCR Designer with this complete splicing group as the source for endpoint, SYBR, or TaqMan transcript-panel design",
+                )
+                .clicked()
+            {
+                self.seed_transcript_assay_panel_from_splicing_view(view);
+            }
             ui.label(
-                egui::RichText::new("Quick actions: keep the generic ROI handoff, or open PCR Designer directly in shared-transcript / transcript-specific qPCR mode using the current splicing context.")
+                egui::RichText::new("Quick actions: send a genomic ROI, design one qPCR assay, or compare an assay panel across every mature-transcript class in this group.")
                     .size(9.0)
                     .color(egui::Color32::from_rgb(100, 116, 139)),
             );
@@ -19804,6 +19823,9 @@ impl MainAreaDna {
                 report_id,
                 ..
             } => (Some(template.clone()), report_id.clone()),
+            Operation::DesignTranscriptAssayPanel {
+                seq_id, report_id, ..
+            } => (Some(seq_id.clone()), report_id.clone()),
             _ => (None, None),
         };
         let started = Instant::now();
@@ -19988,7 +20010,17 @@ impl MainAreaDna {
             self.primer_design_task = None;
             match done {
                 Ok(PrimerDesignTaskCompletion::Single(result)) => {
+                    let transcript_panel_report = result.transcript_assay_panel.as_deref().cloned();
                     self.handle_operation_success(result, started);
+                    if let Some(report) = transcript_panel_report {
+                        self.transcript_assay_panel_ui.report_id = report.report_id.clone();
+                        self.transcript_assay_panel_ui.source_feature_id =
+                            report.source_feature_id.to_string();
+                        self.cached_transcript_assay_panel_report = Some(Arc::new(report));
+                        self.pcr_designer_mode = PcrDesignerMode::TranscriptPanels;
+                        self.save_engine_ops_state();
+                        return;
+                    }
                     let resolved_report_id = report_id_hint
                         .as_deref()
                         .map(str::trim)
@@ -23465,6 +23497,7 @@ impl MainAreaDna {
             pcr_paint_intervals: self.pcr_paint_intervals.clone(),
             selection_formula_text: self.selection_formula_text.clone(),
             qpcr_design_ui: self.qpcr_design_ui.clone(),
+            transcript_assay_panel_ui: self.transcript_assay_panel_ui.clone(),
             sequencing_confirmation_ui: self.sequencing_confirmation_ui.clone(),
             primer_backend: self.primer_backend,
             primer3_executable: self.primer3_executable.clone(),
@@ -23760,6 +23793,8 @@ impl MainAreaDna {
         self.pcr_paint_last_drag_start_text.clear();
         self.pcr_paint_last_drag_end_text.clear();
         self.qpcr_design_ui = s.qpcr_design_ui;
+        self.transcript_assay_panel_ui = s.transcript_assay_panel_ui;
+        self.cached_transcript_assay_panel_report = None;
         self.sequencing_confirmation_ui = s.sequencing_confirmation_ui;
         self.primer_backend = s.primer_backend;
         self.primer3_executable = if s.primer3_executable.trim().is_empty() {
