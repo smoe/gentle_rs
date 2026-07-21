@@ -372,6 +372,15 @@
       "human_reviewer": null
     },
     {
+      "tutorial_id": "patz1_transcript_assay_panels_cli",
+      "tutorial_kind": "generated_chapter",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-07-21",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
       "tutorial_id": "reporter_construct_handoff_cli",
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",

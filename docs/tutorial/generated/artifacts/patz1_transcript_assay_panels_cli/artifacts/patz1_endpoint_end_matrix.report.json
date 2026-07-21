@@ -1,0 +1,703 @@
+{
+  "schema": "gentle.transcript_assay_panel.v2",
+  "report_id": "patz1_endpoint_end_matrix",
+  "generated_at_unix_ms": 0,
+  "op_id": "op-3",
+  "run_id": "example_patz1_endpoint_sybr_transcript_assay_panel_offline",
+  "source_seq_id": "patz1_transcript_assay_demo",
+  "source_feature_id": 1,
+  "group_label": "PATZ1",
+  "strand": "-",
+  "assay_kind": "endpoint_rt_pcr",
+  "cdna_synthesis": "oligo_dt",
+  "objective": "isoform_end_matrix",
+  "coverage_policy": "require_all",
+  "completion_status": "complete",
+  "transcript_count": 3,
+  "equivalence_group_count": 3,
+  "candidate_assay_count": 8,
+  "selected_assay_count": 2,
+  "exact_negative_prefilter_count": 0,
+  "full_assay_evaluation_count": 24,
+  "min_amplicon_bp": 70,
+  "max_amplicon_bp": 10000,
+  "max_mismatches": 0,
+  "require_3prime_exact_bases": 8,
+  "equivalence_groups": [
+    {
+      "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+      "cdna_sha256": "sha256:6c73e2052bd828f3e28df7ced43b911ccaa1202c32614cf32e52573a17cdef5e",
+      "cdna_length_bp": 80,
+      "representative_transcript_id": "PATZ1-202",
+      "member_count": 1,
+      "members": [
+        {
+          "transcript_feature_id": 3,
+          "transcript_id": "PATZ1-202",
+          "transcript_label": "PATZ1 synthetic skipped-middle transcript",
+          "strand": "-",
+          "cdna_length_bp": 80
+        }
+      ]
+    },
+    {
+      "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+      "cdna_sha256": "sha256:bf8de0081e092d6fc8056f13c01c7971611b3f1e1cde08aa87c33b95c9c00092",
+      "cdna_length_bp": 100,
+      "representative_transcript_id": "PATZ1-203",
+      "member_count": 1,
+      "members": [
+        {
+          "transcript_feature_id": 4,
+          "transcript_id": "PATZ1-203",
+          "transcript_label": "PATZ1 synthetic alternative-middle transcript",
+          "strand": "-",
+          "cdna_length_bp": 100
+        }
+      ]
+    },
+    {
+      "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+      "cdna_sha256": "sha256:da6a2f3dbe1d4447c5d2b0b01469c7c566a99aa66b15e57064612cef7cff646c",
+      "cdna_length_bp": 120,
+      "representative_transcript_id": "PATZ1-201",
+      "member_count": 1,
+      "members": [
+        {
+          "transcript_feature_id": 2,
+          "transcript_id": "PATZ1-201",
+          "transcript_label": "PATZ1 synthetic three-exon transcript",
+          "strand": "-",
+          "cdna_length_bp": 120
+        }
+      ]
+    }
+  ],
+  "selected_assays": [
+    {
+      "assay_id": "transcript_assay_27362fde0b95ba9d",
+      "rank": 1,
+      "assay_kind": "endpoint_rt_pcr",
+      "design_equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+      "design_transcript_id": "PATZ1-203",
+      "primer_pair": {
+        "rank": 1,
+        "score": 520.9551098276086,
+        "forward": {
+          "sequence": "GGATCCGATCGTAGCCTAGC",
+          "start_0based": 1,
+          "end_0based_exclusive": 21,
+          "length_bp": 20,
+          "anneal_length_bp": 20,
+          "non_annealing_5prime_tail_bp": 0,
+          "tm_c": 64.52270220379475,
+          "gc_fraction": 0.6,
+          "anneal_hits": 1,
+          "three_prime_base": "C",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 6
+        },
+        "reverse": {
+          "sequence": "ACGATCCGTTAGCGTACCTG",
+          "start_0based": 68,
+          "end_0based_exclusive": 88,
+          "length_bp": 20,
+          "anneal_length_bp": 20,
+          "non_annealing_5prime_tail_bp": 0,
+          "tm_c": 64.53494671241432,
+          "gc_fraction": 0.55,
+          "anneal_hits": 1,
+          "three_prime_base": "G",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 4
+        },
+        "amplicon_start_0based": 1,
+        "amplicon_end_0based_exclusive": 88,
+        "amplicon_length_bp": 87,
+        "tm_delta_c": 0.012244508619573935,
+        "primer_pair_complementary_run_bp": 6,
+        "primer_pair_3prime_complementary_run_bp": 2,
+        "rule_flags": {
+          "roi_covered": true,
+          "amplicon_size_in_range": true,
+          "tm_delta_in_range": true,
+          "forward_secondary_structure_ok": true,
+          "reverse_secondary_structure_ok": true,
+          "primer_pair_dimer_risk_low": true,
+          "forward_three_prime_gc_clamp": true,
+          "reverse_three_prime_gc_clamp": true
+        }
+      },
+      "end_reaction_id": "transcript_end_reaction_8981f059e1e6f750",
+      "end_reaction_ids": [
+        "transcript_end_reaction_8981f059e1e6f750",
+        "transcript_end_reaction_bd6bab5140872754"
+      ],
+      "junction_matches": [],
+      "single_product_equivalence_group_ids": [
+        "cdna_eq_bf8de0081e092d6f",
+        "cdna_eq_da6a2f3dbe1d4447"
+      ]
+    },
+    {
+      "assay_id": "transcript_assay_46b04036f2ccda49",
+      "rank": 2,
+      "assay_kind": "endpoint_rt_pcr",
+      "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+      "design_transcript_id": "PATZ1-202",
+      "primer_pair": {
+        "rank": 2,
+        "score": 500.2272194249289,
+        "forward": {
+          "sequence": "GATCCGATCGTAGCCTAGCATC",
+          "start_0based": 2,
+          "end_0based_exclusive": 24,
+          "length_bp": 22,
+          "anneal_length_bp": 22,
+          "non_annealing_5prime_tail_bp": 0,
+          "tm_c": 64.94628464587302,
+          "gc_fraction": 0.5454545454545454,
+          "anneal_hits": 1,
+          "three_prime_base": "C",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 6
+        },
+        "reverse": {
+          "sequence": "ATGCCGTAGCTTACGATCCG",
+          "start_0based": 60,
+          "end_0based_exclusive": 80,
+          "length_bp": 20,
+          "anneal_length_bp": 20,
+          "non_annealing_5prime_tail_bp": 0,
+          "tm_c": 64.94264561711947,
+          "gc_fraction": 0.55,
+          "anneal_hits": 1,
+          "three_prime_base": "G",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 4
+        },
+        "amplicon_start_0based": 2,
+        "amplicon_end_0based_exclusive": 80,
+        "amplicon_length_bp": 78,
+        "tm_delta_c": 0.00363902875355393,
+        "primer_pair_complementary_run_bp": 7,
+        "primer_pair_3prime_complementary_run_bp": 3,
+        "rule_flags": {
+          "roi_covered": true,
+          "amplicon_size_in_range": true,
+          "tm_delta_in_range": true,
+          "forward_secondary_structure_ok": true,
+          "reverse_secondary_structure_ok": true,
+          "primer_pair_dimer_risk_low": false,
+          "forward_three_prime_gc_clamp": true,
+          "reverse_three_prime_gc_clamp": true
+        }
+      },
+      "end_reaction_id": "transcript_end_reaction_db5d9946d8b7cf59",
+      "end_reaction_ids": [
+        "transcript_end_reaction_db5d9946d8b7cf59"
+      ],
+      "junction_matches": [],
+      "single_product_equivalence_group_ids": [
+        "cdna_eq_6c73e2052bd828f3",
+        "cdna_eq_bf8de0081e092d6f",
+        "cdna_eq_da6a2f3dbe1d4447"
+      ]
+    }
+  ],
+  "detection_matrix": [
+    {
+      "assay_id": "transcript_assay_27362fde0b95ba9d",
+      "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+      "transcript_feature_id": 3,
+      "transcript_id": "PATZ1-202",
+      "status": "no_product",
+      "detail_status": "no_product_in_size_range",
+      "product_count": 0,
+      "amplicon_lengths_bp": [],
+      "exact_negative_prefiltered": false,
+      "oligo_dt_5prime_reach": {
+        "status": "indeterminate",
+        "product_reaches": [],
+        "basis": "no_product_in_size_range; no compatible product geometry is available for an RT-completeness classification"
+      }
+    },
+    {
+      "assay_id": "transcript_assay_27362fde0b95ba9d",
+      "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+      "transcript_feature_id": 4,
+      "transcript_id": "PATZ1-203",
+      "status": "single_product",
+      "detail_status": "single_product",
+      "product_count": 1,
+      "amplicon_lengths_bp": [
+        87
+      ],
+      "exact_negative_prefiltered": false,
+      "oligo_dt_5prime_reach": {
+        "status": "distance_reported_unthresholded",
+        "maximum_required_cdna_reach_from_3prime_end_bp": 99,
+        "product_reaches": [
+          {
+            "amplicon_start_0based": 1,
+            "amplicon_end_0based_exclusive": 88,
+            "amplicon_length_bp": 87,
+            "required_cdna_reach_from_3prime_end_bp": 99
+          }
+        ],
+        "basis": "required reach is measured from the annotated transcript 3' end to each predicted amplicon's most 5' base; it is not an observed reverse-transcription length"
+      }
+    },
+    {
+      "assay_id": "transcript_assay_27362fde0b95ba9d",
+      "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+      "transcript_feature_id": 2,
+      "transcript_id": "PATZ1-201",
+      "status": "single_product",
+      "detail_status": "single_product",
+      "product_count": 1,
+      "amplicon_lengths_bp": [
+        107
+      ],
+      "exact_negative_prefiltered": false,
+      "oligo_dt_5prime_reach": {
+        "status": "distance_reported_unthresholded",
+        "maximum_required_cdna_reach_from_3prime_end_bp": 119,
+        "product_reaches": [
+          {
+            "amplicon_start_0based": 1,
+            "amplicon_end_0based_exclusive": 108,
+            "amplicon_length_bp": 107,
+            "required_cdna_reach_from_3prime_end_bp": 119
+          }
+        ],
+        "basis": "required reach is measured from the annotated transcript 3' end to each predicted amplicon's most 5' base; it is not an observed reverse-transcription length"
+      }
+    },
+    {
+      "assay_id": "transcript_assay_46b04036f2ccda49",
+      "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+      "transcript_feature_id": 3,
+      "transcript_id": "PATZ1-202",
+      "status": "single_product",
+      "detail_status": "single_product",
+      "product_count": 1,
+      "amplicon_lengths_bp": [
+        78
+      ],
+      "exact_negative_prefiltered": false,
+      "oligo_dt_5prime_reach": {
+        "status": "distance_reported_unthresholded",
+        "maximum_required_cdna_reach_from_3prime_end_bp": 78,
+        "product_reaches": [
+          {
+            "amplicon_start_0based": 2,
+            "amplicon_end_0based_exclusive": 80,
+            "amplicon_length_bp": 78,
+            "required_cdna_reach_from_3prime_end_bp": 78
+          }
+        ],
+        "basis": "required reach is measured from the annotated transcript 3' end to each predicted amplicon's most 5' base; it is not an observed reverse-transcription length"
+      }
+    },
+    {
+      "assay_id": "transcript_assay_46b04036f2ccda49",
+      "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+      "transcript_feature_id": 4,
+      "transcript_id": "PATZ1-203",
+      "status": "single_product",
+      "detail_status": "single_product",
+      "product_count": 1,
+      "amplicon_lengths_bp": [
+        98
+      ],
+      "exact_negative_prefiltered": false,
+      "oligo_dt_5prime_reach": {
+        "status": "distance_reported_unthresholded",
+        "maximum_required_cdna_reach_from_3prime_end_bp": 98,
+        "product_reaches": [
+          {
+            "amplicon_start_0based": 2,
+            "amplicon_end_0based_exclusive": 100,
+            "amplicon_length_bp": 98,
+            "required_cdna_reach_from_3prime_end_bp": 98
+          }
+        ],
+        "basis": "required reach is measured from the annotated transcript 3' end to each predicted amplicon's most 5' base; it is not an observed reverse-transcription length"
+      }
+    },
+    {
+      "assay_id": "transcript_assay_46b04036f2ccda49",
+      "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+      "transcript_feature_id": 2,
+      "transcript_id": "PATZ1-201",
+      "status": "single_product",
+      "detail_status": "single_product",
+      "product_count": 1,
+      "amplicon_lengths_bp": [
+        118
+      ],
+      "exact_negative_prefiltered": false,
+      "oligo_dt_5prime_reach": {
+        "status": "distance_reported_unthresholded",
+        "maximum_required_cdna_reach_from_3prime_end_bp": 118,
+        "product_reaches": [
+          {
+            "amplicon_start_0based": 2,
+            "amplicon_end_0based_exclusive": 120,
+            "amplicon_length_bp": 118,
+            "required_cdna_reach_from_3prime_end_bp": 118
+          }
+        ],
+        "basis": "required reach is measured from the annotated transcript 3' end to each predicted amplicon's most 5' base; it is not an observed reverse-transcription length"
+      }
+    }
+  ],
+  "transcript_rows": [
+    {
+      "transcript_feature_id": 2,
+      "transcript_id": "PATZ1-201",
+      "transcript_label": "PATZ1 synthetic three-exon transcript",
+      "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+      "status": "shared_family",
+      "covering_assay_ids": [
+        "transcript_assay_27362fde0b95ba9d",
+        "transcript_assay_46b04036f2ccda49"
+      ],
+      "notes": []
+    },
+    {
+      "transcript_feature_id": 3,
+      "transcript_id": "PATZ1-202",
+      "transcript_label": "PATZ1 synthetic skipped-middle transcript",
+      "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+      "status": "shared_family",
+      "covering_assay_ids": [
+        "transcript_assay_46b04036f2ccda49"
+      ],
+      "notes": []
+    },
+    {
+      "transcript_feature_id": 4,
+      "transcript_id": "PATZ1-203",
+      "transcript_label": "PATZ1 synthetic alternative-middle transcript",
+      "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+      "status": "shared_family",
+      "covering_assay_ids": [
+        "transcript_assay_27362fde0b95ba9d",
+        "transcript_assay_46b04036f2ccda49"
+      ],
+      "notes": []
+    }
+  ],
+  "uncovered_equivalence_group_ids": [],
+  "unresolved_group_pairs": [],
+  "backend_runs": [
+    {
+      "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+      "transcript_id": "PATZ1-202",
+      "backend": {
+        "requested": "internal",
+        "used": "internal",
+        "fallback_reason": null,
+        "primer3_executable": null,
+        "primer3_version": null,
+        "primer3_explain": null,
+        "primer3_request_boulder_io": null
+      },
+      "generated_candidate_count": 4
+    },
+    {
+      "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+      "transcript_id": "PATZ1-203",
+      "backend": {
+        "requested": "internal",
+        "used": "internal",
+        "fallback_reason": null,
+        "primer3_executable": null,
+        "primer3_version": null,
+        "primer3_explain": null,
+        "primer3_request_boulder_io": null
+      },
+      "generated_candidate_count": 4
+    },
+    {
+      "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+      "transcript_id": "PATZ1-201",
+      "backend": {
+        "requested": "internal",
+        "used": "internal",
+        "fallback_reason": null,
+        "primer3_executable": null,
+        "primer3_version": null,
+        "primer3_explain": null,
+        "primer3_request_boulder_io": null
+      },
+      "generated_candidate_count": 4
+    }
+  ],
+  "end_classes": [
+    {
+      "end_class_id": "transcript_first_end_014d9baa04012942",
+      "kind": "first",
+      "exon_source_start_0based": 180,
+      "exon_source_end_0based_exclusive": 220,
+      "adjacent_exon_source_start_0based": 100,
+      "adjacent_exon_source_end_0based_exclusive": 140,
+      "junction_local_position_0based": 40,
+      "transcript_ids": [
+        "PATZ1-201"
+      ]
+    },
+    {
+      "end_class_id": "transcript_first_end_0dd8f7224167bfc7",
+      "kind": "first",
+      "exon_source_start_0based": 180,
+      "exon_source_end_0based_exclusive": 220,
+      "adjacent_exon_source_start_0based": 20,
+      "adjacent_exon_source_end_0based_exclusive": 60,
+      "junction_local_position_0based": 40,
+      "transcript_ids": [
+        "PATZ1-202"
+      ]
+    },
+    {
+      "end_class_id": "transcript_first_end_7954110483075819",
+      "kind": "first",
+      "exon_source_start_0based": 180,
+      "exon_source_end_0based_exclusive": 220,
+      "adjacent_exon_source_start_0based": 120,
+      "adjacent_exon_source_end_0based_exclusive": 140,
+      "junction_local_position_0based": 40,
+      "transcript_ids": [
+        "PATZ1-203"
+      ]
+    },
+    {
+      "end_class_id": "transcript_terminal_end_17e2eac3abcda939",
+      "kind": "terminal",
+      "exon_source_start_0based": 20,
+      "exon_source_end_0based_exclusive": 60,
+      "adjacent_exon_source_start_0based": 120,
+      "adjacent_exon_source_end_0based_exclusive": 140,
+      "junction_local_position_0based": 60,
+      "transcript_ids": [
+        "PATZ1-203"
+      ]
+    },
+    {
+      "end_class_id": "transcript_terminal_end_4ce59d05fe69a8a2",
+      "kind": "terminal",
+      "exon_source_start_0based": 20,
+      "exon_source_end_0based_exclusive": 60,
+      "adjacent_exon_source_start_0based": 100,
+      "adjacent_exon_source_end_0based_exclusive": 140,
+      "junction_local_position_0based": 80,
+      "transcript_ids": [
+        "PATZ1-201"
+      ]
+    },
+    {
+      "end_class_id": "transcript_terminal_end_cdd60d42a9e9a959",
+      "kind": "terminal",
+      "exon_source_start_0based": 20,
+      "exon_source_end_0based_exclusive": 60,
+      "adjacent_exon_source_start_0based": 180,
+      "adjacent_exon_source_end_0based_exclusive": 220,
+      "junction_local_position_0based": 40,
+      "transcript_ids": [
+        "PATZ1-202"
+      ]
+    }
+  ],
+  "end_reactions": [
+    {
+      "reaction_id": "transcript_end_reaction_8981f059e1e6f750",
+      "first_end_class_id": "transcript_first_end_7954110483075819",
+      "terminal_end_class_id": "transcript_terminal_end_17e2eac3abcda939",
+      "supported_transcript_ids": [
+        "PATZ1-203"
+      ],
+      "assay_ids": [
+        "transcript_assay_27362fde0b95ba9d"
+      ],
+      "status": "designed"
+    },
+    {
+      "reaction_id": "transcript_end_reaction_bd6bab5140872754",
+      "first_end_class_id": "transcript_first_end_014d9baa04012942",
+      "terminal_end_class_id": "transcript_terminal_end_4ce59d05fe69a8a2",
+      "supported_transcript_ids": [
+        "PATZ1-201"
+      ],
+      "assay_ids": [
+        "transcript_assay_27362fde0b95ba9d"
+      ],
+      "status": "designed"
+    },
+    {
+      "reaction_id": "transcript_end_reaction_db5d9946d8b7cf59",
+      "first_end_class_id": "transcript_first_end_0dd8f7224167bfc7",
+      "terminal_end_class_id": "transcript_terminal_end_cdd60d42a9e9a959",
+      "supported_transcript_ids": [
+        "PATZ1-202"
+      ],
+      "assay_ids": [
+        "transcript_assay_46b04036f2ccda49"
+      ],
+      "status": "designed"
+    }
+  ],
+  "band_size_matrix": [
+    {
+      "reaction_id": "transcript_end_reaction_8981f059e1e6f750",
+      "assay_id": "transcript_assay_27362fde0b95ba9d",
+      "transcript_id": "PATZ1-202",
+      "product_count": 0,
+      "predicted_band_sizes_bp": []
+    },
+    {
+      "reaction_id": "transcript_end_reaction_bd6bab5140872754",
+      "assay_id": "transcript_assay_27362fde0b95ba9d",
+      "transcript_id": "PATZ1-202",
+      "product_count": 0,
+      "predicted_band_sizes_bp": []
+    },
+    {
+      "reaction_id": "transcript_end_reaction_8981f059e1e6f750",
+      "assay_id": "transcript_assay_27362fde0b95ba9d",
+      "transcript_id": "PATZ1-203",
+      "product_count": 1,
+      "predicted_band_sizes_bp": [
+        87
+      ]
+    },
+    {
+      "reaction_id": "transcript_end_reaction_bd6bab5140872754",
+      "assay_id": "transcript_assay_27362fde0b95ba9d",
+      "transcript_id": "PATZ1-203",
+      "product_count": 1,
+      "predicted_band_sizes_bp": [
+        87
+      ]
+    },
+    {
+      "reaction_id": "transcript_end_reaction_8981f059e1e6f750",
+      "assay_id": "transcript_assay_27362fde0b95ba9d",
+      "transcript_id": "PATZ1-201",
+      "product_count": 1,
+      "predicted_band_sizes_bp": [
+        107
+      ]
+    },
+    {
+      "reaction_id": "transcript_end_reaction_bd6bab5140872754",
+      "assay_id": "transcript_assay_27362fde0b95ba9d",
+      "transcript_id": "PATZ1-201",
+      "product_count": 1,
+      "predicted_band_sizes_bp": [
+        107
+      ]
+    },
+    {
+      "reaction_id": "transcript_end_reaction_db5d9946d8b7cf59",
+      "assay_id": "transcript_assay_46b04036f2ccda49",
+      "transcript_id": "PATZ1-202",
+      "product_count": 1,
+      "predicted_band_sizes_bp": [
+        78
+      ]
+    },
+    {
+      "reaction_id": "transcript_end_reaction_db5d9946d8b7cf59",
+      "assay_id": "transcript_assay_46b04036f2ccda49",
+      "transcript_id": "PATZ1-203",
+      "product_count": 1,
+      "predicted_band_sizes_bp": [
+        98
+      ]
+    },
+    {
+      "reaction_id": "transcript_end_reaction_db5d9946d8b7cf59",
+      "assay_id": "transcript_assay_46b04036f2ccda49",
+      "transcript_id": "PATZ1-201",
+      "product_count": 1,
+      "predicted_band_sizes_bp": [
+        118
+      ]
+    }
+  ],
+  "junction_evaluations": [],
+  "short_sybr_junction_assays": [],
+  "order_ready_primers": [
+    {
+      "line_id": "transcript_assay_oligo_62b5ee8fd33e79bd",
+      "assay_id": "transcript_assay_27362fde0b95ba9d",
+      "assay_rank": 1,
+      "name": "patz1_endpoint_end_matrix_1_forward",
+      "role": "forward",
+      "sequence_5_to_3": "GGATCCGATCGTAGCCTAGC",
+      "length_nt": 20
+    },
+    {
+      "line_id": "transcript_assay_oligo_5c87c69a0578aab3",
+      "assay_id": "transcript_assay_27362fde0b95ba9d",
+      "assay_rank": 1,
+      "name": "patz1_endpoint_end_matrix_1_reverse",
+      "role": "reverse",
+      "sequence_5_to_3": "ACGATCCGTTAGCGTACCTG",
+      "length_nt": 20
+    },
+    {
+      "line_id": "transcript_assay_oligo_64ce961a6b05a57e",
+      "assay_id": "transcript_assay_46b04036f2ccda49",
+      "assay_rank": 2,
+      "name": "patz1_endpoint_end_matrix_2_forward",
+      "role": "forward",
+      "sequence_5_to_3": "GATCCGATCGTAGCCTAGCATC",
+      "length_nt": 22
+    },
+    {
+      "line_id": "transcript_assay_oligo_b21c082b86461f0e",
+      "assay_id": "transcript_assay_46b04036f2ccda49",
+      "assay_rank": 2,
+      "name": "patz1_endpoint_end_matrix_2_reverse",
+      "role": "reverse",
+      "sequence_5_to_3": "ATGCCGTAGCTTACGATCCG",
+      "length_nt": 20
+    }
+  ],
+  "specificity_followups": [
+    {
+      "assay_id": "transcript_assay_27362fde0b95ba9d",
+      "local_cdna_matrix_status": "completed",
+      "genomic_confirmation_status": "not_run",
+      "shell_command_template": "primers specificity --forward GGATCCGATCGTAGCCTAGC --reverse ACGATCCGTTAGCGTACCTG --target-genome GENOME_ID"
+    },
+    {
+      "assay_id": "transcript_assay_46b04036f2ccda49",
+      "local_cdna_matrix_status": "completed",
+      "genomic_confirmation_status": "not_run",
+      "shell_command_template": "primers specificity --forward GATCCGATCGTAGCCTAGCATC --reverse ATGCCGTAGCTTACGATCCG --target-genome GENOME_ID"
+    }
+  ],
+  "provenance": {
+    "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",
+    "transcript_ids": [
+      "PATZ1-201",
+      "PATZ1-202",
+      "PATZ1-203"
+    ],
+    "junction_sources": [],
+    "primer_backend": "internal"
+  },
+  "warnings": [
+    "Oligo-dT cDNA can underrepresent long 5' transcript regions because reverse-transcription completeness, rather than the PCR polymerase's 10 kb capacity, may be limiting.",
+    "A missing long endpoint product must not be interpreted as isoform absence without supporting short 5' and 3' diagnostic assays.",
+    "Use short end-specific SYBR assays and consider 5' RACE when 5' completeness remains uncertain."
+  ]
+}

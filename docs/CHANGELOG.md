@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-07-21
 
+- Added a deterministic offline CLI tutorial for the synthetic PATZ1 endpoint
+  RT-PCR and primer-only SYBR transcript panels, including full-operation
+  `@FILE` execution, persisted report inspection/export, oligo-dT interpretation
+  safeguards, and required Clariom-style junction review.
 - Added a full-operation JSON form to
   `primers design-transcript-assay-panel`, so the complete
   `DesignTranscriptAssayPanel` request is reusable unchanged across direct CLI,

@@ -1040,6 +1040,28 @@
           "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
         }
       ]
+    },
+    {
+      "id": "patz1_transcript_assay_panels_cli",
+      "title": "Design PATZ1 Endpoint and SYBR Transcript Panels from the CLI",
+      "path": "docs/tutorial/generated/chapters/04-06_patz1_transcript_assay_panels_cli.md",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 6,
+      "decimal_id": "04.06",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "cli_first",
+        "primer_design",
+        "transcript_analysis",
+        "contributors"
+      ],
+      "notes": "Machine-checked CLI chapter for endpoint RT-PCR and primer-only SYBR transcript-panel design through the shared operation contract.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-07-21"
     }
   ]
 }

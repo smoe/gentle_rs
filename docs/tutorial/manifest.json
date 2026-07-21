@@ -2115,6 +2115,130 @@
           "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
         }
       ]
+    },
+    {
+      "id": "patz1_transcript_assay_panels_cli",
+      "order": 28,
+      "title": "Design PATZ1 Endpoint and SYBR Transcript Panels from the CLI",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 6,
+      "decimal_id": "04.06",
+      "example_id": "patz1_endpoint_sybr_transcript_assay_panel_offline",
+      "tier": "core",
+      "guide_path": null,
+      "summary": "Use one synthetic minus-strand PATZ1 locus to generate an endpoint first-end x terminal-end band matrix and a separate Clariom-JUC-directed primer-only SYBR panel, then inspect and export both persisted reports entirely from the command line.",
+      "narrative": "A multi-transcript PCR experiment has two distinct jobs. Long endpoint RT-PCR can expose transcript families as differently sized first-end x terminal-end products on a gel. Short SYBR assays can then test selected exon-exon junctions without requiring an internal hydrolysis probe. GENtle keeps both jobs in one `gentle.transcript_assay_panel.v2` contract while preserving their different assay rules.\n\nThis chapter uses a deliberately sequence-diverse, synthetic PATZ1-like locus on the minus strand. It demonstrates operation mechanics, exact mature-cDNA equivalence classes, a 10 kb endpoint ceiling, oligo-dT reverse-transcription warnings, and a required synthetic Clariom JUC junction. It does not produce orderable primers for the human PATZ1 locus and does not claim that a missing long product proves isoform absence. The canonical workflow is the deterministic reference; the direct CLI steps extract the same two operation objects and submit them unchanged through `primers design-transcript-assay-panel`.",
+      "use_cases": [
+        "You want a command-line-only route for endpoint RT-PCR, SYBR qPCR, or TaqMan-compatible transcript-panel design.",
+        "You want a first-end x terminal-end reaction matrix with predicted band sizes across every annotated mature transcript.",
+        "You want short primer-only assays directed at required or preferred exon-exon junction evidence.",
+        "You need to preserve every shared operation field instead of relying only on convenience flags.",
+        "You want persisted reports that can be listed, shown, exported, or consumed through MCP, JavaScript, Lua, and workflows."
+      ],
+      "gui_steps": [
+        "No GUI is required. Optionally open the synthetic fixture in PCR Designer to inspect the same transcript classes and assay modes graphically.",
+        "If using the GUI for comparison, select the PATZ1-like gene feature and confirm that its transcript order follows mature 5-prime to 3-prime orientation despite the minus-strand genomic locus.",
+        "Use the endpoint mode with oligo-dT cDNA, `isoform_end_matrix`, strict coverage, and a 10,000 bp maximum product to mirror the first CLI operation.",
+        "Review Primer3 preflight only when using the external backend; the deterministic tutorial itself uses the internal backend.",
+        "Inspect the endpoint reaction and band-size matrices, including the reverse-transcription-completeness warning for long 5-prime reach.",
+        "Use primer-only SYBR mode with required junction evidence to mirror the second CLI operation; no probe should be created.",
+        "Inspect the persisted panel rows and export the same report JSON used by the CLI path."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json",
+        "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json op '{\"LoadFile\":{\"path\":\"test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_minus_strand.gb\",\"as_id\":\"patz1_transcript_assay_demo\"}}'",
+        "jq '.workflow.ops[2] | .DesignTranscriptAssayPanel.path=\"/tmp/patz1_endpoint_end_matrix.report.json\"' docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json > /tmp/patz1_endpoint.operation.json && jq '.workflow.ops[3] | .DesignTranscriptAssayPanel.path=\"/tmp/patz1_sybr_juc_panel.report.json\"' docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json > /tmp/patz1_sybr.operation.json",
+        "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers preflight --backend primer3",
+        "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers design-transcript-assay-panel @/tmp/patz1_endpoint.operation.json --backend internal",
+        "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers design-transcript-assay-panel @/tmp/patz1_sybr.operation.json --backend internal",
+        "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers list-transcript-assay-panels && cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_endpoint_end_matrix && cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_sybr_juc_panel /tmp/patz1_sybr_juc_panel.export.json"
+      ],
+      "step_expectations": [
+        "The canonical offline workflow writes complete endpoint and SYBR `gentle.transcript_assay_panel.v2` reports from committed synthetic inputs.",
+        "The explicit project state contains the minus-strand PATZ1-like locus under the deterministic sequence id used by both operations.",
+        "The two `@FILE` payloads are the exact externally tagged operations from the canonical workflow, with only their output paths redirected to `/tmp`.",
+        "Primer3 preflight reports whether the external executable is reachable; its result does not alter the internal-backend tutorial run.",
+        "The endpoint report is complete, primer-only, uses the 10,000 bp ceiling, and contains designed end reactions plus at least three distinct predicted band sizes.",
+        "The SYBR report is primer-only and includes a selected assay spanning the required synthetic Clariom JUC junction.",
+        "Both report ids are persisted in the selected state; list/show/export operate without reconstructing or hand-editing the reports."
+      ],
+      "prerequisites": [
+        "pcr_selection_batch_primer_pairs_offline"
+      ],
+      "learning_objectives": [
+        "Distinguish endpoint isoform discovery from short primer-only junction validation.",
+        "Run a complete externally tagged `DesignTranscriptAssayPanel` operation through the direct primer CLI route.",
+        "Interpret exact mature-cDNA equivalence classes and transcript-by-assay product matrices conservatively.",
+        "Read first-end x terminal-end reactions and predicted band sizes without treating a missing long product as proof of transcript absence.",
+        "Require every supplied junction to be evaluated or returned with an explicit unresolved reason.",
+        "Persist, list, inspect, and export transcript assay reports from one explicit project state."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "artifact_exports",
+        "tutorial_drift_checks"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "assay_kind=endpoint_rt_pcr / objective=isoform_end_matrix",
+          "where_used": "The first `DesignTranscriptAssayPanel` operation",
+          "why_it_matters": "This combination constructs only annotated first-end x terminal-end reactions and reports their product sizes across all transcript classes.",
+          "how_to_derive": "Use endpoint mode when differently sized gel bands are the intended readout; use a short qPCR mode for junction validation.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "cdna_synthesis=oligo_dt / max_amplicon_bp=10000",
+          "where_used": "Endpoint panel design and interpretation warnings",
+          "why_it_matters": "PCR capacity can reach 10 kb, but oligo-dT reverse transcription may still underrepresent distant 5-prime sequence.",
+          "how_to_derive": "Set the PCR ceiling from the available long-range polymerase, then retain short end-specific assays or 5-prime RACE as confirmation for vulnerable long products.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "coverage_policy=require_all",
+          "where_used": "Both tutorial operations",
+          "why_it_matters": "Strict coverage refuses incomplete panels instead of silently dropping a mature-cDNA class or requested junction.",
+          "how_to_derive": "Keep `require_all` for a claimed complete panel; choose `best_effort` only as an explicit exploratory decision and inspect every uncovered reason.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "junction_evidence_priority=required",
+          "where_used": "The primer-only SYBR operation",
+          "why_it_matters": "Every supplied Clariom-style JUC target must be evaluated and reported rather than competing with only the automatically selected anchors.",
+          "how_to_derive": "Use `required` for junctions selected for laboratory validation and `preferred` for evidence that may guide but not block panel completion.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "--backend internal versus --backend primer3",
+          "where_used": "Direct CLI execution",
+          "why_it_matters": "The backend override changes candidate generation while leaving the operation and report contract unchanged.",
+          "how_to_derive": "Use the internal backend for this deterministic tutorial; use `primers preflight --backend primer3` before selecting Primer3 for real designs.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_endpoint_end_matrix",
+        "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_sybr_juc_panel",
+        "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_endpoint_end_matrix /tmp/patz1_endpoint_end_matrix.export.json",
+        "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_sybr_juc_panel /tmp/patz1_sybr_juc_panel.export.json",
+        "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers preflight --backend primer3",
+        "cargo run --bin gentle_examples_docs -- tutorial-check"
+      ],
+      "retain_outputs": [
+        "artifacts/patz1_endpoint_end_matrix.report.json",
+        "artifacts/patz1_sybr_juc_panel.report.json"
+      ],
+      "checkpoints": [
+        "The endpoint report has `assay_kind: endpoint_rt_pcr`, `objective: isoform_end_matrix`, `completion_status: complete`, and no internal probes.",
+        "Every endpoint reaction is designed and the band-size matrix contains at least three distinct predicted product sizes.",
+        "The endpoint warnings explain that oligo-dT reverse-transcription completeness can limit long 5-prime products independently of PCR capacity.",
+        "The SYBR report has `assay_kind: sybr_qpcr`, no internal probes, and a non-empty short-junction assay table.",
+        "At least one SYBR junction-evaluation row has `source_kind: clariom_juc` and `status: selected_spanning_assay`.",
+        "The fixture is identified as synthetic and is not presented as an order-ready human PATZ1 design.",
+        "The same operation JSON remains callable through workflows, MCP `op`, JavaScript `apply_operation`, and Lua `apply_operation`."
+      ]
     }
   ]
 }

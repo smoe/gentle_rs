@@ -86,6 +86,7 @@ Tutorial numbers now describe the topic group first and the learning position se
 - `04.03` [qPCR Across Exon Junctions](./04-03_qpcr_exon_junctions_gui.md) - guided GUI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including junction-only transcript evidence and shared-shell parity commands.
 - `04.04` [Guide practical filtering and oligo generation](./generated/chapters/04-04_guides_filter_and_generate_oligos.md) - executable reference; status `generated+checked/human-pending`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
 - `04.05` [Guide oligo export (CSV + protocol)](./generated/chapters/04-05_guides_export_csv_and_protocol.md) - executable reference; status `generated+checked/human-pending`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
+- `04.06` [Design PATZ1 Endpoint and SYBR Transcript Panels from the CLI](./generated/chapters/04-06_patz1_transcript_assay_panels_cli.md) - executable reference; status `generated+checked/human-pending`; review `codex_reviewed` - Codex 2026-07-21 - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: CLI-first endpoint RT-PCR band-matrix and primer-only SYBR junction-panel design through the complete shared operation contract.
 
 ### Genome Context & Coordinates
 
@@ -235,6 +236,13 @@ Use the review badge to decide what kind of feedback is most useful:
 1. Open `File -> Open Tutorial Project...` -> `Primers, PCR & qPCR` -> `04.01 Simple PCR From a Selected Core Region`
 2. Follow [`docs/tutorial/04-01_simple_pcr_selection_gui.md`](./04-01_simple_pcr_selection_gui.md) from the loaded TP73 starter project
 3. Use the richer executable PCR chapter afterward if you need batch queueing or painted primer windows
+
+### Path B6: CLI-first multi-transcript PCR
+
+1. Run the canonical offline workflow in [`04.06 Design PATZ1 Endpoint and SYBR Transcript Panels from the CLI`](./generated/chapters/04-06_patz1_transcript_assay_panels_cli.md)
+2. Replay its endpoint operation through `primers design-transcript-assay-panel @FILE` and inspect the first-end x terminal-end band matrix
+3. Replay its required-junction SYBR operation and confirm that no internal probe is created
+4. Use one explicit `--state` project to list, show, and export both persisted reports before adapting the operations to real transcript annotations
 
 ### Path B3: TFBS similarity sign-off
 
