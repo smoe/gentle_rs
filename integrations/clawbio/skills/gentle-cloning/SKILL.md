@@ -1778,6 +1778,16 @@ Apply the following methodology:
 3. **Preserve GENtle's deterministic engine contract**: do not rewrite the
    biology logic outside GENtle. Let GENtle compute the action and report what
    it returned.
+   - for externally scheduled transcript-panel specificity, first run
+     `primers transcript-assay-specificity-plan`; execute every returned
+     structured `program`/`args[]`; fill every row of the execution-manifest
+     template with exit code plus output byte length/hash; and always run
+     `primers transcript-assay-specificity-finalize`, including after a failed
+     process
+   - do not combine per-assay booleans in ClawBio/OpenClaw. Only GENtle's
+     aggregate acceptance is authoritative: `pass` may be persisted,
+     `specificity_fail` is complete biological failure, and `incomplete`
+     denotes failed, missing, duplicate, stale, or mismatched evidence
 4. **Separate planning from execution**: if coordinates, sequence IDs, genome
    IDs, or workflow paths are missing, ask for them or stop at a plan. Do not
    fabricate them.

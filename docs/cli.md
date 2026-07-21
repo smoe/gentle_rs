@@ -3000,6 +3000,8 @@ Shared shell command:
     - `primers specificity-plan REPORT_ID --pair-rank N --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-plan --forward SEQ --reverse SEQ --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-import HANDOFF.json [--path OUTPUT.json]`
+    - `primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
+    - `primers transcript-assay-specificity-finalize HANDOFF.json EXECUTION_MANIFEST_JSON_OR_@FILE [--path ACCEPTANCE.json]`
     - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
@@ -3473,6 +3475,22 @@ Shared shell command:
         exit rather than file size as its completion signal
       - regenerating the same deterministic handoff clears its old declared
         output TSVs, preventing a fresh run from importing stale results
+      - for a persisted transcript-assay panel, `primers
+        transcript-assay-specificity-plan` emits one aggregate handoff plus a
+        process-manifest template covering every selected assay and both primer
+        searches. The outer scheduler runs only the declared `program` and
+        `args[]`; it must return one row per command with its exit code and the
+        exact output byte length/hash, even when a command fails
+      - always call `primers transcript-assay-specificity-finalize` after the
+        scheduler finishes. A successful command with an empty TSV is a valid
+        completed no-hit result and can yield `specificity_fail`; missing,
+        duplicate, failed, stale, or provenance-mismatched evidence yields
+        `incomplete`
+      - finalization binds the current panel, assay ids/ranks, annealing
+        sequences, policy, prepared genome/BLAST database, handoff schema, and
+        output identities. Only a complete all-assay `pass` is attached to the
+        persisted panel, in one atomic update; `specificity_fail` and
+        `incomplete` leave it unchanged
     - cDNA PCR/qPCR assay test notes
       (`primers test-cdna-pcr` / `primers test-cdna-qpcr` /
       `primers test-cdna-qpcr-fasta`):

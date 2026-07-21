@@ -9946,7 +9946,7 @@ impl GentleEngine {
                 })
                 .map(|(idx, _)| idx)
                 .collect::<Vec<_>>();
-            (matches.len() == 1).then_some(matches[0])
+            (matches.len() == 1).then(|| matches[0])
         } else {
             let matches = amplicons
                 .iter()
@@ -9957,7 +9957,7 @@ impl GentleEngine {
                 })
                 .map(|(idx, _)| idx)
                 .collect::<Vec<_>>();
-            (matches.len() == 1).then_some(matches[0])
+            (matches.len() == 1).then(|| matches[0])
         };
         if let Some(idx) = intended_index
             && let Some(amplicon) = amplicons.get_mut(idx)
@@ -10456,7 +10456,15 @@ impl GentleEngine {
             ),
             cause_chain: vec![],
         })?;
-        let (hits, warnings) = parse_blastn_tabular_hits(&output);
+        Self::primer_specificity_blast_from_handoff_output(handoff, command, &output)
+    }
+
+    fn primer_specificity_blast_from_handoff_output(
+        handoff: &PrimerSpecificityHandoff,
+        command: &PrimerSpecificityHandoffCommand,
+        output: &str,
+    ) -> Result<GenomeBlastReport, EngineError> {
+        let (hits, warnings) = parse_blastn_tabular_hits(output);
         let effective =
             handoff
                 .effective_blast_options
@@ -10515,6 +10523,21 @@ impl GentleEngine {
                 cause_chain: vec![],
             }
         })?;
+        self.primer_specificity_report_from_handoff(&handoff)
+    }
+
+    fn primer_specificity_report_from_handoff(
+        &self,
+        handoff: &PrimerSpecificityHandoff,
+    ) -> Result<PrimerSpecificityReport, EngineError> {
+        self.primer_specificity_report_from_handoff_outputs(handoff, None)
+    }
+
+    fn primer_specificity_report_from_handoff_outputs(
+        &self,
+        handoff: &PrimerSpecificityHandoff,
+        validated_outputs: Option<&BTreeMap<String, String>>,
+    ) -> Result<PrimerSpecificityReport, EngineError> {
         if handoff.schema != PRIMER_SPECIFICITY_HANDOFF_SCHEMA {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -10558,14 +10581,25 @@ impl GentleEngine {
         };
         let forward = primer_for_role(PrimerSpecificityPrimerRole::Forward)?;
         let reverse = primer_for_role(PrimerSpecificityPrimerRole::Reverse)?;
-        let forward_blast = Self::primer_specificity_blast_from_handoff(
-            &handoff,
-            command_for_role(PrimerSpecificityPrimerRole::Forward)?,
-        )?;
-        let reverse_blast = Self::primer_specificity_blast_from_handoff(
-            &handoff,
-            command_for_role(PrimerSpecificityPrimerRole::Reverse)?,
-        )?;
+        let blast_for_role = |role| {
+            let command = command_for_role(role)?;
+            match validated_outputs {
+                Some(outputs) => {
+                    let output = outputs.get(&command.command_id).ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "No validated output bytes were retained for command '{}'",
+                            command.command_id
+                        ),
+                        cause_chain: vec![],
+                    })?;
+                    Self::primer_specificity_blast_from_handoff_output(handoff, command, output)
+                }
+                None => Self::primer_specificity_blast_from_handoff(handoff, command),
+            }
+        };
+        let forward_blast = blast_for_role(PrimerSpecificityPrimerRole::Forward)?;
+        let reverse_blast = blast_for_role(PrimerSpecificityPrimerRole::Reverse)?;
         let resolved_input = PrimerSpecificityResolvedInput {
             primer_report_id: handoff.primer_report_id.clone(),
             pair_rank: handoff.pair_rank,
@@ -10577,10 +10611,10 @@ impl GentleEngine {
         self.primer_specificity_report_from_blast_reports(
             resolved_input,
             &handoff.requested_target_genome_id,
-            handoff.policy,
+            handoff.policy.clone(),
             handoff.catalog_path.as_deref(),
             handoff.cache_dir.as_deref(),
-            handoff.blast_preflight,
+            handoff.blast_preflight.clone(),
             forward_blast,
             reverse_blast,
             vec![format!(
@@ -10588,6 +10622,836 @@ impl GentleEngine {
                 handoff.handoff_id
             )],
         )
+    }
+
+    fn transcript_assay_panel_specificity_digest(
+        report: &TranscriptAssayPanelReport,
+    ) -> Result<String, EngineError> {
+        let binding = json!({
+            "schema": report.schema,
+            "report_id": report.report_id,
+            "generated_at_unix_ms": report.generated_at_unix_ms,
+            "source_seq_id": report.source_seq_id,
+            "source_feature_id": report.source_feature_id,
+            "assay_kind": report.assay_kind,
+            "cdna_synthesis": report.cdna_synthesis,
+            "objective": report.objective,
+            "coverage_policy": report.coverage_policy,
+            "completion_status": report.completion_status,
+            "selected_assays": report.selected_assays,
+            "provenance": report.provenance,
+        });
+        serde_json::to_vec(&binding)
+            .map(|bytes| sha256_prefixed_bytes(&bytes))
+            .map_err(|error| EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Could not compute transcript assay panel specificity binding: {error}"
+                ),
+                cause_chain: vec![],
+            })
+    }
+
+    fn transcript_assay_panel_primer_pair_digest(
+        assay_id: &str,
+        assay_rank: usize,
+        forward: &PrimerSpecificityInputPrimer,
+        reverse: &PrimerSpecificityInputPrimer,
+    ) -> Result<String, EngineError> {
+        serde_json::to_vec(&json!({
+            "assay_id": assay_id,
+            "assay_rank": assay_rank,
+            "forward": forward,
+            "reverse": reverse,
+        }))
+        .map(|bytes| sha256_prefixed_bytes(&bytes))
+        .map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not identify transcript assay primer pair: {error}"),
+            cause_chain: vec![],
+        })
+    }
+
+    fn transcript_assay_panel_handoff_id(
+        panel_report_id: &str,
+        panel_digest: &str,
+        requested_target_genome_id: &str,
+        resolved_target_genome_id: &str,
+        policy_schema: &str,
+        policy: &PrimerSpecificityPolicy,
+        completion_policy: &str,
+        execution_manifest_schema: &str,
+        assays: &[TranscriptAssayPanelSpecificityHandoffAssay],
+    ) -> Result<String, EngineError> {
+        let identity = serde_json::to_string(&json!({
+            "schema": TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_HANDOFF_SCHEMA,
+            "panel_report_id": panel_report_id,
+            "panel_digest": panel_digest,
+            "requested_target_genome_id": requested_target_genome_id,
+            "resolved_target_genome_id": resolved_target_genome_id,
+            "policy_schema": policy_schema,
+            "policy": policy,
+            "completion_policy": completion_policy,
+            "execution_manifest_schema": execution_manifest_schema,
+            "assays": assays.iter().map(|assay| json!({
+                "assay_id": assay.assay_id,
+                "assay_rank": assay.assay_rank,
+                "primer_pair_digest": assay.primer_pair_digest,
+                "primer_handoff_schema": assay.handoff.schema,
+                "primer_handoff_id": assay.handoff.handoff_id,
+                "blast_db_prefix": assay.handoff.blast_db_prefix,
+                "effective_blast_options": assay.handoff.effective_blast_options,
+                "commands": assay.handoff.commands,
+            })).collect::<Vec<_>>(),
+        }))
+        .map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not identify panel specificity handoff: {error}"),
+            cause_chain: vec![],
+        })?;
+        Ok(short_sha256_id("panel_specificity_handoff", &identity))
+    }
+
+    fn primer_specificity_handoff_id_from_record(
+        handoff: &PrimerSpecificityHandoff,
+    ) -> Result<String, EngineError> {
+        let forward = handoff
+            .primers
+            .iter()
+            .find(|primer| primer.role == PrimerSpecificityPrimerRole::Forward)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Primer specificity handoff has no forward primer".to_string(),
+                cause_chain: vec![],
+            })?;
+        let reverse = handoff
+            .primers
+            .iter()
+            .find(|primer| primer.role == PrimerSpecificityPrimerRole::Reverse)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Primer specificity handoff has no reverse primer".to_string(),
+                cause_chain: vec![],
+            })?;
+        let identity = serde_json::to_string(&json!({
+            "primer_report_id": handoff.primer_report_id,
+            "pair_rank": handoff.pair_rank,
+            "pair_index": handoff.pair_index,
+            "expected_amplicon_length_bp": handoff.expected_amplicon_length_bp,
+            "requested_target_genome_id": handoff.requested_target_genome_id,
+            "resolved_target_genome_id": handoff.resolved_target_genome_id,
+            "policy": handoff.policy,
+            "forward": forward,
+            "reverse": reverse,
+        }))
+        .map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not identify nested primer specificity handoff: {error}"),
+            cause_chain: vec![],
+        })?;
+        Ok(short_sha256_id("primer_specificity_handoff", &identity))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_transcript_assay_panel_specificity_handoff(
+        &self,
+        panel_report_id: &str,
+        target_genome_id: &str,
+        mut policy: PrimerSpecificityPolicy,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        output_dir: &str,
+    ) -> Result<TranscriptAssayPanelSpecificityHandoff, EngineError> {
+        let report = self.get_transcript_assay_panel_report(panel_report_id)?;
+        if report.selected_assays.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Transcript assay panel '{}' has no selected assays to assess",
+                    report.report_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        policy.specificity_check = PrimerSpecificityCheckMode::RequirePass;
+        let (target_genome_id, policy) =
+            Self::normalize_primer_specificity_policy(target_genome_id, policy)?;
+        let output_dir = output_dir.trim();
+        if output_dir.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Transcript assay panel specificity handoff requires --output-dir"
+                    .to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let requested_bundle_dir = PathBuf::from(output_dir);
+        fs::create_dir_all(&requested_bundle_dir).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create panel specificity handoff directory '{}': {}",
+                requested_bundle_dir.display(),
+                error
+            ),
+            cause_chain: vec![],
+        })?;
+        let bundle_dir = fs::canonicalize(&requested_bundle_dir).unwrap_or(requested_bundle_dir);
+        let panel_digest = Self::transcript_assay_panel_specificity_digest(&report)?;
+        let mut selected_assays = report.selected_assays.clone();
+        selected_assays.sort_by(|left, right| {
+            left.rank
+                .cmp(&right.rank)
+                .then(left.assay_id.cmp(&right.assay_id))
+        });
+
+        let mut assays = vec![];
+        let mut resolved_target_genome_id: Option<String> = None;
+        let mut warnings = vec![
+            "No BLAST process was started. Execute every declared command and return one execution-manifest row per command, including failed commands."
+                .to_string(),
+        ];
+        for assay in selected_assays {
+            let forward = Self::primer_specificity_input_from_record(
+                PrimerSpecificityPrimerRole::Forward,
+                &assay.primer_pair.forward,
+            )?;
+            let reverse = Self::primer_specificity_input_from_record(
+                PrimerSpecificityPrimerRole::Reverse,
+                &assay.primer_pair.reverse,
+            )?;
+            let primer_pair_digest = Self::transcript_assay_panel_primer_pair_digest(
+                &assay.assay_id,
+                assay.rank,
+                &forward,
+                &reverse,
+            )?;
+            let assay_dir = bundle_dir.join(format!(
+                "assay_{:03}_{}",
+                assay.rank,
+                short_sha256_id("assay", &assay.assay_id)
+            ));
+            let handoff = self.prepare_primer_specificity_handoff_resolved(
+                PrimerSpecificityResolvedInput {
+                    primer_report_id: None,
+                    pair_rank: Some(assay.rank),
+                    pair_index: None,
+                    expected_amplicon_length_bp: Some(assay.primer_pair.amplicon_length_bp),
+                    forward: forward.clone(),
+                    reverse: reverse.clone(),
+                },
+                &target_genome_id,
+                policy.clone(),
+                catalog_path,
+                cache_dir,
+                &assay_dir.to_string_lossy(),
+            )?;
+            if let Some(expected) = resolved_target_genome_id.as_deref() {
+                if handoff.resolved_target_genome_id != expected {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Panel specificity handoff resolved inconsistent genomes '{}' and '{}'",
+                            expected, handoff.resolved_target_genome_id
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+            } else {
+                resolved_target_genome_id = Some(handoff.resolved_target_genome_id.clone());
+            }
+            warnings.extend(handoff.warnings.clone());
+            assays.push(TranscriptAssayPanelSpecificityHandoffAssay {
+                assay_id: assay.assay_id,
+                assay_rank: assay.rank,
+                primer_pair_digest,
+                forward_annealing_sequence: forward.annealing_sequence,
+                reverse_annealing_sequence: reverse.annealing_sequence,
+                handoff,
+            });
+        }
+
+        let resolved_target_genome_id = resolved_target_genome_id.unwrap_or_default();
+        let handoff_id = Self::transcript_assay_panel_handoff_id(
+            &report.report_id,
+            &panel_digest,
+            &target_genome_id,
+            &resolved_target_genome_id,
+            PRIMER_SPECIFICITY_POLICY_SCHEMA,
+            &policy,
+            "all_assays_all_commands_success_and_specificity_pass",
+            TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA,
+            &assays,
+        )?;
+        let handoff_path = bundle_dir.join(format!("{handoff_id}.json"));
+        let manifest_template_path =
+            bundle_dir.join(format!("{handoff_id}.execution-manifest.template.json"));
+        let handoff_path_text = handoff_path.to_string_lossy().to_string();
+        let manifest_template_path_text = manifest_template_path.to_string_lossy().to_string();
+        let finalize_command = vec![
+            "primers".to_string(),
+            "transcript-assay-specificity-finalize".to_string(),
+            handoff_path_text.clone(),
+            "EXECUTION_MANIFEST.json".to_string(),
+        ];
+        let handoff = TranscriptAssayPanelSpecificityHandoff {
+            schema: TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_HANDOFF_SCHEMA.to_string(),
+            handoff_id: handoff_id.clone(),
+            handoff_path: handoff_path_text,
+            bundle_dir: bundle_dir.to_string_lossy().to_string(),
+            panel_report_id: report.report_id,
+            panel_digest: panel_digest.clone(),
+            source_seq_id: report.source_seq_id,
+            source_feature_id: report.source_feature_id,
+            selected_assay_count: assays.len(),
+            requested_target_genome_id: target_genome_id,
+            resolved_target_genome_id,
+            policy_schema: PRIMER_SPECIFICITY_POLICY_SCHEMA.to_string(),
+            policy,
+            assays,
+            completion_policy: "all_assays_all_commands_success_and_specificity_pass".to_string(),
+            execution_manifest_schema: TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA
+                .to_string(),
+            execution_manifest_template_path: manifest_template_path_text,
+            finalize_command_line: finalize_command
+                .iter()
+                .map(|token| Self::primer_specificity_shell_quote(token))
+                .collect::<Vec<_>>()
+                .join(" "),
+            finalize_command,
+            warnings,
+        };
+        let manifest_template = TranscriptAssayPanelSpecificityExecutionManifest {
+            schema: TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA.to_string(),
+            handoff_id: handoff_id.clone(),
+            panel_digest,
+            executions: handoff
+                .assays
+                .iter()
+                .flat_map(|assay| {
+                    assay.handoff.commands.iter().map(|command| {
+                        TranscriptAssayPanelSpecificityCommandExecution {
+                            command_id: command.command_id.clone(),
+                            assay_id: assay.assay_id.clone(),
+                            exit_code: None,
+                            output_path: command.output_tsv_path.clone(),
+                            output_size_bytes: None,
+                            output_sha256: None,
+                        }
+                    })
+                })
+                .collect(),
+        };
+        let writer =
+            BufWriter::new(
+                File::create(&manifest_template_path).map_err(|error| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not create panel specificity execution-manifest template '{}': {}",
+                        manifest_template_path.display(),
+                        error
+                    ),
+                    cause_chain: vec![],
+                })?,
+            );
+        serde_json::to_writer_pretty(writer, &manifest_template).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not serialize panel specificity execution-manifest template: {error}"
+            ),
+            cause_chain: vec![],
+        })?;
+        let writer = BufWriter::new(File::create(&handoff_path).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create panel specificity handoff '{}': {}",
+                handoff_path.display(),
+                error
+            ),
+            cause_chain: vec![],
+        })?);
+        serde_json::to_writer_pretty(writer, &handoff).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not serialize panel specificity handoff: {error}"),
+            cause_chain: vec![],
+        })?;
+        Ok(handoff)
+    }
+
+    fn transcript_assay_panel_specificity_issue(
+        code: &str,
+        assay_id: Option<&str>,
+        command_id: Option<&str>,
+        message: impl Into<String>,
+    ) -> TranscriptAssayPanelSpecificityAcceptanceIssue {
+        TranscriptAssayPanelSpecificityAcceptanceIssue {
+            code: code.to_string(),
+            assay_id: assay_id.map(str::to_string),
+            command_id: command_id.map(str::to_string),
+            message: message.into(),
+        }
+    }
+
+    pub fn finalize_transcript_assay_panel_specificity_handoff(
+        &mut self,
+        handoff_path: &str,
+        execution_manifest: TranscriptAssayPanelSpecificityExecutionManifest,
+        path: Option<&str>,
+    ) -> Result<TranscriptAssayPanelSpecificityAcceptance, EngineError> {
+        let handoff_path = handoff_path.trim();
+        let text = fs::read_to_string(handoff_path).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not read transcript assay panel specificity handoff '{}': {}",
+                handoff_path, error
+            ),
+            cause_chain: vec![],
+        })?;
+        let handoff = serde_json::from_str::<TranscriptAssayPanelSpecificityHandoff>(&text)
+            .map_err(|error| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not parse transcript assay panel specificity handoff '{}': {}",
+                    handoff_path, error
+                ),
+                cause_chain: vec![],
+            })?;
+        if handoff.schema != TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_HANDOFF_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported panel specificity handoff schema '{}' (expected '{}')",
+                    handoff.schema, TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_HANDOFF_SCHEMA
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let report = self.get_transcript_assay_panel_report(&handoff.panel_report_id)?;
+        let current_panel_digest = Self::transcript_assay_panel_specificity_digest(&report)?;
+        let mut issues = vec![];
+        let expected_handoff_id = Self::transcript_assay_panel_handoff_id(
+            &handoff.panel_report_id,
+            &handoff.panel_digest,
+            &handoff.requested_target_genome_id,
+            &handoff.resolved_target_genome_id,
+            &handoff.policy_schema,
+            &handoff.policy,
+            &handoff.completion_policy,
+            &handoff.execution_manifest_schema,
+            &handoff.assays,
+        )?;
+        if expected_handoff_id != handoff.handoff_id {
+            issues.push(Self::transcript_assay_panel_specificity_issue(
+                "handoff_content_mismatch",
+                None,
+                None,
+                "The aggregate handoff content no longer matches its deterministic identity",
+            ));
+        }
+        if handoff.policy_schema != PRIMER_SPECIFICITY_POLICY_SCHEMA
+            || handoff.execution_manifest_schema
+                != TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA
+            || handoff.completion_policy
+                != "all_assays_all_commands_success_and_specificity_pass"
+        {
+            issues.push(Self::transcript_assay_panel_specificity_issue(
+                "handoff_contract_mismatch",
+                None,
+                None,
+                "The handoff policy, manifest, or completion contract is unsupported",
+            ));
+        }
+        if execution_manifest.schema != TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA
+        {
+            issues.push(Self::transcript_assay_panel_specificity_issue(
+                "execution_manifest_schema_mismatch",
+                None,
+                None,
+                format!(
+                    "Execution manifest schema '{}' does not match '{}'",
+                    execution_manifest.schema,
+                    TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA
+                ),
+            ));
+        }
+        if execution_manifest.handoff_id != handoff.handoff_id {
+            issues.push(Self::transcript_assay_panel_specificity_issue(
+                "handoff_identity_mismatch",
+                None,
+                None,
+                "Execution manifest was produced for a different handoff",
+            ));
+        }
+        if execution_manifest.panel_digest != handoff.panel_digest
+            || current_panel_digest != handoff.panel_digest
+        {
+            issues.push(Self::transcript_assay_panel_specificity_issue(
+                "panel_digest_mismatch",
+                None,
+                None,
+                "The panel or execution manifest no longer matches the planned panel digest",
+            ));
+        }
+
+        let current_assays = report
+            .selected_assays
+            .iter()
+            .map(|assay| (assay.assay_id.as_str(), assay))
+            .collect::<BTreeMap<_, _>>();
+        let mut expected_commands = BTreeMap::new();
+        for assay in &handoff.assays {
+            let Some(current_assay) = current_assays.get(assay.assay_id.as_str()) else {
+                issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "assay_missing_from_panel",
+                    Some(&assay.assay_id),
+                    None,
+                    "The planned assay is no longer selected in the panel",
+                ));
+                continue;
+            };
+            let current_forward = Self::primer_specificity_input_from_record(
+                PrimerSpecificityPrimerRole::Forward,
+                &current_assay.primer_pair.forward,
+            )?;
+            let current_reverse = Self::primer_specificity_input_from_record(
+                PrimerSpecificityPrimerRole::Reverse,
+                &current_assay.primer_pair.reverse,
+            )?;
+            let current_pair_digest = Self::transcript_assay_panel_primer_pair_digest(
+                &assay.assay_id,
+                current_assay.rank,
+                &current_forward,
+                &current_reverse,
+            )?;
+            if current_pair_digest != assay.primer_pair_digest
+                || current_forward.annealing_sequence != assay.forward_annealing_sequence
+                || current_reverse.annealing_sequence != assay.reverse_annealing_sequence
+            {
+                issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "primer_pair_mismatch",
+                    Some(&assay.assay_id),
+                    None,
+                    "The selected assay primer pair differs from the planned handoff",
+                ));
+            }
+            if assay.handoff.schema != PRIMER_SPECIFICITY_HANDOFF_SCHEMA
+                || assay.handoff.requested_target_genome_id != handoff.requested_target_genome_id
+                || assay.handoff.resolved_target_genome_id != handoff.resolved_target_genome_id
+            {
+                issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "specificity_provenance_mismatch",
+                    Some(&assay.assay_id),
+                    None,
+                    "The nested primer handoff does not match the aggregate genome provenance",
+                ));
+            }
+            let nested_policy = serde_json::to_value(&assay.handoff.policy).map_err(|error| {
+                EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!("Could not compare specificity policies: {error}"),
+                    cause_chain: vec![],
+                }
+            })?;
+            let aggregate_policy = serde_json::to_value(&handoff.policy).map_err(|error| {
+                EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!("Could not compare specificity policies: {error}"),
+                    cause_chain: vec![],
+                }
+            })?;
+            if nested_policy != aggregate_policy {
+                issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "specificity_policy_mismatch",
+                    Some(&assay.assay_id),
+                    None,
+                    "The nested primer handoff policy differs from the aggregate panel policy",
+                ));
+            }
+            match Self::primer_specificity_handoff_id_from_record(&assay.handoff) {
+                Ok(expected_id) if expected_id == assay.handoff.handoff_id => {}
+                Ok(_) => issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "nested_handoff_identity_mismatch",
+                    Some(&assay.assay_id),
+                    None,
+                    "The nested primer handoff content no longer matches its deterministic identity",
+                )),
+                Err(error) => issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "nested_handoff_invalid",
+                    Some(&assay.assay_id),
+                    None,
+                    error.message,
+                )),
+            }
+            for command in &assay.handoff.commands {
+                if expected_commands
+                    .insert(command.command_id.as_str(), (assay, command))
+                    .is_some()
+                {
+                    issues.push(Self::transcript_assay_panel_specificity_issue(
+                        "duplicate_declared_command",
+                        Some(&assay.assay_id),
+                        Some(&command.command_id),
+                        "The aggregate handoff declares the same command more than once",
+                    ));
+                }
+            }
+        }
+        if handoff.assays.len() != report.selected_assays.len()
+            || handoff.selected_assay_count != report.selected_assays.len()
+        {
+            issues.push(Self::transcript_assay_panel_specificity_issue(
+                "assay_set_mismatch",
+                None,
+                None,
+                format!(
+                    "Handoff covers {} assay(s), but the panel contains {} selected assay(s)",
+                    handoff.assays.len(),
+                    report.selected_assays.len()
+                ),
+            ));
+        }
+
+        let mut executions_by_command =
+            BTreeMap::<&str, Vec<&TranscriptAssayPanelSpecificityCommandExecution>>::new();
+        for execution in &execution_manifest.executions {
+            executions_by_command
+                .entry(execution.command_id.as_str())
+                .or_default()
+                .push(execution);
+            if !expected_commands.contains_key(execution.command_id.as_str()) {
+                issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "unexpected_execution",
+                    Some(&execution.assay_id),
+                    Some(&execution.command_id),
+                    "Execution manifest contains a command not declared by the handoff",
+                ));
+            }
+        }
+        let mut validated_outputs = BTreeMap::new();
+        for (command_id, (assay, command)) in &expected_commands {
+            let Some(executions) = executions_by_command
+                .get(command_id)
+                .filter(|rows| !rows.is_empty())
+            else {
+                issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "missing_execution",
+                    Some(&assay.assay_id),
+                    Some(command_id),
+                    "No execution-manifest row was returned for the declared command",
+                ));
+                continue;
+            };
+            if executions.len() != 1 {
+                issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "duplicate_execution",
+                    Some(&assay.assay_id),
+                    Some(command_id),
+                    "Execution manifest contains duplicate rows for the declared command",
+                ));
+                continue;
+            }
+            let execution = executions[0];
+            if execution.assay_id != assay.assay_id {
+                issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "execution_assay_mismatch",
+                    Some(&assay.assay_id),
+                    Some(command_id),
+                    "Execution row names a different assay",
+                ));
+            }
+            if execution.output_path != command.output_tsv_path {
+                issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "output_path_mismatch",
+                    Some(&assay.assay_id),
+                    Some(command_id),
+                    "Execution output path differs from the declared handoff path",
+                ));
+            }
+            let Some(exit_code) = execution.exit_code else {
+                issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "execution_not_completed",
+                    Some(&assay.assay_id),
+                    Some(command_id),
+                    "Execution row has no exit code",
+                ));
+                continue;
+            };
+            if !command.success_exit_codes.contains(&exit_code) {
+                issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "execution_failed",
+                    Some(&assay.assay_id),
+                    Some(command_id),
+                    format!("Command exited with status {exit_code}"),
+                ));
+                continue;
+            }
+            let bytes = match fs::read(&command.output_tsv_path) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    issues.push(Self::transcript_assay_panel_specificity_issue(
+                        "output_missing",
+                        Some(&assay.assay_id),
+                        Some(command_id),
+                        format!("Declared successful output could not be read: {error}"),
+                    ));
+                    continue;
+                }
+            };
+            let actual_size = bytes.len() as u64;
+            let actual_sha256 = sha256_prefixed_bytes(&bytes);
+            if execution.output_size_bytes != Some(actual_size)
+                || execution.output_sha256.as_deref() != Some(actual_sha256.as_str())
+            {
+                issues.push(Self::transcript_assay_panel_specificity_issue(
+                    "output_identity_mismatch",
+                    Some(&assay.assay_id),
+                    Some(command_id),
+                    format!(
+                        "Output identity does not match the returned byte length/hash (actual size={}, sha256={})",
+                        actual_size, actual_sha256
+                    ),
+                ));
+            } else {
+                match String::from_utf8(bytes) {
+                    Ok(output) => {
+                        validated_outputs.insert((*command_id).to_string(), output);
+                    }
+                    Err(error) => issues.push(Self::transcript_assay_panel_specificity_issue(
+                        "output_not_utf8",
+                        Some(&assay.assay_id),
+                        Some(command_id),
+                        format!("BLAST tabular output is not valid UTF-8: {error}"),
+                    )),
+                }
+            }
+        }
+
+        let mut assessments = vec![];
+        if issues.is_empty() {
+            for assay in &handoff.assays {
+                match self.primer_specificity_report_from_handoff_outputs(
+                    &assay.handoff,
+                    Some(&validated_outputs),
+                ) {
+                    Ok(report) => assessments.push(TranscriptAssayGenomicSpecificityAssessment {
+                        assay_id: assay.assay_id.clone(),
+                        assay_rank: assay.assay_rank,
+                        status: if report.summary.specificity_pass {
+                            "external_blast_pass".to_string()
+                        } else {
+                            "external_blast_fail".to_string()
+                        },
+                        report,
+                    }),
+                    Err(error) => issues.push(Self::transcript_assay_panel_specificity_issue(
+                        "specificity_import_failed",
+                        Some(&assay.assay_id),
+                        None,
+                        error.message,
+                    )),
+                }
+            }
+        }
+        let mut passing_assay_ids = assessments
+            .iter()
+            .filter(|row| row.report.summary.specificity_pass)
+            .map(|row| row.assay_id.clone())
+            .collect::<Vec<_>>();
+        let mut failing_assay_ids = assessments
+            .iter()
+            .filter(|row| !row.report.summary.specificity_pass)
+            .map(|row| row.assay_id.clone())
+            .collect::<Vec<_>>();
+        passing_assay_ids.sort();
+        failing_assay_ids.sort();
+        let status = if !issues.is_empty() || assessments.len() != handoff.assays.len() {
+            TranscriptAssayPanelSpecificityAcceptanceStatus::Incomplete
+        } else if failing_assay_ids.is_empty() {
+            TranscriptAssayPanelSpecificityAcceptanceStatus::Pass
+        } else {
+            TranscriptAssayPanelSpecificityAcceptanceStatus::SpecificityFail
+        };
+        let acceptance_identity = serde_json::to_string(&json!({
+            "handoff_id": handoff.handoff_id,
+            "panel_digest": handoff.panel_digest,
+            "status": status,
+            "manifest": execution_manifest,
+            "passing_assay_ids": passing_assay_ids,
+            "failing_assay_ids": failing_assay_ids,
+            "issues": issues,
+        }))
+        .map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not identify panel specificity acceptance: {error}"),
+            cause_chain: vec![],
+        })?;
+        let acceptance = TranscriptAssayPanelSpecificityAcceptance {
+            schema: TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_ACCEPTANCE_SCHEMA.to_string(),
+            acceptance_id: short_sha256_id("panel_specificity_acceptance", &acceptance_identity),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            handoff_id: handoff.handoff_id.clone(),
+            panel_report_id: handoff.panel_report_id.clone(),
+            panel_digest: handoff.panel_digest.clone(),
+            status,
+            accepted: status == TranscriptAssayPanelSpecificityAcceptanceStatus::Pass,
+            requested_target_genome_id: handoff.requested_target_genome_id.clone(),
+            resolved_target_genome_id: handoff.resolved_target_genome_id.clone(),
+            policy_schema: handoff.policy_schema.clone(),
+            policy: handoff.policy.clone(),
+            expected_assay_count: handoff.assays.len(),
+            assessed_assay_count: assessments.len(),
+            passing_assay_ids,
+            failing_assay_ids,
+            assessments: assessments.clone(),
+            issues,
+            execution_manifest,
+        };
+        if let Some(path) = path.map(str::trim).filter(|value| !value.is_empty()) {
+            let writer = BufWriter::new(File::create(path).map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not create panel specificity acceptance '{}': {}",
+                    path, error
+                ),
+                cause_chain: vec![],
+            })?);
+            serde_json::to_writer_pretty(writer, &acceptance).map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not serialize panel specificity acceptance: {error}"),
+                cause_chain: vec![],
+            })?;
+        }
+        if acceptance.accepted {
+            let mut updated = report;
+            updated.specificity_request = Some(TranscriptAssaySpecificityRequest {
+                policy: handoff.policy.clone(),
+                catalog_path: handoff
+                    .assays
+                    .first()
+                    .and_then(|assay| assay.handoff.catalog_path.clone()),
+                cache_dir: handoff
+                    .assays
+                    .first()
+                    .and_then(|assay| assay.handoff.cache_dir.clone()),
+            });
+            updated.genomic_specificity_assessments = assessments;
+            updated.specificity_acceptance = Some(acceptance.clone());
+            let status_by_assay = updated
+                .genomic_specificity_assessments
+                .iter()
+                .map(|row| (row.assay_id.as_str(), row.status.as_str()))
+                .collect::<HashMap<_, _>>();
+            for followup in &mut updated.specificity_followups {
+                if let Some(status) = status_by_assay.get(followup.assay_id.as_str()) {
+                    followup.genomic_confirmation_status = (*status).to_string();
+                }
+            }
+            let mut store = self.read_primer_design_store();
+            store
+                .transcript_assay_panels
+                .insert(updated.report_id.clone(), updated);
+            self.write_primer_design_store(store)?;
+        }
+        Ok(acceptance)
     }
 
     fn assess_primer_pair_specificity_resolved(
@@ -15368,6 +16232,7 @@ impl GentleEngine {
             order_ready_primers,
             specificity_request: specificity,
             genomic_specificity_assessments,
+            specificity_acceptance: None,
             specificity_followups,
             provenance: TranscriptAssayPanelProvenance {
                 annotation_release,

@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-07-21
 
+- Added aggregate transcript-assay panel specificity handoff/finalization:
+  mechanical wrappers now return per-command exit and output identities, while
+  GENtle alone classifies complete all-assay evidence as `pass`,
+  `specificity_fail`, or `incomplete` and atomically persists only `pass`.
 - Added deterministic `primers specificity-plan` / `specificity-import`
   handoffs so external schedulers can own BLAST process completion while GENtle
   retains query, database, policy, and result-interpretation provenance; the

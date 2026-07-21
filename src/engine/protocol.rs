@@ -5805,6 +5805,145 @@ pub struct PrimerSpecificityHandoff {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Binding between one selected transcript assay and its externally runnable
+/// primer-specificity handoff.
+pub struct TranscriptAssayPanelSpecificityHandoffAssay {
+    pub assay_id: String,
+    pub assay_rank: usize,
+    pub primer_pair_digest: String,
+    pub forward_annealing_sequence: String,
+    pub reverse_annealing_sequence: String,
+    pub handoff: PrimerSpecificityHandoff,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Deterministic non-executing specificity bundle for every selected assay in
+/// one transcript assay panel.
+pub struct TranscriptAssayPanelSpecificityHandoff {
+    pub schema: String,
+    pub handoff_id: String,
+    pub handoff_path: String,
+    pub bundle_dir: String,
+    pub panel_report_id: String,
+    pub panel_digest: String,
+    pub source_seq_id: String,
+    pub source_feature_id: usize,
+    pub selected_assay_count: usize,
+    pub requested_target_genome_id: String,
+    pub resolved_target_genome_id: String,
+    pub policy_schema: String,
+    #[serde(default)]
+    pub policy: PrimerSpecificityPolicy,
+    #[serde(default)]
+    pub assays: Vec<TranscriptAssayPanelSpecificityHandoffAssay>,
+    pub completion_policy: String,
+    pub execution_manifest_schema: String,
+    pub execution_manifest_template_path: String,
+    #[serde(default)]
+    pub finalize_command: Vec<String>,
+    pub finalize_command_line: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Wrapper-reported process facts for one command declared by a panel
+/// specificity handoff.
+pub struct TranscriptAssayPanelSpecificityCommandExecution {
+    pub command_id: String,
+    pub assay_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    pub output_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Execution evidence returned by a mechanical outer scheduler. This record
+/// describes process completion only and makes no biological decision.
+pub struct TranscriptAssayPanelSpecificityExecutionManifest {
+    pub schema: String,
+    pub handoff_id: String,
+    pub panel_digest: String,
+    #[serde(default)]
+    pub executions: Vec<TranscriptAssayPanelSpecificityCommandExecution>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Aggregate result after validating execution evidence and interpreting all
+/// selected assays.
+pub enum TranscriptAssayPanelSpecificityAcceptanceStatus {
+    Pass,
+    SpecificityFail,
+    #[default]
+    Incomplete,
+}
+
+impl TranscriptAssayPanelSpecificityAcceptanceStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::SpecificityFail => "specificity_fail",
+            Self::Incomplete => "incomplete",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One structural, execution, or provenance problem preventing aggregate
+/// panel acceptance.
+pub struct TranscriptAssayPanelSpecificityAcceptanceIssue {
+    pub code: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assay_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_id: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Atomic whole-panel specificity decision. Only `pass` is eligible for
+/// attachment to the persisted panel as accepted evidence.
+pub struct TranscriptAssayPanelSpecificityAcceptance {
+    pub schema: String,
+    pub acceptance_id: String,
+    pub generated_at_unix_ms: u128,
+    pub handoff_id: String,
+    pub panel_report_id: String,
+    pub panel_digest: String,
+    #[serde(default)]
+    pub status: TranscriptAssayPanelSpecificityAcceptanceStatus,
+    pub accepted: bool,
+    pub requested_target_genome_id: String,
+    pub resolved_target_genome_id: String,
+    pub policy_schema: String,
+    #[serde(default)]
+    pub policy: PrimerSpecificityPolicy,
+    pub expected_assay_count: usize,
+    pub assessed_assay_count: usize,
+    #[serde(default)]
+    pub passing_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub failing_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub assessments: Vec<TranscriptAssayGenomicSpecificityAssessment>,
+    #[serde(default)]
+    pub issues: Vec<TranscriptAssayPanelSpecificityAcceptanceIssue>,
+    #[serde(default)]
+    pub execution_manifest: TranscriptAssayPanelSpecificityExecutionManifest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Deterministic exact-run QC for one assay oligo.
 pub struct OligoQcOligoRecord {
     pub label: String,
@@ -7632,6 +7771,8 @@ pub struct TranscriptAssayPanelReport {
     pub specificity_request: Option<TranscriptAssaySpecificityRequest>,
     #[serde(default)]
     pub genomic_specificity_assessments: Vec<TranscriptAssayGenomicSpecificityAssessment>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specificity_acceptance: Option<TranscriptAssayPanelSpecificityAcceptance>,
     #[serde(default)]
     pub specificity_followups: Vec<TranscriptAssaySpecificityFollowup>,
     #[serde(default)]

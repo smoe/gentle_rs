@@ -625,6 +625,13 @@ const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
 const OLIGO_QC_REPORT_SCHEMA: &str = "gentle.oligo_qc_report.v1";
 const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v1";
 const PRIMER_SPECIFICITY_HANDOFF_SCHEMA: &str = "gentle.primer_specificity_handoff.v1";
+const PRIMER_SPECIFICITY_POLICY_SCHEMA: &str = "gentle.primer_specificity_policy.v1";
+const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_HANDOFF_SCHEMA: &str =
+    "gentle.transcript_assay_panel_specificity_handoff.v1";
+const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA: &str =
+    "gentle.transcript_assay_panel_specificity_execution_manifest.v1";
+const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_ACCEPTANCE_SCHEMA: &str =
+    "gentle.transcript_assay_panel_specificity_acceptance.v1";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
 pub const TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_assay_panel.v2";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =

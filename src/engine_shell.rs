@@ -102,8 +102,8 @@ use crate::{
         TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis,
         TranscriptAssayCoveragePolicy, TranscriptAssayJunctionPriority,
         TranscriptAssayJunctionRequest, TranscriptAssayKind, TranscriptAssayPanelObjective,
-        TranscriptAssaySpecificityRequest, TranslationSpeedMark, TranslationSpeedProfile,
-        UniprotFeatureCodingDnaQueryMode,
+        TranscriptAssayPanelSpecificityExecutionManifest, TranscriptAssaySpecificityRequest,
+        TranslationSpeedMark, TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
         VariantAlleleChoice, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow,
         WorkflowMacroTemplate, WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
         construct_reasoning_action_dotplot_request, parse_feature_coordinate_term_on_sequence,
@@ -2376,6 +2376,19 @@ pub enum ShellCommand {
     },
     PrimersSpecificityImport {
         handoff_path: String,
+        path: Option<String>,
+    },
+    PrimersTranscriptAssaySpecificityPlan {
+        panel_report_id: String,
+        target_genome_id: String,
+        policy: PrimerSpecificityPolicy,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        output_dir: String,
+    },
+    PrimersTranscriptAssaySpecificityFinalize {
+        handoff_path: String,
+        execution_manifest_json: String,
         path: Option<String>,
     },
     PrimersTestCdnaPcr {
@@ -11011,6 +11024,27 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("none"),
             ),
+            Self::PrimersTranscriptAssaySpecificityPlan {
+                panel_report_id,
+                target_genome_id,
+                output_dir,
+                ..
+            } => format!(
+                "prepare whole-panel external specificity commands for transcript assay panel '{}' against genome '{}' (output_dir='{}')",
+                panel_report_id, target_genome_id, output_dir,
+            ),
+            Self::PrimersTranscriptAssaySpecificityFinalize {
+                handoff_path,
+                execution_manifest_json,
+                path,
+            } => format!(
+                "finalize whole-panel specificity handoff '{}' from execution manifest (manifest_len={}, path={})",
+                handoff_path,
+                execution_manifest_json.len(),
+                path.as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
             Self::PrimersTestCdnaPcr {
                 seq_id,
                 feature_id,
@@ -12528,6 +12562,8 @@ impl ShellCommand {
                 | Self::PrimersSpecificity { .. }
                 | Self::PrimersSpecificityPlan { .. }
                 | Self::PrimersSpecificityImport { .. }
+                | Self::PrimersTranscriptAssaySpecificityPlan { .. }
+                | Self::PrimersTranscriptAssaySpecificityFinalize { .. }
                 | Self::PrimersPrepareRestrictionCloning { .. }
                 | Self::PrimersSeedRestrictionCloningHandoff { .. }
                 | Self::PrimersListRestrictionCloningHandoffs
@@ -50821,6 +50857,61 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersTranscriptAssaySpecificityPlan {
+            panel_report_id,
+            target_genome_id,
+            policy,
+            catalog_path,
+            cache_dir,
+            output_dir,
+        } => {
+            let handoff = engine
+                .prepare_transcript_assay_panel_specificity_handoff(
+                    panel_report_id,
+                    target_genome_id,
+                    policy.clone(),
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                    output_dir,
+                )
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.transcript_assay_panel_specificity_plan_command.v1",
+                    "handoff": handoff,
+                }),
+            })
+        }
+        ShellCommand::PrimersTranscriptAssaySpecificityFinalize {
+            handoff_path,
+            execution_manifest_json,
+            path,
+        } => {
+            let payload = parse_json_payload(execution_manifest_json)?;
+            let manifest =
+                serde_json::from_str::<TranscriptAssayPanelSpecificityExecutionManifest>(&payload)
+                    .map_err(|error| {
+                        format!(
+                            "Invalid transcript assay panel specificity execution manifest: {error}"
+                        )
+                    })?;
+            let acceptance = engine
+                .finalize_transcript_assay_panel_specificity_handoff(
+                    handoff_path,
+                    manifest,
+                    path.as_deref(),
+                )
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: acceptance.accepted,
+                output: json!({
+                    "schema": "gentle.transcript_assay_panel_specificity_finalize_command.v1",
+                    "acceptance": acceptance,
+                    "path": path,
+                }),
+            })
+        }
         ShellCommand::PrimersTestCdnaPcr {
             seq_id,
             feature_id,
@@ -56762,6 +56853,8 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersSpecificity { .. }
             | ShellCommand::PrimersSpecificityPlan { .. }
             | ShellCommand::PrimersSpecificityImport { .. }
+            | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
+            | ShellCommand::PrimersTranscriptAssaySpecificityFinalize { .. }
             | ShellCommand::PrimersTestCdnaPcr { .. }
             | ShellCommand::PrimersTestCdnaQpcr { .. }
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
@@ -58479,6 +58572,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersSpecificity { .. }
         | ShellCommand::PrimersSpecificityPlan { .. }
         | ShellCommand::PrimersSpecificityImport { .. }
+        | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
+        | ShellCommand::PrimersTranscriptAssaySpecificityFinalize { .. }
         | ShellCommand::PrimersTestCdnaPcr { .. }
         | ShellCommand::PrimersTestCdnaQpcr { .. }
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }

@@ -8127,6 +8127,17 @@ fn primer_specificity_pairs_forward_reverse_and_same_primer_warning_products() {
     assert_eq!(same_primer_warning.end_1based, 719);
 }
 
+#[test]
+fn primer_specificity_empty_amplicon_set_is_a_non_panicking_no_hit_result() {
+    let mut amplicons = vec![];
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        Some(120),
+        &PrimerSpecificityPolicy::default(),
+    );
+    assert!(amplicons.is_empty());
+}
+
 #[cfg(unix)]
 #[test]
 fn primer_specificity_handoff_plans_without_running_and_imports_completed_outputs() {
@@ -9257,6 +9268,338 @@ fn transcript_assay_panel_operation(
         report_id: Some(report_id.to_string()),
         path: None,
     }
+}
+
+#[cfg(unix)]
+fn transcript_assay_specificity_execution_manifest(
+    handoff: &TranscriptAssayPanelSpecificityHandoff,
+    emit_intended_hits: bool,
+) -> TranscriptAssayPanelSpecificityExecutionManifest {
+    let mut executions = vec![];
+    for assay in &handoff.assays {
+        let expected_amplicon_length = assay
+            .handoff
+            .expected_amplicon_length_bp
+            .expect("panel assay expected amplicon length");
+        for command in &assay.handoff.commands {
+            let bytes = if emit_intended_hits {
+                let (subject_start, subject_end) = match command.role {
+                    PrimerSpecificityPrimerRole::Forward => {
+                        (10usize, 10usize + command.query_length_bp - 1)
+                    }
+                    PrimerSpecificityPrimerRole::Reverse => {
+                        let amplicon_end = 10usize + expected_amplicon_length - 1;
+                        (
+                            amplicon_end,
+                            amplicon_end + 1 - command.query_length_bp,
+                        )
+                    }
+                };
+                format!(
+                    "{}\tchr1\t100\t{}\t0\t0\t1\t{}\t{}\t{}\t1e-20\t80\t100\n",
+                    command.query_label,
+                    command.query_length_bp,
+                    command.query_length_bp,
+                    subject_start,
+                    subject_end,
+                )
+                .into_bytes()
+            } else {
+                vec![]
+            };
+            fs::write(&command.output_tsv_path, &bytes)
+                .expect("write externally executed panel BLAST output");
+            executions.push(TranscriptAssayPanelSpecificityCommandExecution {
+                command_id: command.command_id.clone(),
+                assay_id: assay.assay_id.clone(),
+                exit_code: Some(0),
+                output_path: command.output_tsv_path.clone(),
+                output_size_bytes: Some(bytes.len() as u64),
+                output_sha256: Some(sha256_prefixed_bytes(&bytes)),
+            });
+        }
+    }
+    TranscriptAssayPanelSpecificityExecutionManifest {
+        schema: TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA.to_string(),
+        handoff_id: handoff.handoff_id.clone(),
+        panel_digest: handoff.panel_digest.clone(),
+        executions,
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_outcomes() {
+    let _env_lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let temp = tempdir().expect("temporary panel specificity directory");
+    let root = temp.path();
+    let fasta = root.join("toy.fa");
+    let annotation = root.join("toy.gtf");
+    let cache = root.join("cache");
+    let catalog = root.join("catalog.json");
+    fs::write(&fasta, format!(">chr1\n{}\n", "A".repeat(1_000)))
+        .expect("write panel specificity FASTA");
+    fs::write(
+        &annotation,
+        "chr1\ttest\tgene\t1\t1000\t.\t+\t.\tgene_id \"TOY1\"; gene_name \"TOY1\";\n",
+    )
+    .expect("write panel specificity annotation");
+    fs::write(
+        &catalog,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "synthetic aggregate panel specificity fixture",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            annotation.display(),
+            cache.display()
+        ),
+    )
+    .expect("write panel specificity catalog");
+    let fake_makeblastdb = root.join("fake_makeblastdb.sh");
+    fs::write(
+        &fake_makeblastdb,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'makeblastdb: fake 1.0'; exit 0; fi\nout=''\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = '-out' ]; then out=\"$2\"; shift 2; else shift; fi\ndone\nmkdir -p \"$(dirname \"$out\")\"\nprintf nhr > \"${out}.nhr\"\nprintf nin > \"${out}.nin\"\nprintf nsq > \"${out}.nsq\"\n",
+    )
+    .expect("write fake makeblastdb");
+    let mut permissions = fs::metadata(&fake_makeblastdb)
+        .expect("fake makeblastdb metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_makeblastdb, permissions).expect("enable fake makeblastdb");
+    let fake_blastn = root.join("fake_blastn.sh");
+    fs::write(
+        &fake_blastn,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastn: fake 1.0'; exit 0; fi\nexit 99\n",
+    )
+    .expect("write fake blastn");
+    let mut permissions = fs::metadata(&fake_blastn)
+        .expect("fake blastn metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_blastn, permissions).expect("enable fake blastn");
+    let _makeblastdb = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        &fake_makeblastdb.to_string_lossy(),
+    );
+    let _blastn = EnvVarGuard::set(
+        crate::genomes::BLASTN_ENV_BIN,
+        &fake_blastn.to_string_lossy(),
+    );
+
+    let mut engine = transcript_qpcr_panel_test_engine();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare aggregate specificity genome");
+    let specificity_policy = PrimerSpecificityPolicy {
+        max_3prime_mismatches: 5,
+        ..PrimerSpecificityPolicy::default()
+    };
+
+    for report_id in ["panel_external_pass", "panel_external_fail", "panel_external_incomplete"] {
+        let mut operation = transcript_assay_panel_operation(
+            TranscriptAssayCoveragePolicy::BestEffort,
+            transcript_assay_panel_relaxed_side(),
+            1,
+            report_id,
+        );
+        let Operation::DesignTranscriptAssayPanel { objective, .. } = &mut operation else {
+            unreachable!("transcript assay panel helper returned another operation")
+        };
+        *objective = TranscriptAssayPanelObjective::OnePerClass;
+        let report = engine
+            .apply(operation)
+            .expect("design persisted transcript assay panel")
+            .transcript_assay_panel
+            .expect("transcript assay panel result");
+        assert!(
+            report.selected_assays.len() >= 2,
+            "aggregate fixture must exercise more than one selected assay"
+        );
+    }
+
+    let pass_plan = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersTranscriptAssaySpecificityPlan {
+            panel_report_id: "panel_external_pass".to_string(),
+            target_genome_id: "ToyGenome".to_string(),
+            policy: specificity_policy.clone(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            output_dir: root.join("pass").to_string_lossy().to_string(),
+        },
+    )
+    .expect("execute complete-panel specificity planning command");
+    assert!(!pass_plan.state_changed);
+    let pass_handoff = serde_json::from_value::<TranscriptAssayPanelSpecificityHandoff>(
+        pass_plan.output["handoff"].clone(),
+    )
+    .expect("parse planned aggregate handoff");
+    assert_eq!(
+        pass_handoff.assays.len(),
+        pass_handoff.selected_assay_count
+    );
+    assert_eq!(
+        pass_handoff.policy_schema,
+        PRIMER_SPECIFICITY_POLICY_SCHEMA
+    );
+    assert!(Path::new(&pass_handoff.execution_manifest_template_path).is_file());
+    let pass_manifest = transcript_assay_specificity_execution_manifest(&pass_handoff, true);
+    let pass_finalize = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersTranscriptAssaySpecificityFinalize {
+            handoff_path: pass_handoff.handoff_path.clone(),
+            execution_manifest_json: serde_json::to_string(&pass_manifest)
+                .expect("serialize aggregate execution manifest"),
+            path: None,
+        },
+    )
+    .expect("execute passing panel specificity finalization command");
+    assert!(pass_finalize.state_changed);
+    let pass = serde_json::from_value::<TranscriptAssayPanelSpecificityAcceptance>(
+        pass_finalize.output["acceptance"].clone(),
+    )
+    .expect("parse aggregate acceptance");
+    assert_eq!(
+        pass.status,
+        TranscriptAssayPanelSpecificityAcceptanceStatus::Pass
+    );
+    assert!(pass.accepted);
+    assert_eq!(pass.assessed_assay_count, pass.expected_assay_count);
+    let persisted_pass = engine
+        .get_transcript_assay_panel_report("panel_external_pass")
+        .expect("persisted accepted panel");
+    assert_eq!(
+        persisted_pass
+            .specificity_acceptance
+            .as_ref()
+            .map(|acceptance| acceptance.status),
+        Some(TranscriptAssayPanelSpecificityAcceptanceStatus::Pass)
+    );
+    assert_eq!(
+        persisted_pass.genomic_specificity_assessments.len(),
+        pass.expected_assay_count
+    );
+
+    let fail_handoff = engine
+        .prepare_transcript_assay_panel_specificity_handoff(
+            "panel_external_fail",
+            "ToyGenome",
+            specificity_policy.clone(),
+            Some(&catalog.to_string_lossy()),
+            None,
+            &root.join("fail").to_string_lossy(),
+        )
+        .expect("plan biologically failing panel handoff");
+    let fail_manifest = transcript_assay_specificity_execution_manifest(&fail_handoff, false);
+    let specificity_fail = engine
+        .finalize_transcript_assay_panel_specificity_handoff(
+            &fail_handoff.handoff_path,
+            fail_manifest.clone(),
+            None,
+        )
+        .expect("interpret completed empty BLAST outputs");
+    assert_eq!(
+        specificity_fail.status,
+        TranscriptAssayPanelSpecificityAcceptanceStatus::SpecificityFail
+    );
+    assert!(!specificity_fail.accepted);
+    assert!(specificity_fail.issues.is_empty());
+    let persisted_fail = engine
+        .get_transcript_assay_panel_report("panel_external_fail")
+        .expect("persisted biologically failing panel");
+    assert!(persisted_fail.specificity_acceptance.is_none());
+    assert!(persisted_fail.genomic_specificity_assessments.is_empty());
+
+    let mut tampered_handoff = fail_handoff.clone();
+    tampered_handoff.assays[0]
+        .handoff
+        .blast_db_prefix
+        .push_str(".different_database");
+    fs::write(
+        &fail_handoff.handoff_path,
+        serde_json::to_vec_pretty(&tampered_handoff).expect("serialize tampered handoff"),
+    )
+    .expect("write tampered aggregate handoff");
+    let tampered = engine
+        .finalize_transcript_assay_panel_specificity_handoff(
+            &fail_handoff.handoff_path,
+            fail_manifest,
+            None,
+        )
+        .expect("classify tampered handoff as incomplete");
+    assert_eq!(
+        tampered.status,
+        TranscriptAssayPanelSpecificityAcceptanceStatus::Incomplete
+    );
+    assert!(
+        tampered
+            .issues
+            .iter()
+            .any(|issue| issue.code == "handoff_content_mismatch")
+    );
+
+    let incomplete_handoff = engine
+        .prepare_transcript_assay_panel_specificity_handoff(
+            "panel_external_incomplete",
+            "ToyGenome",
+            specificity_policy,
+            Some(&catalog.to_string_lossy()),
+            None,
+            &root.join("incomplete").to_string_lossy(),
+        )
+        .expect("plan incomplete panel handoff");
+    let mut incomplete_manifest =
+        transcript_assay_specificity_execution_manifest(&incomplete_handoff, false);
+    let failed_execution = incomplete_manifest
+        .executions
+        .first_mut()
+        .expect("one declared command execution");
+    failed_execution.exit_code = Some(17);
+    failed_execution.output_size_bytes = None;
+    failed_execution.output_sha256 = None;
+    incomplete_manifest.panel_digest = "sha256:stale-panel".to_string();
+    let incomplete = engine
+        .finalize_transcript_assay_panel_specificity_handoff(
+            &incomplete_handoff.handoff_path,
+            incomplete_manifest,
+            None,
+        )
+        .expect("classify failed process as incomplete");
+    assert_eq!(
+        incomplete.status,
+        TranscriptAssayPanelSpecificityAcceptanceStatus::Incomplete
+    );
+    assert!(!incomplete.accepted);
+    assert!(
+        incomplete
+            .issues
+            .iter()
+            .any(|issue| issue.code == "execution_failed")
+    );
+    assert!(
+        incomplete
+            .issues
+            .iter()
+            .any(|issue| issue.code == "panel_digest_mismatch")
+    );
+    let persisted_incomplete = engine
+        .get_transcript_assay_panel_report("panel_external_incomplete")
+        .expect("persisted incomplete panel");
+    assert!(persisted_incomplete.specificity_acceptance.is_none());
+    assert!(persisted_incomplete.genomic_specificity_assessments.is_empty());
 }
 
 #[test]

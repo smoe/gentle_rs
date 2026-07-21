@@ -6418,6 +6418,49 @@ fn parse_primers_specificity_plan_and_import() {
 }
 
 #[test]
+fn parse_primers_transcript_assay_specificity_plan_and_finalize() {
+    let plan = parse_shell_line(
+        "primers transcript-assay-specificity-plan panel_1 --target-genome GRCh38.p14 --output-dir panel_specificity --max-hits-per-primer 125 --avoid-rmsk-repeats",
+    )
+    .expect("parse transcript-assay specificity plan");
+    match plan {
+        ShellCommand::PrimersTranscriptAssaySpecificityPlan {
+            panel_report_id,
+            target_genome_id,
+            policy,
+            output_dir,
+            ..
+        } => {
+            assert_eq!(panel_report_id, "panel_1");
+            assert_eq!(target_genome_id, "GRCh38.p14");
+            assert_eq!(output_dir, "panel_specificity");
+            assert_eq!(policy.max_hits_per_primer, 125);
+            assert!(policy.avoid_rmsk_repeats);
+            assert_eq!(
+                policy.specificity_check,
+                PrimerSpecificityCheckMode::RequirePass
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let finalize = parse_shell_line(
+        "primers transcript-assay-specificity-finalize panel_specificity/handoff.json @execution-manifest.json --path acceptance.json",
+    )
+    .expect("parse transcript-assay specificity finalization");
+    assert!(matches!(
+        finalize,
+        ShellCommand::PrimersTranscriptAssaySpecificityFinalize {
+            handoff_path,
+            execution_manifest_json,
+            path,
+        } if handoff_path == "panel_specificity/handoff.json"
+            && execution_manifest_json == "@execution-manifest.json"
+            && path.as_deref() == Some("acceptance.json")
+    ));
+}
+
+#[test]
 fn parse_primers_prepare_restriction_cloning_request() {
     let cmd = parse_shell_line("primers prepare-restriction-cloning @handoff_request.json")
         .expect("parse restriction-cloning handoff");

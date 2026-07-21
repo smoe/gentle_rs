@@ -7546,6 +7546,40 @@ External BLAST handoff for wrapper-owned execution:
 - GENtle never executes a `command_line` read from a handoff. Adapters should
   dispatch the stored `program` and `args[]` directly.
 
+Whole-panel external specificity acceptance:
+
+- `primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome
+  GENOME_ID --output-dir DIR` emits
+  `gentle.transcript_assay_panel_specificity_handoff.v1`. It binds the current
+  transcript-assay panel digest, selected assay ids/ranks and annealing
+  sequences, `gentle.primer_specificity_policy.v1`, prepared-genome identity, BLAST
+  database prefix/options, nested handoff schemas, and structured commands.
+- The adjacent
+  `gentle.transcript_assay_panel_specificity_execution_manifest.v1` template is
+  process evidence, not a biological decision. For every declared command the
+  scheduler returns `command_id`, `assay_id`, `exit_code`, `output_path`,
+  `output_size_bytes`, and `output_sha256`. A completed empty output has size
+  zero and the SHA-256 of empty bytes; it is distinct from a missing output or
+  an absent/non-success exit code.
+- The scheduler invokes `primers transcript-assay-specificity-finalize
+  HANDOFF.json EXECUTION_MANIFEST_JSON_OR_@FILE` even when one process fails.
+  GENtle validates command coverage, uniqueness, exit status, byte identity,
+  current panel identity, primer/policy/database provenance, and then applies
+  the same specificity interpretation as the inline route.
+- Finalization returns
+  `gentle.transcript_assay_panel_specificity_acceptance.v1` with exactly one of
+  `pass`, `specificity_fail`, or `incomplete`. `specificity_fail` means all
+  process evidence was complete but at least one assay failed GENtle's
+  biological policy. `incomplete` covers failed/missing/duplicate execution,
+  stale panel or primer state, altered handoffs, and provenance mismatch.
+- Only `pass` sets `accepted = true` and atomically attaches all assay reports
+  plus the acceptance object to the persisted panel. The other states do not
+  partially attach reports. An optional `--path` writes the same acceptance
+  object returned by the shell command.
+- NCBI e-PCR is not part of this contract. A future provider-neutral
+  Primer-BLAST evidence importer may supplement, but must not weaken, the
+  reproducible prepared-genome local-BLAST gate.
+
 Simple PCR constraint handoff:
 
 - ClawBio should treat a simple PCR request as four explicit constraints before

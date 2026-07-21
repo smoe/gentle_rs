@@ -4766,7 +4766,7 @@ fn parse_primers_oligo_order_command(tokens: &[String]) -> Result<ShellCommand, 
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, design-transcript-assay-panel, specificity, specificity-plan, specificity-import, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
+            "primers requires a subcommand: design, design-qpcr, design-transcript-assay-panel, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
                 .to_string(),
         );
     }
@@ -5095,6 +5095,192 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 }
             }
             Ok(ShellCommand::PrimersSpecificityImport { handoff_path, path })
+        }
+        "transcript-assay-specificity-plan" => {
+            const USAGE: &str = "primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome GENOME_ID --output-dir DIR [--max-target-amplicon-bp N] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--allow-same-gene-splice-variants] [--max-hits-per-primer N] [--avoid-known-variants] [--avoid-rmsk-repeats] [--avoid-low-complexity] [--catalog PATH] [--cache-dir DIR]";
+            if tokens.len() < 3 {
+                return Err(USAGE.to_string());
+            }
+            let panel_report_id = tokens[2].clone();
+            let mut target_genome_id = None;
+            let mut output_dir = None;
+            let mut catalog_path = None;
+            let mut cache_dir = None;
+            let mut policy = PrimerSpecificityPolicy::default();
+            policy.specificity_check = PrimerSpecificityCheckMode::RequirePass;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--target-genome" | "--target-genome-id" => {
+                        let flag = tokens[idx].clone();
+                        target_genome_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers transcript-assay-specificity-plan",
+                        )?);
+                    }
+                    "--output-dir" => {
+                        output_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-dir",
+                            "primers transcript-assay-specificity-plan",
+                        )?);
+                    }
+                    "--max-target-amplicon-bp" | "--max-amplicon-bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers transcript-assay-specificity-plan",
+                        )?;
+                        policy.max_target_amplicon_bp = parse_usize_option_value(&raw, &flag)?;
+                    }
+                    "--min-primer-coverage-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-primer-coverage-fraction",
+                            "primers transcript-assay-specificity-plan",
+                        )?;
+                        policy.min_primer_coverage_fraction =
+                            parse_f64_option_value(&raw, "--min-primer-coverage-fraction")?;
+                    }
+                    "--max-3prime-mismatches" | "--max-3-prime-mismatches" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers transcript-assay-specificity-plan",
+                        )?;
+                        policy.max_3prime_mismatches = parse_usize_option_value(&raw, &flag)?;
+                    }
+                    "--three-prime-window-bp" | "--3prime-window-bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers transcript-assay-specificity-plan",
+                        )?;
+                        policy.three_prime_window_bp = parse_usize_option_value(&raw, &flag)?;
+                    }
+                    "--min-total-mismatches-to-unintended-target" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-total-mismatches-to-unintended-target",
+                            "primers transcript-assay-specificity-plan",
+                        )?;
+                        policy.min_total_mismatches_to_unintended_target =
+                            parse_usize_option_value(
+                                &raw,
+                                "--min-total-mismatches-to-unintended-target",
+                            )?;
+                    }
+                    "--allow-same-gene-splice-variants" => {
+                        policy.allow_same_gene_splice_variants = true;
+                        idx += 1;
+                    }
+                    "--max-hits-per-primer" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-hits-per-primer",
+                            "primers transcript-assay-specificity-plan",
+                        )?;
+                        policy.max_hits_per_primer =
+                            parse_usize_option_value(&raw, "--max-hits-per-primer")?;
+                    }
+                    "--avoid-known-variants" => {
+                        policy.avoid_known_variants = true;
+                        idx += 1;
+                    }
+                    "--avoid-rmsk-repeats" => {
+                        policy.avoid_rmsk_repeats = true;
+                        idx += 1;
+                    }
+                    "--avoid-low-complexity" => {
+                        policy.avoid_low_complexity = true;
+                        idx += 1;
+                    }
+                    "--catalog" | "--catalog-path" => {
+                        let flag = tokens[idx].clone();
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers transcript-assay-specificity-plan",
+                        )?);
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            "primers transcript-assay-specificity-plan",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers transcript-assay-specificity-plan"
+                        ));
+                    }
+                }
+            }
+            let target_genome_id = target_genome_id
+                .filter(|value: &String| !value.trim().is_empty())
+                .ok_or_else(|| format!("{USAGE}\n--target-genome is required"))?;
+            let output_dir = output_dir
+                .filter(|value: &String| !value.trim().is_empty())
+                .ok_or_else(|| format!("{USAGE}\n--output-dir is required"))?;
+            policy.specificity_target_genome_id = Some(target_genome_id.clone());
+            Ok(ShellCommand::PrimersTranscriptAssaySpecificityPlan {
+                panel_report_id,
+                target_genome_id,
+                policy,
+                catalog_path,
+                cache_dir,
+                output_dir,
+            })
+        }
+        "transcript-assay-specificity-finalize" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers transcript-assay-specificity-finalize HANDOFF.json EXECUTION_MANIFEST_JSON_OR_@FILE [--path OUTPUT.json]"
+                        .to_string(),
+                );
+            }
+            let handoff_path = tokens[2].clone();
+            let execution_manifest_json = tokens[3].clone();
+            let mut path = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers transcript-assay-specificity-finalize",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers transcript-assay-specificity-finalize"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersTranscriptAssaySpecificityFinalize {
+                handoff_path,
+                execution_manifest_json,
+                path,
+            })
         }
         "test-cdna-pcr" => {
             if tokens.len() < 4 {
@@ -5966,7 +6152,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, design-transcript-assay-panel, specificity, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, design-transcript-assay-panel, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order)"
         )),
     }
 }
