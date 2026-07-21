@@ -1402,8 +1402,8 @@ mod tests {
     };
     use crate::engine_shell::execute_shell_command;
     use crate::test_support::{
-        decision_trace_fixture_state, write_demo_jaspar_pfm, write_demo_pool_json,
-        write_demo_rebase_withrefm,
+        decision_trace_fixture_state, transcript_assay_panel_adapter_fixture,
+        write_demo_jaspar_pfm, write_demo_pool_json, write_demo_rebase_withrefm,
     };
     use std::fs;
     use tempfile::tempdir;
@@ -1432,6 +1432,30 @@ mod tests {
         crate::tf_motifs::test_registry_lock()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[test]
+    fn js_apply_operation_runs_full_transcript_assay_panel_contract() {
+        let (state, operation) = transcript_assay_panel_adapter_fixture();
+        let response = apply_operation_impl(
+            state,
+            &serde_json::to_string(&operation).expect("serialize transcript assay operation"),
+        )
+        .expect("JS apply_operation transcript assay panel");
+        let report = response
+            .result
+            .transcript_assay_panel
+            .as_deref()
+            .expect("transcript assay report");
+        assert_eq!(report.schema, "gentle.transcript_assay_panel.v2");
+        assert_eq!(report.assay_kind.as_str(), "endpoint_rt_pcr");
+        assert_eq!(report.objective.as_str(), "isoform_end_matrix");
+        assert!(
+            response
+                .state
+                .metadata
+                .contains_key("primer_design_reports")
+        );
     }
 
     #[test]

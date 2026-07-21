@@ -12,6 +12,8 @@ use crate::engine::{
     RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore,
 };
 #[cfg(test)]
+use crate::engine::{Engine, Operation};
+#[cfg(test)]
 use crate::enzymes::Enzymes;
 #[cfg(test)]
 use gb_io::seq::Location;
@@ -28,6 +30,29 @@ use std::{
 const DEMO_REBASE_WITHREFM: &str = "<1>EcoRI\n<2>EcoRI\n<3>GAATTC (1/5)\n<7>N\n//\n";
 const DEMO_JASPAR_PFM: &str =
     ">MA0001.1 TEST\nA [ 10 0 0 0 ]\nC [ 0 10 0 0 ]\nG [ 0 0 10 0 ]\nT [ 0 0 0 10 ]\n";
+
+#[cfg(test)]
+pub fn transcript_assay_panel_adapter_fixture() -> (ProjectState, Operation) {
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: "test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_minus_strand.gb"
+                .to_string(),
+            as_id: Some("patz1_transcript_assay_demo".to_string()),
+        })
+        .expect("load transcript assay adapter fixture");
+    let workflow: serde_json::Value = serde_json::from_str(include_str!(
+        "../docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json"
+    ))
+    .expect("parse transcript assay adapter workflow");
+    let mut operation: Operation = serde_json::from_value(workflow["workflow"]["ops"][2].clone())
+        .expect("parse endpoint transcript assay operation");
+    let Operation::DesignTranscriptAssayPanel { path, .. } = &mut operation else {
+        panic!("adapter fixture must contain DesignTranscriptAssayPanel");
+    };
+    *path = None;
+    (engine.state().clone(), operation)
+}
 #[cfg(test)]
 const DENSE_PLASMID_VISUAL_BENCHMARK: &str =
     include_str!("../test_files/fixtures/visual_benchmarks/dense_plasmid_map.json");

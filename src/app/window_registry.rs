@@ -130,6 +130,12 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: Some(UiIntentTarget::PcrDesign),
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "primers design-transcript-assay-panel",
+        menu_path: "Patterns > PCR Designer...",
+        palette_title: "PCR Designer",
+        ui_intent_target: Some(UiIntentTarget::PcrDesign),
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "seq-confirm run",
         menu_path: "Patterns > Sequencing Confirmation...",
         palette_title: "Sequencing Confirmation",

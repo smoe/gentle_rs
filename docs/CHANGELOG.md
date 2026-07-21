@@ -12,6 +12,14 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-21
+
+- Added a full-operation JSON form to
+  `primers design-transcript-assay-panel`, so the complete
+  `DesignTranscriptAssayPanel` request is reusable unchanged across direct CLI,
+  shared shell, workflows, MCP, JavaScript, and Lua while retaining the concise
+  flag form.
+
 ## 2026-07-20
 
 - Added GUI parity for `gentle.transcript_assay_panel.v2` in PCR Designer:

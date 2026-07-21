@@ -5185,11 +5185,47 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         "design-transcript-assay-panel" => {
+            const USAGE: &str = "primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]\n       primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]";
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "primers design-transcript-assay-panel requires either:\n       {USAGE}"
+                ));
+            }
+            let operation_operand = tokens[2].trim();
+            if operation_operand.starts_with('@') || operation_operand.starts_with('{') {
+                let operation_json = tokens[2].clone();
+                let mut backend = None;
+                let mut primer3_executable = None;
+                let context = "primers design-transcript-assay-panel";
+                let mut idx = 3usize;
+                while idx < tokens.len() {
+                    match tokens[idx].as_str() {
+                        "--backend" => {
+                            let raw = parse_option_path(tokens, &mut idx, "--backend", context)?;
+                            backend = Some(parse_primer_design_backend(&raw)?);
+                        }
+                        "--primer3-exec" | "--primer3-executable" => {
+                            let flag = tokens[idx].clone();
+                            primer3_executable =
+                                Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                        }
+                        other => {
+                            return Err(format!(
+                                "Unknown option '{other}' for the operation-JSON form of {context}"
+                            ));
+                        }
+                    }
+                }
+                return Ok(ShellCommand::PrimersDesignTranscriptAssayPanelRequest {
+                    operation_json,
+                    backend,
+                    primer3_executable,
+                });
+            }
             if tokens.len() < 4 {
-                return Err(
-                    "primers design-transcript-assay-panel requires SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]"
-                        .to_string(),
-                );
+                return Err(format!(
+                    "primers design-transcript-assay-panel requires either:\n       {USAGE}"
+                ));
             }
             let seq_id = tokens[2].clone();
             let feature_id = tokens[3].parse::<usize>().map_err(|e| {

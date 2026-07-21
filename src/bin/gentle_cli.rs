@@ -3668,6 +3668,90 @@ mod tests {
     }
 
     #[test]
+    fn test_forwarded_transcript_assay_operation_json_matches_shared_shell_execution() {
+        fn strip_generated_at(value: &mut serde_json::Value) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    map.remove("generated_at_unix_ms");
+                    for value in map.values_mut() {
+                        strip_generated_at(value);
+                    }
+                }
+                serde_json::Value::Array(values) => {
+                    for value in values {
+                        strip_generated_at(value);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut setup = GentleEngine::default();
+        setup
+            .apply(Operation::LoadFile {
+                path:
+                    "test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_minus_strand.gb"
+                        .to_string(),
+                as_id: Some("patz1_transcript_assay_demo".to_string()),
+            })
+            .expect("load transcript assay fixture");
+        let state = setup.state().clone();
+
+        let workflow: serde_json::Value = serde_json::from_str(include_str!(
+            "../../docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json"
+        ))
+        .expect("parse PATZ1 transcript assay workflow");
+        let mut operation = workflow["workflow"]["ops"][2].clone();
+        operation["DesignTranscriptAssayPanel"]
+            .as_object_mut()
+            .expect("endpoint operation payload")
+            .remove("path");
+
+        let td = tempdir().expect("tempdir");
+        let request_path = td.path().join("endpoint_operation.json");
+        fs::write(
+            &request_path,
+            serde_json::to_vec_pretty(&operation).expect("serialize operation"),
+        )
+        .expect("write operation request");
+        let operand = format!("@{}", request_path.display());
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "primers".to_string(),
+            "design-transcript-assay-panel".to_string(),
+            operand,
+            "--backend".to_string(),
+            "internal".to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, mut forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(state.clone(), forwarded_args);
+        let (shared_changed, mut shared_output, shared_state) =
+            execute_shared_shell_tokens(state, shared_tokens);
+        strip_generated_at(&mut forwarded_output);
+        strip_generated_at(&mut shared_output);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_output["report"]["assay_kind"].as_str(),
+            Some("endpoint_rt_pcr")
+        );
+        assert_eq!(
+            forwarded_output["report"]["objective"].as_str(),
+            Some("isoform_end_matrix")
+        );
+        assert_eq!(
+            forwarded_state
+                .metadata
+                .get("primer_design_reports")
+                .is_some(),
+            shared_state.metadata.get("primer_design_reports").is_some()
+        );
+    }
+
+    #[test]
     fn test_forwarded_primers_design_roundtrip_preserves_non_annealing_5prime_tail() {
         let mut state = ProjectState::default();
         state.sequences.insert(

@@ -3385,6 +3385,7 @@ mod tests {
         },
         engine_shell::{execute_shell_command, parse_shell_tokens},
         genomes::GenomeCatalog,
+        test_support::transcript_assay_panel_adapter_fixture,
     };
     use std::{fs, io::Cursor, path::Path, thread, time::Duration};
     use tempfile::tempdir;
@@ -4271,6 +4272,44 @@ mod tests {
         let persisted = ProjectState::load_from_path(&state_path.to_string_lossy())
             .expect("load persisted state");
         assert_eq!(persisted.parameters.max_fragments_per_container, 123);
+    }
+
+    #[test]
+    fn mcp_op_runs_full_transcript_assay_panel_contract() {
+        let temp = tempdir().expect("tempdir");
+        let state_path = temp.path().join("mcp_transcript_assay_state.gentle.json");
+        let (state, operation) = transcript_assay_panel_adapter_fixture();
+        state
+            .save_to_path(&state_path.to_string_lossy())
+            .expect("save transcript assay state");
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 91,
+            "method": "tools/call",
+            "params": {
+                "name": "op",
+                "arguments": {
+                    "confirm": true,
+                    "state_path": state_path.to_string_lossy(),
+                    "operation": serde_json::to_value(operation)
+                        .expect("serialize transcript assay operation")
+                }
+            }
+        });
+        let response = run_single(DEFAULT_MCP_STATE_PATH, request);
+        assert_eq!(
+            response.pointer("/result/isError").and_then(Value::as_bool),
+            Some(false)
+        );
+        let persisted = ProjectState::load_from_path(&state_path.to_string_lossy())
+            .expect("load persisted transcript assay state");
+        let engine = GentleEngine::from_state(persisted);
+        let report = engine
+            .get_transcript_assay_panel_report("patz1_endpoint_end_matrix")
+            .expect("persisted transcript assay report");
+        assert_eq!(report.schema, "gentle.transcript_assay_panel.v2");
+        assert_eq!(report.assay_kind.as_str(), "endpoint_rt_pcr");
+        assert_eq!(report.objective.as_str(), "isoform_end_matrix");
     }
 
     #[test]

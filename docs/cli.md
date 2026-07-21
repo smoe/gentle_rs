@@ -701,8 +701,8 @@ Primer-design report capability status:
   qPCR seed helpers, `DesignPrimerPairs`/`DesignQpcrAssays` payload execution,
   cDNA PCR/qPCR assay tests, primer/qPCR report list/show/export, restriction-
   cloning PCR handoffs, vector suggestions, and PCR-family protocol cartoons.
-- `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `BuildTranscriptQpcrPanel`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
-- `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `BuildTranscriptQpcrPanel`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
+- `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `BuildTranscriptQpcrPanel`, `DesignTranscriptAssayPanel`, `PrepareRestrictionCloningPcrHandoff`); the returned project state and operation result carry the persisted transcript-panel report
+- `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `BuildTranscriptQpcrPanel`, `DesignTranscriptAssayPanel`, `PrepareRestrictionCloningPcrHandoff`); the returned project state and operation result carry the persisted transcript-panel report
 
 Dotplot/flexibility capability status:
 
@@ -3000,6 +3000,7 @@ Shared shell command:
     - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
+    - `primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
       - for oligo-dT cDNA, matrix cells always report each predicted product's
         required reach from the annotated transcript 3-prime end. Supplying
@@ -3549,6 +3550,15 @@ Shared shell command:
         receive deterministic `not_found` rows instead of silent omission
     - Transcript assay panel v2 notes
       (`primers design-transcript-assay-panel`):
+      - the command accepts either the concise `SEQ_ID FEATURE_ID` flag form or
+        a complete externally tagged `DesignTranscriptAssayPanel` operation as
+        inline JSON / `@FILE`. The operation form exposes every shared primer,
+        probe, pair, junction, assay, and provenance field without adding a
+        CLI-only request schema
+      - that same operation object is accepted unchanged by `gentle_cli op`,
+        workflow JSON, MCP tool `op` (`confirm=true`), JavaScript
+        `apply_operation`, and Lua `apply_operation`; all routes execute the
+        shared engine operation
       - `--assay-kind` selects `endpoint-rt-pcr`, primer-only `sybr-qpcr`, or
         `taqman-qpcr`; omission preserves the original TaqMan-compatible
         forward/reverse/probe behavior for existing callers

@@ -2429,6 +2429,11 @@ pub enum ShellCommand {
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
     },
+    PrimersDesignTranscriptAssayPanelRequest {
+        operation_json: String,
+        backend: Option<PrimerDesignBackend>,
+        primer3_executable: Option<String>,
+    },
     PrimersTestCdnaQpcrFasta {
         cdna_fasta_paths: Vec<String>,
         forward_primer: String,
@@ -11053,6 +11058,22 @@ impl ShellCommand {
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                     .unwrap_or("none"),
+            ),
+            Self::PrimersDesignTranscriptAssayPanelRequest {
+                operation_json,
+                backend,
+                primer3_executable,
+            } => format!(
+                "design transcript assay panel from full operation JSON (len={}, backend={}, primer3_executable={})",
+                operation_json.len(),
+                backend
+                    .map(PrimerDesignBackend::as_str)
+                    .unwrap_or("default"),
+                primer3_executable
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("default"),
             ),
             Self::PrimersTestCdnaQpcrFasta {
                 cdna_fasta_paths,
@@ -50096,6 +50117,90 @@ fn execute_primers_command(
         }
     }
 
+    fn parse_design_transcript_assay_panel_operation_request(
+        json_text: &str,
+    ) -> Result<Operation, String> {
+        let op: Operation = serde_json::from_str(json_text).map_err(|error| {
+            format!(
+                "Invalid primers design-transcript-assay-panel operation JSON: {error} (expected an Operation payload with DesignTranscriptAssayPanel)"
+            )
+        })?;
+        match op {
+            Operation::DesignTranscriptAssayPanel { .. } => Ok(op),
+            _ => Err(
+                "primers design-transcript-assay-panel expects an Operation payload with DesignTranscriptAssayPanel"
+                    .to_string(),
+            ),
+        }
+    }
+
+    fn run_design_transcript_assay_panel_operation(
+        engine: &mut GentleEngine,
+        operation: Operation,
+        backend: Option<PrimerDesignBackend>,
+        primer3_executable: Option<&str>,
+        options: &ShellExecutionOptions,
+    ) -> Result<ShellRunResult, String> {
+        let path = match &operation {
+            Operation::DesignTranscriptAssayPanel { path, .. } => path.clone(),
+            _ => {
+                return Err(
+                    "Transcript assay panel shell execution requires DesignTranscriptAssayPanel"
+                        .to_string(),
+                );
+            }
+        };
+        let before = engine
+            .state()
+            .metadata
+            .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+            .cloned();
+        let previous_backend = engine.state().parameters.primer_design_backend;
+        let previous_executable = engine.state().parameters.primer3_executable.clone();
+        if let Some(override_backend) = backend {
+            engine.state_mut().parameters.primer_design_backend = override_backend;
+        }
+        if let Some(override_exec) = primer3_executable
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            engine.state_mut().parameters.primer3_executable = override_exec.to_string();
+        }
+        let op_result = if options.progress_callback.is_some() {
+            engine
+                .apply_with_progress(operation, |progress| {
+                    forward_shell_progress(options, progress).unwrap_or(false)
+                })
+                .map_err(|error| error.to_string())
+        } else {
+            engine.apply(operation).map_err(|error| error.to_string())
+        };
+        engine.state_mut().parameters.primer_design_backend = previous_backend;
+        engine.state_mut().parameters.primer3_executable = previous_executable;
+        let op_result = op_result?;
+        let report = op_result
+            .transcript_assay_panel
+            .as_ref()
+            .map(|report| (**report).clone())
+            .ok_or_else(|| {
+                "Transcript assay panel operation did not return its report".to_string()
+            })?;
+        let after = engine
+            .state()
+            .metadata
+            .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+            .cloned();
+        Ok(ShellRunResult {
+            state_changed: before != after,
+            output: json!({
+                "schema": "gentle.transcript_assay_panel_command.v2",
+                "report": report,
+                "path": path,
+                "result": op_result,
+            }),
+        })
+    }
+
     fn qpcr_seed_output(
         template: &str,
         source: serde_json::Value,
@@ -50943,11 +51048,6 @@ fn execute_primers_command(
             backend,
             primer3_executable,
         } => {
-            let before = engine
-                .state()
-                .metadata
-                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
-                .cloned();
             let junctions = if let Some(raw) = junctions_json.as_deref() {
                 let payload = parse_json_payload(raw)?;
                 serde_json::from_str::<Vec<TranscriptAssayJunctionRequest>>(&payload)
@@ -50968,18 +51068,6 @@ fn execute_primers_command(
             } else {
                 vec![]
             };
-            let previous_backend = engine.state().parameters.primer_design_backend;
-            let previous_executable = engine.state().parameters.primer3_executable.clone();
-            if let Some(override_backend) = backend {
-                engine.state_mut().parameters.primer_design_backend = *override_backend;
-            }
-            if let Some(override_exec) = primer3_executable
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                engine.state_mut().parameters.primer3_executable = override_exec.to_string();
-            }
             let operation = Operation::DesignTranscriptAssayPanel {
                 seq_id: seq_id.clone(),
                 source_feature_id: *feature_id,
@@ -51008,39 +51096,28 @@ fn execute_primers_command(
                 report_id: report_id.clone(),
                 path: path.clone(),
             };
-            let op_result = if options.progress_callback.is_some() {
-                engine
-                    .apply_with_progress(operation, |progress| {
-                        forward_shell_progress(options, progress).unwrap_or(false)
-                    })
-                    .map_err(|e| e.to_string())
-            } else {
-                engine.apply(operation).map_err(|e| e.to_string())
-            };
-            engine.state_mut().parameters.primer_design_backend = previous_backend;
-            engine.state_mut().parameters.primer3_executable = previous_executable;
-            let op_result = op_result?;
-            let report = op_result
-                .transcript_assay_panel
-                .as_ref()
-                .map(|report| (**report).clone())
-                .ok_or_else(|| {
-                    "Transcript assay panel operation did not return its report".to_string()
-                })?;
-            let after = engine
-                .state()
-                .metadata
-                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
-                .cloned();
-            Ok(ShellRunResult {
-                state_changed: before != after,
-                output: json!({
-                    "schema": "gentle.transcript_assay_panel_command.v2",
-                    "report": report,
-                    "path": path,
-                    "result": op_result,
-                }),
-            })
+            run_design_transcript_assay_panel_operation(
+                engine,
+                operation,
+                *backend,
+                primer3_executable.as_deref(),
+                options,
+            )
+        }
+        ShellCommand::PrimersDesignTranscriptAssayPanelRequest {
+            operation_json,
+            backend,
+            primer3_executable,
+        } => {
+            let json_text = parse_json_payload(operation_json)?;
+            let operation = parse_design_transcript_assay_panel_operation_request(&json_text)?;
+            run_design_transcript_assay_panel_operation(
+                engine,
+                operation,
+                *backend,
+                primer3_executable.as_deref(),
+                options,
+            )
         }
         ShellCommand::PrimersTestCdnaQpcrFasta {
             cdna_fasta_paths,
@@ -56568,6 +56645,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersTestCdnaQpcr { .. }
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
             | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
+            | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
             | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
             | ShellCommand::PrimersPrepareRestrictionCloning { .. }
             | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }
@@ -58282,6 +58360,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersTestCdnaQpcr { .. }
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }
         | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
+        | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
         | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
         | ShellCommand::PrimersPrepareRestrictionCloning { .. }
         | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }

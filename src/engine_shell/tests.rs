@@ -6631,6 +6631,20 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && max_amplicon_bp == Some(10_000)
             && oligo_dt_5prime_risk_threshold_bp == Some(5_000)
     ));
+    let operation_panel = parse_shell_line(
+        r#"primers design-transcript-assay-panel '{"DesignTranscriptAssayPanel":{"seq_id":"seq_a","source_feature_id":17}}' --backend internal --primer3-exec primer3_core"#,
+    )
+    .expect("parse full-operation transcript assay panel");
+    assert!(matches!(
+        operation_panel,
+        ShellCommand::PrimersDesignTranscriptAssayPanelRequest {
+            operation_json,
+            backend,
+            primer3_executable,
+        } if operation_json.contains("DesignTranscriptAssayPanel")
+            && backend == Some(PrimerDesignBackend::Internal)
+            && primer3_executable.as_deref() == Some("primer3_core")
+    ));
     assert!(matches!(
         parse_shell_line("primers list-transcript-assay-panels")
             .expect("parse transcript panel list"),

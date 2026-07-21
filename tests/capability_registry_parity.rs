@@ -679,6 +679,60 @@ fn engine_operations_are_reachable_on_shell_route_adapters() {
 }
 
 #[test]
+fn transcript_assay_panel_reachability_is_locked_across_adapters() {
+    let command = capability_registry()
+        .iter()
+        .find(|descriptor| {
+            descriptor.source == CapabilitySource::GlossaryCommand
+                && descriptor.name == "primers design-transcript-assay-panel"
+        })
+        .expect("transcript assay panel glossary command");
+    assert_eq!(
+        command.engine_operations,
+        vec!["DesignTranscriptAssayPanel".to_string()]
+    );
+    assert_eq!(
+        command.surfacing_for_adapter(CapabilityAdapter::Gui),
+        AdapterSurfacing::Prominent
+    );
+    assert_eq!(
+        command.surfacing_for_adapter(CapabilityAdapter::Cli),
+        AdapterSurfacing::Prominent
+    );
+    for adapter in [
+        CapabilityAdapter::Mcp,
+        CapabilityAdapter::Js,
+        CapabilityAdapter::Lua,
+    ] {
+        assert_eq!(
+            command.surfacing_for_adapter(adapter),
+            AdapterSurfacing::ShellPassthrough,
+            "transcript assay panel operation must remain reachable on {adapter:?}"
+        );
+    }
+
+    let operation = capability_registry()
+        .iter()
+        .find(|descriptor| {
+            descriptor.source == CapabilitySource::EngineOperation
+                && descriptor.name == "DesignTranscriptAssayPanel"
+        })
+        .expect("DesignTranscriptAssayPanel operation descriptor");
+    for adapter in [
+        CapabilityAdapter::Cli,
+        CapabilityAdapter::Mcp,
+        CapabilityAdapter::Js,
+        CapabilityAdapter::Lua,
+    ] {
+        assert_eq!(
+            operation.surfacing_for_adapter(adapter),
+            AdapterSurfacing::ShellPassthrough,
+            "DesignTranscriptAssayPanel must remain reachable on {adapter:?}"
+        );
+    }
+}
+
+#[test]
 fn prominent_projections_match_user_facing_listings() {
     let mcp_tools = mcp_tool_names();
     let mcp_command_paths = mcp_tool_command_paths();

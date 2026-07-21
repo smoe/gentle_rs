@@ -2088,8 +2088,8 @@ mod tests {
     };
     use crate::engine_shell::execute_shell_command;
     use crate::test_support::{
-        decision_trace_fixture_state, write_demo_jaspar_pfm, write_demo_pool_json,
-        write_demo_rebase_withrefm,
+        decision_trace_fixture_state, transcript_assay_panel_adapter_fixture,
+        write_demo_jaspar_pfm, write_demo_pool_json, write_demo_rebase_withrefm,
     };
     use std::fs;
     use tempfile::tempdir;
@@ -2118,6 +2118,46 @@ mod tests {
         crate::tf_motifs::test_registry_lock()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[test]
+    fn lua_apply_operation_runs_full_transcript_assay_panel_contract() {
+        let (state, operation) = transcript_assay_panel_adapter_fixture();
+        let lua = LuaInterface::new();
+        lua.register_rust_functions()
+            .expect("register rust functions");
+        lua.lua()
+            .globals()
+            .set(
+                "state_in",
+                lua.lua().to_value(&state).expect("serialize project state"),
+            )
+            .expect("set project state");
+        lua.lua()
+            .globals()
+            .set(
+                "op_json",
+                serde_json::to_string(&operation).expect("serialize transcript assay operation"),
+            )
+            .expect("set operation JSON");
+        lua.lua()
+            .load("out = apply_operation(state_in, op_json)")
+            .exec()
+            .expect("Lua apply_operation transcript assay panel");
+        let out_value: Value = lua.lua().globals().get("out").expect("out value");
+        let out_json: serde_json::Value = lua
+            .lua()
+            .from_value(out_value)
+            .expect("Lua output JSON conversion");
+        assert_eq!(
+            out_json["result"]["transcript_assay_panel"]["schema"].as_str(),
+            Some("gentle.transcript_assay_panel.v2")
+        );
+        assert_eq!(
+            out_json["result"]["transcript_assay_panel"]["assay_kind"].as_str(),
+            Some("endpoint_rt_pcr")
+        );
+        assert!(out_json["state"]["metadata"]["primer_design_reports"].is_object());
     }
 
     #[test]
