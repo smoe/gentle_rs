@@ -19228,6 +19228,7 @@ impl GentleEngine {
                 container_ids,
                 arrangement_id,
                 conditions,
+                render_options,
             } => {
                 if let Some(arrangement_id) = arrangement_id.as_deref().map(str::trim) {
                     if !inputs.is_empty() {
@@ -19273,7 +19274,8 @@ impl GentleEngine {
                     ladders.as_deref(),
                     conditions.as_ref(),
                 )?;
-                let svg = export_pool_gel_svg(&layout);
+                let render_options = render_options.unwrap_or_default();
+                let svg = export_pool_gel_svg_with_options(&layout, &render_options);
                 Self::ensure_engine_output_parent_dir(&path, "serial gel SVG")?;
                 std::fs::write(&path, svg).map_err(|e| EngineError {
                     code: ErrorCode::Io,
@@ -19287,12 +19289,15 @@ impl GentleEngine {
                     layout.selected_ladders.join(" + ")
                 };
                 result.messages.push(format!(
-                    "Wrote serial gel SVG for {} sample lane(s), {} sequence(s) to '{}' (ladders: {}, conditions: {})",
+                    "Wrote serial gel SVG for {} sample lane(s), {} sequence(s) to '{}' (ladders: {}, conditions: {}, lane labels: {}, band labels: {}, isoform markers: {})",
                     layout.sample_count,
                     layout.pool_member_count,
                     path,
                     ladders_used,
-                    layout.conditions.describe()
+                    layout.conditions.describe(),
+                    render_options.lane_label_layout.as_str(),
+                    render_options.band_label_layout.as_str(),
+                    render_options.isoform_marker_mode.as_str(),
                 ));
             }
             Operation::ExportDnaLadders { path, name_filter } => {

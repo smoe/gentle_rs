@@ -2008,6 +2008,118 @@ impl GelRunConditions {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Placement strategy for lane names below a virtual gel.
+pub enum GelLaneLabelLayout {
+    /// Choose horizontal, wrapped, or angled placement from the lane spacing
+    /// and label lengths.
+    #[default]
+    Auto,
+    /// Keep every lane name on one horizontal baseline.
+    Horizontal,
+    /// Wrap each lane name onto as many centered lines as needed.
+    Wrapped,
+    /// Alternate lane names between two horizontal baselines.
+    Staggered,
+    /// Rotate every lane name clockwise below its lane.
+    Angled,
+}
+
+impl GelLaneLabelLayout {
+    pub fn from_hint(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(Self::Auto),
+            "horizontal" | "single_row" | "single-row" => Some(Self::Horizontal),
+            "wrapped" | "wrap" | "multi_row" | "multi-row" => Some(Self::Wrapped),
+            "staggered" | "stagger" | "two_row" | "two-row" => Some(Self::Staggered),
+            "angled" | "angle" | "rotated" | "rotate" => Some(Self::Angled),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Horizontal => "horizontal",
+            Self::Wrapped => "wrapped",
+            Self::Staggered => "staggered",
+            Self::Angled => "angled",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Placement strategy for textual band annotations inside a virtual gel.
+pub enum GelBandLabelLayout {
+    /// Draw an in-gel annotation only when it fits before the next lane or the
+    /// gel edge; the fragment table always remains available.
+    #[default]
+    Auto,
+    /// Always draw the legacy in-gel annotations, even on dense gels.
+    Inline,
+    /// Keep detailed band text in the fragment table only.
+    Panel,
+}
+
+impl GelBandLabelLayout {
+    pub fn from_hint(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(Self::Auto),
+            "inline" | "in_gel" | "in-gel" => Some(Self::Inline),
+            "panel" | "table" | "detail_panel" | "detail-panel" => Some(Self::Panel),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Inline => "inline",
+            Self::Panel => "panel",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Whether virtual gels identify repeated transcript isoforms redundantly.
+pub enum GelIsoformMarkerMode {
+    /// Detect transcript accessions in product identifiers and encode each
+    /// isoform by color, marker position, and a legend-backed binary code.
+    #[default]
+    Auto,
+    /// Suppress isoform identity markers and their legend.
+    Off,
+}
+
+impl GelIsoformMarkerMode {
+    pub fn from_hint(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "auto" | "on" | "true" => Some(Self::Auto),
+            "off" | "none" | "false" => Some(Self::Off),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Off => "off",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+/// Presentation-only options for serial/pool gel SVG rendering.
+pub struct PoolGelRenderOptions {
+    pub lane_label_layout: GelLaneLabelLayout,
+    pub band_label_layout: GelBandLabelLayout,
+    pub isoform_marker_mode: GelIsoformMarkerMode,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 /// Shared scope preset for splicing/exon-context views and RNA-read mapping.
 pub enum SplicingScopePreset {
     #[default]

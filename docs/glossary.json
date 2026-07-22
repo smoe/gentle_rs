@@ -614,7 +614,7 @@
          ],
          "path": "render-pool-gel-svg",
          "summary": "Render serial gel SVG from sequence ids, containers, or an arrangement with optional explicit ladders.",
-         "usage": "render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]"
+         "usage": "render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--lane-label-layout auto|horizontal|wrapped|staggered|angled] [--band-label-layout auto|inline|panel] [--isoform-markers auto|off]"
       },
       {
          "aliases": [],

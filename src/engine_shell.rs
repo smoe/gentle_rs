@@ -828,6 +828,7 @@ pub enum ShellCommand {
         container_ids: Option<Vec<String>>,
         arrangement_id: Option<String>,
         conditions: gentle_protocol::GelRunConditions,
+        render_options: gentle_protocol::PoolGelRenderOptions,
     },
     CreateArrangementSerial {
         container_ids: Vec<String>,
@@ -7012,6 +7013,7 @@ impl ShellCommand {
                 container_ids,
                 arrangement_id,
                 conditions,
+                render_options,
             } => {
                 let ladders = ladders
                     .as_ref()
@@ -7027,11 +7029,14 @@ impl ShellCommand {
                     .filter(|v| !v.is_empty())
                     .unwrap_or("-");
                 format!(
-                    "render serial gel SVG to '{output}' (inputs={}, containers={}, arrangement={}, ladders={ladders}, conditions={})",
+                    "render serial gel SVG to '{output}' (inputs={}, containers={}, arrangement={}, ladders={ladders}, conditions={}, lane labels={}, band labels={}, isoform markers={})",
                     inputs.len(),
                     containers,
                     arrangement,
-                    conditions.describe()
+                    conditions.describe(),
+                    render_options.lane_label_layout.as_str(),
+                    render_options.band_label_layout.as_str(),
+                    render_options.isoform_marker_mode.as_str()
                 )
             }
             Self::CreateArrangementSerial {
@@ -18773,6 +18778,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "CONTAINER_IDS", "required": false, "subject_kind": "other", "detail": "optional container-id list; each id is validated during execution"}),
                 json!({"name": "ARRANGEMENT_ID", "required": false, "subject_kind": "other", "detail": "optional persisted arrangement id validated during execution"}),
                 json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}),
+                json!({"name": "LANE_LABEL_LAYOUT", "required": false, "subject_kind": "other", "detail": "auto, horizontal, wrapped, staggered, or angled lane-label placement"}),
+                json!({"name": "BAND_LABEL_LAYOUT", "required": false, "subject_kind": "other", "detail": "auto, inline, or fragment-table-only panel band labels"}),
+                json!({"name": "ISOFORM_MARKERS", "required": false, "subject_kind": "other", "detail": "auto detects transcript accessions and adds color/position/binary identity markers; off suppresses them"}),
             ],
             vec![
                 sequence_inputs_foreach_atom(),
@@ -18804,6 +18812,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "CONTAINER_IDS", "required": false, "subject_kind": "other", "detail": "optional container-id list carried by container_ids; each id is validated during execution"}),
                 json!({"name": "ARRANGEMENT_ID", "required": false, "subject_kind": "other", "detail": "optional persisted arrangement id carried by arrangement_id"}),
                 json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path carried by path"}),
+                json!({"name": "LANE_LABEL_LAYOUT", "required": false, "subject_kind": "other", "detail": "presentation-only lane-label placement carried by render_options"}),
+                json!({"name": "BAND_LABEL_LAYOUT", "required": false, "subject_kind": "other", "detail": "presentation-only in-gel band-label placement carried by render_options"}),
+                json!({"name": "ISOFORM_MARKERS", "required": false, "subject_kind": "other", "detail": "presentation-only transcript identity markers carried by render_options"}),
             ],
             vec![
                 sequence_inputs_foreach_atom(),
@@ -38451,6 +38462,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut container_ids: Option<Vec<String>> = None;
             let mut arrangement_id: Option<String> = None;
             let mut conditions = gentle_protocol::GelRunConditions::default();
+            let mut render_options = gentle_protocol::PoolGelRenderOptions::default();
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -38523,6 +38535,48 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                             })?;
                         idx += 2;
                     }
+                    "--lane-label-layout" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --lane-label-layout".to_string());
+                        }
+                        render_options.lane_label_layout =
+                            gentle_protocol::GelLaneLabelLayout::from_hint(&tokens[idx + 1])
+                                .ok_or_else(|| {
+                                    format!(
+                                        "Unknown lane-label layout '{}' (expected auto|horizontal|wrapped|staggered|angled)",
+                                        tokens[idx + 1]
+                                    )
+                                })?;
+                        idx += 2;
+                    }
+                    "--band-label-layout" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --band-label-layout".to_string());
+                        }
+                        render_options.band_label_layout =
+                            gentle_protocol::GelBandLabelLayout::from_hint(&tokens[idx + 1])
+                                .ok_or_else(|| {
+                                    format!(
+                                        "Unknown band-label layout '{}' (expected auto|inline|panel)",
+                                        tokens[idx + 1]
+                                    )
+                                })?;
+                        idx += 2;
+                    }
+                    "--isoform-markers" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --isoform-markers".to_string());
+                        }
+                        render_options.isoform_marker_mode =
+                            gentle_protocol::GelIsoformMarkerMode::from_hint(&tokens[idx + 1])
+                                .ok_or_else(|| {
+                                    format!(
+                                        "Unknown isoform-marker mode '{}' (expected auto|off)",
+                                        tokens[idx + 1]
+                                    )
+                                })?;
+                        idx += 2;
+                    }
                     other => {
                         return Err(format!("Unknown argument '{other}' for {cmd_name}"));
                     }
@@ -38543,6 +38597,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 container_ids,
                 arrangement_id,
                 conditions: conditions.normalized(),
+                render_options,
             })
         }
         "arrange-serial" => {
@@ -44798,6 +44853,7 @@ fn execute_pool_gel_and_ladder_command(
             container_ids,
             arrangement_id,
             conditions,
+            render_options,
         } => {
             let layout = engine
                 .build_serial_gel_layout_for_render(
@@ -44820,6 +44876,7 @@ fn execute_pool_gel_and_ladder_command(
                             container_ids: container_ids.clone(),
                             arrangement_id: arrangement_id.clone(),
                             conditions: Some(conditions.clone()),
+                            render_options: Some(render_options.clone()),
                         })
                         .map_err(|e| e.to_string())?,
                     "gel_band_rows": gel_band_rows,
@@ -44828,6 +44885,7 @@ fn execute_pool_gel_and_ladder_command(
                     "sample_lane_count": layout.sample_count,
                     "pool_member_count": layout.pool_member_count,
                     "selected_ladders": layout.selected_ladders,
+                    "render_options": render_options,
                 }),
             })
         }

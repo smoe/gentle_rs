@@ -54,7 +54,7 @@ use crate::{
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
-    pool_gel::{GelSampleInput, export_pool_gel_svg},
+    pool_gel::{GelSampleInput, export_pool_gel_svg, export_pool_gel_svg_with_options},
     protease::{Protease, normalize_protease_name_token},
     protocol_cartoon::ProtocolCartoonTemplateBindings,
     render_export::{export_circular_svg, export_linear_svg},
@@ -104,14 +104,15 @@ pub use gentle_protocol::{
     ConstructReasoningTaskSeverity, ConstructRole, Container, ContainerId, ContainerKind,
     ContainerState, DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact, DotplotMode,
     EditableStatus, EvidenceClass, EvidenceScope, ExonSkipReturnKind, ExonSkipReturnPayload,
-    ExonSkipSelectionCriterion,
-    GelBufferModel, GelRunConditions, GelTopologyForm, HostLifecycleRole, LineageEdge,
+    ExonSkipSelectionCriterion, GelBandLabelLayout, GelBufferModel, GelIsoformMarkerMode,
+    GelLaneLabelLayout, GelRunConditions, GelTopologyForm, HostLifecycleRole, LineageEdge,
     LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus,
     NodeId, OpId, OrthologAmbiguityPolicy, OrthologPromoterCohortReport,
     OrthologPromoterComparisonReport, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
     RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
     RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
-    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
+    PoolGelRenderOptions, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
+    ReadAcquisitionAnalysisFormat,
     ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
 };
 
@@ -2977,6 +2978,8 @@ pub enum Operation {
         arrangement_id: Option<String>,
         #[serde(default)]
         conditions: Option<GelRunConditions>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        render_options: Option<PoolGelRenderOptions>,
     },
     RenderProteinGelSvg {
         report_id: String,

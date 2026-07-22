@@ -14,6 +14,14 @@ Maintenance rule:
 
 ## 2026-07-21
 
+- Made serial/pool-gel SVG labels collision-aware: dense gels now keep short
+  lane names horizontal, wrap isolated long names, angle difficult dense names,
+  and move band text that cannot fit between lanes into the fragment table;
+  callers can override both lane- and band-label placement explicitly.
+- Added redundant transcript-isoform identity cues to serial/pool gels:
+  recognized Ensembl or RefSeq transcript accessions now retain a deterministic
+  color and relative marker position across lanes and merged bands, while a
+  side legend and fragment rows provide an `O`/`I` binary text fallback.
 - Added aggregate transcript-assay panel specificity handoff/finalization:
   mechanical wrappers now return per-command exit and output identities, while
   GENtle alone classifies complete all-assay evidence as `pass`,

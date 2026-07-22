@@ -1,9 +1,10 @@
 //! Virtual pool gel model and rendering primitives.
 
 use gentle_protocol::{
-    GelBufferModel, GelRunConditions, GelTopologyForm, LadderCatalog, default_dna_ladders,
+    GelBandLabelLayout, GelBufferModel, GelIsoformMarkerMode, GelLaneLabelLayout, GelRunConditions,
+    GelTopologyForm, LadderCatalog, PoolGelRenderOptions, default_dna_ladders,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
 use svg::Document;
 use svg::node::element::{Line, Rectangle, Text};
@@ -17,6 +18,16 @@ const GEL_BOTTOM: f32 = SVG_HEIGHT - 110.0;
 const DETAIL_PANEL_LEFT: f32 = GEL_RIGHT + 90.0;
 const DETAIL_PANEL_TOP: f32 = GEL_TOP + 8.0;
 const DETAIL_PANEL_WIDTH: f32 = SVG_WIDTH - DETAIL_PANEL_LEFT - 36.0;
+const LANE_LABEL_BASELINE: f32 = GEL_BOTTOM + 26.0;
+const LANE_LABEL_FONT_SIZE: f32 = 13.0;
+const LANE_LABEL_LINE_HEIGHT: f32 = 14.0;
+const MIN_ANGLED_LANE_LABEL_DEGREES: f32 = 55.0;
+const MAX_ANGLED_LANE_LABEL_DEGREES: f32 = 88.5;
+const ISOFORM_LEGEND_ROW_HEIGHT: f32 = 16.0;
+const ISOFORM_COLORS: [&str; 12] = [
+    "#0072b2", "#d55e00", "#009e73", "#cc79a7", "#56b4e9", "#e69f00", "#f0e442", "#332288",
+    "#88ccee", "#aa4499", "#44aa99", "#882255",
+];
 
 static DNA_LADDERS: LazyLock<LadderCatalog> = LazyLock::new(default_dna_ladders);
 
@@ -37,6 +48,7 @@ pub struct PoolGelBand {
     pub estimated_mass_units: f32,
     pub topology_label: String,
     pub labels: Vec<String>,
+    pub isoform_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -63,6 +75,21 @@ pub struct GelSampleInput {
     pub name: String,
     pub role_label: Option<String>,
     pub members: Vec<GelSampleMember>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum ResolvedLaneLabelPlacement {
+    Horizontal { row: usize },
+    Wrapped(Vec<String>),
+    Angled { degrees: f32 },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GelIsoformIdentity {
+    id: String,
+    ordinal: usize,
+    color: &'static str,
+    binary_code: String,
 }
 
 impl PoolGelLayout {
@@ -155,6 +182,130 @@ fn apparent_bp_for_member(member: &GelSampleMember, conditions: &GelRunCondition
 
 fn estimate_member_mass_units(member: &GelSampleMember) -> f32 {
     member.bp.max(1) as f32
+}
+
+fn normalize_transcript_accession(raw: &str) -> String {
+    let accession = raw.trim().to_ascii_uppercase();
+    accession
+        .rsplit_once('.')
+        .filter(|(_, version)| !version.is_empty() && version.chars().all(|ch| ch.is_ascii_digit()))
+        .map(|(base, _)| base.to_string())
+        .unwrap_or(accession)
+}
+
+fn ensembl_transcript_accession(raw: &str) -> Option<String> {
+    raw.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '.'))
+        .filter_map(|token| {
+            let upper = token.to_ascii_uppercase();
+            if !upper.starts_with("ENS") {
+                return None;
+            }
+            let transcript_marker = upper.char_indices().find_map(|(idx, ch)| {
+                (ch == 'T'
+                    && upper[idx + ch.len_utf8()..]
+                        .chars()
+                        .next()
+                        .is_some_and(|next| next.is_ascii_digit()))
+                .then_some(idx)
+            })?;
+            (transcript_marker >= 3).then(|| normalize_transcript_accession(&upper))
+        })
+        .last()
+}
+
+fn refseq_transcript_accession(raw: &str) -> Option<String> {
+    let upper = raw.to_ascii_uppercase();
+    let mut best: Option<(usize, String)> = None;
+    for prefix in ["NM_", "NR_", "XM_", "XR_"] {
+        let mut search_from = 0usize;
+        while let Some(relative_start) = upper[search_from..].find(prefix) {
+            let start = search_from + relative_start;
+            let prefix_is_bounded =
+                start == 0 || !upper.as_bytes()[start - 1].is_ascii_alphanumeric();
+            let digits_start = start + prefix.len();
+            let mut end = digits_start;
+            while end < upper.len() && upper.as_bytes()[end].is_ascii_digit() {
+                end += 1;
+            }
+            if prefix_is_bounded && end > digits_start {
+                if end < upper.len() && upper.as_bytes()[end] == b'.' {
+                    let version_start = end + 1;
+                    let mut version_end = version_start;
+                    while version_end < upper.len()
+                        && upper.as_bytes()[version_end].is_ascii_digit()
+                    {
+                        version_end += 1;
+                    }
+                    if version_end > version_start {
+                        end = version_end;
+                    }
+                }
+                let accession = normalize_transcript_accession(&upper[start..end]);
+                if best
+                    .as_ref()
+                    .is_none_or(|(best_start, _)| start > *best_start)
+                {
+                    best = Some((start, accession));
+                }
+            }
+            search_from = digits_start.min(upper.len());
+        }
+    }
+    best.map(|(_, accession)| accession)
+}
+
+fn isoform_identity_from_product_id(raw: &str) -> Option<String> {
+    ensembl_transcript_accession(raw).or_else(|| refseq_transcript_accession(raw))
+}
+
+fn binary_identity_code(ordinal: usize, width: usize) -> String {
+    (0..width.max(1))
+        .rev()
+        .map(|bit| {
+            if ordinal & (1usize << bit) == 0 {
+                'O'
+            } else {
+                'I'
+            }
+        })
+        .collect()
+}
+
+fn collect_isoform_identities(
+    layout: &PoolGelLayout,
+    mode: GelIsoformMarkerMode,
+) -> Vec<GelIsoformIdentity> {
+    if mode == GelIsoformMarkerMode::Off {
+        return vec![];
+    }
+    let ids = layout
+        .lanes
+        .iter()
+        .filter(|lane| !lane.is_ladder)
+        .flat_map(|lane| lane.bands.iter())
+        .flat_map(|band| band.isoform_ids.iter().cloned())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let code_width = if ids.len() <= 2 {
+        1
+    } else {
+        (usize::BITS - (ids.len() - 1).leading_zeros()) as usize
+    };
+    ids.into_iter()
+        .enumerate()
+        .map(|(ordinal, id)| GelIsoformIdentity {
+            id,
+            ordinal,
+            color: ISOFORM_COLORS[ordinal % ISOFORM_COLORS.len()],
+            binary_code: binary_identity_code(ordinal, code_width),
+        })
+        .collect()
+}
+
+fn isoform_marker_x(center_x: f32, band_width: f32, ordinal: usize, count: usize) -> f32 {
+    center_x - band_width * 0.5
+        + band_width * (ordinal.saturating_add(1) as f32 / count.saturating_add(1) as f32)
 }
 
 fn co_migration_log_tolerance(conditions: &GelRunConditions) -> f32 {
@@ -266,6 +417,12 @@ fn sample_bands(members: &[GelSampleMember], conditions: &GelRunConditions) -> V
                 })
                 .collect::<Vec<_>>();
             labels.sort();
+            let isoform_ids = grouped
+                .iter()
+                .filter_map(|(member, _)| isoform_identity_from_product_id(&member.seq_id))
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
             PoolGelBand {
                 bp,
                 min_bp,
@@ -275,6 +432,7 @@ fn sample_bands(members: &[GelSampleMember], conditions: &GelRunConditions) -> V
                 estimated_mass_units,
                 topology_label,
                 labels,
+                isoform_ids,
             }
         })
         .collect::<Vec<_>>()
@@ -392,6 +550,7 @@ pub fn build_serial_gel_layout(
                     estimated_mass_units: bp as f32,
                     topology_label: "ladder".to_string(),
                     labels: vec![format!("{bp} bp")],
+                    isoform_ids: vec![],
                 }
             })
             .collect::<Vec<_>>();
@@ -444,6 +603,7 @@ pub fn build_serial_gel_layout(
                     estimated_mass_units: bp as f32,
                     topology_label: "ladder".to_string(),
                     labels: vec![format!("{bp} bp")],
+                    isoform_ids: vec![],
                 }
             })
             .collect::<Vec<_>>();
@@ -505,6 +665,152 @@ fn format_bp_label(bp: usize) -> String {
     } else {
         format!("{bp} bp")
     }
+}
+
+fn estimated_monospace_width(text: &str, font_size: f32) -> f32 {
+    text.chars().count() as f32 * font_size * 0.62
+}
+
+fn split_long_label_token(token: &str, max_chars: usize) -> Vec<String> {
+    let chars = token.chars().collect::<Vec<_>>();
+    chars
+        .chunks(max_chars.max(1))
+        .map(|chunk| chunk.iter().collect::<String>())
+        .collect()
+}
+
+fn wrap_lane_label(label: &str, max_chars: usize) -> Vec<String> {
+    let max_chars = max_chars.max(1);
+    let mut lines = vec![];
+    let mut current = String::new();
+    for word in label.split_whitespace() {
+        let word_len = word.chars().count();
+        if word_len > max_chars {
+            if !current.is_empty() {
+                lines.push(std::mem::take(&mut current));
+            }
+            lines.extend(split_long_label_token(word, max_chars));
+            continue;
+        }
+        let candidate_len = if current.is_empty() {
+            word_len
+        } else {
+            current.chars().count() + 1 + word_len
+        };
+        if candidate_len <= max_chars {
+            if !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(word);
+        } else {
+            lines.push(std::mem::take(&mut current));
+            current.push_str(word);
+        }
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    if lines.is_empty() {
+        lines.push(label.to_string());
+    }
+    lines
+}
+
+fn angled_lane_label_degrees(label: &str, lane_gap: f32) -> f32 {
+    let label_width = estimated_monospace_width(label, LANE_LABEL_FONT_SIZE);
+    let available_width = (lane_gap - 8.0).max(1.0);
+    if label_width <= available_width {
+        return MIN_ANGLED_LANE_LABEL_DEGREES;
+    }
+    (available_width / label_width)
+        .clamp(0.0, 1.0)
+        .acos()
+        .to_degrees()
+        .clamp(MIN_ANGLED_LANE_LABEL_DEGREES, MAX_ANGLED_LANE_LABEL_DEGREES)
+}
+
+fn resolve_lane_label_placements(
+    layout: &PoolGelLayout,
+    lane_gap: f32,
+    requested: GelLaneLabelLayout,
+) -> Vec<ResolvedLaneLabelPlacement> {
+    let horizontal_width = (lane_gap - 8.0).max(24.0);
+    let overlong = layout
+        .lanes
+        .iter()
+        .map(|lane| estimated_monospace_width(&lane.name, LANE_LABEL_FONT_SIZE) > horizontal_width)
+        .collect::<Vec<_>>();
+
+    layout
+        .lanes
+        .iter()
+        .enumerate()
+        .map(|(lane_idx, lane)| match requested {
+            GelLaneLabelLayout::Horizontal => ResolvedLaneLabelPlacement::Horizontal { row: 0 },
+            GelLaneLabelLayout::Staggered => {
+                ResolvedLaneLabelPlacement::Horizontal { row: lane_idx % 2 }
+            }
+            GelLaneLabelLayout::Angled => ResolvedLaneLabelPlacement::Angled {
+                degrees: angled_lane_label_degrees(&lane.name, lane_gap),
+            },
+            GelLaneLabelLayout::Wrapped => {
+                let max_chars = ((lane_gap - 8.0).max(1.0) / (LANE_LABEL_FONT_SIZE * 0.62))
+                    .floor()
+                    .max(1.0) as usize;
+                ResolvedLaneLabelPlacement::Wrapped(wrap_lane_label(&lane.name, max_chars))
+            }
+            GelLaneLabelLayout::Auto => {
+                if !overlong[lane_idx] {
+                    return ResolvedLaneLabelPlacement::Horizontal { row: 0 };
+                }
+                let has_long_neighbor = lane_idx.checked_sub(1).is_some_and(|idx| overlong[idx])
+                    || overlong.get(lane_idx + 1).copied().unwrap_or(false);
+                if !has_long_neighbor {
+                    let max_chars = ((lane_gap - 8.0).max(1.0) / (LANE_LABEL_FONT_SIZE * 0.62))
+                        .floor()
+                        .max(1.0) as usize;
+                    let lines = wrap_lane_label(&lane.name, max_chars);
+                    if lines.len() <= 8 {
+                        return ResolvedLaneLabelPlacement::Wrapped(lines);
+                    }
+                }
+                ResolvedLaneLabelPlacement::Angled {
+                    degrees: angled_lane_label_degrees(&lane.name, lane_gap),
+                }
+            }
+        })
+        .collect()
+}
+
+fn lane_label_bottom(label: &str, placement: &ResolvedLaneLabelPlacement) -> f32 {
+    match placement {
+        ResolvedLaneLabelPlacement::Horizontal { row } => {
+            LANE_LABEL_BASELINE + *row as f32 * 18.0 + 3.0
+        }
+        ResolvedLaneLabelPlacement::Wrapped(lines) => {
+            LANE_LABEL_BASELINE
+                + lines.len().saturating_sub(1) as f32 * LANE_LABEL_LINE_HEIGHT
+                + 3.0
+        }
+        ResolvedLaneLabelPlacement::Angled { degrees } => {
+            let radians = degrees.to_radians();
+            LANE_LABEL_BASELINE
+                + estimated_monospace_width(label, LANE_LABEL_FONT_SIZE) * radians.sin()
+                + 3.0
+        }
+    }
+}
+
+fn band_label_fits_inline(label: &str, lane_idx: usize, lane_count: usize, lane_gap: f32) -> bool {
+    let x = GEL_LEFT + lane_gap * (lane_idx as f32 + 1.0);
+    let text_left = x + 44.0;
+    let right_boundary = if lane_idx + 1 < lane_count {
+        let next_x = GEL_LEFT + lane_gap * (lane_idx as f32 + 2.0);
+        next_x - 42.0
+    } else {
+        GEL_RIGHT - 8.0
+    };
+    estimated_monospace_width(label, 11.0) <= (right_boundary - text_left).max(0.0)
 }
 
 fn merged_band_note_lines(layout: &PoolGelLayout) -> Vec<String> {
@@ -710,10 +1016,48 @@ fn comparison_hint_lines(layout: &PoolGelLayout) -> Vec<String> {
 }
 
 pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
+    export_pool_gel_svg_with_options(layout, &PoolGelRenderOptions::default())
+}
+
+pub fn export_pool_gel_svg_with_options(
+    layout: &PoolGelLayout,
+    render_options: &PoolGelRenderOptions,
+) -> String {
     let lane_count = layout.lanes.len().max(1);
     let lane_gap = (GEL_RIGHT - GEL_LEFT) / (lane_count as f32 + 1.0);
     let gel_width = GEL_RIGHT - GEL_LEFT;
     let gel_height = GEL_BOTTOM - GEL_TOP;
+    let lane_label_placements =
+        resolve_lane_label_placements(layout, lane_gap, render_options.lane_label_layout);
+    let label_bottom = layout
+        .lanes
+        .iter()
+        .zip(&lane_label_placements)
+        .map(|(lane, placement)| lane_label_bottom(&lane.name, placement))
+        .fold(LANE_LABEL_BASELINE, f32::max);
+    let role_badge_y = (label_bottom + 5.0).max(GEL_BOTTOM + 34.0);
+    let has_role_badges = layout
+        .lanes
+        .iter()
+        .any(|lane| !lane.is_ladder && lane_role_badge(&normalized_lane_role(lane)).is_some());
+    let isoform_identities = collect_isoform_identities(layout, render_options.isoform_marker_mode);
+    let isoform_identity_indices = isoform_identities
+        .iter()
+        .enumerate()
+        .map(|(idx, identity)| (identity.id.clone(), idx))
+        .collect::<BTreeMap<_, _>>();
+    let isoform_legend_height = if isoform_identities.is_empty() {
+        0.0
+    } else {
+        52.0 + isoform_identities.len() as f32 * ISOFORM_LEGEND_ROW_HEIGHT
+    };
+    let content_bottom = if has_role_badges {
+        role_badge_y + 16.0
+    } else {
+        label_bottom
+    };
+    let svg_height = (SVG_HEIGHT + isoform_legend_height).max(content_bottom + 36.0);
+    let detail_panel_height = gel_height + isoform_legend_height;
     let sample_lane_indices = layout
         .lanes
         .iter()
@@ -722,15 +1066,15 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
         .collect::<Vec<_>>();
 
     let mut doc = Document::new()
-        .set("viewBox", (0, 0, SVG_WIDTH, SVG_HEIGHT))
+        .set("viewBox", (0, 0, SVG_WIDTH, svg_height))
         .set("width", SVG_WIDTH)
-        .set("height", SVG_HEIGHT)
+        .set("height", svg_height)
         .add(
             Rectangle::new()
                 .set("x", 0)
                 .set("y", 0)
                 .set("width", SVG_WIDTH)
-                .set("height", SVG_HEIGHT)
+                .set("height", svg_height)
                 .set("fill", "#f9fafb"),
         )
         .add(
@@ -748,7 +1092,7 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
                 .set("x", DETAIL_PANEL_LEFT - 18.0)
                 .set("y", GEL_TOP)
                 .set("width", DETAIL_PANEL_WIDTH + 18.0)
-                .set("height", gel_height)
+                .set("height", detail_panel_height)
                 .set("rx", 10)
                 .set("ry", 10)
                 .set("fill", "#f3f4f6"),
@@ -798,29 +1142,68 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
             );
     }
 
-    for (lane_idx, lane) in layout.lanes.iter().enumerate() {
+    for (lane_idx, (lane, label_placement)) in
+        layout.lanes.iter().zip(&lane_label_placements).enumerate()
+    {
         let x = GEL_LEFT + lane_gap * (lane_idx as f32 + 1.0);
         let lane_fill = if lane.is_ladder { "#1a2028" } else { "#1f252e" };
-        doc = doc
-            .add(
-                Rectangle::new()
-                    .set("x", x - 34.0)
-                    .set("y", GEL_TOP + 10.0)
-                    .set("width", 68.0)
-                    .set("height", gel_height - 20.0)
-                    .set("rx", 6)
-                    .set("ry", 6)
-                    .set("fill", lane_fill),
-            )
-            .add(
-                Text::new(lane.name.clone())
-                    .set("x", x)
-                    .set("y", GEL_BOTTOM + 26.0)
-                    .set("text-anchor", "middle")
-                    .set("font-family", "monospace")
-                    .set("font-size", 13)
-                    .set("fill", "#0f172a"),
-            );
+        doc = doc.add(
+            Rectangle::new()
+                .set("x", x - 34.0)
+                .set("y", GEL_TOP + 10.0)
+                .set("width", 68.0)
+                .set("height", gel_height - 20.0)
+                .set("rx", 6)
+                .set("ry", 6)
+                .set("fill", lane_fill),
+        );
+        match label_placement {
+            ResolvedLaneLabelPlacement::Horizontal { row } => {
+                doc = doc.add(
+                    Text::new(lane.name.clone())
+                        .set("x", x)
+                        .set("y", LANE_LABEL_BASELINE + *row as f32 * 18.0)
+                        .set("text-anchor", "middle")
+                        .set("font-family", "monospace")
+                        .set("font-size", LANE_LABEL_FONT_SIZE)
+                        .set("fill", "#0f172a"),
+                );
+            }
+            ResolvedLaneLabelPlacement::Wrapped(lines) => {
+                for (line_idx, line) in lines.iter().enumerate() {
+                    doc = doc.add(
+                        Text::new(line.clone())
+                            .set("x", x)
+                            .set(
+                                "y",
+                                LANE_LABEL_BASELINE + line_idx as f32 * LANE_LABEL_LINE_HEIGHT,
+                            )
+                            .set("text-anchor", "middle")
+                            .set("font-family", "monospace")
+                            .set("font-size", LANE_LABEL_FONT_SIZE)
+                            .set("fill", "#0f172a")
+                            .set("data-label-layout", "wrapped")
+                            .set("data-full-label", lane.name.clone()),
+                    );
+                }
+            }
+            ResolvedLaneLabelPlacement::Angled { degrees } => {
+                doc = doc.add(
+                    Text::new(lane.name.clone())
+                        .set("x", x)
+                        .set("y", LANE_LABEL_BASELINE)
+                        .set("text-anchor", "start")
+                        .set(
+                            "transform",
+                            format!("rotate({degrees:.1} {x} {LANE_LABEL_BASELINE})"),
+                        )
+                        .set("font-family", "monospace")
+                        .set("font-size", LANE_LABEL_FONT_SIZE)
+                        .set("fill", "#0f172a")
+                        .set("data-label-layout", "angled"),
+                );
+            }
+        }
 
         if !lane.is_ladder
             && let Some((badge_text, badge_fill, badge_text_fill)) =
@@ -830,7 +1213,7 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
                 .add(
                     Rectangle::new()
                         .set("x", x - 28.0)
-                        .set("y", GEL_BOTTOM + 34.0)
+                        .set("y", role_badge_y)
                         .set("width", 56.0)
                         .set("height", 16.0)
                         .set("rx", 8)
@@ -840,7 +1223,7 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
                 .add(
                     Text::new(badge_text)
                         .set("x", x)
-                        .set("y", GEL_BOTTOM + 45.0)
+                        .set("y", role_badge_y + 11.0)
                         .set("text-anchor", "middle")
                         .set("font-family", "monospace")
                         .set("font-size", 9)
@@ -874,6 +1257,48 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
                     .set("opacity", (0.42 + 0.58 * band.intensity).clamp(0.35, 1.0)),
             );
 
+            if !lane.is_ladder && !isoform_identities.is_empty() {
+                let marker_outer_size =
+                    (width / (isoform_identities.len() as f32 + 1.0) * 0.72).clamp(3.0, 6.0);
+                let marker_inner_size = (marker_outer_size - 1.8).max(1.4);
+                for isoform_id in &band.isoform_ids {
+                    let Some(identity_idx) = isoform_identity_indices.get(isoform_id).copied()
+                    else {
+                        continue;
+                    };
+                    let identity = &isoform_identities[identity_idx];
+                    let marker_x =
+                        isoform_marker_x(x, width, identity.ordinal, isoform_identities.len());
+                    doc = doc
+                        .add(
+                            Rectangle::new()
+                                .set("x", marker_x - marker_outer_size * 0.5)
+                                .set("y", y - marker_outer_size * 0.5)
+                                .set("width", marker_outer_size)
+                                .set("height", marker_outer_size)
+                                .set("rx", 0.8)
+                                .set("ry", 0.8)
+                                .set("fill", "#f8fafc")
+                                .set("stroke", "#111827")
+                                .set("stroke-width", 0.6),
+                        )
+                        .add(
+                            Rectangle::new()
+                                .set("x", marker_x - marker_inner_size * 0.5)
+                                .set("y", y - marker_inner_size * 0.5)
+                                .set("width", marker_inner_size)
+                                .set("height", marker_inner_size)
+                                .set("rx", 0.4)
+                                .set("ry", 0.4)
+                                .set("fill", identity.color)
+                                .set("data-gentle-role", "isoform-identity-marker")
+                                .set("data-isoform-id", identity.id.clone())
+                                .set("data-isoform-code", identity.binary_code.clone())
+                                .set("data-isoform-ordinal", identity.ordinal),
+                        );
+                }
+            }
+
             if !lane.is_ladder && band.count > 0 {
                 let mut label = if band.min_bp == band.bp {
                     format_bp_label(band.bp)
@@ -893,14 +1318,23 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
                 if !band.topology_label.trim().is_empty() {
                     label.push_str(&format!(" | {}", band.topology_label));
                 }
-                doc = doc.add(
-                    Text::new(label)
-                        .set("x", x + 44.0)
-                        .set("y", y + 4.0)
-                        .set("font-family", "monospace")
-                        .set("font-size", 11)
-                        .set("fill", "#111827"),
-                );
+                let show_inline = match render_options.band_label_layout {
+                    GelBandLabelLayout::Inline => true,
+                    GelBandLabelLayout::Panel => false,
+                    GelBandLabelLayout::Auto => {
+                        band_label_fits_inline(&label, lane_idx, lane_count, lane_gap)
+                    }
+                };
+                if show_inline {
+                    doc = doc.add(
+                        Text::new(label)
+                            .set("x", x + 44.0)
+                            .set("y", y + 4.0)
+                            .set("font-family", "monospace")
+                            .set("font-size", 11)
+                            .set("fill", "#111827"),
+                    );
+                }
             }
         }
     }
@@ -955,6 +1389,104 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
     let comparison_hints = comparison_hint_lines(layout);
     let merged_notes = merged_band_note_lines(layout);
     let mut header_y = DETAIL_PANEL_TOP + 24.0;
+    if !isoform_identities.is_empty() {
+        doc = doc
+            .add(
+                Text::new("Isoform identity key")
+                    .set("x", DETAIL_PANEL_LEFT)
+                    .set("y", header_y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 12)
+                    .set("font-weight", 700)
+                    .set("fill", "#0f172a"),
+            )
+            .add(
+                Text::new("colour + marker position repeat across bands")
+                    .set("x", DETAIL_PANEL_LEFT + 4.0)
+                    .set("y", header_y + 16.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#475569"),
+            )
+            .add(
+                Text::new("code: O=0, I=1 (colour-independent fallback)")
+                    .set("x", DETAIL_PANEL_LEFT + 4.0)
+                    .set("y", header_y + 29.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#64748b"),
+            );
+        header_y += 44.0;
+        let legend_band_x = DETAIL_PANEL_LEFT + 8.0;
+        let legend_band_width = 54.0;
+        for identity in &isoform_identities {
+            let row_y = header_y;
+            let marker_x = isoform_marker_x(
+                legend_band_x + legend_band_width * 0.5,
+                legend_band_width,
+                identity.ordinal,
+                isoform_identities.len(),
+            );
+            let code_x = legend_band_x + legend_band_width + 10.0;
+            let id_x = code_x + estimated_monospace_width(&identity.binary_code, 10.0) + 10.0;
+            doc = doc
+                .add(
+                    Rectangle::new()
+                        .set("x", legend_band_x)
+                        .set("y", row_y - 5.0)
+                        .set("width", legend_band_width)
+                        .set("height", 6.0)
+                        .set("rx", 2)
+                        .set("ry", 2)
+                        .set("fill", "#f59e0b")
+                        .set("opacity", 0.78),
+                )
+                .add(
+                    Rectangle::new()
+                        .set("x", marker_x - 3.0)
+                        .set("y", row_y - 5.0)
+                        .set("width", 6.0)
+                        .set("height", 6.0)
+                        .set("rx", 0.8)
+                        .set("ry", 0.8)
+                        .set("fill", "#f8fafc")
+                        .set("stroke", "#111827")
+                        .set("stroke-width", 0.6),
+                )
+                .add(
+                    Rectangle::new()
+                        .set("x", marker_x - 2.0)
+                        .set("y", row_y - 4.0)
+                        .set("width", 4.0)
+                        .set("height", 4.0)
+                        .set("rx", 0.4)
+                        .set("ry", 0.4)
+                        .set("fill", identity.color)
+                        .set("data-gentle-role", "isoform-legend-marker")
+                        .set("data-isoform-id", identity.id.clone())
+                        .set("data-isoform-code", identity.binary_code.clone()),
+                )
+                .add(
+                    Text::new(identity.binary_code.clone())
+                        .set("x", code_x)
+                        .set("y", row_y)
+                        .set("font-family", "monospace")
+                        .set("font-size", 10)
+                        .set("font-weight", 700)
+                        .set("fill", identity.color),
+                )
+                .add(
+                    Text::new(identity.id.clone())
+                        .set("x", id_x)
+                        .set("y", row_y)
+                        .set("font-family", "monospace")
+                        .set("font-size", 10)
+                        .set("fill", "#334155"),
+                );
+            header_y += ISOFORM_LEGEND_ROW_HEIGHT;
+        }
+        header_y += 8.0;
+    }
     if !comparison_hints.is_empty() {
         doc = doc
             .add(
@@ -1083,6 +1615,7 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
         );
 
     let mut detail_y = header_y + 44.0;
+    let detail_bottom = GEL_BOTTOM + isoform_legend_height - 24.0;
     for lane in layout.lanes.iter().filter(|lane| !lane.is_ladder) {
         doc = doc.add(
             Text::new(lane.name.clone())
@@ -1124,14 +1657,24 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
             );
             detail_y += 14.0;
             for label in band.labels.iter().take(3) {
-                doc = doc.add(
-                    Text::new(label.clone())
-                        .set("x", DETAIL_PANEL_LEFT + 14.0)
-                        .set("y", detail_y)
-                        .set("font-family", "monospace")
-                        .set("font-size", 10)
-                        .set("fill", "#475569"),
-                );
+                let identity = isoform_identity_from_product_id(label)
+                    .and_then(|id| isoform_identity_indices.get(&id).copied())
+                    .map(|idx| &isoform_identities[idx]);
+                let display_label = identity
+                    .map(|identity| format!("[{}] {label}", identity.binary_code))
+                    .unwrap_or_else(|| label.clone());
+                let mut label_text = Text::new(display_label)
+                    .set("x", DETAIL_PANEL_LEFT + 14.0)
+                    .set("y", detail_y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 10)
+                    .set("fill", "#475569");
+                if let Some(identity) = identity {
+                    label_text = label_text
+                        .set("data-isoform-id", identity.id.clone())
+                        .set("data-isoform-code", identity.binary_code.clone());
+                }
+                doc = doc.add(label_text);
                 detail_y += 12.0;
             }
             if band.labels.len() > 3 {
@@ -1146,12 +1689,12 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
                 detail_y += 12.0;
             }
             detail_y += 6.0;
-            if detail_y > GEL_BOTTOM - 24.0 {
+            if detail_y > detail_bottom {
                 break;
             }
         }
         detail_y += 8.0;
-        if detail_y > GEL_BOTTOM - 24.0 {
+        if detail_y > detail_bottom {
             break;
         }
     }
@@ -1222,6 +1765,216 @@ mod tests {
         assert!(svg.contains("Serial Gel Preview"));
         assert!(svg.contains("Fragment table"));
         assert!(svg.contains("conditions:"));
+    }
+
+    fn dense_labeled_serial_layout() -> PoolGelLayout {
+        let samples = (1..=14)
+            .map(|index| GelSampleInput {
+                name: format!("A{index}"),
+                role_label: None,
+                members: vec![GelSampleMember {
+                    seq_id: format!("amplicon_{index}"),
+                    bp: 313 + index * 100,
+                    topology_form: GelTopologyForm::Linear,
+                }],
+            })
+            .collect::<Vec<_>>();
+        build_serial_gel_layout(
+            &samples,
+            &["Plasmid Factory 1kb DNA Ladder".to_string()],
+            None,
+        )
+        .expect("dense serial layout")
+    }
+
+    fn pou2f2_isoform_layout() -> PoolGelLayout {
+        let samples = vec![
+            GelSampleInput {
+                name: "A1".to_string(),
+                role_label: None,
+                members: vec![
+                    GelSampleMember {
+                        seq_id: "POU2F2_A1_ENST00000342301.8_p1_5075bp".to_string(),
+                        bp: 5_075,
+                        topology_form: GelTopologyForm::Linear,
+                    },
+                    GelSampleMember {
+                        seq_id: "POU2F2_A1_ENST00000389341_p1_5001bp".to_string(),
+                        bp: 5_001,
+                        topology_form: GelTopologyForm::Linear,
+                    },
+                ],
+            },
+            GelSampleInput {
+                name: "A2".to_string(),
+                role_label: None,
+                members: vec![GelSampleMember {
+                    seq_id: "POU2F2_A2_ENST00000534559_p1_352bp".to_string(),
+                    bp: 352,
+                    topology_form: GelTopologyForm::Linear,
+                }],
+            },
+            GelSampleInput {
+                name: "A3".to_string(),
+                role_label: None,
+                members: vec![
+                    GelSampleMember {
+                        seq_id: "POU2F2_A3_ENST00000342301_p1_832bp".to_string(),
+                        bp: 832,
+                        topology_form: GelTopologyForm::Linear,
+                    },
+                    GelSampleMember {
+                        seq_id: "POU2F2_A3_ENST00000389341_p1_758bp".to_string(),
+                        bp: 758,
+                        topology_form: GelTopologyForm::Linear,
+                    },
+                    GelSampleMember {
+                        seq_id: "POU2F2_A3_ENST00000534559_p1_758bp".to_string(),
+                        bp: 758,
+                        topology_form: GelTopologyForm::Linear,
+                    },
+                ],
+            },
+        ];
+        build_serial_gel_layout(
+            &samples,
+            &["Plasmid Factory 1kb DNA Ladder".to_string()],
+            None,
+        )
+        .expect("POU2F2 isoform layout")
+    }
+
+    #[test]
+    fn dense_gel_auto_wraps_isolated_long_lane_labels_and_hides_crowded_band_text() {
+        let layout = dense_labeled_serial_layout();
+        let svg = export_pool_gel_svg(&layout);
+
+        assert!(svg.contains("data-label-layout=\"wrapped\""));
+        assert!(svg.contains("data-full-label=\"Plasmid Factory 1kb DNA Ladder\""));
+        assert!(svg.contains("\nA1\n"));
+        assert_eq!(svg.matches("413 bp | linear").count(), 1);
+        assert!(svg.contains("413 bp | 413 bp | linear"));
+    }
+
+    #[test]
+    fn explicit_gel_label_layouts_override_auto_placement() {
+        let layout = dense_labeled_serial_layout();
+        let angled_panel = export_pool_gel_svg_with_options(
+            &layout,
+            &PoolGelRenderOptions {
+                lane_label_layout: GelLaneLabelLayout::Angled,
+                band_label_layout: GelBandLabelLayout::Panel,
+                isoform_marker_mode: GelIsoformMarkerMode::Auto,
+            },
+        );
+        assert!(angled_panel.contains("data-label-layout=\"angled\""));
+        assert_eq!(angled_panel.matches("413 bp | linear").count(), 1);
+
+        let horizontal_inline = export_pool_gel_svg_with_options(
+            &layout,
+            &PoolGelRenderOptions {
+                lane_label_layout: GelLaneLabelLayout::Horizontal,
+                band_label_layout: GelBandLabelLayout::Inline,
+                isoform_marker_mode: GelIsoformMarkerMode::Auto,
+            },
+        );
+        assert!(!horizontal_inline.contains("data-label-layout=\"wrapped\""));
+        assert_eq!(horizontal_inline.matches("413 bp | linear").count(), 2);
+    }
+
+    #[test]
+    fn band_label_auto_fit_tracks_lane_spacing() {
+        assert!(!band_label_fits_inline(
+            "413 bp | linear",
+            1,
+            16,
+            810.0 / 17.0
+        ));
+        assert!(band_label_fits_inline("413 bp | linear", 1, 3, 810.0 / 4.0));
+    }
+
+    #[test]
+    fn adaptive_angle_limits_long_label_horizontal_projection_to_lane_width() {
+        let lane_gap = 50.0;
+        let label = "POU2F2 assay with a deliberately long adjacent lane label";
+        let degrees = angled_lane_label_degrees(label, lane_gap);
+        let projected_width =
+            estimated_monospace_width(label, LANE_LABEL_FONT_SIZE) * degrees.to_radians().cos();
+
+        assert!(degrees > MIN_ANGLED_LANE_LABEL_DEGREES);
+        assert!(projected_width <= lane_gap - 8.0 + 0.01);
+    }
+
+    #[test]
+    fn transcript_identity_detection_normalizes_ensembl_and_refseq_versions() {
+        assert_eq!(
+            isoform_identity_from_product_id("POU2F2_A1_ENST00000342301.8_p1_5075bp").as_deref(),
+            Some("ENST00000342301")
+        );
+        assert_eq!(
+            isoform_identity_from_product_id("assay_NM_001256789.3_product").as_deref(),
+            Some("NM_001256789")
+        );
+        assert_eq!(
+            isoform_identity_from_product_id(
+                "source_ENST00000011111_cdna_product_ENST00000342301_p1"
+            )
+            .as_deref(),
+            Some("ENST00000342301")
+        );
+        assert_eq!(isoform_identity_from_product_id("ordinary_plasmid"), None);
+    }
+
+    #[test]
+    fn pou2f2_gel_repeats_color_position_and_binary_identity_across_bands() {
+        let layout = pou2f2_isoform_layout();
+        let a1 = layout
+            .lanes
+            .iter()
+            .find(|lane| lane.name == "A1")
+            .expect("A1 lane");
+        assert!(a1.bands.iter().any(|band| {
+            band.isoform_ids == vec!["ENST00000342301".to_string(), "ENST00000389341".to_string()]
+        }));
+
+        let svg = export_pool_gel_svg(&layout);
+        assert!(svg.contains("Isoform identity key"));
+        assert!(svg.contains("code: O=0, I=1"));
+        assert_eq!(
+            svg.matches("data-gentle-role=\"isoform-identity-marker\"")
+                .count(),
+            6
+        );
+        assert!(svg.contains("data-isoform-id=\"ENST00000342301\""));
+        assert!(svg.contains("data-isoform-code=\"OO\""));
+        assert!(svg.contains("data-isoform-code=\"OI\""));
+        assert!(svg.contains("data-isoform-code=\"IO\""));
+        assert!(svg.contains("[OO] POU2F2_A1_ENST00000342301.8_p1_5075bp"));
+    }
+
+    #[test]
+    fn isoform_marker_mode_off_restores_unmarked_gel() {
+        let layout = pou2f2_isoform_layout();
+        let svg = export_pool_gel_svg_with_options(
+            &layout,
+            &PoolGelRenderOptions {
+                isoform_marker_mode: GelIsoformMarkerMode::Off,
+                ..PoolGelRenderOptions::default()
+            },
+        );
+        assert!(!svg.contains("Isoform identity key"));
+        assert!(!svg.contains("data-gentle-role=\"isoform-identity-marker\""));
+        assert!(!svg.contains("data-isoform-code"));
+    }
+
+    #[test]
+    fn isoform_marker_position_is_relative_and_stable_across_band_widths() {
+        let narrow = isoform_marker_x(100.0, 40.0, 1, 4);
+        let wide = isoform_marker_x(200.0, 80.0, 1, 4);
+        let narrow_fraction = (narrow - 80.0) / 40.0;
+        let wide_fraction = (wide - 160.0) / 80.0;
+        assert!((narrow_fraction - wide_fraction).abs() < 1e-6);
+        assert!((narrow_fraction - 0.4).abs() < 1e-6);
     }
 
     #[test]

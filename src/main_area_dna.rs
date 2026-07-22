@@ -21961,6 +21961,7 @@ impl MainAreaDna {
             container_ids: None,
             arrangement_id: None,
             conditions: None,
+            render_options: None,
         });
     }
 

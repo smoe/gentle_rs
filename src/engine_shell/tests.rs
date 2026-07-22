@@ -3590,6 +3590,7 @@ fn parse_render_pool_gel_with_ladders() {
             container_ids,
             arrangement_id,
             conditions,
+            render_options,
         } => {
             assert_eq!(inputs, vec!["a".to_string(), "b".to_string()]);
             assert_eq!(output, "out.svg".to_string());
@@ -3598,6 +3599,9 @@ fn parse_render_pool_gel_with_ladders() {
             assert_eq!(arrangement_id, None);
             assert_eq!(conditions.agarose_percent, 1.0);
             assert!(conditions.topology_aware);
+            assert_eq!(render_options.lane_label_layout.as_str(), "auto");
+            assert_eq!(render_options.band_label_layout.as_str(), "auto");
+            assert_eq!(render_options.isoform_marker_mode.as_str(), "auto");
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -3615,6 +3619,7 @@ fn parse_render_pool_gel_from_arrangement() {
             container_ids,
             arrangement_id,
             conditions,
+            render_options: _,
         } => {
             assert!(inputs.is_empty());
             assert_eq!(output, "out.svg".to_string());
@@ -3639,6 +3644,7 @@ fn parse_render_gel_svg_alias() {
             container_ids,
             arrangement_id,
             conditions,
+            render_options: _,
         } => {
             assert!(inputs.is_empty());
             assert_eq!(output, "out.svg".to_string());
@@ -3673,6 +3679,22 @@ fn parse_render_pool_gel_with_conditions() {
 }
 
 #[test]
+fn parse_render_pool_gel_with_label_layouts() {
+    let cmd = parse_shell_line(
+        "render-pool-gel-svg a out.svg --lane-label-layout angled --band-label-layout panel --isoform-markers off",
+    )
+    .expect("parse label layouts");
+    match cmd {
+        ShellCommand::RenderPoolGelSvg { render_options, .. } => {
+            assert_eq!(render_options.lane_label_layout.as_str(), "angled");
+            assert_eq!(render_options.band_label_layout.as_str(), "panel");
+            assert_eq!(render_options.isoform_marker_mode.as_str(), "off");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn execute_render_pool_gel_svg_returns_text_rows_for_chat_surfaces() {
     let td = tempdir().expect("tempdir");
     let output = td.path().join("nested").join("pool.gel.svg");
@@ -3695,6 +3717,7 @@ fn execute_render_pool_gel_svg_returns_text_rows_for_chat_surfaces() {
             container_ids: None,
             arrangement_id: None,
             conditions: gentle_protocol::GelRunConditions::default(),
+            render_options: gentle_protocol::PoolGelRenderOptions::default(),
         },
     )
     .expect("render pool gel with text rows");

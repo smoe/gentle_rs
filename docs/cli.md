@@ -2763,8 +2763,8 @@ Shared shell command:
     - `protocol-cartoon template-validate TEMPLATE.json`
     - `protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg`
     - `protocol-cartoon template-export PROTOCOL_ID OUTPUT.json`
-    - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
-    - `render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
+    - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--lane-label-layout auto|horizontal|wrapped|staggered|angled] [--band-label-layout auto|inline|panel] [--isoform-markers auto|off]`
+    - `render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--lane-label-layout auto|horizontal|wrapped|staggered|angled] [--band-label-layout auto|inline|panel] [--isoform-markers auto|off]`
     - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
     - `arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]`
     - `racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_6|plate_96|plate_384]`
@@ -4217,7 +4217,7 @@ Rendering export commands:
     - catalog JSON and project state files remain unchanged
     - `.gentle_state.json`, MCP/runtime files, backdrop/runtime caches, and
       `target/` are out of scope
-- `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--agarose-pct FLOAT] [--buffer tae|tbe] [--topology-aware true|false]`
+- `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--agarose-pct FLOAT] [--buffer tae|tbe] [--topology-aware true|false] [--lane-label-layout auto|horizontal|wrapped|staggered|angled] [--band-label-layout auto|inline|panel] [--isoform-markers auto|off]`
   - Calls engine operation `RenderPoolGelSvg`.
   - Use `IDS` as a comma-separated sequence-id list, or pass `-`/`_` when using `--containers` or `--arrangement`.
   - `--containers` renders one lane per container ID.
@@ -4232,6 +4232,25 @@ Rendering export commands:
   - `--agarose-pct` / `--buffer` / `--topology-aware` override the shared
     deterministic gel-run profile for that render.
   - Defaults are `1.0%`, `TAE`, topology-aware `true`.
+  - `--lane-label-layout auto` is the default. It leaves short labels
+    horizontal, wraps isolated long labels over multiple lines, and angles
+    labels when adjacent long names cannot be wrapped without collisions.
+  - `horizontal`, `wrapped`, `staggered`, and `angled` force one deterministic
+    placement strategy. The SVG grows downward when wrapped or angled labels
+    need more room; gel and band coordinates do not change.
+  - `--band-label-layout auto` draws an in-gel size annotation only when the
+    complete text fits before the next lane or gel edge. `panel` keeps all band
+    text in the fragment table, while `inline` restores the legacy always-inline
+    behavior for callers that explicitly want it.
+  - `--isoform-markers auto` (default) recognizes stable Ensembl transcript
+    accessions (`ENST...` and species-specific `ENS...T...`) and RefSeq
+    transcript accessions (`NM_`, `NR_`, `XM_`, `XR_`) in product identifiers.
+    Version suffixes are ignored when matching the same isoform.
+  - Every recognized isoform receives a deterministic color and relative square
+    position that repeat on every band containing it. Merged bands may therefore
+    carry several markers. The side legend and fragment rows also show a sorted,
+    zero-based binary code using `O=0` and `I=1`, so identification does not rely
+    on color perception. Use `--isoform-markers off` for a plain gel.
   - when topology-aware mode is on, explicit sequence hints like
     `supercoiled`, `relaxed circular`, or `nicked/open circular` refine
     apparent migration beyond the old generic circular-vs-linear split.

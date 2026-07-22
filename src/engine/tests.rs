@@ -20712,6 +20712,7 @@ fn test_render_pool_gel_svg_operation() {
             container_ids: None,
             arrangement_id: None,
             conditions: None,
+            render_options: None,
         })
         .unwrap();
     assert!(res.messages.iter().any(|m| m.contains("serial gel SVG")));
@@ -22391,6 +22392,7 @@ fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
             container_ids: Some(vec!["container-2".to_string()]),
             arrangement_id: None,
             conditions: None,
+            render_options: None,
         })
         .unwrap();
     assert!(
@@ -22414,6 +22416,7 @@ fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
             container_ids: None,
             arrangement_id: Some("arr-1".to_string()),
             conditions: None,
+            render_options: None,
         })
         .unwrap();
     assert!(
@@ -22444,6 +22447,7 @@ fn test_render_pool_gel_svg_operation_missing_input_fails() {
             container_ids: None,
             arrangement_id: None,
             conditions: None,
+            render_options: None,
         })
         .unwrap_err();
     assert!(err.message.contains("not found"));
@@ -22471,6 +22475,11 @@ fn test_render_pool_gel_svg_operation_applies_conditions_and_fragment_table() {
                 buffer_model: GelBufferModel::Tbe,
                 topology_aware: true,
             }),
+            render_options: Some(PoolGelRenderOptions {
+                lane_label_layout: GelLaneLabelLayout::Angled,
+                band_label_layout: GelBandLabelLayout::Panel,
+                isoform_marker_mode: GelIsoformMarkerMode::Auto,
+            }),
         })
         .unwrap();
     assert!(
@@ -22478,8 +22487,14 @@ fn test_render_pool_gel_svg_operation_applies_conditions_and_fragment_table() {
             .iter()
             .any(|m| m.contains("1.6% agarose | TBE | topology-aware on"))
     );
+    assert!(
+        res.messages
+            .iter()
+            .any(|m| m.contains("lane labels: angled, band labels: panel"))
+    );
     let text = std::fs::read_to_string(path_text).unwrap();
     assert!(text.contains("Fragment table"));
+    assert!(text.contains("data-label-layout=\"angled\""));
     assert!(text.contains("plasmid (5000 bp, circular)"));
     assert!(text.contains("conditions: 1.6% agarose | TBE | topology-aware on"));
 }
@@ -22568,6 +22583,7 @@ fn test_render_pool_gel_svg_operation_from_arrangement_adds_comparison_hints() {
             container_ids: None,
             arrangement_id: Some("arr-gibson".to_string()),
             conditions: None,
+            render_options: None,
         })
         .unwrap();
     let text = std::fs::read_to_string(path_text).unwrap();
@@ -22606,6 +22622,7 @@ fn test_render_pool_gel_svg_operation_infers_explicit_circular_forms_from_sequen
             container_ids: None,
             arrangement_id: None,
             conditions: Some(GelRunConditions::default()),
+            render_options: None,
         })
         .unwrap();
     let text = std::fs::read_to_string(path_text).unwrap();

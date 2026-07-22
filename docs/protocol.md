@@ -2413,7 +2413,7 @@ Current draft operations:
 - `RenderIsoformArchitectureSvg { seq_id, panel_id, expression_tsv_path?, path }`
 - `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`
-- `RenderPoolGelSvg { inputs, path, ladders?, container_ids?, arrangement_id?, conditions? }`
+- `RenderPoolGelSvg { inputs, path, ladders?, container_ids?, arrangement_id?, conditions?, render_options? }`
 - `RenderProteinGelSvg { report_id, path, ladders? }`
 - `RenderProteinGelReportsSvg { report_ids[], path, ladders? }`
 - `RenderProteaseDigestGelSvg { seq_id?, report_id?, transcript_id?, proteases[], path, min_length_aa?, ladders? }`
@@ -5932,6 +5932,23 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     and the arrangement stores a ladder choice
   - otherwise from built-in ladder catalog (auto mode)
 - Renders ladder lanes plus pooled band lanes as SVG artifact.
+- Optional `render_options` is presentation-only and defaults to:
+  - `lane_label_layout: auto`: preserve horizontal short names, wrap isolated
+    long names, and angle adjacent/difficult long names; accepted explicit
+    values are `horizontal`, `wrapped`, `staggered`, and `angled`
+  - `band_label_layout: auto`: retain an in-gel band annotation only when its
+    estimated monospace width fits before the next lane or gel edge; `panel`
+    keeps detail text solely in the fragment table and `inline` requests the
+    legacy always-inline behavior
+  - `isoform_marker_mode: auto`: detect stable Ensembl and RefSeq transcript
+    accessions embedded in product identifiers, normalize away accession version
+    suffixes, and assign each identity a deterministic color, relative marker
+    position, and `O`/`I` binary legend code; `off` suppresses this layer
+  - merged bands retain one marker per represented isoform; marker position and
+    color repeat across lanes, while the binary code is repeated in the fragment
+    table as a color-independent textual join key
+  - wrapped/angled labels may increase only the SVG canvas height; lane, band,
+    migration, and fragment-table biology remain unchanged
 - The SVG also includes a compact fragment table for non-ladder lanes:
   - observed apparent size
   - actual bp

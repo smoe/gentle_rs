@@ -23933,8 +23933,9 @@ Error: `{err}`"
                 container_ids,
                 arrangement_id,
                 conditions,
+                render_options,
             } => format!(
-                "Render serial gel SVG: inputs={}, container_ids={}, arrangement_id={}, path={}, ladders={}, conditions={}",
+                "Render serial gel SVG: inputs={}, container_ids={}, arrangement_id={}, path={}, ladders={}, conditions={}, lane_labels={}, band_labels={}, isoform_markers={}",
                 inputs.join(", "),
                 container_ids
                     .as_ref()
@@ -23955,7 +23956,19 @@ Error: `{err}`"
                 conditions
                     .as_ref()
                     .map(crate::engine::GelRunConditions::describe)
-                    .unwrap_or_else(|| crate::engine::GelRunConditions::default().describe())
+                    .unwrap_or_else(|| crate::engine::GelRunConditions::default().describe()),
+                render_options
+                    .as_ref()
+                    .map(|options| options.lane_label_layout.as_str())
+                    .unwrap_or("auto"),
+                render_options
+                    .as_ref()
+                    .map(|options| options.band_label_layout.as_str())
+                    .unwrap_or("auto"),
+                render_options
+                    .as_ref()
+                    .map(|options| options.isoform_marker_mode.as_str())
+                    .unwrap_or("auto")
             ),
             Operation::CreateArrangementSerial {
                 container_ids,

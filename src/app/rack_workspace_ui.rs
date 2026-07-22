@@ -121,6 +121,7 @@ impl GENtleApp {
                 container_ids,
                 arrangement_id,
                 conditions,
+                render_options: None,
             });
         match result {
             Ok(op_result) => {
