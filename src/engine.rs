@@ -4154,6 +4154,13 @@ pub enum Operation {
         objective: TranscriptAssayPanelObjective,
         #[serde(default)]
         coverage_policy: TranscriptAssayCoveragePolicy,
+        /// Experimental purpose, independent of the panel-selection objective.
+        #[serde(default, skip_serializing_if = "TranscriptAssayUseTier::is_unspecified")]
+        assay_tier: TranscriptAssayUseTier,
+        /// Optional preferred/allowed product-length policy. Existing
+        /// `min_amplicon_bp`/`max_amplicon_bp` remain the legacy allowed range.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        practicality: Option<TranscriptAssayPracticalityPolicy>,
         #[serde(default)]
         forward: PrimerDesignSideConstraint,
         #[serde(default)]
@@ -12185,6 +12192,7 @@ impl GentleEngine {
                 assay_kind: report.assay_kind,
                 objective: report.objective,
                 coverage_policy: report.coverage_policy,
+                assay_tier: report.assay_tier,
                 completion_status: report.completion_status,
                 transcript_count: report.transcript_count,
                 equivalence_group_count: report.equivalence_group_count,

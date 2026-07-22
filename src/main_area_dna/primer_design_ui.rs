@@ -334,12 +334,15 @@ pub(super) struct TranscriptAssayPanelUiState {
     pub(super) cdna_synthesis: TranscriptAssayCdnaSynthesis,
     pub(super) objective: TranscriptAssayPanelObjective,
     pub(super) coverage_policy: TranscriptAssayCoveragePolicy,
+    pub(super) assay_tier: TranscriptAssayUseTier,
     pub(super) forward: PrimerSideConstraintUiState,
     pub(super) reverse: PrimerSideConstraintUiState,
     pub(super) probe: PrimerSideConstraintUiState,
     pub(super) pair_constraints: PrimerPairConstraintUiState,
     pub(super) min_amplicon_bp: String,
     pub(super) max_amplicon_bp: String,
+    pub(super) preferred_min_amplicon_bp: String,
+    pub(super) preferred_max_amplicon_bp: String,
     pub(super) max_tm_delta_c: String,
     pub(super) max_probe_tm_delta_c: String,
     pub(super) max_assays_per_class: String,
@@ -363,12 +366,15 @@ impl Default for TranscriptAssayPanelUiState {
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
             coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+            assay_tier: TranscriptAssayUseTier::Unspecified,
             forward: PrimerSideConstraintUiState::default(),
             reverse: PrimerSideConstraintUiState::default(),
             probe: PrimerSideConstraintUiState::qpcr_probe_default(),
             pair_constraints: PrimerPairConstraintUiState::default(),
             min_amplicon_bp: "200".to_string(),
             max_amplicon_bp: "10000".to_string(),
+            preferred_min_amplicon_bp: String::new(),
+            preferred_max_amplicon_bp: String::new(),
             max_tm_delta_c: "2.0".to_string(),
             max_probe_tm_delta_c: "10.0".to_string(),
             max_assays_per_class: "12".to_string(),
@@ -1231,6 +1237,30 @@ impl MainAreaDna {
         } else {
             PrimerDesignSideConstraint::default()
         };
+        let preferred_min_amplicon_bp = Self::parse_optional_usize_text(
+            &ui.preferred_min_amplicon_bp,
+            "preferred_min_amplicon_bp",
+        )?;
+        let preferred_max_amplicon_bp = Self::parse_optional_usize_text(
+            &ui.preferred_max_amplicon_bp,
+            "preferred_max_amplicon_bp",
+        )?;
+        let practicality = match (preferred_min_amplicon_bp, preferred_max_amplicon_bp) {
+            (Some(min_bp), Some(max_bp)) => Some(TranscriptAssayPracticalityPolicy {
+                preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+                    min_bp,
+                    max_bp,
+                }),
+                allowed_amplicon_bp: None,
+            }),
+            (None, None) => None,
+            _ => {
+                return Err(
+                    "Preferred amplicon minimum and maximum must be supplied together"
+                        .to_string(),
+                );
+            }
+        };
         Ok(Operation::DesignTranscriptAssayPanel {
             seq_id: seq_id.to_string(),
             source_feature_id,
@@ -1238,6 +1268,8 @@ impl MainAreaDna {
             cdna_synthesis: ui.cdna_synthesis,
             objective: ui.objective,
             coverage_policy: ui.coverage_policy,
+            assay_tier: ui.assay_tier,
+            practicality,
             forward: Self::parse_primer_side_constraint_ui(&ui.forward, "forward")?,
             reverse: Self::parse_primer_side_constraint_ui(&ui.reverse, "reverse")?,
             probe,
@@ -3845,6 +3877,17 @@ impl MainAreaDna {
                 self.transcript_assay_panel_ui.cdna_synthesis = report.cdna_synthesis;
                 self.transcript_assay_panel_ui.objective = report.objective;
                 self.transcript_assay_panel_ui.coverage_policy = report.coverage_policy;
+                self.transcript_assay_panel_ui.assay_tier = report.assay_tier;
+                self.transcript_assay_panel_ui.preferred_min_amplicon_bp.clear();
+                self.transcript_assay_panel_ui.preferred_max_amplicon_bp.clear();
+                if let Some(policy) = report.practicality_policy.as_ref()
+                    && let Some(preferred) = policy.preferred_amplicon_bp.as_ref()
+                {
+                    self.transcript_assay_panel_ui.preferred_min_amplicon_bp =
+                        preferred.min_bp.to_string();
+                    self.transcript_assay_panel_ui.preferred_max_amplicon_bp =
+                        preferred.max_bp.to_string();
+                }
                 self.cached_transcript_assay_panel_report = Some(Arc::new(report.clone()));
                 self.op_status = format!(
                     "Loaded transcript assay-panel report '{}' ({} transcripts, {} classes, {} selected assays)",
@@ -3912,6 +3955,32 @@ impl MainAreaDna {
                 "Minimal discrimination panel"
             }
             TranscriptAssayPanelObjective::IsoformEndMatrix => "First x terminal exon matrix",
+        }
+    }
+
+    fn transcript_assay_tier_label(tier: TranscriptAssayUseTier) -> &'static str {
+        match tier {
+            TranscriptAssayUseTier::Unspecified => "Unspecified",
+            TranscriptAssayUseTier::RoutineCommonRegionScreen => "Routine common-region screen",
+            TranscriptAssayUseTier::IsoformDiscrimination => "Isoform discrimination",
+            TranscriptAssayUseTier::LongRangeStructureDiscovery => {
+                "Long-range structure discovery"
+            }
+        }
+    }
+
+    fn transcript_assay_practicality_label(
+        classification: TranscriptAssayPracticalityClassification,
+    ) -> &'static str {
+        match classification {
+            TranscriptAssayPracticalityClassification::Unspecified => "unspecified",
+            TranscriptAssayPracticalityClassification::Routine => "routine",
+            TranscriptAssayPracticalityClassification::AllowedNonpreferred => {
+                "allowed nonpreferred"
+            }
+            TranscriptAssayPracticalityClassification::LongRangeFallback => {
+                "long-range fallback"
+            }
         }
     }
 
@@ -4003,6 +4072,85 @@ impl MainAreaDna {
                     }
                 ));
                 ui.end_row();
+                ui.label("Experimental tier");
+                ui.label(Self::transcript_assay_tier_label(report.assay_tier));
+                ui.label("Product policy");
+                let policy_label = report
+                    .practicality_policy
+                    .as_ref()
+                    .and_then(|policy| {
+                        policy
+                            .preferred_amplicon_bp
+                            .as_ref()
+                            .zip(policy.allowed_amplicon_bp.as_ref())
+                    })
+                    .map(|(preferred, allowed)| {
+                        format!(
+                            "preferred {}-{} bp; allowed {}-{} bp",
+                            preferred.min_bp, preferred.max_bp, allowed.min_bp, allowed.max_bp
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        format!(
+                            "allowed {}-{} bp; no separate preference",
+                            report.min_amplicon_bp, report.max_amplicon_bp
+                        )
+                    });
+                ui.monospace(policy_label);
+                ui.end_row();
+            });
+
+        egui::CollapsingHeader::new("Pair selection rationale")
+            .default_open(report.assay_tier != TranscriptAssayUseTier::Unspecified)
+            .show(ui, |ui| {
+                for assay in &report.selected_assays {
+                    let summary = &assay.primer_pair_summary;
+                    ui.group(|ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.strong(format!("A{}", assay.rank));
+                            ui.monospace(&assay.assay_id);
+                            ui.label(Self::transcript_assay_practicality_label(
+                                summary.practicality_classification,
+                            ));
+                            ui.label(format!(
+                                "common region: {:?}",
+                                summary.common_region_evidence.status
+                            ));
+                        });
+                        for reason in &summary.selection_reasons {
+                            ui.small(format!("{:?}: {}", reason.code, reason.message));
+                        }
+                        if !summary.selection_explanation.trim().is_empty() {
+                            ui.label(&summary.selection_explanation);
+                        }
+                        if !summary.selection_evidence.is_empty() {
+                            ui.small(format!(
+                                "Evidence: {}",
+                                summary
+                                    .selection_evidence
+                                    .iter()
+                                    .map(|row| format!(
+                                        "{}:{}",
+                                        row.evidence_kind.as_str(),
+                                        row.feature_id.as_deref().unwrap_or(&row.evidence_id)
+                                    ))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ));
+                        }
+                        for alternative in &summary.considered_alternatives {
+                            ui.small(format!(
+                                "Alternative {} ({} bp, {}): {}",
+                                alternative.assay_id,
+                                alternative.design_amplicon_length_bp,
+                                Self::transcript_assay_practicality_label(
+                                    alternative.practicality_classification,
+                                ),
+                                alternative.explanation
+                            ));
+                        }
+                    });
+                }
             });
 
         egui::CollapsingHeader::new("Transcript x assay product matrix")
@@ -4564,6 +4712,35 @@ impl MainAreaDna {
                 }
             });
             ui.horizontal_wrapped(|ui| {
+                ui.label("Experimental tier");
+                let previous_tier = self.transcript_assay_panel_ui.assay_tier;
+                egui::ComboBox::from_id_salt("transcript_assay_use_tier")
+                    .selected_text(Self::transcript_assay_tier_label(
+                        self.transcript_assay_panel_ui.assay_tier,
+                    ))
+                    .show_ui(ui, |ui| {
+                        for tier in [
+                            TranscriptAssayUseTier::Unspecified,
+                            TranscriptAssayUseTier::RoutineCommonRegionScreen,
+                            TranscriptAssayUseTier::IsoformDiscrimination,
+                            TranscriptAssayUseTier::LongRangeStructureDiscovery,
+                        ] {
+                            ui.selectable_value(
+                                &mut self.transcript_assay_panel_ui.assay_tier,
+                                tier,
+                                Self::transcript_assay_tier_label(tier),
+                            );
+                        }
+                    });
+                if previous_tier != self.transcript_assay_panel_ui.assay_tier
+                    && self.transcript_assay_panel_ui.assay_tier
+                        == TranscriptAssayUseTier::RoutineCommonRegionScreen
+                {
+                    self.transcript_assay_panel_ui.objective =
+                        TranscriptAssayPanelObjective::PanTranscript;
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
                 ui.label("cDNA synthesis");
                 egui::ComboBox::from_id_salt("transcript_assay_cdna_synthesis")
                     .selected_text(Self::transcript_assay_cdna_label(
@@ -4620,6 +4797,27 @@ impl MainAreaDna {
                         &mut self.transcript_assay_panel_ui.max_assays_per_class,
                     )
                     .desired_width(56.0),
+                );
+                ui.end_row();
+                ui.label("Preferred min");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut self.transcript_assay_panel_ui.preferred_min_amplicon_bp,
+                    )
+                    .desired_width(70.0)
+                    .hint_text("same as allowed"),
+                );
+                ui.label("Preferred max");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut self.transcript_assay_panel_ui.preferred_max_amplicon_bp,
+                    )
+                    .desired_width(70.0)
+                    .hint_text("same as allowed"),
+                );
+                ui.label("Policy");
+                ui.label("biology first; length second").on_hover_text(
+                    "Required transcript coverage/specificity and annotation commonality are evaluated before the preferred product-length range.",
                 );
                 ui.end_row();
                 ui.label("Max mismatches");

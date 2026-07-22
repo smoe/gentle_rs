@@ -24,6 +24,7 @@ use crate::genomes::BlastHit;
 use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
 use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::fs;
@@ -9266,6 +9267,66 @@ fn transcript_qpcr_panel_test_engine() -> GentleEngine {
     engine
 }
 
+fn transcript_assay_common_region_test_engine() -> GentleEngine {
+    let synthetic_dna = |mut state: u64, len: usize| {
+        (0..len)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                [b'A', b'C', b'G', b'T'][(state & 3) as usize] as char
+            })
+            .collect::<String>()
+    };
+    let shared = synthetic_dna(0x4d59_5df4_d0f3_3173, 220);
+    let tx_a_tail = synthetic_dna(0x1a2b_3c4d_5e6f_7788, 100);
+    let tx_b_tail = synthetic_dna(0x8877_6f5e_4d3c_2b1a, 100);
+    let spacer = "N".repeat(24);
+    let shared_start = 0usize;
+    let shared_end = shared.len();
+    let tx_a_start = shared_end + spacer.len();
+    let tx_a_end = tx_a_start + tx_a_tail.len();
+    let tx_b_start = tx_a_end + spacer.len();
+    let tx_b_end = tx_b_start + tx_b_tail.len();
+    let mut dna = seq(&format!("{shared}{spacer}{tx_a_tail}{spacer}{tx_b_tail}"));
+    for (transcript_id, tail_start, tail_end) in [
+        ("TX_COMMON_A", tx_a_start, tx_a_end),
+        ("TX_COMMON_B", tx_b_start, tx_b_end),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(shared_start as i64, shared_end as i64),
+                gb_io::seq::Location::simple_range(tail_start as i64, tail_end as i64),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("COMMON1".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(format!("COMMON1 {transcript_id}"))),
+            ],
+        });
+    }
+    let source_len = dna.len();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "source".into(),
+        location: gb_io::seq::Location::simple_range(0, source_len as i64),
+        qualifiers: vec![
+            ("chromosome".into(), Some("chr1".to_string())),
+            ("genomic_start_1based".into(), Some("1".to_string())),
+            (
+                "genomic_end_1based".into(),
+                Some(source_len.to_string()),
+            ),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("panel_src".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
 fn transcript_qpcr_single_exon_fallback_engine() -> GentleEngine {
     let tx_a = "ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAACGCTAGTCGATCGTACCGTACGATCGTACGAGGCTAACGATCCGATGCTAACG";
     let tx_b = "CGTACGATTCGGAACCTGATCGATGCTTACGGTACCGATCTAGGCTTATCGGATCGTAGCTAACCGATGCTAGCTTACCGATGCTAGGCTACGATCG";
@@ -9456,6 +9517,8 @@ fn transcript_assay_panel_operation(
         cdna_synthesis: TranscriptAssayCdnaSynthesis::Unspecified,
         objective: TranscriptAssayPanelObjective::PanTranscript,
         coverage_policy,
+        assay_tier: TranscriptAssayUseTier::Unspecified,
+        practicality: None,
         forward: side.clone(),
         reverse: side.clone(),
         probe: side,
@@ -9907,6 +9970,205 @@ fn transcript_assay_panel_groups_only_byte_identical_cdna_and_persists_matrix() 
 }
 
 #[test]
+fn transcript_assay_practicality_classifies_preferred_range_boundaries() {
+    let policy = TranscriptAssayPracticalityPolicy {
+        preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+            min_bp: 70,
+            max_bp: 150,
+        }),
+        allowed_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+            min_bp: 50,
+            max_bp: 500,
+        }),
+    };
+    for length in [70, 150] {
+        assert_eq!(
+            GentleEngine::transcript_assay_practicality_classification(length, Some(&policy)),
+            TranscriptAssayPracticalityClassification::Routine
+        );
+    }
+    assert_eq!(
+        GentleEngine::transcript_assay_practicality_classification(69, Some(&policy)),
+        TranscriptAssayPracticalityClassification::AllowedNonpreferred
+    );
+    assert_eq!(
+        GentleEngine::transcript_assay_practicality_classification(151, Some(&policy)),
+        TranscriptAssayPracticalityClassification::LongRangeFallback
+    );
+    assert_eq!(
+        GentleEngine::transcript_assay_practicality_classification(100, None),
+        TranscriptAssayPracticalityClassification::Unspecified
+    );
+}
+
+#[test]
+fn transcript_assay_selection_orders_biology_then_practicality_then_score() {
+    let common_fallback = (
+        TranscriptAssayCommonRegionStatus::Confirmed,
+        TranscriptAssayPracticalityClassification::LongRangeFallback,
+        -100.0,
+        "common_fallback",
+    );
+    let noncommon_routine = (
+        TranscriptAssayCommonRegionStatus::NotCommon,
+        TranscriptAssayPracticalityClassification::Routine,
+        100.0,
+        "noncommon_routine",
+    );
+    assert_eq!(
+        GentleEngine::transcript_assay_selection_preference(
+            TranscriptAssayUseTier::RoutineCommonRegionScreen,
+            common_fallback,
+            noncommon_routine,
+        ),
+        Ordering::Greater,
+        "annotation-confirmed biology must outrank routine length"
+    );
+
+    let common_routine = (
+        TranscriptAssayCommonRegionStatus::Confirmed,
+        TranscriptAssayPracticalityClassification::Routine,
+        -100.0,
+        "common_routine",
+    );
+    let common_fallback_high_score = (
+        TranscriptAssayCommonRegionStatus::Confirmed,
+        TranscriptAssayPracticalityClassification::LongRangeFallback,
+        100.0,
+        "common_fallback_high_score",
+    );
+    assert_eq!(
+        GentleEngine::transcript_assay_selection_preference(
+            TranscriptAssayUseTier::RoutineCommonRegionScreen,
+            common_routine,
+            common_fallback_high_score,
+        ),
+        Ordering::Greater,
+        "routine length must outrank the old score after equal biology"
+    );
+
+    let common_allowed_short = (
+        TranscriptAssayCommonRegionStatus::Confirmed,
+        TranscriptAssayPracticalityClassification::AllowedNonpreferred,
+        -100.0,
+        "common_allowed_short",
+    );
+    assert_eq!(
+        GentleEngine::transcript_assay_selection_preference(
+            TranscriptAssayUseTier::RoutineCommonRegionScreen,
+            common_allowed_short,
+            common_fallback_high_score,
+        ),
+        Ordering::Greater,
+        "an allowed short product must outrank a true long-range fallback"
+    );
+
+    let better_score = (
+        TranscriptAssayCommonRegionStatus::Confirmed,
+        TranscriptAssayPracticalityClassification::Routine,
+        2.0,
+        "better_score",
+    );
+    let worse_score = (
+        TranscriptAssayCommonRegionStatus::Confirmed,
+        TranscriptAssayPracticalityClassification::Routine,
+        1.0,
+        "worse_score",
+    );
+    assert_eq!(
+        GentleEngine::transcript_assay_selection_preference(
+            TranscriptAssayUseTier::RoutineCommonRegionScreen,
+            better_score,
+            worse_score,
+        ),
+        Ordering::Greater
+    );
+}
+
+#[test]
+fn transcript_assay_routine_common_region_records_annotation_and_practicality() {
+    let mut engine = transcript_assay_common_region_test_engine();
+    let mut operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::RequireAll,
+        transcript_assay_panel_relaxed_side(),
+        0,
+        "panel_routine_common",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        assay_kind,
+        assay_tier,
+        practicality,
+        min_amplicon_bp,
+        max_amplicon_bp,
+        max_assays_per_class,
+        ..
+    } = &mut operation
+    else {
+        unreachable!("transcript assay helper returned another operation")
+    };
+    *assay_kind = TranscriptAssayKind::SybrQpcr;
+    *assay_tier = TranscriptAssayUseTier::RoutineCommonRegionScreen;
+    *min_amplicon_bp = Some(50);
+    *max_amplicon_bp = Some(240);
+    *max_assays_per_class = Some(12);
+    *practicality = Some(TranscriptAssayPracticalityPolicy {
+        preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+            min_bp: 50,
+            max_bp: 240,
+        }),
+        allowed_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+            min_bp: 50,
+            max_bp: 240,
+        }),
+    });
+
+    let report = engine
+        .apply(operation)
+        .expect("routine common-region panel")
+        .transcript_assay_panel
+        .expect("routine common-region report");
+    assert_eq!(
+        report.assay_tier,
+        TranscriptAssayUseTier::RoutineCommonRegionScreen
+    );
+    assert_eq!(
+        report
+            .practicality_policy
+            .as_ref()
+            .and_then(|policy| policy.preferred_amplicon_bp.as_ref())
+            .map(|range| (range.min_bp, range.max_bp)),
+        Some((50, 240))
+    );
+    assert!(!report.selected_assays.is_empty());
+    for assay in &report.selected_assays {
+        let summary = &assay.primer_pair_summary;
+        assert_eq!(
+            summary.assay_tier,
+            TranscriptAssayUseTier::RoutineCommonRegionScreen
+        );
+        assert_eq!(
+            summary.common_region_evidence.status,
+            TranscriptAssayCommonRegionStatus::Confirmed
+        );
+        assert_eq!(
+            summary.practicality_classification,
+            TranscriptAssayPracticalityClassification::Routine
+        );
+        assert!(summary
+            .common_region_evidence
+            .basis
+            .contains("array intensity were not used"));
+        assert!(summary.selection_reasons.iter().any(|reason| {
+            reason.code == PrimerPairSelectionReasonCode::CommonRegionAnnotationConfirmed
+        }));
+        assert!(summary
+            .selection_explanation
+            .contains("transcript annotation confirms"));
+        assert!(summary.considered_alternatives.len() <= 5);
+    }
+}
+
+#[test]
 fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
     let mut engine = transcript_qpcr_panel_test_engine();
     let report = engine
@@ -9935,6 +10197,7 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
             reason.code == PrimerPairSelectionReasonCode::DesignObjective
                 && reason.related_ids.iter().any(|id| id == "pan_transcript")
         }));
+        assert!(!summary.selection_explanation.is_empty());
         assert_eq!(
             summary.selection_provenance_status,
             "de_novo_no_external_selection_evidence"
@@ -10247,6 +10510,7 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
     assert!(!legacy.reverse.primer_spans_junction);
     assert!(legacy.amplicon_spans_junction);
     assert!(legacy.selection_evidence.is_empty());
+    assert!(legacy.selection_explanation.is_empty());
 }
 
 #[test]
@@ -10437,6 +10701,8 @@ fn transcript_assay_panel_does_not_equate_one_base_near_matches() {
             cdna_synthesis: TranscriptAssayCdnaSynthesis::Unspecified,
             objective: TranscriptAssayPanelObjective::PanTranscript,
             coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            assay_tier: TranscriptAssayUseTier::Unspecified,
+            practicality: None,
             forward: impossible_side.clone(),
             reverse: impossible_side.clone(),
             probe: impossible_side,
@@ -10495,6 +10761,8 @@ fn transcript_assay_panel_old_payload_defaults_to_taqman_mode() {
         TranscriptAssayCdnaSynthesis::Unspecified
     );
     assert_eq!(report.oligo_dt_5prime_risk_threshold_bp, None);
+    assert_eq!(report.assay_tier, TranscriptAssayUseTier::Unspecified);
+    assert!(report.practicality_policy.is_none());
 
     let cell: TranscriptAssayDetectionCell = serde_json::from_value(serde_json::json!({
         "assay_id": "legacy_assay",
@@ -10522,6 +10790,8 @@ fn transcript_assay_endpoint_end_matrix_is_primer_only_and_warns_for_oligo_dt() 
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
             coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            assay_tier: TranscriptAssayUseTier::Unspecified,
+            practicality: None,
             forward: side.clone(),
             reverse: side.clone(),
             probe: side,
@@ -10603,6 +10873,9 @@ fn transcript_assay_endpoint_end_matrix_is_primer_only_and_warns_for_oligo_dt() 
             .iter()
             .any(|warning| warning.contains("5' RACE"))
     );
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains("semi-quantitative") && warning.contains("not")
+    }));
     assert!(report.detection_matrix.iter().any(|cell| {
         cell.oligo_dt_5prime_reach.status
             == TranscriptAssayOligoDtReachStatus::DistanceReportedUnthresholded
@@ -10643,6 +10916,8 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective: TranscriptAssayPanelObjective::OnePerClass,
             coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            assay_tier: TranscriptAssayUseTier::IsoformDiscrimination,
+            practicality: None,
             forward: side.clone(),
             reverse: side.clone(),
             probe: side,
@@ -10774,8 +11049,13 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
         reason.code == PrimerPairSelectionReasonCode::JunctionEvidence
             && !reason.related_ids.is_empty()
     }));
-    assert!(!summary.selection_evidence.is_empty());
-    for evidence in &summary.selection_evidence {
+    let junction_evidence = summary
+        .selection_evidence
+        .iter()
+        .filter(|row| row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc)
+        .collect::<Vec<_>>();
+    assert!(!junction_evidence.is_empty());
+    for evidence in junction_evidence {
         assert_eq!(
             evidence.influence,
             PrimerPairSelectionInfluence::ProbeRegionInfluenced
@@ -10804,6 +11084,48 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
         );
         assert!(evidence.applies_to.iter().any(|value| value == "pair"));
     }
+    let all_selection_evidence = report
+        .selected_assays
+        .iter()
+        .flat_map(|assay| assay.primer_pair_summary.selection_evidence.iter())
+        .collect::<Vec<_>>();
+    assert!(all_selection_evidence.iter().any(|row| {
+        row.evidence_kind == PrimerPairSelectionEvidenceKind::Juc
+            && row.feature_id.as_deref() == Some("JUC2200054820.hg.1")
+    }));
+    assert!(all_selection_evidence.iter().any(|row| {
+        row.evidence_kind == PrimerPairSelectionEvidenceKind::Psr
+            && row.feature_id.as_deref() == Some("PSR2200160982.hg.1")
+            && row.requirement == PrimerPairEvidenceRequirement::Contextual
+            && row.measured_value == Some(0.8)
+            && row.influence == PrimerPairSelectionInfluence::ProbeRegionInfluenced
+    }));
+    let psr_supported_assay = report
+        .selected_assays
+        .iter()
+        .find(|assay| {
+            assay
+                .primer_pair_summary
+                .selection_evidence
+                .iter()
+                .any(|row| row.evidence_kind == PrimerPairSelectionEvidenceKind::Psr)
+        })
+        .expect("selected PATZ1 assay overlapping the synthetic PSR region");
+    assert_eq!(
+        psr_supported_assay
+            .primer_pair_summary
+            .common_region_evidence
+            .status,
+        TranscriptAssayCommonRegionStatus::NotCommon,
+        "PSR support must not manufacture an annotation-common region"
+    );
+    assert!(
+        psr_supported_assay
+            .primer_pair_summary
+            .common_region_evidence
+            .supporting_psr_evidence_ids
+            .is_empty()
+    );
     let duplicate = report
         .short_sybr_junction_assays
         .iter()
@@ -10837,6 +11159,8 @@ fn transcript_assay_primer3_emits_native_junction_overlap_tags() {
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective: TranscriptAssayPanelObjective::OnePerClass,
             coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            assay_tier: TranscriptAssayUseTier::Unspecified,
+            practicality: None,
             forward: side.clone(),
             reverse: side.clone(),
             probe: side,
@@ -10932,6 +11256,17 @@ fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
             coverage_policy: TranscriptAssayCoveragePolicy::RequireAll,
+            assay_tier: TranscriptAssayUseTier::LongRangeStructureDiscovery,
+            practicality: Some(TranscriptAssayPracticalityPolicy {
+                preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+                    min_bp: 9_000,
+                    max_bp: 9_500,
+                }),
+                allowed_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+                    min_bp: 9_000,
+                    max_bp: 10_000,
+                }),
+            }),
             forward: side.clone(),
             reverse: side.clone(),
             probe: side,
@@ -10991,6 +11326,17 @@ fn transcript_assay_endpoint_long_product_respects_ten_kb_ceiling() {
             cdna_synthesis: TranscriptAssayCdnaSynthesis::OligoDt,
             objective: TranscriptAssayPanelObjective::IsoformEndMatrix,
             coverage_policy: TranscriptAssayCoveragePolicy::BestEffort,
+            assay_tier: TranscriptAssayUseTier::LongRangeStructureDiscovery,
+            practicality: Some(TranscriptAssayPracticalityPolicy {
+                preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+                    min_bp: 9_000,
+                    max_bp: 9_500,
+                }),
+                allowed_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+                    min_bp: 9_000,
+                    max_bp: 10_001,
+                }),
+            }),
             forward: transcript_assay_panel_relaxed_side(),
             reverse: transcript_assay_panel_relaxed_side(),
             probe: transcript_assay_panel_relaxed_side(),

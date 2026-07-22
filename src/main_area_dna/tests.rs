@@ -9188,6 +9188,18 @@ fn transcript_assay_panel_gui_defaults_to_strict_endpoint_oligo_dt_design() {
         crate::engine::TranscriptAssayCdnaSynthesis::OligoDt
     );
     assert_eq!(area.transcript_assay_panel_ui.max_amplicon_bp, "10000");
+    assert_eq!(
+        area.transcript_assay_panel_ui.assay_tier,
+        crate::engine::TranscriptAssayUseTier::Unspecified
+    );
+    assert!(area
+        .transcript_assay_panel_ui
+        .preferred_min_amplicon_bp
+        .is_empty());
+    assert!(area
+        .transcript_assay_panel_ui
+        .preferred_max_amplicon_bp
+        .is_empty());
     assert!(
         area.transcript_assay_panel_ui
             .oligo_dt_5prime_risk_threshold_bp
@@ -9203,8 +9215,12 @@ fn transcript_assay_panel_gui_builds_shared_sybr_operation_with_junction_evidenc
     area.transcript_assay_panel_ui.assay_kind = crate::engine::TranscriptAssayKind::SybrQpcr;
     area.transcript_assay_panel_ui.objective =
         crate::engine::TranscriptAssayPanelObjective::OnePerClass;
+    area.transcript_assay_panel_ui.assay_tier =
+        crate::engine::TranscriptAssayUseTier::IsoformDiscrimination;
     area.transcript_assay_panel_ui.min_amplicon_bp = "70".to_string();
     area.transcript_assay_panel_ui.max_amplicon_bp = "250".to_string();
+    area.transcript_assay_panel_ui.preferred_min_amplicon_bp = "80".to_string();
+    area.transcript_assay_panel_ui.preferred_max_amplicon_bp = "160".to_string();
     area.transcript_assay_panel_ui
         .oligo_dt_5prime_risk_threshold_bp = "1800".to_string();
     area.transcript_assay_panel_ui.junction_evidence_paths =
@@ -9222,6 +9238,8 @@ fn transcript_assay_panel_gui_builds_shared_sybr_operation_with_junction_evidenc
         assay_kind,
         objective,
         coverage_policy,
+        assay_tier,
+        practicality,
         probe,
         oligo_dt_5prime_risk_threshold_bp,
         junctions,
@@ -9244,6 +9262,16 @@ fn transcript_assay_panel_gui_builds_shared_sybr_operation_with_junction_evidenc
         crate::engine::TranscriptAssayCoveragePolicy::RequireAll
     );
     assert_eq!(
+        assay_tier,
+        crate::engine::TranscriptAssayUseTier::IsoformDiscrimination
+    );
+    assert_eq!(
+        practicality
+            .and_then(|policy| policy.preferred_amplicon_bp)
+            .map(|range| (range.min_bp, range.max_bp)),
+        Some((80, 160))
+    );
+    assert_eq!(
         serde_json::to_value(probe).unwrap(),
         serde_json::to_value(PrimerDesignSideConstraint::default()).unwrap()
     );
@@ -9252,6 +9280,19 @@ fn transcript_assay_panel_gui_builds_shared_sybr_operation_with_junction_evidenc
     assert_eq!(junctions[0].junction_id, "JUC:test");
     assert_eq!(junction_evidence_paths, vec!["first.json", "second.json"]);
     assert_eq!(report_id.as_deref(), Some("panel_gui_test"));
+}
+
+#[test]
+fn transcript_assay_panel_gui_requires_both_preferred_range_bounds() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    area.transcript_assay_panel_ui.source_feature_id = "7".to_string();
+    area.transcript_assay_panel_ui.preferred_min_amplicon_bp = "80".to_string();
+
+    let error = area
+        .build_design_transcript_assay_panel_operation("seq1")
+        .expect_err("one-sided preferred range must be rejected");
+    assert!(error.contains("minimum and maximum must be supplied together"));
 }
 
 #[test]

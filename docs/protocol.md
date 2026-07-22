@@ -8103,7 +8103,7 @@ Primer-design shell command family (implemented):
   - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
   - `primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
-  - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
   - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
@@ -8202,9 +8202,30 @@ Primer-design shell command family (implemented):
     last-junction classes, retains only combinations supported by an annotated
     mature transcript, and permits one physical primer pair to reference more
     than one supported end reaction.
+  - `assay_tier` is an independent experimental-purpose axis:
+    `routine_common_region_screen`, `isoform_discrimination`, or
+    `long_range_structure_discovery`. It does not replace the selection
+    objective. The routine tier requires `pan_transcript` and confirms a
+    common region only from the intersection of transcript annotation source
+    intervals; product detection and Clariom intensity cannot create that
+    structural claim.
+  - `practicality_policy` records a preferred product range inside the allowed
+    `min_amplicon_bp..max_amplicon_bp` range. Objective-specific biological
+    coverage is considered first, preferred routine length second, and the
+    existing primer candidate score last. A selected product below the
+    preferred minimum is `allowed_nonpreferred`; only a product above the
+    preferred maximum is `long_range_fallback`. No universal preferred cutoff
+    is invented when the caller does not supply one.
+  - each pair summary carries a concise `selection_explanation` and at most
+    five deterministic `considered_alternatives[]`. PSR and JUC inputs remain
+    separate `selection_evidence[].evidence_kind` rows: JUC can constrain a
+    junction target, while overlapping PSR evidence is contextual support and
+    never proof that an exon is common.
   - endpoint mode defaults to `200..10000` bp and refuses a configured ceiling
     above 10,000 bp. Its `end_classes[]`, `end_reactions[]`, and
     `band_size_matrix[]` make differently sized transcript products explicit.
+    Endpoint-gel band intensity is rough or semi-quantitative, not a
+    quantitative transcript-abundance measurement.
   - SYBR mode defaults to short products and never fabricates an internal
     probe. `short_sybr_junction_assays[]` is the primer-only subset whose
     selected forward or reverse primer satisfies a requested junction overlap.

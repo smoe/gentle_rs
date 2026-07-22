@@ -12,6 +12,17 @@
   "cdna_synthesis": "oligo_dt",
   "objective": "one_per_class",
   "coverage_policy": "require_all",
+  "assay_tier": "isoform_discrimination",
+  "practicality_policy": {
+    "preferred_amplicon_bp": {
+      "min_bp": 50,
+      "max_bp": 100
+    },
+    "allowed_amplicon_bp": {
+      "min_bp": 30,
+      "max_bp": 120
+    }
+  },
   "completion_status": "complete",
   "transcript_count": 3,
   "equivalence_group_count": 3,
@@ -75,23 +86,23 @@
   ],
   "selected_assays": [
     {
-      "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+      "assay_id": "transcript_assay_4bfca8feaf7962e9",
       "rank": 1,
       "assay_kind": "sybr_qpcr",
       "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
       "design_transcript_id": "PATZ1-202",
       "primer_pair": {
         "rank": 1,
-        "score": 1012.1244154683359,
+        "score": 1010.2149849402733,
         "forward": {
-          "sequence": "TAAGCTAGCATCGGGATCCG",
-          "start_0based": 26,
-          "end_0based_exclusive": 46,
-          "length_bp": 20,
-          "anneal_length_bp": 20,
+          "sequence": "CTAGCATCGGGATCCGATCAG",
+          "start_0based": 30,
+          "end_0based_exclusive": 51,
+          "length_bp": 21,
+          "anneal_length_bp": 21,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 64.26996322180901,
-          "gc_fraction": 0.55,
+          "tm_c": 64.77839486413313,
+          "gc_fraction": 0.5714285714285714,
           "anneal_hits": 1,
           "three_prime_base": "G",
           "three_prime_gc_clamp": true,
@@ -99,26 +110,26 @@
           "self_complementary_run_bp": 6
         },
         "reverse": {
-          "sequence": "TACGATCCGTTAGCGTACCTG",
-          "start_0based": 48,
-          "end_0based_exclusive": 69,
-          "length_bp": 21,
-          "anneal_length_bp": 21,
+          "sequence": "ATGCCGTAGCTTACGATCCG",
+          "start_0based": 60,
+          "end_0based_exclusive": 80,
+          "length_bp": 20,
+          "anneal_length_bp": 20,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 64.2361839952258,
-          "gc_fraction": 0.5238095238095238,
+          "tm_c": 64.94264561711947,
+          "gc_fraction": 0.55,
           "anneal_hits": 1,
           "three_prime_base": "G",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 4
         },
-        "amplicon_start_0based": 26,
-        "amplicon_end_0based_exclusive": 69,
-        "amplicon_length_bp": 43,
-        "tm_delta_c": 0.03377922658320642,
+        "amplicon_start_0based": 30,
+        "amplicon_end_0based_exclusive": 80,
+        "amplicon_length_bp": 50,
+        "tm_delta_c": 0.16425075298633374,
         "primer_pair_complementary_run_bp": 5,
-        "primer_pair_3prime_complementary_run_bp": 2,
+        "primer_pair_3prime_complementary_run_bp": 3,
         "rule_flags": {
           "roi_covered": true,
           "amplicon_size_in_range": true,
@@ -146,13 +157,77 @@
       ],
       "primer_pair_summary": {
         "schema": "gentle.primer_pair_summary.v2",
-        "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+        "assay_id": "transcript_assay_4bfca8feaf7962e9",
         "pair_rank": 1,
         "design_transcript_id": "PATZ1-202",
         "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
         "display_label": "PATZ1_E1|E2F-E2R",
         "aliases": [],
         "selection_role": null,
+        "assay_tier": "isoform_discrimination",
+        "practicality_policy": {
+          "preferred_amplicon_bp": {
+            "min_bp": 50,
+            "max_bp": 100
+          },
+          "allowed_amplicon_bp": {
+            "min_bp": 30,
+            "max_bp": 120
+          }
+        },
+        "practicality_classification": "routine",
+        "common_region_evidence": {
+          "status": "not_common",
+          "basis": "At least one intended transcript annotation does not contain the full designed source intervals as one contiguous mature-cDNA region; array evidence cannot override this structural result.",
+          "intended_transcript_ids": [
+            "PATZ1-201",
+            "PATZ1-202",
+            "PATZ1-203"
+          ],
+          "source_ranges_0based": [
+            {
+              "start_0based": 180,
+              "end_0based_exclusive": 190
+            },
+            {
+              "start_0based": 20,
+              "end_0based_exclusive": 60
+            }
+          ],
+          "supporting_psr_evidence_ids": []
+        },
+        "considered_alternatives": [
+          {
+            "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+            "design_transcript_id": "PATZ1-202",
+            "design_amplicon_length_bp": 43,
+            "practicality_classification": "allowed_nonpreferred",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 1012.1244154683359,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          },
+          {
+            "assay_id": "transcript_assay_cf3abde10e2184d8",
+            "design_transcript_id": "PATZ1-202",
+            "design_amplicon_length_bp": 43,
+            "practicality_classification": "allowed_nonpreferred",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 1009.6693412358484,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          },
+          {
+            "assay_id": "transcript_assay_45296b483354cbc4",
+            "design_transcript_id": "PATZ1-202",
+            "design_amplicon_length_bp": 42,
+            "practicality_classification": "allowed_nonpreferred",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 1007.4003301878937,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          }
+        ],
         "satisfied_design_objective": "one_per_class",
         "selection_reasons": [
           {
@@ -175,25 +250,33 @@
             "related_ids": [
               "JUC2200054820.hg.1:PATZ1-202:1-2"
             ]
+          },
+          {
+            "code": "routine_practicality_preferred",
+            "message": "The 50 bp designed amplicon is within the configured preferred routine range; required biological criteria were evaluated before this preference.",
+            "related_ids": [
+              "transcript_assay_4bfca8feaf7962e9"
+            ]
           }
         ],
+        "selection_explanation": "Selected because it satisfies the 'one_per_class' biological objective and remains within the configured preferred product range.",
         "selection_provenance_status": "de_novo_with_structured_selection_evidence",
         "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
-          "primer_id": "primer_04e5a099a75aafa8",
+          "primer_id": "primer_9d7250f82e9836b1",
           "role": "forward",
           "display_label": "PATZ1_E1|E2_F",
           "aliases": [],
           "origin": "de_novo",
-          "sequence_5_to_3": "TAAGCTAGCATCGGGATCCG",
-          "length_nt": 20,
-          "anneal_length_nt": 20,
-          "tm_c": 64.26996322180901,
-          "gc_fraction": 0.55,
-          "gc_percent": 55.00000000000001,
+          "sequence_5_to_3": "CTAGCATCGGGATCCGATCAG",
+          "length_nt": 21,
+          "anneal_length_nt": 21,
+          "tm_c": 64.77839486413313,
+          "gc_fraction": 0.5714285714285714,
+          "gc_percent": 57.14285714285714,
           "anneal_hit_count": 1,
-          "binding_start_0based": 26,
-          "binding_end_0based_exclusive": 46,
+          "binding_start_0based": 30,
+          "binding_end_0based_exclusive": 51,
           "exon_ordinals": [
             1,
             2
@@ -205,20 +288,20 @@
           "self_complementary_run_bp": 6
         },
         "reverse": {
-          "primer_id": "primer_71e961cfe9c51870",
+          "primer_id": "primer_96f7bdcf9591a2a0",
           "role": "reverse",
           "display_label": "PATZ1_E2_R",
           "aliases": [],
           "origin": "de_novo",
-          "sequence_5_to_3": "TACGATCCGTTAGCGTACCTG",
-          "length_nt": 21,
-          "anneal_length_nt": 21,
-          "tm_c": 64.2361839952258,
-          "gc_fraction": 0.5238095238095238,
-          "gc_percent": 52.38095238095239,
+          "sequence_5_to_3": "ATGCCGTAGCTTACGATCCG",
+          "length_nt": 20,
+          "anneal_length_nt": 20,
+          "tm_c": 64.94264561711947,
+          "gc_fraction": 0.55,
+          "gc_percent": 55.00000000000001,
           "anneal_hit_count": 1,
-          "binding_start_0based": 48,
-          "binding_end_0based_exclusive": 69,
+          "binding_start_0based": 60,
+          "binding_end_0based_exclusive": 80,
           "exon_ordinals": [
             2
           ],
@@ -228,12 +311,12 @@
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 4
         },
-        "design_amplicon_start_0based": 26,
-        "design_amplicon_end_0based_exclusive": 69,
-        "design_amplicon_length_bp": 43,
-        "tm_delta_c": 0.03377922658320642,
+        "design_amplicon_start_0based": 30,
+        "design_amplicon_end_0based_exclusive": 80,
+        "design_amplicon_length_bp": 50,
+        "tm_delta_c": 0.16425075298633374,
         "predicted_amplicon_lengths_bp": [
-          43
+          50
         ],
         "predicted_products": [
           {
@@ -253,7 +336,7 @@
             "detail_status": "single_product",
             "product_count": 1,
             "amplicon_lengths_bp": [
-              43
+              50
             ]
           },
           {
@@ -280,13 +363,14 @@
             "reverse_three_prime_gc_clamp": true
           },
           "primer_pair_complementary_run_bp": 5,
-          "primer_pair_3prime_complementary_run_bp": 2
+          "primer_pair_3prime_complementary_run_bp": 3
         },
         "amplicon_spans_junction": true,
         "selected_because_of_junction_evidence": true,
         "selection_evidence": [
           {
             "evidence_id": "JUC2200054820.hg.1",
+            "evidence_kind": "juc",
             "junction_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
             "influence": "probe_region_influenced",
             "applies_to": [
@@ -419,6 +503,74 @@
         "display_label": "PATZ1_E1F-E3R",
         "aliases": [],
         "selection_role": null,
+        "assay_tier": "isoform_discrimination",
+        "practicality_policy": {
+          "preferred_amplicon_bp": {
+            "min_bp": 50,
+            "max_bp": 100
+          },
+          "allowed_amplicon_bp": {
+            "min_bp": 30,
+            "max_bp": 120
+          }
+        },
+        "practicality_classification": "routine",
+        "common_region_evidence": {
+          "status": "not_common",
+          "basis": "At least one intended transcript annotation does not contain the full designed source intervals as one contiguous mature-cDNA region; array evidence cannot override this structural result.",
+          "intended_transcript_ids": [
+            "PATZ1-201",
+            "PATZ1-202",
+            "PATZ1-203"
+          ],
+          "source_ranges_0based": [
+            {
+              "start_0based": 180,
+              "end_0based_exclusive": 211
+            },
+            {
+              "start_0based": 120,
+              "end_0based_exclusive": 140
+            },
+            {
+              "start_0based": 35,
+              "end_0based_exclusive": 60
+            }
+          ],
+          "supporting_psr_evidence_ids": []
+        },
+        "considered_alternatives": [
+          {
+            "assay_id": "transcript_assay_05d4e9f1b4f5de01",
+            "design_transcript_id": "PATZ1-203",
+            "design_amplicon_length_bp": 76,
+            "practicality_classification": "routine",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 1015.6606730090092,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          },
+          {
+            "assay_id": "transcript_assay_e56138ffdf5d51e4",
+            "design_transcript_id": "PATZ1-203",
+            "design_amplicon_length_bp": 75,
+            "practicality_classification": "routine",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 1015.347622947235,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          },
+          {
+            "assay_id": "transcript_assay_c86569b31dae0e53",
+            "design_transcript_id": "PATZ1-203",
+            "design_amplicon_length_bp": 70,
+            "practicality_classification": "routine",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 1014.8476229472371,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          }
+        ],
         "satisfied_design_objective": "one_per_class",
         "selection_reasons": [
           {
@@ -436,8 +588,16 @@
               "cdna_eq_bf8de0081e092d6f",
               "cdna_eq_da6a2f3dbe1d4447"
             ]
+          },
+          {
+            "code": "routine_practicality_preferred",
+            "message": "The 76 bp designed amplicon is within the configured preferred routine range; required biological criteria were evaluated before this preference.",
+            "related_ids": [
+              "transcript_assay_b3964ace800b1035"
+            ]
           }
         ],
+        "selection_explanation": "Selected because it satisfies the 'one_per_class' biological objective and remains within the configured preferred product range.",
         "selection_provenance_status": "de_novo_no_external_selection_evidence",
         "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
@@ -638,6 +798,74 @@
         "display_label": "PATZ1_E1F-E2|E3R",
         "aliases": [],
         "selection_role": null,
+        "assay_tier": "isoform_discrimination",
+        "practicality_policy": {
+          "preferred_amplicon_bp": {
+            "min_bp": 50,
+            "max_bp": 100
+          },
+          "allowed_amplicon_bp": {
+            "min_bp": 30,
+            "max_bp": 120
+          }
+        },
+        "practicality_classification": "routine",
+        "common_region_evidence": {
+          "status": "not_common",
+          "basis": "At least one intended transcript annotation does not contain the full designed source intervals as one contiguous mature-cDNA region; array evidence cannot override this structural result.",
+          "intended_transcript_ids": [
+            "PATZ1-201",
+            "PATZ1-202",
+            "PATZ1-203"
+          ],
+          "source_ranges_0based": [
+            {
+              "start_0based": 180,
+              "end_0based_exclusive": 209
+            },
+            {
+              "start_0based": 100,
+              "end_0based_exclusive": 140
+            },
+            {
+              "start_0based": 51,
+              "end_0based_exclusive": 60
+            }
+          ],
+          "supporting_psr_evidence_ids": []
+        },
+        "considered_alternatives": [
+          {
+            "assay_id": "transcript_assay_9d2dbc16b34b4664",
+            "design_transcript_id": "PATZ1-201",
+            "design_amplicon_length_bp": 84,
+            "practicality_classification": "routine",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 1014.4476229472383,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          },
+          {
+            "assay_id": "transcript_assay_1bc7dc26819a9b7a",
+            "design_transcript_id": "PATZ1-201",
+            "design_amplicon_length_bp": 81,
+            "practicality_classification": "routine",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 1014.2829695568137,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          },
+          {
+            "assay_id": "transcript_assay_fee76bbccd19613a",
+            "design_transcript_id": "PATZ1-201",
+            "design_amplicon_length_bp": 82,
+            "practicality_classification": "routine",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 1014.1829695568144,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          }
+        ],
         "satisfied_design_objective": "one_per_class",
         "selection_reasons": [
           {
@@ -653,9 +881,24 @@
             "related_ids": [
               "cdna_eq_da6a2f3dbe1d4447"
             ]
+          },
+          {
+            "code": "psr_evidence_support",
+            "message": "Overlaps 1 PSR/probeset evidence row(s); this is separate supporting evidence and does not establish transcript commonality.",
+            "related_ids": [
+              "PSR2200160982.hg.1"
+            ]
+          },
+          {
+            "code": "routine_practicality_preferred",
+            "message": "The 78 bp designed amplicon is within the configured preferred routine range; required biological criteria were evaluated before this preference.",
+            "related_ids": [
+              "transcript_assay_928afef051d25781"
+            ]
           }
         ],
-        "selection_provenance_status": "de_novo_no_external_selection_evidence",
+        "selection_explanation": "Selected because it satisfies the 'one_per_class' biological objective and remains within the configured preferred product range.",
+        "selection_provenance_status": "de_novo_with_structured_selection_evidence",
         "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
           "primer_id": "primer_6c707108ebc142d7",
@@ -762,7 +1005,42 @@
         },
         "amplicon_spans_junction": true,
         "selected_because_of_junction_evidence": false,
-        "selection_evidence": [],
+        "selection_evidence": [
+          {
+            "evidence_id": "PSR2200160982.hg.1",
+            "evidence_kind": "psr",
+            "junction_id": "",
+            "influence": "probe_region_influenced",
+            "applies_to": [
+              "amplicon",
+              "pair"
+            ],
+            "requirement": "contextual",
+            "source_kind": "probe_region_evidence_interpretation",
+            "source_id": "patz1_isoform_evidence",
+            "platform": "Clariom_D_Human",
+            "feature_id": "PSR2200160982.hg.1",
+            "chromosome": "22",
+            "region_start_1based": 31325900,
+            "region_end_1based": 31325939,
+            "strand": "-",
+            "transcript_id": "PATZ1-201",
+            "from_exon_ordinal": 2,
+            "to_exon_ordinal": 2,
+            "contrast": "synthetic_case_vs_control",
+            "measured_statistic": "log2_fold_change",
+            "measured_value": 0.8,
+            "intensity_source": "synthetic_log2_fold_change",
+            "source_schema": "gentle.probe_region_evidence_interpretation.v2",
+            "source_path": "./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
+            "source_sha256": "sha256:11e2a7b4cbb83af5868902b1834ecbfe6c5e7ddb80e521c1060abf7a4d8418a9",
+            "notes": [
+              "Projected PSR/probeset geometry may support a selected annotated region; its intensity does not establish that the region is common across transcripts.",
+              "mapping_status=exact_exon_geometry",
+              "relationship=review_only_constraint"
+            ]
+          }
+        ],
         "junction_spanning_status": "no_requested_junction_match_reported",
         "junction_matches": [],
         "genomic_carryover_status": "not_evaluated",
@@ -783,7 +1061,7 @@
   ],
   "detection_matrix": [
     {
-      "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+      "assay_id": "transcript_assay_4bfca8feaf7962e9",
       "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
       "transcript_feature_id": 3,
       "transcript_id": "PATZ1-202",
@@ -791,25 +1069,25 @@
       "detail_status": "single_product",
       "product_count": 1,
       "amplicon_lengths_bp": [
-        43
+        50
       ],
       "exact_negative_prefiltered": false,
       "oligo_dt_5prime_reach": {
         "status": "distance_reported_unthresholded",
-        "maximum_required_cdna_reach_from_3prime_end_bp": 54,
+        "maximum_required_cdna_reach_from_3prime_end_bp": 50,
         "product_reaches": [
           {
-            "amplicon_start_0based": 26,
-            "amplicon_end_0based_exclusive": 69,
-            "amplicon_length_bp": 43,
-            "required_cdna_reach_from_3prime_end_bp": 54
+            "amplicon_start_0based": 30,
+            "amplicon_end_0based_exclusive": 80,
+            "amplicon_length_bp": 50,
+            "required_cdna_reach_from_3prime_end_bp": 50
           }
         ],
         "basis": "required reach is measured from the annotated transcript 3' end to each predicted amplicon's most 5' base; it is not an observed reverse-transcription length"
       }
     },
     {
-      "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+      "assay_id": "transcript_assay_4bfca8feaf7962e9",
       "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
       "transcript_feature_id": 4,
       "transcript_id": "PATZ1-203",
@@ -825,7 +1103,7 @@
       }
     },
     {
-      "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+      "assay_id": "transcript_assay_4bfca8feaf7962e9",
       "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
       "transcript_feature_id": 2,
       "transcript_id": "PATZ1-201",
@@ -997,7 +1275,7 @@
       "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
       "status": "specific",
       "covering_assay_ids": [
-        "transcript_assay_e9e8cd8b25a1adb7",
+        "transcript_assay_4bfca8feaf7962e9",
         "transcript_assay_b3964ace800b1035"
       ],
       "notes": []
@@ -1077,29 +1355,29 @@
         40
       ],
       "assay_ids": [
-        "transcript_assay_e9e8cd8b25a1adb7"
+        "transcript_assay_4bfca8feaf7962e9"
       ]
     }
   ],
   "short_sybr_junction_assays": [
     {
-      "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+      "assay_id": "transcript_assay_4bfca8feaf7962e9",
       "rank": 1,
       "assay_kind": "sybr_qpcr",
       "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
       "design_transcript_id": "PATZ1-202",
       "primer_pair": {
         "rank": 1,
-        "score": 1012.1244154683359,
+        "score": 1010.2149849402733,
         "forward": {
-          "sequence": "TAAGCTAGCATCGGGATCCG",
-          "start_0based": 26,
-          "end_0based_exclusive": 46,
-          "length_bp": 20,
-          "anneal_length_bp": 20,
+          "sequence": "CTAGCATCGGGATCCGATCAG",
+          "start_0based": 30,
+          "end_0based_exclusive": 51,
+          "length_bp": 21,
+          "anneal_length_bp": 21,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 64.26996322180901,
-          "gc_fraction": 0.55,
+          "tm_c": 64.77839486413313,
+          "gc_fraction": 0.5714285714285714,
           "anneal_hits": 1,
           "three_prime_base": "G",
           "three_prime_gc_clamp": true,
@@ -1107,26 +1385,26 @@
           "self_complementary_run_bp": 6
         },
         "reverse": {
-          "sequence": "TACGATCCGTTAGCGTACCTG",
-          "start_0based": 48,
-          "end_0based_exclusive": 69,
-          "length_bp": 21,
-          "anneal_length_bp": 21,
+          "sequence": "ATGCCGTAGCTTACGATCCG",
+          "start_0based": 60,
+          "end_0based_exclusive": 80,
+          "length_bp": 20,
+          "anneal_length_bp": 20,
           "non_annealing_5prime_tail_bp": 0,
-          "tm_c": 64.2361839952258,
-          "gc_fraction": 0.5238095238095238,
+          "tm_c": 64.94264561711947,
+          "gc_fraction": 0.55,
           "anneal_hits": 1,
           "three_prime_base": "G",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 4
         },
-        "amplicon_start_0based": 26,
-        "amplicon_end_0based_exclusive": 69,
-        "amplicon_length_bp": 43,
-        "tm_delta_c": 0.03377922658320642,
+        "amplicon_start_0based": 30,
+        "amplicon_end_0based_exclusive": 80,
+        "amplicon_length_bp": 50,
+        "tm_delta_c": 0.16425075298633374,
         "primer_pair_complementary_run_bp": 5,
-        "primer_pair_3prime_complementary_run_bp": 2,
+        "primer_pair_3prime_complementary_run_bp": 3,
         "rule_flags": {
           "roi_covered": true,
           "amplicon_size_in_range": true,
@@ -1154,13 +1432,77 @@
       ],
       "primer_pair_summary": {
         "schema": "gentle.primer_pair_summary.v2",
-        "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+        "assay_id": "transcript_assay_4bfca8feaf7962e9",
         "pair_rank": 1,
         "design_transcript_id": "PATZ1-202",
         "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
         "display_label": "PATZ1_E1|E2F-E2R",
         "aliases": [],
         "selection_role": null,
+        "assay_tier": "isoform_discrimination",
+        "practicality_policy": {
+          "preferred_amplicon_bp": {
+            "min_bp": 50,
+            "max_bp": 100
+          },
+          "allowed_amplicon_bp": {
+            "min_bp": 30,
+            "max_bp": 120
+          }
+        },
+        "practicality_classification": "routine",
+        "common_region_evidence": {
+          "status": "not_common",
+          "basis": "At least one intended transcript annotation does not contain the full designed source intervals as one contiguous mature-cDNA region; array evidence cannot override this structural result.",
+          "intended_transcript_ids": [
+            "PATZ1-201",
+            "PATZ1-202",
+            "PATZ1-203"
+          ],
+          "source_ranges_0based": [
+            {
+              "start_0based": 180,
+              "end_0based_exclusive": 190
+            },
+            {
+              "start_0based": 20,
+              "end_0based_exclusive": 60
+            }
+          ],
+          "supporting_psr_evidence_ids": []
+        },
+        "considered_alternatives": [
+          {
+            "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+            "design_transcript_id": "PATZ1-202",
+            "design_amplicon_length_bp": 43,
+            "practicality_classification": "allowed_nonpreferred",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 1012.1244154683359,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          },
+          {
+            "assay_id": "transcript_assay_cf3abde10e2184d8",
+            "design_transcript_id": "PATZ1-202",
+            "design_amplicon_length_bp": 43,
+            "practicality_classification": "allowed_nonpreferred",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 1009.6693412358484,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          },
+          {
+            "assay_id": "transcript_assay_45296b483354cbc4",
+            "design_transcript_id": "PATZ1-202",
+            "design_amplicon_length_bp": 42,
+            "practicality_classification": "allowed_nonpreferred",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 1007.4003301878937,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          }
+        ],
         "satisfied_design_objective": "one_per_class",
         "selection_reasons": [
           {
@@ -1183,25 +1525,33 @@
             "related_ids": [
               "JUC2200054820.hg.1:PATZ1-202:1-2"
             ]
+          },
+          {
+            "code": "routine_practicality_preferred",
+            "message": "The 50 bp designed amplicon is within the configured preferred routine range; required biological criteria were evaluated before this preference.",
+            "related_ids": [
+              "transcript_assay_4bfca8feaf7962e9"
+            ]
           }
         ],
+        "selection_explanation": "Selected because it satisfies the 'one_per_class' biological objective and remains within the configured preferred product range.",
         "selection_provenance_status": "de_novo_with_structured_selection_evidence",
         "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
-          "primer_id": "primer_04e5a099a75aafa8",
+          "primer_id": "primer_9d7250f82e9836b1",
           "role": "forward",
           "display_label": "PATZ1_E1|E2_F",
           "aliases": [],
           "origin": "de_novo",
-          "sequence_5_to_3": "TAAGCTAGCATCGGGATCCG",
-          "length_nt": 20,
-          "anneal_length_nt": 20,
-          "tm_c": 64.26996322180901,
-          "gc_fraction": 0.55,
-          "gc_percent": 55.00000000000001,
+          "sequence_5_to_3": "CTAGCATCGGGATCCGATCAG",
+          "length_nt": 21,
+          "anneal_length_nt": 21,
+          "tm_c": 64.77839486413313,
+          "gc_fraction": 0.5714285714285714,
+          "gc_percent": 57.14285714285714,
           "anneal_hit_count": 1,
-          "binding_start_0based": 26,
-          "binding_end_0based_exclusive": 46,
+          "binding_start_0based": 30,
+          "binding_end_0based_exclusive": 51,
           "exon_ordinals": [
             1,
             2
@@ -1213,20 +1563,20 @@
           "self_complementary_run_bp": 6
         },
         "reverse": {
-          "primer_id": "primer_71e961cfe9c51870",
+          "primer_id": "primer_96f7bdcf9591a2a0",
           "role": "reverse",
           "display_label": "PATZ1_E2_R",
           "aliases": [],
           "origin": "de_novo",
-          "sequence_5_to_3": "TACGATCCGTTAGCGTACCTG",
-          "length_nt": 21,
-          "anneal_length_nt": 21,
-          "tm_c": 64.2361839952258,
-          "gc_fraction": 0.5238095238095238,
-          "gc_percent": 52.38095238095239,
+          "sequence_5_to_3": "ATGCCGTAGCTTACGATCCG",
+          "length_nt": 20,
+          "anneal_length_nt": 20,
+          "tm_c": 64.94264561711947,
+          "gc_fraction": 0.55,
+          "gc_percent": 55.00000000000001,
           "anneal_hit_count": 1,
-          "binding_start_0based": 48,
-          "binding_end_0based_exclusive": 69,
+          "binding_start_0based": 60,
+          "binding_end_0based_exclusive": 80,
           "exon_ordinals": [
             2
           ],
@@ -1236,12 +1586,12 @@
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 4
         },
-        "design_amplicon_start_0based": 26,
-        "design_amplicon_end_0based_exclusive": 69,
-        "design_amplicon_length_bp": 43,
-        "tm_delta_c": 0.03377922658320642,
+        "design_amplicon_start_0based": 30,
+        "design_amplicon_end_0based_exclusive": 80,
+        "design_amplicon_length_bp": 50,
+        "tm_delta_c": 0.16425075298633374,
         "predicted_amplicon_lengths_bp": [
-          43
+          50
         ],
         "predicted_products": [
           {
@@ -1261,7 +1611,7 @@
             "detail_status": "single_product",
             "product_count": 1,
             "amplicon_lengths_bp": [
-              43
+              50
             ]
           },
           {
@@ -1288,13 +1638,14 @@
             "reverse_three_prime_gc_clamp": true
           },
           "primer_pair_complementary_run_bp": 5,
-          "primer_pair_3prime_complementary_run_bp": 2
+          "primer_pair_3prime_complementary_run_bp": 3
         },
         "amplicon_spans_junction": true,
         "selected_because_of_junction_evidence": true,
         "selection_evidence": [
           {
             "evidence_id": "JUC2200054820.hg.1",
+            "evidence_kind": "juc",
             "junction_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
             "influence": "probe_region_influenced",
             "applies_to": [
@@ -1358,22 +1709,22 @@
   ],
   "order_ready_primers": [
     {
-      "line_id": "transcript_assay_oligo_c4e20ffa6790ed10",
-      "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+      "line_id": "transcript_assay_oligo_1f90dfbed5ecdeac",
+      "assay_id": "transcript_assay_4bfca8feaf7962e9",
       "assay_rank": 1,
       "name": "patz1_sybr_juc_panel_1_forward",
       "role": "forward",
-      "sequence_5_to_3": "TAAGCTAGCATCGGGATCCG",
-      "length_nt": 20
+      "sequence_5_to_3": "CTAGCATCGGGATCCGATCAG",
+      "length_nt": 21
     },
     {
-      "line_id": "transcript_assay_oligo_b2c3dbc9355fba93",
-      "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+      "line_id": "transcript_assay_oligo_270804b3e5ea0768",
+      "assay_id": "transcript_assay_4bfca8feaf7962e9",
       "assay_rank": 1,
       "name": "patz1_sybr_juc_panel_1_reverse",
       "role": "reverse",
-      "sequence_5_to_3": "TACGATCCGTTAGCGTACCTG",
-      "length_nt": 21
+      "sequence_5_to_3": "ATGCCGTAGCTTACGATCCG",
+      "length_nt": 20
     },
     {
       "line_id": "transcript_assay_oligo_7e7bc7e2fdf98c0c",
@@ -1415,10 +1766,10 @@
   "genomic_specificity_assessments": [],
   "specificity_followups": [
     {
-      "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+      "assay_id": "transcript_assay_4bfca8feaf7962e9",
       "local_cdna_matrix_status": "completed",
       "genomic_confirmation_status": "not_run",
-      "shell_command_template": "primers specificity-plan --forward TAAGCTAGCATCGGGATCCG --reverse TACGATCCGTTAGCGTACCTG --target-genome GENOME_ID --output-dir OUTPUT_DIR/transcript_assay_e9e8cd8b25a1adb7"
+      "shell_command_template": "primers specificity-plan --forward CTAGCATCGGGATCCGATCAG --reverse ATGCCGTAGCTTACGATCCG --target-genome GENOME_ID --output-dir OUTPUT_DIR/transcript_assay_4bfca8feaf7962e9"
     },
     {
       "assay_id": "transcript_assay_b3964ace800b1035",

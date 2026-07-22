@@ -21,7 +21,8 @@ use crate::engine::{
     TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
     TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis,
     TranscriptAssayCoveragePolicy, TranscriptAssayJunctionPriority, TranscriptAssayKind,
-    TranscriptAssayPanelObjective, TranscriptAssaySpecificityRequest,
+    TranscriptAssayPanelObjective, TranscriptAssayPracticalityPolicy,
+    TranscriptAssaySpecificityRequest, TranscriptAssayUseTier,
 };
 
 fn parse_read_acquisition_analysis_format(
@@ -5401,7 +5402,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         "design-transcript-assay-panel" => {
-            const USAGE: &str = "primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--specificity-check none|report-only|require-pass] [--specificity-target-genome ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]\n       primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]";
+            const USAGE: &str = "primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--coverage-policy require-all|best-effort] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--specificity-check none|report-only|require-pass] [--specificity-target-genome ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]\n       primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]";
             if tokens.len() < 3 {
                 return Err(format!(
                     "primers design-transcript-assay-panel requires either:\n       {USAGE}"
@@ -5454,6 +5455,9 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             let mut cdna_synthesis = TranscriptAssayCdnaSynthesis::default();
             let mut objective = TranscriptAssayPanelObjective::default();
             let mut coverage_policy = TranscriptAssayCoveragePolicy::default();
+            let mut assay_tier = TranscriptAssayUseTier::default();
+            let mut preferred_min_amplicon_bp = None;
+            let mut preferred_max_amplicon_bp = None;
             let mut min_amplicon_bp = None;
             let mut max_amplicon_bp = None;
             let mut max_assays_per_class = None;
@@ -5495,6 +5499,35 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                         let raw =
                             parse_option_path(tokens, &mut idx, "--coverage-policy", context)?;
                         coverage_policy = parse_transcript_assay_coverage_policy(&raw)?;
+                    }
+                    "--assay-tier" | "--use-tier" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        assay_tier = parse_transcript_assay_use_tier(&raw)?;
+                    }
+                    "--preferred-min-amplicon-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--preferred-min-amplicon-bp",
+                            context,
+                        )?;
+                        preferred_min_amplicon_bp = Some(parse_usize_option_value(
+                            &raw,
+                            "--preferred-min-amplicon-bp",
+                        )?);
+                    }
+                    "--preferred-max-amplicon-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--preferred-max-amplicon-bp",
+                            context,
+                        )?;
+                        preferred_max_amplicon_bp = Some(parse_usize_option_value(
+                            &raw,
+                            "--preferred-max-amplicon-bp",
+                        )?);
                     }
                     "--min-amplicon-bp" => {
                         let raw =
@@ -5697,6 +5730,24 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             } else {
                 None
             };
+            let practicality = match (
+                preferred_min_amplicon_bp,
+                preferred_max_amplicon_bp,
+            ) {
+                (Some(min_bp), Some(max_bp)) => Some(TranscriptAssayPracticalityPolicy {
+                    preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
+                        min_bp,
+                        max_bp,
+                    }),
+                    allowed_amplicon_bp: None,
+                }),
+                (None, None) => None,
+                _ => {
+                    return Err(format!(
+                        "{context} requires --preferred-min-amplicon-bp and --preferred-max-amplicon-bp together"
+                    ));
+                }
+            };
             Ok(ShellCommand::PrimersDesignTranscriptAssayPanel {
                 seq_id,
                 feature_id,
@@ -5704,6 +5755,8 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 cdna_synthesis,
                 objective,
                 coverage_policy,
+                assay_tier,
+                practicality,
                 min_amplicon_bp,
                 max_amplicon_bp,
                 max_assays_per_class,

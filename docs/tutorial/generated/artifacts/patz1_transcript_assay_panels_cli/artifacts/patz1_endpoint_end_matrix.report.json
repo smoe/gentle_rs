@@ -12,6 +12,17 @@
   "cdna_synthesis": "oligo_dt",
   "objective": "isoform_end_matrix",
   "coverage_policy": "require_all",
+  "assay_tier": "long_range_structure_discovery",
+  "practicality_policy": {
+    "preferred_amplicon_bp": {
+      "min_bp": 70,
+      "max_bp": 250
+    },
+    "allowed_amplicon_bp": {
+      "min_bp": 70,
+      "max_bp": 10000
+    }
+  },
   "completion_status": "complete",
   "transcript_count": 3,
   "equivalence_group_count": 3,
@@ -149,6 +160,74 @@
         "display_label": "PATZ1_E1F-E3R",
         "aliases": [],
         "selection_role": null,
+        "assay_tier": "long_range_structure_discovery",
+        "practicality_policy": {
+          "preferred_amplicon_bp": {
+            "min_bp": 70,
+            "max_bp": 250
+          },
+          "allowed_amplicon_bp": {
+            "min_bp": 70,
+            "max_bp": 10000
+          }
+        },
+        "practicality_classification": "routine",
+        "common_region_evidence": {
+          "status": "not_common",
+          "basis": "At least one intended transcript annotation does not contain the full designed source intervals as one contiguous mature-cDNA region; array evidence cannot override this structural result.",
+          "intended_transcript_ids": [
+            "PATZ1-201",
+            "PATZ1-202",
+            "PATZ1-203"
+          ],
+          "source_ranges_0based": [
+            {
+              "start_0based": 180,
+              "end_0based_exclusive": 219
+            },
+            {
+              "start_0based": 120,
+              "end_0based_exclusive": 140
+            },
+            {
+              "start_0based": 32,
+              "end_0based_exclusive": 60
+            }
+          ],
+          "supporting_psr_evidence_ids": []
+        },
+        "considered_alternatives": [
+          {
+            "assay_id": "transcript_assay_f953276e3abb2850",
+            "design_transcript_id": "PATZ1-203",
+            "design_amplicon_length_bp": 76,
+            "practicality_classification": "routine",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 520.0999999999999,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          },
+          {
+            "assay_id": "transcript_assay_12231e23e1f4df50",
+            "design_transcript_id": "PATZ1-203",
+            "design_amplicon_length_bp": 76,
+            "practicality_classification": "routine",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 519.8606730090091,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          },
+          {
+            "assay_id": "transcript_assay_f5d293e7f729ae61",
+            "design_transcript_id": "PATZ1-203",
+            "design_amplicon_length_bp": 75,
+            "practicality_classification": "routine",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 519.347622947235,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          }
+        ],
         "satisfied_design_objective": "isoform_end_matrix",
         "selection_reasons": [
           {
@@ -173,8 +252,16 @@
               "transcript_end_reaction_8981f059e1e6f750",
               "transcript_end_reaction_bd6bab5140872754"
             ]
+          },
+          {
+            "code": "routine_practicality_preferred",
+            "message": "The 87 bp designed amplicon is within the configured preferred routine range; required biological criteria were evaluated before this preference.",
+            "related_ids": [
+              "transcript_assay_27362fde0b95ba9d"
+            ]
           }
         ],
+        "selection_explanation": "Selected because it satisfies the 'isoform_end_matrix' biological objective and remains within the configured preferred product range.",
         "selection_provenance_status": "de_novo_no_external_selection_evidence",
         "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
@@ -377,6 +464,70 @@
         "display_label": "PATZ1_E1F-E2R",
         "aliases": [],
         "selection_role": null,
+        "assay_tier": "long_range_structure_discovery",
+        "practicality_policy": {
+          "preferred_amplicon_bp": {
+            "min_bp": 70,
+            "max_bp": 250
+          },
+          "allowed_amplicon_bp": {
+            "min_bp": 70,
+            "max_bp": 10000
+          }
+        },
+        "practicality_classification": "routine",
+        "common_region_evidence": {
+          "status": "not_common",
+          "basis": "At least one intended transcript annotation does not contain the full designed source intervals as one contiguous mature-cDNA region; array evidence cannot override this structural result.",
+          "intended_transcript_ids": [
+            "PATZ1-201",
+            "PATZ1-202",
+            "PATZ1-203"
+          ],
+          "source_ranges_0based": [
+            {
+              "start_0based": 180,
+              "end_0based_exclusive": 218
+            },
+            {
+              "start_0based": 20,
+              "end_0based_exclusive": 60
+            }
+          ],
+          "supporting_psr_evidence_ids": []
+        },
+        "considered_alternatives": [
+          {
+            "assay_id": "transcript_assay_9e4a56dc524f39f7",
+            "design_transcript_id": "PATZ1-202",
+            "design_amplicon_length_bp": 74,
+            "practicality_classification": "routine",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 499.853952133053,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          },
+          {
+            "assay_id": "transcript_assay_dcd2f0bbfefce1e4",
+            "design_transcript_id": "PATZ1-202",
+            "design_amplicon_length_bp": 71,
+            "practicality_classification": "routine",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 499.3728631293537,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          },
+          {
+            "assay_id": "transcript_assay_007f8cb3ebe25e20",
+            "design_transcript_id": "PATZ1-202",
+            "design_amplicon_length_bp": 79,
+            "practicality_classification": "routine",
+            "common_region_status": "not_common",
+            "existing_candidate_score": 492.00113173350564,
+            "disposition": "not_selected",
+            "explanation": "Not selected after the same biological requirements, practicality preference, existing score, and stable-id ordering used for the retained pair."
+          }
+        ],
         "satisfied_design_objective": "isoform_end_matrix",
         "selection_reasons": [
           {
@@ -401,8 +552,16 @@
             "related_ids": [
               "transcript_end_reaction_db5d9946d8b7cf59"
             ]
+          },
+          {
+            "code": "routine_practicality_preferred",
+            "message": "The 78 bp designed amplicon is within the configured preferred routine range; required biological criteria were evaluated before this preference.",
+            "related_ids": [
+              "transcript_assay_46b04036f2ccda49"
+            ]
           }
         ],
+        "selection_explanation": "Selected because it satisfies the 'isoform_end_matrix' biological objective and remains within the configured preferred product range.",
         "selection_provenance_status": "de_novo_no_external_selection_evidence",
         "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
@@ -1024,8 +1183,10 @@
     "primer_backend": "internal"
   },
   "warnings": [
+    "Endpoint-gel band intensity is rough/semi-quantitative. Product presence and size do not provide a quantitative transcript-abundance measurement.",
     "Oligo-dT cDNA can underrepresent long 5' transcript regions because reverse-transcription completeness, rather than the PCR polymerase's 10 kb capacity, may be limiting.",
     "A missing long endpoint product must not be interpreted as isoform absence without supporting short 5' and 3' diagnostic assays.",
-    "Use short end-specific SYBR assays and consider 5' RACE when 5' completeness remains uncertain."
+    "Use short end-specific SYBR assays and consider 5' RACE when 5' completeness remains uncertain.",
+    "Endpoint-gel band intensity is rough or semi-quantitative and must not be interpreted as a quantitative transcript-abundance measurement."
   ]
 }

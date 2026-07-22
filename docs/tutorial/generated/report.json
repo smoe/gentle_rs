@@ -15,6 +15,7 @@
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt",
     "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg",
     "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json",
     "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json",
@@ -54,7 +55,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "c861338df0b62ff0a1ff40e7381b43302c51eed1c06a46206f5b2205f8d974c9",
+    "README.md": "4d743ced1ccef5664ed85ba8fb20795f64836dc6d79f52da2efa6c21b13dabed",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "192366db4be8257527c7322d91b988fd9c11ac4c11a57ae14b85d75f3902de90",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "f324456edd43ceb5f6c0f263e085844cddb27da1a454b40b63a68e8d69bc9a0e",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "cd022dd682970b1ac77006f069f2b6e14bf7c0294281d7a6f3d71762711ceacc",
@@ -63,8 +64,9 @@
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "49e60ce8db8fee3b193398ef6831f280017bbcfe34ea4732c2d19aea97e7adeb",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "beecd9e82a0336053bf82d63fd54fed530f3357f94f0ff29a7c46ac33d74a092",
     "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg": "fcd7acb4c9868d6c0e098930a44f1808392b6cd8b9562a0cdfcbbbcd47052482",
-    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json": "39a7665bd286974e1e7dcaf6bc210f009300eb1455e1e1b748aae9f816700c7d",
-    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json": "c7b17b1c0005e8041ca0e9368bed5924ee49581138737ac00b0899050a4dfda2",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json": "988e0d256a0691e982f065847f5a67da8f59c75622a95655527b19057e6b415e",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json": "fa4046e7c437b9d40794e4d7cf3c426fe10f0fa86b2cb47a00052e2cfe4194a9",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json": "b60c5f19a90f412de18fab2d79d9640dea42b40839eb481685e006c0c3174209",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json": "fcdcdcec09c3d595220276e1dd0a542d876634897ef6c270952c6b40d08c6f54",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json": "a29e3031ecde6dd9f945860bda0be48fbced440bb62f464381d42c331e35db25",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json": "2a23e46ce8c76b8352cb5c2b8dffe3dbd05b8e229dd7da6a50de17de81dc03ef",
@@ -88,7 +90,7 @@
     "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md": "7bcb863d998d3fca325fc6ec08f83e4e354fcb1f7fc9535f9fc2de2e584b0117",
     "chapters/04-04_guides_filter_and_generate_oligos.md": "3be07b5d4008a69b6868eb085da499c7808091b8660b25c03daa07e9b9bc01f8",
     "chapters/04-05_guides_export_csv_and_protocol.md": "d6a9ba4e08fe422b7293088183691206c994079574072da8a497998ea58950ac",
-    "chapters/04-06_patz1_transcript_assay_panels_cli.md": "258983c2fcd74d016297b761d378186f3284ba553c0f084b43ade3c879137951",
+    "chapters/04-06_patz1_transcript_assay_panels_cli.md": "8d633d5caf076b28562eede6e6ccbf824e95497de2340ec82d3f0171887a99a4",
     "chapters/05-01_find_and_extend_genomic_target_local_catalog.md": "a6d0ad0ee2f5e9c1b5b7fa008de26daed592f8f22d53e448a8188a14480ee5d3",
     "chapters/05-02_prepare_reference_genome_online.md": "f859944ab257f5d06ef50d1ca6201b434ab047c4484d9bbd01e45ae0aa887afa",
     "chapters/05-03_tp63_anchor_extension_online.md": "125b1750eb0907600855e877d92e1cf0377edf7bc6d5cb06838cb5e138ec6abd",
@@ -704,7 +706,7 @@
     {
       "id": "patz1_transcript_assay_panels_cli",
       "order": 28,
-      "title": "Design PATZ1 Endpoint and SYBR Transcript Panels from the CLI",
+      "title": "Design Practical PATZ1 Endpoint and SYBR Transcript Panels from the CLI",
       "group": "04",
       "group_label": "Primers, PCR & qPCR",
       "group_order": 4,
@@ -724,6 +726,7 @@
       "codex_reviewed_at": "2026-07-21",
       "retained_artifacts": [
         "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json",
+        "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json",
         "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json"
       ]
     }

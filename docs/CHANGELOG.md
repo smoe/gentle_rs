@@ -14,6 +14,11 @@ Maintenance rule:
 
 ## 2026-07-22
 
+- Added experimental-practicality provenance to multi-transcript primer panels:
+  annotation-only routine common-region screening, separate PSR/JUC support,
+  preferred-versus-allowed product ranges, explicit long-range fallbacks,
+  bounded alternatives, and conservative endpoint-gel interpretation now flow
+  through the shared engine, shell/CLI, GUI, and JSON adapters.
 - Rejected opposing PCR primer pairs whose binding footprints overlap, aligned
   transcript-panel selection with its product matrix, and regenerated the PATZ1
   SYBR tutorial so every selected pair detects its own design transcript;

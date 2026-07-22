@@ -4046,6 +4046,10 @@ qPCR form:
     without changing the engine defaults used by older callers
   - strict `Require all` coverage is the GUI default; `Best effort` remains an
     explicit choice that preserves uncovered cDNA classes in the report
+  - an independent experimental-tier control distinguishes routine common-
+    region screening, isoform discrimination, and long-range structural
+    discovery; optional preferred product limits sit inside the existing hard
+    allowed range
   - Clariom JUC/probe-evidence reports can be supplied as junction-target paths,
     with required/preferred priority and Primer3 overlap controls
   - the saved-report view shows the transcript-by-assay product matrix,
@@ -4054,6 +4058,9 @@ qPCR form:
   - an empty oligo-dT threshold reports annotation-derived distances without
     making a categorical risk call; a user-supplied threshold enables the
     corresponding within/elevated matrix labels
+  - the saved-report rationale shows annotation-confirmed common-region status,
+    separate PSR/JUC support, routine-versus-fallback classification, the
+    concise selection explanation, and bounded rejected alternatives
 
 Buttons:
 

@@ -6682,7 +6682,7 @@ fn parse_primers_seed_from_feature_and_splicing() {
     ));
 
     let panel_v2 = parse_shell_line(
-        "primers design-transcript-assay-panel seq_a 17 --objective minimal-discrimination-panel --coverage-policy best-effort --min-amplicon-bp 70 --max-amplicon-bp 220 --max-assays-per-class 4 --max-mismatches 1 --require-3prime-exact-bases 8 --specificity-check require-pass --specificity-target-genome GRCh38 --specificity-catalog genomes.json --specificity-cache-dir genome-cache --report-id panel_v2 --path panel_v2.json --backend internal",
+        "primers design-transcript-assay-panel seq_a 17 --objective minimal-discrimination-panel --coverage-policy best-effort --assay-tier isoform-discrimination --preferred-min-amplicon-bp 80 --preferred-max-amplicon-bp 160 --min-amplicon-bp 70 --max-amplicon-bp 220 --max-assays-per-class 4 --max-mismatches 1 --require-3prime-exact-bases 8 --specificity-check require-pass --specificity-target-genome GRCh38 --specificity-catalog genomes.json --specificity-cache-dir genome-cache --report-id panel_v2 --path panel_v2.json --backend internal",
     )
     .expect("parse transcript assay panel v2");
     assert!(matches!(
@@ -6692,6 +6692,8 @@ fn parse_primers_seed_from_feature_and_splicing() {
             feature_id,
             objective,
             coverage_policy,
+            assay_tier,
+            practicality,
             min_amplicon_bp,
             max_amplicon_bp,
             max_assays_per_class,
@@ -6706,6 +6708,12 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && feature_id == 17
             && objective == TranscriptAssayPanelObjective::MinimalDiscriminationPanel
             && coverage_policy == TranscriptAssayCoveragePolicy::BestEffort
+            && assay_tier == TranscriptAssayUseTier::IsoformDiscrimination
+            && practicality.as_ref().is_some_and(|policy|
+                policy.preferred_amplicon_bp.as_ref().is_some_and(|range|
+                    range.min_bp == 80 && range.max_bp == 160
+                ) && policy.allowed_amplicon_bp.is_none()
+            )
             && min_amplicon_bp == Some(70)
             && max_amplicon_bp == Some(220)
             && max_assays_per_class == Some(4)
@@ -6720,6 +6728,13 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && report_id.as_deref() == Some("panel_v2")
             && path.as_deref() == Some("panel_v2.json")
             && backend == Some(PrimerDesignBackend::Internal)
+    ));
+    let incomplete_preferred_range = parse_shell_line(
+        "primers design-transcript-assay-panel seq_a 17 --preferred-min-amplicon-bp 80",
+    )
+    .expect_err("preferred transcript-assay range requires both bounds");
+    assert!(incomplete_preferred_range.contains(
+        "requires --preferred-min-amplicon-bp and --preferred-max-amplicon-bp together"
     ));
     let endpoint_panel = parse_shell_line(
         "primers design-transcript-assay-panel seq_a 17 --assay-kind endpoint-rt-pcr --cdna-synthesis oligo-dt --objective isoform-end-matrix --junctions @junctions.json --junction-evidence clariom_juc.json --junction-evidence-priority required --min-3prime-junction-overlap-bp 5 --min-5prime-junction-overlap-bp 8 --annotation-release Ensembl116 --max-amplicon-bp 10000 --oligo-dt-5prime-risk-threshold-bp 5000",

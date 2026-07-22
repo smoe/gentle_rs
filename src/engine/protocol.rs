@@ -5647,7 +5647,35 @@ pub enum PrimerPairSelectionReasonCode {
     PredictedProductCoverage,
     EndReactionCoverage,
     JunctionEvidence,
+    CommonRegionAnnotationConfirmed,
+    RoutinePracticalityPreferred,
+    AllowedNonpreferredProduct,
+    LongRangeFallbackRequired,
+    PsrEvidenceSupport,
     LegacyProvenanceUnavailable,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Probe-evidence geometry retained with one primer-pair selection record.
+pub enum PrimerPairSelectionEvidenceKind {
+    #[default]
+    Unspecified,
+    /// Exon/probeset-region evidence. This can support a selected region but
+    /// cannot establish that the region is common across transcript models.
+    Psr,
+    /// Junction-probeset evidence used to request or prefer a spanning primer.
+    Juc,
+}
+
+impl PrimerPairSelectionEvidenceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unspecified => "unspecified",
+            Self::Psr => "psr",
+            Self::Juc => "juc",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -5670,6 +5698,8 @@ pub struct PrimerPairSelectionReason {
 /// promoted to sequence reuse without an actual sequence match.
 pub struct PrimerPairSelectionEvidence {
     pub evidence_id: String,
+    #[serde(default)]
+    pub evidence_kind: PrimerPairSelectionEvidenceKind,
     pub junction_id: String,
     #[serde(default)]
     pub influence: PrimerPairSelectionInfluence,
@@ -5690,6 +5720,10 @@ pub struct PrimerPairSelectionEvidence {
     pub region_start_1based: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub region_end_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_end_0based_exclusive: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strand: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -5714,6 +5748,108 @@ pub struct PrimerPairSelectionEvidence {
     pub source_sha256: Option<String>,
     #[serde(default)]
     pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Experimental purpose recorded independently of the panel-selection objective.
+pub enum TranscriptAssayUseTier {
+    #[default]
+    Unspecified,
+    RoutineCommonRegionScreen,
+    IsoformDiscrimination,
+    LongRangeStructureDiscovery,
+}
+
+impl TranscriptAssayUseTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unspecified => "unspecified",
+            Self::RoutineCommonRegionScreen => "routine_common_region_screen",
+            Self::IsoformDiscrimination => "isoform_discrimination",
+            Self::LongRangeStructureDiscovery => "long_range_structure_discovery",
+        }
+    }
+
+    pub fn is_unspecified(value: &Self) -> bool {
+        *value == Self::Unspecified
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Inclusive configured product-length range in base pairs.
+pub struct TranscriptAssayAmpliconRange {
+    pub min_bp: usize,
+    pub max_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Structured product-length priorities for one transcript-panel design run.
+///
+/// The allowed range is a hard generation boundary. The preferred range is a
+/// secondary practicality preference applied only after required biological
+/// coverage/specificity criteria.
+pub struct TranscriptAssayPracticalityPolicy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_amplicon_bp: Option<TranscriptAssayAmpliconRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_amplicon_bp: Option<TranscriptAssayAmpliconRange>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Product-length practicality assigned to one considered primer pair.
+pub enum TranscriptAssayPracticalityClassification {
+    #[default]
+    Unspecified,
+    Routine,
+    AllowedNonpreferred,
+    LongRangeFallback,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Annotation-only common-region conclusion for one candidate amplicon.
+pub enum TranscriptAssayCommonRegionStatus {
+    #[default]
+    Unspecified,
+    Confirmed,
+    NotCommon,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Annotation-derived evidence that one designed amplicon region is present
+/// contiguously in every intended transcript model.
+pub struct TranscriptAssayCommonRegionEvidence {
+    #[serde(default)]
+    pub status: TranscriptAssayCommonRegionStatus,
+    pub basis: String,
+    #[serde(default)]
+    pub intended_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub source_ranges_0based: Vec<SequenceRange0Based>,
+    #[serde(default)]
+    pub supporting_psr_evidence_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Bounded audit row for a primer pair considered but not selected ahead of
+/// the retained pair.
+pub struct TranscriptAssayConsideredAlternative {
+    pub assay_id: String,
+    pub design_transcript_id: String,
+    pub design_amplicon_length_bp: usize,
+    #[serde(default)]
+    pub practicality_classification: TranscriptAssayPracticalityClassification,
+    #[serde(default)]
+    pub common_region_status: TranscriptAssayCommonRegionStatus,
+    pub existing_candidate_score: f64,
+    pub disposition: String,
+    pub explanation: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -5785,9 +5921,21 @@ pub struct PrimerPairCommunicationSummary {
     pub aliases: Vec<String>,
     #[serde(default)]
     pub selection_role: Option<PrimerPairSelectionRole>,
+    #[serde(default, skip_serializing_if = "TranscriptAssayUseTier::is_unspecified")]
+    pub assay_tier: TranscriptAssayUseTier,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub practicality_policy: Option<TranscriptAssayPracticalityPolicy>,
+    #[serde(default)]
+    pub practicality_classification: TranscriptAssayPracticalityClassification,
+    #[serde(default)]
+    pub common_region_evidence: TranscriptAssayCommonRegionEvidence,
+    #[serde(default)]
+    pub considered_alternatives: Vec<TranscriptAssayConsideredAlternative>,
     pub satisfied_design_objective: String,
     #[serde(default)]
     pub selection_reasons: Vec<PrimerPairSelectionReason>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub selection_explanation: String,
     pub selection_provenance_status: String,
     pub binding_coordinate_system: String,
     pub forward: PrimerPairSummaryOligo,
@@ -8062,6 +8210,10 @@ pub struct TranscriptAssayPanelReport {
     pub objective: TranscriptAssayPanelObjective,
     #[serde(default)]
     pub coverage_policy: TranscriptAssayCoveragePolicy,
+    #[serde(default, skip_serializing_if = "TranscriptAssayUseTier::is_unspecified")]
+    pub assay_tier: TranscriptAssayUseTier,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub practicality_policy: Option<TranscriptAssayPracticalityPolicy>,
     #[serde(default)]
     pub completion_status: TranscriptAssayPanelCompletionStatus,
     pub transcript_count: usize,
@@ -8130,6 +8282,8 @@ pub struct TranscriptAssayPanelReportSummary {
     pub objective: TranscriptAssayPanelObjective,
     #[serde(default)]
     pub coverage_policy: TranscriptAssayCoveragePolicy,
+    #[serde(default, skip_serializing_if = "TranscriptAssayUseTier::is_unspecified")]
+    pub assay_tier: TranscriptAssayUseTier,
     #[serde(default)]
     pub completion_status: TranscriptAssayPanelCompletionStatus,
     pub transcript_count: usize,
