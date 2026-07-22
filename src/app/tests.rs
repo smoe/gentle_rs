@@ -72,7 +72,8 @@ use crate::{
     },
     ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary, EnsemblProteinFeature},
     genomes::{
-        EnsemblCatalogUpdatePreview, EnsemblInstallableGenomeCatalog, EnsemblQuickInstallPreview,
+        BlastDatabaseIndexKind, BlastDatabaseInspectionReport, EnsemblCatalogUpdatePreview,
+        EnsemblInstallableGenomeCatalog, EnsemblQuickInstallPreview,
         HelperConstructInterpretation, PrepareGenomePlan, PrepareGenomePlanStep,
         PrepareGenomeProgress, PrepareGenomeStepId, PreparedCacheArtifactGroup,
         PreparedCacheArtifactStat, PreparedCacheCleanupItemReport, PreparedCacheCleanupMode,
@@ -508,6 +509,7 @@ fn make_prepared_genome_inspection() -> PreparedGenomeInspection {
         transcript_index_path: Some("/tmp/toy_install/transcripts.json".to_string()),
         blast_db_prefix: Some("/tmp/toy_install/blastdb/genome".to_string()),
         blast_index_ready: true,
+        blast_database: None,
         sequence_sha1: None,
         annotation_sha1: None,
         sequence_present: true,
@@ -11625,6 +11627,73 @@ fn apply_prepared_genome_inspection_marks_existing_outputs_complete() {
 }
 
 #[test]
+fn prepared_genome_blast_summary_exposes_component_validation_and_identity() {
+    let mut inspection = make_prepared_genome_inspection();
+    inspection.blast_database = Some(BlastDatabaseInspectionReport {
+        schema: crate::genomes::BLAST_DATABASE_INSPECTION_SCHEMA.to_string(),
+        index_kind: BlastDatabaseIndexKind::GenomicDna,
+        source_genome_id: "ToyGenome".to_string(),
+        source_assembly: Some("GRCh38".to_string()),
+        source_release: Some("Ensembl 116".to_string()),
+        masking: "source_fasta_as_prepared".to_string(),
+        prefix: "/tmp/toy_install/blastdb/genome".to_string(),
+        blast_database_version: Some("5".to_string()),
+        sequence_count: Some(706),
+        total_bases: Some(3_291_585_349),
+        tool_executable: "blastdbcmd".to_string(),
+        tool_version: Some("2.17.0+".to_string()),
+        content_fingerprint: Some(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+        ),
+        fingerprint_algorithm: "sha256:index-file-full-or-edge-sampled-v1".to_string(),
+        validation_status: "valid".to_string(),
+        index_files_present: true,
+        blastdbcmd_reachable: true,
+        status_code: Some(0),
+        compatible_operations: vec!["primer_genomic_specificity".to_string()],
+        warnings: vec![],
+    });
+
+    assert_eq!(
+        GENtleApp::format_prepared_blast_summary(&inspection),
+        "valid | 706 seqs"
+    );
+    let hover = GENtleApp::format_prepared_blast_hover_text(&inspection);
+    assert!(hover.contains("kind: genomic_dna"));
+    assert!(hover.contains("assembly/release: GRCh38/Ensembl 116"));
+    assert!(hover.contains("BLAST DB version: 5"));
+    assert!(hover.contains("content fingerprint: 0123456789abcdef"));
+    assert!(hover.contains("primer_genomic_specificity"));
+}
+
+#[test]
+fn prepared_genome_component_validation_is_cached_until_refresh() {
+    let td = tempdir().expect("temporary directory");
+    let catalog = td.path().join("catalog.json");
+    fs::write(&catalog, "{}").expect("write empty catalog");
+    let mut app = GENtleApp::default();
+    app.genome_catalog_path = catalog.to_string_lossy().to_string();
+    app.genome_cache_dir = td.path().join("cache").to_string_lossy().to_string();
+
+    let first = app
+        .cached_prepared_genome_inspections(GenomeDialogScope::Reference, false)
+        .expect("initial inspection");
+    assert!(first.0.is_empty());
+
+    fs::write(&catalog, "not-json").expect("replace catalog");
+    assert!(
+        app.cached_prepared_genome_inspections(GenomeDialogScope::Reference, false)
+            .is_ok(),
+        "the repaint path should reuse the cached validation"
+    );
+    assert!(
+        app.cached_prepared_genome_inspections(GenomeDialogScope::Reference, true)
+            .is_err(),
+        "explicit refresh should re-read the component state"
+    );
+}
+
+#[test]
 fn prepare_eta_appears_after_progress_advances() {
     let mut app = GENtleApp::default();
     app.reset_prepare_step_state_from_plan(Some(make_prepare_plan(&[
@@ -14929,6 +14998,8 @@ fn summarize_operation_blast_import_includes_invocation_preview() {
             task: "blastn-short".to_string(),
             blastn_executable: "blastn".to_string(),
             blast_db_prefix: "/tmp/db".to_string(),
+            blast_database_content_fingerprint: None,
+            blast_database_index_kind: None,
             command: vec![
                 "-db".to_string(),
                 "/tmp/db".to_string(),

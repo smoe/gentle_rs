@@ -315,6 +315,33 @@ impl GENtleApp {
         Ok((inspections, errors))
     }
 
+    fn prepared_genome_inspection_cache_key(&self, scope: GenomeDialogScope) -> String {
+        format!(
+            "{}\n{}\n{}",
+            scope.description(),
+            self.genome_catalog_path_resolved(),
+            self.genome_cache_dir_opt().as_deref().unwrap_or("")
+        )
+    }
+
+    pub(super) fn cached_prepared_genome_inspections(
+        &mut self,
+        scope: GenomeDialogScope,
+        force_refresh: bool,
+    ) -> Result<(Vec<PreparedGenomeInspection>, Vec<String>), String> {
+        let key = self.prepared_genome_inspection_cache_key(scope);
+        if force_refresh
+            || self.prepared_genome_inspection_cache_key.as_deref() != Some(key.as_str())
+            || self.prepared_genome_inspection_cache.is_none()
+        {
+            self.prepared_genome_inspection_cache = Some(self.collect_prepared_genome_inspections());
+            self.prepared_genome_inspection_cache_key = Some(key);
+        }
+        self.prepared_genome_inspection_cache
+            .clone()
+            .unwrap_or_else(|| Ok((vec![], vec![])))
+    }
+
     pub(super) fn prepared_genome_chromosome_records(
         &self,
         genome_id: &str,
@@ -470,6 +497,78 @@ impl GENtleApp {
             longest,
             Self::format_bp_compact(longest_bp),
             preview
+        )
+    }
+
+    pub(super) fn format_prepared_blast_summary(
+        inspection: &PreparedGenomeInspection,
+    ) -> String {
+        let Some(database) = &inspection.blast_database else {
+            return if inspection.blast_index_ready {
+                "index present; not validated".to_string()
+            } else {
+                "missing".to_string()
+            };
+        };
+        let sequence_count = database
+            .sequence_count
+            .map(|count| count.to_string())
+            .unwrap_or_else(|| "?".to_string());
+        format!(
+            "{} | {} seqs",
+            database.validation_status, sequence_count
+        )
+    }
+
+    pub(super) fn format_prepared_blast_hover_text(
+        inspection: &PreparedGenomeInspection,
+    ) -> String {
+        let Some(database) = &inspection.blast_database else {
+            return if inspection.blast_index_ready {
+                "BLAST index files are present, but blastdbcmd validation is unavailable."
+                    .to_string()
+            } else {
+                "No BLAST database is present for this prepared resource.".to_string()
+            };
+        };
+        let fingerprint = database
+            .content_fingerprint
+            .as_deref()
+            .map(|value| value.get(..16).unwrap_or(value))
+            .unwrap_or("-");
+        let compatible = if database.compatible_operations.is_empty() {
+            "-".to_string()
+        } else {
+            database.compatible_operations.join(", ")
+        };
+        let warnings = if database.warnings.is_empty() {
+            "-".to_string()
+        } else {
+            database.warnings.join("\n")
+        };
+        format!(
+            "validation: {}\nkind: {}\nassembly/release: {}/{}\nmasking: {}\nprefix: {}\nBLAST DB version: {}\nsequences: {}\ntotal bases: {}\ntool: {} ({})\ncontent fingerprint: {} ({})\ncompatible operations: {}\nwarnings: {}",
+            database.validation_status,
+            database.index_kind.as_str(),
+            database.source_assembly.as_deref().unwrap_or("-"),
+            database.source_release.as_deref().unwrap_or("-"),
+            database.masking,
+            database.prefix,
+            database.blast_database_version.as_deref().unwrap_or("-"),
+            database
+                .sequence_count
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            database
+                .total_bases
+                .map(Self::format_bp_compact)
+                .unwrap_or_else(|| "-".to_string()),
+            database.tool_executable,
+            database.tool_version.as_deref().unwrap_or("-"),
+            fingerprint,
+            database.fingerprint_algorithm,
+            compatible,
+            warnings
         )
     }
 
@@ -2928,7 +3027,13 @@ impl GENtleApp {
                     format!("Catalog error: {}", self.genome_catalog_error),
                 );
             }
-            match self.collect_prepared_genome_inspections() {
+            let refresh_inspection = ui
+                .small_button("Refresh component validation")
+                .on_hover_text(
+                    "Re-read prepared manifests and run blastdbcmd validation once; results are cached between GUI frames",
+                )
+                .clicked();
+            match self.cached_prepared_genome_inspections(scope, refresh_inspection) {
                 Ok((inspections, errors)) => {
                     let total_size: u64 = inspections.iter().map(|r| r.total_size_bytes).sum();
                     let catalog_writable = self.selected_genome_catalog_is_writable();
@@ -2962,12 +3067,13 @@ impl GENtleApp {
                                     );
                                     egui::Grid::new("prepared_genome_inspector_grid")
                                         .striped(true)
-                                        .num_columns(9)
+                                        .num_columns(10)
                                         .show(ui, |ui| {
                                             ui.strong("Genome");
                                             ui.strong("Size");
                                             ui.strong("Ready");
                                             ui.strong("Cache");
+                                            ui.strong("BLAST component");
                                             ui.strong("Sources");
                                             ui.strong("SHA1 seq/ann");
                                             ui.strong("Installed");
@@ -3012,6 +3118,19 @@ impl GENtleApp {
                                                 )
                                                 .on_hover_text(
                                                     Self::format_prepared_cache_hover_text(
+                                                        inspection,
+                                                    ),
+                                                );
+                                                ui.label(
+                                                    egui::RichText::new(
+                                                        Self::format_prepared_blast_summary(
+                                                            inspection,
+                                                        ),
+                                                    )
+                                                    .small(),
+                                                )
+                                                .on_hover_text(
+                                                    Self::format_prepared_blast_hover_text(
                                                         inspection,
                                                     ),
                                                 );

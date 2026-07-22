@@ -20,6 +20,11 @@ Maintenance rule:
   instead of exact or wildcard pins, while the embedded JavaScript shell keeps
   its synchronous interface through an owned Tokio runtime and a V8 execution
   smoke test.
+- Added `blastdbcmd`-backed BLAST database component inspection and
+  content-bound primer-specificity handoffs; specificity now searches all
+  database subjects, normalizes prepared-FASTA identifiers, distinguishes
+  genomic carryover from transcriptome cross-amplification, and models
+  junction-spanning assays without inventing contiguous genomic targets.
 - Added `gentle.primer_pair_summary.v1` to selected transcript-panel assays so
   CLI/MCP/API and JSON exports carry one joined, assay-neutral communication
   view of the exact primer sequences, lengths, melting temperatures, GC values,
