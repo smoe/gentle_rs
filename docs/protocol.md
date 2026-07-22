@@ -8292,7 +8292,13 @@ Primer-design shell command family (implemented):
     `legacy_report_selection_provenance_unavailable` and
     `geometry_not_persisted_in_legacy_report_re_run_required`, preserving
     sequence/Tm/product data while requiring a rerun for trustworthy labels or
-    selection provenance.
+    selection provenance. For such legacy reports, requested primer-junction
+    overlap booleans can be restored from canonical `junction_matches[]`, but a
+    remaining `false` `primer_spans_junction` or `amplicon_spans_junction`
+    value is not authoritative for unrequested junctions because complete exon
+    geometry was not persisted; rerun the design before interpreting absence.
+    Legacy oligo `origin` remains `unknown` rather than being inferred as
+    `de_novo`.
   - `tm_c` is primer melting temperature, never a recommended PCR annealing
     temperature. This summary has no annealing-temperature field because the
     panel request does not supply a complete chemistry/polymerase model.

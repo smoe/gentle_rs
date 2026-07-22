@@ -10191,6 +10191,15 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
         .transcript_assay_panels
         .get_mut(&report.report_id)
         .expect("persisted transcript panel");
+    let legacy_design_transcript_id = stored.selected_assays[0].design_transcript_id.clone();
+    stored.selected_assays[0].junction_matches = vec![TranscriptAssayJunctionMatch {
+        junction_id: "legacy_requested_junction".to_string(),
+        transcript_id: legacy_design_transcript_id,
+        transcript_local_position_0based: 40,
+        forward_spans: true,
+        reverse_spans: false,
+        spanning_role: "forward".to_string(),
+    }];
     for assay in &mut stored.selected_assays {
         assay.primer_pair_summary = PrimerPairCommunicationSummary::default();
     }
@@ -10228,6 +10237,15 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
         legacy.provenance.exon_numbering_status,
         "geometry_not_persisted_in_legacy_report_re_run_required"
     );
+    assert_eq!(legacy.forward.origin, PrimerPairSummaryOrigin::Unknown);
+    assert_eq!(legacy.reverse.origin, PrimerPairSummaryOrigin::Unknown);
+    assert_eq!(
+        legacy.junction_spanning_status,
+        "requested_junction_spanning_primer"
+    );
+    assert!(legacy.forward.primer_spans_junction);
+    assert!(!legacy.reverse.primer_spans_junction);
+    assert!(legacy.amplicon_spans_junction);
     assert!(legacy.selection_evidence.is_empty());
 }
 
@@ -10698,6 +10716,31 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
             .iter()
             .any(|junction| junction.forward_spans || junction.reverse_spans)
     }));
+    for assay in &report.selected_assays {
+        let design_cell = report
+            .detection_matrix
+            .iter()
+            .find(|cell| {
+                cell.assay_id == assay.assay_id && cell.transcript_id == assay.design_transcript_id
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing detection-matrix row for assay {} on design transcript {}",
+                    assay.assay_id, assay.design_transcript_id
+                )
+            });
+        assert_eq!(
+            design_cell.status,
+            TranscriptAssayDetectionStatus::SingleProduct,
+            "a selected primer pair must detect its own design transcript"
+        );
+        assert!(
+            design_cell
+                .amplicon_lengths_bp
+                .contains(&assay.primer_pair.amplicon_length_bp),
+            "the design-transcript product must retain the selected pair's amplicon length"
+        );
+    }
     let evidence_assay = report
         .selected_assays
         .iter()
@@ -12748,6 +12791,34 @@ fn test_primer_pair_scoring_penalizes_dimer_prone_pairs() {
     assert!(good.score > bad.score);
     assert!(good.rule_flags.primer_pair_dimer_risk_low);
     assert!(!bad.rule_flags.primer_pair_dimer_risk_low);
+}
+
+#[test]
+fn test_primer_pair_builder_rejects_overlapping_binding_footprints() {
+    let forward = PrimerDesignPrimerRecord {
+        sequence: "GTAAGCTAGCATCGGGATCCG".to_string(),
+        start_0based: 25,
+        end_0based_exclusive: 46,
+        tm_c: 65.2,
+        gc_fraction: 0.57,
+        anneal_hits: 1,
+        ..PrimerDesignPrimerRecord::default()
+    };
+    let reverse = PrimerDesignPrimerRecord {
+        sequence: "GATCCGTTAGCGTACCTGATCG".to_string(),
+        start_0based: 44,
+        end_0based_exclusive: 66,
+        tm_c: 65.2,
+        gc_fraction: 0.55,
+        anneal_hits: 1,
+        ..PrimerDesignPrimerRecord::default()
+    };
+
+    assert!(
+        GentleEngine::build_primer_design_pair_record(forward, reverse, 25, 66, 40, 250, 3.0, 120,)
+            .is_none(),
+        "opposing PCR primer binding footprints cannot overlap"
+    );
 }
 
 #[test]

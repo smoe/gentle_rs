@@ -14,6 +14,11 @@ Maintenance rule:
 
 ## 2026-07-22
 
+- Rejected opposing PCR primer pairs whose binding footprints overlap, aligned
+  transcript-panel selection with its product matrix, and regenerated the PATZ1
+  SYBR tutorial so every selected pair detects its own design transcript;
+  legacy summary enrichment now preserves unknown origin and restores only
+  explicitly recorded requested-junction overlaps.
 - Completed the `gentle.primer_pair_summary.v2` communication contract with
   canonical design-amplicon coordinates/length, explicit separation from
   cross-transcript predicted products, blank-specificity normalization, and

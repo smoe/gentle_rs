@@ -64,7 +64,7 @@
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "beecd9e82a0336053bf82d63fd54fed530f3357f94f0ff29a7c46ac33d74a092",
     "artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg": "fcd7acb4c9868d6c0e098930a44f1808392b6cd8b9562a0cdfcbbbcd47052482",
     "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json": "39a7665bd286974e1e7dcaf6bc210f009300eb1455e1e1b748aae9f816700c7d",
-    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json": "239030b69af2154e2d33f4a74ab07f46e76238b30e5081861c54bedd648b8d24",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json": "c7b17b1c0005e8041ca0e9368bed5924ee49581138737ac00b0899050a4dfda2",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json": "fcdcdcec09c3d595220276e1dd0a542d876634897ef6c270952c6b40d08c6f54",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json": "a29e3031ecde6dd9f945860bda0be48fbced440bb62f464381d42c331e35db25",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json": "2a23e46ce8c76b8352cb5c2b8dffe3dbd05b8e229dd7da6a50de17de81dc03ef",

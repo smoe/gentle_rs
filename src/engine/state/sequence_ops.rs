@@ -5968,7 +5968,7 @@ impl GentleEngine {
         max_tm_delta_c: f64,
         target_amplicon_bp: usize,
     ) -> Option<PrimerDesignPairRecord> {
-        if reverse.end_0based_exclusive <= forward.start_0based {
+        if reverse.start_0based < forward.end_0based_exclusive {
             return None;
         }
         let forward_anneal_len = forward
@@ -6396,7 +6396,7 @@ impl GentleEngine {
                 }
                 pair_evaluations = pair_evaluations.saturating_add(1);
                 let amplicon_length_bp = rev.end_0based_exclusive.saturating_sub(fwd.start_0based);
-                if rev.end_0based_exclusive <= fwd.start_0based
+                if rev.start_0based < fwd.end_0based_exclusive
                     || amplicon_length_bp < min_amplicon_bp
                     || amplicon_length_bp > max_amplicon_bp
                     || fwd.start_0based > roi_start_0based

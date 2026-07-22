@@ -15751,6 +15751,7 @@ impl GentleEngine {
         primer: &PrimerDesignPrimerRecord,
         previous: &PrimerPairSummaryOligo,
         fallback_display_label: &str,
+        requested_junction_span: bool,
     ) -> PrimerPairSummaryOligo {
         PrimerPairSummaryOligo {
             primer_id: Self::transcript_assay_primer_id(&primer.sequence),
@@ -15761,11 +15762,7 @@ impl GentleEngine {
                 previous.display_label.clone()
             },
             aliases: previous.aliases.clone(),
-            origin: if previous.origin == PrimerPairSummaryOrigin::Unknown {
-                PrimerPairSummaryOrigin::DeNovo
-            } else {
-                previous.origin
-            },
+            origin: previous.origin,
             sequence_5_to_3: primer.sequence.clone(),
             length_nt: primer.length_bp,
             anneal_length_nt: primer.anneal_length_bp,
@@ -15776,7 +15773,7 @@ impl GentleEngine {
             binding_start_0based: primer.start_0based,
             binding_end_0based_exclusive: primer.end_0based_exclusive,
             exon_ordinals: previous.exon_ordinals.clone(),
-            primer_spans_junction: previous.primer_spans_junction,
+            primer_spans_junction: previous.primer_spans_junction || requested_junction_span,
             three_prime_base: primer.three_prime_base.clone(),
             three_prime_gc_clamp: primer.three_prime_gc_clamp,
             longest_homopolymer_run_bp: primer.longest_homopolymer_run_bp,
@@ -15926,6 +15923,10 @@ impl GentleEngine {
             } else {
                 "no_requested_junction_match_reported".to_string()
             };
+            let forward_spans_requested_junction =
+                assay.junction_matches.iter().any(|row| row.forward_spans);
+            let reverse_spans_requested_junction =
+                assay.junction_matches.iter().any(|row| row.reverse_spans);
             let fallback_forward_label = format!("{gene_token}_F");
             let fallback_reverse_label = format!("{gene_token}_R");
             assay.primer_pair_summary = PrimerPairCommunicationSummary {
@@ -15975,12 +15976,14 @@ impl GentleEngine {
                     &assay.primer_pair.forward,
                     &previous.forward,
                     &fallback_forward_label,
+                    forward_spans_requested_junction,
                 ),
                 reverse: Self::primer_pair_summary_oligo(
                     "reverse",
                     &assay.primer_pair.reverse,
                     &previous.reverse,
                     &fallback_reverse_label,
+                    reverse_spans_requested_junction,
                 ),
                 design_amplicon_start_0based: assay.primer_pair.amplicon_start_0based,
                 design_amplicon_end_0based_exclusive: assay
@@ -15991,7 +15994,9 @@ impl GentleEngine {
                 predicted_amplicon_lengths_bp,
                 predicted_products,
                 oligo_qc,
-                amplicon_spans_junction: previous.amplicon_spans_junction,
+                amplicon_spans_junction: previous.amplicon_spans_junction
+                    || forward_spans_requested_junction
+                    || reverse_spans_requested_junction,
                 selected_because_of_junction_evidence: previous
                     .selected_because_of_junction_evidence,
                 selection_evidence: previous.selection_evidence.clone(),
