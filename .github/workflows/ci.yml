@@ -1,5 +1,8 @@
 name: Build and Test GENtle
 
+env:
+  RUST_MIN_STACK: "16777216"
+
 on:
   push:
     branches:
