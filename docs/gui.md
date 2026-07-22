@@ -2654,8 +2654,15 @@ Status output note:
   helpers with structured semantics, so GUI/ClawBio/planner flows can share
   one normalized helper-meaning layer.
 - The same status payload now also includes `effective_cache_dir`,
-  compatibility hints, and a ready-to-run `prepare_command` when the selected
-  genome is not prepared yet.
+  compatibility hints, component-level readiness, and a ready-to-run
+  `prepare_command` only when the selected genome's required components are not
+  valid. A stale whole-prepare activity does not override a valid BLAST
+  component.
+- Prepared reference/helper inspectors show a compact BLAST-component status;
+  hover detail includes genomic-DNA versus transcriptome/cDNA kind,
+  assembly/release, masking, prefix, BLAST database/tool versions,
+  sequence/base counts, content fingerprint, validation warnings, and
+  compatible operations.
 - Reference/helper genome dialogs respect optional process-level shared cache
   overrides:
   - `GENTLE_REFERENCE_CACHE_DIR`
@@ -3945,6 +3952,15 @@ Primer pairs form:
     the status line
   - only annealing segments are BLASTed; saved 5' tails remain provenance in
     the shared report contract
+  - the search does not use BLAST `-max_target_seqs`; the configured maximum
+    hit count is a post-search review threshold, so auxiliary contigs remain in
+    scope
+  - intended genomic products use explicit genomic target geometry rather than
+    cDNA amplicon length, and junction-spanning assays may validly report no
+    contiguous intended genomic product
+  - report JSON keeps genomic carryover/off-target assessment separate from
+    transcriptome/cDNA cross-amplification assessment and records the validated
+    database content identity
 
 qPCR form:
 

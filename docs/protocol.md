@@ -2513,6 +2513,20 @@ Current draft operations:
 - `ExportRnaReadAlignmentDotplotSvg { report_id, path, selection, max_points }`
 - `ExtractRegion { input, from, to, output_id? }`
 - `PrepareGenome { genome_id, catalog_path?, cache_dir?, timeout_seconds? }`
+  - prepared-resource inspection invokes `blastdbcmd` and exposes
+    `gentle.blast_database_inspection.v1` for the BLAST component independently
+    of the overall preparation activity marker
+  - the report records `index_kind = genomic_dna|transcriptome_cdna`, source
+    genome/assembly/release, masking declaration, database prefix and version,
+    sequence count, total bases, `blastdbcmd` executable/version, deterministic
+    index-content fingerprint and algorithm, validation status, warnings, and
+    compatible GENtle operations
+  - `genomes status` / `helpers status` return the inspection under
+    `components.blast_database`; a valid component remains reusable when an
+    older whole-prepare activity record is `stale`
+  - new reference-genome manifests default to `genomic_dna`; transcriptome/cDNA
+    databases use the distinct `transcriptome_cdna` identity so their
+    specificity interpretation cannot be conflated with genomic carryover
 - `ExtractGenomeRegion { genome_id, chromosome, start_1based, end_1based, output_id?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
   - `annotation_scope` accepts `none|core|full` and defaults to `core` when omitted.
   - `max_annotation_features` is an optional safety cap (0 or omitted = unlimited for explicit requests).
@@ -7509,22 +7523,35 @@ Operation progress/cancellation semantics:
 - Target scope in v1:
   - prepared reference genomes only
   - runs through GENtle's existing BLAST index/preflight machinery
-  - local `blastn-short` is used, with `max_hits_per_primer` bounding each
-    primer query
+  - local `blastn-short` is used with short-query settings and without
+    `-max_target_seqs`, so auxiliary contigs are not silently excluded;
+    `max_hits_per_primer` is a post-search review threshold and never truncates
+    the database search
 - Report schema:
   - `gentle.primer_specificity_report.v1`
   - includes BLAST binary preflight, per-primer BLAST invocation provenance,
-    input primers, policy, warnings, primer hits, candidate amplicons, and a
-    summary badge
+    BLAST database content identity, input primers, policy, aggregated
+    warnings, primer hits, candidate amplicons, and a summary badge
   - primer hits report identity, coverage, total mismatches, exact 3' terminal
     mismatch count where prepared subject sequence can be fetched, strand, and
-    1-based subject coordinates
+    1-based subject coordinates; wrapped BLAST identifiers such as
+    `gb|KI270750.1|` are normalized against the prepared FASTA index while the
+    raw identifier remains available
   - candidate amplicons include forward/reverse products plus Primer-BLAST-style
     forward/forward and reverse/reverse warning products
-  - intended products are resolved by saved-report amplicon length when
-    available, otherwise by a unique compatible forward/reverse product
+  - intended genomic products are resolved only from an explicit prepared-FASTA
+    subject and genomic binding interval; cDNA amplicon length is retained as
+    provenance but is never used to identify a genomic product
+  - a junction-spanning RT-PCR primer may legitimately have no contiguous
+    intended genomic product; in a genomic-DNA database that case is evaluated
+    as carryover/off-target evidence rather than forced into an invented target
   - unintended compatible products fail when their combined mismatches remain
     below `min_total_mismatches_to_unintended_target`
+  - `intended_target`, `genomic_specificity`, and
+    `transcriptome_specificity` keep genomic-DNA carryover/off-target evidence
+    separate from whole-transcriptome/cDNA cross-amplification. Only the
+    assessment matching the inspected BLAST index kind is populated by one run;
+    the other remains `not_run`
 - Additive policy vocabulary reserved for design-time parity:
   - `specificity_check = none|report_only|require_pass`
   - `specificity_target_genome_id`
@@ -7558,8 +7585,9 @@ External BLAST handoff for wrapper-owned execution:
   - one query FASTA and one structured command for each primer;
   - authoritative `program` plus `args[]` fields (the rendered `command_line`
     is convenience text only);
-  - explicit `-out` paths, accepted exit code `0`, database identity, resolved
-    genome/catalog/cache provenance, policy, an
+  - explicit `-out` paths, accepted exit code `0`, database prefix plus current
+    content fingerprint/index kind, resolved genome/catalog/cache provenance,
+    intended-target geometry, policy, an
     `all_commands_success` completion policy, and an import command.
 - An outer scheduler owns process lifetime and completion. It should run both
   commands, require a successful exit code, and only then call
@@ -7571,6 +7599,10 @@ External BLAST handoff for wrapper-owned execution:
   from their size: an empty BLAST TSV is a valid no-hit result. It parses the
   completed outputs and applies the same hit, amplicon, and pass/fail logic as
   the inline `AssessPrimerPairSpecificity` path.
+- Import and whole-panel finalization re-inspect the database and refuse a
+  handoff when the content fingerprint or index kind changed at the same
+  prefix. Legacy handoffs without this additive identity remain readable, but
+  emit a warning and should be regenerated before final assay acceptance.
 - GENtle never executes a `command_line` read from a handoff. Adapters should
   dispatch the stored `program` and `args[]` directly.
 
@@ -7580,8 +7612,9 @@ Whole-panel external specificity acceptance:
   GENOME_ID --output-dir DIR` emits
   `gentle.transcript_assay_panel_specificity_handoff.v1`. It binds the current
   transcript-assay panel digest, selected assay ids/ranks and annealing
-  sequences, `gentle.primer_specificity_policy.v1`, prepared-genome identity, BLAST
-  database prefix/options, nested handoff schemas, and structured commands.
+  sequences, `gentle.primer_specificity_policy.v1`, prepared-genome identity,
+  BLAST database prefix/content fingerprint/index kind/options, nested handoff
+  schemas, and structured commands.
 - The adjacent
   `gentle.transcript_assay_panel_specificity_execution_manifest.v1` template is
   process evidence, not a biological decision. For every declared command the

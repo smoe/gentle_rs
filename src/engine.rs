@@ -33,7 +33,8 @@ use crate::{
     },
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
-        BlastExternalBinaryPreflightReport, DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN,
+        BlastDatabaseIndexKind, BlastDatabaseInspectionReport, BlastExternalBinaryPreflightReport,
+        DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN,
         DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN, EnsemblCatalogUpdatePreview,
         EnsemblCatalogUpdateReport, EnsemblInstallableGenomeCatalog,
         EnsemblQuickInstallCatalogWriteReport, EnsemblQuickInstallPreview,
@@ -7719,6 +7720,48 @@ impl GentleEngine {
             })
     }
 
+    pub fn inspect_reference_genome_prepared(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        cache_dir: Option<&str>,
+    ) -> Result<Option<PreparedGenomeInspection>, EngineError> {
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog
+            .inspect_prepared_genome(
+                genome_id,
+                cache_dir.map(str::trim).filter(|value| !value.is_empty()),
+            )
+            .map_err(|error| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not inspect prepared genome '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, error
+                ),
+                cause_chain: vec![],
+            })
+    }
+
+    pub fn inspect_helper_genome_prepared(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<Option<PreparedGenomeInspection>, EngineError> {
+        let (catalog, catalog_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .inspect_prepared_genome(
+                genome_id,
+                cache_dir.map(str::trim).filter(|value| !value.is_empty()),
+            )
+            .map_err(|error| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not inspect prepared helper '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, error
+                ),
+                cause_chain: vec![],
+            })
+    }
+
     pub fn inspect_helper_genome_prepared_compatibility(
         genome_id: &str,
         catalog_path: Option<&str>,
@@ -8241,6 +8284,48 @@ impl GentleEngine {
             cache_dir,
             &mut never_cancel,
         )
+    }
+
+    /// Run a complete short-query search for primer specificity.
+    ///
+    /// The resolved `max_hits` value is a review-warning threshold only; this
+    /// path never asks BLAST to discard database subjects.
+    pub fn blast_reference_genome_complete_with_project_and_request_options(
+        &self,
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        query_sequence: &str,
+        request_override_json: Option<&serde_json::Value>,
+        legacy_task: Option<&str>,
+        legacy_max_hits: Option<usize>,
+        cache_dir: Option<&str>,
+    ) -> Result<GenomeBlastReport, EngineError> {
+        let resolved = self.resolve_blast_options_for_request(
+            request_override_json,
+            legacy_task,
+            legacy_max_hits,
+        )?;
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        let mut report = catalog
+            .blast_sequence_complete_with_cache(
+                genome_id,
+                query_sequence,
+                resolved.max_hits,
+                Some(&resolved.task),
+                cache_dir.map(str::trim).filter(|value| !value.is_empty()),
+            )
+            .map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not run complete primer BLAST search against genome '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, error
+                ),
+                cause_chain: vec![],
+            })?;
+        Self::apply_blast_thresholds_to_report(&mut report, &resolved.thresholds)?;
+        report.options_override_json = request_override_json.cloned();
+        report.effective_options_json = serde_json::to_value(&resolved).ok();
+        Ok(report)
     }
 
     pub fn blast_reference_genome_with_project_and_request_options_and_cancel(

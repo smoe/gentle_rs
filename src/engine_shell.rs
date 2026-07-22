@@ -47942,6 +47942,34 @@ fn execute_reference_and_track_command(
                 )
             }
             .map_err(|e| e.to_string())?;
+            let prepared_inspection = if *helper_mode {
+                GentleEngine::inspect_helper_genome_prepared(
+                    genome_id,
+                    resolved_catalog,
+                    cache_dir.as_deref(),
+                )
+            } else {
+                GentleEngine::inspect_reference_genome_prepared(
+                    resolved_catalog,
+                    genome_id,
+                    cache_dir.as_deref(),
+                )
+            }
+            .map_err(|e| e.to_string())?;
+            let component_ready = prepared_inspection
+                .as_ref()
+                .map(|inspection| {
+                    inspection.sequence_present
+                        && inspection.annotation_present
+                        && inspection.fasta_index_ready
+                        && inspection.gene_index_ready
+                        && inspection
+                            .blast_database
+                            .as_ref()
+                            .map(|database| database.validation_status == "valid")
+                            .unwrap_or(false)
+                })
+                .unwrap_or(false);
             let lifecycle_status =
                 GenomeCatalog::derive_prepare_lifecycle_status(prepared, current_activity.as_ref());
             let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
@@ -47958,7 +47986,7 @@ fn execute_reference_and_track_command(
                 .filter(|value| !value.is_empty())
                 .map(|value| format!(" --catalog {}", quote_shell_arg(value)))
                 .unwrap_or_default();
-            let prepare_command = if lifecycle_status == "running" || lifecycle_status == "ready" {
+            let prepare_command = if lifecycle_status == "running" || component_ready {
                 None
             } else {
                 Some(format!(
@@ -47978,7 +48006,20 @@ fn execute_reference_and_track_command(
                 },
                 genome_id
             );
-            let status_message = if lifecycle_status == "running" {
+            let status_message = if component_ready {
+                let activity_note = (lifecycle_status != "ready")
+                    .then(|| {
+                        format!(
+                            " The overall prepare activity is '{}', but component validation is authoritative for reuse.",
+                            lifecycle_status
+                        )
+                    })
+                    .unwrap_or_default();
+                format!(
+                    "Genome '{}' has ready sequence, annotation, and BLAST components in '{}'.{}",
+                    compatibility.requested_catalog_key, effective_cache_dir, activity_note
+                )
+            } else if lifecycle_status == "running" {
                 let activity_brief = current_activity
                     .as_ref()
                     .and_then(|activity| activity.phase.as_ref())
@@ -48034,6 +48075,8 @@ fn execute_reference_and_track_command(
                     "cache_dir": cache_dir,
                     "effective_cache_dir": effective_cache_dir,
                     "prepared": prepared,
+                    "component_ready": component_ready,
+                    "components": prepared_inspection,
                     "lifecycle_status": lifecycle_status,
                     "current_activity": current_activity,
                     "requested_catalog_key": compatibility.requested_catalog_key,
@@ -48417,6 +48460,8 @@ fn execute_reference_and_track_command(
                         task: report.task.clone(),
                         blastn_executable: report.blastn_executable.clone(),
                         blast_db_prefix: report.blast_db_prefix.clone(),
+                        blast_database_content_fingerprint: None,
+                        blast_database_index_kind: None,
                         command: report.command.clone(),
                         command_line,
                         catalog_path: resolved_catalog.map(str::to_string),

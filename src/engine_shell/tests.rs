@@ -1164,6 +1164,22 @@ fn write_shell_prepared_cache_install(root: &Path, genome_id: &str) -> std::path
 }
 
 #[cfg(unix)]
+fn install_fake_blastdbcmd_info(path: &Path) -> String {
+    let script_path = path.join("fake_blastdbcmd_info.sh");
+    std::fs::write(
+        &script_path,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastdbcmd: 2.17.0+'; exit 0; fi\nif [ \"$1\" = '-db' ] && [ \"$3\" = '-info' ]; then printf 'Database: synthetic\\nBLASTDB Version: 5\\n\\t706 sequences; 3,291,585,349 total letters\\n'; exit 0; fi\nexit 2\n",
+    )
+    .expect("write fake blastdbcmd");
+    let mut permissions = std::fs::metadata(&script_path)
+        .expect("fake blastdbcmd metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&script_path, permissions).expect("enable fake blastdbcmd");
+    script_path.to_string_lossy().to_string()
+}
+
+#[cfg(unix)]
 fn install_fake_primer3(path: &Path, fixture_path: &Path) -> String {
     let script_path = path.join("fake_primer3.sh");
     let script = format!(
@@ -33994,6 +34010,95 @@ fn execute_genomes_status_reports_effective_cache_dir_and_prepare_hint_when_unpr
     assert!(prepare_command.contains("ToyGenome"));
     assert!(prepare_command.contains(shared_cache.to_string_lossy().as_ref()));
     assert_eq!(out.output["lifecycle_status"].as_str(), Some("missing"));
+}
+
+#[cfg(unix)]
+#[test]
+fn execute_genomes_status_uses_component_validation_when_prepare_activity_is_stale() {
+    let _env_lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let td = tempdir().expect("tempdir");
+    let cache = td.path().join("cache");
+    let install_dir = write_shell_prepared_cache_install(&cache, "ToyGenome");
+    let catalog = td.path().join("catalog.json");
+    fs::write(
+        &catalog,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "component-readiness fixture",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            install_dir.join("sequence.fa").display(),
+            install_dir.join("annotation.gtf").display(),
+            cache.display()
+        ),
+    )
+    .expect("write catalog");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("now")
+        .as_millis();
+    let status_path = install_dir.join(".prepare_activity.json");
+    fs::write(
+        &status_path,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "genome_id": "ToyGenome",
+            "status_path": status_path.display().to_string(),
+            "lock_path": install_dir.join(".prepare_activity.lock").display().to_string(),
+            "lifecycle_status": "stale",
+            "prepare_mode": "prepare_or_reuse",
+            "phase": "blast_index",
+            "item": "genome",
+            "bytes_done": 0,
+            "bytes_total": null,
+            "percent": null,
+            "step_id": "blast_index",
+            "step_label": "Build the BLAST index",
+            "started_at_unix_ms": now.saturating_sub(10_000),
+            "updated_at_unix_ms": now.saturating_sub(5_000),
+            "finished_at_unix_ms": now.saturating_sub(5_000),
+            "last_error": "historic activity record",
+            "owner_pid": null
+        }))
+        .expect("serialize stale activity"),
+    )
+    .expect("write stale activity");
+    let fake_blastdbcmd = install_fake_blastdbcmd_info(td.path());
+    let _blastdbcmd = EnvVarGuard::set(crate::genomes::BLASTDBCMD_ENV_BIN, &fake_blastdbcmd);
+
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferenceStatus {
+            helper_mode: false,
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+        },
+    )
+    .expect("execute component-aware status");
+
+    assert_eq!(out.output["lifecycle_status"].as_str(), Some("stale"));
+    assert_eq!(out.output["component_ready"].as_bool(), Some(true));
+    assert_eq!(
+        out.output["components"]["blast_database"]["validation_status"].as_str(),
+        Some("valid")
+    );
+    assert_eq!(
+        out.output["components"]["blast_database"]["sequence_count"].as_u64(),
+        Some(706)
+    );
+    assert!(out.output["prepare_command"].is_null());
+    assert!(
+        out.output["status_message"]
+            .as_str()
+            .is_some_and(|value| value.contains("component validation is authoritative"))
+    );
 }
 
 #[test]

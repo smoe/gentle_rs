@@ -794,6 +794,9 @@ pub struct GENtleApp {
     show_reference_genome_retrieve_dialog: bool,
     show_reference_genome_blast_dialog: bool,
     show_reference_genome_inspector_dialog: bool,
+    prepared_genome_inspection_cache_key: Option<String>,
+    prepared_genome_inspection_cache:
+        Option<Result<(Vec<PreparedGenomeInspection>, Vec<String>), String>>,
     show_cache_cleanup_dialog: bool,
     show_new_sequence_dialog: bool,
     show_uniprot_dialog: bool,
@@ -2610,6 +2613,8 @@ impl Default for GENtleApp {
             show_reference_genome_retrieve_dialog: false,
             show_reference_genome_blast_dialog: false,
             show_reference_genome_inspector_dialog: false,
+            prepared_genome_inspection_cache_key: None,
+            prepared_genome_inspection_cache: None,
             show_cache_cleanup_dialog: false,
             show_new_sequence_dialog: false,
             show_uniprot_dialog: false,
@@ -7986,6 +7991,8 @@ Error: `{err}`"
     }
 
     fn open_reference_genome_inspector_dialog(&mut self) {
+        self.prepared_genome_inspection_cache_key = None;
+        self.prepared_genome_inspection_cache = None;
         self.show_reference_genome_inspector_dialog = true;
     }
 
@@ -13090,6 +13097,8 @@ Error: `{err}`"
                 task: result.report.task.clone(),
                 blastn_executable: result.report.blastn_executable.clone(),
                 blast_db_prefix: result.report.blast_db_prefix.clone(),
+                blast_database_content_fingerprint: None,
+                blast_database_index_kind: None,
                 command: result.report.command.clone(),
                 command_line: Self::format_blast_command_line(
                     &result.report.blastn_executable,

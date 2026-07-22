@@ -71,8 +71,11 @@ pub const SYSTEM_CONFIG_ROOT_ENV: &str = "GENTLE_SYSTEM_CONFIG_ROOT";
 pub const PROJECT_ROOT_ENV: &str = "GENTLE_PROJECT_ROOT";
 pub const DEFAULT_MAKEBLASTDB_BIN: &str = "makeblastdb";
 pub const DEFAULT_BLASTN_BIN: &str = "blastn";
+pub const DEFAULT_BLASTDBCMD_BIN: &str = "blastdbcmd";
 pub const MAKEBLASTDB_ENV_BIN: &str = "GENTLE_MAKEBLASTDB_BIN";
 pub const BLASTN_ENV_BIN: &str = "GENTLE_BLASTN_BIN";
+pub const BLASTDBCMD_ENV_BIN: &str = "GENTLE_BLASTDBCMD_BIN";
+pub const BLAST_DATABASE_INSPECTION_SCHEMA: &str = "gentle.blast_database_inspection.v1";
 pub const PREPARE_GENOME_TIMEOUT_SECS_ENV: &str = "GENTLE_PREPARE_GENOME_TIMEOUT_SECS";
 const DEFAULT_NCBI_EFETCH_ENDPOINT: &str =
     "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi";
@@ -2162,6 +2165,10 @@ struct GenomeInstallManifest {
     blast_index_executable: Option<String>,
     #[serde(default)]
     blast_indexed_at_unix_ms: Option<u128>,
+    #[serde(default)]
+    blast_index_kind: BlastDatabaseIndexKind,
+    #[serde(default)]
+    blast_masking: Option<String>,
     installed_at_unix_ms: u128,
 }
 
@@ -2533,6 +2540,8 @@ pub struct PreparedGenomeInspection {
     pub transcript_index_path: Option<String>,
     pub blast_db_prefix: Option<String>,
     pub blast_index_ready: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blast_database: Option<BlastDatabaseInspectionReport>,
     pub sequence_sha1: Option<String>,
     pub annotation_sha1: Option<String>,
     pub sequence_present: bool,
@@ -2552,6 +2561,54 @@ pub struct PreparedGenomeInspection {
     pub cached_longest_contig_bp: Option<u64>,
     #[serde(default)]
     pub cached_contig_preview: Vec<String>,
+}
+
+/// Biological sequence collection represented by one local BLAST database.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BlastDatabaseIndexKind {
+    /// Contiguous genomic DNA, including primary and auxiliary contigs.
+    #[default]
+    GenomicDna,
+    /// Spliced transcript or cDNA sequence collection.
+    TranscriptomeCdna,
+}
+
+impl BlastDatabaseIndexKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::GenomicDna => "genomic_dna",
+            Self::TranscriptomeCdna => "transcriptome_cdna",
+        }
+    }
+}
+
+/// Current, executable-backed identity and readiness of one BLAST database.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct BlastDatabaseInspectionReport {
+    pub schema: String,
+    pub index_kind: BlastDatabaseIndexKind,
+    pub source_genome_id: String,
+    pub source_assembly: Option<String>,
+    pub source_release: Option<String>,
+    pub masking: String,
+    pub prefix: String,
+    pub blast_database_version: Option<String>,
+    pub sequence_count: Option<u64>,
+    pub total_bases: Option<u64>,
+    pub tool_executable: String,
+    pub tool_version: Option<String>,
+    pub content_fingerprint: Option<String>,
+    pub fingerprint_algorithm: String,
+    pub validation_status: String,
+    pub index_files_present: bool,
+    pub blastdbcmd_reachable: bool,
+    pub status_code: Option<i32>,
+    #[serde(default)]
+    pub compatible_operations: Vec<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -4438,6 +4495,36 @@ impl GenomeCatalog {
         Ok(statuses)
     }
 
+    /// Validate and identify the BLAST component of one prepared genome.
+    ///
+    /// This deliberately ignores the age/status of the encompassing prepare
+    /// activity: a database that `blastdbcmd` can inspect remains usable even
+    /// when an earlier prepare activity record is stale.
+    pub fn inspect_blast_database(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<Option<BlastDatabaseInspectionReport>, String> {
+        let entry = self.entry(genome_id)?;
+        let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
+        let manifest_path = install_dir.join("manifest.json");
+        if !manifest_path.exists() {
+            return Ok(None);
+        }
+        let manifest = Self::load_manifest(&manifest_path)?;
+        let prefix = manifest
+            .blast_db_prefix
+            .as_deref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| default_blast_db_prefix(&install_dir));
+        Ok(Some(inspect_blast_database_prefix(
+            genome_id,
+            entry,
+            &manifest,
+            &prefix,
+        )))
+    }
+
     /// Inspect prepared-install metadata and filesystem state.
     ///
     /// Returns `Ok(None)` when no install manifest exists yet.
@@ -4494,6 +4581,14 @@ impl GenomeCatalog {
             .map(|path| path.exists())
             .unwrap_or(false);
         let blast_index_ready = is_blast_index_ready(&blast_index_files);
+        let blast_database = Some(inspect_blast_database_prefix(
+            genome_id,
+            entry,
+            &manifest,
+            blast_db_prefix_path
+                .as_deref()
+                .unwrap_or_else(|| Path::new("")),
+        ));
         let cache_summary = if fasta_index_ready {
             load_fasta_index(&fasta_index_path)
                 .map(|index| summarize_fasta_index(&index))
@@ -4542,6 +4637,7 @@ impl GenomeCatalog {
                 .map(|path| canonical_or_display(path)),
             blast_db_prefix,
             blast_index_ready,
+            blast_database,
             sequence_sha1: manifest.sequence_sha1.clone(),
             annotation_sha1: manifest.annotation_sha1.clone(),
             sequence_present,
@@ -5700,6 +5796,8 @@ impl GenomeCatalog {
                 blast_db_prefix: Some(canonical_or_display(&blast_prefix_path)),
                 blast_index_executable: blast_outcome.executable.clone(),
                 blast_indexed_at_unix_ms: blast_outcome.ready.then_some(now_unix_ms()),
+                blast_index_kind: BlastDatabaseIndexKind::GenomicDna,
+                blast_masking: Some("source_fasta_as_prepared".to_string()),
                 installed_at_unix_ms: now_unix_ms(),
             };
             Self::write_manifest(&manifest_path, &manifest)?;
@@ -6120,6 +6218,52 @@ FASTA index='{}'.{}{}",
         cache_dir_override: Option<&str>,
         should_cancel: &mut dyn FnMut() -> bool,
     ) -> Result<GenomeBlastReport, String> {
+        self.blast_sequence_with_cache_and_cancel_mode(
+            genome_id,
+            query_sequence,
+            max_hits,
+            task,
+            cache_dir_override,
+            true,
+            should_cancel,
+        )
+    }
+
+    /// Run an exhaustive short-query BLAST without subject-count truncation.
+    ///
+    /// `hit_warning_threshold` is retained in provenance and may trigger a
+    /// warning, but it is never translated to `-max_target_seqs`.
+    pub fn blast_sequence_complete_with_cache(
+        &self,
+        genome_id: &str,
+        query_sequence: &str,
+        hit_warning_threshold: usize,
+        task: Option<&str>,
+        cache_dir_override: Option<&str>,
+    ) -> Result<GenomeBlastReport, String> {
+        let mut never_cancel = || false;
+        self.blast_sequence_with_cache_and_cancel_mode(
+            genome_id,
+            query_sequence,
+            hit_warning_threshold,
+            task,
+            cache_dir_override,
+            false,
+            &mut never_cancel,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn blast_sequence_with_cache_and_cancel_mode(
+        &self,
+        genome_id: &str,
+        query_sequence: &str,
+        max_hits: usize,
+        task: Option<&str>,
+        cache_dir_override: Option<&str>,
+        limit_subjects: bool,
+        should_cancel: &mut dyn FnMut() -> bool,
+    ) -> Result<GenomeBlastReport, String> {
         if should_cancel() {
             return Err(blast_cancelled_error("before blast start"));
         }
@@ -6199,7 +6343,7 @@ FASTA index='{}'.{}{}",
             .map_err(|e| format!("Could not flush temporary BLAST query file: {e}"))?;
         let query_path = canonical_or_display(query_file.path());
 
-        let args = vec![
+        let mut args = vec![
             "-db".to_string(),
             blast_prefix.clone(),
             "-query".to_string(),
@@ -6208,9 +6352,22 @@ FASTA index='{}'.{}{}",
             task.clone(),
             "-outfmt".to_string(),
             BLASTN_OUTFMT_FIELDS.to_string(),
-            "-max_target_seqs".to_string(),
-            max_hits.to_string(),
         ];
+        if limit_subjects {
+            args.extend([
+                "-max_target_seqs".to_string(),
+                max_hits.to_string(),
+            ]);
+        } else {
+            args.extend([
+                "-evalue".to_string(),
+                "1000".to_string(),
+                "-dust".to_string(),
+                "no".to_string(),
+                "-soft_masking".to_string(),
+                "false".to_string(),
+            ]);
+        }
         let mut child = Command::new(&blastn_executable)
             .args(&args)
             .stdout(Stdio::piped())
@@ -6255,6 +6412,12 @@ FASTA index='{}'.{}{}",
         }
         if !additional_warnings.is_empty() {
             blast_outcome.warnings.extend(additional_warnings);
+        }
+        if !limit_subjects && hits.len() > max_hits {
+            blast_outcome.warnings.push(format!(
+                "Complete primer search returned {} HSPs, above the configured review threshold {}; no database subjects were excluded or truncated",
+                hits.len(), max_hits
+            ));
         }
         Ok(GenomeBlastReport {
             genome_id: resolved_genome_id,
@@ -9998,8 +10161,9 @@ fn reset_prepared_genome_index_artifacts(
 }
 
 fn is_blast_index_suffix(suffix: &str) -> bool {
+    let terminal_suffix = suffix.rsplit('.').next().unwrap_or(suffix);
     matches!(
-        suffix,
+        terminal_suffix,
         "nhr" | "nin" | "nsq" | "ndb" | "not" | "ntf" | "nto" | "nog" | "nos" | "nsd" | "nsi"
     )
 }
@@ -10052,6 +10216,205 @@ fn is_blast_index_ready(index_files: &[PathBuf]) -> bool {
         }
     }
     (has_nhr && has_nin && has_nsq) || has_ndb
+}
+
+const BLAST_FINGERPRINT_FULL_FILE_MAX_BYTES: u64 = 16 * 1024 * 1024;
+const BLAST_FINGERPRINT_SAMPLE_BYTES: usize = 1024 * 1024;
+const BLAST_FINGERPRINT_ALGORITHM: &str =
+    "sha256:index-file-full-or-edge-sampled-v1";
+
+fn blast_index_file_identity(path: &Path) -> Result<String, String> {
+    let metadata = fs::metadata(path)
+        .map_err(|error| format!("Could not inspect '{}': {error}", path.display()))?;
+    let size = metadata.len();
+    let digest = if size <= BLAST_FINGERPRINT_FULL_FILE_MAX_BYTES {
+        crate::digest_utils::sha256_file_hex(path)
+            .map_err(|error| format!("Could not hash '{}': {error}", path.display()))?
+    } else {
+        let mut file = File::open(path)
+            .map_err(|error| format!("Could not open '{}': {error}", path.display()))?;
+        let sample_len = BLAST_FINGERPRINT_SAMPLE_BYTES.min(size as usize);
+        let mut sampled = Vec::with_capacity(sample_len.saturating_mul(2).saturating_add(32));
+        sampled.extend_from_slice(format!("size={size}\n").as_bytes());
+        let mut head = vec![0u8; sample_len];
+        file.read_exact(&mut head)
+            .map_err(|error| format!("Could not sample '{}': {error}", path.display()))?;
+        sampled.extend_from_slice(&head);
+        let tail_start = size.saturating_sub(sample_len as u64);
+        file.seek(SeekFrom::Start(tail_start))
+            .map_err(|error| format!("Could not seek '{}': {error}", path.display()))?;
+        let mut tail = vec![0u8; sample_len];
+        file.read_exact(&mut tail)
+            .map_err(|error| format!("Could not sample '{}': {error}", path.display()))?;
+        sampled.extend_from_slice(&tail);
+        crate::digest_utils::sha256_hex_bytes(&sampled)
+    };
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    Ok(format!("{file_name}\t{size}\t{digest}"))
+}
+
+fn blast_index_content_fingerprint(index_files: &[PathBuf]) -> Result<String, String> {
+    let mut identities = index_files
+        .iter()
+        .map(|path| blast_index_file_identity(path))
+        .collect::<Result<Vec<_>, _>>()?;
+    identities.sort();
+    Ok(crate::digest_utils::sha256_prefixed_str(
+        &identities.join("\n"),
+    ))
+}
+
+fn first_decimal_u64(text: &str) -> Option<u64> {
+    text.split_whitespace().find_map(|token| {
+        let digits = token
+            .chars()
+            .filter(|ch| ch.is_ascii_digit())
+            .collect::<String>();
+        (!digits.is_empty()).then(|| digits.parse::<u64>().ok()).flatten()
+    })
+}
+
+fn parse_blastdbcmd_info(text: &str) -> (Option<String>, Option<u64>, Option<u64>) {
+    let mut database_version = None;
+    let mut sequence_count = None;
+    let mut total_bases = None;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.starts_with("blastdb version:") {
+            database_version = trimmed
+                .split_once(':')
+                .map(|(_, value)| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+        }
+        if lower.contains("sequences") && lower.contains("total") {
+            let mut parts = trimmed.split(';');
+            sequence_count = parts.next().and_then(first_decimal_u64);
+            total_bases = parts.next().and_then(first_decimal_u64);
+        }
+    }
+    (database_version, sequence_count, total_bases)
+}
+
+fn blast_database_compatible_operations(kind: BlastDatabaseIndexKind) -> Vec<String> {
+    match kind {
+        BlastDatabaseIndexKind::GenomicDna => vec![
+            "genomes blast".to_string(),
+            "primers specificity".to_string(),
+            "primers specificity-plan".to_string(),
+            "primers transcript-assay-specificity-plan".to_string(),
+        ],
+        BlastDatabaseIndexKind::TranscriptomeCdna => vec![
+            "genomes blast".to_string(),
+            "primers specificity (whole-transcriptome cDNA)".to_string(),
+        ],
+    }
+}
+
+fn inspect_blast_database_prefix(
+    genome_id: &str,
+    entry: &GenomeCatalogEntry,
+    manifest: &GenomeInstallManifest,
+    prefix: &Path,
+) -> BlastDatabaseInspectionReport {
+    let index_files = collect_blast_index_files(prefix);
+    let index_files_present = is_blast_index_ready(&index_files);
+    let executable = resolve_tool_executable(BLASTDBCMD_ENV_BIN, DEFAULT_BLASTDBCMD_BIN);
+    let mut report = BlastDatabaseInspectionReport {
+        schema: BLAST_DATABASE_INSPECTION_SCHEMA.to_string(),
+        index_kind: manifest.blast_index_kind,
+        source_genome_id: genome_id.to_string(),
+        source_assembly: entry
+            .ncbi_assembly_accession
+            .clone()
+            .or_else(|| entry.ncbi_assembly_name.clone())
+            .or_else(|| Some(genome_id.to_string())),
+        source_release: entry.ensembl_template.as_ref().map(|template| {
+            format!("{} release {}", template.provider, template.release)
+        }),
+        masking: manifest
+            .blast_masking
+            .clone()
+            .unwrap_or_else(|| "not_recorded".to_string()),
+        prefix: canonical_or_display(prefix),
+        tool_executable: executable.clone(),
+        fingerprint_algorithm: BLAST_FINGERPRINT_ALGORITHM.to_string(),
+        index_files_present,
+        compatible_operations: blast_database_compatible_operations(manifest.blast_index_kind),
+        ..BlastDatabaseInspectionReport::default()
+    };
+    if index_files_present {
+        match blast_index_content_fingerprint(&index_files) {
+            Ok(fingerprint) => report.content_fingerprint = Some(fingerprint),
+            Err(error) => report.warnings.push(error),
+        }
+    } else {
+        report
+            .warnings
+            .push("BLAST index files are incomplete or missing".to_string());
+    }
+
+    match Command::new(&executable).arg("-version").output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let version = first_non_empty_output_line(&stdout, &stderr);
+            if version != "no output" {
+                report.tool_version = Some(version);
+            }
+        }
+        Err(error) => report.warnings.push(format!(
+            "Could not probe blastdbcmd version with '{}': {error}",
+            executable
+        )),
+    }
+
+    match Command::new(&executable)
+        .args(["-db", &report.prefix, "-info"])
+        .output()
+    {
+        Ok(output) => {
+            report.blastdbcmd_reachable = true;
+            report.status_code = output.status.code();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let (database_version, sequence_count, total_bases) =
+                parse_blastdbcmd_info(&stdout);
+            report.blast_database_version = database_version;
+            report.sequence_count = sequence_count;
+            report.total_bases = total_bases;
+            if !stderr.trim().is_empty() {
+                report
+                    .warnings
+                    .push(format!("blastdbcmd stderr: {}", stderr.trim()));
+            }
+            report.validation_status = if output.status.success()
+                && index_files_present
+                && sequence_count.unwrap_or(0) > 0
+                && total_bases.unwrap_or(0) > 0
+                && report.content_fingerprint.is_some()
+            {
+                "valid".to_string()
+            } else {
+                "invalid".to_string()
+            };
+        }
+        Err(error) => {
+            report.validation_status = if index_files_present {
+                "tool_unavailable".to_string()
+            } else {
+                "invalid".to_string()
+            };
+            report.warnings.push(format!(
+                "Could not execute blastdbcmd '{}': {error}",
+                executable
+            ));
+        }
+    }
+    report
 }
 
 fn first_non_empty_output_line(stdout: &str, stderr: &str) -> String {
@@ -11976,6 +12339,8 @@ mod tests {
             blast_db_prefix: Some(canonical_or_display(&blast_prefix)),
             blast_index_executable: Some("makeblastdb".to_string()),
             blast_indexed_at_unix_ms: Some(123),
+            blast_index_kind: BlastDatabaseIndexKind::GenomicDna,
+            blast_masking: Some("not_recorded".to_string()),
             installed_at_unix_ms: 456,
         };
         GenomeCatalog::write_manifest(&manifest_path, &manifest).unwrap();
@@ -16388,6 +16753,79 @@ mod tests {
                 .iter()
                 .any(|stat| stat.group == PreparedCacheArtifactGroup::BlastDb)
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn blast_database_inspection_reports_component_identity_and_detects_replacement() {
+        let _lock = genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let td = tempdir().unwrap();
+        let root = td.path().join("cache");
+        let (install_dir, blast_prefix) = write_prepared_cache_install(&root, "ToyGenome");
+        let catalog_path = td.path().join("catalog.json");
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "ToyGenome": {{
+    "description": "synthetic BLAST inspection fixture",
+    "ncbi_assembly_accession": "GCF_TEST.1",
+    "ncbi_assembly_name": "ToyAssembly1",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+                install_dir.join("sequence.fa").display(),
+                install_dir.join("annotation.gtf").display(),
+                root.display()
+            ),
+        )
+        .unwrap();
+        let blastdbcmd = td.path().join("blastdbcmd.sh");
+        fs::write(
+            &blastdbcmd,
+            "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastdbcmd: 2.17.0+'; exit 0; fi\nif [ \"$1\" = '-db' ] && [ \"$3\" = '-info' ]; then printf 'Database: synthetic\\nBLASTDB Version: 5\\n\\t706 sequences; 3,291,585,349 total letters\\n'; exit 0; fi\nexit 2\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&blastdbcmd).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&blastdbcmd, permissions).unwrap();
+        let _blastdbcmd = EnvVarGuard::set(
+            BLASTDBCMD_ENV_BIN,
+            blastdbcmd.to_string_lossy().as_ref(),
+        );
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let first = catalog
+            .inspect_blast_database("ToyGenome", None)
+            .unwrap()
+            .expect("BLAST inspection");
+        assert_eq!(first.schema, BLAST_DATABASE_INSPECTION_SCHEMA);
+        assert_eq!(first.index_kind, BlastDatabaseIndexKind::GenomicDna);
+        assert_eq!(first.source_assembly.as_deref(), Some("GCF_TEST.1"));
+        assert_eq!(first.blast_database_version.as_deref(), Some("5"));
+        assert_eq!(first.sequence_count, Some(706));
+        assert_eq!(first.total_bases, Some(3_291_585_349));
+        assert_eq!(first.validation_status, "valid");
+        assert!(first.content_fingerprint.is_some());
+        assert!(
+            first
+                .compatible_operations
+                .iter()
+                .any(|operation| operation == "primers specificity")
+        );
+
+        fs::write(blast_prefix.with_extension("nsq"), "replacement").unwrap();
+        let replaced = catalog
+            .inspect_blast_database("ToyGenome", None)
+            .unwrap()
+            .expect("replacement BLAST inspection");
+        assert_ne!(first.content_fingerprint, replaced.content_fingerprint);
+        assert!(is_blast_index_suffix("00.nsq"));
+        assert!(is_blast_index_suffix("17.nhr"));
     }
 
     #[test]

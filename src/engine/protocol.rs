@@ -14,6 +14,8 @@
 
 use std::collections::HashMap;
 
+use crate::genomes::BlastDatabaseInspectionReport;
+
 pub use gentle_protocol::{
     ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_SUMMARY_SCHEMA,
     ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA, AdapterCaptureProtectionMode, AdapterCaptureStyle,
@@ -5371,6 +5373,10 @@ pub struct BlastInvocationProvenance {
     pub task: String,
     pub blastn_executable: String,
     pub blast_db_prefix: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blast_database_content_fingerprint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blast_database_index_kind: Option<String>,
     pub command: Vec<String>,
     pub command_line: String,
     pub catalog_path: Option<String>,
@@ -5733,6 +5739,8 @@ pub struct PrimerSpecificityInputPrimer {
 pub struct PrimerSpecificityPrimerHit {
     pub hit_index: usize,
     pub role: PrimerSpecificityPrimerRole,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_subject_id: Option<String>,
     pub subject_id: String,
     pub identity_percent: f64,
     pub alignment_length_bp: usize,
@@ -5753,6 +5761,56 @@ pub struct PrimerSpecificityPrimerHit {
     pub accepted_by_policy: bool,
     #[serde(default)]
     pub rejection_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// How GENtle knows the intended target of one specificity assessment.
+pub enum PrimerSpecificityIntendedTargetModel {
+    #[default]
+    Unknown,
+    GenomicInterval,
+    JunctionSpanning,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One closed, one-based interval on the BLAST subject sequence.
+pub struct PrimerSpecificitySubjectRange {
+    pub start_1based: usize,
+    pub end_1based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Explicit intended-target geometry; never inferred from cDNA product length.
+pub struct PrimerSpecificityIntendedTarget {
+    pub model: PrimerSpecificityIntendedTargetModel,
+    pub subject_id: Option<String>,
+    #[serde(default)]
+    pub forward_binding_ranges: Vec<PrimerSpecificitySubjectRange>,
+    #[serde(default)]
+    pub reverse_binding_ranges: Vec<PrimerSpecificitySubjectRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_product_range: Option<PrimerSpecificitySubjectRange>,
+    pub contiguous_genomic_product_expected: bool,
+    pub source: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One target-space interpretation kept separate from the legacy aggregate.
+pub struct PrimerSpecificityTargetAssessment {
+    pub target_space: String,
+    pub status: String,
+    pub intended_target_model: PrimerSpecificityIntendedTargetModel,
+    pub contiguous_intended_product_expected: bool,
+    pub intended_product_observed: bool,
+    pub compatible_product_count: usize,
+    pub failing_off_target_product_count: usize,
+    pub summary: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -5810,6 +5868,10 @@ pub struct PrimerSpecificityReport {
     pub target_kind: String,
     pub target_genome_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blast_database: Option<BlastDatabaseInspectionReport>,
+    #[serde(default)]
+    pub intended_target: PrimerSpecificityIntendedTarget,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalog_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_dir: Option<String>,
@@ -5829,6 +5891,10 @@ pub struct PrimerSpecificityReport {
     pub amplicons: Vec<PrimerSpecificityAmplicon>,
     #[serde(default)]
     pub summary: PrimerSpecificitySummary,
+    #[serde(default)]
+    pub genomic_specificity: PrimerSpecificityTargetAssessment,
+    #[serde(default)]
+    pub transcriptome_specificity: PrimerSpecificityTargetAssessment,
     #[serde(default)]
     pub warnings: Vec<String>,
 }
@@ -5886,6 +5952,10 @@ pub struct PrimerSpecificityHandoff {
     #[serde(default)]
     pub blast_preflight: BlastExternalBinaryPreflightReport,
     pub blast_db_prefix: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blast_database: Option<BlastDatabaseInspectionReport>,
+    #[serde(default)]
+    pub intended_target: PrimerSpecificityIntendedTarget,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effective_blast_options: Option<BlastResolvedOptions>,
     #[serde(default)]

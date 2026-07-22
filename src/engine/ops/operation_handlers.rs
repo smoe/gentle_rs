@@ -97,6 +97,7 @@ struct PrimerSpecificityResolvedInput {
     pair_rank: Option<usize>,
     pair_index: Option<usize>,
     expected_amplicon_length_bp: Option<usize>,
+    intended_target: PrimerSpecificityIntendedTarget,
     forward: PrimerSpecificityInputPrimer,
     reverse: PrimerSpecificityInputPrimer,
 }
@@ -9531,6 +9532,75 @@ impl GentleEngine {
         })
     }
 
+    fn primer_specificity_unknown_intended_target(source: &str) -> PrimerSpecificityIntendedTarget {
+        PrimerSpecificityIntendedTarget {
+            source: source.to_string(),
+            warnings: vec![
+                "No explicit genomic intended-target geometry was available; GENtle will not infer an intended product from cDNA amplicon length."
+                    .to_string(),
+            ],
+            ..PrimerSpecificityIntendedTarget::default()
+        }
+    }
+
+    fn primer_specificity_subject_range_from_local(
+        anchor: &SequenceGenomeAnchorSummary,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> Option<PrimerSpecificitySubjectRange> {
+        Self::genomic_interval_from_anchor(anchor, start_0based, end_0based_exclusive).map(
+            |(start_1based, end_1based)| PrimerSpecificitySubjectRange {
+                start_1based,
+                end_1based,
+            },
+        )
+    }
+
+    fn primer_specificity_intended_target_from_primer_report(
+        &self,
+        report: &PrimerDesignReport,
+        pair: &PrimerDesignPairRecord,
+    ) -> PrimerSpecificityIntendedTarget {
+        let Ok(anchor) = self.sequence_genome_anchor_summary(&report.template) else {
+            return Self::primer_specificity_unknown_intended_target(
+                "primer_design_report_without_genome_anchor",
+            );
+        };
+        let Some(forward) = Self::primer_specificity_subject_range_from_local(
+            &anchor,
+            pair.forward.start_0based,
+            pair.forward.end_0based_exclusive,
+        ) else {
+            return Self::primer_specificity_unknown_intended_target(
+                "primer_design_report_invalid_forward_geometry",
+            );
+        };
+        let Some(reverse) = Self::primer_specificity_subject_range_from_local(
+            &anchor,
+            pair.reverse.start_0based,
+            pair.reverse.end_0based_exclusive,
+        ) else {
+            return Self::primer_specificity_unknown_intended_target(
+                "primer_design_report_invalid_reverse_geometry",
+            );
+        };
+        let expected_product_range = Self::primer_specificity_subject_range_from_local(
+            &anchor,
+            pair.amplicon_start_0based,
+            pair.amplicon_end_0based_exclusive,
+        );
+        PrimerSpecificityIntendedTarget {
+            model: PrimerSpecificityIntendedTargetModel::GenomicInterval,
+            subject_id: Some(anchor.chromosome),
+            forward_binding_ranges: vec![forward],
+            reverse_binding_ranges: vec![reverse],
+            expected_product_range,
+            contiguous_genomic_product_expected: true,
+            source: format!("primer_design_report:{}:pair_rank={}", report.report_id, pair.rank),
+            warnings: vec![],
+        }
+    }
+
     fn resolve_primer_specificity_input(
         &self,
         primer_report_id: Option<&str>,
@@ -9545,6 +9615,9 @@ impl GentleEngine {
                 pair_rank: None,
                 pair_index: None,
                 expected_amplicon_length_bp: None,
+                intended_target: Self::primer_specificity_unknown_intended_target(
+                    "explicit_primer_sequences",
+                ),
                 forward: Self::primer_specificity_input_from_explicit(
                     PrimerSpecificityPrimerRole::Forward,
                     forward,
@@ -9607,6 +9680,8 @@ impl GentleEngine {
                     pair_rank: Some(pair.rank),
                     pair_index: Some(resolved_index),
                     expected_amplicon_length_bp: Some(pair.amplicon_length_bp),
+                    intended_target: self
+                        .primer_specificity_intended_target_from_primer_report(&report, pair),
                     forward: Self::primer_specificity_input_from_record(
                         PrimerSpecificityPrimerRole::Forward,
                         &pair.forward,
@@ -9642,6 +9717,7 @@ impl GentleEngine {
 
     fn primer_specificity_blast_provenance(
         report: &GenomeBlastReport,
+        database: Option<&BlastDatabaseInspectionReport>,
         query_label: &str,
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
@@ -9654,6 +9730,10 @@ impl GentleEngine {
             task: report.task.clone(),
             blastn_executable: report.blastn_executable.clone(),
             blast_db_prefix: report.blast_db_prefix.clone(),
+            blast_database_content_fingerprint: database
+                .and_then(|database| database.content_fingerprint.clone()),
+            blast_database_index_kind: database
+                .map(|database| database.index_kind.as_str().to_string()),
             command: report.command.clone(),
             command_line: report.command.join(" "),
             catalog_path: catalog_path
@@ -9671,6 +9751,66 @@ impl GentleEngine {
 
     fn primer_specificity_iupac_bases_match(subject_base: u8, query_base: u8) -> bool {
         Self::cdna_assay_iupac_mismatch_count(&[subject_base], &[query_base]) == Some(0)
+    }
+
+    fn primer_specificity_subject_aliases(
+        catalog: &GenomeCatalog,
+        target_genome_id: &str,
+        cache_dir: Option<&str>,
+    ) -> BTreeMap<String, String> {
+        let mut aliases = BTreeMap::new();
+        let records = catalog
+            .list_chromosome_lengths(
+                target_genome_id,
+                cache_dir.map(str::trim).filter(|value| !value.is_empty()),
+            )
+            .unwrap_or_default();
+        let mut versionless = BTreeMap::<String, Vec<String>>::new();
+        for record in records {
+            let canonical = record.chromosome;
+            aliases.insert(canonical.clone(), canonical.clone());
+            aliases.insert(canonical.to_ascii_lowercase(), canonical.clone());
+            if let Some((base, version)) = canonical.rsplit_once('.')
+                && version.chars().all(|ch| ch.is_ascii_digit())
+            {
+                versionless
+                    .entry(base.to_string())
+                    .or_default()
+                    .push(canonical.clone());
+            }
+        }
+        for (base, values) in versionless {
+            if values.len() == 1 {
+                aliases.insert(base.clone(), values[0].clone());
+                aliases.insert(base.to_ascii_lowercase(), values[0].clone());
+            }
+        }
+        aliases
+    }
+
+    pub(crate) fn primer_specificity_normalize_subject_id(
+        raw: &str,
+        aliases: &BTreeMap<String, String>,
+    ) -> String {
+        let raw = raw.trim();
+        let mut candidates = vec![raw];
+        if let Some(first) = raw.split_whitespace().next() {
+            candidates.push(first);
+        }
+        candidates.extend(
+            raw.split('|')
+                .map(str::trim)
+                .filter(|value| !value.is_empty()),
+        );
+        for candidate in candidates {
+            if let Some(canonical) = aliases
+                .get(candidate)
+                .or_else(|| aliases.get(&candidate.to_ascii_lowercase()))
+            {
+                return canonical.clone();
+            }
+        }
+        raw.to_string()
     }
 
     fn primer_specificity_three_prime_mismatches(
@@ -9736,9 +9876,14 @@ impl GentleEngine {
         hit_index: usize,
         query_sequence: &str,
         hit: &BlastHit,
+        subject_aliases: &BTreeMap<String, String>,
         policy: &PrimerSpecificityPolicy,
         warnings: &mut Vec<String>,
     ) -> PrimerSpecificityPrimerHit {
+        let canonical_subject_id =
+            Self::primer_specificity_normalize_subject_id(&hit.subject_id, subject_aliases);
+        let mut canonical_hit = hit.clone();
+        canonical_hit.subject_id = canonical_subject_id.clone();
         let query_length = query_sequence.len().max(1);
         let query_coverage_fraction = hit
             .query_coverage_percent
@@ -9749,19 +9894,16 @@ impl GentleEngine {
             catalog,
             target_genome_id,
             cache_dir,
-            hit,
+            &canonical_hit,
             query_sequence,
             policy.three_prime_window_bp,
         ) {
             Ok(value) => value,
             Err(error) => {
                 warnings.push(format!(
-                    "Could not fetch subject sequence for {} hit {} on {}:{}..{} to count 3' mismatches exactly: {}",
+                    "Could not fetch subject sequence for {} primer on {} to count 3' mismatches exactly: {}",
                     role.as_str(),
-                    hit_index,
-                    hit.subject_id,
-                    hit.subject_start.min(hit.subject_end),
-                    hit.subject_start.max(hit.subject_end),
+                    canonical_hit.subject_id,
                     error
                 ));
                 let aligned_to_three_prime = hit.query_start.max(hit.query_end) >= query_length;
@@ -9790,7 +9932,9 @@ impl GentleEngine {
         PrimerSpecificityPrimerHit {
             hit_index,
             role,
-            subject_id: hit.subject_id.clone(),
+            raw_subject_id: (canonical_subject_id != hit.subject_id)
+                .then(|| hit.subject_id.clone()),
+            subject_id: canonical_subject_id,
             identity_percent: hit.identity_percent,
             alignment_length_bp: hit.alignment_length,
             mismatches: hit.mismatches,
@@ -9814,6 +9958,27 @@ impl GentleEngine {
             accepted_by_policy: rejection_reasons.is_empty(),
             rejection_reasons,
         }
+    }
+
+    pub(crate) fn primer_specificity_aggregate_warnings(warnings: Vec<String>) -> Vec<String> {
+        let mut counts = BTreeMap::<String, usize>::new();
+        for warning in warnings {
+            let warning = warning.trim();
+            if warning.is_empty() {
+                continue;
+            }
+            *counts.entry(warning.to_string()).or_default() += 1;
+        }
+        counts
+            .into_iter()
+            .map(|(warning, count)| {
+                if count == 1 {
+                    warning
+                } else {
+                    format!("{warning} (repeated {count} times)")
+                }
+            })
+            .collect()
     }
 
     fn primer_specificity_inward_amplicon_bounds(
@@ -9932,43 +10097,41 @@ impl GentleEngine {
 
     pub(crate) fn primer_specificity_finalize_amplicons(
         amplicons: &mut [PrimerSpecificityAmplicon],
-        expected_amplicon_length_bp: Option<usize>,
+        intended_target: &PrimerSpecificityIntendedTarget,
         policy: &PrimerSpecificityPolicy,
     ) {
-        let intended_index = if let Some(expected_len) = expected_amplicon_length_bp {
+        let intended_index = if intended_target.model
+            == PrimerSpecificityIntendedTargetModel::GenomicInterval
+            && intended_target.contiguous_genomic_product_expected
+        {
+            let expected_subject = intended_target.subject_id.as_deref();
+            let expected_range = intended_target.expected_product_range.as_ref();
             let matches = amplicons
                 .iter()
                 .enumerate()
                 .filter(|(_, amplicon)| {
                     amplicon.kind == PrimerSpecificityAmpliconKind::ForwardReverse
                         && amplicon.terminal_policy_pass
-                        && amplicon.length_bp == expected_len
+                        && expected_subject == Some(amplicon.subject_id.as_str())
+                        && expected_range
+                            .map(|range| {
+                                range.start_1based == amplicon.start_1based
+                                    && range.end_1based == amplicon.end_1based
+                            })
+                            .unwrap_or(false)
                 })
                 .map(|(idx, _)| idx)
                 .collect::<Vec<_>>();
             (matches.len() == 1).then(|| matches[0])
         } else {
-            let matches = amplicons
-                .iter()
-                .enumerate()
-                .filter(|(_, amplicon)| {
-                    amplicon.kind == PrimerSpecificityAmpliconKind::ForwardReverse
-                        && amplicon.terminal_policy_pass
-                })
-                .map(|(idx, _)| idx)
-                .collect::<Vec<_>>();
-            (matches.len() == 1).then(|| matches[0])
+            None
         };
         if let Some(idx) = intended_index
             && let Some(amplicon) = amplicons.get_mut(idx)
         {
             amplicon.intended = true;
-            amplicon.intended_reason = Some(
-                expected_amplicon_length_bp
-                    .map(|_| "matches_saved_primer_pair_amplicon_length")
-                    .unwrap_or("unique_forward_reverse_product")
-                    .to_string(),
-            );
+            amplicon.intended_reason =
+                Some("matches_explicit_subject_and_genomic_product_interval".to_string());
         }
         for amplicon in amplicons {
             if !amplicon.terminal_policy_pass {
@@ -9992,10 +10155,12 @@ impl GentleEngine {
         }
     }
 
-    fn primer_specificity_summary(
+    pub(crate) fn primer_specificity_summary(
         forward_hits: &[PrimerSpecificityPrimerHit],
         reverse_hits: &[PrimerSpecificityPrimerHit],
         amplicons: &[PrimerSpecificityAmplicon],
+        intended_target: &PrimerSpecificityIntendedTarget,
+        index_kind: BlastDatabaseIndexKind,
     ) -> PrimerSpecificitySummary {
         let primer_hit_count = forward_hits.len().saturating_add(reverse_hits.len());
         let accepted_primer_hit_count = forward_hits
@@ -10015,10 +10180,31 @@ impl GentleEngine {
             .iter()
             .filter(|amplicon| amplicon.specificity_failure)
             .count();
+        let target_known = intended_target.model != PrimerSpecificityIntendedTargetModel::Unknown;
+        let requires_contiguous_intended = intended_target.contiguous_genomic_product_expected
+            || index_kind == BlastDatabaseIndexKind::TranscriptomeCdna;
+        let intended_requirement_met = if requires_contiguous_intended {
+            intended_amplicon_count == 1
+        } else {
+            target_known
+        };
         let specificity_pass =
-            intended_amplicon_count == 1 && failing_unintended_amplicon_count == 0;
-        let status = if specificity_pass { "pass" } else { "fail" }.to_string();
-        let summary = if specificity_pass {
+            target_known && intended_requirement_met && failing_unintended_amplicon_count == 0;
+        let status = if !target_known {
+            "not_assessed"
+        } else if specificity_pass {
+            "pass"
+        } else {
+            "fail"
+        }
+        .to_string();
+        let summary = if !target_known {
+            "Off-target products were enumerated, but no explicit intended-target geometry was available; aggregate specificity is not assessed."
+                .to_string()
+        } else if specificity_pass && !requires_contiguous_intended {
+            "No failing contiguous genomic carryover/off-target product was found; the junction-spanning intended cDNA target is not expected to exist contiguously in genomic DNA."
+                .to_string()
+        } else if specificity_pass {
             "Primer pair has one intended compatible product and no failing unintended products under the configured local BLAST policy.".to_string()
         } else if intended_amplicon_count == 0 {
             "Primer pair did not yield a unique intended compatible product under the configured local BLAST policy.".to_string()
@@ -10038,6 +10224,44 @@ impl GentleEngine {
             unintended_amplicon_count,
             failing_unintended_amplicon_count,
             summary,
+        }
+    }
+
+    fn primer_specificity_target_assessments(
+        summary: &PrimerSpecificitySummary,
+        amplicons: &[PrimerSpecificityAmplicon],
+        intended_target: &PrimerSpecificityIntendedTarget,
+        index_kind: BlastDatabaseIndexKind,
+    ) -> (PrimerSpecificityTargetAssessment, PrimerSpecificityTargetAssessment) {
+        let active = PrimerSpecificityTargetAssessment {
+            target_space: index_kind.as_str().to_string(),
+            status: summary.status.clone(),
+            intended_target_model: intended_target.model,
+            contiguous_intended_product_expected: intended_target
+                .contiguous_genomic_product_expected,
+            intended_product_observed: amplicons.iter().any(|amplicon| amplicon.intended),
+            compatible_product_count: amplicons
+                .iter()
+                .filter(|amplicon| amplicon.terminal_policy_pass)
+                .count(),
+            failing_off_target_product_count: amplicons
+                .iter()
+                .filter(|amplicon| amplicon.specificity_failure)
+                .count(),
+            summary: summary.summary.clone(),
+        };
+        let not_run = |target_space: &str| PrimerSpecificityTargetAssessment {
+            target_space: target_space.to_string(),
+            status: "not_run".to_string(),
+            summary: format!(
+                "No {} BLAST database was assessed in this report.",
+                target_space
+            ),
+            ..PrimerSpecificityTargetAssessment::default()
+        };
+        match index_kind {
+            BlastDatabaseIndexKind::GenomicDna => (active, not_run("transcriptome_cdna")),
+            BlastDatabaseIndexKind::TranscriptomeCdna => (not_run("genomic_dna"), active),
         }
     }
 
@@ -10083,6 +10307,9 @@ impl GentleEngine {
             pair_rank: Some(pair.rank),
             pair_index: None,
             expected_amplicon_length_bp: Some(pair.amplicon_length_bp),
+            intended_target: Self::primer_specificity_unknown_intended_target(
+                "unpersisted_primer_design_pair",
+            ),
             forward: Self::primer_specificity_input_from_record(
                 PrimerSpecificityPrimerRole::Forward,
                 &pair.forward,
@@ -10256,6 +10483,29 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        let blast_database = inspection
+            .blast_database
+            .clone()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Prepared genome '{}' has no BLAST database inspection record",
+                    resolution.resolved_genome_id
+                ),
+                cause_chain: vec![],
+            })?;
+        if blast_database.validation_status != "valid" {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Prepared genome '{}' BLAST database is not validated (status '{}'): {}",
+                    resolution.resolved_genome_id,
+                    blast_database.validation_status,
+                    blast_database.warnings.join("; ")
+                ),
+                cause_chain: vec![],
+            });
+        }
         let blast_db_prefix = inspection
             .blast_db_prefix
             .clone()
@@ -10280,7 +10530,10 @@ impl GentleEngine {
             "expected_amplicon_length_bp": resolved_input.expected_amplicon_length_bp,
             "requested_target_genome_id": target_genome_id,
             "resolved_target_genome_id": resolution.resolved_genome_id,
+            "blast_database_content_fingerprint": blast_database.content_fingerprint,
+            "blast_database_index_kind": blast_database.index_kind,
             "policy": policy,
+            "intended_target": resolved_input.intended_target,
             "forward": resolved_input.forward,
             "reverse": resolved_input.reverse,
         }))
@@ -10355,8 +10608,12 @@ impl GentleEngine {
                 effective_options.task.clone(),
                 "-outfmt".to_string(),
                 BLASTN_OUTFMT_FIELDS.to_string(),
-                "-max_target_seqs".to_string(),
-                effective_options.max_hits.to_string(),
+                "-evalue".to_string(),
+                "1000".to_string(),
+                "-dust".to_string(),
+                "no".to_string(),
+                "-soft_masking".to_string(),
+                "false".to_string(),
                 "-out".to_string(),
                 output_tsv_path.clone(),
             ];
@@ -10412,6 +10669,8 @@ impl GentleEngine {
             primers: vec![resolved_input.forward, resolved_input.reverse],
             blast_preflight,
             blast_db_prefix,
+            blast_database: Some(blast_database),
+            intended_target: resolved_input.intended_target,
             effective_blast_options: Some(effective_options),
             commands,
             completion_policy: "all_commands_success".to_string(),
@@ -10533,6 +10792,63 @@ impl GentleEngine {
         self.primer_specificity_report_from_handoff_outputs(handoff, None)
     }
 
+    fn validate_primer_specificity_handoff_database(
+        &self,
+        handoff: &PrimerSpecificityHandoff,
+    ) -> Result<Option<BlastDatabaseInspectionReport>, EngineError> {
+        let Some(planned) = handoff.blast_database.as_ref() else {
+            return Ok(None);
+        };
+        let (catalog, _) = Self::open_reference_genome_catalog(handoff.catalog_path.as_deref())?;
+        let current = catalog
+            .inspect_blast_database(
+                &handoff.resolved_target_genome_id,
+                handoff.cache_dir.as_deref(),
+            )
+            .map_err(|error| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not revalidate BLAST database for handoff '{}': {}",
+                    handoff.handoff_id, error
+                ),
+                cause_chain: vec![],
+            })?
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "BLAST database for handoff '{}' is no longer prepared",
+                    handoff.handoff_id
+                ),
+                cause_chain: vec![],
+            })?;
+        if current.validation_status != "valid" {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "BLAST database for handoff '{}' no longer validates (status '{}')",
+                    handoff.handoff_id, current.validation_status
+                ),
+                cause_chain: vec![],
+            });
+        }
+        if current.prefix != planned.prefix
+            || current.index_kind != planned.index_kind
+            || current.content_fingerprint != planned.content_fingerprint
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "BLAST database content changed after handoff '{}' was created (planned fingerprint '{}', current '{}'); rerun the searches against a regenerated handoff",
+                    handoff.handoff_id,
+                    planned.content_fingerprint.as_deref().unwrap_or("missing"),
+                    current.content_fingerprint.as_deref().unwrap_or("missing")
+                ),
+                cause_chain: vec![],
+            });
+        }
+        Ok(Some(current))
+    }
+
     fn primer_specificity_report_from_handoff_outputs(
         &self,
         handoff: &PrimerSpecificityHandoff,
@@ -10548,6 +10864,20 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        if handoff.blast_database.is_some() {
+            let expected_handoff_id = Self::primer_specificity_handoff_id_from_record(handoff)?;
+            if expected_handoff_id != handoff.handoff_id {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer specificity handoff '{}' content no longer matches its deterministic identity",
+                        handoff.handoff_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+        }
+        let database_validation = self.validate_primer_specificity_handoff_database(handoff)?;
         let primer_for_role = |role| {
             handoff
                 .primers
@@ -10605,9 +10935,20 @@ impl GentleEngine {
             pair_rank: handoff.pair_rank,
             pair_index: handoff.pair_index,
             expected_amplicon_length_bp: handoff.expected_amplicon_length_bp,
+            intended_target: handoff.intended_target.clone(),
             forward,
             reverse,
         };
+        let mut import_warnings = vec![format!(
+            "Imported externally executed BLAST outputs from handoff '{}'; GENtle did not launch or monitor those processes.",
+            handoff.handoff_id
+        )];
+        if database_validation.is_none() {
+            import_warnings.push(
+                "Legacy handoff has no BLAST database content fingerprint; regenerate it before using the result for final assay acceptance."
+                    .to_string(),
+            );
+        }
         self.primer_specificity_report_from_blast_reports(
             resolved_input,
             &handoff.requested_target_genome_id,
@@ -10617,10 +10958,7 @@ impl GentleEngine {
             handoff.blast_preflight.clone(),
             forward_blast,
             reverse_blast,
-            vec![format!(
-                "Imported externally executed BLAST outputs from handoff '{}'; GENtle did not launch or monitor those processes.",
-                handoff.handoff_id
-            )],
+            import_warnings,
         )
     }
 
@@ -10740,7 +11078,16 @@ impl GentleEngine {
             "expected_amplicon_length_bp": handoff.expected_amplicon_length_bp,
             "requested_target_genome_id": handoff.requested_target_genome_id,
             "resolved_target_genome_id": handoff.resolved_target_genome_id,
+            "blast_database_content_fingerprint": handoff
+                .blast_database
+                .as_ref()
+                .and_then(|database| database.content_fingerprint.as_deref()),
+            "blast_database_index_kind": handoff
+                .blast_database
+                .as_ref()
+                .map(|database| database.index_kind),
             "policy": handoff.policy,
+            "intended_target": handoff.intended_target,
             "forward": forward,
             "reverse": reverse,
         }))
@@ -10750,6 +11097,127 @@ impl GentleEngine {
             cause_chain: vec![],
         })?;
         Ok(short_sha256_id("primer_specificity_handoff", &identity))
+    }
+
+    fn primer_specificity_intended_target_from_transcript_assay(
+        &self,
+        report: &TranscriptAssayPanelReport,
+        assay: &TranscriptAssayPanelAssay,
+    ) -> PrimerSpecificityIntendedTarget {
+        let Some(source_dna) = self.state.sequences.get(&report.source_seq_id) else {
+            return Self::primer_specificity_unknown_intended_target(
+                "transcript_assay_source_sequence_missing",
+            );
+        };
+        let Ok(splicing) = self.build_splicing_expert_view(
+            &report.source_seq_id,
+            report.source_feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        ) else {
+            return Self::primer_specificity_unknown_intended_target(
+                "transcript_assay_splicing_context_unavailable",
+            );
+        };
+        let Ok(templates) = Self::build_qpcr_transcript_design_templates(source_dna, &splicing)
+        else {
+            return Self::primer_specificity_unknown_intended_target(
+                "transcript_assay_templates_unavailable",
+            );
+        };
+        let Some(template) = templates
+            .iter()
+            .find(|template| template.transcript_id == assay.design_transcript_id)
+        else {
+            return Self::primer_specificity_unknown_intended_target(
+                "transcript_assay_design_transcript_missing",
+            );
+        };
+        let anchor = self.transcript_qpcr_panel_source_anchor(&report.source_seq_id, source_dna);
+        let Some(anchor) = anchor else {
+            return Self::primer_specificity_unknown_intended_target(
+                "transcript_assay_source_without_genome_anchor",
+            );
+        };
+        let is_reverse = template.strand.trim() == "-";
+        let forward = Self::map_transcript_local_interval(
+            &template.local_exon_segments,
+            is_reverse,
+            assay.primer_pair.forward.start_0based,
+            assay.primer_pair.forward.end_0based_exclusive,
+        );
+        let reverse = Self::map_transcript_local_interval(
+            &template.local_exon_segments,
+            is_reverse,
+            assay.primer_pair.reverse.start_0based,
+            assay.primer_pair.reverse.end_0based_exclusive,
+        );
+        let product = Self::map_transcript_local_interval(
+            &template.local_exon_segments,
+            is_reverse,
+            assay.primer_pair.amplicon_start_0based,
+            assay.primer_pair.amplicon_end_0based_exclusive,
+        );
+        let map_ranges = |ranges: &[SequenceRange0Based]| {
+            ranges
+                .iter()
+                .filter_map(|range| {
+                    Self::primer_specificity_subject_range_from_local(
+                        &anchor,
+                        range.start_0based,
+                        range.end_0based_exclusive,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let forward_binding_ranges = map_ranges(&forward.source_ranges_0based);
+        let reverse_binding_ranges = map_ranges(&reverse.source_ranges_0based);
+        if forward_binding_ranges.is_empty() || reverse_binding_ranges.is_empty() {
+            return Self::primer_specificity_unknown_intended_target(
+                "transcript_assay_primer_geometry_unresolved",
+            );
+        }
+        let primer_spans_junction = forward.spans_junction || reverse.spans_junction;
+        let expected_product_range = if primer_spans_junction {
+            None
+        } else {
+            let start = product
+                .source_ranges_0based
+                .iter()
+                .map(|range| range.start_0based)
+                .min();
+            let end = product
+                .source_ranges_0based
+                .iter()
+                .map(|range| range.end_0based_exclusive)
+                .max();
+            start.zip(end).and_then(|(start, end)| {
+                Self::primer_specificity_subject_range_from_local(&anchor, start, end)
+            })
+        };
+        PrimerSpecificityIntendedTarget {
+            model: if primer_spans_junction {
+                PrimerSpecificityIntendedTargetModel::JunctionSpanning
+            } else {
+                PrimerSpecificityIntendedTargetModel::GenomicInterval
+            },
+            subject_id: Some(anchor.chromosome),
+            forward_binding_ranges,
+            reverse_binding_ranges,
+            expected_product_range,
+            contiguous_genomic_product_expected: !primer_spans_junction,
+            source: format!(
+                "transcript_assay_panel:{}:assay={}",
+                report.report_id, assay.assay_id
+            ),
+            warnings: if primer_spans_junction {
+                vec![
+                    "A junction-spanning primer has no contiguous intended genomic binding site; genomic BLAST is interpreted as a carryover/off-target screen."
+                        .to_string(),
+                ]
+            } else {
+                vec![]
+            },
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -10836,6 +11304,8 @@ impl GentleEngine {
                     pair_rank: Some(assay.rank),
                     pair_index: None,
                     expected_amplicon_length_bp: Some(assay.primer_pair.amplicon_length_bp),
+                    intended_target: self
+                        .primer_specificity_intended_target_from_transcript_assay(&report, &assay),
                     forward: forward.clone(),
                     reverse: reverse.clone(),
                 },
@@ -11467,7 +11937,8 @@ impl GentleEngine {
             Self::normalize_primer_specificity_policy(target_genome_id, policy)?;
 
         let blast_preflight = self.blast_external_binary_preflight_report();
-        let forward_blast = self.blast_reference_genome_with_project_and_request_options(
+        let forward_blast = self
+            .blast_reference_genome_complete_with_project_and_request_options(
             catalog_path,
             &target_genome_id,
             &resolved_input.forward.annealing_sequence,
@@ -11476,7 +11947,8 @@ impl GentleEngine {
             Some(policy.max_hits_per_primer),
             cache_dir,
         )?;
-        let reverse_blast = self.blast_reference_genome_with_project_and_request_options(
+        let reverse_blast = self
+            .blast_reference_genome_complete_with_project_and_request_options(
             catalog_path,
             &target_genome_id,
             &resolved_input.reverse.annealing_sequence,
@@ -11532,6 +12004,33 @@ impl GentleEngine {
                 reverse_blast.stderr.trim()
             ));
         }
+        let subject_aliases = Self::primer_specificity_subject_aliases(
+            &catalog,
+            &forward_blast.genome_id,
+            cache_dir,
+        );
+        let blast_database = catalog
+            .inspect_blast_database(&forward_blast.genome_id, cache_dir)
+            .map_err(|error| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not inspect BLAST database used for primer specificity: {}",
+                    error
+                ),
+                cause_chain: vec![],
+            })?;
+        let index_kind = blast_database
+            .as_ref()
+            .map(|database| database.index_kind)
+            .unwrap_or(BlastDatabaseIndexKind::GenomicDna);
+        let mut intended_target = resolved_input.intended_target.clone();
+        if let Some(subject_id) = intended_target.subject_id.clone() {
+            intended_target.subject_id = Some(Self::primer_specificity_normalize_subject_id(
+                &subject_id,
+                &subject_aliases,
+            ));
+        }
+        warnings.extend(intended_target.warnings.clone());
         let forward_hits = forward_blast
             .hits
             .iter()
@@ -11545,6 +12044,7 @@ impl GentleEngine {
                     idx,
                     &resolved_input.forward.annealing_sequence,
                     hit,
+                    &subject_aliases,
                     &policy,
                     &mut warnings,
                 )
@@ -11563,6 +12063,7 @@ impl GentleEngine {
                     idx,
                     &resolved_input.reverse.annealing_sequence,
                     hit,
+                    &subject_aliases,
                     &policy,
                     &mut warnings,
                 )
@@ -11575,18 +12076,33 @@ impl GentleEngine {
         );
         Self::primer_specificity_finalize_amplicons(
             &mut amplicons,
-            resolved_input.expected_amplicon_length_bp,
+            &intended_target,
             &policy,
         );
-        let summary = Self::primer_specificity_summary(&forward_hits, &reverse_hits, &amplicons);
+        let summary = Self::primer_specificity_summary(
+            &forward_hits,
+            &reverse_hits,
+            &amplicons,
+            &intended_target,
+            index_kind,
+        );
+        let (genomic_specificity, transcriptome_specificity) =
+            Self::primer_specificity_target_assessments(
+                &summary,
+                &amplicons,
+                &intended_target,
+                index_kind,
+            );
         Ok(PrimerSpecificityReport {
             schema: PRIMER_SPECIFICITY_REPORT_SCHEMA.to_string(),
             generated_at_unix_ms: Self::now_unix_ms(),
             primer_report_id: resolved_input.primer_report_id,
             pair_rank: resolved_input.pair_rank,
             pair_index: resolved_input.pair_index,
-            target_kind: "prepared_reference_genome".to_string(),
+            target_kind: index_kind.as_str().to_string(),
             target_genome_id: target_genome_id.to_string(),
+            blast_database: blast_database.clone(),
+            intended_target,
             catalog_path: Some(resolved_catalog_path),
             cache_dir: cache_dir
                 .map(str::trim)
@@ -11598,12 +12114,14 @@ impl GentleEngine {
             blast_runs: vec![
                 Self::primer_specificity_blast_provenance(
                     &forward_blast,
+                    blast_database.as_ref(),
                     "forward_annealing_segment",
                     catalog_path,
                     cache_dir,
                 ),
                 Self::primer_specificity_blast_provenance(
                     &reverse_blast,
+                    blast_database.as_ref(),
                     "reverse_annealing_segment",
                     catalog_path,
                     cache_dir,
@@ -11613,7 +12131,9 @@ impl GentleEngine {
             reverse_hits,
             amplicons,
             summary,
-            warnings,
+            genomic_specificity,
+            transcriptome_specificity,
+            warnings: Self::primer_specificity_aggregate_warnings(warnings),
         })
     }
 

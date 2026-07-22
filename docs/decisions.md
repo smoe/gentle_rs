@@ -299,3 +299,23 @@ free text may conservatively infer positive applicability but must not infer
 non-applicability. Curated repeat provenance belongs in typed repeat annotation
 and repeat-family records, with legacy note parsing retained only for backward
 compatibility.
+
+## DEC-029: Primer Specificity Is Target-Space And Database-Content Bound
+
+Status: active
+
+Primer-specificity evidence must name its biological target space. Genomic-DNA
+screening assesses genomic carryover and unintended genomic products;
+transcriptome/cDNA screening assesses cross-amplification among spliced
+sequences. A junction-spanning primer can therefore pass a genomic screen
+without a contiguous intended genomic product. GENtle must identify an intended
+genomic product by prepared-FASTA subject plus genomic binding geometry, never
+by equality to the expected cDNA amplicon length.
+
+Specificity searches must not use BLAST `-max_target_seqs` as a substitute for
+a post-search hit-review threshold, because doing so can silently exclude
+contigs. Handoffs and finalization bind the prepared BLAST database's index
+kind and deterministic content fingerprint in addition to its prefix and genome
+label. Replacing database content at the same prefix invalidates a pending
+handoff. Whole-prepare activity state does not override successful
+component-level `blastdbcmd` validation.

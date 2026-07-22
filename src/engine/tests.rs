@@ -8034,6 +8034,7 @@ fn primer_specificity_test_hit(
     PrimerSpecificityPrimerHit {
         hit_index,
         role,
+        raw_subject_id: None,
         subject_id: subject_id.to_string(),
         identity_percent: 100.0,
         alignment_length_bp: end_1based.saturating_sub(start_1based).saturating_add(1),
@@ -8054,6 +8055,22 @@ fn primer_specificity_test_hit(
         accepted_by_policy: true,
         rejection_reasons: vec![],
     }
+}
+
+#[cfg(unix)]
+fn write_fake_blastdbcmd(path: &Path, sequence_count: u64, total_bases: u64) {
+    fs::write(
+        path,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastdbcmd: fake 1.0'; exit 0; fi\nif [ \"$1\" = '-db' ] && [ \"$3\" = '-info' ]; then printf 'Database: synthetic\\nBLASTDB Version: 5\\n\\t{sequence_count} sequences; {total_bases} total letters\\n'; exit 0; fi\nexit 2\n"
+        ),
+    )
+    .expect("write fake blastdbcmd");
+    let mut permissions = fs::metadata(path)
+        .expect("fake blastdbcmd metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions).expect("enable fake blastdbcmd");
 }
 
 #[test]
@@ -8106,7 +8123,20 @@ fn primer_specificity_pairs_forward_reverse_and_same_primer_warning_products() {
         &reverse_hits,
         &policy,
     );
-    GentleEngine::primer_specificity_finalize_amplicons(&mut amplicons, Some(140), &policy);
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &PrimerSpecificityIntendedTarget {
+            model: PrimerSpecificityIntendedTargetModel::GenomicInterval,
+            subject_id: Some("chr1".to_string()),
+            expected_product_range: Some(PrimerSpecificitySubjectRange {
+                start_1based: 100,
+                end_1based: 239,
+            }),
+            contiguous_genomic_product_expected: true,
+            ..PrimerSpecificityIntendedTarget::default()
+        },
+        &policy,
+    );
     let intended = amplicons
         .iter()
         .find(|amplicon| amplicon.intended)
@@ -8132,10 +8162,116 @@ fn primer_specificity_empty_amplicon_set_is_a_non_panicking_no_hit_result() {
     let mut amplicons = vec![];
     GentleEngine::primer_specificity_finalize_amplicons(
         &mut amplicons,
-        Some(120),
+        &PrimerSpecificityIntendedTarget {
+            model: PrimerSpecificityIntendedTargetModel::GenomicInterval,
+            subject_id: Some("chr1".to_string()),
+            expected_product_range: Some(PrimerSpecificitySubjectRange {
+                start_1based: 1,
+                end_1based: 120,
+            }),
+            contiguous_genomic_product_expected: true,
+            ..PrimerSpecificityIntendedTarget::default()
+        },
         &PrimerSpecificityPolicy::default(),
     );
     assert!(amplicons.is_empty());
+}
+
+#[test]
+fn primer_specificity_intended_genomic_product_uses_coordinates_not_cdna_length() {
+    let policy = PrimerSpecificityPolicy::default();
+    let forward_hits = vec![primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Forward,
+        0,
+        "chr1",
+        100,
+        119,
+        "+",
+        0,
+    )];
+    let reverse_hits = vec![primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Reverse,
+        0,
+        "chr1",
+        980,
+        1000,
+        "-",
+        0,
+    )];
+    let mut amplicons = GentleEngine::primer_specificity_collect_amplicons_for_hits(
+        &forward_hits,
+        &reverse_hits,
+        &policy,
+    );
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::GenomicInterval,
+        subject_id: Some("chr1".to_string()),
+        expected_product_range: Some(PrimerSpecificitySubjectRange {
+            start_1based: 100,
+            end_1based: 1000,
+        }),
+        contiguous_genomic_product_expected: true,
+        source: "synthetic_intron_containing_target".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    GentleEngine::primer_specificity_finalize_amplicons(&mut amplicons, &target, &policy);
+    let intended = amplicons
+        .iter()
+        .find(|amplicon| amplicon.intended)
+        .expect("coordinate-matched genomic product");
+    assert_eq!(intended.length_bp, 901);
+    assert_ne!(intended.length_bp, 140, "cDNA length must not identify target");
+}
+
+#[test]
+fn junction_primer_can_pass_genomic_carryover_screen_without_intended_product() {
+    let policy = PrimerSpecificityPolicy::default();
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::JunctionSpanning,
+        subject_id: Some("chr1".to_string()),
+        contiguous_genomic_product_expected: false,
+        source: "synthetic_junction_assay".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    let mut amplicons = vec![];
+    GentleEngine::primer_specificity_finalize_amplicons(&mut amplicons, &target, &policy);
+    let summary = GentleEngine::primer_specificity_summary(
+        &[],
+        &[],
+        &amplicons,
+        &target,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+    );
+    assert!(summary.specificity_pass);
+    assert_eq!(summary.status, "pass");
+    assert_eq!(summary.intended_amplicon_count, 0);
+    assert!(summary.summary.contains("junction-spanning"));
+}
+
+#[test]
+fn primer_specificity_normalizes_auxiliary_contig_subject_ids_and_aggregates_warnings() {
+    let aliases = BTreeMap::from([
+        ("KI270750.1".to_string(), "KI270750.1".to_string()),
+        ("ki270750.1".to_string(), "KI270750.1".to_string()),
+    ]);
+    assert_eq!(
+        GentleEngine::primer_specificity_normalize_subject_id(
+            "gb|KI270750.1|",
+            &aliases
+        ),
+        "KI270750.1"
+    );
+    assert_eq!(
+        GentleEngine::primer_specificity_aggregate_warnings(vec![
+            "same diagnostic".to_string(),
+            "same diagnostic".to_string(),
+            "other diagnostic".to_string(),
+        ]),
+        vec![
+            "other diagnostic".to_string(),
+            "same diagnostic (repeated 2 times)".to_string(),
+        ]
+    );
 }
 
 #[cfg(unix)]
@@ -8210,6 +8346,8 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
         .permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&fake_blastn, permissions).expect("make fake blastn executable");
+    let fake_blastdbcmd = root.join("fake_blastdbcmd.sh");
+    write_fake_blastdbcmd(&fake_blastdbcmd, 1, 220);
     let _makeblastdb = EnvVarGuard::set(
         crate::genomes::MAKEBLASTDB_ENV_BIN,
         &fake_makeblastdb.to_string_lossy(),
@@ -8217,6 +8355,10 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
     let _blastn = EnvVarGuard::set(
         crate::genomes::BLASTN_ENV_BIN,
         &fake_blastn.to_string_lossy(),
+    );
+    let _blastdbcmd = EnvVarGuard::set(
+        crate::genomes::BLASTDBCMD_ENV_BIN,
+        &fake_blastdbcmd.to_string_lossy(),
     );
 
     let mut engine = GentleEngine::new();
@@ -8249,6 +8391,20 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
     assert_eq!(handoff.schema, "gentle.primer_specificity_handoff.v1");
     assert_eq!(handoff.completion_policy, "all_commands_success");
     assert_eq!(handoff.commands.len(), 2);
+    assert_eq!(
+        handoff
+            .blast_database
+            .as_ref()
+            .map(|database| database.validation_status.as_str()),
+        Some("valid")
+    );
+    assert!(
+        handoff
+            .blast_database
+            .as_ref()
+            .and_then(|database| database.content_fingerprint.as_ref())
+            .is_some()
+    );
     assert!(!blast_was_run.exists(), "planning must not launch blastn");
     assert!(Path::new(&handoff.handoff_path).is_file());
     for command in &handoff.commands {
@@ -8259,6 +8415,14 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
                 .args
                 .windows(2)
                 .any(|row| row[0] == "-out" && row[1] == command.output_tsv_path)
+        );
+        assert!(!command.args.iter().any(|arg| arg == "-max_target_seqs"));
+        assert!(command.args.windows(2).any(|row| row == ["-dust", "no"]));
+        assert!(
+            command
+                .args
+                .windows(2)
+                .any(|row| row == ["-soft_masking", "false"])
         );
         fs::write(&command.output_tsv_path, "stale\n").expect("seed stale BLAST output");
     }
@@ -8322,8 +8486,9 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
         .map(|report| *report)
         .expect("specificity import operation result");
     assert!(report_path.is_file());
-    assert!(report.summary.specificity_pass);
-    assert_eq!(report.summary.intended_amplicon_count, 1);
+    assert!(!report.summary.specificity_pass);
+    assert_eq!(report.summary.status, "not_assessed");
+    assert_eq!(report.summary.intended_amplicon_count, 0);
     assert_eq!(report.forward_hits.len(), 1);
     assert_eq!(report.reverse_hits.len(), 1);
     assert!(
@@ -8332,6 +8497,18 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
             .iter()
             .any(|warning| warning.contains("did not launch or monitor"))
     );
+    fs::write(
+        PathBuf::from(&handoff.blast_db_prefix).with_extension("nsq"),
+        "replacement database content",
+    )
+    .expect("replace database at same prefix");
+    let changed = engine
+        .apply(Operation::ImportPrimerPairSpecificityHandoff {
+            handoff_path: handoff.handoff_path.clone(),
+            path: None,
+        })
+        .expect_err("same-prefix database replacement must invalidate handoff");
+    assert!(changed.message.contains("database content changed"));
 }
 
 #[test]
@@ -9065,6 +9242,20 @@ fn transcript_qpcr_panel_test_engine() -> GentleEngine {
             ],
         });
     }
+    let source_len = dna.len();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "source".into(),
+        location: gb_io::seq::Location::simple_range(0, source_len as i64),
+        qualifiers: vec![
+            ("chromosome".into(), Some("chr1".to_string())),
+            ("genomic_start_1based".into(), Some("1".to_string())),
+            (
+                "genomic_end_1based".into(),
+                Some(source_len.to_string()),
+            ),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
     let mut state = ProjectState::default();
     state.sequences.insert("panel_src".to_string(), dna);
     let mut engine = GentleEngine::from_state(state);
@@ -9293,33 +9484,38 @@ fn transcript_assay_specificity_execution_manifest(
 ) -> TranscriptAssayPanelSpecificityExecutionManifest {
     let mut executions = vec![];
     for assay in &handoff.assays {
-        let expected_amplicon_length = assay
-            .handoff
-            .expected_amplicon_length_bp
-            .expect("panel assay expected amplicon length");
         for command in &assay.handoff.commands {
             let bytes = if emit_intended_hits {
-                let (subject_start, subject_end) = match command.role {
+                let target_ranges = match command.role {
                     PrimerSpecificityPrimerRole::Forward => {
-                        (10usize, 10usize + command.query_length_bp - 1)
+                        &assay.handoff.intended_target.forward_binding_ranges
                     }
                     PrimerSpecificityPrimerRole::Reverse => {
-                        let amplicon_end = 10usize + expected_amplicon_length - 1;
-                        (
-                            amplicon_end,
-                            amplicon_end + 1 - command.query_length_bp,
-                        )
+                        &assay.handoff.intended_target.reverse_binding_ranges
                     }
                 };
-                format!(
-                    "{}\tchr1\t100\t{}\t0\t0\t1\t{}\t{}\t{}\t1e-20\t80\t100\n",
-                    command.query_label,
-                    command.query_length_bp,
-                    command.query_length_bp,
-                    subject_start,
-                    subject_end,
-                )
-                .into_bytes()
+                if target_ranges.len() == 1 {
+                    let range = &target_ranges[0];
+                    let (subject_start, subject_end) = match command.role {
+                        PrimerSpecificityPrimerRole::Forward => {
+                            (range.start_1based, range.end_1based)
+                        }
+                        PrimerSpecificityPrimerRole::Reverse => {
+                            (range.end_1based, range.start_1based)
+                        }
+                    };
+                    format!(
+                        "{}\tchr1\t100\t{}\t0\t0\t1\t{}\t{}\t{}\t1e-20\t80\t100\n",
+                        command.query_label,
+                        command.query_length_bp,
+                        command.query_length_bp,
+                        subject_start,
+                        subject_end,
+                    )
+                    .into_bytes()
+                } else {
+                    vec![]
+                }
             } else {
                 vec![]
             };
@@ -9401,6 +9597,8 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
         .permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&fake_blastn, permissions).expect("enable fake blastn");
+    let fake_blastdbcmd = root.join("fake_blastdbcmd.sh");
+    write_fake_blastdbcmd(&fake_blastdbcmd, 1, 1_000);
     let _makeblastdb = EnvVarGuard::set(
         crate::genomes::MAKEBLASTDB_ENV_BIN,
         &fake_makeblastdb.to_string_lossy(),
@@ -9408,6 +9606,10 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
     let _blastn = EnvVarGuard::set(
         crate::genomes::BLASTN_ENV_BIN,
         &fake_blastn.to_string_lossy(),
+    );
+    let _blastdbcmd = EnvVarGuard::set(
+        crate::genomes::BLASTDBCMD_ENV_BIN,
+        &fake_blastdbcmd.to_string_lossy(),
     );
 
     let mut engine = transcript_qpcr_panel_test_engine();
@@ -29608,6 +29810,8 @@ fn test_import_blast_hits_track_operation_adds_features_and_clears_previous() {
                 task: "blastn-short".to_string(),
                 blastn_executable: "blastn".to_string(),
                 blast_db_prefix: "/tmp/blastdb/genome".to_string(),
+                blast_database_content_fingerprint: None,
+                blast_database_index_kind: None,
                 command: vec![
                     "-db".to_string(),
                     "/tmp/blastdb/genome".to_string(),

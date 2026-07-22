@@ -3459,6 +3459,16 @@ Shared shell command:
       - output includes BLAST preflight/invocation metadata, per-primer hits,
         forward/reverse products, forward/forward and reverse/reverse warning
         products, intended/unintended classification, and pass/fail summary
+      - short-primer searches are exhaustive with respect to database subjects:
+        GENtle does not pass `max_hits_per_primer` to BLAST as
+        `-max_target_seqs`; the value is a post-search review threshold
+      - intended genomic products are matched by prepared-FASTA subject and
+        genomic interval, never by equality to a cDNA amplicon length;
+        junction-spanning primers may therefore have no contiguous intended
+        genomic product
+      - wrapped BLAST subject identifiers are normalized against the prepared
+        FASTA index, repeated warnings are aggregated, and genomic-DNA versus
+        transcriptome/cDNA assessments remain separate in the report
       - `--path OUTPUT.json` writes the same structured report returned on
         stdout
       - use `primers specificity-plan` when a scheduler, ClawBio skill, or
@@ -3475,6 +3485,9 @@ Shared shell command:
         exit rather than file size as its completion signal
       - regenerating the same deterministic handoff clears its old declared
         output TSVs, preventing a fresh run from importing stale results
+      - planned handoffs bind the inspected BLAST database content fingerprint
+        and index kind; import/finalization rejects replacement content at the
+        same prefix
       - the plan/import convenience commands dispatch the shared
         `PreparePrimerPairSpecificityHandoff` and
         `ImportPrimerPairSpecificityHandoff` operations. The same operation
@@ -5256,21 +5269,30 @@ Genome convenience commands:
   - If the active catalog file is not writable, `--output-catalog PATH` is
     required so the updated catalog can be written as a copy.
 - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
-  - Shows whether the genome cache is prepared/indexed.
+  - Shows whether the genome cache is prepared/indexed and validates its BLAST
+    component with `blastdbcmd`.
   - Also reports stable lifecycle fields:
     - `resource_key`
     - `display_name`
     - `prepared`
     - `lifecycle_status = missing|running|ready|failed|cancelled|stale`
     - `current_activity` when a recent or active prepare marker exists
+    - `component_ready` and `components`, including
+      `components.blast_database` (`gentle.blast_database_inspection.v1`) with
+      index kind, assembly/release, masking, prefix, BLAST database/tool
+      versions, sequence/base counts, content fingerprint, validation status,
+      warnings, and compatible operations
   - Also reports `effective_cache_dir`, `requested_catalog_key`,
     `requested_family`, and `compatible_prepared_options` so "not prepared"
     states explain exactly which cache root was inspected and whether a
     same-family prepared install already exists.
-  - When lifecycle is `missing`, `failed`, `cancelled`, or `stale`, output
-    also includes a ready-to-run `prepare_command` hint.
-  - When lifecycle is `running` or `ready`, `prepare_command` is suppressed so
-    callers do not accidentally trigger redundant parallel prepares.
+  - A valid component set is authoritative for reuse even when an older
+    whole-prepare activity record is `stale`; in that case no redundant
+    `prepare_command` is offered.
+  - When lifecycle is `missing`, `failed`, `cancelled`, or `stale` and the
+    required components are not valid, output includes a ready-to-run
+    `prepare_command` hint. When lifecycle is `running`, `ready`, or components
+    independently validate, that hint is suppressed.
   - On Unix, a `running` activity whose `owner_pid` no longer exists is treated
     as `stale` immediately, even if the heartbeat is younger than the regular
     stale timeout.
