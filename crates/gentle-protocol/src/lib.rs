@@ -8271,6 +8271,10 @@ pub struct CutRunRegulatorySupportReport {
     pub op_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
     #[serde(default)]
     pub evidence_sources: Vec<CutRunRegulatoryEvidenceSourceRef>,
     pub promoter_search_start_0based: usize,

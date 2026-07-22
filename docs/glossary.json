@@ -2947,7 +2947,7 @@
          ],
          "path": "cutrun inspect-regulatory-support",
          "summary": "Aggregate CUT&RUN ROI evidence into support windows, confirmed/unconfirmed TFBS rows, and motif-context summaries.",
-         "usage": "cutrun inspect-regulatory-support SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path OUTPUT.json]"
+         "usage": "cutrun inspect-regulatory-support SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--catalog PATH] [--cache-dir PATH] [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path OUTPUT.json]"
       },
       {
          "aliases": [

@@ -124,7 +124,8 @@ Relevant executable release proof baseline:
 
 - `docs/examples/workflows/tp73_genome_evidence_viewer_release_proof.json`
   - loads the public GRCh38.p14 TP73 locus and overlays tiny local repeat,
-    Clariom-style array, CUT&RUN-style BED, and TFBS fixtures for the
+    Clariom-style array, CUT&RUN V1 prepared/projected evidence, V2 paired-read
+    ROI evidence, V3 regulatory reasoning, and TFBS fixtures for the
     genome-anchored evidence-viewer release path
   - runbook: `docs/tp73_genome_evidence_viewer_runbook.md`
 

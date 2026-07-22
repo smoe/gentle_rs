@@ -2,7 +2,7 @@
   "schema": "gentle.workflow_example.v1",
   "id": "tp73_genome_evidence_viewer_release_proof",
   "title": "TP73 genome-anchored evidence viewer release proof",
-  "summary": "Loads the public GRCh38.p14 TP73 locus and overlays tiny deterministic repeat, Clariom-style array, CUT&RUN-style BED, TFBS, sequence SVG, and splicing-expert artifacts without full-genome or raw-read downloads.",
+  "summary": "Loads the public GRCh38.p14 TP73 locus and exercises tiny deterministic repeat, Clariom-style array, CUT&RUN V1-V3, TFBS, sequence SVG, and splicing-expert paths without full-genome or SRA downloads.",
   "test_mode": "always",
   "required_files": [
     "test_files/tp73.ncbi.gb",
@@ -10,7 +10,11 @@
     "test_files/fixtures/evidence_viewer/clariomd.tp73_evidence_viewer.manifest.json",
     "test_files/fixtures/evidence_viewer/clariomd.tp73_evidence_viewer.AdTAp73alpha-AdGFP.tsv",
     "test_files/fixtures/evidence_viewer/clariomd.tp73_evidence_viewer.AdTAp73beta-AdGFP.tsv",
-    "test_files/fixtures/evidence_viewer/tp73_cutrun_demo.bed"
+    "test_files/fixtures/evidence_viewer/tp73_cutrun_demo.bed",
+    "assets/cutrun.json",
+    "assets/cutrun/tp73_release_smoke/tp73_release_smoke.peaks.bed",
+    "assets/cutrun/tp73_release_smoke/tp73_release_smoke.R1.fasta",
+    "assets/cutrun/tp73_release_smoke/tp73_release_smoke.R2.fasta"
   ],
   "tags": [
     "release-proof",
@@ -64,6 +68,24 @@
         }
       },
       {
+        "PrepareCutRunDataset": {
+          "dataset_id": "tp73_release_smoke_synthetic",
+          "catalog_path": "assets/cutrun.json",
+          "cache_dir": "artifacts/tp73_evidence_viewer/cutrun_cache"
+        }
+      },
+      {
+        "ProjectCutRunDataset": {
+          "seq_id": "tp73_evidence_viewer",
+          "dataset_id": "tp73_release_smoke_synthetic",
+          "include_peaks": true,
+          "include_signal": false,
+          "clear_existing": true,
+          "catalog_path": "assets/cutrun.json",
+          "cache_dir": "artifacts/tp73_evidence_viewer/cutrun_cache"
+        }
+      },
+      {
         "AnnotateTfbs": {
           "seq_id": "tp73_evidence_viewer",
           "motifs": [
@@ -74,6 +96,68 @@
           "min_llr_quantile": 0.9995,
           "clear_existing": true,
           "max_hits": 200
+        }
+      },
+      {
+        "InterpretCutRunReads": {
+          "seq_id": "tp73_evidence_viewer",
+          "dataset_id": "tp73_release_smoke_synthetic",
+          "catalog_path": "assets/cutrun.json",
+          "cache_dir": "artifacts/tp73_evidence_viewer/cutrun_cache",
+          "input_format": "fasta",
+          "read_layout": "paired_end",
+          "roi_flank_bp": 0,
+          "seed_filter": {
+            "kmer_len": 12,
+            "min_seed_matches": 1
+          },
+          "align_config": {
+            "max_mismatches": 0,
+            "min_identity_fraction": 1.0,
+            "max_fragment_span_bp": 800
+          },
+          "deduplicate_fragments": false,
+          "report_id": "tp73_release_smoke_reads",
+          "checkpoint_every_reads": 10
+        }
+      },
+      {
+        "InspectCutRunRegulatorySupport": {
+          "seq_id": "tp73_evidence_viewer",
+          "dataset_ids": [
+            "tp73_release_smoke_synthetic"
+          ],
+          "read_report_ids": [
+            "tp73_release_smoke_reads"
+          ],
+          "catalog_path": "assets/cutrun.json",
+          "cache_dir": "artifacts/tp73_evidence_viewer/cutrun_cache",
+          "promoter_search_start_0based": 0,
+          "promoter_search_end_0based_exclusive": 1200,
+          "neighbor_window_bp": 150,
+          "species_filters": [],
+          "path": "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_regulatory_support.json"
+        }
+      },
+      {
+        "ExportCutRunReadCoverage": {
+          "report_id": "tp73_release_smoke_reads",
+          "path": "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_coverage.tsv",
+          "kind": "coverage"
+        }
+      },
+      {
+        "ExportCutRunReadCoverage": {
+          "report_id": "tp73_release_smoke_reads",
+          "path": "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_cut_sites.tsv",
+          "kind": "cut_sites"
+        }
+      },
+      {
+        "ExportCutRunReadCoverage": {
+          "report_id": "tp73_release_smoke_reads",
+          "path": "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_fragments.tsv",
+          "kind": "fragments"
         }
       },
       {

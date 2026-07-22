@@ -2661,6 +2661,10 @@ mod tests {
             "toy_ctcf".to_string(),
             "--read-report".to_string(),
             "toy_cutrun_reads".to_string(),
+            "--catalog".to_string(),
+            "cutrun.json".to_string(),
+            "--cache-dir".to_string(),
+            "cutrun-cache".to_string(),
             "--promoter-search-start".to_string(),
             "10".to_string(),
             "--promoter-search-end".to_string(),
@@ -2681,6 +2685,8 @@ mod tests {
                 seq_id,
                 dataset_ids,
                 read_report_ids,
+                catalog_path,
+                cache_dir,
                 promoter_search_start_0based,
                 promoter_search_end_0based_exclusive,
                 neighbor_window_bp,
@@ -2690,6 +2696,8 @@ mod tests {
                 if seq_id == "toy_slice"
                     && dataset_ids == vec!["toy_ctcf".to_string()]
                     && read_report_ids == vec!["toy_cutrun_reads".to_string()]
+                    && catalog_path.as_deref() == Some("cutrun.json")
+                    && cache_dir.as_deref() == Some("cutrun-cache")
                     && promoter_search_start_0based == Some(10)
                     && promoter_search_end_0based_exclusive == Some(180)
                     && neighbor_window_bp == 42

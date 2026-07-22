@@ -52,21 +52,52 @@ STATE=release_cutrun_tp73.gentle.json
 GENOME_ID="Human GRCh38 Ensembl 116"
 SEQ_ID=release_tp73_roi
 TARGET_GENE=TP73
-CUTRUN_CATALOG=assets/cutrun.d
+CUTRUN_CATALOG=assets/cutrun.json
 CUTRUN_CACHE=data/cutrun
-CUTRUN_DATASET_ID=replace_with_catalog_dataset_id
-CUTRUN_READ_DATASET_ID=rostock_p73_sra_err15695857_p73_tap73alpha
-TARGET_MOTIF=CTCF
+CUTRUN_DATASET_ID=tp73_release_smoke_synthetic
+CUTRUN_READ_DATASET_ID=tp73_release_smoke_synthetic
+TARGET_MOTIF=TP73
 OUT=exports/release_cutrun_tp73
 mkdir -p "$OUT"
 ```
 
-The same commands work for any other target by changing those variables.
+The generic commands work for another target when its target variables and a
+compatible CUT&RUN dataset/catalog are changed together. The default processed
+BED and paired FASTA assets are tiny synthetic integration evidence, not
+experimental evidence of TP73 occupancy.
 The built-in CUT&RUN shard `assets/cutrun.d/rostock_p73_sra.json` records the
 public `E-MTAB-15709` / `PRJEB100610` paired-end SRA runs. `cutrun status` is
 safe for release smoke checks; `cutrun prepare` for these entries intentionally
 acquires full raw reads through the shared SRA/read-acquisition path and should
 only be run when disk and SRA Toolkit availability are explicit.
+
+## Deterministic Offline Proof
+
+The canonical release proof exercises V1 prepare/project, V2 paired-read ROI
+interpretation, V3 support/motif-context reasoning, and all three V2 TSV
+exports without preparing a whole genome or downloading SRA data:
+
+```bash
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_evidence_viewer.state.json \
+  workflow @docs/examples/workflows/tp73_genome_evidence_viewer_release_proof.json
+```
+
+It loads the committed anchored TP73 GenBank record and uses `roi_flank_bp=0`.
+In this exact-span mode, V2 maps against the imported anchored sequence itself;
+a prepared reference genome is required again as soon as nonzero flanks are
+requested. Expected CUT&RUN artifacts are:
+
+- `artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_regulatory_support.json`
+- `artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_coverage.tsv`
+- `artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_cut_sites.tsv`
+- `artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_fragments.tsv`
+
+The saved read report is `tp73_release_smoke_reads`: four paired evidence units
+map as four concordant fragments and form two compact support clusters. The V3
+report combines that read report with the prepared/projected BED dataset and
+must contain two evidence sources. These counts are software-release
+expectations only.
 
 ## Generic Smoke Path
 
@@ -182,6 +213,8 @@ gentle_cli --state "$STATE" cutrun export-coverage release_cutrun_reads \
 gentle_cli --state "$STATE" cutrun inspect-regulatory-support "$SEQ_ID" \
   --dataset "$CUTRUN_DATASET_ID" \
   --read-report release_cutrun_reads \
+  --catalog "$CUTRUN_CATALOG" \
+  --cache-dir "$CUTRUN_CACHE" \
   --neighbor-window-bp 150 \
   --species-filter human \
   --path "$OUT/cutrun.regulatory_support.json"
@@ -243,19 +276,20 @@ gentle_cli --state "$STATE" features tfbs-score-tracks-svg "$SEQ_ID" \
 
 ## Deterministic Test Coverage
 
-The committed deterministic tests use synthetic catalogs and toy anchored
-sequences for read/projection behavior, plus a metadata-only assertion that the
-built-in Rostock p73 SRA catalog shard is discoverable. The release smoke should
-run:
+The committed deterministic tests use synthetic catalogs and anchored
+sequences for read/projection behavior, exercise the complete built-in offline
+TP73 V1-V3 workflow, and retain a metadata-only assertion that the Rostock p73
+SRA catalog shard is discoverable. The release smoke should run:
 
 ```bash
 cargo test -q cutrun
-cargo test -q tfbs_score
+RUST_MIN_STACK=8388608 cargo test -q tfbs_score -- --test-threads=1
 cargo check -q
 ```
 
 These tests exercise catalog discovery/status/prepare, stale prepare recovery,
 anchored peaks/signal projection, ROI read interpretation, coverage export,
-regulatory-support inspection, and the TFBS score surfaces used by this
-runbook. A tiny TP73 raw-read subset should only be committed later if it is
-derived directly from the public SRA runs with provenance.
+regulatory-support inspection, custom catalog/cache replay, zero-flank imported
+anchor mapping, and the TFBS score surfaces used by this runbook. The committed
+paired reads are explicitly synthetic; any future experimental subset must be
+derived directly from public runs with complete provenance.

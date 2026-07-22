@@ -3426,6 +3426,10 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         read_report_ids: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         promoter_search_start_0based: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         promoter_search_end_0based_exclusive: Option<usize>,

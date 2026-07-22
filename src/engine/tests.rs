@@ -28342,6 +28342,77 @@ fn test_interpret_cutrun_reads_builds_paired_end_roi_report_with_orphans() {
 }
 
 #[test]
+fn test_interpret_cutrun_reads_uses_zero_flank_imported_anchor_without_prepared_genome() {
+    let td = tempdir().expect("tempdir");
+    let input_r1 = td.path().join("reads.fasta");
+    fs::write(&input_r1, ">read_1\nGCCGTAGC\n").expect("write CUT&RUN FASTA");
+
+    let mut engine = GentleEngine::default();
+    engine.state_mut().sequences.insert(
+        "imported_roi".to_string(),
+        DNAsequence::from_sequence("AAAGCCGTAGCTTACGGAACCTTT")
+            .expect("valid imported anchored sequence"),
+    );
+    engine.state_mut().metadata.insert(
+        PROVENANCE_METADATA_KEY.to_string(),
+        serde_json::json!({
+            GENOME_EXTRACTIONS_METADATA_KEY: [
+                {
+                    "seq_id": "imported_roi",
+                    "recorded_at_unix_ms": 1,
+                    "operation": "LoadSequence",
+                    "genome_id": "UnavailableGenome",
+                    "catalog_path": "missing-reference-catalog.json",
+                    "cache_dir": null,
+                    "chromosome": "chr1",
+                    "start_1based": 101,
+                    "end_1based": 124,
+                    "anchor_strand": "+",
+                    "anchor_verified": true
+                }
+            ]
+        }),
+    );
+
+    let result = engine
+        .apply(Operation::InterpretCutRunReads {
+            seq_id: "imported_roi".to_string(),
+            input_r1_path: Some(input_r1.to_string_lossy().to_string()),
+            input_r2_path: None,
+            dataset_id: None,
+            catalog_path: None,
+            cache_dir: None,
+            input_format: CutRunInputFormat::Fasta,
+            read_layout: CutRunReadLayout::SingleEnd,
+            roi_flank_bp: 0,
+            seed_filter: CutRunSeedFilterConfig {
+                kmer_len: 4,
+                min_seed_matches: 1,
+            },
+            align_config: CutRunAlignConfig {
+                max_mismatches: 0,
+                min_identity_fraction: 1.0,
+                max_fragment_span_bp: 64,
+            },
+            deduplicate_fragments: false,
+            report_id: Some("imported_roi_reads".to_string()),
+            checkpoint_path: None,
+            checkpoint_every_reads: 10,
+        })
+        .expect("zero-flank interpretation should reuse the imported anchored sequence");
+    let report = result
+        .cutrun_read_report
+        .expect("zero-flank CUT&RUN read report");
+    assert_eq!(report.reference_window_start_1based, 101);
+    assert_eq!(report.reference_window_end_1based, 124);
+    assert_eq!(report.reference_window_length_bp, 24);
+    assert_eq!(report.roi_local_start_1based, 1);
+    assert_eq!(report.roi_local_end_1based, 24);
+    assert_eq!(report.total_units, 1);
+    assert_eq!(report.mapped_units, 1);
+}
+
+#[test]
 fn test_export_cutrun_read_coverage_writes_cut_sites_summary() {
     let _serial = cutrun_test_env_lock()
         .lock()

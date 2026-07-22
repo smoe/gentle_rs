@@ -4372,14 +4372,16 @@ Safety behavior:
 
 The DNA-window Engine Ops panel also includes a `CUT&RUN regulatory support`
 inspector for release smoke/proof runs. It is deliberately thin GUI plumbing:
-dataset ids, saved ROI read-report ids, an optional promoter span, neighbor
-window, and species filters are sent through the shared
-`InspectCutRunRegulatorySupport` engine operation. The panel displays the
-returned `gentle.cutrun_regulatory_support.v1` record: evidence sources,
+dataset ids, saved ROI read-report ids, optional catalog/cache paths, an
+optional promoter span, neighbor window, and species filters are sent through
+the shared `InspectCutRunRegulatorySupport` engine operation. The panel
+displays the returned `gentle.cutrun_regulatory_support.v1` record: evidence sources,
 support windows, the `TFBS + occupancy support` table with additive
 `support_status` and distance fields, motif-absent supported windows,
 recurring motif context, warnings, and JSON export. It does not add GUI-only
-CUT&RUN scoring or motif interpretation logic.
+CUT&RUN scoring or motif interpretation logic. Blank catalog/cache fields use
+normal discovery; explicit values let the GUI reopen reports backed by a
+project-specific prepared cache.
 
 While TFBS annotation is running, GUI shows live progress indicators and keeps
 repainting until completion:

@@ -73,6 +73,8 @@ impl MainAreaDna {
             String,
             Vec<String>,
             Vec<String>,
+            Option<String>,
+            Option<String>,
             Option<usize>,
             Option<usize>,
             usize,
@@ -104,10 +106,14 @@ impl MainAreaDna {
             "CUT&RUN neighbor window bp",
         )?;
         let species_filters = Self::parse_ids(&self.cutrun_regulatory_species_filters);
+        let catalog_path = self.cutrun_regulatory_catalog_path.trim().to_string();
+        let cache_dir = self.cutrun_regulatory_cache_dir.trim().to_string();
         Ok((
             seq_id,
             dataset_ids,
             read_report_ids,
+            (!catalog_path.is_empty()).then_some(catalog_path),
+            (!cache_dir.is_empty()).then_some(cache_dir),
             promoter_start,
             promoter_end,
             neighbor_window_bp,
@@ -134,6 +140,8 @@ impl MainAreaDna {
             seq_id,
             dataset_ids,
             read_report_ids,
+            catalog_path,
+            cache_dir,
             promoter_search_start_0based,
             promoter_search_end_0based_exclusive,
             neighbor_window_bp,
@@ -150,6 +158,8 @@ impl MainAreaDna {
                 seq_id,
                 dataset_ids,
                 read_report_ids,
+                catalog_path,
+                cache_dir,
                 promoter_search_start_0based,
                 promoter_search_end_0based_exclusive,
                 neighbor_window_bp,
@@ -548,6 +558,8 @@ impl MainAreaDna {
                 seq_id: report.seq_id.clone(),
                 dataset_ids,
                 read_report_ids,
+                catalog_path: report.catalog_path.clone(),
+                cache_dir: report.cache_dir.clone(),
                 promoter_search_start_0based: Some(report.promoter_search_start_0based),
                 promoter_search_end_0based_exclusive: Some(
                     report.promoter_search_end_0based_exclusive,

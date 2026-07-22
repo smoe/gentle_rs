@@ -1,9 +1,8 @@
 # GENtle Roadmap
 
-Last session: 2026-07-19 - extended the unreleased
-`v0.1.0-internal.10` evidence story with a graphical Gene Locus Evidence
-composer and a deterministic offline PATZ1 tutorial; manual GUI smoke remains
-before the tag
+Last session: 2026-07-22 - completed the offline CUT&RUN V1-V3 release proof
+inside the unreleased `v0.1.0-internal.10` TP73 workflow; manual GUI smoke
+remains before the tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -25,9 +24,9 @@ Maintenance invariant:
 Active next-release aim: TP73 genome-anchored evidence viewer.
 
 Release story: GENtle can open the public GRCh38.p14 TP73 locus and let a user
-inspect exons, introns, repeats, array/evidence tracks, CUT&RUN-style BED
-intervals, TFBS/regulatory annotations, and coordinate-build provenance in the
-DNA viewer.
+inspect exons, introns, repeats, array/evidence tracks, prepared CUT&RUN
+intervals, paired-read ROI support, regulatory/motif-context reasoning,
+TFBS annotations, and coordinate-build provenance in the DNA viewer.
 
 Smoke status: deterministic headless proofs and automated release checks are
 green-path requirements for `v0.1.0-internal.10`. Before tagging, run the
@@ -37,8 +36,9 @@ release story is inspected as well as regenerated.
 Proof path:
 
 - [Headless regeneration workflow](examples/workflows/tp73_genome_evidence_viewer_release_proof.json)
-  loads `test_files/tp73.ncbi.gb`, overlays tiny local repeat, Clariom-style
-  array, CUT&RUN-style BED, and TFBS fixtures, and emits SVG/report artifacts.
+  loads `test_files/tp73.ncbi.gb`, overlays tiny local repeat and Clariom-style
+  array fixtures, exercises CUT&RUN V1-V3 with synthetic paired reads, adds
+  TFBS fixtures, and emits SVG/JSON/TSV proof artifacts.
 - Public [TP73 evidence-viewer runbook](tp73_genome_evidence_viewer_runbook.md).
 - Offline [PATZ1 Gene Locus Evidence workflow](examples/workflows/patz1_gene_locus_evidence_offline.json)
   and generated tutorial align transcript models, PSR/JUC effects, grouped
@@ -50,7 +50,8 @@ Proof path:
 Release acceptance:
 
 - The proof workflow remains offline-safe and writes non-empty sequence,
-  splicing-expert, TFBS SVG, and repeat-materialization JSON artifacts.
+  splicing-expert, TFBS SVG, repeat-materialization JSON, CUT&RUN regulatory
+  JSON, and CUT&RUN coverage/cut-site/fragment TSV artifacts.
 - Version metadata, generated documentation, capability/parity checks, and the
   deterministic proof workflow pass the pre-tag validation recorded in the
   versioned release notes.
@@ -78,7 +79,7 @@ Pre-release finishing scope:
    graphical preview, JSON/SVG/PDF export, and evidence-to-assay continuation.
 3. Review the ClawBio shell-normalizer deprecations before deciding whether any
    compatibility modes should be removed in `v0.1.0-internal.11`.
-4. Preserve headless/GUI parity for repeat, array, CUT&RUN-style BED, TFBS, and
+4. Preserve headless/GUI parity for repeat, array, CUT&RUN V1-V3, TFBS, and
    feature-detail views without promoting evidence overlap into conclusions.
 
 Current non-goals:
@@ -302,7 +303,9 @@ wet-lab conclusions or unconfirmed mutations.
 - Primer-walking support and iterative read/contig data management.
 - Helper-construct terminology migration away from legacy "helper genome"
   wording.
-- Broader CUT&RUN development beyond the release smoke slice.
+- CUT&RUN controls/replicate comparison, calibrated differential support,
+  formal peak calling, and whole-genome read processing beyond the ROI-first
+  release scope.
 - Promoter cohort follow-up: normalized/provenanced cross-promoter CUT&RUN
   peak comparison after the manual/co-regulated/anti-co-regulated and
   ortholog promoter slices settle.

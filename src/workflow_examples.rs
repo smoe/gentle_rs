@@ -2776,6 +2776,83 @@ fn rewrite_example_paths_for_execution(
             }
             continue;
         }
+        if let Operation::ListCutRunDatasets { catalog_path, .. } = op {
+            rewrite_optional_input_path(catalog_path, repo_root);
+            continue;
+        }
+        if let Operation::ShowCutRunDatasetStatus {
+            catalog_path,
+            cache_dir,
+            ..
+        } = op
+        {
+            rewrite_optional_input_path(catalog_path, repo_root);
+            rewrite_optional_output_path(cache_dir, run_dir);
+            continue;
+        }
+        if let Operation::PrepareCutRunDataset {
+            catalog_path,
+            cache_dir,
+            ..
+        }
+        | Operation::ProjectCutRunDataset {
+            catalog_path,
+            cache_dir,
+            ..
+        } = op
+        {
+            rewrite_optional_input_path(catalog_path, repo_root);
+            rewrite_optional_output_path(cache_dir, run_dir);
+            if let Some(dir) = cache_dir {
+                ensure_directory_exists(dir)?;
+            }
+            continue;
+        }
+        if let Operation::InterpretCutRunReads {
+            input_r1_path,
+            input_r2_path,
+            catalog_path,
+            cache_dir,
+            checkpoint_path,
+            ..
+        } = op
+        {
+            rewrite_optional_input_path(input_r1_path, repo_root);
+            rewrite_optional_input_path(input_r2_path, repo_root);
+            rewrite_optional_input_path(catalog_path, repo_root);
+            rewrite_optional_output_path(cache_dir, run_dir);
+            if let Some(dir) = cache_dir {
+                ensure_directory_exists(dir)?;
+            }
+            rewrite_optional_output_path(checkpoint_path, run_dir);
+            if let Some(path) = checkpoint_path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::InspectCutRunRegulatorySupport {
+            catalog_path,
+            cache_dir,
+            path,
+            ..
+        } = op
+        {
+            rewrite_optional_input_path(catalog_path, repo_root);
+            rewrite_optional_output_path(cache_dir, run_dir);
+            if let Some(dir) = cache_dir {
+                ensure_directory_exists(dir)?;
+            }
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::ExportCutRunReadCoverage { path, .. } = op {
+            *path = resolve_output_path(path, run_dir);
+            ensure_parent_exists(path)?;
+            continue;
+        }
         if let Operation::ImportGenomeBedTrack { path, .. } = op {
             *path = resolve_input_path(path, repo_root);
             continue;
@@ -5660,7 +5737,7 @@ mod tests {
     }
 
     #[test]
-    fn workflow_examples_tp73_evidence_viewer_release_proof_writes_artifacts_and_features() {
+    fn workflow_examples_tp73_cutrun_release_proof_writes_artifacts_and_features() {
         let _serial = lock_jaspar_registry_for_test();
         crate::tf_motifs::reload_builtin_for_test();
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
@@ -5679,6 +5756,10 @@ mod tests {
             "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.svg",
             "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.repeat_materialization.json",
             "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.json",
+            "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_regulatory_support.json",
+            "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_coverage.tsv",
+            "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_cut_sites.tsv",
+            "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_fragments.tsv",
         ] {
             let path = run_dir.path().join(relative);
             assert!(path.exists(), "expected workflow artifact {relative}");
@@ -5710,6 +5791,40 @@ mod tests {
         assert_eq!(anchor.chromosome, "1");
         assert_eq!(anchor.start_1based, 3652516);
         assert_eq!(anchor.end_1based, 3736201);
+
+        let cutrun_reads = engine
+            .get_cutrun_read_report("tp73_release_smoke_reads")
+            .expect("offline TP73 CUT&RUN read report");
+        assert_eq!(cutrun_reads.total_units, 4);
+        assert_eq!(cutrun_reads.mapped_units, 4);
+        assert_eq!(cutrun_reads.concordant_pair_count, 4);
+        assert_eq!(cutrun_reads.fragment_count, 4);
+        assert_eq!(cutrun_reads.support_clusters.len(), 2);
+
+        let cutrun_support: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(run_dir.path().join(
+                "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_regulatory_support.json",
+            ))
+            .expect("read CUT&RUN regulatory-support report"),
+        )
+        .expect("parse CUT&RUN regulatory-support report");
+        assert_eq!(
+            cutrun_support["schema"].as_str(),
+            Some("gentle.cutrun_regulatory_support.v1")
+        );
+        assert_eq!(
+            cutrun_support["evidence_sources"].as_array().map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(
+            cutrun_support["support_windows"].as_array().map(Vec::len),
+            Some(2)
+        );
+        assert!(
+            cutrun_support["catalog_path"]
+                .as_str()
+                .is_some_and(|path| path.ends_with("assets/cutrun.json"))
+        );
 
         let has_qualifier =
             |row: &gentle_protocol::SequenceFeatureQueryRow, key: &str, expected: &str| {
@@ -5778,8 +5893,11 @@ mod tests {
             .expect("agent-facing BED feature query should execute");
         assert_eq!(bed_query.matched_count, 2);
         assert!(bed_query.rows.iter().any(|row| {
-            has_qualifier(row, "gentle_track_name", "TP73 CUT&RUN proof BED")
-                && has_qualifier(row, "score", "650.000000")
+            has_qualifier(
+                row,
+                "gentle_track_name",
+                "tp73_release_smoke_synthetic peaks",
+            ) && has_qualifier(row, "score", "650.000000")
                 && has_qualifier(row, "bed_strand", "+")
                 && row.qualifiers.contains_key("gentle_track_file")
         }));
@@ -5830,7 +5948,7 @@ mod tests {
             .filter(|feature| {
                 first_qualifier(feature, "gentle_track_source").as_deref() == Some("BED")
                     && first_qualifier(feature, "gentle_track_name").as_deref()
-                        == Some("TP73 CUT&RUN proof BED")
+                        == Some("tp73_release_smoke_synthetic peaks")
             })
             .collect::<Vec<_>>();
         assert_eq!(bed_features.len(), 2);
@@ -5845,7 +5963,7 @@ mod tests {
         assert!(bed_features.iter().any(|feature| {
             first_qualifier(feature, "gentle_track_source").as_deref() == Some("BED")
                 && first_qualifier(feature, "gentle_track_name").as_deref()
-                    == Some("TP73 CUT&RUN proof BED")
+                    == Some("tp73_release_smoke_synthetic peaks")
                 && first_qualifier(feature, "score").as_deref() == Some("650.000000")
         }));
         assert!(dna.features().iter().any(|feature| {
@@ -5866,8 +5984,14 @@ mod tests {
             linear_svg.contains("External evidence tracks: BED/other imported evidence is grey")
         );
         assert!(linear_svg.contains("Array E-MTAB-14704 AdTAp73alpha-AdGFP"));
-        assert!(linear_svg.contains("BED TP73 CUT&amp;RUN proof"));
-        assert!(linear_svg.contains("BED (tp73_cutrun_demo.bed) x2"));
+        assert!(
+            linear_svg.contains("tp73_release_smoke_synthetic"),
+            "CUT&RUN dataset is absent from the external-evidence legend"
+        );
+        assert!(
+            linear_svg.contains("tp73_release_smoke.peaks.bed"),
+            "CUT&RUN projected-file provenance is absent from the external-evidence legend"
+        );
         assert!(linear_svg.contains("Provenance: sequence NC_000001"));
         assert!(linear_svg.contains("data-gentle-role=\"linear-transcription-start-halo\""));
 
@@ -6960,6 +7084,57 @@ mod tests {
                     "render output path should be rewritten into run dir"
                 );
             }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rewrite_example_paths_handles_cutrun_catalog_status_and_cache() {
+        let example = WorkflowExample {
+            schema: WORKFLOW_EXAMPLE_SCHEMA.to_string(),
+            id: "cutrun_path_rewrite_test".to_string(),
+            title: "CUT&RUN path rewrite test".to_string(),
+            summary: String::new(),
+            test_mode: ExampleTestMode::Skip,
+            required_files: vec!["assets/cutrun.json".to_string()],
+            tags: vec![],
+            workflow: Workflow {
+                run_id: "cutrun_path_rewrite_test".to_string(),
+                ops: vec![
+                    Operation::ListCutRunDatasets {
+                        filter: Some("TP73".to_string()),
+                        catalog_path: Some("assets/cutrun.json".to_string()),
+                    },
+                    Operation::ShowCutRunDatasetStatus {
+                        dataset_id: "tp73_release_smoke_synthetic".to_string(),
+                        catalog_path: Some("assets/cutrun.json".to_string()),
+                        cache_dir: Some("artifacts/cutrun_cache".to_string()),
+                    },
+                ],
+            },
+        };
+        let repo_root = std::env::current_dir().expect("cwd");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let rewritten =
+            rewrite_example_paths_for_execution(&example, repo_root.as_path(), run_dir.path())
+                .expect("rewrite should succeed");
+
+        for op in &rewritten.workflow.ops {
+            let catalog_path = match op {
+                Operation::ListCutRunDatasets { catalog_path, .. }
+                | Operation::ShowCutRunDatasetStatus { catalog_path, .. } => catalog_path
+                    .as_deref()
+                    .expect("CUT&RUN catalog path should remain present"),
+                other => panic!("unexpected operation: {other:?}"),
+            };
+            assert!(Path::new(catalog_path).is_absolute());
+        }
+        match &rewritten.workflow.ops[1] {
+            Operation::ShowCutRunDatasetStatus { cache_dir, .. } => assert!(
+                cache_dir
+                    .as_deref()
+                    .is_some_and(|path| path.starts_with(&display_path(run_dir.path())))
+            ),
             other => panic!("unexpected operation: {other:?}"),
         }
     }

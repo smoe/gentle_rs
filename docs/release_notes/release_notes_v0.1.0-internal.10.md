@@ -19,10 +19,11 @@ v0.1.0-internal.9..v0.1.0-internal.10
 
 The main release story is a genome-anchored TP73 evidence viewer. GENtle can
 open the GRCh38.p14 TP73 locus and inspect exon and transcript structure,
-repeats, projected microarray intervals, CUT&RUN-style BED evidence, TFBS
-annotations, and coordinate/build provenance in one project. The same proof
-is reproducible through a committed headless workflow and inspectable through
-GUI, CLI/shared shell, MCP, and agent-facing paths.
+repeats, projected microarray intervals, prepared CUT&RUN intervals,
+paired-read ROI support, regulatory/motif-context reasoning, TFBS annotations,
+and coordinate/build provenance in one project. The same proof is reproducible
+through a committed headless workflow and inspectable through GUI, CLI/shared
+shell, MCP, and agent-facing paths.
 
 This is also a substantial infrastructure cut. It expands fact-aware
 capability introspection, local and external agent integration, probe-region
@@ -85,8 +86,10 @@ egui thread.
   `docs/examples/workflows/tp73_genome_evidence_viewer_release_proof.json` and
   the public `docs/tp73_genome_evidence_viewer_runbook.md`.
 - Added tiny, provenance-documented fixtures that deterministically produce
-  three repeat features, four projected array intervals, two overlapping
-  CUT&RUN-style BED features, TFBS annotations, and TFBS score-track output.
+  three repeat features, four projected array intervals, two prepared/projected
+  CUT&RUN BED features, four concordant paired-read fragments in two support
+  windows, V3 regulatory-support JSON, TFBS annotations, and TFBS score-track
+  output without a prepared whole genome or SRA download.
 - Added headless queries for repeat, array, and BED qualifiers so an inner
   agent, MCP client, or CLI user can verify the same evidence shown in the GUI.
 - Improved linear and Splicing Expert SVG legends, provenance text, vertical
@@ -279,7 +282,7 @@ cargo test -q --test release_version_consistency
 cargo test --workspace --no-fail-fast
 cargo run --quiet --bin gentle_examples_docs -- --check
 cargo run --quiet --bin gentle_examples_docs -- tutorial-check
-cargo test -q workflow_examples_tp73_evidence_viewer_release_proof_writes_artifacts_and_features
+cargo test -q workflow_examples_tp73_cutrun_release_proof_writes_artifacts_and_features
 python3 -m pytest -q tests/test_codex_agent_bridge.py
 cargo run --release --bin gentle -- --version
 cargo run --release --bin gentle_cli -- capabilities

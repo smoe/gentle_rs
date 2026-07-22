@@ -24913,16 +24913,20 @@ impl GentleEngine {
                     seq_id,
                     dataset_ids,
                     read_report_ids,
+                    catalog_path,
+                    cache_dir,
                     promoter_search_start_0based,
                     promoter_search_end_0based_exclusive,
                     neighbor_window_bp,
                     species_filters,
                     path,
                 } => {
-                    let mut report = self.inspect_cutrun_regulatory_support(
+                    let mut report = self.inspect_cutrun_regulatory_support_with_catalog(
                         &seq_id,
                         &dataset_ids,
                         &read_report_ids,
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
                         promoter_search_start_0based,
                         promoter_search_end_0based_exclusive,
                         neighbor_window_bp,

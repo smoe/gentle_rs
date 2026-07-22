@@ -2563,6 +2563,7 @@ Current draft operations:
 - `ListCutRunReadReports { seq_id? }`
 - `ShowCutRunReadReport { report_id }`
 - `ExportCutRunReadCoverage { report_id, path, kind? }`
+- `InspectCutRunRegulatorySupport { seq_id, dataset_ids, read_report_ids, catalog_path?, cache_dir?, promoter_search_start_0based?, promoter_search_end_0based_exclusive?, neighbor_window_bp, species_filters, path? }`
   - V1 is processed-evidence-first and currently reuses the shared anchored
     `ImportGenomeBedTrack` / `ImportGenomeBigWigTrack` projection behavior.
   - prepared CUT&RUN datasets now also expose one shared lifecycle contract:
@@ -2576,6 +2577,10 @@ Current draft operations:
   - V2 is ROI-first and interprets either ad hoc `FASTA`/`FASTQ` inputs or
     prepared catalog-linked raw reads against one selected genome-anchored
     region plus deterministic flanks.
+  - when `roi_flank_bp = 0` and the anchor span exactly matches the imported
+    sequence length, V2 maps directly against that anchored sequence and does
+    not require the corresponding whole reference genome to be prepared;
+    nonzero flanks still require the prepared reference sequence.
   - paired-end interpretation is first-class: mates are paired by normalized
     read id, concordant pairs emit fragment spans, and orphan/single-ended
     observations are retained as explicit report rows instead of being dropped.
@@ -2592,6 +2597,9 @@ Current draft operations:
   - `InspectCutRunRegulatorySupport` is the first shared V3 reasoning surface:
     - it accepts one anchored `seq_id` plus repeated prepared `dataset_ids`
       and/or saved `read_report_ids`
+    - optional `catalog_path` and `cache_dir` are used for every prepared
+      dataset lookup and are echoed in the portable report, so an inspection
+      can replay the same non-default V1 cache used by prepare/project
     - strong support windows can be derived from saved V2 read reports alone,
       from prepared signal-only evidence, or from prepared peak evidence
     - theoretical TFBS rows keep the legacy `confirmed_tfbs_rows` /

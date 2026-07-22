@@ -7758,7 +7758,7 @@ fn parse_cutrun_list_show_and_export_read_reports() {
 #[test]
 fn parse_cutrun_inspect_regulatory_support() {
     let cmd = parse_shell_line(
-        "cutrun inspect-regulatory-support toy_cutrun_roi --dataset toy_ctcf --read-report toy_cutrun_reads --promoter-search-start 10 --promoter-search-end 180 --neighbor-window-bp 42 --species-filter human --species-filter mouse --path support.json",
+        "cutrun inspect-regulatory-support toy_cutrun_roi --dataset toy_ctcf --read-report toy_cutrun_reads --catalog cutrun.json --cache-dir cutrun-cache --promoter-search-start 10 --promoter-search-end 180 --neighbor-window-bp 42 --species-filter human --species-filter mouse --path support.json",
     )
     .expect("parse CUT&RUN inspect-regulatory-support");
     assert!(matches!(
@@ -7767,6 +7767,8 @@ fn parse_cutrun_inspect_regulatory_support() {
             seq_id,
             dataset_ids,
             read_report_ids,
+            catalog_path,
+            cache_dir,
             promoter_search_start_0based,
             promoter_search_end_0based_exclusive,
             neighbor_window_bp,
@@ -7775,6 +7777,8 @@ fn parse_cutrun_inspect_regulatory_support() {
         } if seq_id == "toy_cutrun_roi"
             && dataset_ids == vec!["toy_ctcf".to_string()]
             && read_report_ids == vec!["toy_cutrun_reads".to_string()]
+            && catalog_path.as_deref() == Some("cutrun.json")
+            && cache_dir.as_deref() == Some("cutrun-cache")
             && promoter_search_start_0based == Some(10)
             && promoter_search_end_0based_exclusive == Some(180)
             && neighbor_window_bp == 42
@@ -33239,6 +33243,8 @@ fn execute_cutrun_inspect_regulatory_support_writes_json_payload() {
             seq_id: "toy_cutrun_roi".to_string(),
             dataset_ids: vec![],
             read_report_ids: vec!["toy_cutrun_reads".to_string()],
+            catalog_path: None,
+            cache_dir: None,
             promoter_search_start_0based: None,
             promoter_search_end_0based_exclusive: None,
             neighbor_window_bp: 150,

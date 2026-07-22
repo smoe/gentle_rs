@@ -12,7 +12,12 @@ not download a full genome, full UCSC `rmsk`, raw CEL files, or SRA reads.
 - Proof fixtures: `test_files/fixtures/evidence_viewer/`
   - UCSC `rmsk`-style repeat rows and generated interval index
   - Clariom D-style microarray track manifest and per-contrast TSVs
-  - CUT&RUN-style BED6 intervals
+  - a directly imported CUT&RUN-style BED6 compatibility interval set
+- Offline CUT&RUN V1-V3 fixture: `assets/cutrun.json` and
+  `assets/cutrun/tp73_release_smoke/`
+  - prepared/projected synthetic BED6 evidence
+  - four deterministic synthetic paired FASTA fragments derived from the
+    committed TP73 sequence
 - Vendor-derived Clariom D TP73 subset:
   `test_files/fixtures/microarray_tracks/clariomd.tp73_vendor_subset.manifest.json`
   - uses real Thermo Fisher Clariom D Human na36 hg38 TP73 probeset IDs,
@@ -23,7 +28,8 @@ not download a full genome, full UCSC `rmsk`, raw CEL files, or SRA reads.
 
 All proof fixture provenance and regeneration notes are in
 `test_files/fixtures/evidence_viewer/README.md` and
-`test_files/fixtures/microarray_tracks/README.md`.
+`test_files/fixtures/microarray_tracks/README.md`, with the CUT&RUN-specific
+record in `assets/cutrun/tp73_release_smoke/README.md`.
 
 ## Regenerate The Repeat Sidecars
 
@@ -57,14 +63,25 @@ Expected artifacts are written under the git-ignored `artifacts/` directory:
 - `artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.svg`
 - `artifacts/tp73_evidence_viewer/tp73_evidence_viewer.repeat_materialization.json`
 - `artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.json`
+- `artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_regulatory_support.json`
+- `artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_coverage.tsv`
+- `artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_cut_sites.tsv`
+- `artifacts/tp73_evidence_viewer/tp73_evidence_viewer.cutrun_fragments.tsv`
 
 The workflow should preserve the TP73 genome anchor as `GRCh38.p14`, chromosome
 `1`, 3652516..3736201, and should materialize:
 
 - three repeat features from the tiny rmsk index,
 - four projected array interval features from the two proof contrasts,
-- two overlapping CUT&RUN-style BED track features,
+- two overlapping prepared/projected CUT&RUN BED track features,
+- four concordant CUT&RUN paired-read fragments in two support clusters,
+- one V3 report combining the prepared dataset and saved V2 read report,
 - TFBS features plus a TFBS score-track SVG over the first 1200 bp.
+
+The zero-flank V2 step maps directly against the imported anchored TP73
+sequence, so this proof intentionally does not require a prepared whole-genome
+reference. All CUT&RUN values are synthetic software-test evidence and must not
+be interpreted as experimental TP73 occupancy.
 
 ## Headless/Agent Smoke Queries
 
@@ -121,6 +138,11 @@ Smoke checklist:
   transcript cluster, exon id, and assembly/projection status are shown.
 - Select one CUT&RUN-style BED row and confirm track source/name/file, genomic
   interval, score, strand, and note are shown.
+- In `Engine Ops -> CUT&RUN regulatory support`, use dataset
+  `tp73_release_smoke_synthetic`, read report `tp73_release_smoke_reads`,
+  catalog `assets/cutrun.json`, and cache
+  `artifacts/tp73_evidence_viewer/cutrun_cache`; confirm two evidence sources
+  and two support windows, then export the cached JSON.
 - Copy details for one repeat, one array row, and one BED track into a scratch
   note to confirm the details are usable outside the GUI.
 
@@ -129,7 +151,7 @@ Smoke checklist:
 Run the targeted proof test:
 
 ```bash
-cargo test -q workflow_examples_tp73_evidence_viewer_release_proof_writes_artifacts_and_features
+cargo test -q workflow_examples_tp73_cutrun_release_proof_writes_artifacts_and_features
 ```
 
 Useful neighboring checks:
@@ -141,6 +163,7 @@ cargo test -q set_display_visibility_controls_repeat_features
 cargo test -q project_microarray_track_forward_anchor_materializes_array_features
 cargo test -q project_microarray_track_uses_vendor_subset_on_tp73_genbank_anchor
 cargo test -q materialize_repeat_features_creates_repeat_regions_on_reverse_anchor
+cargo test -q cutrun
 ```
 
 Before handoff or release:

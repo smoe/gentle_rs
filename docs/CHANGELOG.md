@@ -19,6 +19,10 @@ Maintenance rule:
   SYBR tutorial so every selected pair detects its own design transcript;
   legacy summary enrichment now preserves unknown origin and restores only
   explicitly recorded requested-junction overlaps.
+- Completed the offline CUT&RUN V1-V3 release path with a built-in synthetic
+  TP73 catalog dataset, prepared BED and paired-read evidence, zero-flank
+  mapping against an imported genome anchor, custom catalog/cache replay in V3
+  and its GUI inspector, and deterministic JSON/TSV workflow artifacts.
 - Completed the `gentle.primer_pair_summary.v2` communication contract with
   canonical design-amplicon coordinates/length, explicit separation from
   cross-transcript predicted products, blank-specificity normalization, and

@@ -9533,7 +9533,7 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
         "inspect-regulatory-support" => {
             if tokens.len() < 3 {
                 return Err(
-                    "cutrun inspect-regulatory-support requires SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path FILE.json]"
+                    "cutrun inspect-regulatory-support requires SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--catalog PATH] [--cache-dir PATH] [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path FILE.json]"
                         .to_string(),
                 );
             }
@@ -9545,6 +9545,8 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
             }
             let mut dataset_ids = vec![];
             let mut read_report_ids = vec![];
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
             let mut promoter_search_start_0based: Option<usize> = None;
             let mut promoter_search_end_0based_exclusive: Option<usize> = None;
             let mut neighbor_window_bp = 150usize;
@@ -9584,6 +9586,23 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                             );
                         }
                         read_report_ids.push(trimmed.to_string());
+                    }
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "cutrun inspect-regulatory-support",
+                        )?);
+                    }
+                    "--cache-dir" | "--cache_dir" => {
+                        let flag = tokens[idx].clone();
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "cutrun inspect-regulatory-support",
+                        )?);
                     }
                     "--promoter-search-start" => {
                         let raw = parse_option_path(
@@ -9657,6 +9676,8 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                 seq_id,
                 dataset_ids,
                 read_report_ids,
+                catalog_path,
+                cache_dir,
                 promoter_search_start_0based,
                 promoter_search_end_0based_exclusive,
                 neighbor_window_bp,
