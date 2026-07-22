@@ -25,7 +25,11 @@
 use crate::{
     DNA_LADDERS, RNA_LADDERS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
-    digest_utils::{sha256_prefixed_bytes, sha256_prefixed_str, short_sha256_id},
+    digest_utils::{
+        canonical_oligo_sequence, oligo_full_id, oligo_sequence_sha256, oligo_tube_id,
+        primer_pair_full_id, sha256_hex_str, sha256_prefixed_bytes, sha256_prefixed_str,
+        short_sha256_id,
+    },
     dna_sequence::DNAsequence,
     ensembl_protein::EnsemblProteinEntry,
     enzymes::{
@@ -621,6 +625,11 @@ const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
 const OLIGO_ORDER_FORM_SCHEMA: &str = "gentle.oligo_order_form.v1";
 const CDNA_ASSAY_TEST_REPORT_SCHEMA: &str = "gentle.cdna_assay_test_report.v1";
+const EXPERIMENTAL_ASSAY_HANDOFF_SCHEMA: &str = "gentle.experimental_assay_handoff.v1";
+const EXPERIMENTAL_ASSAY_CARD_SCHEMA: &str = "gentle.experimental_assay_card.v1";
+const EXPERIMENTAL_ASSAY_READINESS_POLICY_SCHEMA: &str =
+    "gentle.experimental_assay_readiness_policy.v1";
+const PRIMER_VARIANT_EVIDENCE_SCHEMA: &str = "gentle.primer_variant_evidence.v1";
 const CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA: &str = "gentle.cdna_assay_transcript_map.v1";
 const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
     "gentle.cdna_assay_product_materialization.v1";
@@ -4209,6 +4218,22 @@ pub enum Operation {
         report_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+    },
+    /// Project one persisted transcript assay panel into deterministic
+    /// per-pair bench cards and an order/readiness table. This operation runs
+    /// the shared cDNA assay test for every selected pair.
+    BuildExperimentalAssayHandoff {
+        panel_report_id: String,
+        #[serde(default)]
+        policy: ExperimentalAssayReadinessPolicy,
+        #[serde(default)]
+        variant_evidence_paths: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        order_form_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        order_table_path: Option<String>,
     },
     TestCdnaQpcrFasta {
         #[serde(default)]
@@ -12264,13 +12289,7 @@ impl GentleEngine {
     }
 
     fn normalize_oligo_sequence(raw: &str) -> String {
-        raw.chars()
-            .filter(|ch| !ch.is_whitespace())
-            .map(|ch| {
-                let up = ch.to_ascii_uppercase();
-                if up == 'U' { 'T' } else { up }
-            })
-            .collect()
+        canonical_oligo_sequence(raw)
     }
 
     fn normalize_oligo_modifications(values: &[String]) -> Vec<String> {

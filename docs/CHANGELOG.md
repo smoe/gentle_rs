@@ -14,6 +14,12 @@ Maintenance rule:
 
 ## 2026-07-22
 
+- Added deterministic per-panel experimental assay handoffs with canonical
+  oligo/pair identities, automatic pair-linked cDNA tests, exact product-
+  sequence classes, versioned readiness gates, optional provenance-bound
+  variant evidence, procurement formulation projection, and JSON/TSV exports
+  across the shared engine, PCR Designer, shell/CLI, and generic adapter
+  surfaces.
 - Added experimental-practicality provenance to multi-transcript primer panels:
   annotation-only routine common-region screening, separate PSR/JUC support,
   preferred-versus-allowed product ranges, explicit long-range fallbacks,

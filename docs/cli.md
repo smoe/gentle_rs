@@ -3023,6 +3023,7 @@ Shared shell command:
         visible without inventing a universal safe cutoff. A missing primer
         target remains structurally distinct from an indeterminate no-product
         result.
+    - `primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv]`
     - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
       - returns `gentle.primer3_preflight.v1` with configured/effective
@@ -3707,6 +3708,26 @@ Shared shell command:
       - deterministic worked example:
         `docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json`
         (synthetic sequence; not orderable human PATZ1 primers)
+    - Experimental handoff notes (`primers experimental-handoff`):
+      - consumes one persisted transcript-panel report and emits one
+        deterministic card per selected primer pair; it automatically runs the
+        shared cDNA assay test for each pair and links it by canonical `pair_id`
+        plus instance-specific `assay_test_id`
+      - the default policy requires critical oligo QC, annotation provenance,
+        and completed whole-genome specificity. Missing variant evidence is
+        shown as `not_evaluated` but is optional unless the supplied policy
+        requires it. Evaluated failures remain visible blockers
+      - `--policy` accepts inline JSON or `@FILE`; `--variant-evidence` may be
+        repeated; `--order-form-id` projects existing modifications, scale,
+        purification, and duplicate-review state without merging order lines
+      - `--path` writes the complete JSON package and `--order-table` writes a
+        compact TSV. Neither route submits an order or records a wet-lab result
+      - exact cDNA product digests define sequence classes only. Gel separation
+        is assessed separately and only when named gel conditions are present
+        in the policy
+      - the typed `BuildExperimentalAssayHandoff` operation is also available
+        through generic MCP `op`, workflows, JavaScript, and Lua; the GUI Shell
+        surface accepts the same command
     - Restriction-cloning handoff notes (`primers prepare-restriction-cloning`):
       - expects an `Operation` payload whose root variant is
         `PrepareRestrictionCloningPcrHandoff`

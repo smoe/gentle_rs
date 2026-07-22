@@ -12513,10 +12513,17 @@ impl GentleEngine {
                         &source_ranges_0based,
                         request.max_amplicon_bp,
                     );
+                let product_sequence_sha256 = template
+                    .sequence
+                    .get(amplicon_start..amplicon_end)
+                    .map(oligo_sequence_sha256);
                 products.push(CdnaAssayProduct {
                     amplicon_start_0based: amplicon_start,
                     amplicon_end_0based_exclusive: amplicon_end,
                     amplicon_length_bp: amplicon_length,
+                    product_sequence_sha256,
+                    product_sequence_basis: "mature_cdna_template_5prime_to_3prime_0based_half_open_including_binding_regions_excluding_nonannealing_tails_and_primer_induced_substitutions"
+                        .to_string(),
                     forward_hit_index: forward_idx,
                     reverse_hit_index: reverse_idx,
                     probe_hit_indices,
@@ -12867,8 +12874,30 @@ impl GentleEngine {
         if let Some(warning) = Self::cdna_assay_genomic_carryover_warning(&genomic_carryover_risk) {
             warnings.push(warning);
         }
+        let requested_transcript_id = transcript_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        let pair_id = primer_pair_full_id(&request.forward_primer, &request.reverse_primer);
+        let assay_test_id = Self::cdna_assay_test_id(
+            &pair_id,
+            request.probe.as_deref(),
+            "transcript_derived",
+            &[],
+            seq_id,
+            source_feature_id,
+            requested_transcript_id.as_deref(),
+            request.max_mismatches,
+            request.require_3prime_exact_bases,
+            request.min_amplicon_bp,
+            request.max_amplicon_bp,
+            transcript_order,
+            transcript_map_coordinate_mode,
+        );
         let mut report = CdnaAssayTestReport {
             schema: CDNA_ASSAY_TEST_REPORT_SCHEMA.to_string(),
+            pair_id,
+            assay_test_id,
             assay_kind,
             template_source_kind: "transcript_derived".to_string(),
             source_paths: vec![],
@@ -12876,10 +12905,7 @@ impl GentleEngine {
             source_feature_id,
             group_label: splicing.group_label,
             strand: splicing.strand,
-            requested_transcript_id: transcript_id
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string),
+            requested_transcript_id,
             forward_primer: request.forward_primer,
             reverse_primer: request.reverse_primer,
             probe: request.probe,
@@ -12924,6 +12950,40 @@ impl GentleEngine {
         } else {
             token
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn cdna_assay_test_id(
+        pair_id: &str,
+        probe: Option<&str>,
+        template_source_kind: &str,
+        source_paths: &[String],
+        source_seq_id: &str,
+        source_feature_id: usize,
+        requested_transcript_id: Option<&str>,
+        max_mismatches: usize,
+        require_3prime_exact_bases: usize,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        transcript_order: CdnaAssayTranscriptOrder,
+        transcript_map_coordinate_mode: CdnaAssayTranscriptMapCoordinateMode,
+    ) -> String {
+        let identity = json!({
+            "pair_id": pair_id,
+            "probe_id": probe.map(oligo_full_id),
+            "template_source_kind": template_source_kind,
+            "source_paths": source_paths,
+            "source_seq_id": source_seq_id,
+            "source_feature_id": source_feature_id,
+            "requested_transcript_id": requested_transcript_id,
+            "max_mismatches": max_mismatches,
+            "require_3prime_exact_bases": require_3prime_exact_bases,
+            "min_amplicon_bp": min_amplicon_bp,
+            "max_amplicon_bp": max_amplicon_bp,
+            "transcript_order": transcript_order,
+            "transcript_map_coordinate_mode": transcript_map_coordinate_mode,
+        });
+        format!("assay_test_sha256_{}", sha256_hex_str(&identity.to_string()))
     }
 
     fn default_cdna_assay_product_prefix(report: &CdnaAssayTestReport) -> String {
@@ -16227,6 +16287,10 @@ impl GentleEngine {
         };
 
         PrimerPairCommunicationSummary {
+            pair_id: primer_pair_full_id(
+                &candidate.primer_pair.forward.sequence,
+                &candidate.primer_pair.reverse.sequence,
+            ),
             display_label: Self::transcript_assay_pair_display_label(
                 &gene_token,
                 &forward_exons,
@@ -16279,6 +16343,13 @@ impl GentleEngine {
                 primer_spans_junction: reverse_exons.len() > 1,
                 ..Default::default()
             },
+            probe: candidate.probe.as_ref().map(|probe| PrimerPairSummaryOligo {
+                primer_id: Self::transcript_assay_primer_id(&probe.sequence),
+                role: "probe".to_string(),
+                display_label: format!("{gene_token}_PROBE"),
+                origin: PrimerPairSummaryOrigin::DeNovo,
+                ..Default::default()
+            }),
             design_amplicon_start_0based: candidate.primer_pair.amplicon_start_0based,
             design_amplicon_end_0based_exclusive: candidate
                 .primer_pair
@@ -16485,9 +16556,15 @@ impl GentleEngine {
                 assay.junction_matches.iter().any(|row| row.reverse_spans);
             let fallback_forward_label = format!("{gene_token}_F");
             let fallback_reverse_label = format!("{gene_token}_R");
+            let fallback_probe_label = format!("{gene_token}_PROBE");
+            let empty_previous_probe = PrimerPairSummaryOligo::default();
             assay.primer_pair_summary = PrimerPairCommunicationSummary {
                 schema: PRIMER_PAIR_SUMMARY_SCHEMA.to_string(),
                 assay_id: assay.assay_id.clone(),
+                pair_id: primer_pair_full_id(
+                    &assay.primer_pair.forward.sequence,
+                    &assay.primer_pair.reverse.sequence,
+                ),
                 pair_rank: assay.rank,
                 design_transcript_id: assay.design_transcript_id.clone(),
                 design_equivalence_group_id: assay.design_equivalence_group_id.clone(),
@@ -16547,6 +16624,15 @@ impl GentleEngine {
                     &fallback_reverse_label,
                     reverse_spans_requested_junction,
                 ),
+                probe: assay.probe.as_ref().map(|probe| {
+                    Self::primer_pair_summary_oligo(
+                        "probe",
+                        probe,
+                        previous.probe.as_ref().unwrap_or(&empty_previous_probe),
+                        &fallback_probe_label,
+                        false,
+                    )
+                }),
                 design_amplicon_start_0based: assay.primer_pair.amplicon_start_0based,
                 design_amplicon_end_0based_exclusive: assay
                     .primer_pair
@@ -18255,6 +18341,888 @@ impl GentleEngine {
         Ok(())
     }
 
+    fn experimental_assay_gate(
+        gate: &str,
+        required: bool,
+        status: ExperimentalAssayGateStatus,
+        summary: impl Into<String>,
+        evidence_ids: Vec<String>,
+    ) -> ExperimentalAssayGateOutcome {
+        ExperimentalAssayGateOutcome {
+            gate: gate.to_string(),
+            required,
+            status,
+            summary: summary.into(),
+            evidence_ids,
+        }
+    }
+
+    fn experimental_assay_gate_blocks(gate: &ExperimentalAssayGateOutcome) -> bool {
+        gate.status == ExperimentalAssayGateStatus::Fail
+            || (gate.required
+                && matches!(
+                    gate.status,
+                    ExperimentalAssayGateStatus::Incomplete
+                        | ExperimentalAssayGateStatus::NotEvaluated
+                ))
+    }
+
+    fn experimental_assay_oligo_identity(
+        oligo: &PrimerPairSummaryOligo,
+        order_form: Option<&OligoOrderForm>,
+    ) -> ExperimentalAssayOligoIdentity {
+        let canonical_sequence = canonical_oligo_sequence(&oligo.sequence_5_to_3);
+        let oligo_id = oligo_full_id(&canonical_sequence);
+        let mut formulations_by_key = BTreeMap::<String, ExperimentalAssayOligoFormulation>::new();
+        if let Some(form) = order_form {
+            for line in &form.line_items {
+                if canonical_oligo_sequence(&line.sequence_5_to_3) != canonical_sequence {
+                    continue;
+                }
+                let key = Self::oligo_procurement_key(line);
+                let formulation = formulations_by_key.entry(key.clone()).or_insert_with(|| {
+                    ExperimentalAssayOligoFormulation {
+                        formulation_id: format!(
+                            "formulation_sha256_{}",
+                            sha256_hex_str(&format!("{oligo_id}|{key}"))
+                        ),
+                        modifications: line.modifications.clone(),
+                        scale: line.scale.clone(),
+                        purification: line.purification.clone(),
+                        order_line_ids: vec![],
+                    }
+                });
+                formulation.order_line_ids.push(line.line_id.clone());
+            }
+        }
+        let mut formulations = formulations_by_key.into_values().collect::<Vec<_>>();
+        for formulation in &mut formulations {
+            formulation.order_line_ids.sort();
+        }
+        ExperimentalAssayOligoIdentity {
+            role: oligo.role.clone(),
+            oligo_id,
+            sequence_sha256: oligo_sequence_sha256(&canonical_sequence),
+            tube_id: oligo_tube_id(&canonical_sequence),
+            legacy_primer_id: oligo.primer_id.clone(),
+            display_label: oligo.display_label.clone(),
+            aliases: oligo.aliases.clone(),
+            sequence_5_to_3: canonical_sequence.clone(),
+            length_nt: canonical_sequence.len(),
+            formulations,
+            analysis_species_caveat: "Tm, GC, secondary-structure, and specificity facts describe the unmodified annealing sequence; procurement formulations require chemistry-specific review."
+                .to_string(),
+        }
+    }
+
+    fn experimental_assay_product_sequence_classes(
+        panel: &TranscriptAssayPanelReport,
+        assay_test: &CdnaAssayTestReport,
+    ) -> Vec<ExperimentalAssayProductSequenceClass> {
+        let equivalence_by_transcript = panel
+            .equivalence_groups
+            .iter()
+            .flat_map(|group| {
+                group.members.iter().map(move |member| {
+                    (
+                        member.transcript_id.as_str(),
+                        group.equivalence_group_id.as_str(),
+                    )
+                })
+            })
+            .collect::<HashMap<_, _>>();
+        let mut classes = BTreeMap::<String, ExperimentalAssayProductSequenceClass>::new();
+        for transcript in &assay_test.transcript_results {
+            for product in &transcript.products {
+                let Some(sequence_sha256) = product.product_sequence_sha256.as_ref() else {
+                    continue;
+                };
+                let class = classes.entry(sequence_sha256.clone()).or_insert_with(|| {
+                    ExperimentalAssayProductSequenceClass {
+                        sequence_sha256: sequence_sha256.clone(),
+                        interpretation: "A shared digest identifies one exact mature-cDNA product sequence and cannot identify which member transcript produced it; different digests do not by themselves imply gel-resolvable products."
+                            .to_string(),
+                        ..Default::default()
+                    }
+                });
+                class.transcript_ids.push(transcript.transcript_id.clone());
+                if let Some(group_id) =
+                    equivalence_by_transcript.get(transcript.transcript_id.as_str())
+                {
+                    class.equivalence_group_ids.push((*group_id).to_string());
+                }
+                class.product_lengths_bp.push(product.amplicon_length_bp);
+            }
+        }
+        let mut classes = classes.into_values().collect::<Vec<_>>();
+        for class in &mut classes {
+            class.transcript_ids.sort();
+            class.transcript_ids.dedup();
+            class.equivalence_group_ids.sort();
+            class.equivalence_group_ids.dedup();
+            class.product_lengths_bp.sort_unstable();
+            class.product_lengths_bp.dedup();
+        }
+        classes
+    }
+
+    fn experimental_assay_controls(
+        summary: &PrimerPairCommunicationSummary,
+        assay_test: &CdnaAssayTestReport,
+    ) -> Vec<ExperimentalAssayControlAdvice> {
+        let actual_primer_spans_junction = summary.forward.primer_spans_junction
+            || summary.reverse.primer_spans_junction
+            || assay_test.transcript_results.iter().any(|row| {
+                row.forward_hits.iter().any(|hit| hit.spans_junction)
+                    || row.reverse_hits.iter().any(|hit| hit.spans_junction)
+            });
+        let amplicon_spans_junction = summary.amplicon_spans_junction
+            || assay_test
+                .transcript_results
+                .iter()
+                .flat_map(|row| &row.products)
+                .any(|product| product.spans_junction);
+        let contiguous_genomic_product = assay_test
+            .transcript_results
+            .iter()
+            .flat_map(|row| &row.products)
+            .any(|product| product.genomic_equivalent_length_bp.is_some());
+        let (no_rt_requirement, no_rt_rationale, gdna_requirement, gdna_rationale) =
+            if actual_primer_spans_junction {
+                (
+                    "recommended",
+                    "At least one primer spans an exon-exon junction; no-RT still checks residual genomic carryover.",
+                    "recommended",
+                    "Purified genomic DNA is an expected-negative diagnostic for the junction-spanning primer geometry.",
+                )
+            } else if amplicon_spans_junction {
+                (
+                    "required",
+                    "The amplicon spans a junction but neither primer is confirmed junction-spanning, so reverse-transcriptase dependence must be demonstrated.",
+                    if contiguous_genomic_product {
+                        "required"
+                    } else {
+                        "recommended"
+                    },
+                    "Purified genomic DNA tests whether the intron-containing genomic locus can produce a competing product under the chosen PCR conditions.",
+                )
+            } else {
+                (
+                    "required",
+                    "No junction-based primer discrimination is established; no-RT is required to detect genomic carryover.",
+                    "required",
+                    "The assay lacks confirmed junction discrimination, so purified genomic DNA should be tested directly.",
+                )
+            };
+        vec![
+            ExperimentalAssayControlAdvice {
+                control: "no_template_control".to_string(),
+                requirement: "required".to_string(),
+                rationale: "Universal contamination/reagent control for PCR assays.".to_string(),
+            },
+            ExperimentalAssayControlAdvice {
+                control: "positive_cdna_control".to_string(),
+                requirement: "required".to_string(),
+                rationale: "Confirms that the assay and reaction mix can amplify an appropriate cDNA template."
+                    .to_string(),
+            },
+            ExperimentalAssayControlAdvice {
+                control: "no_rt_control".to_string(),
+                requirement: no_rt_requirement.to_string(),
+                rationale: no_rt_rationale.to_string(),
+            },
+            ExperimentalAssayControlAdvice {
+                control: "purified_genomic_dna_control".to_string(),
+                requirement: gdna_requirement.to_string(),
+                rationale: gdna_rationale.to_string(),
+            },
+        ]
+    }
+
+    fn experimental_assay_gel_assessment(
+        product_lengths: &[usize],
+        conditions: Option<&GelRunConditions>,
+    ) -> ExperimentalAssayGelAssessment {
+        let Some(conditions) = conditions else {
+            return ExperimentalAssayGelAssessment {
+                status: "not_evaluated".to_string(),
+                model: "none".to_string(),
+                interpretation: "Co-migration is not inferred without named gel-run assumptions."
+                    .to_string(),
+                ..Default::default()
+            };
+        };
+        let unique_lengths = product_lengths.iter().copied().collect::<BTreeSet<_>>();
+        if unique_lengths.is_empty() {
+            return ExperimentalAssayGelAssessment {
+                status: "incomplete".to_string(),
+                model: conditions.describe(),
+                interpretation:
+                    "No predicted product lengths were available for gel-resolution assessment."
+                        .to_string(),
+                ..Default::default()
+            };
+        }
+        let sample = crate::pool_gel::GelSampleInput {
+            name: "predicted assay products".to_string(),
+            role_label: Some("experimental_handoff".to_string()),
+            members: unique_lengths
+                .iter()
+                .map(|length| crate::pool_gel::GelSampleMember {
+                    seq_id: format!("predicted_{length}bp"),
+                    bp: *length,
+                    topology_form: GelTopologyForm::Linear,
+                })
+                .collect(),
+        };
+        match crate::pool_gel::build_serial_gel_layout(&[sample], &[], Some(conditions)) {
+            Ok(layout) => {
+                let mut groups = layout
+                    .lanes
+                    .iter()
+                    .filter(|lane| !lane.is_ladder)
+                    .flat_map(|lane| &lane.bands)
+                    .filter_map(|band| {
+                        let mut lengths = band
+                            .labels
+                            .iter()
+                            .filter_map(|label| {
+                                label
+                                    .strip_prefix("predicted_")?
+                                    .split_once("bp")?
+                                    .0
+                                    .parse::<usize>()
+                                    .ok()
+                            })
+                            .collect::<Vec<_>>();
+                        lengths.sort_unstable();
+                        lengths.dedup();
+                        (lengths.len() > 1).then_some(lengths)
+                    })
+                    .collect::<Vec<_>>();
+                groups.sort();
+                ExperimentalAssayGelAssessment {
+                    status: if groups.is_empty() { "pass" } else { "co_migration_predicted" }
+                        .to_string(),
+                    model: layout.conditions.describe(),
+                    co_migrating_product_length_groups_bp: groups,
+                    interpretation: "This is a deterministic virtual-gel heuristic under the named conditions, not an observed separation result."
+                        .to_string(),
+                }
+            }
+            Err(error) => ExperimentalAssayGelAssessment {
+                status: "incomplete".to_string(),
+                model: conditions.describe(),
+                interpretation: format!("Could not evaluate virtual-gel resolution: {error}"),
+                ..Default::default()
+            },
+        }
+    }
+
+    fn load_primer_variant_evidence(
+        paths: &[String],
+    ) -> Result<Vec<PrimerVariantEvidenceReport>, EngineError> {
+        let mut reports = vec![];
+        let mut pair_ids = BTreeSet::new();
+        for path in paths
+            .iter()
+            .map(|path| path.trim())
+            .filter(|path| !path.is_empty())
+        {
+            let text = fs::read_to_string(path).map_err(|error| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read primer variant evidence '{path}': {error}"),
+                cause_chain: vec![],
+            })?;
+            let report: PrimerVariantEvidenceReport =
+                serde_json::from_str(&text).map_err(|error| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not parse primer variant evidence '{path}' as {}: {error}",
+                        PRIMER_VARIANT_EVIDENCE_SCHEMA
+                    ),
+                    cause_chain: vec![],
+                })?;
+            if report.schema != PRIMER_VARIANT_EVIDENCE_SCHEMA {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer variant evidence '{path}' has schema '{}', expected '{}'",
+                        report.schema, PRIMER_VARIANT_EVIDENCE_SCHEMA
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            let missing_provenance = [
+                ("pair_id", report.pair_id.as_str()),
+                ("reference_assembly", report.reference_assembly.as_str()),
+                ("source_name", report.source_name.as_str()),
+                ("source_release", report.source_release.as_str()),
+                ("population", report.population.as_str()),
+                ("retrieval_time", report.retrieval_time.as_str()),
+                ("content_sha256", report.content_sha256.as_str()),
+            ]
+            .into_iter()
+            .filter_map(|(field, value)| value.trim().is_empty().then_some(field))
+            .collect::<Vec<_>>();
+            if !missing_provenance.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer variant evidence '{path}' is missing provenance field(s): {}",
+                        missing_provenance.join(", ")
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            if !report.pair_id.starts_with("pair_sha256_") {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer variant evidence '{path}' pair_id '{}' is not a canonical physical primer-pair identity",
+                        report.pair_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            if !pair_ids.insert(report.pair_id.clone()) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer variant evidence '{path}' has duplicate pair_id '{}'",
+                        report.pair_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            reports.push(report);
+        }
+        reports.sort_by(|left, right| left.pair_id.cmp(&right.pair_id));
+        Ok(reports)
+    }
+
+    pub fn build_experimental_assay_handoff(
+        &self,
+        panel_report_id: &str,
+        mut policy: ExperimentalAssayReadinessPolicy,
+        variant_evidence_paths: &[String],
+        order_form_id: Option<&str>,
+    ) -> Result<ExperimentalAssayHandoffReport, EngineError> {
+        if policy.schema.trim().is_empty() {
+            policy.schema = EXPERIMENTAL_ASSAY_READINESS_POLICY_SCHEMA.to_string();
+        } else if policy.schema != EXPERIMENTAL_ASSAY_READINESS_POLICY_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported experimental assay readiness policy schema '{}'; expected '{}'",
+                    policy.schema, EXPERIMENTAL_ASSAY_READINESS_POLICY_SCHEMA
+                ),
+                cause_chain: vec![],
+            });
+        }
+        if policy.policy_version.trim().is_empty() {
+            policy.policy_version = "1".to_string();
+        }
+        let panel = self.get_transcript_assay_panel_report(panel_report_id)?;
+        let panel_bytes = serde_json::to_vec(&panel).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not fingerprint transcript assay panel: {error}"),
+            cause_chain: vec![],
+        })?;
+        let source_panel_sha256 = sha256_prefixed_bytes(&panel_bytes);
+        let policy_text = serde_json::to_string(&policy).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not identify experimental readiness policy: {error}"),
+            cause_chain: vec![],
+        })?;
+        let policy_id = format!("readiness_policy_sha256_{}", sha256_hex_str(&policy_text));
+        let variant_evidence = Self::load_primer_variant_evidence(variant_evidence_paths)?;
+        let selected_pair_ids = panel
+            .selected_assays
+            .iter()
+            .map(|assay| {
+                primer_pair_full_id(
+                    &assay.primer_pair.forward.sequence,
+                    &assay.primer_pair.reverse.sequence,
+                )
+            })
+            .collect::<HashSet<_>>();
+        if let Some(unmatched) = variant_evidence
+            .iter()
+            .find(|report| !selected_pair_ids.contains(&report.pair_id))
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Primer variant evidence '{}' targets pair_id '{}', which is not selected in panel '{}'",
+                    unmatched.evidence_id, unmatched.pair_id, panel.report_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let variant_by_pair = variant_evidence
+            .iter()
+            .map(|report| (report.pair_id.as_str(), report))
+            .collect::<HashMap<_, _>>();
+        let order_form = order_form_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|form_id| self.get_oligo_order_form(form_id))
+            .transpose()?;
+        let source_order_form_sha256 = order_form
+            .as_ref()
+            .map(|form| {
+                serde_json::to_vec(form)
+                    .map(|bytes| sha256_prefixed_bytes(&bytes))
+                    .map_err(|error| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!("Could not fingerprint linked oligo order form: {error}"),
+                        cause_chain: vec![],
+                    })
+            })
+            .transpose()?;
+        let specificity_pass_ids = panel
+            .specificity_acceptance
+            .as_ref()
+            .filter(|acceptance| acceptance.accepted)
+            .map(|acceptance| {
+                acceptance
+                    .passing_assay_ids
+                    .iter()
+                    .cloned()
+                    .collect::<HashSet<_>>()
+            })
+            .unwrap_or_default();
+
+        let mut cards = vec![];
+        let mut assay_tests = vec![];
+        let mut package_warnings = vec![];
+        for assay in &panel.selected_assays {
+            let summary = &assay.primer_pair_summary;
+            let expected_pair_id = primer_pair_full_id(
+                &assay.primer_pair.forward.sequence,
+                &assay.primer_pair.reverse.sequence,
+            );
+            let assay_test = self.test_cdna_assay(
+                &panel.source_seq_id,
+                panel.source_feature_id,
+                &assay.primer_pair.forward.sequence,
+                &assay.primer_pair.reverse.sequence,
+                assay.probe.as_ref().map(|probe| probe.sequence.as_str()),
+                None,
+                Some(panel.min_amplicon_bp),
+                Some(panel.max_amplicon_bp),
+                Some(panel.max_mismatches),
+                Some(panel.require_3prime_exact_bases),
+                CdnaAssayTranscriptOrder::TranscriptId,
+                CdnaAssayTranscriptMapCoordinateMode::Cdna,
+            )?;
+            let oligo_identity_verified =
+                summary.pair_id == expected_pair_id && assay_test.pair_id == expected_pair_id;
+            let assay_test_bytes =
+                serde_json::to_vec(&assay_test).map_err(|error| EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!("Could not fingerprint cDNA assay test: {error}"),
+                    cause_chain: vec![],
+                })?;
+            let assay_test_link = ExperimentalAssayTestLink {
+                assay_test_id: assay_test.assay_test_id.clone(),
+                pair_id: expected_pair_id.clone(),
+                report_schema: assay_test.schema.clone(),
+                report_sha256: sha256_prefixed_bytes(&assay_test_bytes),
+                oligo_identity_verified,
+            };
+            let mut oligos = vec![
+                Self::experimental_assay_oligo_identity(&summary.forward, order_form.as_ref()),
+                Self::experimental_assay_oligo_identity(&summary.reverse, order_form.as_ref()),
+            ];
+            if let Some(probe) = summary.probe.as_ref() {
+                oligos.push(Self::experimental_assay_oligo_identity(
+                    probe,
+                    order_form.as_ref(),
+                ));
+            }
+            let mut product_lengths = assay_test
+                .transcript_results
+                .iter()
+                .flat_map(|row| {
+                    row.products
+                        .iter()
+                        .map(|product| product.amplicon_length_bp)
+                })
+                .collect::<Vec<_>>();
+            product_lengths.sort_unstable();
+            product_lengths.dedup();
+            let product_sequence_classes =
+                Self::experimental_assay_product_sequence_classes(&panel, &assay_test);
+            let controls = Self::experimental_assay_controls(summary, &assay_test);
+            let gel_assessment = Self::experimental_assay_gel_assessment(
+                &product_lengths,
+                policy.gel_conditions.as_ref(),
+            );
+            let variant = variant_by_pair.get(expected_pair_id.as_str()).copied();
+            let variant_evidence_report_sha256 = variant
+                .map(|report| {
+                    serde_json::to_vec(report)
+                        .map(|bytes| sha256_prefixed_bytes(&bytes))
+                        .map_err(|error| EngineError {
+                            code: ErrorCode::Internal,
+                            message: format!(
+                                "Could not fingerprint primer variant evidence: {error}"
+                            ),
+                            cause_chain: vec![],
+                        })
+                })
+                .transpose()?;
+
+            let mut gates = vec![];
+            gates.push(Self::experimental_assay_gate(
+                "critical_qc",
+                policy.require_critical_qc_pass,
+                if summary.oligo_qc.status == "pass" {
+                    ExperimentalAssayGateStatus::Pass
+                } else {
+                    ExperimentalAssayGateStatus::Fail
+                },
+                format!("Stored primer-pair QC status: {}", summary.oligo_qc.status),
+                vec![summary.assay_id.clone()],
+            ));
+            let specificity_status = if specificity_pass_ids.contains(&assay.assay_id)
+                || matches!(
+                    summary.whole_genome_specificity_status.as_str(),
+                    "external_blast_pass" | "specificity_pass" | "pass"
+                ) {
+                ExperimentalAssayGateStatus::Pass
+            } else if summary.whole_genome_specificity_status.trim().is_empty()
+                || summary.whole_genome_specificity_status == "not_run"
+            {
+                ExperimentalAssayGateStatus::NotEvaluated
+            } else if summary.whole_genome_specificity_status == "incomplete" {
+                ExperimentalAssayGateStatus::Incomplete
+            } else {
+                ExperimentalAssayGateStatus::Fail
+            };
+            gates.push(Self::experimental_assay_gate(
+                "whole_genome_specificity",
+                policy.require_specificity_pass,
+                specificity_status,
+                format!(
+                    "Stored whole-genome specificity status: {}",
+                    summary.whole_genome_specificity_status
+                ),
+                panel
+                    .specificity_acceptance
+                    .as_ref()
+                    .map(|acceptance| vec![acceptance.acceptance_id.clone()])
+                    .unwrap_or_default(),
+            ));
+            gates.push(Self::experimental_assay_gate(
+                "annotation_provenance",
+                policy.require_annotation_provenance,
+                if summary
+                    .provenance
+                    .annotation_release
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty())
+                {
+                    ExperimentalAssayGateStatus::Pass
+                } else {
+                    ExperimentalAssayGateStatus::Incomplete
+                },
+                summary
+                    .provenance
+                    .annotation_release
+                    .as_deref()
+                    .map(|release| format!("Annotation release: {release}"))
+                    .unwrap_or_else(|| "Annotation release is not recorded.".to_string()),
+                vec![panel.report_id.clone()],
+            ));
+            let assay_test_status = if !oligo_identity_verified || assay_test.product_count == 0 {
+                ExperimentalAssayGateStatus::Fail
+            } else {
+                ExperimentalAssayGateStatus::Pass
+            };
+            gates.push(Self::experimental_assay_gate(
+                "cdna_assay_test",
+                policy.require_assay_test,
+                assay_test_status,
+                if oligo_identity_verified {
+                    format!(
+                        "Shared cDNA assay test evaluated {} transcript(s) and found {} product(s).",
+                        assay_test.transcript_count, assay_test.product_count
+                    )
+                } else {
+                    "Canonical pair identity does not match across panel and assay-test reports."
+                        .to_string()
+                },
+                vec![assay_test.assay_test_id.clone()],
+            ));
+            let (variant_status, variant_summary, variant_ids) = match variant {
+                Some(report) => (
+                    match report.status {
+                        PrimerVariantEvidenceStatus::EvaluatedNoRelevantVariant => {
+                            ExperimentalAssayGateStatus::Pass
+                        }
+                        PrimerVariantEvidenceStatus::VariantDetected
+                        | PrimerVariantEvidenceStatus::IncompatibleReference => {
+                            ExperimentalAssayGateStatus::Fail
+                        }
+                        PrimerVariantEvidenceStatus::NotEvaluated => {
+                            ExperimentalAssayGateStatus::NotEvaluated
+                        }
+                    },
+                    format!("Primer variant evidence status: {:?}", report.status),
+                    vec![report.evidence_id.clone()],
+                ),
+                None => (
+                    ExperimentalAssayGateStatus::NotEvaluated,
+                    "No provenance-bound primer variant evidence was supplied.".to_string(),
+                    vec![],
+                ),
+            };
+            gates.push(Self::experimental_assay_gate(
+                "variant_evidence",
+                policy.require_variant_evaluation,
+                variant_status,
+                variant_summary,
+                variant_ids,
+            ));
+            let duplicate_gate = match order_form.as_ref() {
+                None => Self::experimental_assay_gate(
+                    "duplicate_review",
+                    false,
+                    ExperimentalAssayGateStatus::NotApplicable,
+                    "No oligo order form was linked to this handoff.",
+                    vec![],
+                ),
+                Some(form) if form.duplicate_groups.is_empty() => Self::experimental_assay_gate(
+                    "duplicate_review",
+                    policy.require_duplicate_review,
+                    ExperimentalAssayGateStatus::Pass,
+                    "The linked order form has no exact procurement duplicate groups.",
+                    vec![form.form_id.clone()],
+                ),
+                Some(form) if form.duplicate_review.status == "reviewed" => {
+                    Self::experimental_assay_gate(
+                        "duplicate_review",
+                        policy.require_duplicate_review,
+                        ExperimentalAssayGateStatus::Pass,
+                        "Exact procurement duplicates were reviewed and retained separately.",
+                        vec![form.form_id.clone()],
+                    )
+                }
+                Some(form) => Self::experimental_assay_gate(
+                    "duplicate_review",
+                    policy.require_duplicate_review,
+                    ExperimentalAssayGateStatus::Incomplete,
+                    format!(
+                        "The linked order form contains {} duplicate group(s) with review status '{}'.",
+                        form.duplicate_groups.len(),
+                        form.duplicate_review.status
+                    ),
+                    vec![form.form_id.clone()],
+                ),
+            };
+            gates.push(duplicate_gate);
+            gates.push(Self::experimental_assay_gate(
+                "experimental_practicality",
+                true,
+                if summary.practicality_classification
+                    == TranscriptAssayPracticalityClassification::LongRangeFallback
+                    && !policy.allow_long_range_fallback
+                {
+                    ExperimentalAssayGateStatus::Fail
+                } else {
+                    ExperimentalAssayGateStatus::Pass
+                },
+                format!(
+                    "Practicality classification: {:?}; long-range fallback allowed: {}.",
+                    summary.practicality_classification, policy.allow_long_range_fallback
+                ),
+                vec![summary.assay_id.clone()],
+            ));
+            let gel_gate_status = match gel_assessment.status.as_str() {
+                "pass" => ExperimentalAssayGateStatus::Pass,
+                "co_migration_predicted" => ExperimentalAssayGateStatus::Fail,
+                "incomplete" => ExperimentalAssayGateStatus::Incomplete,
+                _ => ExperimentalAssayGateStatus::NotEvaluated,
+            };
+            gates.push(Self::experimental_assay_gate(
+                "gel_resolution",
+                policy.require_resolved_gel_bands,
+                gel_gate_status,
+                gel_assessment.interpretation.clone(),
+                vec![],
+            ));
+
+            let blockers = gates
+                .iter()
+                .filter(|gate| Self::experimental_assay_gate_blocks(gate))
+                .map(|gate| gate.gate.clone())
+                .collect::<Vec<_>>();
+            let readiness_state = if blockers.is_empty() {
+                ExperimentalAssayReadinessState::OrderReady
+            } else if specificity_status == ExperimentalAssayGateStatus::Pass {
+                ExperimentalAssayReadinessState::SpecificityChecked
+            } else {
+                ExperimentalAssayReadinessState::Candidate
+            };
+            let card_identity = json!({
+                "panel_sha256": source_panel_sha256,
+                "assay_id": assay.assay_id,
+                "pair_id": expected_pair_id,
+                "assay_test_id": assay_test.assay_test_id,
+                "policy_id": policy_id,
+                "variant_evidence_id": variant.map(|report| report.evidence_id.as_str()),
+                "variant_evidence_report_sha256": variant_evidence_report_sha256.as_deref(),
+                "order_form_id": order_form.as_ref().map(|form| form.form_id.as_str()),
+                "order_form_sha256": source_order_form_sha256.as_deref(),
+            });
+            let card_id = format!(
+                "assay_card_sha256_{}",
+                sha256_hex_str(&card_identity.to_string())
+            );
+            let mut warnings = summary.oligo_qc.warnings.clone();
+            warnings.extend(assay_test.warnings.clone());
+            if oligos.iter().any(|oligo| oligo.formulations.len() > 1) {
+                warnings.push(
+                    "At least one base-sequence oligo has multiple procurement formulations; each formulation remains a separate reagent identity."
+                        .to_string(),
+                );
+            }
+            let card = ExperimentalAssayCard {
+                schema: EXPERIMENTAL_ASSAY_CARD_SCHEMA.to_string(),
+                card_id,
+                panel_report_id: panel.report_id.clone(),
+                assay_id: assay.assay_id.clone(),
+                pair_id: expected_pair_id,
+                pair_rank: assay.rank,
+                display_label: summary.display_label.clone(),
+                assay_kind: panel.assay_kind,
+                assay_tier: summary.assay_tier,
+                readiness_state,
+                policy_schema: policy.schema.clone(),
+                policy_version: policy.policy_version.clone(),
+                policy_id: policy_id.clone(),
+                gate_outcomes: gates,
+                blockers,
+                oligos,
+                pair_summary: summary.clone(),
+                assay_test_link,
+                product_sequence_classes,
+                predicted_product_lengths_bp: product_lengths,
+                controls,
+                gel_assessment,
+                variant_evidence_status: variant
+                    .map(|report| report.status)
+                    .unwrap_or_default(),
+                variant_evidence_id: variant.map(|report| report.evidence_id.clone()),
+                variant_evidence_report_sha256,
+                endpoint_abundance_interpretation: "Endpoint-gel abundance is ordinal/semi-quantitative only (for example absent, faint, or strong). Compare the same primer pair with matched input, biological replicates, and sub-plateau cycles; do not report fold changes from band intensity."
+                    .to_string(),
+                warnings,
+            };
+            assay_tests.push(assay_test);
+            cards.push(card);
+        }
+        cards.sort_by(|left, right| {
+            left.pair_rank
+                .cmp(&right.pair_rank)
+                .then(left.assay_id.cmp(&right.assay_id))
+        });
+        assay_tests.sort_by(|left, right| left.assay_test_id.cmp(&right.assay_test_id));
+        let order_readiness_table = cards
+            .iter()
+            .map(|card| ExperimentalAssayOrderReadinessRow {
+                card_id: card.card_id.clone(),
+                assay_id: card.assay_id.clone(),
+                pair_id: card.pair_id.clone(),
+                pair_rank: card.pair_rank,
+                display_label: card.display_label.clone(),
+                readiness_state: card.readiness_state,
+                order_ready: card.readiness_state == ExperimentalAssayReadinessState::OrderReady,
+                blocker_codes: card.blockers.clone(),
+                oligo_ids: card
+                    .oligos
+                    .iter()
+                    .map(|oligo| oligo.oligo_id.clone())
+                    .collect(),
+                tube_ids: card
+                    .oligos
+                    .iter()
+                    .map(|oligo| oligo.tube_id.clone())
+                    .collect(),
+                sequences_5_to_3: card
+                    .oligos
+                    .iter()
+                    .map(|oligo| oligo.sequence_5_to_3.clone())
+                    .collect(),
+                predicted_product_lengths_bp: card.predicted_product_lengths_bp.clone(),
+            })
+            .collect::<Vec<_>>();
+        if panel.selected_assays.is_empty() {
+            package_warnings.push("The source panel contains no selected assays.".to_string());
+        }
+        let package_identity = json!({
+            "source_panel_sha256": source_panel_sha256,
+            "policy_id": policy_id,
+            "card_ids": cards.iter().map(|card| card.card_id.as_str()).collect::<Vec<_>>(),
+        });
+        Ok(ExperimentalAssayHandoffReport {
+            schema: EXPERIMENTAL_ASSAY_HANDOFF_SCHEMA.to_string(),
+            package_id: format!(
+                "experimental_handoff_sha256_{}",
+                sha256_hex_str(&package_identity.to_string())
+            ),
+            source_panel_report_id: panel.report_id,
+            source_panel_schema: panel.schema,
+            source_panel_sha256,
+            source_seq_id: panel.source_seq_id,
+            source_feature_id: panel.source_feature_id,
+            source_order_form_id: order_form.as_ref().map(|form| form.form_id.clone()),
+            source_order_form_sha256,
+            policy,
+            policy_id,
+            order_readiness_table,
+            cards,
+            assay_tests,
+            variant_evidence,
+            warnings: package_warnings,
+        })
+    }
+
+    fn experimental_assay_order_table_tsv(report: &ExperimentalAssayHandoffReport) -> String {
+        fn cell(value: &str) -> String {
+            value.replace(['\t', '\r', '\n'], " ")
+        }
+        let mut rows = vec![
+            "card_id\tassay_id\tpair_id\tpair_rank\tdisplay_label\treadiness_state\torder_ready\tblockers\toligo_ids\ttube_ids\tsequences_5_to_3\tpredicted_product_lengths_bp"
+                .to_string(),
+        ];
+        for row in &report.order_readiness_table {
+            rows.push(format!(
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                cell(&row.card_id),
+                cell(&row.assay_id),
+                cell(&row.pair_id),
+                row.pair_rank,
+                cell(&row.display_label),
+                row.readiness_state.as_str(),
+                row.order_ready,
+                cell(&row.blocker_codes.join(",")),
+                cell(&row.oligo_ids.join(",")),
+                cell(&row.tube_ids.join(",")),
+                cell(&row.sequences_5_to_3.join(",")),
+                row.predicted_product_lengths_bp
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(","),
+            ));
+        }
+        rows.join("\n") + "\n"
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn test_cdna_qpcr_fasta_assay(
         &self,
@@ -18432,8 +19400,26 @@ impl GentleEngine {
             );
         }
 
+        let pair_id = primer_pair_full_id(&request.forward_primer, &request.reverse_primer);
+        let assay_test_id = Self::cdna_assay_test_id(
+            &pair_id,
+            request.probe.as_deref(),
+            "external_fasta",
+            &source_paths,
+            "external_cdna_fasta",
+            0,
+            requested_transcript_id.as_deref(),
+            request.max_mismatches,
+            request.require_3prime_exact_bases,
+            request.min_amplicon_bp,
+            request.max_amplicon_bp,
+            CdnaAssayTranscriptOrder::default(),
+            CdnaAssayTranscriptMapCoordinateMode::default(),
+        );
         let mut report = CdnaAssayTestReport {
             schema: CDNA_ASSAY_TEST_REPORT_SCHEMA.to_string(),
+            pair_id,
+            assay_test_id,
             assay_kind,
             template_source_kind: "external_fasta".to_string(),
             source_paths,
@@ -22238,6 +23224,7 @@ impl GentleEngine {
             cdna_assay_product_materialization: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
+            experimental_assay_handoff: None,
             primer_specificity_handoff: None,
             primer_specificity_report: None,
             construct_reasoning_graph: None,
@@ -28325,6 +29312,71 @@ impl GentleEngine {
                         report_id,
                         path,
                     )?;
+                }
+                Operation::BuildExperimentalAssayHandoff {
+                    panel_report_id,
+                    policy,
+                    variant_evidence_paths,
+                    order_form_id,
+                    path,
+                    order_table_path,
+                } => {
+                    let report = self.build_experimental_assay_handoff(
+                        &panel_report_id,
+                        policy,
+                        &variant_evidence_paths,
+                        order_form_id.as_deref(),
+                    )?;
+                    parent_seq_ids.push(report.source_seq_id.clone());
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let file = File::create(path).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create experimental assay handoff '{path}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                        serde_json::to_writer_pretty(BufWriter::new(file), &report).map_err(
+                            |error| EngineError {
+                                code: ErrorCode::Io,
+                                message: format!(
+                                    "Could not serialize experimental assay handoff '{path}': {error}"
+                                ),
+                                cause_chain: vec![],
+                            },
+                        )?;
+                        result
+                            .messages
+                            .push(format!("Wrote experimental assay handoff JSON to '{path}'"));
+                    }
+                    if let Some(path) = order_table_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        fs::write(path, Self::experimental_assay_order_table_tsv(&report))
+                            .map_err(|error| EngineError {
+                                code: ErrorCode::Io,
+                                message: format!(
+                                    "Could not write experimental assay order/readiness table '{path}': {error}"
+                                ),
+                                cause_chain: vec![],
+                            })?;
+                        result.messages.push(format!(
+                            "Wrote experimental assay order/readiness TSV to '{path}'"
+                        ));
+                    }
+                    result.messages.push(format!(
+                        "Built experimental assay handoff '{}' with {} card(s).",
+                        report.package_id,
+                        report.cards.len()
+                    ));
+                    result.warnings.extend(report.warnings.clone());
+                    result.experimental_assay_handoff = Some(Box::new(report));
                 }
                 Operation::TestCdnaQpcrFasta {
                     cdna_fasta_paths,

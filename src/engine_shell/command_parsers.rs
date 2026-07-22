@@ -4767,7 +4767,7 @@ fn parse_primers_oligo_order_command(tokens: &[String]) -> Result<ShellCommand, 
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, design-transcript-assay-panel, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
+            "primers requires a subcommand: design, design-qpcr, design-transcript-assay-panel, experimental-handoff, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
                 .to_string(),
         );
     }
@@ -6204,8 +6204,72 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 path: tokens[3].clone(),
             })
         }
+        "experimental-handoff" => {
+            const USAGE: &str = "primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv]";
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "primers experimental-handoff requires PANEL_REPORT_ID\n       {USAGE}"
+                ));
+            }
+            let panel_report_id = tokens[2].clone();
+            let context = "primers experimental-handoff";
+            let mut policy_json = None;
+            let mut variant_evidence_paths = vec![];
+            let mut order_form_id = None;
+            let mut path = None;
+            let mut order_table_path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--policy" => {
+                        policy_json =
+                            Some(parse_option_path(tokens, &mut idx, "--policy", context)?);
+                    }
+                    "--variant-evidence" => {
+                        variant_evidence_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--variant-evidence",
+                            context,
+                        )?);
+                    }
+                    "--order-form-id" => {
+                        order_form_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--order-form-id",
+                            context,
+                        )?);
+                    }
+                    "--path" => {
+                        path = Some(parse_option_path(tokens, &mut idx, "--path", context)?);
+                    }
+                    "--order-table" => {
+                        order_table_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--order-table",
+                            context,
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {context}\n       {USAGE}"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersExperimentalHandoff {
+                panel_report_id,
+                policy_json,
+                variant_evidence_paths,
+                order_form_id,
+                path,
+                order_table_path,
+            })
+        }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, design-transcript-assay-panel, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, design-transcript-assay-panel, experimental-handoff, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order)"
         )),
     }
 }

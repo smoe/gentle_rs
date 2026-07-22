@@ -102,8 +102,10 @@ use crate::{
         DesignDecisionNode, DesignFact, DisplaySettings, DisplayTarget, DotplotMode,
         DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
         EngineError, ErrorCode, EvidenceClass, ExonSkipSelectionCriterion, ExonSkipSelectionPlan,
-        ExportFormat, FlexibilityModel, FlexibilityTrack, GenomeAnchorPreparedFallbackPolicy,
-        GenomeAnchorSide, GentleEngine, IsoformPromoterComparisonGroup,
+        ExperimentalAssayHandoffReport, ExperimentalAssayReadinessPolicy,
+        ExperimentalAssayReadinessState, ExportFormat, FlexibilityModel, FlexibilityTrack,
+        GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine,
+        IsoformPromoterComparisonGroup,
         IsoformPromoterComparisonReport, JasparCatalogRemoteSummary, LigationProtocol,
         LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, MicroarrayProjectionReport,
         OpResult, Operation, OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec,
@@ -1394,6 +1396,7 @@ pub struct MainAreaDna {
     qpcr_design_ui: QpcrDesignOpsUiState,
     transcript_assay_panel_ui: TranscriptAssayPanelUiState,
     cached_transcript_assay_panel_report: Option<Arc<TranscriptAssayPanelReport>>,
+    cached_experimental_assay_handoff: Option<Arc<ExperimentalAssayHandoffReport>>,
     sequencing_confirmation_ui: SequencingConfirmationUiState,
     primer_backend: PrimerDesignBackend,
     primer3_executable: String,
@@ -2167,6 +2170,7 @@ impl MainAreaDna {
             qpcr_design_ui: QpcrDesignOpsUiState::default(),
             transcript_assay_panel_ui: TranscriptAssayPanelUiState::default(),
             cached_transcript_assay_panel_report: None,
+            cached_experimental_assay_handoff: None,
             sequencing_confirmation_ui: SequencingConfirmationUiState::default(),
             primer_backend: PrimerDesignBackend::Auto,
             primer3_executable: "primer3_core".to_string(),
@@ -20038,7 +20042,15 @@ impl MainAreaDna {
             match done {
                 Ok(PrimerDesignTaskCompletion::Single(result)) => {
                     let transcript_panel_report = result.transcript_assay_panel.as_deref().cloned();
+                    let experimental_handoff =
+                        result.experimental_assay_handoff.as_deref().cloned();
                     self.handle_operation_success(result, started);
+                    if let Some(report) = experimental_handoff {
+                        self.cached_experimental_assay_handoff = Some(Arc::new(report));
+                        self.pcr_designer_mode = PcrDesignerMode::TranscriptPanels;
+                        self.save_engine_ops_state();
+                        return;
+                    }
                     if let Some(report) = transcript_panel_report {
                         self.transcript_assay_panel_ui.report_id = report.report_id.clone();
                         self.transcript_assay_panel_ui.source_feature_id =
@@ -23825,6 +23837,7 @@ impl MainAreaDna {
         self.qpcr_design_ui = s.qpcr_design_ui;
         self.transcript_assay_panel_ui = s.transcript_assay_panel_ui;
         self.cached_transcript_assay_panel_report = None;
+        self.cached_experimental_assay_handoff = None;
         self.sequencing_confirmation_ui = s.sequencing_confirmation_ui;
         self.primer_backend = s.primer_backend;
         self.primer3_executable = if s.primer3_executable.trim().is_empty() {

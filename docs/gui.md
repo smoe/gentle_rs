@@ -4061,6 +4061,16 @@ qPCR form:
   - the saved-report rationale shows annotation-confirmed common-region status,
     separate PSR/JUC support, routine-versus-fallback classification, the
     concise selection explanation, and bounded rejected alternatives
+  - `Build experimental handoff` runs the shared
+    `BuildExperimentalAssayHandoff` operation with the documented default
+    readiness policy and displays one collapsible card per selected pair,
+    including oligos, gate outcomes, blockers, and predicted cDNA products.
+    Missing specificity remains a visible default blocker, while absent variant
+    evidence is shown without being silently treated as a pass
+  - `Copy advanced command` provides the equivalent
+    `primers experimental-handoff PANEL_REPORT_ID ...` shell route for custom
+    policy, variant evidence, order-form linkage, and JSON/TSV export; that same
+    operation remains available to CLI/MCP/JavaScript/Lua
 
 Buttons:
 

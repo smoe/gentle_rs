@@ -8066,6 +8066,11 @@ Simple PCR constraint handoff:
     paths, source sequence/feature, group label, strand, requested transcript
     id, primers/probe, mismatch/size settings, transcript/product counts,
     overall status, and warnings.
+  - `pair_id` is the canonical ordered forward/reverse physical-oligo identity
+    shared with transcript-panel handoffs. `assay_test_id` additionally binds
+    that pair to the template source, optional probe, transcript filter, assay
+    limits, and display settings, so repeated tests of one pair remain distinct
+    and auditable. Older reports omit both fields and remain readable.
   - `transcript_map` includes `artifact_id`,
     `media_type = image/svg+xml`, canvas dimensions, row/omission counts,
     product count, a compact summary, and the SVG text. FASTA reports use the
@@ -8084,7 +8089,11 @@ Simple PCR constraint handoff:
     optional probe hit indices, mapped source ranges, covered junction labels,
     whether the product spans a junction, the genomic-equivalent span/length
     when source mapping is available, and a per-product genomic-DNA carryover
-    risk rationale.
+    risk rationale. `product_sequence_sha256` identifies the exact mature-cDNA
+    template span in transcript 5-prime-to-3-prime orientation, including both
+    binding regions and excluding non-annealing tails or primer-induced
+    substitutions. A shared digest proves exact predicted product-sequence
+    identity; different digests do not imply that products resolve on a gel.
 - Optional materialization schema:
   - `gentle.cdna_assay_product_materialization.v1`
   - fields include assay kind, source sequence/feature, group label, detected
@@ -8104,6 +8113,7 @@ Primer-design shell command family (implemented):
   - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
   - `primers design-transcript-assay-panel OPERATION_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-transcript-assay-panel SEQ_ID FEATURE_ID [--assay-kind endpoint-rt-pcr|sybr-qpcr|taqman-qpcr] [--cdna-synthesis oligo-dt|random-hexamers|gene-specific|mixed] [--objective pan-transcript|one-per-class|minimal-discrimination-panel|isoform-end-matrix] [--coverage-policy require-all|best-effort] [--assay-tier routine-common-region-screen|isoform-discrimination|long-range-structure-discovery] [--preferred-min-amplicon-bp N --preferred-max-amplicon-bp N] [--junctions JSON_OR_@FILE] [--junction-evidence PATH ...] [--junction-evidence-priority required|preferred] [--min-3prime-junction-overlap-bp N] [--min-5prime-junction-overlap-bp N] [--annotation-release TEXT] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-assays-per-class N] [--max-mismatches N] [--require-3prime-exact-bases N] [--oligo-dt-5prime-risk-threshold-bp N] [--report-id ID] [--path OUTPUT.json] [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv]`
   - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
   - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
@@ -8372,6 +8382,42 @@ Primer-design shell command family (implemented):
     project metadata store without changing that store schema. The individual
     report carries the v2 schema above and is available through list/show/export
     shell routes.
+- Experimental assay handoff schemas:
+  - `gentle.experimental_assay_handoff.v1` is a deterministic, read-only
+    per-panel package. `BuildExperimentalAssayHandoff` consumes one persisted
+    `gentle.transcript_assay_panel.v2`, runs the shared cDNA assay test once for
+    every selected pair, and emits one `gentle.experimental_assay_card.v1` per
+    pair plus a compact order/readiness table. It does not redesign primers,
+    submit an order, or record a wet-lab result.
+  - canonical oligo identity removes all whitespace, uppercases, and maps
+    `U` to `T`; full SHA-256-derived `oligo_id` and ordered `pair_id` values are
+    authoritative for joins. Existing `primer_id` and `assay_id` fields remain
+    backward-compatible report/display identities. `tube_id` is a short human
+    label and is not the machine join key.
+  - each card embeds the exact policy schema/version and every gate outcome.
+    The shipped v1 default requires critical oligo QC, whole-genome specificity,
+    and annotation provenance. The automatically generated cDNA assay test and
+    optional `gentle.primer_variant_evidence.v1` are surfaced but absence alone
+    is non-blocking; an evaluated failure remains a blocker. A linked order
+    form retains its existing duplicate-review gate.
+  - readiness states are `candidate`, `specificity_checked`, and `order_ready`;
+    `wet_lab_validated` is reserved for a separate human-authored observation,
+    never inferred from sequence evidence. Endpoint-gel abundance is described
+    only as ordinal/semi-quantitative.
+  - exact product-sequence classes are grouped by the cDNA product digest.
+    Gel resolvability is evaluated separately and only when a named
+    `GelRunConditions` policy is supplied. Distinct sequence digests never
+    constitute a claim of visible band separation.
+  - optional order-form formulations preserve modifications, scale, and
+    purification as procurement identities. Tm, GC, secondary-structure, and
+    specificity facts remain calculations for the unmodified annealing
+    sequence and are not silently reinterpreted for modified chemistry. The
+    package records the linked form id and a digest of its serialized content;
+    card identity likewise binds the complete linked variant-evidence report.
+  - the optional variant-evidence input is provenance-bound by pair id,
+    reference assembly, source/release, population, retrieval time, and content
+    digest. GENtle does not infer population frequencies from primer sequence
+    alone.
 - `primers preflight` returns `gentle.primer3_preflight.v1` with the requested
   backend plus configured-executable token, default-fallback marker, effective
   executable, resolved path, working directory, and reachability/version/error

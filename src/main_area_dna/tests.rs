@@ -1071,6 +1071,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
     area.sequencing_confirmation_ui.trace_import_add_to_run = true;
 
     area.handle_imported_sequencing_trace_result(&OpResult {
+        experimental_assay_handoff: None,
         op_id: "op-import-trace".to_string(),
         created_seq_ids: vec![],
         changed_seq_ids: vec![],
@@ -4896,6 +4897,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
     };
     area.handle_operation_success(
         super::OpResult {
+            experimental_assay_handoff: None,
             op_id: "op-preview".to_string(),
             created_seq_ids: vec![],
             changed_seq_ids: vec![],
@@ -9205,6 +9207,31 @@ fn transcript_assay_panel_gui_defaults_to_strict_endpoint_oligo_dt_design() {
             .oligo_dt_5prime_risk_threshold_bp
             .is_empty()
     );
+}
+
+#[test]
+fn transcript_assay_panel_gui_builds_default_experimental_handoff_operation() {
+    let operation = MainAreaDna::build_experimental_assay_handoff_operation("panel_gui_test");
+    let Operation::BuildExperimentalAssayHandoff {
+        panel_report_id,
+        policy,
+        variant_evidence_paths,
+        order_form_id,
+        path,
+        order_table_path,
+    } = operation
+    else {
+        panic!("expected BuildExperimentalAssayHandoff");
+    };
+    assert_eq!(panel_report_id, "panel_gui_test");
+    assert!(policy.require_critical_qc_pass);
+    assert!(policy.require_specificity_pass);
+    assert!(!policy.require_assay_test);
+    assert!(!policy.require_variant_evaluation);
+    assert!(variant_evidence_paths.is_empty());
+    assert!(order_form_id.is_none());
+    assert!(path.is_none());
+    assert!(order_table_path.is_none());
 }
 
 #[test]

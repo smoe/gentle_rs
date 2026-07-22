@@ -5193,6 +5193,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PcrOverlapExtensionMutagenesis",
     "DesignQpcrAssays",
     "DesignTranscriptAssayPanel",
+    "BuildExperimentalAssayHandoff",
     "TestCdnaPcr",
     "TestCdnaQpcr",
     "TestCdnaQpcrFasta",

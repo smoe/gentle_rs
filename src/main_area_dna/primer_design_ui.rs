@@ -3889,6 +3889,7 @@ impl MainAreaDna {
                         preferred.max_bp.to_string();
                 }
                 self.cached_transcript_assay_panel_report = Some(Arc::new(report.clone()));
+                self.cached_experimental_assay_handoff = None;
                 self.op_status = format!(
                     "Loaded transcript assay-panel report '{}' ({} transcripts, {} classes, {} selected assays)",
                     report.report_id,
@@ -4031,6 +4032,98 @@ impl MainAreaDna {
             TranscriptAssayOligoDtReachStatus::WithinConfiguredThreshold => "RT within",
             TranscriptAssayOligoDtReachStatus::Elevated5PrimeRisk => "RT risk",
             TranscriptAssayOligoDtReachStatus::Indeterminate => "RT ?",
+        }
+    }
+
+    pub(super) fn build_experimental_assay_handoff_operation(report_id: &str) -> Operation {
+        Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: report_id.to_string(),
+            policy: ExperimentalAssayReadinessPolicy::default(),
+            variant_evidence_paths: vec![],
+            order_form_id: None,
+            path: None,
+            order_table_path: None,
+        }
+    }
+
+    fn render_experimental_assay_handoff(
+        ui: &mut egui::Ui,
+        report: &ExperimentalAssayHandoffReport,
+    ) {
+        ui.separator();
+        ui.heading("Experimental handoff");
+        let order_ready = report
+            .cards
+            .iter()
+            .filter(|card| card.readiness_state == ExperimentalAssayReadinessState::OrderReady)
+            .count();
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!(
+                "{} assay card(s); {} order-ready",
+                report.cards.len(),
+                order_ready
+            ));
+            ui.monospace(format!("policy {}", report.policy.policy_version));
+        });
+        ui.small(
+            "Candidate means that one or more required evidence gates are incomplete or failed; it is not an order submission.",
+        );
+        for card in &report.cards {
+            egui::CollapsingHeader::new(format!(
+                "A{} {} | {}",
+                card.pair_rank,
+                card.display_label,
+                card.readiness_state.as_str()
+            ))
+            .default_open(card.readiness_state != ExperimentalAssayReadinessState::OrderReady)
+            .show(ui, |ui| {
+                ui.monospace(&card.pair_id);
+                if !card.blockers.is_empty() {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(176, 72, 58),
+                        format!("Blockers: {}", card.blockers.join(", ")),
+                    );
+                }
+                egui::Grid::new(("experimental_handoff_oligos", &card.card_id))
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("Role");
+                        ui.strong("Tube");
+                        ui.strong("Sequence 5' to 3'");
+                        ui.end_row();
+                        for oligo in &card.oligos {
+                            ui.label(&oligo.role);
+                            ui.monospace(&oligo.tube_id);
+                            ui.monospace(&oligo.sequence_5_to_3);
+                            ui.end_row();
+                        }
+                    });
+                egui::Grid::new(("experimental_handoff_gates", &card.card_id))
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("Gate");
+                        ui.strong("Required");
+                        ui.strong("Outcome");
+                        ui.end_row();
+                        for gate in &card.gate_outcomes {
+                            ui.label(&gate.gate);
+                            ui.label(if gate.required { "yes" } else { "no" });
+                            ui.label(gate.status.as_str()).on_hover_text(&gate.summary);
+                            ui.end_row();
+                        }
+                    });
+                if !card.predicted_product_lengths_bp.is_empty() {
+                    ui.small(format!(
+                        "Predicted cDNA products: {} bp",
+                        card.predicted_product_lengths_bp
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+                ui.small(&card.endpoint_abundance_interpretation);
+            });
         }
     }
 
@@ -4980,6 +5073,38 @@ impl MainAreaDna {
         });
         if let Some(report) = self.cached_transcript_assay_panel_report.clone() {
             Self::render_transcript_assay_panel_report(ui, report.as_ref());
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .add_enabled(
+                        !primer_task_running,
+                        egui::Button::new("Build experimental handoff"),
+                    )
+                    .on_hover_text(
+                        "Build one default-policy readiness card per selected pair through the shared engine",
+                    )
+                    .clicked()
+                {
+                    self.cached_experimental_assay_handoff = None;
+                    self.start_primer_design_operation(
+                        Self::build_experimental_assay_handoff_operation(&report.report_id),
+                        "Experimental assay handoff",
+                    );
+                }
+                if ui.button("Copy advanced command").clicked() {
+                    ui.ctx().copy_text(format!(
+                        "primers experimental-handoff {} --path experimental_handoff.json --order-table experimental_handoff.tsv",
+                        report.report_id
+                    ));
+                    self.op_status =
+                        "Copied experimental-handoff command; add policy, variant evidence, or order-form options as needed."
+                            .to_string();
+                }
+            });
+            if let Some(handoff) = self.cached_experimental_assay_handoff.clone() {
+                if handoff.source_panel_report_id == report.report_id {
+                    Self::render_experimental_assay_handoff(ui, handoff.as_ref());
+                }
+            }
         }
     }
 

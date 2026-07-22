@@ -6601,6 +6601,31 @@ fn parse_primers_preflight_with_backend_overrides() {
 }
 
 #[test]
+fn parse_primers_experimental_handoff_with_optional_evidence_and_exports() {
+    let command = parse_shell_line(
+        "primers experimental-handoff panel_1 --policy @policy.json --variant-evidence variants_a.json --variant-evidence variants_b.json --order-form-id order_1 --path handoff.json --order-table handoff.tsv",
+    )
+    .expect("parse experimental handoff command");
+    assert!(matches!(
+        command,
+        ShellCommand::PrimersExperimentalHandoff {
+            panel_report_id,
+            policy_json,
+            variant_evidence_paths,
+            order_form_id,
+            path,
+            order_table_path,
+        } if panel_report_id == "panel_1"
+            && policy_json.as_deref() == Some("@policy.json")
+            && variant_evidence_paths
+                == vec!["variants_a.json".to_string(), "variants_b.json".to_string()]
+            && order_form_id.as_deref() == Some("order_1")
+            && path.as_deref() == Some("handoff.json")
+            && order_table_path.as_deref() == Some("handoff.tsv")
+    ));
+}
+
+#[test]
 fn parse_primers_seed_from_feature_and_splicing() {
     let feature =
         parse_shell_line("primers seed-from-feature seq_a 7").expect("parse seed-from-feature");

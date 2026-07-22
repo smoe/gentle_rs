@@ -8536,6 +8536,11 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
     assert_eq!(report.overall_status, "single_product");
     assert_eq!(report.detected_transcript_count, 1);
     assert_eq!(report.product_count, 1);
+    assert_eq!(
+        report.pair_id,
+        crate::digest_utils::primer_pair_full_id("AAACCC", "CCCAAA")
+    );
+    assert!(report.assay_test_id.starts_with("assay_test_sha256_"));
     let transcript = report
         .transcript_results
         .first()
@@ -8550,6 +8555,17 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
     assert_eq!(transcript.exon_segments[1].exon_ordinal, 2);
     let product = transcript.products.first().expect("one product");
     assert_eq!(product.amplicon_length_bp, 21);
+    assert_eq!(
+        product.product_sequence_sha256.as_deref(),
+        Some(
+            crate::digest_utils::oligo_sequence_sha256("AAACCCGGGCCCAAATTTGGG")
+                .as_str()
+        )
+    );
+    assert_eq!(
+        product.product_sequence_basis,
+        "mature_cdna_template_5prime_to_3prime_0based_half_open_including_binding_regions_excluding_nonannealing_tails_and_primer_induced_substitutions"
+    );
     assert!(product.spans_junction);
     assert!(!product.covered_junction_labels.is_empty());
     assert_eq!(product.source_ranges_0based.len(), 2);
@@ -8568,6 +8584,36 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
     assert!(map.svg.contains(">E1<"));
     assert!(map.svg.contains(">E2<"));
     assert!(map.svg.contains("Junction E1-&gt;E2"));
+}
+
+#[test]
+fn experimental_assay_identity_fields_are_backward_compatible() {
+    let old_report: CdnaAssayTestReport = serde_json::from_value(serde_json::json!({
+        "schema": "gentle.cdna_assay_test_report.v1",
+        "transcript_results": [{
+            "transcript_id": "TX_OLD",
+            "products": [{
+                "amplicon_start_0based": 2,
+                "amplicon_end_0based_exclusive": 12,
+                "amplicon_length_bp": 10
+            }]
+        }]
+    }))
+    .expect("older cDNA assay report remains readable");
+    assert!(old_report.pair_id.is_empty());
+    assert!(old_report.assay_test_id.is_empty());
+    let old_product = &old_report.transcript_results[0].products[0];
+    assert!(old_product.product_sequence_sha256.is_none());
+    assert!(old_product.product_sequence_basis.is_empty());
+
+    let old_summary: PrimerPairCommunicationSummary =
+        serde_json::from_value(serde_json::json!({
+            "schema": "gentle.primer_pair_summary.v2",
+            "assay_id": "legacy_assay"
+        }))
+        .expect("older primer-pair summary remains readable");
+    assert!(old_summary.pair_id.is_empty());
+    assert!(old_summary.probe.is_none());
 }
 
 #[test]
@@ -9967,6 +10013,365 @@ fn transcript_assay_panel_groups_only_byte_identical_cdna_and_persists_matrix() 
             .schema,
         "gentle.transcript_assay_panel.v2"
     );
+}
+
+#[test]
+fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gates() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let mut panel_operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        1,
+        "experimental_handoff_panel",
+    );
+    let Operation::DesignTranscriptAssayPanel {
+        annotation_release, ..
+    } = &mut panel_operation
+    else {
+        unreachable!("transcript assay helper returned another operation")
+    };
+    *annotation_release = Some("synthetic-annotation-1".to_string());
+    let panel = engine
+        .apply(panel_operation)
+        .expect("design source transcript panel")
+        .transcript_assay_panel
+        .expect("source transcript panel report");
+    assert!(!panel.selected_assays.is_empty());
+
+    let build = || Operation::BuildExperimentalAssayHandoff {
+        panel_report_id: panel.report_id.clone(),
+        policy: ExperimentalAssayReadinessPolicy::default(),
+        variant_evidence_paths: vec![],
+        order_form_id: None,
+        path: None,
+        order_table_path: None,
+    };
+    let handoff = engine
+        .apply(build())
+        .expect("build experimental handoff")
+        .experimental_assay_handoff
+        .expect("experimental handoff report");
+    assert_eq!(handoff.schema, EXPERIMENTAL_ASSAY_HANDOFF_SCHEMA);
+    assert_eq!(handoff.cards.len(), panel.selected_assays.len());
+    assert_eq!(handoff.assay_tests.len(), panel.selected_assays.len());
+    assert_eq!(
+        handoff.order_readiness_table.len(),
+        panel.selected_assays.len()
+    );
+    assert!(handoff.policy.require_critical_qc_pass);
+    assert!(handoff.policy.require_specificity_pass);
+    assert!(!handoff.policy.require_assay_test);
+    assert!(!handoff.policy.require_variant_evaluation);
+
+    let mut unsupported_policy = ExperimentalAssayReadinessPolicy::default();
+    unsupported_policy.schema = "gentle.experimental_assay_readiness_policy.v99".to_string();
+    let unsupported_policy_error = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy: unsupported_policy,
+            variant_evidence_paths: vec![],
+            order_form_id: None,
+            path: None,
+            order_table_path: None,
+        })
+        .expect_err("unsupported readiness policy schema must fail closed");
+    assert!(unsupported_policy_error.message.contains("policy schema"));
+
+    for card in &handoff.cards {
+        assert!(card.pair_id.starts_with("pair_sha256_"));
+        assert_eq!(card.pair_id, card.pair_summary.pair_id);
+        assert_eq!(card.assay_test_link.pair_id, card.pair_id);
+        assert!(card.assay_test_link.oligo_identity_verified);
+        assert!(
+            card.assay_test_link
+                .assay_test_id
+                .starts_with("assay_test_sha256_")
+        );
+        assert_eq!(card.oligos.len(), 3, "TaqMan cards retain their probe");
+        assert!(card.oligos.iter().all(|oligo| {
+            oligo.oligo_id.starts_with("oligo_sha256_")
+                && oligo.sequence_sha256.starts_with("sha256:")
+                && oligo.tube_id.starts_with("O-")
+        }));
+        let specificity = card
+            .gate_outcomes
+            .iter()
+            .find(|gate| gate.gate == "whole_genome_specificity")
+            .expect("specificity gate");
+        assert!(specificity.required);
+        assert_eq!(
+            specificity.status,
+            ExperimentalAssayGateStatus::NotEvaluated
+        );
+        assert!(
+            card.blockers
+                .iter()
+                .any(|code| code == "whole_genome_specificity")
+        );
+        let variants = card
+            .gate_outcomes
+            .iter()
+            .find(|gate| gate.gate == "variant_evidence")
+            .expect("variant evidence gate");
+        assert!(!variants.required);
+        assert_eq!(variants.status, ExperimentalAssayGateStatus::NotEvaluated);
+        assert!(!card.blockers.iter().any(|code| code == "variant_evidence"));
+    }
+    for assay_test in &handoff.assay_tests {
+        assert!(assay_test.product_count > 0);
+        assert!(assay_test.transcript_results.iter().all(|transcript| {
+            transcript.products.iter().all(|product| {
+                product
+                    .product_sequence_sha256
+                    .as_deref()
+                    .is_some_and(|digest| digest.starts_with("sha256:"))
+            })
+        }));
+    }
+
+    let repeated = engine
+        .apply(build())
+        .expect("repeat deterministic experimental handoff")
+        .experimental_assay_handoff
+        .expect("repeated experimental handoff report");
+    assert_eq!(repeated.package_id, handoff.package_id);
+    assert_eq!(
+        repeated
+            .cards
+            .iter()
+            .map(|card| card.card_id.as_str())
+            .collect::<Vec<_>>(),
+        handoff
+            .cards
+            .iter()
+            .map(|card| card.card_id.as_str())
+            .collect::<Vec<_>>()
+    );
+
+    let export_dir = tempdir().expect("experimental handoff export dir");
+    let json_path = export_dir.path().join("handoff.json");
+    let table_path = export_dir.path().join("handoff.tsv");
+    let exported = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy: ExperimentalAssayReadinessPolicy::default(),
+            variant_evidence_paths: vec![],
+            order_form_id: None,
+            path: Some(json_path.to_string_lossy().to_string()),
+            order_table_path: Some(table_path.to_string_lossy().to_string()),
+        })
+        .expect("export experimental handoff")
+        .experimental_assay_handoff
+        .expect("exported handoff report");
+    let exported_json: ExperimentalAssayHandoffReport =
+        serde_json::from_slice(&fs::read(&json_path).expect("read experimental handoff JSON"))
+            .expect("parse experimental handoff JSON");
+    assert_eq!(exported_json.package_id, exported.package_id);
+    let order_table = fs::read_to_string(&table_path).expect("read handoff order table");
+    assert!(order_table.starts_with("card_id\tassay_id\tpair_id\t"));
+    assert!(
+        exported
+            .cards
+            .iter()
+            .all(|card| order_table.contains(&card.pair_id))
+    );
+
+    let first_assay = panel.selected_assays.first().expect("selected assay");
+    let first_forward = first_assay.primer_pair.forward.sequence.clone();
+    let duplicate_line = |name: &str| OligoOrderLineItem {
+        name: name.to_string(),
+        role: "forward".to_string(),
+        sequence_5_to_3: first_forward.clone(),
+        length_nt: first_forward.len(),
+        modifications: vec!["5phos".to_string()],
+        scale: "25nmol".to_string(),
+        purification: "HPLC".to_string(),
+        provenance: OligoOrderLineProvenance {
+            source_kind: "synthetic_test".to_string(),
+            role: "forward".to_string(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let order_form = engine
+        .create_oligo_order_form_from_request(OligoOrderFormCreateRequest {
+            schema: OLIGO_ORDER_FORM_SCHEMA.to_string(),
+            form_id: Some("experimental_handoff_order".to_string()),
+            target_label: "synthetic assay handoff".to_string(),
+            line_items: vec![duplicate_line("forward_a"), duplicate_line("forward_b")],
+            ..Default::default()
+        })
+        .expect("create linked duplicate order form");
+    assert_eq!(order_form.duplicate_groups.len(), 1);
+    let linked = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy: ExperimentalAssayReadinessPolicy::default(),
+            variant_evidence_paths: vec![],
+            order_form_id: Some(order_form.form_id.clone()),
+            path: None,
+            order_table_path: None,
+        })
+        .expect("build order-linked handoff")
+        .experimental_assay_handoff
+        .expect("order-linked handoff report");
+    assert_eq!(
+        linked.source_order_form_id.as_deref(),
+        Some(order_form.form_id.as_str())
+    );
+    assert!(
+        linked
+            .source_order_form_sha256
+            .as_deref()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    let linked_card = linked
+        .cards
+        .iter()
+        .find(|card| card.assay_id == first_assay.assay_id)
+        .expect("linked first assay card");
+    let linked_forward = linked_card
+        .oligos
+        .iter()
+        .find(|oligo| oligo.role == "forward")
+        .expect("linked forward oligo");
+    assert_eq!(linked_forward.formulations.len(), 1);
+    assert_eq!(linked_forward.formulations[0].modifications, vec!["5phos"]);
+    assert_eq!(linked_forward.formulations[0].order_line_ids.len(), 2);
+    let duplicate_gate = linked_card
+        .gate_outcomes
+        .iter()
+        .find(|gate| gate.gate == "duplicate_review")
+        .expect("duplicate review gate");
+    assert_eq!(
+        duplicate_gate.status,
+        ExperimentalAssayGateStatus::Incomplete
+    );
+    assert!(
+        linked_card
+            .blockers
+            .iter()
+            .any(|code| code == "duplicate_review")
+    );
+
+    engine
+        .review_oligo_order_form_duplicates(
+            &order_form.form_id,
+            Some("test reviewer"),
+            Some("keep-separate"),
+            Some("reviewed for handoff"),
+        )
+        .expect("review linked duplicate order form");
+    let reviewed = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy: ExperimentalAssayReadinessPolicy::default(),
+            variant_evidence_paths: vec![],
+            order_form_id: Some(order_form.form_id.clone()),
+            path: None,
+            order_table_path: None,
+        })
+        .expect("build reviewed order-linked handoff")
+        .experimental_assay_handoff
+        .expect("reviewed order-linked handoff report");
+    let reviewed_duplicate_gate = reviewed.cards[0]
+        .gate_outcomes
+        .iter()
+        .find(|gate| gate.gate == "duplicate_review")
+        .expect("reviewed duplicate gate");
+    assert_eq!(
+        reviewed_duplicate_gate.status,
+        ExperimentalAssayGateStatus::Pass
+    );
+
+    let first_pair_id = handoff.cards[0].pair_id.clone();
+    let mut detected_variant = tempfile::NamedTempFile::new().expect("variant evidence fixture");
+    serde_json::to_writer_pretty(
+        &mut detected_variant,
+        &PrimerVariantEvidenceReport {
+            schema: PRIMER_VARIANT_EVIDENCE_SCHEMA.to_string(),
+            evidence_id: "variant_evidence_detected".to_string(),
+            pair_id: first_pair_id.clone(),
+            reference_assembly: "synthetic-assembly".to_string(),
+            source_name: "synthetic variants".to_string(),
+            source_release: "1".to_string(),
+            population: "synthetic".to_string(),
+            retrieval_time: "deterministic-fixture".to_string(),
+            content_sha256: "sha256:synthetic-detected".to_string(),
+            status: PrimerVariantEvidenceStatus::VariantDetected,
+            ..Default::default()
+        },
+    )
+    .expect("write detected variant evidence fixture");
+    let variant_handoff = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy: ExperimentalAssayReadinessPolicy::default(),
+            variant_evidence_paths: vec![detected_variant.path().to_string_lossy().to_string()],
+            order_form_id: None,
+            path: None,
+            order_table_path: None,
+        })
+        .expect("build handoff with detected variant evidence")
+        .experimental_assay_handoff
+        .expect("variant handoff report");
+    let variant_card = variant_handoff
+        .cards
+        .iter()
+        .find(|card| card.pair_id == first_pair_id)
+        .expect("variant-linked assay card");
+    assert_eq!(
+        variant_card.variant_evidence_status,
+        PrimerVariantEvidenceStatus::VariantDetected
+    );
+    assert!(
+        variant_card
+            .variant_evidence_report_sha256
+            .as_deref()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    let variant_gate = variant_card
+        .gate_outcomes
+        .iter()
+        .find(|gate| gate.gate == "variant_evidence")
+        .expect("variant evidence gate");
+    assert!(!variant_gate.required);
+    assert_eq!(variant_gate.status, ExperimentalAssayGateStatus::Fail);
+    assert!(
+        variant_card
+            .blockers
+            .iter()
+            .any(|code| code == "variant_evidence")
+    );
+
+    let mut wrong_variant = tempfile::NamedTempFile::new().expect("variant evidence fixture");
+    serde_json::to_writer_pretty(
+        &mut wrong_variant,
+        &PrimerVariantEvidenceReport {
+            schema: PRIMER_VARIANT_EVIDENCE_SCHEMA.to_string(),
+            evidence_id: "variant_evidence_wrong_pair".to_string(),
+            pair_id: crate::digest_utils::primer_pair_full_id("AAAA", "TTTT"),
+            reference_assembly: "synthetic-assembly".to_string(),
+            source_name: "synthetic variants".to_string(),
+            source_release: "1".to_string(),
+            population: "synthetic".to_string(),
+            retrieval_time: "deterministic-fixture".to_string(),
+            content_sha256: "sha256:synthetic".to_string(),
+            ..Default::default()
+        },
+    )
+    .expect("write variant evidence fixture");
+    let error = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: panel.report_id.clone(),
+            policy: ExperimentalAssayReadinessPolicy::default(),
+            variant_evidence_paths: vec![wrong_variant.path().to_string_lossy().to_string()],
+            order_form_id: None,
+            path: None,
+            order_table_path: None,
+        })
+        .expect_err("variant evidence for another pair must not be silently ignored");
+    assert!(error.message.contains("not selected in panel"));
 }
 
 #[test]

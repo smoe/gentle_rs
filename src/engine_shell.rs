@@ -47,7 +47,8 @@ use crate::{
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine, EvidenceClass,
-        ExonSkipReturnKind, ExonSkipSelectionCriterion, FactAtom, FactBasis, FactExpression,
+        ExonSkipReturnKind, ExonSkipSelectionCriterion, ExperimentalAssayReadinessPolicy,
+        FactAtom, FactBasis, FactExpression,
         FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode, FeatureExpertTarget,
         FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
         GeneIsoformEvidenceRequest, GeneLocusEvidenceDisplayRequest,
@@ -2537,6 +2538,14 @@ pub enum ShellCommand {
     PrimersExportTranscriptAssayPanel {
         report_id: String,
         path: String,
+    },
+    PrimersExperimentalHandoff {
+        panel_report_id: String,
+        policy_json: Option<String>,
+        variant_evidence_paths: Vec<String>,
+        order_form_id: Option<String>,
+        path: Option<String>,
+        order_table_path: Option<String>,
     },
     PrimersOligoOrderCreate {
         request_json: String,
@@ -11271,6 +11280,21 @@ impl ShellCommand {
             Self::PrimersExportTranscriptAssayPanel { report_id, path } => format!(
                 "export stored transcript assay panel report '{}' to '{}'",
                 report_id, path
+            ),
+            Self::PrimersExperimentalHandoff {
+                panel_report_id,
+                variant_evidence_paths,
+                order_form_id,
+                path,
+                order_table_path,
+                ..
+            } => format!(
+                "build experimental handoff from transcript assay panel '{}' (variant_evidence={}, order_form={}, json={}, table={})",
+                panel_report_id,
+                variant_evidence_paths.len(),
+                order_form_id.as_deref().unwrap_or("none"),
+                path.as_deref().unwrap_or("none"),
+                order_table_path.as_deref().unwrap_or("none"),
             ),
             Self::PrimersOligoOrderCreate { request_json } => format!(
                 "create oligo order form from JSON request payload (len={})",
@@ -21833,6 +21857,28 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("DesignTranscriptAssayPanel")
         }),
+        json!({
+            "id": "BuildExperimentalAssayHandoff",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PANEL_REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay panel report id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external handoff JSON path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
+                ]
+            },
+            "description": "Project one persisted transcript assay panel into deterministic per-pair experimental cards and an order/readiness table.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("BuildExperimentalAssayHandoff")
+        }),
         cdna_assay_test_descriptor(
             "TestCdnaPcr",
             "Test supplied PCR primers against transcript-derived cDNA templates for one loaded splicing group.",
@@ -21961,6 +22007,28 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Generate and persist an exact-cDNA-equivalence-aware transcript assay panel; require_all is the default coverage policy.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers design-transcript-assay-panel")
+        }),
+        json!({
+            "id": "primers experimental-handoff",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PANEL_REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay panel report id"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external handoff JSON path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
+                ]
+            },
+            "description": "Build deterministic experimental assay cards and an order/readiness table from a persisted transcript assay panel.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers experimental-handoff")
         }),
         json!({
             "id": "primers list-transcript-assay-panels",
@@ -26399,6 +26467,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         ]),
         "primers design-transcript-assay-panel" | "DesignTranscriptAssayPanel" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "primers experimental-handoff" | "BuildExperimentalAssayHandoff" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}),
         ]),
         "primers list-transcript-assay-panels" => Some(vec![]),
         "primers show-transcript-assay-panel" | "primers export-transcript-assay-panel" => {
@@ -51845,6 +51916,50 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersExperimentalHandoff {
+            panel_report_id,
+            policy_json,
+            variant_evidence_paths,
+            order_form_id,
+            path,
+            order_table_path,
+        } => {
+            let policy = match policy_json {
+                Some(payload) => {
+                    let text = parse_json_payload(payload)?;
+                    serde_json::from_str::<ExperimentalAssayReadinessPolicy>(&text).map_err(
+                        |error| {
+                            format!("Invalid experimental assay readiness policy JSON: {error}")
+                        },
+                    )?
+                }
+                None => ExperimentalAssayReadinessPolicy::default(),
+            };
+            let op_result = engine
+                .apply(Operation::BuildExperimentalAssayHandoff {
+                    panel_report_id: panel_report_id.clone(),
+                    policy,
+                    variant_evidence_paths: variant_evidence_paths.clone(),
+                    order_form_id: order_form_id.clone(),
+                    path: path.clone(),
+                    order_table_path: order_table_path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .experimental_assay_handoff
+                .as_ref()
+                .ok_or_else(|| {
+                    "Experimental handoff operation returned no handoff report".to_string()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                    "json_path": path,
+                    "order_table_path": order_table_path,
+                }),
+            })
+        }
         ShellCommand::PrimersOligoOrderCreate { request_json } => {
             let json_text = parse_json_payload(request_json)?;
             let request: OligoOrderFormCreateRequest =
@@ -57042,6 +57157,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersListTranscriptAssayPanels
             | ShellCommand::PrimersShowTranscriptAssayPanel { .. }
             | ShellCommand::PrimersExportTranscriptAssayPanel { .. }
+            | ShellCommand::PrimersExperimentalHandoff { .. }
             | ShellCommand::PrimersOligoOrderCreate { .. }
             | ShellCommand::PrimersOligoOrderFromPrimerReport { .. }
             | ShellCommand::PrimersOligoOrderFromQpcrReport { .. }
@@ -58761,6 +58877,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersListTranscriptAssayPanels
         | ShellCommand::PrimersShowTranscriptAssayPanel { .. }
         | ShellCommand::PrimersExportTranscriptAssayPanel { .. }
+        | ShellCommand::PrimersExperimentalHandoff { .. }
         | ShellCommand::PrimersOligoOrderCreate { .. }
         | ShellCommand::PrimersOligoOrderFromPrimerReport { .. }
         | ShellCommand::PrimersOligoOrderFromQpcrReport { .. }
