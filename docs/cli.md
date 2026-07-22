@@ -3644,11 +3644,15 @@ Shared shell command:
         `gentle.primer_pair_summary.v2` communication view. It copies the
         forward/reverse sequences in 5-prime-to-3-prime orientation, oligo
         lengths, GENtle/Primer3 melting temperatures (`tm_c`), GC fraction and
-        percent, pair `tm_delta_c`, design-transcript binding coordinates,
+        unrounded percent, pair `tm_delta_c`, design-transcript binding
+        coordinates, the canonical designed amplicon coordinates/length,
         transcript product rows, concise oligo-QC reasons derived from the
         stored pair rule flags and metrics, junction matches,
         whole-genome specificity status, and GENtle/backend/Primer3 provenance.
-        Summary generation does not rerun sequence or thermodynamic analysis.
+        `predicted_amplicon_lengths_bp` is instead the deduplicated union from
+        cross-transcript detection and may be empty even when the designed
+        amplicon is present. Summary generation does not rerun sequence or
+        thermodynamic analysis.
         Existing panel reports are enriched when shown or exported
       - summary v2 adds immutable sequence-derived primer ids, transcript/exon-
         aware display labels, optional aliases, typed de-novo/literature/lab

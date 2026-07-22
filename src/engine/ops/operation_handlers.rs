@@ -15723,6 +15723,11 @@ impl GentleEngine {
                 primer_spans_junction: reverse_exons.len() > 1,
                 ..Default::default()
             },
+            design_amplicon_start_0based: candidate.primer_pair.amplicon_start_0based,
+            design_amplicon_end_0based_exclusive: candidate
+                .primer_pair
+                .amplicon_end_0based_exclusive,
+            design_amplicon_length_bp: candidate.primer_pair.amplicon_length_bp,
             amplicon_spans_junction: amplicon_exons.len() > 1,
             selected_because_of_junction_evidence: !selection_evidence.is_empty(),
             selection_evidence,
@@ -15875,9 +15880,14 @@ impl GentleEngine {
             .specificity_followups
             .iter()
             .map(|followup| {
+                let status = followup.genomic_confirmation_status.trim();
                 (
                     followup.assay_id.clone(),
-                    followup.genomic_confirmation_status.clone(),
+                    if status.is_empty() {
+                        "not_run".to_string()
+                    } else {
+                        status.to_string()
+                    },
                 )
             })
             .collect::<HashMap<_, _>>();
@@ -15972,6 +15982,11 @@ impl GentleEngine {
                     &previous.reverse,
                     &fallback_reverse_label,
                 ),
+                design_amplicon_start_0based: assay.primer_pair.amplicon_start_0based,
+                design_amplicon_end_0based_exclusive: assay
+                    .primer_pair
+                    .amplicon_end_0based_exclusive,
+                design_amplicon_length_bp: assay.primer_pair.amplicon_length_bp,
                 tm_delta_c: assay.primer_pair.tm_delta_c,
                 predicted_amplicon_lengths_bp,
                 predicted_products,

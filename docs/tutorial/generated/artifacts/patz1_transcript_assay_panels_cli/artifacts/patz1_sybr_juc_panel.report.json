@@ -219,6 +219,9 @@
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 4
         },
+        "design_amplicon_start_0based": 25,
+        "design_amplicon_end_0based_exclusive": 66,
+        "design_amplicon_length_bp": 41,
         "tm_delta_c": 0.0026234188555633864,
         "predicted_amplicon_lengths_bp": [],
         "predicted_products": [
@@ -485,6 +488,9 @@
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 4
         },
+        "design_amplicon_start_0based": 26,
+        "design_amplicon_end_0based_exclusive": 69,
+        "design_amplicon_length_bp": 43,
         "tm_delta_c": 0.03377922658320642,
         "predicted_amplicon_lengths_bp": [
           43
@@ -742,6 +748,9 @@
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 4
         },
+        "design_amplicon_start_0based": 9,
+        "design_amplicon_end_0based_exclusive": 85,
+        "design_amplicon_length_bp": 76,
         "tm_delta_c": 0.0,
         "predicted_amplicon_lengths_bp": [
           56,
@@ -957,6 +966,9 @@
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 6
         },
+        "design_amplicon_start_0based": 11,
+        "design_amplicon_end_0based_exclusive": 89,
+        "design_amplicon_length_bp": 78,
         "tm_delta_c": 0.0034919176231653637,
         "predicted_amplicon_lengths_bp": [
           78
@@ -1524,6 +1536,9 @@
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 4
         },
+        "design_amplicon_start_0based": 25,
+        "design_amplicon_end_0based_exclusive": 66,
+        "design_amplicon_length_bp": 41,
         "tm_delta_c": 0.0026234188555633864,
         "predicted_amplicon_lengths_bp": [],
         "predicted_products": [
@@ -1790,6 +1805,9 @@
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 4
         },
+        "design_amplicon_start_0based": 26,
+        "design_amplicon_end_0based_exclusive": 69,
+        "design_amplicon_length_bp": 43,
         "tm_delta_c": 0.03377922658320642,
         "predicted_amplicon_lengths_bp": [
           43

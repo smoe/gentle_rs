@@ -14,6 +14,11 @@ Maintenance rule:
 
 ## 2026-07-22
 
+- Completed the `gentle.primer_pair_summary.v2` communication contract with
+  canonical design-amplicon coordinates/length, explicit separation from
+  cross-transcript predicted products, blank-specificity normalization, and
+  exact regression checks across primer, QC, backend, junction, and export
+  fields.
 - Extended `gentle.primer_pair_summary.v2` with immutable sequence-derived
   primer identities, transcript/exon display labels, aliases, typed origin and
   selection provenance, three distinct junction semantics, and structured

@@ -9949,6 +9949,27 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
             summary.binding_coordinate_system,
             "design_transcript_cdna_0based_half_open"
         );
+        assert_eq!(
+            summary.design_amplicon_start_0based,
+            assay.primer_pair.amplicon_start_0based
+        );
+        assert_eq!(
+            summary.design_amplicon_end_0based_exclusive,
+            assay.primer_pair.amplicon_end_0based_exclusive
+        );
+        assert_eq!(
+            summary.design_amplicon_length_bp,
+            assay.primer_pair.amplicon_length_bp
+        );
+        assert!(
+            summary.design_amplicon_start_0based
+                <= summary.design_amplicon_end_0based_exclusive
+        );
+        assert_eq!(
+            summary.design_amplicon_end_0based_exclusive
+                - summary.design_amplicon_start_0based,
+            summary.design_amplicon_length_bp
+        );
         for (summary_primer, source_primer) in [
             (&summary.forward, &assay.primer_pair.forward),
             (&summary.reverse, &assay.primer_pair.reverse),
@@ -9979,6 +10000,28 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
             assert!(
                 (summary_primer.gc_percent - source_primer.gc_fraction * 100.0).abs() < 1e-12
             );
+            assert_eq!(summary_primer.anneal_hit_count, source_primer.anneal_hits);
+            assert_eq!(
+                summary_primer.binding_start_0based,
+                source_primer.start_0based
+            );
+            assert_eq!(
+                summary_primer.binding_end_0based_exclusive,
+                source_primer.end_0based_exclusive
+            );
+            assert_eq!(summary_primer.three_prime_base, source_primer.three_prime_base);
+            assert_eq!(
+                summary_primer.three_prime_gc_clamp,
+                source_primer.three_prime_gc_clamp
+            );
+            assert_eq!(
+                summary_primer.longest_homopolymer_run_bp,
+                source_primer.longest_homopolymer_run_bp
+            );
+            assert_eq!(
+                summary_primer.self_complementary_run_bp,
+                source_primer.self_complementary_run_bp
+            );
         }
         assert_eq!(
             summary.tm_delta_c.to_bits(),
@@ -9988,12 +10031,37 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
             (summary.tm_delta_c - (summary.forward.tm_c - summary.reverse.tm_c).abs()).abs()
                 < 1e-12
         );
+        assert_eq!(
+            serde_json::to_value(&summary.oligo_qc.rule_flags).expect("serialize summary flags"),
+            serde_json::to_value(&assay.primer_pair.rule_flags)
+                .expect("serialize canonical pair flags")
+        );
+        assert_eq!(
+            summary.oligo_qc.primer_pair_complementary_run_bp,
+            assay.primer_pair.primer_pair_complementary_run_bp
+        );
+        assert_eq!(
+            summary.oligo_qc.primer_pair_3prime_complementary_run_bp,
+            assay.primer_pair.primer_pair_3prime_complementary_run_bp
+        );
         let expected_products = report
             .detection_matrix
             .iter()
             .filter(|cell| cell.assay_id == assay.assay_id)
             .count();
         assert_eq!(summary.predicted_products.len(), expected_products);
+        let expected_amplicon_lengths = report
+            .detection_matrix
+            .iter()
+            .filter(|cell| cell.assay_id == assay.assay_id)
+            .flat_map(|cell| cell.amplicon_lengths_bp.iter().copied())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            summary.predicted_amplicon_lengths_bp,
+            expected_amplicon_lengths
+        );
         for product in &summary.predicted_products {
             let source = report
                 .detection_matrix
@@ -10010,6 +10078,18 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
             assert_eq!(product.product_count, source.product_count);
             assert_eq!(product.amplicon_lengths_bp, source.amplicon_lengths_bp);
         }
+        assert_eq!(
+            summary.junction_spanning_status,
+            if assay
+                .junction_matches
+                .iter()
+                .any(|row| row.forward_spans || row.reverse_spans)
+            {
+                "requested_junction_spanning_primer"
+            } else {
+                "no_requested_junction_match_reported"
+            }
+        );
         assert_eq!(summary.whole_genome_specificity_status, "not_run");
         assert_eq!(summary.genomic_carryover_status, "not_evaluated");
         assert_eq!(
@@ -10020,7 +10100,38 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
             summary.provenance.gentle_version,
             crate::about::GENTLE_PACKAGE_VERSION
         );
-        assert!(!summary.provenance.primer_backend_used.is_empty());
+        if let Some(backend_run) = report
+            .backend_runs
+            .iter()
+            .find(|run| run.equivalence_group_id == assay.design_equivalence_group_id)
+        {
+            assert_eq!(
+                summary.provenance.primer_backend_requested,
+                backend_run.backend.requested
+            );
+            assert_eq!(
+                summary.provenance.primer_backend_used,
+                if backend_run.backend.used.trim().is_empty() {
+                    report.provenance.primer_backend.as_str()
+                } else {
+                    backend_run.backend.used.as_str()
+                }
+            );
+            assert_eq!(
+                summary.provenance.primer3_version,
+                backend_run.backend.primer3_version
+            );
+        } else {
+            assert_eq!(
+                summary.provenance.primer_backend_requested,
+                report.provenance.primer_backend
+            );
+            assert_eq!(
+                summary.provenance.primer_backend_used,
+                report.provenance.primer_backend
+            );
+            assert_eq!(summary.provenance.primer3_version, None);
+        }
         assert_eq!(
             summary.provenance.exon_numbering_reference_transcript_id,
             assay.design_transcript_id
@@ -10094,6 +10205,22 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
     assert_eq!(legacy.forward.sequence_5_to_3, report.selected_assays[0].primer_pair.forward.sequence);
     assert_eq!(legacy.reverse.sequence_5_to_3, report.selected_assays[0].primer_pair.reverse.sequence);
     assert_eq!(
+        legacy.design_amplicon_start_0based,
+        report.selected_assays[0]
+            .primer_pair
+            .amplicon_start_0based
+    );
+    assert_eq!(
+        legacy.design_amplicon_end_0based_exclusive,
+        report.selected_assays[0]
+            .primer_pair
+            .amplicon_end_0based_exclusive
+    );
+    assert_eq!(
+        legacy.design_amplicon_length_bp,
+        report.selected_assays[0].primer_pair.amplicon_length_bp
+    );
+    assert_eq!(
         legacy.selection_provenance_status,
         "legacy_report_selection_provenance_unavailable"
     );
@@ -10102,6 +10229,70 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
         "geometry_not_persisted_in_legacy_report_re_run_required"
     );
     assert!(legacy.selection_evidence.is_empty());
+}
+
+#[test]
+fn transcript_assay_panel_summary_keeps_design_amplicon_without_detected_products() {
+    let mut report = TranscriptAssayPanelReport {
+        schema: TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA.to_string(),
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            assay_id: "junction_pair_without_matrix_product".to_string(),
+            rank: 1,
+            design_equivalence_group_id: "eq1".to_string(),
+            design_transcript_id: "TX1".to_string(),
+            primer_pair: PrimerDesignPairRecord {
+                amplicon_start_0based: 25,
+                amplicon_end_0based_exclusive: 66,
+                amplicon_length_bp: 41,
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+        provenance: TranscriptAssayPanelProvenance {
+            primer_backend: "internal".to_string(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    GentleEngine::refresh_transcript_assay_panel_primer_pair_summaries(&mut report);
+    let summary = &report.selected_assays[0].primer_pair_summary;
+    assert_eq!(summary.design_amplicon_start_0based, 25);
+    assert_eq!(summary.design_amplicon_end_0based_exclusive, 66);
+    assert_eq!(summary.design_amplicon_length_bp, 41);
+    assert!(summary.predicted_amplicon_lengths_bp.is_empty());
+    assert!(summary.predicted_products.is_empty());
+}
+
+#[test]
+fn transcript_assay_panel_summary_normalizes_blank_specificity_to_not_run() {
+    let mut report = TranscriptAssayPanelReport {
+        schema: TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA.to_string(),
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            assay_id: "blank_specificity".to_string(),
+            design_equivalence_group_id: "eq1".to_string(),
+            design_transcript_id: "TX1".to_string(),
+            ..Default::default()
+        }],
+        specificity_followups: vec![TranscriptAssaySpecificityFollowup {
+            assay_id: "blank_specificity".to_string(),
+            genomic_confirmation_status: "  \t".to_string(),
+            ..Default::default()
+        }],
+        provenance: TranscriptAssayPanelProvenance {
+            primer_backend: "internal".to_string(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    GentleEngine::refresh_transcript_assay_panel_primer_pair_summaries(&mut report);
+    assert_eq!(
+        report.selected_assays[0]
+            .primer_pair_summary
+            .whole_genome_specificity_status,
+        "not_run"
+    );
 }
 
 #[test]
@@ -10520,6 +10711,10 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
     assert!(summary.display_label.starts_with("PATZ1_"));
     assert!(summary.amplicon_spans_junction);
     assert!(summary.forward.primer_spans_junction || summary.reverse.primer_spans_junction);
+    assert_eq!(
+        summary.junction_spanning_status,
+        "requested_junction_spanning_primer"
+    );
     assert_eq!(
         summary.provenance.annotation_release.as_deref(),
         Some("synthetic GRCh38.p14 fixture")

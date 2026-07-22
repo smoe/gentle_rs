@@ -225,6 +225,9 @@
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 4
         },
+        "design_amplicon_start_0based": 1,
+        "design_amplicon_end_0based_exclusive": 88,
+        "design_amplicon_length_bp": 87,
         "tm_delta_c": 0.012244508619573935,
         "predicted_amplicon_lengths_bp": [
           87,
@@ -450,6 +453,9 @@
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 4
         },
+        "design_amplicon_start_0based": 2,
+        "design_amplicon_end_0based_exclusive": 80,
+        "design_amplicon_length_bp": 78,
         "tm_delta_c": 0.00363902875355393,
         "predicted_amplicon_lengths_bp": [
           78,

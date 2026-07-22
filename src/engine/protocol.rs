@@ -5583,8 +5583,11 @@ pub struct PrimerPairSummaryOligo {
     pub anneal_length_nt: usize,
     pub tm_c: f64,
     pub gc_fraction: f64,
+    /// Unrounded convenience projection of `gc_fraction * 100.0`.
     pub gc_percent: f64,
     pub anneal_hit_count: usize,
+    /// Strand-agnostic footprint on the design-transcript cDNA. For a reverse
+    /// primer this is not the 5'-to-3' ordering of `sequence_5_to_3`.
     pub binding_start_0based: usize,
     pub binding_end_0based_exclusive: usize,
     #[serde(default)]
@@ -5734,6 +5737,9 @@ pub struct PrimerPairSummaryProduct {
 /// remains interpretable when extracted from its enclosing report.
 pub struct PrimerPairSummaryProvenance {
     pub source_report_schema: String,
+    /// GENtle version that generated this communication projection. Older
+    /// source reports do not necessarily record the version that designed the
+    /// primer pair.
     pub gentle_version: String,
     pub primer_backend_requested: String,
     pub primer_backend_used: String,
@@ -5786,7 +5792,15 @@ pub struct PrimerPairCommunicationSummary {
     pub binding_coordinate_system: String,
     pub forward: PrimerPairSummaryOligo,
     pub reverse: PrimerPairSummaryOligo,
+    /// Canonical designed amplicon geometry on `design_transcript_id`, copied
+    /// verbatim from the selected `PrimerDesignPairRecord`.
+    pub design_amplicon_start_0based: usize,
+    pub design_amplicon_end_0based_exclusive: usize,
+    pub design_amplicon_length_bp: usize,
     pub tm_delta_c: f64,
+    /// Deduplicated product lengths observed in the cross-transcript detection
+    /// matrix. This can be empty even when the canonical design amplicon above
+    /// is present.
     #[serde(default)]
     pub predicted_amplicon_lengths_bp: Vec<usize>,
     #[serde(default)]

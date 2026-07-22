@@ -8233,15 +8233,31 @@ Primer-design shell command family (implemented):
     matrix, junction, specificity-followup, and backend records. It repeats the
     assay id, design transcript, forward/reverse sequence (explicitly
     5-prime-to-3-prime), oligo and annealing lengths, `tm_c`, GC fraction and
-    percent, binding positions, pair `tm_delta_c`, predicted transcript
-    products/sizes, concise oligo-QC status/reasons, junction matches,
+    unrounded percent, binding positions, canonical designed-amplicon
+    coordinates/length, pair `tm_delta_c`, predicted transcript products/sizes,
+    concise oligo-QC status/reasons, junction matches,
     `whole_genome_specificity_status`, GENtle package version, requested/used
     backend, and optional Primer3 version. `length_nt` must equal the returned
     sequence length, and `tm_delta_c` is copied from and checked against the two
     canonical melting temperatures; report consumers must not recompute Tm.
     The QC block interprets the pair's stored rule flags and metrics; summary
     generation does not rerun sequence or thermodynamic analysis. Compatible
-    older reports are enriched when read/exported.
+    older reports are enriched when read/exported. If a legacy payload omitted
+    boolean pair-rule flags, serde defaults them to `false`; GENtle cannot
+    safely infer whether those rules failed or were never recorded, so a rerun
+    is required before treating that enriched QC block as a historical result.
+  - `design_amplicon_start_0based`,
+    `design_amplicon_end_0based_exclusive`, and
+    `design_amplicon_length_bp` are copied verbatim from the selected canonical
+    pair on `design_transcript_id`. They describe the amplicon used during pair
+    design even if the later cross-transcript matrix calls no product.
+    `predicted_amplicon_lengths_bp` is a separate sorted, deduplicated union of
+    product lengths in that matrix and may therefore be empty.
+  - `gc_percent` is the unrounded convenience projection
+    `gc_fraction * 100.0`. Primer binding coordinates are strand-agnostic,
+    zero-based half-open footprints on the design-transcript cDNA; for the
+    reverse primer they do not encode the 5-prime-to-3-prime order of
+    `sequence_5_to_3`.
   - summary v2 keeps machine identity separate from human naming:
     - `assay_id` remains the sequence-derived pair/probe identity;
       `forward.primer_id` and `reverse.primer_id` are stable hashes of the
@@ -8284,6 +8300,11 @@ Primer-design shell command family (implemented):
     junction overlap is reported separately and does not establish a genomic-
     template or whole-genome specificity pass. Exact per-transcript hit/exon/
     carryover geometry remains available from `gentle.cdna_assay_test_report.v1`.
+    Blank legacy genomic-confirmation values are normalized to `not_run`.
+  - `provenance.gentle_version` identifies the GENtle binary that generated the
+    communication projection. It is not claimed to be the version that
+    originally designed a legacy pair, because older reports did not persist
+    that value.
   - each matrix cell also carries `oligo_dt_5prime_reach`. For oligo-dT cDNA
     and each predicted product, `required_cdna_reach_from_3prime_end_bp`
     measures from the annotated mature-transcript 3-prime end to the product's
