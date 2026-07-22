@@ -1043,7 +1043,7 @@
     },
     {
       "id": "patz1_transcript_assay_panels_cli",
-      "title": "Design PATZ1 Endpoint and SYBR Transcript Panels from the CLI",
+      "title": "Design Practical PATZ1 Endpoint and SYBR Transcript Panels from the CLI",
       "path": "docs/tutorial/generated/chapters/04-06_patz1_transcript_assay_panels_cli.md",
       "group": "04",
       "group_label": "Primers, PCR & qPCR",
@@ -1059,7 +1059,7 @@
         "transcript_analysis",
         "contributors"
       ],
-      "notes": "Machine-checked CLI chapter for endpoint RT-PCR and primer-only SYBR transcript-panel design through the shared operation contract.",
+      "notes": "Machine-checked CLI chapter for practical endpoint RT-PCR, isoform-discriminating SYBR, and routine common-region transcript-panel design through the shared operation contract.",
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-07-21"
     }

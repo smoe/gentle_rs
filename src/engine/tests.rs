@@ -17983,7 +17983,7 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
     assert!(report.evidence_items.iter().any(|item| {
         item.source_kind == IsoformEvidenceSourceKind::ArrayProbe
             && item.status == IsoformEvidenceAssessmentStatus::ConstraintOnly
-            && item.condition.is_none()
+            && item.condition.as_deref() == Some("synthetic_case_vs_control")
             && item.notes.iter().any(|note| note.contains("not establish isoform support"))
     }));
     assert!(report.junctions.iter().any(|row| {

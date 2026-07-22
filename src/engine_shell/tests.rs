@@ -525,6 +525,10 @@ fn skip_glossary_flag_parse(path: &str, flag: &str) -> bool {
                     "candidates generate-between-anchors",
                     "--anchor-a-json" | "--anchor-b-json"
                 )
+                | (
+                    "primers design-transcript-assay-panel",
+                    "--preferred-min-amplicon-bp" | "--preferred-max-amplicon-bp"
+                )
                 | ("ui selection", "--start" | "--end")
         )
 }
