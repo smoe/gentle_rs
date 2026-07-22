@@ -635,6 +635,7 @@ const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_ACCEPTANCE_SCHEMA: &str =
     "gentle.transcript_assay_panel_specificity_acceptance.v1";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
 pub const TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_assay_panel.v2";
+pub const PRIMER_PAIR_SUMMARY_SCHEMA: &str = "gentle.primer_pair_summary.v1";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
     "gentle.restriction_cloning_pcr_handoff.v1";
 pub const PROTEIN_DERIVATION_REPORTS_METADATA_KEY: &str = "protein_derivation_reports";
@@ -12109,7 +12110,7 @@ impl GentleEngine {
     ) -> Result<TranscriptAssayPanelReport, EngineError> {
         let report_id = Self::normalize_primer_design_report_id(report_id)?;
         let store = self.read_primer_design_store();
-        store
+        let mut report = store
             .transcript_assay_panels
             .get(&report_id)
             .cloned()
@@ -12118,7 +12119,9 @@ impl GentleEngine {
                 message: format!("Transcript assay panel report '{}' not found", report_id),
 
                 cause_chain: vec![],
-            })
+            })?;
+        Self::refresh_transcript_assay_panel_primer_pair_summaries(&mut report);
+        Ok(report)
     }
 
     pub fn export_transcript_assay_panel_report(

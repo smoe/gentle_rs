@@ -139,7 +139,112 @@
       "single_product_equivalence_group_ids": [
         "cdna_eq_bf8de0081e092d6f",
         "cdna_eq_da6a2f3dbe1d4447"
-      ]
+      ],
+      "primer_pair_summary": {
+        "schema": "gentle.primer_pair_summary.v1",
+        "assay_id": "transcript_assay_27362fde0b95ba9d",
+        "pair_rank": 1,
+        "design_transcript_id": "PATZ1-203",
+        "design_equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+        "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
+        "forward": {
+          "role": "forward",
+          "sequence_5_to_3": "GGATCCGATCGTAGCCTAGC",
+          "length_nt": 20,
+          "anneal_length_nt": 20,
+          "tm_c": 64.52270220379475,
+          "gc_fraction": 0.6,
+          "gc_percent": 60.0,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 1,
+          "binding_end_0based_exclusive": 21,
+          "three_prime_base": "C",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 6
+        },
+        "reverse": {
+          "role": "reverse",
+          "sequence_5_to_3": "ACGATCCGTTAGCGTACCTG",
+          "length_nt": 20,
+          "anneal_length_nt": 20,
+          "tm_c": 64.53494671241432,
+          "gc_fraction": 0.55,
+          "gc_percent": 55.00000000000001,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 68,
+          "binding_end_0based_exclusive": 88,
+          "three_prime_base": "G",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 4
+        },
+        "tm_delta_c": 0.012244508619573935,
+        "predicted_amplicon_lengths_bp": [
+          87,
+          107
+        ],
+        "predicted_products": [
+          {
+            "transcript_feature_id": 2,
+            "transcript_id": "PATZ1-201",
+            "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+            "detection_status": "single_product",
+            "detail_status": "single_product",
+            "product_count": 1,
+            "amplicon_lengths_bp": [
+              107
+            ]
+          },
+          {
+            "transcript_feature_id": 3,
+            "transcript_id": "PATZ1-202",
+            "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "detection_status": "no_product",
+            "detail_status": "no_product_in_size_range",
+            "product_count": 0,
+            "amplicon_lengths_bp": []
+          },
+          {
+            "transcript_feature_id": 4,
+            "transcript_id": "PATZ1-203",
+            "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+            "detection_status": "single_product",
+            "detail_status": "single_product",
+            "product_count": 1,
+            "amplicon_lengths_bp": [
+              87
+            ]
+          }
+        ],
+        "oligo_qc": {
+          "status": "pass",
+          "warnings": [],
+          "rule_flags": {
+            "roi_covered": true,
+            "amplicon_size_in_range": true,
+            "tm_delta_in_range": true,
+            "forward_secondary_structure_ok": true,
+            "reverse_secondary_structure_ok": true,
+            "primer_pair_dimer_risk_low": true,
+            "forward_three_prime_gc_clamp": true,
+            "reverse_three_prime_gc_clamp": true
+          },
+          "primer_pair_complementary_run_bp": 6,
+          "primer_pair_3prime_complementary_run_bp": 2
+        },
+        "junction_spanning_status": "no_requested_junction_match_reported",
+        "junction_matches": [],
+        "genomic_carryover_status": "not_evaluated",
+        "genomic_carryover_rationale": "Transcript-panel selection does not run a genomic-template PCR carryover test; requested junction overlap is reported separately and must not be interpreted as a whole-genome specificity pass.",
+        "whole_genome_specificity_status": "not_run",
+        "provenance": {
+          "source_report_schema": "gentle.transcript_assay_panel.v2",
+          "gentle_version": "0.1.0-internal.10",
+          "primer_backend_requested": "internal",
+          "primer_backend_used": "internal"
+        }
+      }
     },
     {
       "assay_id": "transcript_assay_46b04036f2ccda49",
@@ -206,7 +311,117 @@
         "cdna_eq_6c73e2052bd828f3",
         "cdna_eq_bf8de0081e092d6f",
         "cdna_eq_da6a2f3dbe1d4447"
-      ]
+      ],
+      "primer_pair_summary": {
+        "schema": "gentle.primer_pair_summary.v1",
+        "assay_id": "transcript_assay_46b04036f2ccda49",
+        "pair_rank": 2,
+        "design_transcript_id": "PATZ1-202",
+        "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+        "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
+        "forward": {
+          "role": "forward",
+          "sequence_5_to_3": "GATCCGATCGTAGCCTAGCATC",
+          "length_nt": 22,
+          "anneal_length_nt": 22,
+          "tm_c": 64.94628464587302,
+          "gc_fraction": 0.5454545454545454,
+          "gc_percent": 54.54545454545454,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 2,
+          "binding_end_0based_exclusive": 24,
+          "three_prime_base": "C",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 6
+        },
+        "reverse": {
+          "role": "reverse",
+          "sequence_5_to_3": "ATGCCGTAGCTTACGATCCG",
+          "length_nt": 20,
+          "anneal_length_nt": 20,
+          "tm_c": 64.94264561711947,
+          "gc_fraction": 0.55,
+          "gc_percent": 55.00000000000001,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 60,
+          "binding_end_0based_exclusive": 80,
+          "three_prime_base": "G",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 4
+        },
+        "tm_delta_c": 0.00363902875355393,
+        "predicted_amplicon_lengths_bp": [
+          78,
+          98,
+          118
+        ],
+        "predicted_products": [
+          {
+            "transcript_feature_id": 2,
+            "transcript_id": "PATZ1-201",
+            "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+            "detection_status": "single_product",
+            "detail_status": "single_product",
+            "product_count": 1,
+            "amplicon_lengths_bp": [
+              118
+            ]
+          },
+          {
+            "transcript_feature_id": 3,
+            "transcript_id": "PATZ1-202",
+            "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "detection_status": "single_product",
+            "detail_status": "single_product",
+            "product_count": 1,
+            "amplicon_lengths_bp": [
+              78
+            ]
+          },
+          {
+            "transcript_feature_id": 4,
+            "transcript_id": "PATZ1-203",
+            "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+            "detection_status": "single_product",
+            "detail_status": "single_product",
+            "product_count": 1,
+            "amplicon_lengths_bp": [
+              98
+            ]
+          }
+        ],
+        "oligo_qc": {
+          "status": "warning",
+          "warnings": [
+            "The stored pair rule flags report elevated dimer risk (complementary run 7 bp; 3-prime complementary run 3 bp)."
+          ],
+          "rule_flags": {
+            "roi_covered": true,
+            "amplicon_size_in_range": true,
+            "tm_delta_in_range": true,
+            "forward_secondary_structure_ok": true,
+            "reverse_secondary_structure_ok": true,
+            "primer_pair_dimer_risk_low": false,
+            "forward_three_prime_gc_clamp": true,
+            "reverse_three_prime_gc_clamp": true
+          },
+          "primer_pair_complementary_run_bp": 7,
+          "primer_pair_3prime_complementary_run_bp": 3
+        },
+        "junction_spanning_status": "no_requested_junction_match_reported",
+        "junction_matches": [],
+        "genomic_carryover_status": "not_evaluated",
+        "genomic_carryover_rationale": "Transcript-panel selection does not run a genomic-template PCR carryover test; requested junction overlap is reported separately and must not be interpreted as a whole-genome specificity pass.",
+        "whole_genome_specificity_status": "not_run",
+        "provenance": {
+          "source_report_schema": "gentle.transcript_assay_panel.v2",
+          "gentle_version": "0.1.0-internal.10",
+          "primer_backend_requested": "internal",
+          "primer_backend_used": "internal"
+        }
+      }
     }
   ],
   "detection_matrix": [

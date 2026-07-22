@@ -12,6 +12,14 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-22
+
+- Added `gentle.primer_pair_summary.v1` to selected transcript-panel assays so
+  CLI/MCP/API and JSON exports carry one joined, assay-neutral communication
+  view of the exact primer sequences, lengths, melting temperatures, GC values,
+  pair delta-Tm, transcript products, QC reasons, specificity state, and tool
+  provenance without guessing a PCR annealing temperature.
+
 ## 2026-07-21
 
 - Made serial/pool-gel SVG labels collision-aware: dense gels now keep short

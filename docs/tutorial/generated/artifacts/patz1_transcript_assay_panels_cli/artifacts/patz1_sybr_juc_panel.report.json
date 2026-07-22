@@ -141,7 +141,114 @@
           "spanning_role": "forward"
         }
       ],
-      "single_product_equivalence_group_ids": []
+      "single_product_equivalence_group_ids": [],
+      "primer_pair_summary": {
+        "schema": "gentle.primer_pair_summary.v1",
+        "assay_id": "transcript_assay_6b15970fa7d866ef",
+        "pair_rank": 1,
+        "design_transcript_id": "PATZ1-202",
+        "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+        "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
+        "forward": {
+          "role": "forward",
+          "sequence_5_to_3": "GTAAGCTAGCATCGGGATCCG",
+          "length_nt": 21,
+          "anneal_length_nt": 21,
+          "tm_c": 65.23248337752503,
+          "gc_fraction": 0.5714285714285714,
+          "gc_percent": 57.14285714285714,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 25,
+          "binding_end_0based_exclusive": 46,
+          "three_prime_base": "G",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 3,
+          "self_complementary_run_bp": 6
+        },
+        "reverse": {
+          "role": "reverse",
+          "sequence_5_to_3": "GATCCGTTAGCGTACCTGATCG",
+          "length_nt": 22,
+          "anneal_length_nt": 22,
+          "tm_c": 65.23510679638059,
+          "gc_fraction": 0.5454545454545454,
+          "gc_percent": 54.54545454545454,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 44,
+          "binding_end_0based_exclusive": 66,
+          "three_prime_base": "G",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 4
+        },
+        "tm_delta_c": 0.0026234188555633864,
+        "predicted_amplicon_lengths_bp": [],
+        "predicted_products": [
+          {
+            "transcript_feature_id": 2,
+            "transcript_id": "PATZ1-201",
+            "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+            "detection_status": "no_product",
+            "detail_status": "exact_negative_prefilter",
+            "product_count": 0,
+            "amplicon_lengths_bp": []
+          },
+          {
+            "transcript_feature_id": 3,
+            "transcript_id": "PATZ1-202",
+            "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "detection_status": "no_product",
+            "detail_status": "no_product_in_size_range",
+            "product_count": 0,
+            "amplicon_lengths_bp": []
+          },
+          {
+            "transcript_feature_id": 4,
+            "transcript_id": "PATZ1-203",
+            "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+            "detection_status": "no_product",
+            "detail_status": "exact_negative_prefilter",
+            "product_count": 0,
+            "amplicon_lengths_bp": []
+          }
+        ],
+        "oligo_qc": {
+          "status": "pass",
+          "warnings": [],
+          "rule_flags": {
+            "roi_covered": true,
+            "amplicon_size_in_range": true,
+            "tm_delta_in_range": true,
+            "forward_secondary_structure_ok": true,
+            "reverse_secondary_structure_ok": true,
+            "primer_pair_dimer_risk_low": true,
+            "forward_three_prime_gc_clamp": true,
+            "reverse_three_prime_gc_clamp": true
+          },
+          "primer_pair_complementary_run_bp": 5,
+          "primer_pair_3prime_complementary_run_bp": 2
+        },
+        "junction_spanning_status": "requested_junction_spanning_primer",
+        "junction_matches": [
+          {
+            "junction_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+            "transcript_id": "PATZ1-202",
+            "transcript_local_position_0based": 40,
+            "forward_spans": true,
+            "reverse_spans": false,
+            "spanning_role": "forward"
+          }
+        ],
+        "genomic_carryover_status": "not_evaluated",
+        "genomic_carryover_rationale": "Transcript-panel selection does not run a genomic-template PCR carryover test; requested junction overlap is reported separately and must not be interpreted as a whole-genome specificity pass.",
+        "whole_genome_specificity_status": "not_run",
+        "provenance": {
+          "source_report_schema": "gentle.transcript_assay_panel.v2",
+          "gentle_version": "0.1.0-internal.10",
+          "primer_backend_requested": "internal",
+          "primer_backend_used": "internal"
+        }
+      }
     },
     {
       "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
@@ -212,7 +319,118 @@
       ],
       "single_product_equivalence_group_ids": [
         "cdna_eq_6c73e2052bd828f3"
-      ]
+      ],
+      "primer_pair_summary": {
+        "schema": "gentle.primer_pair_summary.v1",
+        "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+        "pair_rank": 2,
+        "design_transcript_id": "PATZ1-202",
+        "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+        "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
+        "forward": {
+          "role": "forward",
+          "sequence_5_to_3": "TAAGCTAGCATCGGGATCCG",
+          "length_nt": 20,
+          "anneal_length_nt": 20,
+          "tm_c": 64.26996322180901,
+          "gc_fraction": 0.55,
+          "gc_percent": 55.00000000000001,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 26,
+          "binding_end_0based_exclusive": 46,
+          "three_prime_base": "G",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 3,
+          "self_complementary_run_bp": 6
+        },
+        "reverse": {
+          "role": "reverse",
+          "sequence_5_to_3": "TACGATCCGTTAGCGTACCTG",
+          "length_nt": 21,
+          "anneal_length_nt": 21,
+          "tm_c": 64.2361839952258,
+          "gc_fraction": 0.5238095238095238,
+          "gc_percent": 52.38095238095239,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 48,
+          "binding_end_0based_exclusive": 69,
+          "three_prime_base": "G",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 4
+        },
+        "tm_delta_c": 0.03377922658320642,
+        "predicted_amplicon_lengths_bp": [
+          43
+        ],
+        "predicted_products": [
+          {
+            "transcript_feature_id": 2,
+            "transcript_id": "PATZ1-201",
+            "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+            "detection_status": "no_product",
+            "detail_status": "exact_negative_prefilter",
+            "product_count": 0,
+            "amplicon_lengths_bp": []
+          },
+          {
+            "transcript_feature_id": 3,
+            "transcript_id": "PATZ1-202",
+            "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "detection_status": "single_product",
+            "detail_status": "single_product",
+            "product_count": 1,
+            "amplicon_lengths_bp": [
+              43
+            ]
+          },
+          {
+            "transcript_feature_id": 4,
+            "transcript_id": "PATZ1-203",
+            "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+            "detection_status": "no_product",
+            "detail_status": "exact_negative_prefilter",
+            "product_count": 0,
+            "amplicon_lengths_bp": []
+          }
+        ],
+        "oligo_qc": {
+          "status": "pass",
+          "warnings": [],
+          "rule_flags": {
+            "roi_covered": true,
+            "amplicon_size_in_range": true,
+            "tm_delta_in_range": true,
+            "forward_secondary_structure_ok": true,
+            "reverse_secondary_structure_ok": true,
+            "primer_pair_dimer_risk_low": true,
+            "forward_three_prime_gc_clamp": true,
+            "reverse_three_prime_gc_clamp": true
+          },
+          "primer_pair_complementary_run_bp": 5,
+          "primer_pair_3prime_complementary_run_bp": 2
+        },
+        "junction_spanning_status": "requested_junction_spanning_primer",
+        "junction_matches": [
+          {
+            "junction_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+            "transcript_id": "PATZ1-202",
+            "transcript_local_position_0based": 40,
+            "forward_spans": true,
+            "reverse_spans": false,
+            "spanning_role": "forward"
+          }
+        ],
+        "genomic_carryover_status": "not_evaluated",
+        "genomic_carryover_rationale": "Transcript-panel selection does not run a genomic-template PCR carryover test; requested junction overlap is reported separately and must not be interpreted as a whole-genome specificity pass.",
+        "whole_genome_specificity_status": "not_run",
+        "provenance": {
+          "source_report_schema": "gentle.transcript_assay_panel.v2",
+          "gentle_version": "0.1.0-internal.10",
+          "primer_backend_requested": "internal",
+          "primer_backend_used": "internal"
+        }
+      }
     },
     {
       "assay_id": "transcript_assay_b3964ace800b1035",
@@ -276,7 +494,115 @@
         "cdna_eq_6c73e2052bd828f3",
         "cdna_eq_bf8de0081e092d6f",
         "cdna_eq_da6a2f3dbe1d4447"
-      ]
+      ],
+      "primer_pair_summary": {
+        "schema": "gentle.primer_pair_summary.v1",
+        "assay_id": "transcript_assay_b3964ace800b1035",
+        "pair_rank": 3,
+        "design_transcript_id": "PATZ1-203",
+        "design_equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+        "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
+        "forward": {
+          "role": "forward",
+          "sequence_5_to_3": "TCGTAGCCTAGCATCGGTAAGC",
+          "length_nt": 22,
+          "anneal_length_nt": 22,
+          "tm_c": 66.70319051927623,
+          "gc_fraction": 0.5454545454545454,
+          "gc_percent": 54.54545454545454,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 9,
+          "binding_end_0based_exclusive": 31,
+          "three_prime_base": "C",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 4
+        },
+        "reverse": {
+          "role": "reverse",
+          "sequence_5_to_3": "ATCCGTTAGCGTACCTGATCGG",
+          "length_nt": 22,
+          "anneal_length_nt": 22,
+          "tm_c": 66.70319051927623,
+          "gc_fraction": 0.5454545454545454,
+          "gc_percent": 54.54545454545454,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 63,
+          "binding_end_0based_exclusive": 85,
+          "three_prime_base": "G",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 4
+        },
+        "tm_delta_c": 0.0,
+        "predicted_amplicon_lengths_bp": [
+          56,
+          76,
+          96
+        ],
+        "predicted_products": [
+          {
+            "transcript_feature_id": 2,
+            "transcript_id": "PATZ1-201",
+            "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+            "detection_status": "single_product",
+            "detail_status": "single_product",
+            "product_count": 1,
+            "amplicon_lengths_bp": [
+              96
+            ]
+          },
+          {
+            "transcript_feature_id": 3,
+            "transcript_id": "PATZ1-202",
+            "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "detection_status": "single_product",
+            "detail_status": "single_product",
+            "product_count": 1,
+            "amplicon_lengths_bp": [
+              56
+            ]
+          },
+          {
+            "transcript_feature_id": 4,
+            "transcript_id": "PATZ1-203",
+            "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+            "detection_status": "single_product",
+            "detail_status": "single_product",
+            "product_count": 1,
+            "amplicon_lengths_bp": [
+              76
+            ]
+          }
+        ],
+        "oligo_qc": {
+          "status": "pass",
+          "warnings": [],
+          "rule_flags": {
+            "roi_covered": true,
+            "amplicon_size_in_range": true,
+            "tm_delta_in_range": true,
+            "forward_secondary_structure_ok": true,
+            "reverse_secondary_structure_ok": true,
+            "primer_pair_dimer_risk_low": true,
+            "forward_three_prime_gc_clamp": true,
+            "reverse_three_prime_gc_clamp": true
+          },
+          "primer_pair_complementary_run_bp": 4,
+          "primer_pair_3prime_complementary_run_bp": 2
+        },
+        "junction_spanning_status": "no_requested_junction_match_reported",
+        "junction_matches": [],
+        "genomic_carryover_status": "not_evaluated",
+        "genomic_carryover_rationale": "Transcript-panel selection does not run a genomic-template PCR carryover test; requested junction overlap is reported separately and must not be interpreted as a whole-genome specificity pass.",
+        "whole_genome_specificity_status": "not_run",
+        "provenance": {
+          "source_report_schema": "gentle.transcript_assay_panel.v2",
+          "gentle_version": "0.1.0-internal.10",
+          "primer_backend_requested": "internal",
+          "primer_backend_used": "internal"
+        }
+      }
     },
     {
       "assay_id": "transcript_assay_928afef051d25781",
@@ -338,7 +664,109 @@
       "junction_matches": [],
       "single_product_equivalence_group_ids": [
         "cdna_eq_da6a2f3dbe1d4447"
-      ]
+      ],
+      "primer_pair_summary": {
+        "schema": "gentle.primer_pair_summary.v1",
+        "assay_id": "transcript_assay_928afef051d25781",
+        "pair_rank": 4,
+        "design_transcript_id": "PATZ1-201",
+        "design_equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+        "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
+        "forward": {
+          "role": "forward",
+          "sequence_5_to_3": "GTAGCCTAGCATCGGTAAGC",
+          "length_nt": 20,
+          "anneal_length_nt": 20,
+          "tm_c": 62.95409408893436,
+          "gc_fraction": 0.55,
+          "gc_percent": 55.00000000000001,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 11,
+          "binding_end_0based_exclusive": 31,
+          "three_prime_base": "C",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 4
+        },
+        "reverse": {
+          "role": "reverse",
+          "sequence_5_to_3": "GATCGGATCGCTAACGATCC",
+          "length_nt": 20,
+          "anneal_length_nt": 20,
+          "tm_c": 62.950602171311196,
+          "gc_fraction": 0.55,
+          "gc_percent": 55.00000000000001,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 69,
+          "binding_end_0based_exclusive": 89,
+          "three_prime_base": "C",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 6
+        },
+        "tm_delta_c": 0.0034919176231653637,
+        "predicted_amplicon_lengths_bp": [
+          78
+        ],
+        "predicted_products": [
+          {
+            "transcript_feature_id": 2,
+            "transcript_id": "PATZ1-201",
+            "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+            "detection_status": "single_product",
+            "detail_status": "single_product",
+            "product_count": 1,
+            "amplicon_lengths_bp": [
+              78
+            ]
+          },
+          {
+            "transcript_feature_id": 3,
+            "transcript_id": "PATZ1-202",
+            "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "detection_status": "no_product",
+            "detail_status": "exact_negative_prefilter",
+            "product_count": 0,
+            "amplicon_lengths_bp": []
+          },
+          {
+            "transcript_feature_id": 4,
+            "transcript_id": "PATZ1-203",
+            "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+            "detection_status": "no_product",
+            "detail_status": "exact_negative_prefilter",
+            "product_count": 0,
+            "amplicon_lengths_bp": []
+          }
+        ],
+        "oligo_qc": {
+          "status": "pass",
+          "warnings": [],
+          "rule_flags": {
+            "roi_covered": true,
+            "amplicon_size_in_range": true,
+            "tm_delta_in_range": true,
+            "forward_secondary_structure_ok": true,
+            "reverse_secondary_structure_ok": true,
+            "primer_pair_dimer_risk_low": true,
+            "forward_three_prime_gc_clamp": true,
+            "reverse_three_prime_gc_clamp": true
+          },
+          "primer_pair_complementary_run_bp": 4,
+          "primer_pair_3prime_complementary_run_bp": 3
+        },
+        "junction_spanning_status": "no_requested_junction_match_reported",
+        "junction_matches": [],
+        "genomic_carryover_status": "not_evaluated",
+        "genomic_carryover_rationale": "Transcript-panel selection does not run a genomic-template PCR carryover test; requested junction overlap is reported separately and must not be interpreted as a whole-genome specificity pass.",
+        "whole_genome_specificity_status": "not_run",
+        "provenance": {
+          "source_report_schema": "gentle.transcript_assay_panel.v2",
+          "gentle_version": "0.1.0-internal.10",
+          "primer_backend_requested": "internal",
+          "primer_backend_used": "internal"
+        }
+      }
     }
   ],
   "detection_matrix": [
@@ -758,7 +1186,77 @@
           "spanning_role": "forward"
         }
       ],
-      "single_product_equivalence_group_ids": []
+      "single_product_equivalence_group_ids": [],
+      "primer_pair_summary": {
+        "schema": "",
+        "assay_id": "",
+        "pair_rank": 0,
+        "design_transcript_id": "",
+        "design_equivalence_group_id": "",
+        "binding_coordinate_system": "",
+        "forward": {
+          "role": "",
+          "sequence_5_to_3": "",
+          "length_nt": 0,
+          "anneal_length_nt": 0,
+          "tm_c": 0.0,
+          "gc_fraction": 0.0,
+          "gc_percent": 0.0,
+          "anneal_hit_count": 0,
+          "binding_start_0based": 0,
+          "binding_end_0based_exclusive": 0,
+          "three_prime_base": "",
+          "three_prime_gc_clamp": false,
+          "longest_homopolymer_run_bp": 0,
+          "self_complementary_run_bp": 0
+        },
+        "reverse": {
+          "role": "",
+          "sequence_5_to_3": "",
+          "length_nt": 0,
+          "anneal_length_nt": 0,
+          "tm_c": 0.0,
+          "gc_fraction": 0.0,
+          "gc_percent": 0.0,
+          "anneal_hit_count": 0,
+          "binding_start_0based": 0,
+          "binding_end_0based_exclusive": 0,
+          "three_prime_base": "",
+          "three_prime_gc_clamp": false,
+          "longest_homopolymer_run_bp": 0,
+          "self_complementary_run_bp": 0
+        },
+        "tm_delta_c": 0.0,
+        "predicted_amplicon_lengths_bp": [],
+        "predicted_products": [],
+        "oligo_qc": {
+          "status": "",
+          "warnings": [],
+          "rule_flags": {
+            "roi_covered": false,
+            "amplicon_size_in_range": false,
+            "tm_delta_in_range": false,
+            "forward_secondary_structure_ok": false,
+            "reverse_secondary_structure_ok": false,
+            "primer_pair_dimer_risk_low": false,
+            "forward_three_prime_gc_clamp": false,
+            "reverse_three_prime_gc_clamp": false
+          },
+          "primer_pair_complementary_run_bp": 0,
+          "primer_pair_3prime_complementary_run_bp": 0
+        },
+        "junction_spanning_status": "",
+        "junction_matches": [],
+        "genomic_carryover_status": "",
+        "genomic_carryover_rationale": "",
+        "whole_genome_specificity_status": "",
+        "provenance": {
+          "source_report_schema": "",
+          "gentle_version": "",
+          "primer_backend_requested": "",
+          "primer_backend_used": ""
+        }
+      }
     },
     {
       "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
@@ -829,7 +1327,77 @@
       ],
       "single_product_equivalence_group_ids": [
         "cdna_eq_6c73e2052bd828f3"
-      ]
+      ],
+      "primer_pair_summary": {
+        "schema": "",
+        "assay_id": "",
+        "pair_rank": 0,
+        "design_transcript_id": "",
+        "design_equivalence_group_id": "",
+        "binding_coordinate_system": "",
+        "forward": {
+          "role": "",
+          "sequence_5_to_3": "",
+          "length_nt": 0,
+          "anneal_length_nt": 0,
+          "tm_c": 0.0,
+          "gc_fraction": 0.0,
+          "gc_percent": 0.0,
+          "anneal_hit_count": 0,
+          "binding_start_0based": 0,
+          "binding_end_0based_exclusive": 0,
+          "three_prime_base": "",
+          "three_prime_gc_clamp": false,
+          "longest_homopolymer_run_bp": 0,
+          "self_complementary_run_bp": 0
+        },
+        "reverse": {
+          "role": "",
+          "sequence_5_to_3": "",
+          "length_nt": 0,
+          "anneal_length_nt": 0,
+          "tm_c": 0.0,
+          "gc_fraction": 0.0,
+          "gc_percent": 0.0,
+          "anneal_hit_count": 0,
+          "binding_start_0based": 0,
+          "binding_end_0based_exclusive": 0,
+          "three_prime_base": "",
+          "three_prime_gc_clamp": false,
+          "longest_homopolymer_run_bp": 0,
+          "self_complementary_run_bp": 0
+        },
+        "tm_delta_c": 0.0,
+        "predicted_amplicon_lengths_bp": [],
+        "predicted_products": [],
+        "oligo_qc": {
+          "status": "",
+          "warnings": [],
+          "rule_flags": {
+            "roi_covered": false,
+            "amplicon_size_in_range": false,
+            "tm_delta_in_range": false,
+            "forward_secondary_structure_ok": false,
+            "reverse_secondary_structure_ok": false,
+            "primer_pair_dimer_risk_low": false,
+            "forward_three_prime_gc_clamp": false,
+            "reverse_three_prime_gc_clamp": false
+          },
+          "primer_pair_complementary_run_bp": 0,
+          "primer_pair_3prime_complementary_run_bp": 0
+        },
+        "junction_spanning_status": "",
+        "junction_matches": [],
+        "genomic_carryover_status": "",
+        "genomic_carryover_rationale": "",
+        "whole_genome_specificity_status": "",
+        "provenance": {
+          "source_report_schema": "",
+          "gentle_version": "",
+          "primer_backend_requested": "",
+          "primer_backend_used": ""
+        }
+      }
     }
   ],
   "order_ready_primers": [

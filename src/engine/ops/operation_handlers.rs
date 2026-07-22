@@ -11445,6 +11445,7 @@ impl GentleEngine {
                     followup.genomic_confirmation_status = (*status).to_string();
                 }
             }
+            Self::refresh_transcript_assay_panel_primer_pair_summaries(&mut updated);
             let mut store = self.read_primer_design_store();
             store
                 .transcript_assay_panels
@@ -14912,6 +14913,200 @@ impl GentleEngine {
         Ok((requests, provenance, warnings))
     }
 
+    fn primer_pair_summary_oligo(
+        role: &str,
+        primer: &PrimerDesignPrimerRecord,
+    ) -> PrimerPairSummaryOligo {
+        PrimerPairSummaryOligo {
+            role: role.to_string(),
+            sequence_5_to_3: primer.sequence.clone(),
+            length_nt: primer.length_bp,
+            anneal_length_nt: primer.anneal_length_bp,
+            tm_c: primer.tm_c,
+            gc_fraction: primer.gc_fraction,
+            gc_percent: primer.gc_fraction * 100.0,
+            anneal_hit_count: primer.anneal_hits,
+            binding_start_0based: primer.start_0based,
+            binding_end_0based_exclusive: primer.end_0based_exclusive,
+            three_prime_base: primer.three_prime_base.clone(),
+            three_prime_gc_clamp: primer.three_prime_gc_clamp,
+            longest_homopolymer_run_bp: primer.longest_homopolymer_run_bp,
+            self_complementary_run_bp: primer.self_complementary_run_bp,
+        }
+    }
+
+    fn primer_pair_summary_qc(pair: &PrimerDesignPairRecord) -> PrimerPairSummaryQc {
+        let flags = &pair.rule_flags;
+        let mut warnings = vec![];
+        if !flags.roi_covered {
+            warnings.push("The stored pair rule flags do not confirm ROI coverage.".to_string());
+        }
+        if !flags.amplicon_size_in_range {
+            warnings.push(format!(
+                "The {} bp amplicon did not satisfy the stored size constraint.",
+                pair.amplicon_length_bp
+            ));
+        }
+        if !flags.tm_delta_in_range {
+            warnings.push(format!(
+                "The stored pair Tm difference ({:.3} degrees C) did not satisfy the design constraint.",
+                pair.tm_delta_c
+            ));
+        }
+        if !flags.forward_secondary_structure_ok {
+            warnings.push(format!(
+                "Forward primer did not satisfy the stored secondary-structure rule ({} bp homopolymer run; {} bp self-complementary run).",
+                pair.forward.longest_homopolymer_run_bp,
+                pair.forward.self_complementary_run_bp
+            ));
+        }
+        if !flags.reverse_secondary_structure_ok {
+            warnings.push(format!(
+                "Reverse primer did not satisfy the stored secondary-structure rule ({} bp homopolymer run; {} bp self-complementary run).",
+                pair.reverse.longest_homopolymer_run_bp,
+                pair.reverse.self_complementary_run_bp
+            ));
+        }
+        if !flags.primer_pair_dimer_risk_low {
+            warnings.push(format!(
+                "The stored pair rule flags report elevated dimer risk (complementary run {} bp; 3-prime complementary run {} bp).",
+                pair.primer_pair_complementary_run_bp,
+                pair.primer_pair_3prime_complementary_run_bp
+            ));
+        }
+        if !flags.forward_three_prime_gc_clamp {
+            warnings.push("Forward primer has no stored 3-prime GC clamp.".to_string());
+        }
+        if !flags.reverse_three_prime_gc_clamp {
+            warnings.push("Reverse primer has no stored 3-prime GC clamp.".to_string());
+        }
+        PrimerPairSummaryQc {
+            status: if warnings.is_empty() {
+                "pass".to_string()
+            } else {
+                "warning".to_string()
+            },
+            warnings,
+            rule_flags: flags.clone(),
+            primer_pair_complementary_run_bp: pair.primer_pair_complementary_run_bp,
+            primer_pair_3prime_complementary_run_bp: pair
+                .primer_pair_3prime_complementary_run_bp,
+        }
+    }
+
+    /// Refresh the redundant communication summaries from canonical report
+    /// rows. This joins existing records only: primer Tm values and biological
+    /// product calls are copied, never recalculated here.
+    pub(super) fn refresh_transcript_assay_panel_primer_pair_summaries(
+        report: &mut TranscriptAssayPanelReport,
+    ) {
+        let mut products_by_assay = HashMap::<String, Vec<PrimerPairSummaryProduct>>::new();
+        for cell in &report.detection_matrix {
+            products_by_assay
+                .entry(cell.assay_id.clone())
+                .or_default()
+                .push(PrimerPairSummaryProduct {
+                    transcript_feature_id: cell.transcript_feature_id,
+                    transcript_id: cell.transcript_id.clone(),
+                    equivalence_group_id: cell.equivalence_group_id.clone(),
+                    detection_status: cell.status,
+                    detail_status: cell.detail_status.clone(),
+                    product_count: cell.product_count,
+                    amplicon_lengths_bp: cell.amplicon_lengths_bp.clone(),
+                });
+        }
+        for products in products_by_assay.values_mut() {
+            products.sort_by(|left, right| {
+                left.transcript_id
+                    .cmp(&right.transcript_id)
+                    .then(left.transcript_feature_id.cmp(&right.transcript_feature_id))
+            });
+        }
+        let backend_by_group = report
+            .backend_runs
+            .iter()
+            .map(|run| (run.equivalence_group_id.clone(), run.backend.clone()))
+            .collect::<HashMap<_, _>>();
+        let specificity_by_assay = report
+            .specificity_followups
+            .iter()
+            .map(|followup| {
+                (
+                    followup.assay_id.clone(),
+                    followup.genomic_confirmation_status.clone(),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        let source_report_schema = report.schema.clone();
+        let fallback_backend = report.provenance.primer_backend.clone();
+
+        for assay in &mut report.selected_assays {
+            let predicted_products = products_by_assay
+                .remove(&assay.assay_id)
+                .unwrap_or_default();
+            let predicted_amplicon_lengths_bp = predicted_products
+                .iter()
+                .flat_map(|product| product.amplicon_lengths_bp.iter().copied())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let oligo_qc = Self::primer_pair_summary_qc(&assay.primer_pair);
+            let backend = backend_by_group.get(&assay.design_equivalence_group_id);
+            let primer_backend_requested = backend
+                .map(|value| value.requested.clone())
+                .unwrap_or_else(|| fallback_backend.clone());
+            let primer_backend_used = backend
+                .map(|value| value.used.clone())
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| fallback_backend.clone());
+            let junction_spanning_status = if assay
+                .junction_matches
+                .iter()
+                .any(|row| row.forward_spans || row.reverse_spans)
+            {
+                "requested_junction_spanning_primer".to_string()
+            } else {
+                "no_requested_junction_match_reported".to_string()
+            };
+            assay.primer_pair_summary = PrimerPairCommunicationSummary {
+                schema: PRIMER_PAIR_SUMMARY_SCHEMA.to_string(),
+                assay_id: assay.assay_id.clone(),
+                pair_rank: assay.rank,
+                design_transcript_id: assay.design_transcript_id.clone(),
+                design_equivalence_group_id: assay.design_equivalence_group_id.clone(),
+                binding_coordinate_system: "design_transcript_cdna_0based_half_open".to_string(),
+                forward: Self::primer_pair_summary_oligo(
+                    "forward",
+                    &assay.primer_pair.forward,
+                ),
+                reverse: Self::primer_pair_summary_oligo(
+                    "reverse",
+                    &assay.primer_pair.reverse,
+                ),
+                tm_delta_c: assay.primer_pair.tm_delta_c,
+                predicted_amplicon_lengths_bp,
+                predicted_products,
+                oligo_qc,
+                junction_spanning_status,
+                junction_matches: assay.junction_matches.clone(),
+                genomic_carryover_status: "not_evaluated".to_string(),
+                genomic_carryover_rationale: "Transcript-panel selection does not run a genomic-template PCR carryover test; requested junction overlap is reported separately and must not be interpreted as a whole-genome specificity pass."
+                    .to_string(),
+                whole_genome_specificity_status: specificity_by_assay
+                    .get(&assay.assay_id)
+                    .cloned()
+                    .unwrap_or_else(|| "not_run".to_string()),
+                provenance: PrimerPairSummaryProvenance {
+                    source_report_schema: source_report_schema.clone(),
+                    gentle_version: crate::about::GENTLE_PACKAGE_VERSION.to_string(),
+                    primer_backend_requested,
+                    primer_backend_used,
+                    primer3_version: backend.and_then(|value| value.primer3_version.clone()),
+                },
+            };
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn execute_design_transcript_assay_panel(
         &mut self,
@@ -15815,6 +16010,7 @@ impl GentleEngine {
                 end_reaction_ids: candidate.end_reaction_ids.clone(),
                 junction_matches: candidate.junction_matches.clone(),
                 single_product_equivalence_group_ids,
+                primer_pair_summary: PrimerPairCommunicationSummary::default(),
             });
             for (group_index, group) in equivalence_groups.iter().enumerate() {
                 let evaluation = &candidate.group_evaluations[group_index];
@@ -16178,7 +16374,7 @@ impl GentleEngine {
         } else {
             vec![]
         };
-        let report = TranscriptAssayPanelReport {
+        let mut report = TranscriptAssayPanelReport {
             schema: TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA.to_string(),
             report_id: report_id.clone(),
             generated_at_unix_ms: Self::now_unix_ms(),
@@ -16242,6 +16438,7 @@ impl GentleEngine {
             },
             warnings: warnings.clone(),
         };
+        Self::refresh_transcript_assay_panel_primer_pair_summaries(&mut report);
         let mut store = self.read_primer_design_store();
         let replaced = store
             .transcript_assay_panels

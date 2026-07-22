@@ -3627,6 +3627,21 @@ Shared shell command:
         shortcut when mismatch tolerance is zero
       - reports carry `gentle.transcript_assay_panel.v2` and persist through the
         existing project save/load path; list/show/export use the commands above
+      - every newly selected assay also carries a redundant
+        `gentle.primer_pair_summary.v1` communication view. It copies the
+        forward/reverse sequences in 5-prime-to-3-prime orientation, oligo
+        lengths, GENtle/Primer3 melting temperatures (`tm_c`), GC fraction and
+        percent, pair `tm_delta_c`, design-transcript binding coordinates,
+        transcript product rows, concise oligo-QC reasons derived from the
+        stored pair rule flags and metrics, junction matches,
+        whole-genome specificity status, and GENtle/backend/Primer3 provenance.
+        Summary generation does not rerun sequence or thermodynamic analysis.
+        Existing panel reports are enriched when shown or exported
+      - the summary does not invent a PCR annealing temperature. In the absence
+        of an explicit chemistry/polymerase protocol model, experimental Ta is
+        undetermined. Per-transcript genomic carryover geometry remains in the
+        cDNA assay-test report; the panel summary reports `not_evaluated` rather
+        than inferring a pass from junction placement
       - reports also expose order-ready primer rows, endpoint reaction/band
         matrices, a separate short-SYBR junction table, unresolved targets with
         reasons, annotation/JUC provenance, and prepared-genome specificity

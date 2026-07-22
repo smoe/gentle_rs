@@ -8193,6 +8193,28 @@ Primer-design shell command family (implemented):
     `multiple_products` for every selected assay and transcript row. Transcript
     interpretation is typed as `specific`, `shared_family`, `no_product`, or
     `not_distinguishable_between_members`.
+  - every new `selected_assays[]` row carries
+    `primer_pair_summary` (`gentle.primer_pair_summary.v1`), an additive
+    communication projection assembled from the canonical pair, detection
+    matrix, junction, specificity-followup, and backend records. It repeats the
+    assay id, design transcript, forward/reverse sequence (explicitly
+    5-prime-to-3-prime), oligo and annealing lengths, `tm_c`, GC fraction and
+    percent, binding positions, pair `tm_delta_c`, predicted transcript
+    products/sizes, concise oligo-QC status/reasons, junction matches,
+    `whole_genome_specificity_status`, GENtle package version, requested/used
+    backend, and optional Primer3 version. `length_nt` must equal the returned
+    sequence length, and `tm_delta_c` is copied from and checked against the two
+    canonical melting temperatures; report consumers must not recompute Tm.
+    The QC block interprets the pair's stored rule flags and metrics; summary
+    generation does not rerun sequence or thermodynamic analysis. Compatible
+    older reports are enriched when read/exported.
+  - `tm_c` is primer melting temperature, never a recommended PCR annealing
+    temperature. This summary has no annealing-temperature field because the
+    panel request does not supply a complete chemistry/polymerase model.
+    `genomic_carryover_status = not_evaluated` is likewise explicit: requested
+    junction overlap is reported separately and does not establish a genomic-
+    template or whole-genome specificity pass. Exact per-transcript hit/exon/
+    carryover geometry remains available from `gentle.cdna_assay_test_report.v1`.
   - each matrix cell also carries `oligo_dt_5prime_reach`. For oligo-dT cDNA
     and each predicted product, `required_cdna_reach_from_3prime_end_bp`
     measures from the annotated mature-transcript 3-prime end to the product's

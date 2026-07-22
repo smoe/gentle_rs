@@ -9508,6 +9508,10 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
         persisted_pass.genomic_specificity_assessments.len(),
         pass.expected_assay_count
     );
+    assert!(persisted_pass.selected_assays.iter().all(|assay| {
+        assay.primer_pair_summary.whole_genome_specificity_status
+            == "external_blast_pass"
+    }));
 
     let fail_handoff = engine
         .prepare_transcript_assay_panel_specificity_handoff(
@@ -9694,6 +9698,210 @@ fn transcript_assay_panel_groups_only_byte_identical_cdna_and_persists_matrix() 
             .expect("reloaded transcript assay panel")
             .schema,
         "gentle.transcript_assay_panel.v2"
+    );
+}
+
+#[test]
+fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
+    let mut engine = transcript_qpcr_panel_test_engine();
+    let report = engine
+        .apply(transcript_assay_panel_operation(
+            TranscriptAssayCoveragePolicy::BestEffort,
+            transcript_assay_panel_relaxed_side(),
+            1,
+            "panel_pair_summary",
+        ))
+        .expect("design transcript assay panel")
+        .transcript_assay_panel
+        .expect("operation/API transcript assay panel result");
+    assert!(!report.selected_assays.is_empty());
+
+    for assay in &report.selected_assays {
+        let summary = &assay.primer_pair_summary;
+        assert_eq!(summary.schema, PRIMER_PAIR_SUMMARY_SCHEMA);
+        assert_eq!(summary.assay_id, assay.assay_id);
+        assert_eq!(summary.pair_rank, assay.rank);
+        assert_eq!(summary.design_transcript_id, assay.design_transcript_id);
+        assert_eq!(
+            summary.design_equivalence_group_id,
+            assay.design_equivalence_group_id
+        );
+        assert_eq!(
+            summary.binding_coordinate_system,
+            "design_transcript_cdna_0based_half_open"
+        );
+        for (summary_primer, source_primer) in [
+            (&summary.forward, &assay.primer_pair.forward),
+            (&summary.reverse, &assay.primer_pair.reverse),
+        ] {
+            assert_eq!(summary_primer.sequence_5_to_3, source_primer.sequence);
+            assert_eq!(summary_primer.length_nt, source_primer.length_bp);
+            assert_eq!(
+                summary_primer.length_nt,
+                summary_primer.sequence_5_to_3.len()
+            );
+            assert_eq!(
+                summary_primer.anneal_length_nt,
+                source_primer.anneal_length_bp
+            );
+            assert_eq!(summary_primer.tm_c.to_bits(), source_primer.tm_c.to_bits());
+            assert_eq!(
+                summary_primer.gc_fraction.to_bits(),
+                source_primer.gc_fraction.to_bits()
+            );
+            assert!(
+                (summary_primer.gc_percent - source_primer.gc_fraction * 100.0).abs() < 1e-12
+            );
+        }
+        assert_eq!(
+            summary.tm_delta_c.to_bits(),
+            assay.primer_pair.tm_delta_c.to_bits()
+        );
+        assert!(
+            (summary.tm_delta_c - (summary.forward.tm_c - summary.reverse.tm_c).abs()).abs()
+                < 1e-12
+        );
+        let expected_products = report
+            .detection_matrix
+            .iter()
+            .filter(|cell| cell.assay_id == assay.assay_id)
+            .count();
+        assert_eq!(summary.predicted_products.len(), expected_products);
+        for product in &summary.predicted_products {
+            let source = report
+                .detection_matrix
+                .iter()
+                .find(|cell| {
+                    cell.assay_id == assay.assay_id
+                        && cell.transcript_feature_id == product.transcript_feature_id
+                        && cell.transcript_id == product.transcript_id
+                })
+                .expect("summary product source row");
+            assert_eq!(product.equivalence_group_id, source.equivalence_group_id);
+            assert_eq!(product.detection_status, source.status);
+            assert_eq!(product.detail_status, source.detail_status);
+            assert_eq!(product.product_count, source.product_count);
+            assert_eq!(product.amplicon_lengths_bp, source.amplicon_lengths_bp);
+        }
+        assert_eq!(summary.whole_genome_specificity_status, "not_run");
+        assert_eq!(summary.genomic_carryover_status, "not_evaluated");
+        assert_eq!(
+            summary.provenance.source_report_schema,
+            TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA
+        );
+        assert_eq!(
+            summary.provenance.gentle_version,
+            crate::about::GENTLE_PACKAGE_VERSION
+        );
+        assert!(!summary.provenance.primer_backend_used.is_empty());
+    }
+
+    let first_summary = serde_json::to_value(&report.selected_assays[0].primer_pair_summary)
+        .expect("serialize canonical pair summary");
+    let mut store = engine.read_primer_design_store();
+    let stored = store
+        .transcript_assay_panels
+        .get_mut(&report.report_id)
+        .expect("persisted transcript panel");
+    for assay in &mut stored.selected_assays {
+        assay.primer_pair_summary = PrimerPairCommunicationSummary::default();
+    }
+    engine
+        .write_primer_design_store(store)
+        .expect("store legacy-shaped transcript panel");
+    let enriched = engine
+        .get_transcript_assay_panel_report(&report.report_id)
+        .expect("enrich legacy-shaped transcript panel on read");
+    assert_eq!(
+        serde_json::to_value(&enriched.selected_assays[0].primer_pair_summary)
+            .expect("serialize enriched pair summary"),
+        first_summary
+    );
+
+    let shell = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersShowTranscriptAssayPanel {
+            report_id: report.report_id.clone(),
+        },
+    )
+    .expect("shared CLI/MCP shell show route");
+    assert_eq!(
+        shell.output["report"]["selected_assays"][0]["primer_pair_summary"],
+        first_summary
+    );
+
+    let temp = tempdir().expect("pair summary export tempdir");
+    let path = temp.path().join("panel.json");
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersExportTranscriptAssayPanel {
+            report_id: report.report_id,
+            path: path.to_string_lossy().to_string(),
+        },
+    )
+    .expect("shared transcript panel export route");
+    let exported: serde_json::Value = serde_json::from_slice(
+        &fs::read(path).expect("read exported transcript panel report"),
+    )
+    .expect("parse exported transcript panel report");
+    assert_eq!(
+        exported["selected_assays"][0]["primer_pair_summary"],
+        first_summary
+    );
+    assert!(
+        exported["selected_assays"][0]["primer_pair_summary"]
+            .get("recommended_annealing_temperature")
+            .is_none(),
+        "primer Tm must not be relabeled or converted into a guessed PCR annealing temperature"
+    );
+}
+
+#[test]
+fn transcript_assay_panel_primer_pair_summary_reports_actual_oligo_qc_reason() {
+    let sequence = "AAAAAAAAAA".to_string();
+    let primer = PrimerDesignPrimerRecord {
+        sequence: sequence.clone(),
+        length_bp: sequence.len(),
+        anneal_length_bp: sequence.len(),
+        longest_homopolymer_run_bp: sequence.len(),
+        ..Default::default()
+    };
+    let mut report = TranscriptAssayPanelReport {
+        schema: TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA.to_string(),
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            assay_id: "assay_with_qc_warning".to_string(),
+            rank: 1,
+            design_equivalence_group_id: "eq1".to_string(),
+            design_transcript_id: "TX1".to_string(),
+            primer_pair: PrimerDesignPairRecord {
+                forward: primer.clone(),
+                reverse: primer,
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+        specificity_followups: vec![TranscriptAssaySpecificityFollowup {
+            assay_id: "assay_with_qc_warning".to_string(),
+            local_cdna_matrix_status: "completed".to_string(),
+            genomic_confirmation_status: "not_run".to_string(),
+            ..Default::default()
+        }],
+        provenance: TranscriptAssayPanelProvenance {
+            primer_backend: "internal".to_string(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    GentleEngine::refresh_transcript_assay_panel_primer_pair_summaries(&mut report);
+    let summary = &report.selected_assays[0].primer_pair_summary;
+    assert_eq!(summary.oligo_qc.status, "warning");
+    assert!(
+        summary
+            .oligo_qc
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("10 bp homopolymer run")),
+        "QC must carry the concrete warning reason rather than only a warning label"
     );
 }
 

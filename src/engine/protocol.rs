@@ -5557,6 +5557,101 @@ pub struct PrimerDesignPairRecord {
     pub rule_flags: PrimerDesignPairRuleFlags,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One primer in a communication-oriented pair summary. Values are copied
+/// from the canonical design record; no thermodynamic value is recalculated.
+pub struct PrimerPairSummaryOligo {
+    pub role: String,
+    pub sequence_5_to_3: String,
+    pub length_nt: usize,
+    pub anneal_length_nt: usize,
+    pub tm_c: f64,
+    pub gc_fraction: f64,
+    pub gc_percent: f64,
+    pub anneal_hit_count: usize,
+    pub binding_start_0based: usize,
+    pub binding_end_0based_exclusive: usize,
+    pub three_prime_base: String,
+    pub three_prime_gc_clamp: bool,
+    pub longest_homopolymer_run_bp: usize,
+    pub self_complementary_run_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Predicted products for one primer pair on one transcript/isoform model.
+pub struct PrimerPairSummaryProduct {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub equivalence_group_id: String,
+    #[serde(default)]
+    pub detection_status: TranscriptAssayDetectionStatus,
+    pub detail_status: String,
+    pub product_count: usize,
+    #[serde(default)]
+    pub amplicon_lengths_bp: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Tool/backend provenance copied into a primer-pair summary so the summary
+/// remains interpretable when extracted from its enclosing report.
+pub struct PrimerPairSummaryProvenance {
+    pub source_report_schema: String,
+    pub gentle_version: String,
+    pub primer_backend_requested: String,
+    pub primer_backend_used: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer3_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Concise QC interpretation copied from the selected pair's stored rule
+/// flags and metrics. This block does not rerun sequence or thermodynamic
+/// analysis while rendering or exporting a report.
+pub struct PrimerPairSummaryQc {
+    pub status: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub rule_flags: PrimerDesignPairRuleFlags,
+    pub primer_pair_complementary_run_bp: usize,
+    pub primer_pair_3prime_complementary_run_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Assay-neutral communication view of one selected primer pair. This is a
+/// redundant projection of canonical report fields for safer downstream
+/// report generation; it is not a second primer-design calculation.
+pub struct PrimerPairCommunicationSummary {
+    pub schema: String,
+    pub assay_id: String,
+    pub pair_rank: usize,
+    pub design_transcript_id: String,
+    pub design_equivalence_group_id: String,
+    pub binding_coordinate_system: String,
+    pub forward: PrimerPairSummaryOligo,
+    pub reverse: PrimerPairSummaryOligo,
+    pub tm_delta_c: f64,
+    #[serde(default)]
+    pub predicted_amplicon_lengths_bp: Vec<usize>,
+    #[serde(default)]
+    pub predicted_products: Vec<PrimerPairSummaryProduct>,
+    #[serde(default)]
+    pub oligo_qc: PrimerPairSummaryQc,
+    pub junction_spanning_status: String,
+    #[serde(default)]
+    pub junction_matches: Vec<TranscriptAssayJunctionMatch>,
+    pub genomic_carryover_status: String,
+    pub genomic_carryover_rationale: String,
+    pub whole_genome_specificity_status: String,
+    #[serde(default)]
+    pub provenance: PrimerPairSummaryProvenance,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 /// Explicit exon-junction placement preference for transcript-aware
@@ -7651,6 +7746,11 @@ pub struct TranscriptAssayPanelAssay {
     pub junction_matches: Vec<TranscriptAssayJunctionMatch>,
     #[serde(default)]
     pub single_product_equivalence_group_ids: Vec<String>,
+    /// Redundant, communication-oriented projection of this pair plus its
+    /// transcript products and provenance. Older reports deserialize with an
+    /// empty summary; newly generated reports always populate it.
+    #[serde(default)]
+    pub primer_pair_summary: PrimerPairCommunicationSummary,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
