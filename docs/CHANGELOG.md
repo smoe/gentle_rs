@@ -14,6 +14,12 @@ Maintenance rule:
 
 ## 2026-07-22
 
+- Updated the Rust dependency graph to the latest Rust 1.98-beta-compatible
+  releases, including Deno 0.408, V8 149, Temporal 0.2.4, ICU 2.2, Serde
+  1.0.229, and libc 0.2.189; direct requirements now use normal semver ranges
+  instead of exact or wildcard pins, while the embedded JavaScript shell keeps
+  its synchronous interface through an owned Tokio runtime and a V8 execution
+  smoke test.
 - Added `gentle.primer_pair_summary.v1` to selected transcript-panel assays so
   CLI/MCP/API and JSON exports carry one joined, assay-neutral communication
   view of the exact primer sequences, lengths, melting temperatures, GC values,

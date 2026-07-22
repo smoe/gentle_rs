@@ -900,6 +900,7 @@ fn inspect_feature_expert(
 
 pub struct JavaScriptInterface {
     runtime: JsRuntime,
+    _tokio_runtime: tokio::runtime::Runtime,
 }
 
 impl JavaScriptInterface {
@@ -988,11 +989,21 @@ impl JavaScriptInterface {
             ..Default::default()
         };
 
-        let mut ret = Self {
-            runtime: JsRuntime::new(RuntimeOptions {
+        let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_time()
+            .build()
+            .expect("build JavaScript runtime executor");
+        let runtime = {
+            let _guard = tokio_runtime.enter();
+            JsRuntime::new(RuntimeOptions {
                 extensions: vec![ext],
                 ..Default::default()
-            }),
+            })
+        };
+        let mut ret = Self {
+            runtime,
+            _tokio_runtime: tokio_runtime,
         };
         let init_code = r#"
         	function load_dna(path) {return Deno.core.ops.load_dna(path)}
@@ -1433,6 +1444,16 @@ mod tests {
         crate::tf_motifs::test_registry_lock()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[test]
+    fn js_runtime_initializes_and_executes_registered_operation() {
+        let mut js = JavaScriptInterface::new();
+        js.run_checked(
+            "const result = capabilities(); if (result == null) throw new Error('missing capabilities');"
+                .to_string(),
+        )
+        .expect("initialize V8 and execute registered GENtle operation");
     }
 
     #[test]

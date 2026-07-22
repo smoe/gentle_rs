@@ -27,21 +27,21 @@ version = "0.1.0-internal.10"
 edition = "2024"
 
 [workspace.dependencies]
-anyhow = "=1.0.103"
-bio = "=4.0.1"
-egui = "=0.35.0"
-image = "=0.25.10"
-itertools = "=0.15.0"
-mlua = "=0.12.0"
-rayon = "=1.12.0"
-reqwest = "=0.13.4"
-rfd = "=0.17.2"
-rustyline = "=18.0.1"
-serde = { version = "=1.0.228", features = ["derive"] }
-serde_json = "=1.0.150"
-serde_with = "=3.21.0"
-svg = "=0.18.0"
-tempfile = "=3.27.0"
+anyhow = "1.0.104"
+bio = "4.0.1"
+egui = "0.35.0"
+image = "0.25.10"
+itertools = "0.15.0"
+mlua = "0.12.0"
+rayon = "1.12.0"
+reqwest = "0.13.4"
+rfd = "0.17.2"
+rustyline = "18.0.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+serde_with = "3.21.0"
+svg = "0.18.0"
+tempfile = "3.27.0"
 
 [package.metadata.bundle]
 identifier = "com.example.gentle"
@@ -90,8 +90,7 @@ js-interface = [
     "dep:deno_core",
     "dep:deno_error",
     "dep:rustyline",
-    "dep:icu_calendar",
-    "dep:icu_locale",
+    "dep:tokio",
 ]
 lua-interface = ["dep:mlua", "dep:rustyline"]
 script-interfaces = ["js-interface", "lua-interface"]
@@ -106,7 +105,7 @@ snapgene-reader = { path = "packages/snapgene-reader", features = ["gb-io"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
-quick-xml = { version = "=0.41.0", features = ["serialize"] }
+quick-xml = { version = "0.41.0", features = ["serialize"] }
 bio = { workspace = true }
 csv = "^1"
 itertools = { workspace = true }
@@ -114,8 +113,8 @@ gb-io = { version = "0.9.0", features = ["serde"] }
 svg = { workspace = true }
 rayon = { workspace = true }
 anyhow = { workspace = true }
-arboard = "=3.6.1"
-eframe = { version = "=0.35.0", features = [
+arboard = "3.6.1"
+eframe = { version = "0.35.0", features = [
 	"accesskit",
 	"default_fonts",
 	"glow",
@@ -124,36 +123,32 @@ eframe = { version = "=0.35.0", features = [
 	"x11",
 	"persistence",
 ] }
-egui_extras = { version = "=0.35.0", features = ["all_loaders"] }
-egui_commonmark = { version = "=0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"] }
+egui_extras = { version = "0.35.0", features = ["all_loaders"] }
+egui_commonmark = { version = "0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"] }
 image = { workspace = true, features = ["jpeg", "png"] }
-resvg = "=0.47.0"
+resvg = "0.47.0"
 rfd = { workspace = true }
 reqwest = { workspace = true, features = ["blocking", "json"] }
 tempfile = { workspace = true }
 flate2 = "1.0"
 memchr = "2"
 regex = "^1"
-pulldown-cmark = "=0.13.4"
-ring = "=0.17.14"
-puffin = { version = "=0.20.0", optional = true }
-puffin_http = { version = "=0.17.0", optional = true }
+pulldown-cmark = "0.13.4"
+ring = "0.17.14"
+puffin = { version = "0.20.0", optional = true }
+puffin_http = { version = "0.17.0", optional = true }
 
 # For feature-gated JS/Lua shells
 rustyline = { workspace = true, optional = true }
 mlua = { workspace = true, optional = true, features = ["lua54", "vendored", "serde"] }
-# Keep the JS shell on a Deno/Temporal stack that is known to compile together.
-# `deno_core` is maintained in the `denoland/deno` monorepo; assess upgrades
-# against that workspace and its release tags, not the retired standalone repo.
-# `temporal_rs 0.1.2` expects the ICU 2.1 API; without these explicit pins,
-# cargo can legally float the transitive ICU crates to 2.2.x and break CI.
-deno_core = { version = "=0.387.0", optional = true }
-deno_error = { version = "=0.7.3", optional = true }
-icu_calendar = { version = "=2.1.1", optional = true, default-features = false }
-icu_locale = { version = "=2.1.1", optional = true }
+# Keep ICU data explicit because deno_core 0.408 no longer enables it by
+# default. The compatible Temporal/ICU versions are selected by V8.
+deno_core = { version = "0.408.0", optional = true, features = ["include_icu_data"] }
+deno_error = { version = "=0.7.1", optional = true }
+tokio = { version = "1.53.1", optional = true, features = ["rt-multi-thread", "time"] }
 
 [target.'cfg(unix)'.dependencies]
-libc = "=0.2.186"
+libc = "0.2.189"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"
