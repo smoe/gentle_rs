@@ -14,6 +14,9 @@ probe-evidence adapter. The separately maintained vendor-derived minimal table
 is documented in
 `test_files/fixtures/affymetrix_clariom_d_human_na36_hg38_subset/README.md`.
 No Thermo Fisher row was copied into this synthetic bundle.
+The declared `Clariom_D_Human` platform, `synthetic_case_vs_control` contrast,
+and log2-fold-change values are hand-crafted metadata used to verify that
+GENtle preserves selection evidence without claiming exact probe reuse.
 
 ## Deterministic recreation
 

@@ -141,14 +141,48 @@
         "cdna_eq_da6a2f3dbe1d4447"
       ],
       "primer_pair_summary": {
-        "schema": "gentle.primer_pair_summary.v1",
+        "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_27362fde0b95ba9d",
         "pair_rank": 1,
         "design_transcript_id": "PATZ1-203",
         "design_equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+        "display_label": "PATZ1_E1F-E3R",
+        "aliases": [],
+        "selection_role": null,
+        "satisfied_design_objective": "isoform_end_matrix",
+        "selection_reasons": [
+          {
+            "code": "design_objective",
+            "message": "Selected at panel rank 1 to satisfy the 'isoform_end_matrix' design objective.",
+            "related_ids": [
+              "isoform_end_matrix"
+            ]
+          },
+          {
+            "code": "predicted_product_coverage",
+            "message": "Produces one predicted product for 2 mature-cDNA equivalence class(es).",
+            "related_ids": [
+              "cdna_eq_bf8de0081e092d6f",
+              "cdna_eq_da6a2f3dbe1d4447"
+            ]
+          },
+          {
+            "code": "end_reaction_coverage",
+            "message": "Represents 2 annotated first-end x terminal-end reaction(s).",
+            "related_ids": [
+              "transcript_end_reaction_8981f059e1e6f750",
+              "transcript_end_reaction_bd6bab5140872754"
+            ]
+          }
+        ],
+        "selection_provenance_status": "de_novo_no_external_selection_evidence",
         "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
+          "primer_id": "primer_4eaac5bb04bed57a",
           "role": "forward",
+          "display_label": "PATZ1_E1_F",
+          "aliases": [],
+          "origin": "de_novo",
           "sequence_5_to_3": "GGATCCGATCGTAGCCTAGC",
           "length_nt": 20,
           "anneal_length_nt": 20,
@@ -158,13 +192,21 @@
           "anneal_hit_count": 1,
           "binding_start_0based": 1,
           "binding_end_0based_exclusive": 21,
+          "exon_ordinals": [
+            1
+          ],
+          "primer_spans_junction": false,
           "three_prime_base": "C",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 6
         },
         "reverse": {
+          "primer_id": "primer_10066604f03b3491",
           "role": "reverse",
+          "display_label": "PATZ1_E3_R",
+          "aliases": [],
+          "origin": "de_novo",
           "sequence_5_to_3": "ACGATCCGTTAGCGTACCTG",
           "length_nt": 20,
           "anneal_length_nt": 20,
@@ -174,6 +216,10 @@
           "anneal_hit_count": 1,
           "binding_start_0based": 68,
           "binding_end_0based_exclusive": 88,
+          "exon_ordinals": [
+            3
+          ],
+          "primer_spans_junction": false,
           "three_prime_base": "G",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
@@ -233,6 +279,9 @@
           "primer_pair_complementary_run_bp": 6,
           "primer_pair_3prime_complementary_run_bp": 2
         },
+        "amplicon_spans_junction": true,
+        "selected_because_of_junction_evidence": false,
+        "selection_evidence": [],
         "junction_spanning_status": "no_requested_junction_match_reported",
         "junction_matches": [],
         "genomic_carryover_status": "not_evaluated",
@@ -242,7 +291,11 @@
           "source_report_schema": "gentle.transcript_assay_panel.v2",
           "gentle_version": "0.1.0-internal.10",
           "primer_backend_requested": "internal",
-          "primer_backend_used": "internal"
+          "primer_backend_used": "internal",
+          "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",
+          "exon_numbering_reference_transcript_id": "PATZ1-203",
+          "exon_numbering_basis": "design_transcript_5prime_to_3prime",
+          "exon_numbering_status": "reference_transcript_and_annotation_release_recorded"
         }
       }
     },
@@ -313,14 +366,48 @@
         "cdna_eq_da6a2f3dbe1d4447"
       ],
       "primer_pair_summary": {
-        "schema": "gentle.primer_pair_summary.v1",
+        "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_46b04036f2ccda49",
         "pair_rank": 2,
         "design_transcript_id": "PATZ1-202",
         "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+        "display_label": "PATZ1_E1F-E2R",
+        "aliases": [],
+        "selection_role": null,
+        "satisfied_design_objective": "isoform_end_matrix",
+        "selection_reasons": [
+          {
+            "code": "design_objective",
+            "message": "Selected at panel rank 2 to satisfy the 'isoform_end_matrix' design objective.",
+            "related_ids": [
+              "isoform_end_matrix"
+            ]
+          },
+          {
+            "code": "predicted_product_coverage",
+            "message": "Produces one predicted product for 3 mature-cDNA equivalence class(es).",
+            "related_ids": [
+              "cdna_eq_6c73e2052bd828f3",
+              "cdna_eq_bf8de0081e092d6f",
+              "cdna_eq_da6a2f3dbe1d4447"
+            ]
+          },
+          {
+            "code": "end_reaction_coverage",
+            "message": "Represents 1 annotated first-end x terminal-end reaction(s).",
+            "related_ids": [
+              "transcript_end_reaction_db5d9946d8b7cf59"
+            ]
+          }
+        ],
+        "selection_provenance_status": "de_novo_no_external_selection_evidence",
         "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
+          "primer_id": "primer_e7b37ae1472fd85d",
           "role": "forward",
+          "display_label": "PATZ1_E1_F",
+          "aliases": [],
+          "origin": "de_novo",
           "sequence_5_to_3": "GATCCGATCGTAGCCTAGCATC",
           "length_nt": 22,
           "anneal_length_nt": 22,
@@ -330,13 +417,21 @@
           "anneal_hit_count": 1,
           "binding_start_0based": 2,
           "binding_end_0based_exclusive": 24,
+          "exon_ordinals": [
+            1
+          ],
+          "primer_spans_junction": false,
           "three_prime_base": "C",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 6
         },
         "reverse": {
+          "primer_id": "primer_96f7bdcf9591a2a0",
           "role": "reverse",
+          "display_label": "PATZ1_E2_R",
+          "aliases": [],
+          "origin": "de_novo",
           "sequence_5_to_3": "ATGCCGTAGCTTACGATCCG",
           "length_nt": 20,
           "anneal_length_nt": 20,
@@ -346,6 +441,10 @@
           "anneal_hit_count": 1,
           "binding_start_0based": 60,
           "binding_end_0based_exclusive": 80,
+          "exon_ordinals": [
+            2
+          ],
+          "primer_spans_junction": false,
           "three_prime_base": "G",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
@@ -410,6 +509,9 @@
           "primer_pair_complementary_run_bp": 7,
           "primer_pair_3prime_complementary_run_bp": 3
         },
+        "amplicon_spans_junction": true,
+        "selected_because_of_junction_evidence": false,
+        "selection_evidence": [],
         "junction_spanning_status": "no_requested_junction_match_reported",
         "junction_matches": [],
         "genomic_carryover_status": "not_evaluated",
@@ -419,7 +521,11 @@
           "source_report_schema": "gentle.transcript_assay_panel.v2",
           "gentle_version": "0.1.0-internal.10",
           "primer_backend_requested": "internal",
-          "primer_backend_used": "internal"
+          "primer_backend_used": "internal",
+          "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",
+          "exon_numbering_reference_transcript_id": "PATZ1-202",
+          "exon_numbering_basis": "design_transcript_5prime_to_3prime",
+          "exon_numbering_status": "reference_transcript_and_annotation_release_recorded"
         }
       }
     }

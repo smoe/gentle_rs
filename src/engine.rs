@@ -636,7 +636,7 @@ const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_ACCEPTANCE_SCHEMA: &str =
     "gentle.transcript_assay_panel_specificity_acceptance.v1";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
 pub const TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_assay_panel.v2";
-pub const PRIMER_PAIR_SUMMARY_SCHEMA: &str = "gentle.primer_pair_summary.v1";
+pub const PRIMER_PAIR_SUMMARY_SCHEMA: &str = "gentle.primer_pair_summary.v2";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
     "gentle.restriction_cloning_pcr_handoff.v1";
 pub const PROTEIN_DERIVATION_REPORTS_METADATA_KEY: &str = "protein_derivation_reports";

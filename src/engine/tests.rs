@@ -2005,6 +2005,7 @@ fn e_mtab_14704_tp73_validation_report_is_probe_location_figure_ready() {
 
     for row in &report.evidence_rows {
         assert_eq!(row.level, "pm_probe");
+        assert_eq!(row.platform.as_deref(), Some("Clariom_D_Human"));
         assert!(
             row.start_1based.is_some(),
             "missing start for {}",
@@ -2218,6 +2219,7 @@ fn render_probe_region_evidence_svg_is_stable_for_degenerate_single_coordinate_r
             evidence_id: "probe_42:contrast".to_string(),
             level: "pm_probe".to_string(),
             feature_id: "probe_42".to_string(),
+            platform: None,
             contrast: Some("contrast".to_string()),
             parent_feature_id: Some("PSR42".to_string()),
             intensity_source: Some("probe_level_input".to_string()),
@@ -2297,6 +2299,7 @@ fn render_probe_region_evidence_svg_uses_report_frame_without_local_alignment_wa
             evidence_id: "probe_719406:contrast".to_string(),
             level: "pm_probe".to_string(),
             feature_id: "719406".to_string(),
+            platform: None,
             contrast: Some("contrast".to_string()),
             parent_feature_id: Some("PSR0100145779.hg.1".to_string()),
             intensity_source: Some("probe_level_input".to_string()),
@@ -9924,6 +9927,20 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
         assert_eq!(summary.assay_id, assay.assay_id);
         assert_eq!(summary.pair_rank, assay.rank);
         assert_eq!(summary.design_transcript_id, assay.design_transcript_id);
+        assert!(summary.display_label.contains("F-R") || summary.display_label.contains("F-E"));
+        assert!(summary.aliases.is_empty());
+        assert_eq!(summary.selection_role, None);
+        assert_eq!(summary.satisfied_design_objective, "pan_transcript");
+        assert!(summary.selection_reasons.iter().any(|reason| {
+            reason.code == PrimerPairSelectionReasonCode::DesignObjective
+                && reason.related_ids.iter().any(|id| id == "pan_transcript")
+        }));
+        assert_eq!(
+            summary.selection_provenance_status,
+            "de_novo_no_external_selection_evidence"
+        );
+        assert!(!summary.selected_because_of_junction_evidence);
+        assert!(summary.selection_evidence.is_empty());
         assert_eq!(
             summary.design_equivalence_group_id,
             assay.design_equivalence_group_id
@@ -9936,6 +9953,14 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
             (&summary.forward, &assay.primer_pair.forward),
             (&summary.reverse, &assay.primer_pair.reverse),
         ] {
+            assert_eq!(
+                summary_primer.primer_id,
+                short_sha256_id("primer", &source_primer.sequence)
+            );
+            assert_ne!(summary_primer.primer_id, summary_primer.display_label);
+            assert_eq!(summary_primer.origin, PrimerPairSummaryOrigin::DeNovo);
+            assert!(summary_primer.aliases.is_empty());
+            assert!(!summary_primer.exon_ordinals.is_empty());
             assert_eq!(summary_primer.sequence_5_to_3, source_primer.sequence);
             assert_eq!(summary_primer.length_nt, source_primer.length_bp);
             assert_eq!(
@@ -9996,29 +10021,22 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
             crate::about::GENTLE_PACKAGE_VERSION
         );
         assert!(!summary.provenance.primer_backend_used.is_empty());
+        assert_eq!(
+            summary.provenance.exon_numbering_reference_transcript_id,
+            assay.design_transcript_id
+        );
+        assert_eq!(
+            summary.provenance.exon_numbering_basis,
+            "design_transcript_5prime_to_3prime"
+        );
+        assert_eq!(
+            summary.provenance.exon_numbering_status,
+            "reference_transcript_recorded_annotation_release_missing"
+        );
     }
 
     let first_summary = serde_json::to_value(&report.selected_assays[0].primer_pair_summary)
         .expect("serialize canonical pair summary");
-    let mut store = engine.read_primer_design_store();
-    let stored = store
-        .transcript_assay_panels
-        .get_mut(&report.report_id)
-        .expect("persisted transcript panel");
-    for assay in &mut stored.selected_assays {
-        assay.primer_pair_summary = PrimerPairCommunicationSummary::default();
-    }
-    engine
-        .write_primer_design_store(store)
-        .expect("store legacy-shaped transcript panel");
-    let enriched = engine
-        .get_transcript_assay_panel_report(&report.report_id)
-        .expect("enrich legacy-shaped transcript panel on read");
-    assert_eq!(
-        serde_json::to_value(&enriched.selected_assays[0].primer_pair_summary)
-            .expect("serialize enriched pair summary"),
-        first_summary
-    );
 
     let shell = execute_shell_command(
         &mut engine,
@@ -10037,13 +10055,13 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
     execute_shell_command(
         &mut engine,
         &ShellCommand::PrimersExportTranscriptAssayPanel {
-            report_id: report.report_id,
+            report_id: report.report_id.clone(),
             path: path.to_string_lossy().to_string(),
         },
     )
     .expect("shared transcript panel export route");
     let exported: serde_json::Value = serde_json::from_slice(
-        &fs::read(path).expect("read exported transcript panel report"),
+        &fs::read(&path).expect("read exported transcript panel report"),
     )
     .expect("parse exported transcript panel report");
     assert_eq!(
@@ -10056,6 +10074,34 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
             .is_none(),
         "primer Tm must not be relabeled or converted into a guessed PCR annealing temperature"
     );
+
+    let mut store = engine.read_primer_design_store();
+    let stored = store
+        .transcript_assay_panels
+        .get_mut(&report.report_id)
+        .expect("persisted transcript panel");
+    for assay in &mut stored.selected_assays {
+        assay.primer_pair_summary = PrimerPairCommunicationSummary::default();
+    }
+    engine
+        .write_primer_design_store(store)
+        .expect("store legacy-shaped transcript panel");
+    let enriched = engine
+        .get_transcript_assay_panel_report(&report.report_id)
+        .expect("enrich legacy-shaped transcript panel on read");
+    let legacy = &enriched.selected_assays[0].primer_pair_summary;
+    assert_eq!(legacy.schema, PRIMER_PAIR_SUMMARY_SCHEMA);
+    assert_eq!(legacy.forward.sequence_5_to_3, report.selected_assays[0].primer_pair.forward.sequence);
+    assert_eq!(legacy.reverse.sequence_5_to_3, report.selected_assays[0].primer_pair.reverse.sequence);
+    assert_eq!(
+        legacy.selection_provenance_status,
+        "legacy_report_selection_provenance_unavailable"
+    );
+    assert_eq!(
+        legacy.provenance.exon_numbering_status,
+        "geometry_not_persisted_in_legacy_report_re_run_required"
+    );
+    assert!(legacy.selection_evidence.is_empty());
 }
 
 #[test]
@@ -10308,6 +10354,21 @@ fn transcript_assay_endpoint_end_matrix_is_primer_only_and_warns_for_oligo_dt() 
             && assay.assay.is_none()
             && assay.assay_kind == TranscriptAssayKind::EndpointRtPcr
     }));
+    assert!(report.selected_assays.iter().all(|assay| {
+        let summary = &assay.primer_pair_summary;
+        summary.selection_provenance_status == "de_novo_no_external_selection_evidence"
+            && !summary.selected_because_of_junction_evidence
+            && summary.selection_evidence.is_empty()
+            && summary.aliases.is_empty()
+            && summary.provenance.annotation_release.as_deref() == Some("synthetic-test")
+    }));
+    assert!(report.selected_assays.iter().all(|assay| {
+        !assay
+            .primer_pair_summary
+            .selection_reasons
+            .iter()
+            .any(|reason| reason.message.to_ascii_lowercase().contains("clariom"))
+    }));
     assert!(
         report
             .order_ready_primers
@@ -10446,6 +10507,74 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
             .iter()
             .any(|junction| junction.forward_spans || junction.reverse_spans)
     }));
+    let evidence_assay = report
+        .selected_assays
+        .iter()
+        .find(|assay| {
+            assay
+                .primer_pair_summary
+                .selected_because_of_junction_evidence
+        })
+        .expect("selected assay influenced by structured Clariom junction evidence");
+    let summary = &evidence_assay.primer_pair_summary;
+    assert!(summary.display_label.starts_with("PATZ1_"));
+    assert!(summary.amplicon_spans_junction);
+    assert!(summary.forward.primer_spans_junction || summary.reverse.primer_spans_junction);
+    assert_eq!(
+        summary.provenance.annotation_release.as_deref(),
+        Some("synthetic GRCh38.p14 fixture")
+    );
+    assert_eq!(
+        summary.provenance.exon_numbering_reference_transcript_id,
+        evidence_assay.design_transcript_id
+    );
+    assert_eq!(
+        summary.selection_provenance_status,
+        "de_novo_with_structured_selection_evidence"
+    );
+    assert!(summary.selection_reasons.iter().any(|reason| {
+        reason.code == PrimerPairSelectionReasonCode::JunctionEvidence
+            && !reason.related_ids.is_empty()
+    }));
+    assert!(!summary.selection_evidence.is_empty());
+    for evidence in &summary.selection_evidence {
+        assert_eq!(
+            evidence.influence,
+            PrimerPairSelectionInfluence::ProbeRegionInfluenced
+        );
+        assert_ne!(
+            evidence.influence,
+            PrimerPairSelectionInfluence::ProbeSequenceReused
+        );
+        assert_eq!(evidence.requirement, PrimerPairEvidenceRequirement::Required);
+        assert_eq!(evidence.platform.as_deref(), Some("Clariom_D_Human"));
+        assert_eq!(
+            evidence.contrast.as_deref(),
+            Some("synthetic_case_vs_control")
+        );
+        assert_eq!(evidence.measured_statistic.as_deref(), Some("log2_fold_change"));
+        assert_eq!(evidence.measured_value, Some(-1.2));
+        assert_eq!(
+            evidence.intensity_source.as_deref(),
+            Some("synthetic_log2_fold_change")
+        );
+        assert!(
+            evidence
+                .source_sha256
+                .as_deref()
+                .is_some_and(|value| value.starts_with("sha256:"))
+        );
+        assert!(evidence.applies_to.iter().any(|value| value == "pair"));
+    }
+    let duplicate = report
+        .short_sybr_junction_assays
+        .iter()
+        .find(|assay| assay.assay_id == evidence_assay.assay_id)
+        .expect("short SYBR view carries selected evidence assay");
+    assert_eq!(
+        duplicate.primer_pair_summary.selection_evidence,
+        summary.selection_evidence
+    );
     assert!(report.detection_matrix.iter().all(|cell| {
         cell.product_count == 0
             || cell.oligo_dt_5prime_reach.status

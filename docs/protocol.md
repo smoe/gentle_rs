@@ -2780,6 +2780,7 @@ Microarray track projection notes:
   on the target sequence. Optional `--gene LABEL`, `--level all|probe_region|pm_probe`,
   `--min-abs-logfc N`, and `--path FILE` filter/export the read-only report.
   The report records mapping status, overlap transcript ids, ambiguity tags,
+  the projected array `platform` on each evidence row when declared,
   per-transcript compatible/constraining counts, and structured
   `transcript_mappings[]` rows with exon ordinals, exon ranges, junction
   spans, overlap base counts, conservative geometry scores, and score-basis
@@ -8227,7 +8228,7 @@ Primer-design shell command family (implemented):
     interpretation is typed as `specific`, `shared_family`, `no_product`, or
     `not_distinguishable_between_members`.
   - every new `selected_assays[]` row carries
-    `primer_pair_summary` (`gentle.primer_pair_summary.v1`), an additive
+    `primer_pair_summary` (`gentle.primer_pair_summary.v2`), an additive
     communication projection assembled from the canonical pair, detection
     matrix, junction, specificity-followup, and backend records. It repeats the
     assay id, design transcript, forward/reverse sequence (explicitly
@@ -8241,6 +8242,41 @@ Primer-design shell command family (implemented):
     The QC block interprets the pair's stored rule flags and metrics; summary
     generation does not rerun sequence or thermodynamic analysis. Compatible
     older reports are enriched when read/exported.
+  - summary v2 keeps machine identity separate from human naming:
+    - `assay_id` remains the sequence-derived pair/probe identity;
+      `forward.primer_id` and `reverse.primer_id` are stable hashes of the
+      respective primer sequences.
+    - `display_label` values are annotation-context labels such as
+      `GENE_E2_F`, `GENE_E2|E3_R`, and `GENE_E2F-E6R`. They use exon ordinals
+      from `exon_numbering_reference_transcript_id` in transcript 5-prime-to-
+      3-prime order and may change when the annotation reference changes.
+      They never replace the immutable ids.
+    - `aliases[]` preserves optional literature/lab names when a caller has
+      supplied them. GENtle does not derive or fabricate aliases for de-novo
+      designs. `origin` distinguishes `de_novo`, `legacy_literature`, and
+      `legacy_lab`; `selection_role` independently permits `anchor` or
+      `companion` without conflating either with origin.
+    - `satisfied_design_objective` and structured `selection_reasons[]` rows
+      explain the panel-level reason for choosing the pair. Each reason has a
+      typed `code`, readable `message`, and `related_ids[]`; callers do not
+      need to parse one composite provenance string. The separate booleans
+      `forward|reverse.primer_spans_junction`, `amplicon_spans_junction`, and
+      `selected_because_of_junction_evidence` must not be treated as synonyms.
+  - `selection_evidence[]` is a repeatable structured evidence table. A
+    Clariom/JUC-derived row records `probe_region_influenced`, its
+    required/preferred status, platform, PSR/JUC feature id, genomic region,
+    exon junction, contrast, available statistic/intensity source, and source
+    schema/path/SHA-256. It never records `probe_sequence_reused` unless an
+    actual probe sequence has been supplied and matched. The current
+    transcript-panel adapter consumes projected region geometry and therefore
+    emits only `probe_region_influenced`.
+  - `selection_provenance_status = de_novo_no_external_selection_evidence`
+    makes an evidence-free design explicit; empty aliases or evidence rows are
+    not retroactive evidence. Reports predating v2 are refreshed with
+    `legacy_report_selection_provenance_unavailable` and
+    `geometry_not_persisted_in_legacy_report_re_run_required`, preserving
+    sequence/Tm/product data while requiring a rerun for trustworthy labels or
+    selection provenance.
   - `tm_c` is primer melting temperature, never a recommended PCR annealing
     temperature. This summary has no annealing-temperature field because the
     panel request does not supply a complete chemistry/polymerase model.

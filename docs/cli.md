@@ -3641,7 +3641,7 @@ Shared shell command:
       - reports carry `gentle.transcript_assay_panel.v2` and persist through the
         existing project save/load path; list/show/export use the commands above
       - every newly selected assay also carries a redundant
-        `gentle.primer_pair_summary.v1` communication view. It copies the
+        `gentle.primer_pair_summary.v2` communication view. It copies the
         forward/reverse sequences in 5-prime-to-3-prime orientation, oligo
         lengths, GENtle/Primer3 melting temperatures (`tm_c`), GC fraction and
         percent, pair `tm_delta_c`, design-transcript binding coordinates,
@@ -3650,6 +3650,20 @@ Shared shell command:
         whole-genome specificity status, and GENtle/backend/Primer3 provenance.
         Summary generation does not rerun sequence or thermodynamic analysis.
         Existing panel reports are enriched when shown or exported
+      - summary v2 adds immutable sequence-derived primer ids, transcript/exon-
+        aware display labels, optional aliases, typed de-novo/literature/lab
+        origin, optional anchor/companion role, the satisfied design objective,
+        structured selection-reason rows (`code`, `message`, `related_ids`),
+        and the annotation release/reference transcript used for exon numbering
+      - primer-junction overlap, amplicon-junction overlap, and selection due
+        to junction evidence are three separate fields. Clariom/JUC inputs are
+        preserved as repeatable `probe_region_influenced` rows with platform,
+        feature/region/junction, contrast/statistic, priority, and source hash;
+        they are never described as exact probe-sequence reuse
+      - an evidence-free panel says
+        `de_novo_no_external_selection_evidence`. A report created before the
+        v2 context was stored asks for a rerun rather than inventing exon labels
+        or external provenance
       - the summary does not invent a PCR annealing temperature. In the absence
         of an explicit chemistry/polymerase protocol model, experimental Ta is
         undetermined. Per-transcript genomic carryover geometry remains in the

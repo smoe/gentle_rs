@@ -15355,6 +15355,7 @@ impl GentleEngine {
         (
             Vec<TranscriptAssayJunctionRequest>,
             TranscriptAssayPanelSourceProvenance,
+            Vec<PrimerPairSelectionEvidence>,
             Vec<String>,
         ),
         EngineError,
@@ -15372,7 +15373,9 @@ impl GentleEngine {
                 ),
                 cause_chain: vec![],
             })?;
+        let source_sha256 = sha256_prefixed_bytes(&bytes);
         let mut requests = vec![];
+        let mut selection_evidence = vec![];
         let mut warnings = vec![];
         for row in &report.evidence_rows {
             let junction_like = row.level.eq_ignore_ascii_case("junction")
@@ -15383,14 +15386,15 @@ impl GentleEngine {
             let mut row_count = 0usize;
             for mapping in &row.transcript_mappings {
                 for span in &mapping.junction_spans {
+                    let junction_id = format!(
+                        "{}:{}:{}-{}",
+                        row.evidence_id,
+                        mapping.transcript_id,
+                        span.from_exon_ordinal,
+                        span.to_exon_ordinal
+                    );
                     requests.push(TranscriptAssayJunctionRequest {
-                        junction_id: format!(
-                            "{}:{}:{}-{}",
-                            row.evidence_id,
-                            mapping.transcript_id,
-                            span.from_exon_ordinal,
-                            span.to_exon_ordinal
-                        ),
+                        junction_id: junction_id.clone(),
                         priority,
                         coordinate_kind: TranscriptAssayJunctionCoordinateKind::ExonOrdinals,
                         transcript_id: Some(mapping.transcript_id.clone()),
@@ -15405,6 +15409,50 @@ impl GentleEngine {
                             "Clariom JUC geometry is a design target, not direct validation of isoform abundance."
                                 .to_string(),
                         ],
+                    });
+                    let mut notes = vec![
+                        "Projected probe-region geometry influenced the assay target; GENtle did not reuse or match an array-probe sequence."
+                            .to_string(),
+                        format!("mapping_status={}", row.mapping_status),
+                        format!("relationship={}", row.relationship),
+                    ];
+                    notes.extend(
+                        row.ambiguity_tags
+                            .iter()
+                            .map(|tag| format!("ambiguity={tag}")),
+                    );
+                    selection_evidence.push(PrimerPairSelectionEvidence {
+                        evidence_id: row.evidence_id.clone(),
+                        junction_id,
+                        influence: PrimerPairSelectionInfluence::ProbeRegionInfluenced,
+                        applies_to: vec![],
+                        requirement: match priority {
+                            TranscriptAssayJunctionPriority::Required => {
+                                PrimerPairEvidenceRequirement::Required
+                            }
+                            TranscriptAssayJunctionPriority::Preferred => {
+                                PrimerPairEvidenceRequirement::Preferred
+                            }
+                        },
+                        source_kind: "probe_region_evidence_interpretation".to_string(),
+                        source_id: Some(report.seq_id.clone()),
+                        platform: row.platform.clone(),
+                        feature_id: Some(row.feature_id.clone()),
+                        chromosome: row.chromosome.clone(),
+                        region_start_1based: row.start_1based,
+                        region_end_1based: row.end_1based,
+                        strand: row.strand.clone(),
+                        transcript_id: Some(mapping.transcript_id.clone()),
+                        from_exon_ordinal: Some(span.from_exon_ordinal),
+                        to_exon_ordinal: Some(span.to_exon_ordinal),
+                        contrast: row.contrast.clone(),
+                        measured_statistic: row.logfc.map(|_| "log2_fold_change".to_string()),
+                        measured_value: row.logfc,
+                        intensity_source: row.intensity_source.clone(),
+                        source_schema: Some(report.schema.clone()),
+                        source_path: Some(path.to_string()),
+                        source_sha256: Some(source_sha256.clone()),
+                        notes,
                     });
                     row_count = row_count.saturating_add(1);
                 }
@@ -15428,17 +15476,291 @@ impl GentleEngine {
             source_id: report.seq_id,
             schema: Some(report.schema),
             path: Some(path.to_string()),
-            sha256: Some(sha256_prefixed_bytes(&bytes)),
+            sha256: Some(source_sha256),
         };
-        Ok((requests, provenance, warnings))
+        Ok((requests, provenance, selection_evidence, warnings))
+    }
+
+    fn transcript_assay_primer_id(sequence: &str) -> String {
+        short_sha256_id(
+            "primer",
+            sequence.trim().to_ascii_uppercase().as_str(),
+        )
+    }
+
+    fn transcript_assay_display_token(value: &str) -> String {
+        let mut out = String::new();
+        let mut pending_separator = false;
+        for character in value.trim().chars() {
+            if character.is_ascii_alphanumeric() {
+                if pending_separator && !out.is_empty() {
+                    out.push('_');
+                }
+                out.push(character.to_ascii_uppercase());
+                pending_separator = false;
+            } else {
+                pending_separator = true;
+            }
+        }
+        if out.is_empty() {
+            "ASSAY".to_string()
+        } else {
+            out
+        }
+    }
+
+    fn transcript_assay_interval_exon_ordinals(
+        template: &TranscriptQpcrDesignTemplate,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> Vec<usize> {
+        if end_0based_exclusive <= start_0based {
+            return vec![];
+        }
+        template
+            .local_exon_segments
+            .iter()
+            .enumerate()
+            .filter_map(|(index, segment)| {
+                (segment.local_start_0based < end_0based_exclusive
+                    && segment.local_end_0based_exclusive > start_0based)
+                    .then_some(index.saturating_add(1))
+            })
+            .collect()
+    }
+
+    fn transcript_assay_exon_label(exon_ordinals: &[usize]) -> String {
+        exon_ordinals
+            .iter()
+            .map(|ordinal| format!("E{ordinal}"))
+            .collect::<Vec<_>>()
+            .join("|")
+    }
+
+    fn transcript_assay_primer_display_label(
+        gene_token: &str,
+        exon_ordinals: &[usize],
+        role: &str,
+    ) -> String {
+        let exon_label = Self::transcript_assay_exon_label(exon_ordinals);
+        let role = match role {
+            "forward" => "F",
+            "reverse" => "R",
+            "probe" => "P",
+            _ => "OLIGO",
+        };
+        if exon_label.is_empty() {
+            format!("{gene_token}_{role}")
+        } else {
+            format!("{gene_token}_{exon_label}_{role}")
+        }
+    }
+
+    fn transcript_assay_pair_display_label(
+        gene_token: &str,
+        forward_exons: &[usize],
+        reverse_exons: &[usize],
+    ) -> String {
+        let forward = Self::transcript_assay_exon_label(forward_exons);
+        let reverse = Self::transcript_assay_exon_label(reverse_exons);
+        match (forward.is_empty(), reverse.is_empty()) {
+            (false, false) => format!("{gene_token}_{forward}F-{reverse}R"),
+            _ => format!("{gene_token}_F-R"),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn transcript_assay_pair_summary_seed(
+        group_label: &str,
+        annotation_release: Option<&str>,
+        objective: TranscriptAssayPanelObjective,
+        rank: usize,
+        candidate: &TranscriptAssayEvaluatedCandidate,
+        template: &TranscriptQpcrDesignTemplate,
+        detected_equivalence_group_ids: &[String],
+        available_selection_evidence: &[PrimerPairSelectionEvidence],
+    ) -> PrimerPairCommunicationSummary {
+        let forward_exons = Self::transcript_assay_interval_exon_ordinals(
+            template,
+            candidate.primer_pair.forward.start_0based,
+            candidate.primer_pair.forward.end_0based_exclusive,
+        );
+        let reverse_exons = Self::transcript_assay_interval_exon_ordinals(
+            template,
+            candidate.primer_pair.reverse.start_0based,
+            candidate.primer_pair.reverse.end_0based_exclusive,
+        );
+        let amplicon_exons = Self::transcript_assay_interval_exon_ordinals(
+            template,
+            candidate.primer_pair.amplicon_start_0based,
+            candidate.primer_pair.amplicon_end_0based_exclusive,
+        );
+        let gene_token = Self::transcript_assay_display_token(group_label);
+        let matched_junctions = candidate
+            .junction_matches
+            .iter()
+            .map(|row| (row.junction_id.as_str(), row))
+            .collect::<HashMap<_, _>>();
+        let mut selection_evidence = available_selection_evidence
+            .iter()
+            .filter_map(|row| {
+                let matched = matched_junctions.get(row.junction_id.as_str())?;
+                let mut row = row.clone();
+                row.applies_to.push("pair".to_string());
+                if matched.forward_spans {
+                    row.applies_to.push("forward".to_string());
+                }
+                if matched.reverse_spans {
+                    row.applies_to.push("reverse".to_string());
+                }
+                row.applies_to.sort();
+                row.applies_to.dedup();
+                Some(row)
+            })
+            .collect::<Vec<_>>();
+        selection_evidence.sort_by(|left, right| {
+            left.evidence_id
+                .cmp(&right.evidence_id)
+                .then(left.junction_id.cmp(&right.junction_id))
+                .then(left.source_path.cmp(&right.source_path))
+                .then(left.source_sha256.cmp(&right.source_sha256))
+                .then(left.contrast.cmp(&right.contrast))
+        });
+        selection_evidence.dedup_by(|left, right| {
+            left.evidence_id == right.evidence_id
+                && left.junction_id == right.junction_id
+                && left.source_path == right.source_path
+                && left.source_sha256 == right.source_sha256
+                && left.contrast == right.contrast
+        });
+
+        let mut selection_reasons = vec![PrimerPairSelectionReason {
+            code: PrimerPairSelectionReasonCode::DesignObjective,
+            message: format!(
+                "Selected at panel rank {rank} to satisfy the '{}' design objective.",
+                objective.as_str()
+            ),
+            related_ids: vec![objective.as_str().to_string()],
+        }];
+        if !detected_equivalence_group_ids.is_empty() {
+            selection_reasons.push(PrimerPairSelectionReason {
+                code: PrimerPairSelectionReasonCode::PredictedProductCoverage,
+                message: format!(
+                    "Produces one predicted product for {} mature-cDNA equivalence class(es).",
+                    detected_equivalence_group_ids.len()
+                ),
+                related_ids: detected_equivalence_group_ids.to_vec(),
+            });
+        }
+        if !candidate.end_reaction_ids.is_empty() {
+            selection_reasons.push(PrimerPairSelectionReason {
+                code: PrimerPairSelectionReasonCode::EndReactionCoverage,
+                message: format!(
+                    "Represents {} annotated first-end x terminal-end reaction(s).",
+                    candidate.end_reaction_ids.len()
+                ),
+                related_ids: candidate.end_reaction_ids.clone(),
+            });
+        }
+        if !selection_evidence.is_empty() {
+            selection_reasons.push(PrimerPairSelectionReason {
+                code: PrimerPairSelectionReasonCode::JunctionEvidence,
+                message: format!(
+                    "Spans {} external evidence-derived junction target(s); this records region influence, not exact probe-sequence reuse.",
+                    selection_evidence.len()
+                ),
+                related_ids: selection_evidence
+                    .iter()
+                    .map(|row| row.junction_id.clone())
+                    .collect(),
+            });
+        }
+
+        PrimerPairCommunicationSummary {
+            display_label: Self::transcript_assay_pair_display_label(
+                &gene_token,
+                &forward_exons,
+                &reverse_exons,
+            ),
+            aliases: vec![],
+            selection_role: None,
+            satisfied_design_objective: objective.as_str().to_string(),
+            selection_reasons,
+            selection_provenance_status: if selection_evidence.is_empty() {
+                "de_novo_no_external_selection_evidence".to_string()
+            } else {
+                "de_novo_with_structured_selection_evidence".to_string()
+            },
+            forward: PrimerPairSummaryOligo {
+                primer_id: Self::transcript_assay_primer_id(
+                    &candidate.primer_pair.forward.sequence,
+                ),
+                role: "forward".to_string(),
+                display_label: Self::transcript_assay_primer_display_label(
+                    &gene_token,
+                    &forward_exons,
+                    "forward",
+                ),
+                aliases: vec![],
+                origin: PrimerPairSummaryOrigin::DeNovo,
+                exon_ordinals: forward_exons.clone(),
+                primer_spans_junction: forward_exons.len() > 1,
+                ..Default::default()
+            },
+            reverse: PrimerPairSummaryOligo {
+                primer_id: Self::transcript_assay_primer_id(
+                    &candidate.primer_pair.reverse.sequence,
+                ),
+                role: "reverse".to_string(),
+                display_label: Self::transcript_assay_primer_display_label(
+                    &gene_token,
+                    &reverse_exons,
+                    "reverse",
+                ),
+                aliases: vec![],
+                origin: PrimerPairSummaryOrigin::DeNovo,
+                exon_ordinals: reverse_exons.clone(),
+                primer_spans_junction: reverse_exons.len() > 1,
+                ..Default::default()
+            },
+            amplicon_spans_junction: amplicon_exons.len() > 1,
+            selected_because_of_junction_evidence: !selection_evidence.is_empty(),
+            selection_evidence,
+            provenance: PrimerPairSummaryProvenance {
+                annotation_release: annotation_release.map(str::to_string),
+                exon_numbering_reference_transcript_id: template.transcript_id.clone(),
+                exon_numbering_basis: "design_transcript_5prime_to_3prime".to_string(),
+                exon_numbering_status: if annotation_release.is_some() {
+                    "reference_transcript_and_annotation_release_recorded".to_string()
+                } else {
+                    "reference_transcript_recorded_annotation_release_missing".to_string()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        }
     }
 
     fn primer_pair_summary_oligo(
         role: &str,
         primer: &PrimerDesignPrimerRecord,
+        previous: &PrimerPairSummaryOligo,
+        fallback_display_label: &str,
     ) -> PrimerPairSummaryOligo {
         PrimerPairSummaryOligo {
+            primer_id: Self::transcript_assay_primer_id(&primer.sequence),
             role: role.to_string(),
+            display_label: if previous.display_label.trim().is_empty() {
+                fallback_display_label.to_string()
+            } else {
+                previous.display_label.clone()
+            },
+            aliases: previous.aliases.clone(),
+            origin: if previous.origin == PrimerPairSummaryOrigin::Unknown {
+                PrimerPairSummaryOrigin::DeNovo
+            } else {
+                previous.origin
+            },
             sequence_5_to_3: primer.sequence.clone(),
             length_nt: primer.length_bp,
             anneal_length_nt: primer.anneal_length_bp,
@@ -15448,6 +15770,8 @@ impl GentleEngine {
             anneal_hit_count: primer.anneal_hits,
             binding_start_0based: primer.start_0based,
             binding_end_0based_exclusive: primer.end_0based_exclusive,
+            exon_ordinals: previous.exon_ordinals.clone(),
+            primer_spans_junction: previous.primer_spans_junction,
             three_prime_base: primer.three_prime_base.clone(),
             three_prime_gc_clamp: primer.three_prime_gc_clamp,
             longest_homopolymer_run_bp: primer.longest_homopolymer_run_bp,
@@ -15559,8 +15883,12 @@ impl GentleEngine {
             .collect::<HashMap<_, _>>();
         let source_report_schema = report.schema.clone();
         let fallback_backend = report.provenance.primer_backend.clone();
+        let annotation_release = report.provenance.annotation_release.clone();
+        let objective = report.objective.as_str().to_string();
+        let gene_token = Self::transcript_assay_display_token(&report.group_label);
 
         for assay in &mut report.selected_assays {
+            let previous = std::mem::take(&mut assay.primer_pair_summary);
             let predicted_products = products_by_assay
                 .remove(&assay.assay_id)
                 .unwrap_or_default();
@@ -15588,25 +15916,70 @@ impl GentleEngine {
             } else {
                 "no_requested_junction_match_reported".to_string()
             };
+            let fallback_forward_label = format!("{gene_token}_F");
+            let fallback_reverse_label = format!("{gene_token}_R");
             assay.primer_pair_summary = PrimerPairCommunicationSummary {
                 schema: PRIMER_PAIR_SUMMARY_SCHEMA.to_string(),
                 assay_id: assay.assay_id.clone(),
                 pair_rank: assay.rank,
                 design_transcript_id: assay.design_transcript_id.clone(),
                 design_equivalence_group_id: assay.design_equivalence_group_id.clone(),
+                display_label: if previous.display_label.trim().is_empty() {
+                    format!("{gene_token}_F-R")
+                } else {
+                    previous.display_label.clone()
+                },
+                aliases: previous.aliases.clone(),
+                selection_role: previous.selection_role,
+                satisfied_design_objective: if previous
+                    .satisfied_design_objective
+                    .trim()
+                    .is_empty()
+                {
+                    objective.clone()
+                } else {
+                    previous.satisfied_design_objective.clone()
+                },
+                selection_reasons: if previous.selection_reasons.is_empty() {
+                    vec![PrimerPairSelectionReason {
+                        code: PrimerPairSelectionReasonCode::LegacyProvenanceUnavailable,
+                        message: "Selection reasons were not persisted in this older report; re-run panel design to reconstruct structured selection provenance."
+                            .to_string(),
+                        related_ids: vec![assay.assay_id.clone()],
+                    }]
+                } else {
+                    previous.selection_reasons.clone()
+                },
+                selection_provenance_status: if previous
+                    .selection_provenance_status
+                    .trim()
+                    .is_empty()
+                {
+                    "legacy_report_selection_provenance_unavailable".to_string()
+                } else {
+                    previous.selection_provenance_status.clone()
+                },
                 binding_coordinate_system: "design_transcript_cdna_0based_half_open".to_string(),
                 forward: Self::primer_pair_summary_oligo(
                     "forward",
                     &assay.primer_pair.forward,
+                    &previous.forward,
+                    &fallback_forward_label,
                 ),
                 reverse: Self::primer_pair_summary_oligo(
                     "reverse",
                     &assay.primer_pair.reverse,
+                    &previous.reverse,
+                    &fallback_reverse_label,
                 ),
                 tm_delta_c: assay.primer_pair.tm_delta_c,
                 predicted_amplicon_lengths_bp,
                 predicted_products,
                 oligo_qc,
+                amplicon_spans_junction: previous.amplicon_spans_junction,
+                selected_because_of_junction_evidence: previous
+                    .selected_because_of_junction_evidence,
+                selection_evidence: previous.selection_evidence.clone(),
                 junction_spanning_status,
                 junction_matches: assay.junction_matches.clone(),
                 genomic_carryover_status: "not_evaluated".to_string(),
@@ -15622,8 +15995,57 @@ impl GentleEngine {
                     primer_backend_requested,
                     primer_backend_used,
                     primer3_version: backend.and_then(|value| value.primer3_version.clone()),
+                    annotation_release: previous
+                        .provenance
+                        .annotation_release
+                        .clone()
+                        .or_else(|| annotation_release.clone()),
+                    exon_numbering_reference_transcript_id: if previous
+                        .provenance
+                        .exon_numbering_reference_transcript_id
+                        .trim()
+                        .is_empty()
+                    {
+                        assay.design_transcript_id.clone()
+                    } else {
+                        previous
+                            .provenance
+                            .exon_numbering_reference_transcript_id
+                            .clone()
+                    },
+                    exon_numbering_basis: if previous
+                        .provenance
+                        .exon_numbering_basis
+                        .trim()
+                        .is_empty()
+                    {
+                        "not_persisted_in_legacy_report".to_string()
+                    } else {
+                        previous.provenance.exon_numbering_basis.clone()
+                    },
+                    exon_numbering_status: if previous
+                        .provenance
+                        .exon_numbering_status
+                        .trim()
+                        .is_empty()
+                    {
+                        "geometry_not_persisted_in_legacy_report_re_run_required".to_string()
+                    } else {
+                        previous.provenance.exon_numbering_status.clone()
+                    },
                 },
             };
+        }
+
+        let summaries_by_assay = report
+            .selected_assays
+            .iter()
+            .map(|assay| (assay.assay_id.clone(), assay.primer_pair_summary.clone()))
+            .collect::<HashMap<_, _>>();
+        for assay in &mut report.short_sybr_junction_assays {
+            if let Some(summary) = summaries_by_assay.get(&assay.assay_id) {
+                assay.primer_pair_summary = summary.clone();
+            }
         }
     }
 
@@ -15822,14 +16244,21 @@ impl GentleEngine {
             );
         }
         let mut junction_sources = vec![];
+        let mut junction_selection_evidence = vec![];
         for evidence_path in &junction_evidence_paths {
-            let (mut evidence_junctions, provenance, evidence_warnings) =
+            let (
+                mut evidence_junctions,
+                provenance,
+                mut evidence_rows,
+                evidence_warnings,
+            ) =
                 Self::transcript_assay_load_junction_evidence(
                     evidence_path,
                     junction_evidence_priority,
                 )?;
             junctions.append(&mut evidence_junctions);
             junction_sources.push(provenance);
+            junction_selection_evidence.append(&mut evidence_rows);
             warnings.extend(evidence_warnings);
         }
         for (index, request) in junctions.iter_mut().enumerate() {
@@ -16517,6 +16946,27 @@ impl GentleEngine {
                     )
                 })
                 .collect::<Vec<_>>();
+            let design_template = templates
+                .iter()
+                .find(|template| template.transcript_id == candidate.design_transcript_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!(
+                        "Selected transcript assay '{}' lost its design transcript '{}'",
+                        candidate.assay_id, candidate.design_transcript_id
+                    ),
+                    cause_chain: vec![],
+                })?;
+            let primer_pair_summary = Self::transcript_assay_pair_summary_seed(
+                &splicing.group_label,
+                annotation_release.as_deref(),
+                objective,
+                rank,
+                candidate,
+                design_template,
+                &single_product_equivalence_group_ids,
+                &junction_selection_evidence,
+            );
             selected_assays.push(TranscriptAssayPanelAssay {
                 assay_id: candidate.assay_id.clone(),
                 rank,
@@ -16530,7 +16980,7 @@ impl GentleEngine {
                 end_reaction_ids: candidate.end_reaction_ids.clone(),
                 junction_matches: candidate.junction_matches.clone(),
                 single_product_equivalence_group_ids,
-                primer_pair_summary: PrimerPairCommunicationSummary::default(),
+                primer_pair_summary,
             });
             for (group_index, group) in equivalence_groups.iter().enumerate() {
                 let evaluation = &candidate.group_evaluations[group_index];

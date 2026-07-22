@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-07-22
 
+- Extended `gentle.primer_pair_summary.v2` with immutable sequence-derived
+  primer identities, transcript/exon display labels, aliases, typed origin and
+  selection provenance, three distinct junction semantics, and structured
+  Clariom region evidence that never implies exact probe-sequence reuse.
 - Updated the Rust dependency graph to the latest Rust 1.98-beta-compatible
   releases, including Deno 0.408, V8 149, Temporal 0.2.4, ICU 2.2, Serde
   1.0.229, and libc 0.2.189; direct requirements now use normal semver ranges

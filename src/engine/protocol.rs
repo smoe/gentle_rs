@@ -5002,6 +5002,8 @@ pub struct ProbeRegionEvidenceMappingRow {
     pub level: String,
     pub feature_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contrast: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_feature_id: Option<String>,
@@ -5568,7 +5570,14 @@ pub struct PrimerDesignPairRecord {
 /// One primer in a communication-oriented pair summary. Values are copied
 /// from the canonical design record; no thermodynamic value is recalculated.
 pub struct PrimerPairSummaryOligo {
+    /// Sequence-derived identity. Display names and aliases never replace it.
+    pub primer_id: String,
     pub role: String,
+    pub display_label: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub origin: PrimerPairSummaryOrigin,
     pub sequence_5_to_3: String,
     pub length_nt: usize,
     pub anneal_length_nt: usize,
@@ -5578,10 +5587,130 @@ pub struct PrimerPairSummaryOligo {
     pub anneal_hit_count: usize,
     pub binding_start_0based: usize,
     pub binding_end_0based_exclusive: usize,
+    #[serde(default)]
+    pub exon_ordinals: Vec<usize>,
+    pub primer_spans_junction: bool,
     pub three_prime_base: String,
     pub three_prime_gc_clamp: bool,
     pub longest_homopolymer_run_bp: usize,
     pub self_complementary_run_bp: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// How a primer sequence entered the selected assay.
+pub enum PrimerPairSummaryOrigin {
+    /// Retained for reports that predate structured origin tracking.
+    #[default]
+    Unknown,
+    DeNovo,
+    LegacyLiterature,
+    LegacyLab,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Optional role assigned to a selected pair by an upstream planning workflow.
+pub enum PrimerPairSelectionRole {
+    Anchor,
+    Companion,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// How external probe evidence influenced assay selection.
+pub enum PrimerPairSelectionInfluence {
+    #[default]
+    ProbeRegionInfluenced,
+    ProbeSequenceReused,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Weight assigned to one external selection-evidence row.
+pub enum PrimerPairEvidenceRequirement {
+    Required,
+    Preferred,
+    #[default]
+    Contextual,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Machine-readable category for one pair-selection reason.
+pub enum PrimerPairSelectionReasonCode {
+    #[default]
+    DesignObjective,
+    PredictedProductCoverage,
+    EndReactionCoverage,
+    JunctionEvidence,
+    LegacyProvenanceUnavailable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One structured explanation for why a primer pair was selected.
+pub struct PrimerPairSelectionReason {
+    #[serde(default)]
+    pub code: PrimerPairSelectionReasonCode,
+    pub message: String,
+    #[serde(default)]
+    pub related_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One structured reason why external evidence influenced a selected pair.
+///
+/// Probe-region geometry and exact probe-sequence reuse are intentionally
+/// separate influence values. A projected array interval must never be
+/// promoted to sequence reuse without an actual sequence match.
+pub struct PrimerPairSelectionEvidence {
+    pub evidence_id: String,
+    pub junction_id: String,
+    #[serde(default)]
+    pub influence: PrimerPairSelectionInfluence,
+    #[serde(default)]
+    pub applies_to: Vec<String>,
+    #[serde(default)]
+    pub requirement: PrimerPairEvidenceRequirement,
+    pub source_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chromosome: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region_end_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_exon_ordinal: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_exon_ordinal: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contrast: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measured_statistic: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measured_value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intensity_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_schema: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sha256: Option<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -5610,6 +5739,13 @@ pub struct PrimerPairSummaryProvenance {
     pub primer_backend_used: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer3_version: Option<String>,
+    /// Annotation release used while constructing the transcript models.
+    /// `None` is kept visible in the enclosing summary as missing provenance.
+    #[serde(default)]
+    pub annotation_release: Option<String>,
+    pub exon_numbering_reference_transcript_id: String,
+    pub exon_numbering_basis: String,
+    pub exon_numbering_status: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -5638,6 +5774,15 @@ pub struct PrimerPairCommunicationSummary {
     pub pair_rank: usize,
     pub design_transcript_id: String,
     pub design_equivalence_group_id: String,
+    pub display_label: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub selection_role: Option<PrimerPairSelectionRole>,
+    pub satisfied_design_objective: String,
+    #[serde(default)]
+    pub selection_reasons: Vec<PrimerPairSelectionReason>,
+    pub selection_provenance_status: String,
     pub binding_coordinate_system: String,
     pub forward: PrimerPairSummaryOligo,
     pub reverse: PrimerPairSummaryOligo,
@@ -5648,6 +5793,10 @@ pub struct PrimerPairCommunicationSummary {
     pub predicted_products: Vec<PrimerPairSummaryProduct>,
     #[serde(default)]
     pub oligo_qc: PrimerPairSummaryQc,
+    pub amplicon_spans_junction: bool,
+    pub selected_because_of_junction_evidence: bool,
+    #[serde(default)]
+    pub selection_evidence: Vec<PrimerPairSelectionEvidence>,
     pub junction_spanning_status: String,
     #[serde(default)]
     pub junction_matches: Vec<TranscriptAssayJunctionMatch>,

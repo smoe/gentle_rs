@@ -143,14 +143,39 @@
       ],
       "single_product_equivalence_group_ids": [],
       "primer_pair_summary": {
-        "schema": "gentle.primer_pair_summary.v1",
+        "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_6b15970fa7d866ef",
         "pair_rank": 1,
         "design_transcript_id": "PATZ1-202",
         "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+        "display_label": "PATZ1_E1|E2F-E2R",
+        "aliases": [],
+        "selection_role": null,
+        "satisfied_design_objective": "one_per_class",
+        "selection_reasons": [
+          {
+            "code": "design_objective",
+            "message": "Selected at panel rank 1 to satisfy the 'one_per_class' design objective.",
+            "related_ids": [
+              "one_per_class"
+            ]
+          },
+          {
+            "code": "junction_evidence",
+            "message": "Spans 1 external evidence-derived junction target(s); this records region influence, not exact probe-sequence reuse.",
+            "related_ids": [
+              "JUC2200054820.hg.1:PATZ1-202:1-2"
+            ]
+          }
+        ],
+        "selection_provenance_status": "de_novo_with_structured_selection_evidence",
         "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
+          "primer_id": "primer_ea8470f66e4e6593",
           "role": "forward",
+          "display_label": "PATZ1_E1|E2_F",
+          "aliases": [],
+          "origin": "de_novo",
           "sequence_5_to_3": "GTAAGCTAGCATCGGGATCCG",
           "length_nt": 21,
           "anneal_length_nt": 21,
@@ -160,13 +185,22 @@
           "anneal_hit_count": 1,
           "binding_start_0based": 25,
           "binding_end_0based_exclusive": 46,
+          "exon_ordinals": [
+            1,
+            2
+          ],
+          "primer_spans_junction": true,
           "three_prime_base": "G",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 3,
           "self_complementary_run_bp": 6
         },
         "reverse": {
+          "primer_id": "primer_847406919846d5a8",
           "role": "reverse",
+          "display_label": "PATZ1_E2_R",
+          "aliases": [],
+          "origin": "de_novo",
           "sequence_5_to_3": "GATCCGTTAGCGTACCTGATCG",
           "length_nt": 22,
           "anneal_length_nt": 22,
@@ -176,6 +210,10 @@
           "anneal_hit_count": 1,
           "binding_start_0based": 44,
           "binding_end_0based_exclusive": 66,
+          "exon_ordinals": [
+            2
+          ],
+          "primer_spans_junction": false,
           "three_prime_base": "G",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
@@ -228,6 +266,45 @@
           "primer_pair_complementary_run_bp": 5,
           "primer_pair_3prime_complementary_run_bp": 2
         },
+        "amplicon_spans_junction": true,
+        "selected_because_of_junction_evidence": true,
+        "selection_evidence": [
+          {
+            "evidence_id": "JUC2200054820.hg.1",
+            "junction_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+            "influence": "probe_region_influenced",
+            "applies_to": [
+              "forward",
+              "pair"
+            ],
+            "requirement": "required",
+            "source_kind": "probe_region_evidence_interpretation",
+            "source_id": "patz1_isoform_evidence",
+            "platform": "Clariom_D_Human",
+            "feature_id": "JUC2200054820.hg.1",
+            "chromosome": "22",
+            "region_start_1based": 31325860,
+            "region_end_1based": 31325979,
+            "strand": "-",
+            "transcript_id": "PATZ1-202",
+            "from_exon_ordinal": 1,
+            "to_exon_ordinal": 2,
+            "contrast": "synthetic_case_vs_control",
+            "measured_statistic": "log2_fold_change",
+            "measured_value": -1.2,
+            "intensity_source": "synthetic_log2_fold_change",
+            "source_schema": "gentle.probe_region_evidence_interpretation.v2",
+            "source_path": "./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
+            "source_sha256": "sha256:11e2a7b4cbb83af5868902b1834ecbfe6c5e7ddb80e521c1060abf7a4d8418a9",
+            "notes": [
+              "Projected probe-region geometry influenced the assay target; GENtle did not reuse or match an array-probe sequence.",
+              "mapping_status=ambiguous_parent_feature",
+              "relationship=review_only_constraint",
+              "ambiguity=parent_mixes_transcript_features",
+              "ambiguity=multi_hit_not_assessed"
+            ]
+          }
+        ],
         "junction_spanning_status": "requested_junction_spanning_primer",
         "junction_matches": [
           {
@@ -246,7 +323,11 @@
           "source_report_schema": "gentle.transcript_assay_panel.v2",
           "gentle_version": "0.1.0-internal.10",
           "primer_backend_requested": "internal",
-          "primer_backend_used": "internal"
+          "primer_backend_used": "internal",
+          "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",
+          "exon_numbering_reference_transcript_id": "PATZ1-202",
+          "exon_numbering_basis": "design_transcript_5prime_to_3prime",
+          "exon_numbering_status": "reference_transcript_and_annotation_release_recorded"
         }
       }
     },
@@ -321,14 +402,46 @@
         "cdna_eq_6c73e2052bd828f3"
       ],
       "primer_pair_summary": {
-        "schema": "gentle.primer_pair_summary.v1",
+        "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
         "pair_rank": 2,
         "design_transcript_id": "PATZ1-202",
         "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+        "display_label": "PATZ1_E1|E2F-E2R",
+        "aliases": [],
+        "selection_role": null,
+        "satisfied_design_objective": "one_per_class",
+        "selection_reasons": [
+          {
+            "code": "design_objective",
+            "message": "Selected at panel rank 2 to satisfy the 'one_per_class' design objective.",
+            "related_ids": [
+              "one_per_class"
+            ]
+          },
+          {
+            "code": "predicted_product_coverage",
+            "message": "Produces one predicted product for 1 mature-cDNA equivalence class(es).",
+            "related_ids": [
+              "cdna_eq_6c73e2052bd828f3"
+            ]
+          },
+          {
+            "code": "junction_evidence",
+            "message": "Spans 1 external evidence-derived junction target(s); this records region influence, not exact probe-sequence reuse.",
+            "related_ids": [
+              "JUC2200054820.hg.1:PATZ1-202:1-2"
+            ]
+          }
+        ],
+        "selection_provenance_status": "de_novo_with_structured_selection_evidence",
         "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
+          "primer_id": "primer_04e5a099a75aafa8",
           "role": "forward",
+          "display_label": "PATZ1_E1|E2_F",
+          "aliases": [],
+          "origin": "de_novo",
           "sequence_5_to_3": "TAAGCTAGCATCGGGATCCG",
           "length_nt": 20,
           "anneal_length_nt": 20,
@@ -338,13 +451,22 @@
           "anneal_hit_count": 1,
           "binding_start_0based": 26,
           "binding_end_0based_exclusive": 46,
+          "exon_ordinals": [
+            1,
+            2
+          ],
+          "primer_spans_junction": true,
           "three_prime_base": "G",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 3,
           "self_complementary_run_bp": 6
         },
         "reverse": {
+          "primer_id": "primer_71e961cfe9c51870",
           "role": "reverse",
+          "display_label": "PATZ1_E2_R",
+          "aliases": [],
+          "origin": "de_novo",
           "sequence_5_to_3": "TACGATCCGTTAGCGTACCTG",
           "length_nt": 21,
           "anneal_length_nt": 21,
@@ -354,6 +476,10 @@
           "anneal_hit_count": 1,
           "binding_start_0based": 48,
           "binding_end_0based_exclusive": 69,
+          "exon_ordinals": [
+            2
+          ],
+          "primer_spans_junction": false,
           "three_prime_base": "G",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
@@ -410,6 +536,45 @@
           "primer_pair_complementary_run_bp": 5,
           "primer_pair_3prime_complementary_run_bp": 2
         },
+        "amplicon_spans_junction": true,
+        "selected_because_of_junction_evidence": true,
+        "selection_evidence": [
+          {
+            "evidence_id": "JUC2200054820.hg.1",
+            "junction_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+            "influence": "probe_region_influenced",
+            "applies_to": [
+              "forward",
+              "pair"
+            ],
+            "requirement": "required",
+            "source_kind": "probe_region_evidence_interpretation",
+            "source_id": "patz1_isoform_evidence",
+            "platform": "Clariom_D_Human",
+            "feature_id": "JUC2200054820.hg.1",
+            "chromosome": "22",
+            "region_start_1based": 31325860,
+            "region_end_1based": 31325979,
+            "strand": "-",
+            "transcript_id": "PATZ1-202",
+            "from_exon_ordinal": 1,
+            "to_exon_ordinal": 2,
+            "contrast": "synthetic_case_vs_control",
+            "measured_statistic": "log2_fold_change",
+            "measured_value": -1.2,
+            "intensity_source": "synthetic_log2_fold_change",
+            "source_schema": "gentle.probe_region_evidence_interpretation.v2",
+            "source_path": "./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
+            "source_sha256": "sha256:11e2a7b4cbb83af5868902b1834ecbfe6c5e7ddb80e521c1060abf7a4d8418a9",
+            "notes": [
+              "Projected probe-region geometry influenced the assay target; GENtle did not reuse or match an array-probe sequence.",
+              "mapping_status=ambiguous_parent_feature",
+              "relationship=review_only_constraint",
+              "ambiguity=parent_mixes_transcript_features",
+              "ambiguity=multi_hit_not_assessed"
+            ]
+          }
+        ],
         "junction_spanning_status": "requested_junction_spanning_primer",
         "junction_matches": [
           {
@@ -428,7 +593,11 @@
           "source_report_schema": "gentle.transcript_assay_panel.v2",
           "gentle_version": "0.1.0-internal.10",
           "primer_backend_requested": "internal",
-          "primer_backend_used": "internal"
+          "primer_backend_used": "internal",
+          "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",
+          "exon_numbering_reference_transcript_id": "PATZ1-202",
+          "exon_numbering_basis": "design_transcript_5prime_to_3prime",
+          "exon_numbering_status": "reference_transcript_and_annotation_release_recorded"
         }
       }
     },
@@ -496,14 +665,41 @@
         "cdna_eq_da6a2f3dbe1d4447"
       ],
       "primer_pair_summary": {
-        "schema": "gentle.primer_pair_summary.v1",
+        "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_b3964ace800b1035",
         "pair_rank": 3,
         "design_transcript_id": "PATZ1-203",
         "design_equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+        "display_label": "PATZ1_E1F-E3R",
+        "aliases": [],
+        "selection_role": null,
+        "satisfied_design_objective": "one_per_class",
+        "selection_reasons": [
+          {
+            "code": "design_objective",
+            "message": "Selected at panel rank 3 to satisfy the 'one_per_class' design objective.",
+            "related_ids": [
+              "one_per_class"
+            ]
+          },
+          {
+            "code": "predicted_product_coverage",
+            "message": "Produces one predicted product for 3 mature-cDNA equivalence class(es).",
+            "related_ids": [
+              "cdna_eq_6c73e2052bd828f3",
+              "cdna_eq_bf8de0081e092d6f",
+              "cdna_eq_da6a2f3dbe1d4447"
+            ]
+          }
+        ],
+        "selection_provenance_status": "de_novo_no_external_selection_evidence",
         "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
+          "primer_id": "primer_80f6c3c338b07d84",
           "role": "forward",
+          "display_label": "PATZ1_E1_F",
+          "aliases": [],
+          "origin": "de_novo",
           "sequence_5_to_3": "TCGTAGCCTAGCATCGGTAAGC",
           "length_nt": 22,
           "anneal_length_nt": 22,
@@ -513,13 +709,21 @@
           "anneal_hit_count": 1,
           "binding_start_0based": 9,
           "binding_end_0based_exclusive": 31,
+          "exon_ordinals": [
+            1
+          ],
+          "primer_spans_junction": false,
           "three_prime_base": "C",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 4
         },
         "reverse": {
+          "primer_id": "primer_e7a676e282b64e97",
           "role": "reverse",
+          "display_label": "PATZ1_E3_R",
+          "aliases": [],
+          "origin": "de_novo",
           "sequence_5_to_3": "ATCCGTTAGCGTACCTGATCGG",
           "length_nt": 22,
           "anneal_length_nt": 22,
@@ -529,6 +733,10 @@
           "anneal_hit_count": 1,
           "binding_start_0based": 63,
           "binding_end_0based_exclusive": 85,
+          "exon_ordinals": [
+            3
+          ],
+          "primer_spans_junction": false,
           "three_prime_base": "G",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
@@ -591,6 +799,9 @@
           "primer_pair_complementary_run_bp": 4,
           "primer_pair_3prime_complementary_run_bp": 2
         },
+        "amplicon_spans_junction": true,
+        "selected_because_of_junction_evidence": false,
+        "selection_evidence": [],
         "junction_spanning_status": "no_requested_junction_match_reported",
         "junction_matches": [],
         "genomic_carryover_status": "not_evaluated",
@@ -600,7 +811,11 @@
           "source_report_schema": "gentle.transcript_assay_panel.v2",
           "gentle_version": "0.1.0-internal.10",
           "primer_backend_requested": "internal",
-          "primer_backend_used": "internal"
+          "primer_backend_used": "internal",
+          "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",
+          "exon_numbering_reference_transcript_id": "PATZ1-203",
+          "exon_numbering_basis": "design_transcript_5prime_to_3prime",
+          "exon_numbering_status": "reference_transcript_and_annotation_release_recorded"
         }
       }
     },
@@ -666,14 +881,39 @@
         "cdna_eq_da6a2f3dbe1d4447"
       ],
       "primer_pair_summary": {
-        "schema": "gentle.primer_pair_summary.v1",
+        "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_928afef051d25781",
         "pair_rank": 4,
         "design_transcript_id": "PATZ1-201",
         "design_equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+        "display_label": "PATZ1_E1F-E2|E3R",
+        "aliases": [],
+        "selection_role": null,
+        "satisfied_design_objective": "one_per_class",
+        "selection_reasons": [
+          {
+            "code": "design_objective",
+            "message": "Selected at panel rank 4 to satisfy the 'one_per_class' design objective.",
+            "related_ids": [
+              "one_per_class"
+            ]
+          },
+          {
+            "code": "predicted_product_coverage",
+            "message": "Produces one predicted product for 1 mature-cDNA equivalence class(es).",
+            "related_ids": [
+              "cdna_eq_da6a2f3dbe1d4447"
+            ]
+          }
+        ],
+        "selection_provenance_status": "de_novo_no_external_selection_evidence",
         "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
+          "primer_id": "primer_6c707108ebc142d7",
           "role": "forward",
+          "display_label": "PATZ1_E1_F",
+          "aliases": [],
+          "origin": "de_novo",
           "sequence_5_to_3": "GTAGCCTAGCATCGGTAAGC",
           "length_nt": 20,
           "anneal_length_nt": 20,
@@ -683,13 +923,21 @@
           "anneal_hit_count": 1,
           "binding_start_0based": 11,
           "binding_end_0based_exclusive": 31,
+          "exon_ordinals": [
+            1
+          ],
+          "primer_spans_junction": false,
           "three_prime_base": "C",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
           "self_complementary_run_bp": 4
         },
         "reverse": {
+          "primer_id": "primer_09100f2928198662",
           "role": "reverse",
+          "display_label": "PATZ1_E2|E3_R",
+          "aliases": [],
+          "origin": "de_novo",
           "sequence_5_to_3": "GATCGGATCGCTAACGATCC",
           "length_nt": 20,
           "anneal_length_nt": 20,
@@ -699,6 +947,11 @@
           "anneal_hit_count": 1,
           "binding_start_0based": 69,
           "binding_end_0based_exclusive": 89,
+          "exon_ordinals": [
+            2,
+            3
+          ],
+          "primer_spans_junction": true,
           "three_prime_base": "C",
           "three_prime_gc_clamp": true,
           "longest_homopolymer_run_bp": 2,
@@ -755,6 +1008,9 @@
           "primer_pair_complementary_run_bp": 4,
           "primer_pair_3prime_complementary_run_bp": 3
         },
+        "amplicon_spans_junction": true,
+        "selected_because_of_junction_evidence": false,
+        "selection_evidence": [],
         "junction_spanning_status": "no_requested_junction_match_reported",
         "junction_matches": [],
         "genomic_carryover_status": "not_evaluated",
@@ -764,7 +1020,11 @@
           "source_report_schema": "gentle.transcript_assay_panel.v2",
           "gentle_version": "0.1.0-internal.10",
           "primer_backend_requested": "internal",
-          "primer_backend_used": "internal"
+          "primer_backend_used": "internal",
+          "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",
+          "exon_numbering_reference_transcript_id": "PATZ1-201",
+          "exon_numbering_basis": "design_transcript_5prime_to_3prime",
+          "exon_numbering_status": "reference_transcript_and_annotation_release_recorded"
         }
       }
     }
@@ -1188,73 +1448,191 @@
       ],
       "single_product_equivalence_group_ids": [],
       "primer_pair_summary": {
-        "schema": "",
-        "assay_id": "",
-        "pair_rank": 0,
-        "design_transcript_id": "",
-        "design_equivalence_group_id": "",
-        "binding_coordinate_system": "",
+        "schema": "gentle.primer_pair_summary.v2",
+        "assay_id": "transcript_assay_6b15970fa7d866ef",
+        "pair_rank": 1,
+        "design_transcript_id": "PATZ1-202",
+        "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+        "display_label": "PATZ1_E1|E2F-E2R",
+        "aliases": [],
+        "selection_role": null,
+        "satisfied_design_objective": "one_per_class",
+        "selection_reasons": [
+          {
+            "code": "design_objective",
+            "message": "Selected at panel rank 1 to satisfy the 'one_per_class' design objective.",
+            "related_ids": [
+              "one_per_class"
+            ]
+          },
+          {
+            "code": "junction_evidence",
+            "message": "Spans 1 external evidence-derived junction target(s); this records region influence, not exact probe-sequence reuse.",
+            "related_ids": [
+              "JUC2200054820.hg.1:PATZ1-202:1-2"
+            ]
+          }
+        ],
+        "selection_provenance_status": "de_novo_with_structured_selection_evidence",
+        "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
-          "role": "",
-          "sequence_5_to_3": "",
-          "length_nt": 0,
-          "anneal_length_nt": 0,
-          "tm_c": 0.0,
-          "gc_fraction": 0.0,
-          "gc_percent": 0.0,
-          "anneal_hit_count": 0,
-          "binding_start_0based": 0,
-          "binding_end_0based_exclusive": 0,
-          "three_prime_base": "",
-          "three_prime_gc_clamp": false,
-          "longest_homopolymer_run_bp": 0,
-          "self_complementary_run_bp": 0
+          "primer_id": "primer_ea8470f66e4e6593",
+          "role": "forward",
+          "display_label": "PATZ1_E1|E2_F",
+          "aliases": [],
+          "origin": "de_novo",
+          "sequence_5_to_3": "GTAAGCTAGCATCGGGATCCG",
+          "length_nt": 21,
+          "anneal_length_nt": 21,
+          "tm_c": 65.23248337752503,
+          "gc_fraction": 0.5714285714285714,
+          "gc_percent": 57.14285714285714,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 25,
+          "binding_end_0based_exclusive": 46,
+          "exon_ordinals": [
+            1,
+            2
+          ],
+          "primer_spans_junction": true,
+          "three_prime_base": "G",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 3,
+          "self_complementary_run_bp": 6
         },
         "reverse": {
-          "role": "",
-          "sequence_5_to_3": "",
-          "length_nt": 0,
-          "anneal_length_nt": 0,
-          "tm_c": 0.0,
-          "gc_fraction": 0.0,
-          "gc_percent": 0.0,
-          "anneal_hit_count": 0,
-          "binding_start_0based": 0,
-          "binding_end_0based_exclusive": 0,
-          "three_prime_base": "",
-          "three_prime_gc_clamp": false,
-          "longest_homopolymer_run_bp": 0,
-          "self_complementary_run_bp": 0
+          "primer_id": "primer_847406919846d5a8",
+          "role": "reverse",
+          "display_label": "PATZ1_E2_R",
+          "aliases": [],
+          "origin": "de_novo",
+          "sequence_5_to_3": "GATCCGTTAGCGTACCTGATCG",
+          "length_nt": 22,
+          "anneal_length_nt": 22,
+          "tm_c": 65.23510679638059,
+          "gc_fraction": 0.5454545454545454,
+          "gc_percent": 54.54545454545454,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 44,
+          "binding_end_0based_exclusive": 66,
+          "exon_ordinals": [
+            2
+          ],
+          "primer_spans_junction": false,
+          "three_prime_base": "G",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 4
         },
-        "tm_delta_c": 0.0,
+        "tm_delta_c": 0.0026234188555633864,
         "predicted_amplicon_lengths_bp": [],
-        "predicted_products": [],
+        "predicted_products": [
+          {
+            "transcript_feature_id": 2,
+            "transcript_id": "PATZ1-201",
+            "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+            "detection_status": "no_product",
+            "detail_status": "exact_negative_prefilter",
+            "product_count": 0,
+            "amplicon_lengths_bp": []
+          },
+          {
+            "transcript_feature_id": 3,
+            "transcript_id": "PATZ1-202",
+            "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "detection_status": "no_product",
+            "detail_status": "no_product_in_size_range",
+            "product_count": 0,
+            "amplicon_lengths_bp": []
+          },
+          {
+            "transcript_feature_id": 4,
+            "transcript_id": "PATZ1-203",
+            "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+            "detection_status": "no_product",
+            "detail_status": "exact_negative_prefilter",
+            "product_count": 0,
+            "amplicon_lengths_bp": []
+          }
+        ],
         "oligo_qc": {
-          "status": "",
+          "status": "pass",
           "warnings": [],
           "rule_flags": {
-            "roi_covered": false,
-            "amplicon_size_in_range": false,
-            "tm_delta_in_range": false,
-            "forward_secondary_structure_ok": false,
-            "reverse_secondary_structure_ok": false,
-            "primer_pair_dimer_risk_low": false,
-            "forward_three_prime_gc_clamp": false,
-            "reverse_three_prime_gc_clamp": false
+            "roi_covered": true,
+            "amplicon_size_in_range": true,
+            "tm_delta_in_range": true,
+            "forward_secondary_structure_ok": true,
+            "reverse_secondary_structure_ok": true,
+            "primer_pair_dimer_risk_low": true,
+            "forward_three_prime_gc_clamp": true,
+            "reverse_three_prime_gc_clamp": true
           },
-          "primer_pair_complementary_run_bp": 0,
-          "primer_pair_3prime_complementary_run_bp": 0
+          "primer_pair_complementary_run_bp": 5,
+          "primer_pair_3prime_complementary_run_bp": 2
         },
-        "junction_spanning_status": "",
-        "junction_matches": [],
-        "genomic_carryover_status": "",
-        "genomic_carryover_rationale": "",
-        "whole_genome_specificity_status": "",
+        "amplicon_spans_junction": true,
+        "selected_because_of_junction_evidence": true,
+        "selection_evidence": [
+          {
+            "evidence_id": "JUC2200054820.hg.1",
+            "junction_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+            "influence": "probe_region_influenced",
+            "applies_to": [
+              "forward",
+              "pair"
+            ],
+            "requirement": "required",
+            "source_kind": "probe_region_evidence_interpretation",
+            "source_id": "patz1_isoform_evidence",
+            "platform": "Clariom_D_Human",
+            "feature_id": "JUC2200054820.hg.1",
+            "chromosome": "22",
+            "region_start_1based": 31325860,
+            "region_end_1based": 31325979,
+            "strand": "-",
+            "transcript_id": "PATZ1-202",
+            "from_exon_ordinal": 1,
+            "to_exon_ordinal": 2,
+            "contrast": "synthetic_case_vs_control",
+            "measured_statistic": "log2_fold_change",
+            "measured_value": -1.2,
+            "intensity_source": "synthetic_log2_fold_change",
+            "source_schema": "gentle.probe_region_evidence_interpretation.v2",
+            "source_path": "./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
+            "source_sha256": "sha256:11e2a7b4cbb83af5868902b1834ecbfe6c5e7ddb80e521c1060abf7a4d8418a9",
+            "notes": [
+              "Projected probe-region geometry influenced the assay target; GENtle did not reuse or match an array-probe sequence.",
+              "mapping_status=ambiguous_parent_feature",
+              "relationship=review_only_constraint",
+              "ambiguity=parent_mixes_transcript_features",
+              "ambiguity=multi_hit_not_assessed"
+            ]
+          }
+        ],
+        "junction_spanning_status": "requested_junction_spanning_primer",
+        "junction_matches": [
+          {
+            "junction_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+            "transcript_id": "PATZ1-202",
+            "transcript_local_position_0based": 40,
+            "forward_spans": true,
+            "reverse_spans": false,
+            "spanning_role": "forward"
+          }
+        ],
+        "genomic_carryover_status": "not_evaluated",
+        "genomic_carryover_rationale": "Transcript-panel selection does not run a genomic-template PCR carryover test; requested junction overlap is reported separately and must not be interpreted as a whole-genome specificity pass.",
+        "whole_genome_specificity_status": "not_run",
         "provenance": {
-          "source_report_schema": "",
-          "gentle_version": "",
-          "primer_backend_requested": "",
-          "primer_backend_used": ""
+          "source_report_schema": "gentle.transcript_assay_panel.v2",
+          "gentle_version": "0.1.0-internal.10",
+          "primer_backend_requested": "internal",
+          "primer_backend_used": "internal",
+          "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",
+          "exon_numbering_reference_transcript_id": "PATZ1-202",
+          "exon_numbering_basis": "design_transcript_5prime_to_3prime",
+          "exon_numbering_status": "reference_transcript_and_annotation_release_recorded"
         }
       }
     },
@@ -1329,73 +1707,202 @@
         "cdna_eq_6c73e2052bd828f3"
       ],
       "primer_pair_summary": {
-        "schema": "",
-        "assay_id": "",
-        "pair_rank": 0,
-        "design_transcript_id": "",
-        "design_equivalence_group_id": "",
-        "binding_coordinate_system": "",
+        "schema": "gentle.primer_pair_summary.v2",
+        "assay_id": "transcript_assay_e9e8cd8b25a1adb7",
+        "pair_rank": 2,
+        "design_transcript_id": "PATZ1-202",
+        "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+        "display_label": "PATZ1_E1|E2F-E2R",
+        "aliases": [],
+        "selection_role": null,
+        "satisfied_design_objective": "one_per_class",
+        "selection_reasons": [
+          {
+            "code": "design_objective",
+            "message": "Selected at panel rank 2 to satisfy the 'one_per_class' design objective.",
+            "related_ids": [
+              "one_per_class"
+            ]
+          },
+          {
+            "code": "predicted_product_coverage",
+            "message": "Produces one predicted product for 1 mature-cDNA equivalence class(es).",
+            "related_ids": [
+              "cdna_eq_6c73e2052bd828f3"
+            ]
+          },
+          {
+            "code": "junction_evidence",
+            "message": "Spans 1 external evidence-derived junction target(s); this records region influence, not exact probe-sequence reuse.",
+            "related_ids": [
+              "JUC2200054820.hg.1:PATZ1-202:1-2"
+            ]
+          }
+        ],
+        "selection_provenance_status": "de_novo_with_structured_selection_evidence",
+        "binding_coordinate_system": "design_transcript_cdna_0based_half_open",
         "forward": {
-          "role": "",
-          "sequence_5_to_3": "",
-          "length_nt": 0,
-          "anneal_length_nt": 0,
-          "tm_c": 0.0,
-          "gc_fraction": 0.0,
-          "gc_percent": 0.0,
-          "anneal_hit_count": 0,
-          "binding_start_0based": 0,
-          "binding_end_0based_exclusive": 0,
-          "three_prime_base": "",
-          "three_prime_gc_clamp": false,
-          "longest_homopolymer_run_bp": 0,
-          "self_complementary_run_bp": 0
+          "primer_id": "primer_04e5a099a75aafa8",
+          "role": "forward",
+          "display_label": "PATZ1_E1|E2_F",
+          "aliases": [],
+          "origin": "de_novo",
+          "sequence_5_to_3": "TAAGCTAGCATCGGGATCCG",
+          "length_nt": 20,
+          "anneal_length_nt": 20,
+          "tm_c": 64.26996322180901,
+          "gc_fraction": 0.55,
+          "gc_percent": 55.00000000000001,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 26,
+          "binding_end_0based_exclusive": 46,
+          "exon_ordinals": [
+            1,
+            2
+          ],
+          "primer_spans_junction": true,
+          "three_prime_base": "G",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 3,
+          "self_complementary_run_bp": 6
         },
         "reverse": {
-          "role": "",
-          "sequence_5_to_3": "",
-          "length_nt": 0,
-          "anneal_length_nt": 0,
-          "tm_c": 0.0,
-          "gc_fraction": 0.0,
-          "gc_percent": 0.0,
-          "anneal_hit_count": 0,
-          "binding_start_0based": 0,
-          "binding_end_0based_exclusive": 0,
-          "three_prime_base": "",
-          "three_prime_gc_clamp": false,
-          "longest_homopolymer_run_bp": 0,
-          "self_complementary_run_bp": 0
+          "primer_id": "primer_71e961cfe9c51870",
+          "role": "reverse",
+          "display_label": "PATZ1_E2_R",
+          "aliases": [],
+          "origin": "de_novo",
+          "sequence_5_to_3": "TACGATCCGTTAGCGTACCTG",
+          "length_nt": 21,
+          "anneal_length_nt": 21,
+          "tm_c": 64.2361839952258,
+          "gc_fraction": 0.5238095238095238,
+          "gc_percent": 52.38095238095239,
+          "anneal_hit_count": 1,
+          "binding_start_0based": 48,
+          "binding_end_0based_exclusive": 69,
+          "exon_ordinals": [
+            2
+          ],
+          "primer_spans_junction": false,
+          "three_prime_base": "G",
+          "three_prime_gc_clamp": true,
+          "longest_homopolymer_run_bp": 2,
+          "self_complementary_run_bp": 4
         },
-        "tm_delta_c": 0.0,
-        "predicted_amplicon_lengths_bp": [],
-        "predicted_products": [],
+        "tm_delta_c": 0.03377922658320642,
+        "predicted_amplicon_lengths_bp": [
+          43
+        ],
+        "predicted_products": [
+          {
+            "transcript_feature_id": 2,
+            "transcript_id": "PATZ1-201",
+            "equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
+            "detection_status": "no_product",
+            "detail_status": "exact_negative_prefilter",
+            "product_count": 0,
+            "amplicon_lengths_bp": []
+          },
+          {
+            "transcript_feature_id": 3,
+            "transcript_id": "PATZ1-202",
+            "equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
+            "detection_status": "single_product",
+            "detail_status": "single_product",
+            "product_count": 1,
+            "amplicon_lengths_bp": [
+              43
+            ]
+          },
+          {
+            "transcript_feature_id": 4,
+            "transcript_id": "PATZ1-203",
+            "equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
+            "detection_status": "no_product",
+            "detail_status": "exact_negative_prefilter",
+            "product_count": 0,
+            "amplicon_lengths_bp": []
+          }
+        ],
         "oligo_qc": {
-          "status": "",
+          "status": "pass",
           "warnings": [],
           "rule_flags": {
-            "roi_covered": false,
-            "amplicon_size_in_range": false,
-            "tm_delta_in_range": false,
-            "forward_secondary_structure_ok": false,
-            "reverse_secondary_structure_ok": false,
-            "primer_pair_dimer_risk_low": false,
-            "forward_three_prime_gc_clamp": false,
-            "reverse_three_prime_gc_clamp": false
+            "roi_covered": true,
+            "amplicon_size_in_range": true,
+            "tm_delta_in_range": true,
+            "forward_secondary_structure_ok": true,
+            "reverse_secondary_structure_ok": true,
+            "primer_pair_dimer_risk_low": true,
+            "forward_three_prime_gc_clamp": true,
+            "reverse_three_prime_gc_clamp": true
           },
-          "primer_pair_complementary_run_bp": 0,
-          "primer_pair_3prime_complementary_run_bp": 0
+          "primer_pair_complementary_run_bp": 5,
+          "primer_pair_3prime_complementary_run_bp": 2
         },
-        "junction_spanning_status": "",
-        "junction_matches": [],
-        "genomic_carryover_status": "",
-        "genomic_carryover_rationale": "",
-        "whole_genome_specificity_status": "",
+        "amplicon_spans_junction": true,
+        "selected_because_of_junction_evidence": true,
+        "selection_evidence": [
+          {
+            "evidence_id": "JUC2200054820.hg.1",
+            "junction_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+            "influence": "probe_region_influenced",
+            "applies_to": [
+              "forward",
+              "pair"
+            ],
+            "requirement": "required",
+            "source_kind": "probe_region_evidence_interpretation",
+            "source_id": "patz1_isoform_evidence",
+            "platform": "Clariom_D_Human",
+            "feature_id": "JUC2200054820.hg.1",
+            "chromosome": "22",
+            "region_start_1based": 31325860,
+            "region_end_1based": 31325979,
+            "strand": "-",
+            "transcript_id": "PATZ1-202",
+            "from_exon_ordinal": 1,
+            "to_exon_ordinal": 2,
+            "contrast": "synthetic_case_vs_control",
+            "measured_statistic": "log2_fold_change",
+            "measured_value": -1.2,
+            "intensity_source": "synthetic_log2_fold_change",
+            "source_schema": "gentle.probe_region_evidence_interpretation.v2",
+            "source_path": "./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
+            "source_sha256": "sha256:11e2a7b4cbb83af5868902b1834ecbfe6c5e7ddb80e521c1060abf7a4d8418a9",
+            "notes": [
+              "Projected probe-region geometry influenced the assay target; GENtle did not reuse or match an array-probe sequence.",
+              "mapping_status=ambiguous_parent_feature",
+              "relationship=review_only_constraint",
+              "ambiguity=parent_mixes_transcript_features",
+              "ambiguity=multi_hit_not_assessed"
+            ]
+          }
+        ],
+        "junction_spanning_status": "requested_junction_spanning_primer",
+        "junction_matches": [
+          {
+            "junction_id": "JUC2200054820.hg.1:PATZ1-202:1-2",
+            "transcript_id": "PATZ1-202",
+            "transcript_local_position_0based": 40,
+            "forward_spans": true,
+            "reverse_spans": false,
+            "spanning_role": "forward"
+          }
+        ],
+        "genomic_carryover_status": "not_evaluated",
+        "genomic_carryover_rationale": "Transcript-panel selection does not run a genomic-template PCR carryover test; requested junction overlap is reported separately and must not be interpreted as a whole-genome specificity pass.",
+        "whole_genome_specificity_status": "not_run",
         "provenance": {
-          "source_report_schema": "",
-          "gentle_version": "",
-          "primer_backend_requested": "",
-          "primer_backend_used": ""
+          "source_report_schema": "gentle.transcript_assay_panel.v2",
+          "gentle_version": "0.1.0-internal.10",
+          "primer_backend_requested": "internal",
+          "primer_backend_used": "internal",
+          "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",
+          "exon_numbering_reference_transcript_id": "PATZ1-202",
+          "exon_numbering_basis": "design_transcript_5prime_to_3prime",
+          "exon_numbering_status": "reference_transcript_and_annotation_release_recorded"
         }
       }
     }
@@ -1514,7 +2021,7 @@
         "source_id": "patz1_isoform_evidence",
         "schema": "gentle.probe_region_evidence_interpretation.v2",
         "path": "./test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
-        "sha256": "sha256:87e8fec5d471d009849aa6d46432f0f03f7de38e162478383b2d1f02bc604a9e"
+        "sha256": "sha256:11e2a7b4cbb83af5868902b1834ecbfe6c5e7ddb80e521c1060abf7a4d8418a9"
       }
     ],
     "primer_backend": "internal"
