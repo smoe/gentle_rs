@@ -468,6 +468,9 @@ an agent has selected a deterministic operation.
 - `primers list-reports`
 - `primers list-restriction-cloning-handoffs`
 - `primers list-transcript-assay-panels`
+- `primers primerbank search`
+- `primers primerbank show`
+- `primers primerbank test-cdna`
 - `primers preflight`
 - `primers prepare-restriction-cloning`
 - `primers restriction-cloning-vector-suggestions`

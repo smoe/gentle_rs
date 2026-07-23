@@ -11633,6 +11633,7 @@ Error: `{err}`"
                 exon_skip_materialization: None,
                 cdna_assay_test_report: None,
                 cdna_assay_product_materialization: None,
+                primerbank_search_report: None,
                 primer_specificity_handoff: None,
                 primer_specificity_report: None,
                 transcript_qpcr_panel: None,

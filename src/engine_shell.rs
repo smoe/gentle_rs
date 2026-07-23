@@ -126,6 +126,11 @@ use crate::{
     },
     gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
     mirna::{self, MirnaRegionClass, MirnaSeedClass, MirnaTargetScanRequest},
+    primerbank::{
+        PRIMERBANK_CDNA_TEST_REPORT_SCHEMA, PRIMERBANK_USAGE_POLICY_URL, PrimerBankCdnaTestReport,
+        PrimerBankQueryKind, PrimerBankSearchRequest, PrimerBankSpecies,
+        PrimerBankSpeciesMatchStatus,
+    },
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
     publication_resources, resource_status, resource_sync,
     runtime_status::{
@@ -2307,6 +2312,27 @@ pub enum ShellCommand {
         request_json: String,
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
+    },
+    PrimersPrimerBankSearch {
+        request: PrimerBankSearchRequest,
+        source_html_path: Option<String>,
+        path: Option<String>,
+    },
+    PrimersPrimerBankTestCdna {
+        seq_id: String,
+        feature_id: usize,
+        primerbank_id: String,
+        expected_species: PrimerBankSpecies,
+        source_html_path: Option<String>,
+        transcript_id: Option<String>,
+        min_amplicon_bp: Option<usize>,
+        max_amplicon_bp: Option<usize>,
+        max_mismatches: Option<usize>,
+        require_3prime_exact_bases: Option<usize>,
+        transcript_order: Option<CdnaAssayTranscriptOrder>,
+        transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
+        path: Option<String>,
+        svg_path: Option<String>,
     },
     PrimersSeedFromFeature {
         seq_id: String,
@@ -10752,6 +10778,33 @@ impl ShellCommand {
                     .map(str::trim)
                     .filter(|v| !v.is_empty())
                     .unwrap_or("default"),
+            ),
+            Self::PrimersPrimerBankSearch {
+                request,
+                source_html_path,
+                path,
+            } => format!(
+                "search PrimerBank for '{}' (by={}, species={}, source={}, path={})",
+                request.query,
+                request.query_kind.as_str(),
+                request.species.as_str(),
+                source_html_path.as_deref().unwrap_or("live"),
+                path.as_deref().unwrap_or("none"),
+            ),
+            Self::PrimersPrimerBankTestCdna {
+                seq_id,
+                feature_id,
+                primerbank_id,
+                expected_species,
+                source_html_path,
+                ..
+            } => format!(
+                "retrieve PrimerBank pair '{}' for species '{}' and test it on '{}' feature n-{} (source={})",
+                primerbank_id,
+                expected_species.as_str(),
+                seq_id,
+                feature_id + 1,
+                source_html_path.as_deref().unwrap_or("live"),
             ),
             Self::PrimersSeedFromFeature { seq_id, feature_id } => format!(
                 "seed primer/qPCR design ROI payloads from feature n-{} on '{}'",
@@ -21879,6 +21932,65 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("BuildExperimentalAssayHandoff")
         }),
+        optional_artifact_inspection_operation_descriptor(
+            "SearchPrimerBank",
+            "optional external gentle.primerbank_search.v1 JSON output path",
+            "Search individual PrimerBank records through the shared read-only engine operation using the official public HTML form or a saved response.",
+            vec![
+                json!({"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "typed PrimerBank query, query-kind, and species selector; results report matched, mismatch, unresolved, or not_requested"}),
+                json!({"name": "SOURCE_HTML_PATH", "required": false, "subject_kind": "other", "detail": "optional saved PrimerBank HTML response for offline/reproducible parsing"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "primers primerbank search",
+            "optional external gentle.primerbank_search.v1 JSON output path",
+            "Search individual PrimerBank records through the official public HTML form or parse a saved response without mirroring the database.",
+            vec![
+                json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "gene symbol, accession, NCBI id, PrimerBank id, or keyword"}),
+                json!({"name": "QUERY_KIND", "required": false, "subject_kind": "other", "detail": "PrimerBank search-field selector"}),
+                json!({"name": "SPECIES", "required": false, "subject_kind": "other", "detail": "human, mouse, or all"}),
+                json!({"name": "SOURCE_HTML_PATH", "required": false, "subject_kind": "other", "detail": "optional saved PrimerBank HTML response for offline/reproducible parsing"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "primers primerbank show",
+            "optional external gentle.primerbank_search.v1 JSON output path",
+            "Look up one PrimerBank id through the same typed, policy-aware search adapter.",
+            vec![
+                json!({"name": "PRIMERBANK_ID", "required": true, "subject_kind": "other", "detail": "PrimerBank pair identifier"}),
+                json!({"name": "EXPECTED_SPECIES", "required": false, "subject_kind": "other", "detail": "optional human, mouse, or all species selector and response cross-check"}),
+                json!({"name": "SOURCE_HTML_PATH", "required": false, "subject_kind": "other", "detail": "optional saved PrimerBank HTML response for offline/reproducible parsing"}),
+            ],
+        ),
+        json!({
+            "id": "primers primerbank test-cdna",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying transcript annotations"},
+                {"name": "FEATURE_ID", "required": true, "subject_kind": "other", "detail": "zero-based source transcript/gene feature index"},
+                {"name": "PRIMERBANK_ID", "required": true, "subject_kind": "other", "detail": "PrimerBank pair identifier"},
+                {"name": "EXPECTED_SPECIES", "required": true, "subject_kind": "other", "detail": "required human or mouse species cross-check against both the returned PrimerBank record and any organism annotation on the selected sequence"},
+                {"name": "SOURCE_HTML_PATH", "required": false, "subject_kind": "other", "detail": "optional saved PrimerBank HTML response"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external gentle.primerbank_cdna_test.v1 JSON path"},
+                {"name": "SVG_PATH", "required": false, "subject_kind": "other", "detail": "optional external transcript-map SVG path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {"effect_kind": "may_on_success", "description": "May write optional cDNA assay JSON/SVG artifacts; the project remains unchanged."}
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Retrieve one PrimerBank pair, cross-check catalog and annotated target species, and test it through GENtle's existing transcript-derived cDNA PCR engine without implying genomic specificity or experimental validation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers primerbank test-cdna")
+        }),
         cdna_assay_test_descriptor(
             "TestCdnaPcr",
             "Test supplied PCR primers against transcript-derived cDNA templates for one loaded splicing group.",
@@ -26452,11 +26564,16 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "primers design-qpcr" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
         ]),
-        "primers test-cdna-pcr" | "primers test-cdna-qpcr" | "TestCdnaPcr" | "TestCdnaQpcr" => {
-            Some(vec![
-                json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
-            ])
+        "SearchPrimerBank" | "primers primerbank search" | "primers primerbank show" => {
+            Some(vec![])
         }
+        "primers primerbank test-cdna"
+        | "primers test-cdna-pcr"
+        | "primers test-cdna-qpcr"
+        | "TestCdnaPcr"
+        | "TestCdnaQpcr" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
         "primers test-cdna-qpcr-fasta" | "TestCdnaQpcrFasta" => Some(vec![]),
         "primers list-qpcr-reports" => Some(vec![]),
         "primers show-qpcr-report" => Some(vec![
@@ -50402,6 +50519,26 @@ fn forward_shell_progress(
     Ok((guard)(progress))
 }
 
+fn primerbank_target_sequence_species(dna: &DNAsequence, feature_id: usize) -> Option<String> {
+    let selected = dna.features().get(feature_id);
+    selected
+        .into_iter()
+        .chain(
+            dna.features()
+                .iter()
+                .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("source")),
+        )
+        .chain(dna.features().iter())
+        .flat_map(|feature| {
+            feature
+                .qualifier_values("organism")
+                .chain(feature.qualifier_values("translation_context_organism"))
+        })
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 fn execute_primers_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -50558,6 +50695,167 @@ fn execute_primers_command(
     }
 
     match command {
+        ShellCommand::PrimersPrimerBankSearch {
+            request,
+            source_html_path,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::SearchPrimerBank {
+                    request: request.clone(),
+                    source_html_path: source_html_path.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.primerbank_search_report.ok_or_else(|| {
+                "PrimerBank search operation did not return its typed report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|error| format!("Could not serialize PrimerBank report: {error}"))?,
+            })
+        }
+        ShellCommand::PrimersPrimerBankTestCdna {
+            seq_id,
+            feature_id,
+            primerbank_id,
+            expected_species,
+            source_html_path,
+            transcript_id,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_mismatches,
+            require_3prime_exact_bases,
+            transcript_order,
+            transcript_map_coordinate_mode,
+            path,
+            svg_path,
+        } => {
+            let target_sequence_species = engine
+                .state()
+                .sequences
+                .get(seq_id)
+                .ok_or_else(|| format!("Sequence '{seq_id}' not found"))
+                .map(|dna| primerbank_target_sequence_species(dna, *feature_id))?;
+            let target_sequence_species_match_status =
+                expected_species.match_observed_label(target_sequence_species.as_deref());
+            if target_sequence_species_match_status == PrimerBankSpeciesMatchStatus::Mismatch {
+                return Err(format!(
+                    "PrimerBank target-sequence species cross-check failed for sequence '{}': expected '{}', annotated organism '{}', status='mismatch'",
+                    seq_id,
+                    expected_species.as_str(),
+                    target_sequence_species.as_deref().unwrap_or("unresolved")
+                ));
+            }
+            let lookup_request = PrimerBankSearchRequest {
+                query: primerbank_id.clone(),
+                query_kind: PrimerBankQueryKind::PrimerbankId,
+                species: *expected_species,
+            };
+            let lookup = engine
+                .apply(Operation::SearchPrimerBank {
+                    request: lookup_request,
+                    source_html_path: source_html_path.clone(),
+                    path: None,
+                })
+                .map_err(|error| error.to_string())?
+                .primerbank_search_report
+                .ok_or_else(|| {
+                    "PrimerBank search operation did not return its typed report".to_string()
+                })?;
+            let (gene, pair) = lookup.gene_and_pair_by_id(primerbank_id).ok_or_else(|| {
+                format!(
+                    "PrimerBank response did not contain requested pair '{}' (returned ids: {})",
+                    primerbank_id,
+                    lookup
+                        .primer_pairs()
+                        .map(|pair| pair.primerbank_id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })?;
+            if gene.species_match_status != crate::primerbank::PrimerBankSpeciesMatchStatus::Matched
+            {
+                return Err(format!(
+                    "PrimerBank pair '{}' species cross-check failed: expected '{}', observed '{}', status='{:?}'",
+                    primerbank_id,
+                    expected_species.as_str(),
+                    gene.species.as_deref().unwrap_or("unresolved"),
+                    gene.species_match_status
+                ));
+            }
+            let pair = pair.clone();
+            let primerbank_species = gene.species.clone();
+            let species_match_status = gene.species_match_status;
+            let mut warnings = Vec::new();
+            if target_sequence_species_match_status == PrimerBankSpeciesMatchStatus::Unresolved {
+                warnings.push(format!(
+                    "Target sequence '{}' has no recognized organism annotation; GENtle used the explicit expected species '{}' but could not independently confirm the target sequence species.",
+                    seq_id,
+                    expected_species.as_str()
+                ));
+            }
+            let cdna_run = execute_primers_command(
+                engine,
+                &ShellCommand::PrimersTestCdnaPcr {
+                    seq_id: seq_id.clone(),
+                    feature_id: *feature_id,
+                    forward_primer: pair.forward.sequence_5_to_3.clone(),
+                    reverse_primer: pair.reverse.sequence_5_to_3.clone(),
+                    transcript_id: transcript_id.clone(),
+                    min_amplicon_bp: *min_amplicon_bp,
+                    max_amplicon_bp: *max_amplicon_bp,
+                    max_mismatches: *max_mismatches,
+                    require_3prime_exact_bases: *require_3prime_exact_bases,
+                    transcript_order: *transcript_order,
+                    transcript_map_coordinate_mode: *transcript_map_coordinate_mode,
+                    path: None,
+                    svg_path: svg_path.clone(),
+                    materialize_products: false,
+                    product_output_prefix: None,
+                    product_gel_svg_path: None,
+                    product_gel_ladders: None,
+                },
+                options,
+            )?;
+            let report = PrimerBankCdnaTestReport {
+                schema: PRIMERBANK_CDNA_TEST_REPORT_SCHEMA.to_string(),
+                primerbank_query: lookup.query,
+                primerbank_source_url: lookup.source_url,
+                primerbank_usage_policy_url: PRIMERBANK_USAGE_POLICY_URL.to_string(),
+                primerbank_pair: pair,
+                expected_species: *expected_species,
+                primerbank_species,
+                species_match_status,
+                target_sequence_species,
+                target_sequence_species_match_status,
+                warnings,
+                interpretation: "PrimerBank catalog evidence was forwarded into GENtle's transcript-aware cDNA PCR test; this does not establish whole-genome specificity or experimental validation."
+                    .to_string(),
+                cdna_test: cdna_run.output,
+            };
+            if let Some(path) = path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let file = std::fs::File::create(path).map_err(|error| {
+                    format!("Could not create PrimerBank cDNA test report '{path}': {error}")
+                })?;
+                serde_json::to_writer_pretty(std::io::BufWriter::new(file), &report).map_err(
+                    |error| {
+                        format!("Could not serialize PrimerBank cDNA test report '{path}': {error}")
+                    },
+                )?;
+            }
+            Ok(ShellRunResult {
+                state_changed: cdna_run.state_changed,
+                output: serde_json::to_value(report).map_err(|error| {
+                    format!("Could not serialize PrimerBank cDNA test report: {error}")
+                })?,
+            })
+        }
         ShellCommand::PrimersSeedFromFeature { seq_id, feature_id } => {
             let dna = engine
                 .state()
@@ -57128,6 +57426,8 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersSeedFromSplicing { .. }
             | ShellCommand::PrimersSeedQpcrFromFeature { .. }
             | ShellCommand::PrimersSeedQpcrFromSplicing { .. }
+            | ShellCommand::PrimersPrimerBankSearch { .. }
+            | ShellCommand::PrimersPrimerBankTestCdna { .. }
             | ShellCommand::PrimersDesign { .. }
             | ShellCommand::PrimersDesignQpcr { .. }
             | ShellCommand::PrimersSpecificity { .. }
@@ -58848,6 +59148,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersSeedFromSplicing { .. }
         | ShellCommand::PrimersSeedQpcrFromFeature { .. }
         | ShellCommand::PrimersSeedQpcrFromSplicing { .. }
+        | ShellCommand::PrimersPrimerBankSearch { .. }
+        | ShellCommand::PrimersPrimerBankTestCdna { .. }
         | ShellCommand::PrimersDesign { .. }
         | ShellCommand::PrimersDesignQpcr { .. }
         | ShellCommand::PrimersSpecificity { .. }

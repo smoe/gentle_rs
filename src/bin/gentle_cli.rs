@@ -1895,6 +1895,22 @@ mod tests {
             }
         ));
 
+        let primerbank_search = parse_shell_tokens(&[
+            "primers".to_string(),
+            "primerbank".to_string(),
+            "search".to_string(),
+            "TP73".to_string(),
+            "--by".to_string(),
+            "gene-symbol".to_string(),
+            "--species".to_string(),
+            "human".to_string(),
+        ])
+        .expect("parse PrimerBank search");
+        assert!(matches!(
+            primerbank_search,
+            ShellCommand::PrimersPrimerBankSearch { .. }
+        ));
+
         let primers_test_cdna_pcr = parse_shell_tokens(&[
             "primers".to_string(),
             "test-cdna-pcr".to_string(),
@@ -2147,6 +2163,27 @@ mod tests {
         ];
         let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
         assert!(matches!(parsed, Some(ShellCommand::ServicesProvidersList)));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_primerbank_through_shared_parser() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "primers".to_string(),
+            "primerbank".to_string(),
+            "show".to_string(),
+            "100000001a1".to_string(),
+            "--html".to_string(),
+            "saved.html".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(
+            parsed,
+            Some(ShellCommand::PrimersPrimerBankSearch {
+                source_html_path: Some(path),
+                ..
+            }) if path == "saved.html"
+        ));
     }
 
     #[test]

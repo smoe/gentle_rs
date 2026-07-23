@@ -60,6 +60,7 @@ use crate::{
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
     pool_gel::{GelSampleInput, export_pool_gel_svg, export_pool_gel_svg_with_options},
+    primerbank::PrimerBankSearchRequest,
     protease::{Protease, normalize_protease_name_token},
     protocol_cartoon::ProtocolCartoonTemplateBindings,
     render_export::{export_circular_svg, export_linear_svg},
@@ -4076,6 +4077,13 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         transcript_targeting: Option<QpcrTranscriptTargeting>,
         report_id: Option<String>,
+    },
+    SearchPrimerBank {
+        request: PrimerBankSearchRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_html_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
     },
     TestCdnaPcr {
         seq_id: SeqId,
@@ -9079,6 +9087,7 @@ impl GentleEngine {
                 | Operation::ExportSequencingConfirmationSupportTsv { .. }
                 | Operation::SuggestSequencingPrimers { .. }
                 | Operation::AlignSequences { .. }
+                | Operation::SearchPrimerBank { .. }
                 | Operation::TestCdnaPcr { .. }
                 | Operation::TestCdnaQpcr { .. }
                 | Operation::BuildTranscriptQpcrPanel { .. }

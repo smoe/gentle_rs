@@ -14,6 +14,13 @@ Maintenance rule:
 
 ## 2026-07-22
 
+- Added a policy-aware PrimerBank adapter with live or saved-HTML search,
+  typed `gentle.primerbank_search.v1` records, exact pair lookup, JSON export,
+  and an explicit continuation into GENtle's transcript-aware cDNA PCR test
+  without inferring genomic specificity or experimental validation; typed
+  requested-versus-observed species checks are available to every adapter and
+  cDNA continuation now refuses mismatched or unresolved catalog records and
+  independently rejects a conflicting project-sequence organism annotation.
 - Added deterministic per-panel experimental assay handoffs with canonical
   oligo/pair identities, automatic pair-linked cDNA tests, exact product-
   sequence classes, versioned readiness gates, optional provenance-bound

@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 
 use crate::genomes::BlastDatabaseInspectionReport;
+use crate::primerbank::PrimerBankSearchReport;
 
 pub use gentle_protocol::{
     ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_SUMMARY_SCHEMA,
@@ -4443,6 +4444,8 @@ pub struct OpResult {
     pub cdna_assay_test_report: Option<Box<CdnaAssayTestReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cdna_assay_product_materialization: Option<Box<CdnaAssayProductMaterialization>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primerbank_search_report: Option<PrimerBankSearchReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_qpcr_panel: Option<Box<TranscriptQpcrPanelReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -3418,6 +3418,48 @@
       {
          "aliases": [],
          "engine_operations": [
+            "SearchPrimerBank"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers primerbank search",
+         "summary": "Search individual PrimerBank primer-pair records by gene, accession, NCBI id, PrimerBank id, or keyword and return a typed provenance report.",
+         "usage": "primers primerbank search QUERY [--by gene-symbol|gene-id|genbank|protein|primerbank-id|keyword] [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SearchPrimerBank"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers primerbank show",
+         "summary": "Retrieve one PrimerBank primer-pair record by its PrimerBank id through the typed search adapter.",
+         "usage": "primers primerbank show PRIMERBANK_ID [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "TestCdnaPcr"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers primerbank test-cdna",
+         "summary": "Retrieve one PrimerBank pair, cross-check its species against the request and annotated target sequence, and test it against GENtle transcript-derived cDNA models without treating catalog presence as validation.",
+         "usage": "primers primerbank test-cdna SEQ_ID FEATURE_ID PRIMERBANK_ID --species human|mouse [--html SAVED.html] [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "TestCdnaPcr"
          ],
          "interfaces": [

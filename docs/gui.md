@@ -41,6 +41,16 @@ this as a confidence map for the current GUI surface.
   still not a full chromatogram editor.
 - Primer3-backed workflows are available, but the internal backend is still
   the more predictable default while parity hardening continues.
+- PrimerBank records are reachable from the GUI Shell through
+  `primers primerbank search|show|test-cdna`. The same shared route can parse a
+  saved PrimerBank result, export `gentle.primerbank_search.v1`, and test one
+  selected pair against project transcript models. A dedicated catalog browser
+  is not required for parity; GENtle does not mirror the external database or
+  turn catalog presence into a validation claim. Search results expose the
+  requested/observed species cross-check, and cDNA testing requires a confirmed
+  human or mouse PrimerBank match. The same report separately checks any
+  `organism` annotation on the selected project sequence and refuses a known
+  mismatch; missing target-species metadata stays visibly unresolved.
 - Manual GUI walkthroughs in Help/Tutorial are useful for orientation, but the
   generated executable tutorials remain the stronger reproducibility baseline.
 

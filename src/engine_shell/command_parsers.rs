@@ -16,13 +16,12 @@ use crate::engine::{
     CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
     PrimerSpecificityCheckMode, PrimerSpecificityPolicy, QpcrTranscriptSpecificityEvidence,
-    QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
-    ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode,
-    TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
-    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis,
-    TranscriptAssayCoveragePolicy, TranscriptAssayJunctionPriority, TranscriptAssayKind,
-    TranscriptAssayPanelObjective, TranscriptAssayPracticalityPolicy,
-    TranscriptAssaySpecificityRequest, TranscriptAssayUseTier,
+    QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, ReadAcquisitionAnalysisFormat,
+    ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode, TfbsScoreTrackCorrelationMetric,
+    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
+    TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
+    TranscriptAssayJunctionPriority, TranscriptAssayKind, TranscriptAssayPanelObjective,
+    TranscriptAssayPracticalityPolicy, TranscriptAssaySpecificityRequest, TranscriptAssayUseTier,
 };
 
 fn parse_read_acquisition_analysis_format(
@@ -4764,14 +4763,274 @@ fn parse_primers_oligo_order_command(tokens: &[String]) -> Result<ShellCommand, 
     }
 }
 
+fn parse_primerbank_lookup_options(
+    tokens: &[String],
+    idx: &mut usize,
+    context: &str,
+    request: &mut PrimerBankSearchRequest,
+    source_html_path: &mut Option<String>,
+    path: &mut Option<String>,
+) -> Result<(), String> {
+    while *idx < tokens.len() {
+        match tokens[*idx].as_str() {
+            "--by" | "--query-kind" => {
+                let flag = tokens[*idx].clone();
+                let raw = parse_option_path(tokens, idx, &flag, context)?;
+                request.query_kind = PrimerBankQueryKind::parse(&raw).ok_or_else(|| {
+                    format!(
+                        "Unsupported PrimerBank query kind '{raw}', expected gene-symbol|gene-id|genbank|protein|primerbank-id|keyword"
+                    )
+                })?;
+            }
+            "--species" => {
+                let raw = parse_option_path(tokens, idx, "--species", context)?;
+                request.species = PrimerBankSpecies::parse(&raw).ok_or_else(|| {
+                    format!("Unsupported PrimerBank species '{raw}', expected human|mouse|all")
+                })?;
+            }
+            "--html" | "--source-html" => {
+                let flag = tokens[*idx].clone();
+                *source_html_path = Some(parse_option_path(tokens, idx, &flag, context)?);
+            }
+            "--path" | "--output" => {
+                let flag = tokens[*idx].clone();
+                *path = Some(parse_option_path(tokens, idx, &flag, context)?);
+            }
+            other => return Err(format!("Unknown option '{other}' for {context}")),
+        }
+    }
+    Ok(())
+}
+
+fn parse_primers_primerbank_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 3 {
+        return Err("primers primerbank requires search|show|test-cdna".to_string());
+    }
+    match tokens[2].as_str() {
+        "search" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers primerbank search requires QUERY [--by gene-symbol|gene-id|genbank|protein|primerbank-id|keyword] [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]"
+                        .to_string(),
+                );
+            }
+            let mut request = PrimerBankSearchRequest {
+                query: tokens[3].clone(),
+                ..PrimerBankSearchRequest::default()
+            };
+            let mut source_html_path = None;
+            let mut path = None;
+            let mut idx = 4usize;
+            parse_primerbank_lookup_options(
+                tokens,
+                &mut idx,
+                "primers primerbank search",
+                &mut request,
+                &mut source_html_path,
+                &mut path,
+            )?;
+            Ok(ShellCommand::PrimersPrimerBankSearch {
+                request,
+                source_html_path,
+                path,
+            })
+        }
+        "show" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers primerbank show requires PRIMERBANK_ID [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]"
+                        .to_string(),
+                );
+            }
+            let mut request = PrimerBankSearchRequest {
+                query: tokens[3].clone(),
+                query_kind: PrimerBankQueryKind::PrimerbankId,
+                species: PrimerBankSpecies::All,
+            };
+            let mut source_html_path = None;
+            let mut path = None;
+            let mut idx = 4usize;
+            parse_primerbank_lookup_options(
+                tokens,
+                &mut idx,
+                "primers primerbank show",
+                &mut request,
+                &mut source_html_path,
+                &mut path,
+            )?;
+            request.query_kind = PrimerBankQueryKind::PrimerbankId;
+            Ok(ShellCommand::PrimersPrimerBankSearch {
+                request,
+                source_html_path,
+                path,
+            })
+        }
+        "test-cdna" => {
+            if tokens.len() < 6 {
+                return Err(
+                    "primers primerbank test-cdna requires SEQ_ID FEATURE_ID PRIMERBANK_ID --species human|mouse [--html SAVED.html] [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--transcript-order MODE] [--map-coordinate-mode MODE] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[3].clone();
+            let feature_id = tokens[4].parse::<usize>().map_err(|error| {
+                format!(
+                    "Invalid feature id '{}' for primers primerbank test-cdna: {error}",
+                    tokens[4]
+                )
+            })?;
+            let primerbank_id = tokens[5].clone();
+            let mut expected_species = None;
+            let mut source_html_path = None;
+            let mut transcript_id = None;
+            let mut min_amplicon_bp = None;
+            let mut max_amplicon_bp = None;
+            let mut max_mismatches = None;
+            let mut require_3prime_exact_bases = None;
+            let mut transcript_order = None;
+            let mut transcript_map_coordinate_mode = None;
+            let mut path = None;
+            let mut svg_path = None;
+            let mut idx = 6usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--species" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--species",
+                            "primers primerbank test-cdna",
+                        )?;
+                        let species = PrimerBankSpecies::parse(&raw).ok_or_else(|| {
+                            format!("Unknown PrimerBank species '{raw}' (expected human or mouse)")
+                        })?;
+                        if species == PrimerBankSpecies::All {
+                            return Err(
+                                "primers primerbank test-cdna requires a concrete species: human or mouse"
+                                    .to_string(),
+                            );
+                        }
+                        expected_species = Some(species);
+                    }
+                    "--html" | "--source-html" => {
+                        let flag = tokens[idx].clone();
+                        source_html_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers primerbank test-cdna",
+                        )?);
+                    }
+                    "--transcript-id" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-id",
+                            "primers primerbank test-cdna",
+                        )?);
+                    }
+                    "--min-amplicon-bp"
+                    | "--max-amplicon-bp"
+                    | "--max-mismatches"
+                    | "--require-3prime-exact-bases"
+                    | "--require-3-prime-exact-bases" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers primerbank test-cdna",
+                        )?;
+                        let value = parse_usize_option_value(&raw, &flag)?;
+                        match flag.as_str() {
+                            "--min-amplicon-bp" => min_amplicon_bp = Some(value),
+                            "--max-amplicon-bp" => max_amplicon_bp = Some(value),
+                            "--max-mismatches" => max_mismatches = Some(value),
+                            _ => require_3prime_exact_bases = Some(value),
+                        }
+                    }
+                    "--transcript-order" | "--row-order" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers primerbank test-cdna",
+                        )?;
+                        transcript_order = Some(parse_cdna_assay_transcript_order(&raw)?);
+                    }
+                    "--map-coordinate-mode" | "--coordinate-mode" | "--map-mode" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers primerbank test-cdna",
+                        )?;
+                        transcript_map_coordinate_mode =
+                            Some(parse_cdna_assay_transcript_map_coordinate_mode(&raw)?);
+                    }
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers primerbank test-cdna",
+                        )?);
+                    }
+                    "--svg" | "--svg-path" | "--transcript-map-svg" => {
+                        let flag = tokens[idx].clone();
+                        svg_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers primerbank test-cdna",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers primerbank test-cdna"
+                        ));
+                    }
+                }
+            }
+            let expected_species = expected_species.ok_or_else(|| {
+                "primers primerbank test-cdna requires --species human|mouse so the catalog record is cross-checked before testing"
+                    .to_string()
+            })?;
+            Ok(ShellCommand::PrimersPrimerBankTestCdna {
+                seq_id,
+                feature_id,
+                primerbank_id,
+                expected_species,
+                source_html_path,
+                transcript_id,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                max_mismatches,
+                require_3prime_exact_bases,
+                transcript_order,
+                transcript_map_coordinate_mode,
+                path,
+                svg_path,
+            })
+        }
+        other => Err(format!(
+            "Unknown primers primerbank subcommand '{other}' (expected search|show|test-cdna)"
+        )),
+    }
+}
+
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, design-transcript-assay-panel, experimental-handoff, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
+            "primers requires a subcommand: primerbank, design, design-qpcr, design-transcript-assay-panel, experimental-handoff, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
                 .to_string(),
         );
     }
     match tokens[1].as_str() {
+        "primerbank" => parse_primers_primerbank_command(tokens),
         "oligo-order" => parse_primers_oligo_order_command(tokens),
         "design" => {
             if tokens.len() < 3 {
@@ -5532,38 +5791,24 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                     "--min-amplicon-bp" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--min-amplicon-bp", context)?;
-                        min_amplicon_bp = Some(parse_usize_option_value(
-                            &raw,
-                            "--min-amplicon-bp",
-                        )?);
+                        min_amplicon_bp =
+                            Some(parse_usize_option_value(&raw, "--min-amplicon-bp")?);
                     }
                     "--max-amplicon-bp" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--max-amplicon-bp", context)?;
-                        max_amplicon_bp = Some(parse_usize_option_value(
-                            &raw,
-                            "--max-amplicon-bp",
-                        )?);
+                        max_amplicon_bp =
+                            Some(parse_usize_option_value(&raw, "--max-amplicon-bp")?);
                     }
                     "--max-assays-per-class" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--max-assays-per-class",
-                            context,
-                        )?;
-                        max_assays_per_class = Some(parse_usize_option_value(
-                            &raw,
-                            "--max-assays-per-class",
-                        )?);
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--max-assays-per-class", context)?;
+                        max_assays_per_class =
+                            Some(parse_usize_option_value(&raw, "--max-assays-per-class")?);
                     }
                     "--max-mismatches" => {
-                        let raw =
-                            parse_option_path(tokens, &mut idx, "--max-mismatches", context)?;
-                        max_mismatches = Some(parse_usize_option_value(
-                            &raw,
-                            "--max-mismatches",
-                        )?);
+                        let raw = parse_option_path(tokens, &mut idx, "--max-mismatches", context)?;
+                        max_mismatches = Some(parse_usize_option_value(&raw, "--max-mismatches")?);
                     }
                     "--require-3prime-exact-bases" => {
                         let raw = parse_option_path(
@@ -5644,12 +5889,8 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                         )?);
                     }
                     "--specificity-check" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--specificity-check",
-                            context,
-                        )?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--specificity-check", context)?;
                         specificity_check = Some(parse_primer_specificity_check_mode(&raw)?);
                     }
                     "--specificity-target-genome" => {
@@ -5689,12 +5930,8 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                     }
                     "--primer3-exec" | "--primer3-executable" => {
                         let flag = tokens[idx].clone();
-                        primer3_executable = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            &flag,
-                            context,
-                        )?);
+                        primer3_executable =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
                     }
                     other => {
                         return Err(format!("Unknown option '{other}' for {context}"));
@@ -5730,15 +5967,9 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             } else {
                 None
             };
-            let practicality = match (
-                preferred_min_amplicon_bp,
-                preferred_max_amplicon_bp,
-            ) {
+            let practicality = match (preferred_min_amplicon_bp, preferred_max_amplicon_bp) {
                 (Some(min_bp), Some(max_bp)) => Some(TranscriptAssayPracticalityPolicy {
-                    preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
-                        min_bp,
-                        max_bp,
-                    }),
+                    preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange { min_bp, max_bp }),
                     allowed_amplicon_bp: None,
                 }),
                 (None, None) => None,
@@ -6184,9 +6415,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
         }
         "show-transcript-assay-panel" => {
             if tokens.len() != 3 {
-                return Err(
-                    "primers show-transcript-assay-panel requires REPORT_ID".to_string(),
-                );
+                return Err("primers show-transcript-assay-panel requires REPORT_ID".to_string());
             }
             Ok(ShellCommand::PrimersShowTranscriptAssayPanel {
                 report_id: tokens[2].clone(),

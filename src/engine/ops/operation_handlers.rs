@@ -23222,6 +23222,7 @@ impl GentleEngine {
             exon_skip_materialization: None,
             cdna_assay_test_report: None,
             cdna_assay_product_materialization: None,
+            primerbank_search_report: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
             experimental_assay_handoff: None,
@@ -29110,6 +29111,54 @@ impl GentleEngine {
                         transcript_targeting,
                         report_id,
                     )?;
+                }
+                Operation::SearchPrimerBank {
+                    request,
+                    source_html_path,
+                    path,
+                } => {
+                    let report = crate::primerbank::search_primerbank(
+                        &request,
+                        source_html_path.as_deref().map(Path::new),
+                    )
+                    .map_err(|message| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message,
+                        cause_chain: vec![],
+                    })?;
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let file = File::create(path).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create PrimerBank search report '{path}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                        serde_json::to_writer_pretty(BufWriter::new(file), &report).map_err(
+                            |error| EngineError {
+                                code: ErrorCode::Io,
+                                message: format!(
+                                    "Could not serialize PrimerBank search report '{path}': {error}"
+                                ),
+                                cause_chain: vec![],
+                            },
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote PrimerBank search report JSON to '{path}'"
+                        ));
+                    }
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "PrimerBank query '{}' returned {} gene record(s) and {} primer pair(s)",
+                        report.query.query,
+                        report.genes.len(),
+                        report.primer_pairs().count()
+                    ));
+                    result.primerbank_search_report = Some(report);
                 }
                 Operation::TestCdnaPcr {
                     seq_id,

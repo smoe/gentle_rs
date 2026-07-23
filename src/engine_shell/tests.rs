@@ -39,6 +39,9 @@ use crate::ensembl_gene::{
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
 };
+use crate::primerbank::{
+    PRIMERBANK_SEARCH_REPORT_SCHEMA, PrimerBankCdnaTestReport, PrimerBankSearchReport,
+};
 use crate::runtime_status::{RuntimeStatusFrameKind, runtime_status_registry};
 use crate::test_support::{
     decision_trace_fixture_state, decision_trace_with_construct_reasoning_fixture_state,
@@ -6366,6 +6369,67 @@ fn parse_primers_oligo_order_commands() {
             && duplicate_action.as_deref() == Some("keep-separate")
             && note.as_deref() == Some("checked")
     ));
+}
+
+#[test]
+fn parse_primers_primerbank_commands() {
+    let search = parse_shell_line(
+        "primers primerbank search TP73 --by gene-symbol --species human --html saved.html --path primerbank.json",
+    )
+    .expect("parse PrimerBank search");
+    assert!(matches!(
+        search,
+        ShellCommand::PrimersPrimerBankSearch {
+            request,
+            source_html_path,
+            path,
+        } if request.query == "TP73"
+            && request.query_kind == PrimerBankQueryKind::NcbiGeneSymbol
+            && request.species == PrimerBankSpecies::Human
+            && source_html_path.as_deref() == Some("saved.html")
+            && path.as_deref() == Some("primerbank.json")
+    ));
+
+    let show =
+        parse_shell_line("primers primerbank show 100000001a1 --species mouse --html saved.html")
+            .expect("parse PrimerBank show");
+    assert!(matches!(
+        show,
+        ShellCommand::PrimersPrimerBankSearch { request, .. }
+            if request.query == "100000001a1"
+                && request.query_kind == PrimerBankQueryKind::PrimerbankId
+                && request.species == PrimerBankSpecies::Mouse
+    ));
+
+    let test = parse_shell_line(
+        "primers primerbank test-cdna toy_seq 0 100000001a1 --species human --html saved.html --transcript-id TOY1 --min-amplicon-bp 40 --max-amplicon-bp 200 --require-3prime-exact-bases 8 --svg map.svg",
+    )
+    .expect("parse PrimerBank cDNA test");
+    assert!(matches!(
+        test,
+        ShellCommand::PrimersPrimerBankTestCdna {
+            seq_id,
+            feature_id: 0,
+            primerbank_id,
+            expected_species: PrimerBankSpecies::Human,
+            source_html_path,
+            transcript_id,
+            min_amplicon_bp: Some(40),
+            max_amplicon_bp: Some(200),
+            require_3prime_exact_bases: Some(8),
+            svg_path,
+            ..
+        } if seq_id == "toy_seq"
+            && primerbank_id == "100000001a1"
+            && source_html_path.as_deref() == Some("saved.html")
+            && transcript_id.as_deref() == Some("TOY1")
+            && svg_path.as_deref() == Some("map.svg")
+    ));
+
+    let missing_species =
+        parse_shell_line("primers primerbank test-cdna toy_seq 0 100000001a1 --html saved.html")
+            .expect_err("PrimerBank cDNA testing requires an explicit species");
+    assert!(missing_species.contains("requires --species human|mouse"));
 }
 
 #[test]
@@ -17748,6 +17812,209 @@ fn execute_primers_seed_qpcr_from_splicing_round_trips_into_design_qpcr() {
             .as_array()
             .is_some_and(|rows| !rows.is_empty())
     );
+}
+
+#[test]
+fn execute_primers_primerbank_fixture_lookup_and_cdna_test() {
+    let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("test_files/fixtures/primerbank/synthetic_primerbank_search_result.html");
+    let td = tempdir().expect("tempdir");
+    let report_path = td.path().join("primerbank_search.json");
+    let mut engine = GentleEngine::new();
+
+    let direct = engine
+        .apply(Operation::SearchPrimerBank {
+            request: PrimerBankSearchRequest {
+                query: "TOY1".to_string(),
+                query_kind: PrimerBankQueryKind::NcbiGeneSymbol,
+                species: PrimerBankSpecies::Human,
+            },
+            source_html_path: Some(fixture_path.to_string_lossy().to_string()),
+            path: None,
+        })
+        .expect("search saved PrimerBank fixture through engine operation");
+    assert!(direct.created_seq_ids.is_empty());
+    assert!(direct.changed_seq_ids.is_empty());
+    assert_eq!(
+        direct
+            .primerbank_search_report
+            .as_ref()
+            .map(|report| report.primer_pair_count),
+        Some(2)
+    );
+
+    let lookup = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersPrimerBankSearch {
+            request: PrimerBankSearchRequest {
+                query: "TOY1".to_string(),
+                query_kind: PrimerBankQueryKind::NcbiGeneSymbol,
+                species: PrimerBankSpecies::Human,
+            },
+            source_html_path: Some(fixture_path.to_string_lossy().to_string()),
+            path: Some(report_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("search saved PrimerBank fixture");
+    assert!(!lookup.state_changed);
+    assert_eq!(
+        lookup.output["schema"].as_str(),
+        Some(PRIMERBANK_SEARCH_REPORT_SCHEMA)
+    );
+    assert_eq!(lookup.output["primer_pair_count"].as_u64(), Some(2));
+    assert_eq!(
+        lookup.output["species_check"]["status"].as_str(),
+        Some("matched")
+    );
+    assert_eq!(
+        lookup.output["usage_policy_url"].as_str(),
+        Some(PRIMERBANK_USAGE_POLICY_URL)
+    );
+    let exported: PrimerBankSearchReport =
+        serde_json::from_slice(&fs::read(report_path).expect("PrimerBank report export"))
+            .expect("parse exported PrimerBank report");
+    assert_eq!(exported.primer_pair_count, 2);
+    assert_eq!(
+        exported.genes[0].primer_pairs[0].validation_status,
+        "not_assessed_by_gentle"
+    );
+
+    let forward = "ACGTACGTACGTACGTACGTA";
+    let reverse = "TGCATGCATGCATGCATGCAT";
+    let reverse_binding = GentleEngine::reverse_complement(reverse);
+    let transcript_sequence = format!("{forward}{}{reverse_binding}", "A".repeat(70));
+    let transcript_len = transcript_sequence.len();
+    let mut dna = DNAsequence::from_sequence(&transcript_sequence).expect("synthetic transcript");
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::simple_range(0, transcript_len as i64),
+        qualifiers: vec![
+            ("gene".into(), Some("TOY1".to_string())),
+            ("transcript_id".into(), Some("TOY1_TX1".to_string())),
+            ("organism".into(), Some("Homo sapiens".to_string())),
+        ],
+    });
+    let mut mouse_dna = dna.clone();
+    mouse_dna.features_mut()[0]
+        .qualifiers
+        .retain(|(key, _)| key != "organism");
+    mouse_dna.features_mut()[0]
+        .qualifiers
+        .push(("organism".into(), Some("Mus musculus".to_string())));
+    let mut state = ProjectState::default();
+    state.sequences.insert("toy_primerbank".to_string(), dna);
+    state
+        .sequences
+        .insert("toy_primerbank_mouse".to_string(), mouse_dna);
+    let mut engine = GentleEngine::from_state(state);
+    let cdna_report_path = td.path().join("primerbank_cdna_test.json");
+    let tested = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersPrimerBankTestCdna {
+            seq_id: "toy_primerbank".to_string(),
+            feature_id: 0,
+            primerbank_id: "100000001a1".to_string(),
+            expected_species: PrimerBankSpecies::Human,
+            source_html_path: Some(fixture_path.to_string_lossy().to_string()),
+            transcript_id: Some("TOY1_TX1".to_string()),
+            min_amplicon_bp: Some(40),
+            max_amplicon_bp: Some(200),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            transcript_order: None,
+            transcript_map_coordinate_mode: None,
+            path: Some(cdna_report_path.to_string_lossy().to_string()),
+            svg_path: None,
+        },
+    )
+    .expect("test PrimerBank pair on transcript cDNA");
+    assert!(!tested.state_changed);
+    assert_eq!(
+        tested.output["schema"].as_str(),
+        Some(PRIMERBANK_CDNA_TEST_REPORT_SCHEMA)
+    );
+    assert_eq!(
+        tested.output["primerbank_pair"]["primerbank_id"].as_str(),
+        Some("100000001a1")
+    );
+    assert_eq!(tested.output["expected_species"].as_str(), Some("human"));
+    assert_eq!(tested.output["primerbank_species"].as_str(), Some("Human"));
+    assert_eq!(
+        tested.output["species_match_status"].as_str(),
+        Some("matched")
+    );
+    assert_eq!(
+        tested.output["target_sequence_species"].as_str(),
+        Some("Homo sapiens")
+    );
+    assert_eq!(
+        tested.output["target_sequence_species_match_status"].as_str(),
+        Some("matched")
+    );
+    assert_eq!(
+        tested.output["cdna_test"]["report"]["overall_status"].as_str(),
+        Some("single_product")
+    );
+    assert!(
+        tested.output["interpretation"]
+            .as_str()
+            .is_some_and(|value| value.contains("does not establish whole-genome specificity"))
+    );
+    let exported_cdna: PrimerBankCdnaTestReport =
+        serde_json::from_slice(&fs::read(cdna_report_path).expect("PrimerBank cDNA export"))
+            .expect("parse PrimerBank cDNA export");
+    assert_eq!(exported_cdna.schema, PRIMERBANK_CDNA_TEST_REPORT_SCHEMA);
+    assert_eq!(exported_cdna.primerbank_pair.primerbank_id, "100000001a1");
+    assert_eq!(
+        exported_cdna.species_match_status,
+        crate::primerbank::PrimerBankSpeciesMatchStatus::Matched
+    );
+
+    let mismatch = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersPrimerBankTestCdna {
+            seq_id: "toy_primerbank".to_string(),
+            feature_id: 0,
+            primerbank_id: "100000001a1".to_string(),
+            expected_species: PrimerBankSpecies::Mouse,
+            source_html_path: Some(fixture_path.to_string_lossy().to_string()),
+            transcript_id: Some("TOY1_TX1".to_string()),
+            min_amplicon_bp: Some(40),
+            max_amplicon_bp: Some(200),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            transcript_order: None,
+            transcript_map_coordinate_mode: None,
+            path: None,
+            svg_path: None,
+        },
+    )
+    .expect_err("reject target-sequence species mismatch before catalog lookup");
+    assert!(mismatch.contains("target-sequence species cross-check failed"));
+    assert!(mismatch.contains("expected 'mouse'"));
+
+    let catalog_mismatch = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersPrimerBankTestCdna {
+            seq_id: "toy_primerbank_mouse".to_string(),
+            feature_id: 0,
+            primerbank_id: "100000001a1".to_string(),
+            expected_species: PrimerBankSpecies::Mouse,
+            source_html_path: Some(fixture_path.to_string_lossy().to_string()),
+            transcript_id: Some("TOY1_TX1".to_string()),
+            min_amplicon_bp: Some(40),
+            max_amplicon_bp: Some(200),
+            max_mismatches: Some(0),
+            require_3prime_exact_bases: Some(8),
+            transcript_order: None,
+            transcript_map_coordinate_mode: None,
+            path: None,
+            svg_path: None,
+        },
+    )
+    .expect_err("reject catalog species mismatch after target-sequence confirmation");
+    assert!(catalog_mismatch.contains("pair '100000001a1' species cross-check failed"));
+    assert!(catalog_mismatch.contains("expected 'mouse'"));
 }
 
 #[test]

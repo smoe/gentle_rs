@@ -8103,11 +8103,61 @@ Simple PCR constraint handoff:
     gel SVG path, `gel_band_rows[]`, `gel_summary_lines[]`, output prefix,
     `idempotent_reuse`, and warnings.
 
+PrimerBank lookup and cDNA continuation (implemented):
+
+- `SearchPrimerBank { request, source_html_path?, path? }` is the shared,
+  read-only engine operation used by CLI and Shell adapters. It returns the
+  typed report in `OpResult.primerbank_search_report`; `source_html_path`
+  selects reproducible offline parsing instead of a live request and `path`
+  optionally exports the same full report.
+- `gentle.primerbank_search.v1` is a non-mutating typed projection of one
+  PrimerBank HTML search response. `query` records the submitted query,
+  query-kind, and species selector; `source_url`/`source_kind` distinguish a
+  live lookup from parsing saved HTML; `usage_policy_url`, citations, and
+  warnings retain external-source context.
+- `species_check` records the requested species, observed labels, matched,
+  mismatched, and unresolved row counts, plus one typed status: `matched`,
+  `mismatch`, `unresolved`, or `not_requested`. Every `genes[]` row carries
+  its own `species_match_status`. GENtle evaluates the returned record because
+  PrimerBank's exact-ID lookup does not enforce its submitted species filter.
+- `genes[]` retains NCBI Gene, GenBank, protein, species, coding-DNA length,
+  and description fields where the response provides them. Every
+  `primer_pairs[]` row retains the PrimerBank id, amplicon length, detail URL,
+  and separate forward/reverse records with sequence, length, Tm, and raw plus
+  normalized coordinates.
+- PrimerBank primer locations are recorded as 1-based inclusive positions on
+  PrimerBank's coding-sequence record. They are not silently projected onto a
+  GENtle genomic sequence or contemporary transcript annotation. Reverse
+  rows retain their descending raw start/end and also expose an ascending
+  interval for display.
+- `validation_status = not_assessed_by_gentle` is intentional. Catalog
+  presence, a compatible cDNA product, and experimental validation remain
+  separate statements. GENtle performs individual lookups only; it does not
+  bundle or mirror the PrimerBank database.
+- `gentle.primerbank_cdna_test.v1` joins one exact catalog pair and its source
+  provenance to the unchanged output from GENtle's existing transcript-aware
+  `TestCdnaPcr` route. It tests compatibility with current project transcript
+  models but does not establish whole-genome specificity; use the existing
+  specificity handoff/import lifecycle for that independent check. `--path`
+  writes this complete wrapper; `--svg` writes the nested cDNA transcript map.
+  It also records `expected_species`, `primerbank_species`, and
+  `species_match_status`. When the selected sequence or transcript carries an
+  `organism` annotation, `target_sequence_species` and
+  `target_sequence_species_match_status` independently compare that project
+  object with the explicit expected species. A known target-sequence mismatch
+  or PrimerBank-record mismatch stops before PCR testing; a missing target
+  organism remains visible as `unresolved` with a warning because the required
+  explicit species can guide the run but cannot independently validate the
+  sequence annotation. The PrimerBank record itself must always be `matched`.
+
 Primer-design shell command family (implemented):
 
 - Shared-shell family:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers primerbank search QUERY [--by gene-symbol|gene-id|genbank|protein|primerbank-id|keyword] [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]`
+  - `primers primerbank show PRIMERBANK_ID [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]`
+  - `primers primerbank test-cdna SEQ_ID FEATURE_ID PRIMERBANK_ID --species human|mouse [--html SAVED.html] [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--path OUTPUT.json] [--svg OUTPUT.svg]`
   - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`

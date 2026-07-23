@@ -5194,6 +5194,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "DesignQpcrAssays",
     "DesignTranscriptAssayPanel",
     "BuildExperimentalAssayHandoff",
+    "SearchPrimerBank",
     "TestCdnaPcr",
     "TestCdnaQpcr",
     "TestCdnaQpcrFasta",
@@ -6706,6 +6707,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation == "AssessPrimerPairSpecificity"
         || operation == "PreparePrimerPairSpecificityHandoff"
         || operation == "ImportPrimerPairSpecificityHandoff"
+        || operation == "SearchPrimerBank"
         || operation == "TestCdnaPcr"
         || operation == "TestCdnaQpcr"
         || operation == "TestCdnaQpcrFasta"

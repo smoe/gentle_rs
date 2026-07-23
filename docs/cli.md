@@ -3011,6 +3011,27 @@ Shared shell command:
     - `primers specificity-import HANDOFF.json [--path OUTPUT.json]`
     - `primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers transcript-assay-specificity-finalize HANDOFF.json EXECUTION_MANIFEST_JSON_OR_@FILE [--path ACCEPTANCE.json]`
+    - PrimerBank lookup and transcript checks:
+      - `primers primerbank search QUERY [--by gene-symbol|gene-id|genbank|protein|primerbank-id|keyword] [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]`
+      - `primers primerbank show PRIMERBANK_ID [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]`
+      - `primers primerbank test-cdna SEQ_ID FEATURE_ID PRIMERBANK_ID --species human|mouse [--html SAVED.html] [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--path OUTPUT.json] [--svg OUTPUT.svg]`
+      - live lookup submits one query to PrimerBank's public HTML search form;
+        `--html` parses a saved result instead for offline/reproducible work.
+        GENtle preserves PrimerBank coding-sequence coordinates and source links
+        but does not reinterpret catalog presence as current-transcript
+        compatibility, genomic specificity, or experimental validation.
+        `test-cdna` is the explicit compatibility continuation through the
+        existing transcript-aware PCR route; whole-genome specificity remains
+        a separate `primers specificity-plan`/`specificity-import` step.
+        Search/show JSON includes `species_check` and per-gene match status.
+        `test-cdna` requires a concrete expected species and refuses mismatch
+        or unresolved PrimerBank records before running the transcript assay.
+        It also compares an available `organism` annotation on the selected
+        project sequence/transcript with that expected species. A known target
+        mismatch is refused; absent target-species metadata is reported as
+        `unresolved` with a warning rather than silently presented as verified.
+        `--path` preserves the complete catalog-plus-cDNA report, while
+        `--svg` writes its transcript map.
     - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`

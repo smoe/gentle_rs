@@ -102,6 +102,8 @@ pub mod ncbi_genbank_xml;
 pub mod open_reading_frame;
 /// Virtual pool gel model and rendering primitives.
 pub mod pool_gel;
+/// PrimerBank search, provenance records, and HTML parsing helpers.
+pub mod primerbank;
 /// Protease digest definitions and helpers.
 pub mod protease;
 /// Protein molecular-weight gel model and rendering primitives.

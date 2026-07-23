@@ -128,11 +128,12 @@ egui_commonmark = { version = "0.22.0", default-features = false, features = ["p
 image = { workspace = true, features = ["jpeg", "png"] }
 resvg = "0.47.0"
 rfd = { workspace = true }
-reqwest = { workspace = true, features = ["blocking", "json"] }
+reqwest = { workspace = true, features = ["blocking", "form", "json"] }
 tempfile = { workspace = true }
 flate2 = "1.0"
 memchr = "2"
 regex = "^1"
+scraper = "0.27.0"
 pulldown-cmark = "0.13.4"
 ring = "0.17.14"
 puffin = { version = "0.20.0", optional = true }
