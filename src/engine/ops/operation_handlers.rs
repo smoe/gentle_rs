@@ -13393,7 +13393,7 @@ impl GentleEngine {
             .collect())
     }
 
-    fn materialize_cdna_assay_products(
+    pub(super) fn materialize_cdna_assay_products(
         &mut self,
         result: &mut OpResult,
         report: &CdnaAssayTestReport,
@@ -23223,6 +23223,7 @@ impl GentleEngine {
             cdna_assay_test_report: None,
             cdna_assay_product_materialization: None,
             primerbank_search_report: None,
+            external_primer_pair_import_report: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
             experimental_assay_handoff: None,
@@ -29204,6 +29205,29 @@ impl GentleEngine {
                         product_gel_svg_path.as_deref(),
                         product_gel_ladders.as_deref(),
                     )?;
+                }
+                Operation::ImportExternalPrimerPairs { request, path } => {
+                    parent_seq_ids.push(request.seq_id.clone());
+                    let report = self.import_external_primer_pairs(&mut result, request)?;
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        self.export_external_primer_pair_import_report(&report.report_id, path)?;
+                        result.messages.push(format!(
+                            "Wrote external primer-pair import report to '{path}'."
+                        ));
+                    }
+                    result.messages.push(format!(
+                        "Imported {} source row(s) as {} unique primer pair(s) and evaluated them against cDNA feature n-{} on '{}'.",
+                        report.source_record_count,
+                        report.unique_pair_count,
+                        report.source_feature_id.saturating_add(1),
+                        report.seq_id
+                    ));
+                    result.warnings.extend(report.warnings.iter().cloned());
+                    result.external_primer_pair_import_report = Some(Box::new(report));
                 }
                 Operation::TestCdnaQpcr {
                     seq_id,

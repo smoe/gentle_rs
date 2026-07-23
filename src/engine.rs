@@ -997,6 +997,8 @@ mod microarray_tracks;
 mod motif_statistics;
 #[path = "engine/ops/operation_handlers.rs"]
 mod operation_handlers;
+#[path = "engine/ops/external_primer_pairs.rs"]
+mod external_primer_pairs;
 #[path = "engine/analysis/orthologs.rs"]
 mod orthologs;
 #[path = "engine/io/probe_region_evidence_svg.rs"]
@@ -2541,6 +2543,7 @@ struct PrimerDesignStore {
     reports: HashMap<String, PrimerDesignReport>,
     qpcr_reports: HashMap<String, QpcrDesignReport>,
     transcript_assay_panels: HashMap<String, TranscriptAssayPanelReport>,
+    external_primer_pair_imports: HashMap<String, ExternalPrimerPairImportReport>,
     restriction_cloning_handoffs: HashMap<String, RestrictionCloningPcrHandoffReport>,
     oligo_order_forms: HashMap<String, OligoOrderForm>,
 }
@@ -4116,6 +4119,11 @@ pub enum Operation {
         product_gel_svg_path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         product_gel_ladders: Option<Vec<String>>,
+    },
+    ImportExternalPrimerPairs {
+        request: ExternalPrimerPairImportRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
     },
     TestCdnaQpcr {
         seq_id: SeqId,
@@ -11524,6 +11532,7 @@ impl GentleEngine {
         if store.reports.is_empty()
             && store.qpcr_reports.is_empty()
             && store.transcript_assay_panels.is_empty()
+            && store.external_primer_pair_imports.is_empty()
             && store.restriction_cloning_handoffs.is_empty()
             && store.oligo_order_forms.is_empty()
         {

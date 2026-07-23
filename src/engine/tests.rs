@@ -25,7 +25,7 @@ use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_
 use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -8019,6 +8019,403 @@ fn cdna_assay_nonspecific_test_engine() -> GentleEngine {
     let mut state = ProjectState::default();
     state.sequences.insert("cdna_nonspecific".to_string(), dna);
     GentleEngine::from_state(state)
+}
+
+fn external_primer_pair_input(
+    source_kind: ExternalPrimerPairSourceKind,
+    provider: &str,
+    catalogue_id: &str,
+    claimed_accession: &str,
+    forward: &str,
+    reverse: &str,
+) -> ExternalPrimerPairInput {
+    ExternalPrimerPairInput {
+        source_kind,
+        provider: provider.to_string(),
+        catalogue_id: catalogue_id.to_string(),
+        source_url: format!("https://example.invalid/{catalogue_id}"),
+        claimed_accession: claimed_accession.to_string(),
+        aliases: vec![format!("{catalogue_id}_alias")],
+        forward_sequence_5_to_3: forward.to_string(),
+        reverse_sequence_5_to_3: reverse.to_string(),
+        claimed_target: "provider-claimed TEST1 target".to_string(),
+        validation_claims: vec!["provider-validated".to_string()],
+        annotations: BTreeMap::from([(
+            "provider_note".to_string(),
+            format!("annotation for {catalogue_id}"),
+        )]),
+    }
+}
+
+fn external_primer_pair_import_request(
+    batch: ExternalPrimerPairBatch,
+    input_provenance: ExternalPrimerPairBatchProvenance,
+) -> ExternalPrimerPairImportRequest {
+    ExternalPrimerPairImportRequest {
+        report_id: "external_pair_test".to_string(),
+        seq_id: "cdna_src".to_string(),
+        source_feature_id: 0,
+        transcript_id: None,
+        min_amplicon_bp: Some(10),
+        max_amplicon_bp: Some(50),
+        max_mismatches: None,
+        require_3prime_exact_bases: Some(4),
+        transcript_order: CdnaAssayTranscriptOrder::TranscriptId,
+        transcript_map_coordinate_mode: CdnaAssayTranscriptMapCoordinateMode::Cdna,
+        specificity: None,
+        artifact_output_dir: None,
+        materialize_products: false,
+        product_gel_ladders: vec![],
+        batch,
+        input_provenance,
+    }
+}
+
+#[test]
+fn external_primer_pair_import_preserves_mixed_claims_and_computes_shared_metrics() {
+    let mut engine = cdna_assay_test_engine();
+    let td = tempdir().expect("tempdir");
+    let artifact_dir = td.path().join("artifacts");
+    let output_path = td.path().join("external_pairs.result.json");
+    let batch = ExternalPrimerPairBatch {
+        schema: EXTERNAL_PRIMER_PAIR_BATCH_SCHEMA.to_string(),
+        batch_id: "mixed_sources".to_string(),
+        pairs: vec![
+            external_primer_pair_input(
+                ExternalPrimerPairSourceKind::CommercialCatalogue,
+                "Example Oligos",
+                "EO-001",
+                "NM_VENDOR_CLAIM",
+                "aaa 1ccc",
+                "ccc 2aaa",
+            ),
+            external_primer_pair_input(
+                ExternalPrimerPairSourceKind::Literature,
+                "Example Publication",
+                "PMID-TEST",
+                "ENST_LITERATURE_CLAIM",
+                "AAACCC",
+                "CCCAAA",
+            ),
+        ],
+    };
+    let mut request = external_primer_pair_import_request(
+        batch,
+        ExternalPrimerPairBatchProvenance {
+            input_format: "json".to_string(),
+            source_path: "mixed_sources.json".to_string(),
+            source_sha256: "sha256:test-mixed-sources".to_string(),
+        },
+    );
+    request.artifact_output_dir = Some(artifact_dir.to_string_lossy().to_string());
+    request.materialize_products = true;
+
+    let result = engine
+        .apply(Operation::ImportExternalPrimerPairs {
+            request,
+            path: Some(output_path.to_string_lossy().to_string()),
+        })
+        .expect("external primer import");
+    let report = result
+        .external_primer_pair_import_report
+        .as_deref()
+        .expect("external primer report");
+    assert_eq!(report.schema, EXTERNAL_PRIMER_PAIR_IMPORT_REPORT_SCHEMA);
+    assert_eq!(report.source_record_count, 2);
+    assert_eq!(report.unique_pair_count, 1);
+    assert_eq!(report.duplicate_source_record_count, 1);
+    assert_eq!(report.pairs.len(), 1);
+
+    let pair = &report.pairs[0];
+    assert_eq!(pair.duplicate_source_record_count, 1);
+    assert_eq!(pair.sources.len(), 2);
+    assert_ne!(
+        pair.sources[0].source_record_id,
+        pair.sources[1].source_record_id,
+        "source records with different accessions/claims need distinct provenance identities"
+    );
+    assert_eq!(
+        pair.sources
+            .iter()
+            .map(|source| source.claimed_accession.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["ENST_LITERATURE_CLAIM", "NM_VENDOR_CLAIM"])
+    );
+    assert!(pair.sources.iter().all(|source| {
+        source.claim_evidence_status
+            == "provenance_only_not_used_for_coverage_or_specificity"
+    }));
+    assert_eq!(
+        pair.origins,
+        vec![
+            PrimerPairSummaryOrigin::ImportedCommercial,
+            PrimerPairSummaryOrigin::ImportedExternal,
+        ]
+    );
+    assert!(!pair.vendor_claims_used_as_biological_evidence);
+    assert_eq!(pair.specificity.status, "not_run");
+    assert!(pair.specificity.report.is_none());
+
+    assert_eq!(pair.forward.sequence_5_to_3, "AAACCC");
+    assert_eq!(pair.reverse.sequence_5_to_3, "CCCAAA");
+    assert_eq!(pair.forward.length_nt, pair.forward.sequence_5_to_3.len());
+    assert_eq!(pair.reverse.length_nt, pair.reverse.sequence_5_to_3.len());
+    assert_eq!(
+        pair.forward.tm_c,
+        GentleEngine::estimate_primer_tm_c(pair.forward.sequence_5_to_3.as_bytes())
+    );
+    assert_eq!(
+        pair.reverse.tm_c,
+        GentleEngine::estimate_primer_tm_c(pair.reverse.sequence_5_to_3.as_bytes())
+    );
+    assert!(
+        (pair.tm_delta_c - (pair.forward.tm_c - pair.reverse.tm_c).abs()).abs()
+            < f64::EPSILON
+    );
+    assert!((pair.forward.gc_percent - pair.forward.gc_fraction * 100.0).abs() < f64::EPSILON);
+    assert!((pair.reverse.gc_percent - pair.reverse.gc_fraction * 100.0).abs() < f64::EPSILON);
+    assert!(!pair.forward.tm_method.is_empty());
+    assert!(pair.forward.tm_assumptions.contains("fixed assumptions"));
+    assert_eq!(pair.oligo_qc.oligo_count, 2);
+    assert_eq!(pair.oligo_qc.interaction_count, 1);
+
+    assert_eq!(pair.cdna_assay.product_count, 1);
+    assert!(pair.cdna_assay.transcript_map.is_some());
+    assert!(!pair.cdna_assay.genomic_carryover_risk.summary.is_empty());
+    let materialization = pair
+        .product_materialization
+        .as_ref()
+        .expect("materialized product summary");
+    assert_eq!(materialization.product_count, 1);
+    assert!(
+        pair.artifacts
+            .cdna_report_json_path
+            .as_deref()
+            .is_some_and(|path| Path::new(path).is_file())
+    );
+    assert!(
+        pair.artifacts
+            .transcript_map_svg_path
+            .as_deref()
+            .is_some_and(|path| Path::new(path).is_file())
+    );
+    assert!(
+        pair.artifacts
+            .product_gel_svg_path
+            .as_deref()
+            .is_some_and(|path| Path::new(path).is_file())
+    );
+
+    let persisted = engine
+        .get_external_primer_pair_import_report(&report.report_id)
+        .expect("persisted external primer report");
+    assert_eq!(persisted.pairs[0].pair_id, pair.pair_id);
+    let exported: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("exported external primer report"),
+    )
+    .expect("parse exported report");
+    assert_eq!(
+        exported,
+        serde_json::to_value(report).expect("serialize operation report")
+    );
+}
+
+#[test]
+fn external_primer_pair_json_and_tsv_imports_share_sequence_derived_ids() {
+    let td = tempdir().expect("tempdir");
+    let json_path = td.path().join("pairs.json");
+    let tsv_path = td.path().join("pairs.tsv");
+    let pair = external_primer_pair_input(
+        ExternalPrimerPairSourceKind::CommercialCatalogue,
+        "Example Oligos",
+        "EO-002",
+        "NM_CLAIM",
+        "AAACCC",
+        "CCCAAA",
+    );
+    let batch = ExternalPrimerPairBatch {
+        schema: EXTERNAL_PRIMER_PAIR_BATCH_SCHEMA.to_string(),
+        batch_id: "json_batch".to_string(),
+        pairs: vec![pair.clone()],
+    };
+    fs::write(
+        &json_path,
+        serde_json::to_vec_pretty(&batch).expect("serialize JSON batch"),
+    )
+    .expect("write JSON batch");
+    fs::write(
+        &tsv_path,
+        concat!(
+            "source_kind\tprovider\tcatalogue_id\tsource_url\tclaimed_accession\taliases\tforward_sequence_5_to_3\treverse_sequence_5_to_3\tclaimed_target\tvalidation_claims\tannotations_json\n",
+            "commercial_catalogue\tExample Oligos\tEO-002\thttps://example.invalid/EO-002\tNM_CLAIM\tEO-002_alias\taa a1ccc\tccc2aaa\tprovider-claimed TEST1 target\tprovider-validated\t{\"provider_note\":\"annotation for EO-002\"}\n"
+        ),
+    )
+    .expect("write TSV batch");
+
+    let (json_batch, json_provenance) = GentleEngine::load_external_primer_pair_batch(
+        json_path.to_str().expect("JSON path"),
+        Some("json"),
+    )
+    .expect("load JSON batch");
+    let json_round_trip: ExternalPrimerPairBatch = serde_json::from_value(
+        serde_json::to_value(&json_batch).expect("serialize loaded JSON batch"),
+    )
+    .expect("round-trip loaded JSON batch");
+    assert_eq!(json_round_trip, json_batch);
+    let (tsv_batch, tsv_provenance) = GentleEngine::load_external_primer_pair_batch(
+        tsv_path.to_str().expect("TSV path"),
+        Some("auto"),
+    )
+    .expect("load TSV batch");
+
+    let mut json_engine = cdna_assay_test_engine();
+    let mut json_request = external_primer_pair_import_request(json_batch, json_provenance);
+    json_request.report_id.clear();
+    let json_result = json_engine
+        .apply(Operation::ImportExternalPrimerPairs {
+            request: json_request,
+            path: None,
+        })
+        .expect("evaluate JSON pair");
+    let mut tsv_engine = cdna_assay_test_engine();
+    let mut tsv_request = external_primer_pair_import_request(tsv_batch, tsv_provenance);
+    tsv_request.report_id.clear();
+    let tsv_result = tsv_engine
+        .apply(Operation::ImportExternalPrimerPairs {
+            request: tsv_request,
+            path: None,
+        })
+        .expect("evaluate TSV pair");
+    let json_pair = &json_result
+        .external_primer_pair_import_report
+        .as_ref()
+        .expect("JSON report")
+        .pairs[0];
+    let tsv_pair = &tsv_result
+        .external_primer_pair_import_report
+        .as_ref()
+        .expect("TSV report")
+        .pairs[0];
+    assert_eq!(json_pair.pair_id, tsv_pair.pair_id);
+    assert_eq!(json_pair.forward.primer_id, tsv_pair.forward.primer_id);
+    assert_eq!(json_pair.reverse.primer_id, tsv_pair.reverse.primer_id);
+    assert_eq!(json_pair.forward.tm_c, tsv_pair.forward.tm_c);
+    assert_eq!(json_pair.reverse.tm_c, tsv_pair.reverse.tm_c);
+    assert_eq!(
+        json_result
+            .external_primer_pair_import_report
+            .as_ref()
+            .expect("JSON report")
+            .report_id,
+        tsv_result
+            .external_primer_pair_import_report
+            .as_ref()
+            .expect("TSV report")
+            .report_id,
+        "equivalent JSON/TSV inputs should share an automatic report identity"
+    );
+    assert_eq!(
+        json_result
+            .external_primer_pair_import_report
+            .as_ref()
+            .expect("JSON report")
+            .normalized_batch_sha256,
+        tsv_result
+            .external_primer_pair_import_report
+            .as_ref()
+            .expect("TSV report")
+            .normalized_batch_sha256,
+        "equivalent JSON/TSV source semantics should share a normalized digest"
+    );
+
+    let mut baseline_request = external_primer_pair_import_request(
+        batch.clone(),
+        ExternalPrimerPairBatchProvenance::default(),
+    );
+    baseline_request.report_id.clear();
+    let mut constrained_request = baseline_request.clone();
+    constrained_request.max_amplicon_bp = Some(11);
+    let baseline = cdna_assay_test_engine()
+        .apply(Operation::ImportExternalPrimerPairs {
+            request: baseline_request,
+            path: None,
+        })
+        .expect("evaluate auto-id baseline");
+    let constrained = cdna_assay_test_engine()
+        .apply(Operation::ImportExternalPrimerPairs {
+            request: constrained_request,
+            path: None,
+        })
+        .expect("evaluate auto-id constrained import");
+    assert_ne!(
+        baseline
+            .external_primer_pair_import_report
+            .as_ref()
+            .expect("baseline report")
+            .report_id,
+        constrained
+            .external_primer_pair_import_report
+            .as_ref()
+            .expect("constrained report")
+            .report_id,
+        "automatic report ids must include biological evaluation settings"
+    );
+}
+
+#[test]
+fn external_primer_pair_import_rejects_malformed_sequence_and_provenance() {
+    let mut invalid_sequence_engine = cdna_assay_test_engine();
+    let invalid_sequence = ExternalPrimerPairBatch {
+        schema: EXTERNAL_PRIMER_PAIR_BATCH_SCHEMA.to_string(),
+        batch_id: "invalid_sequence".to_string(),
+        pairs: vec![external_primer_pair_input(
+            ExternalPrimerPairSourceKind::External,
+            "Example Source",
+            "EXT-1",
+            "TX_CLAIM",
+            "AAA ZCC",
+            "CCCAAA",
+        )],
+    };
+    let error = invalid_sequence_engine
+        .apply(Operation::ImportExternalPrimerPairs {
+            request: external_primer_pair_import_request(
+                invalid_sequence,
+                ExternalPrimerPairBatchProvenance::default(),
+            ),
+            path: None,
+        })
+        .expect_err("reject invalid IUPAC sequence");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("row 1 forward"));
+    assert!(error.message.contains("invalid IUPAC character 'Z'"));
+    assert!(error.message.contains("input character"));
+
+    let mut missing_catalogue_engine = cdna_assay_test_engine();
+    let missing_catalogue = ExternalPrimerPairBatch {
+        schema: EXTERNAL_PRIMER_PAIR_BATCH_SCHEMA.to_string(),
+        batch_id: "missing_catalogue".to_string(),
+        pairs: vec![external_primer_pair_input(
+            ExternalPrimerPairSourceKind::CommercialCatalogue,
+            "Example Oligos",
+            "",
+            "TX_CLAIM",
+            "AAACCC",
+            "CCCAAA",
+        )],
+    };
+    let error = missing_catalogue_engine
+        .apply(Operation::ImportExternalPrimerPairs {
+            request: external_primer_pair_import_request(
+                missing_catalogue,
+                ExternalPrimerPairBatchProvenance::default(),
+            ),
+            path: None,
+        })
+        .expect_err("reject incomplete commercial provenance");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("commercial_catalogue"));
+    assert!(error.message.contains("catalogue_id"));
 }
 
 fn primer_specificity_test_hit(

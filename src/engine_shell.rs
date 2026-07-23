@@ -49,6 +49,7 @@ use crate::{
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine, EvidenceClass,
         ExonSkipReturnKind, ExonSkipSelectionCriterion, ExperimentalAssayReadinessPolicy,
         FactAtom, FactBasis, FactExpression,
+        ExternalPrimerPairImportRequest, ExternalPrimerPairSpecificityRequest,
         FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode, FeatureExpertTarget,
         FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
         GeneIsoformEvidenceRequest, GeneLocusEvidenceDisplayRequest,
@@ -2421,6 +2422,27 @@ pub enum ShellCommand {
     PrimersTranscriptAssaySpecificityFinalize {
         handoff_path: String,
         execution_manifest_json: String,
+        path: Option<String>,
+    },
+    PrimersImportExternalPairs {
+        input_path: String,
+        input_format: Option<String>,
+        seq_id: String,
+        feature_id: usize,
+        report_id: Option<String>,
+        transcript_id: Option<String>,
+        min_amplicon_bp: Option<usize>,
+        max_amplicon_bp: Option<usize>,
+        max_mismatches: Option<usize>,
+        require_3prime_exact_bases: Option<usize>,
+        transcript_order: Option<CdnaAssayTranscriptOrder>,
+        transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
+        specificity_target_genome_id: Option<String>,
+        specificity_catalog_path: Option<String>,
+        specificity_cache_dir: Option<String>,
+        artifact_output_dir: Option<String>,
+        materialize_products: bool,
+        product_gel_ladders: Vec<String>,
         path: Option<String>,
     },
     PrimersTestCdnaPcr {
@@ -11122,6 +11144,21 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("none"),
             ),
+            Self::PrimersImportExternalPairs {
+                input_path,
+                seq_id,
+                feature_id,
+                specificity_target_genome_id,
+                materialize_products,
+                ..
+            } => format!(
+                "import external primer pairs from '{}' and evaluate them on '{}' feature n-{} (specificity_genome={}, materialize_products={})",
+                input_path,
+                seq_id,
+                feature_id.saturating_add(1),
+                specificity_target_genome_id.as_deref().unwrap_or("not_run"),
+                materialize_products,
+            ),
             Self::PrimersTestCdnaPcr {
                 seq_id,
                 feature_id,
@@ -15593,6 +15630,12 @@ fn push_introspection_report_facts(graph: &mut ProjectFactGraph, engine: &Gentle
     );
     graph.facts.extend(
         engine
+            .list_external_primer_pair_import_report_ids()
+            .into_iter()
+            .map(|report_id| introspection_report_fact(report_id, "external_primer_pair_import")),
+    );
+    graph.facts.extend(
+        engine
             .list_restriction_cloning_pcr_handoffs()
             .into_iter()
             .map(|row| introspection_report_fact(row.report_id, "restriction_cloning_pcr_handoff")),
@@ -16297,6 +16340,48 @@ fn cdna_assay_test_descriptor(
             }
         ],
         "precondition_expr": precondition_expr,
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn external_primer_pair_import_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "INPUT_PATH", "required": true, "subject_kind": "other", "detail": "external primer-pair JSON or TSV batch path"},
+            {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying transcript annotation"},
+            {"name": "FEATURE_ID", "required": true, "subject_kind": "other", "detail": "source transcript/gene feature index"},
+            {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit external-primer import report id; required for deterministic effect verification"},
+            {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external JSON report path"},
+            {"name": "ARTIFACT_OUTPUT_DIR", "required": false, "subject_kind": "other", "detail": "optional directory for per-pair cDNA map/report and gel artifacts"},
+            {"name": "MATERIALIZE_PRODUCTS", "required": false, "subject_kind": "other", "detail": "whether detected cDNA products are materialized and gel-rendered"}
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "report.exists",
+                "subject": {"arg": "REPORT_ID"},
+                "report_kind": "external_primer_pair_import",
+                "equals": "external_primer_pair_import",
+                "effect_kind": "must_on_success"
+            },
+            {
+                "effect_kind": "may_on_success",
+                "description": "May write an aggregate JSON export and per-pair cDNA report, transcript-map, and product-gel artifacts; may materialize detected cDNA products when requested."
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]
+        },
         "description": description,
         "annotation_status": "fact_annotated",
         "registry": registry_metadata_for_introspection(id)
@@ -21991,6 +22076,14 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers primerbank test-cdna")
         }),
+        external_primer_pair_import_descriptor(
+            "ImportExternalPrimerPairs",
+            "Import a provenance-bearing external primer-pair batch, canonicalize sequence-derived identities, and evaluate every unique pair through GENtle's shared cDNA, QC, carryover, specificity, map, and optional product-gel paths.",
+        ),
+        external_primer_pair_import_descriptor(
+            "primers import-external-pairs",
+            "Import a JSON or TSV external primer-pair batch and evaluate every unique pair without treating source targeting or validation claims as biological evidence.",
+        ),
         cdna_assay_test_descriptor(
             "TestCdnaPcr",
             "Test supplied PCR primers against transcript-derived cDNA templates for one loaded splicing group.",
@@ -26587,6 +26680,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         ]),
         "primers experimental-handoff" | "BuildExperimentalAssayHandoff" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}),
+        ]),
+        "primers import-external-pairs" | "ImportExternalPrimerPairs" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
         "primers list-transcript-assay-panels" => Some(vec![]),
         "primers show-transcript-assay-panel" | "primers export-transcript-assay-panel" => {
@@ -51442,6 +51538,102 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersImportExternalPairs {
+            input_path,
+            input_format,
+            seq_id,
+            feature_id,
+            report_id,
+            transcript_id,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_mismatches,
+            require_3prime_exact_bases,
+            transcript_order,
+            transcript_map_coordinate_mode,
+            specificity_target_genome_id,
+            specificity_catalog_path,
+            specificity_cache_dir,
+            artifact_output_dir,
+            materialize_products,
+            product_gel_ladders,
+            path,
+        } => {
+            let (batch, input_provenance) =
+                GentleEngine::load_external_primer_pair_batch(input_path, input_format.as_deref())
+                    .map_err(|error| error.to_string())?;
+            let specificity = specificity_target_genome_id.as_ref().map(|genome_id| {
+                let mut policy = PrimerSpecificityPolicy::default();
+                policy.specificity_check = PrimerSpecificityCheckMode::ReportOnly;
+                policy.specificity_target_genome_id = Some(genome_id.clone());
+                ExternalPrimerPairSpecificityRequest {
+                    target_genome_id: genome_id.clone(),
+                    policy,
+                    catalog_path: specificity_catalog_path.clone(),
+                    cache_dir: specificity_cache_dir.clone(),
+                }
+            });
+            let op_result = engine
+                .apply(Operation::ImportExternalPrimerPairs {
+                    request: ExternalPrimerPairImportRequest {
+                        report_id: report_id.clone().unwrap_or_default(),
+                        seq_id: seq_id.clone(),
+                        source_feature_id: *feature_id,
+                        transcript_id: transcript_id.clone(),
+                        min_amplicon_bp: *min_amplicon_bp,
+                        max_amplicon_bp: *max_amplicon_bp,
+                        max_mismatches: *max_mismatches,
+                        require_3prime_exact_bases: *require_3prime_exact_bases,
+                        transcript_order: transcript_order.unwrap_or_default(),
+                        transcript_map_coordinate_mode: transcript_map_coordinate_mode
+                            .unwrap_or_default(),
+                        specificity,
+                        artifact_output_dir: artifact_output_dir.clone(),
+                        materialize_products: *materialize_products,
+                        product_gel_ladders: product_gel_ladders.clone(),
+                        batch,
+                        input_provenance,
+                    },
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .external_primer_pair_import_report
+                .as_ref()
+                .map(|report| (**report).clone())
+                .ok_or_else(|| {
+                    "External primer-pair import operation returned no report".to_string()
+                })?;
+            let preferred_artifacts = report
+                .pairs
+                .iter()
+                .flat_map(|pair| {
+                    [
+                        pair.artifacts.product_gel_svg_path.as_ref().map(
+                            |path| json!({"path": path, "kind": "external primer product gel"}),
+                        ),
+                        pair.artifacts.transcript_map_svg_path.as_ref().map(
+                            |path| json!({"path": path, "kind": "external primer transcript map"}),
+                        ),
+                        pair.artifacts.cdna_report_json_path.as_ref().map(
+                            |path| json!({"path": path, "kind": "external primer cDNA report"}),
+                        ),
+                    ]
+                    .into_iter()
+                    .flatten()
+                })
+                .collect::<Vec<_>>();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.external_primer_pair_import_command.v1",
+                    "report": report,
+                    "path": path,
+                    "preferred_artifacts": preferred_artifacts,
+                    "result": op_result,
+                }),
+            })
+        }
         ShellCommand::PrimersTestCdnaPcr {
             seq_id,
             feature_id,
@@ -57435,6 +57627,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersSpecificityImport { .. }
             | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
             | ShellCommand::PrimersTranscriptAssaySpecificityFinalize { .. }
+            | ShellCommand::PrimersImportExternalPairs { .. }
             | ShellCommand::PrimersTestCdnaPcr { .. }
             | ShellCommand::PrimersTestCdnaQpcr { .. }
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
@@ -59157,6 +59350,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersSpecificityImport { .. }
         | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
         | ShellCommand::PrimersTranscriptAssaySpecificityFinalize { .. }
+        | ShellCommand::PrimersImportExternalPairs { .. }
         | ShellCommand::PrimersTestCdnaPcr { .. }
         | ShellCommand::PrimersTestCdnaQpcr { .. }
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }

@@ -3032,6 +3032,20 @@ Shared shell command:
         `unresolved` with a warning rather than silently presented as verified.
         `--path` preserves the complete catalog-plus-cDNA report, while
         `--svg` writes its transcript map.
+    - `primers import-external-pairs INPUT.json|tsv SEQ_ID FEATURE_ID [--format auto|json|tsv] [--report-id ID] [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--specificity-target-genome GENOME_ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--artifact-output-dir DIR] [--materialize-products] [--product-gel-ladder NAME]... [--path OUTPUT.json]`
+      - imports exact 5-prime-to-3-prime forward/reverse sequences with provider,
+        catalogue/source/accession provenance and aliases. Commercial rows require
+        both provider and catalogue id
+      - whitespace and copied position digits are removed, RNA `U` is normalized
+        to DNA `T`, and the remaining sequence must be valid IUPAC
+      - duplicate oriented sequence pairs share stable sequence-derived oligo/pair
+        ids while every distinct source row and claim remains attached
+      - GENtle recomputes cDNA products, transcript maps, genomic carryover, oligo
+        QC, Tm, GC, and pair delta-Tm. Source targeting/validation claims never
+        establish transcript coverage or specificity
+      - whole-genome specificity is `not_run` unless a prepared target genome is
+        requested. `--materialize-products` makes the import state-changing and,
+        with `--artifact-output-dir`, writes the corresponding product gel
     - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
