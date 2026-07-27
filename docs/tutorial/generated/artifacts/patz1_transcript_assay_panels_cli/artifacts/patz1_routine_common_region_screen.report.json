@@ -151,6 +151,7 @@
       "primer_pair_summary": {
         "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_41bc3460097e42d4",
+        "pair_id": "pair_sha256_8fcb8e896eec3c423058874ed5c8f25c6320648dc8ada9036b8c160f236e4ecc",
         "pair_rank": 1,
         "design_transcript_id": "PATZ1-202",
         "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",

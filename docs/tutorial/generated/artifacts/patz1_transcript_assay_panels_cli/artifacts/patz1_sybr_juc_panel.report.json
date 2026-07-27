@@ -158,6 +158,7 @@
       "primer_pair_summary": {
         "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_4bfca8feaf7962e9",
+        "pair_id": "pair_sha256_0e968bdffecb2485149ad7c9afb408eaeff5798541f153c2ff14b2cbfaf5ef9f",
         "pair_rank": 1,
         "design_transcript_id": "PATZ1-202",
         "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
@@ -497,6 +498,7 @@
       "primer_pair_summary": {
         "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_b3964ace800b1035",
+        "pair_id": "pair_sha256_019bfa8e50330d7ea5009bc40eb394e834b3e5d66fd3699a8eb0168129ad6d6c",
         "pair_rank": 2,
         "design_transcript_id": "PATZ1-203",
         "design_equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
@@ -792,6 +794,7 @@
       "primer_pair_summary": {
         "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_928afef051d25781",
+        "pair_id": "pair_sha256_9dbba499663cc570a4aa0348cb0e1ee4be51b4758e5036ab36310d4485ad263c",
         "pair_rank": 3,
         "design_transcript_id": "PATZ1-201",
         "design_equivalence_group_id": "cdna_eq_da6a2f3dbe1d4447",
@@ -1433,6 +1436,7 @@
       "primer_pair_summary": {
         "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_4bfca8feaf7962e9",
+        "pair_id": "pair_sha256_0e968bdffecb2485149ad7c9afb408eaeff5798541f153c2ff14b2cbfaf5ef9f",
         "pair_rank": 1,
         "design_transcript_id": "PATZ1-202",
         "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",

@@ -154,6 +154,7 @@
       "primer_pair_summary": {
         "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_27362fde0b95ba9d",
+        "pair_id": "pair_sha256_db06cfc535279d4f03f65048aa3d9cad30a9ffc3acd1553f89804415f0fe8804",
         "pair_rank": 1,
         "design_transcript_id": "PATZ1-203",
         "design_equivalence_group_id": "cdna_eq_bf8de0081e092d6f",
@@ -458,6 +459,7 @@
       "primer_pair_summary": {
         "schema": "gentle.primer_pair_summary.v2",
         "assay_id": "transcript_assay_46b04036f2ccda49",
+        "pair_id": "pair_sha256_08f86ff36c2a3e87eff359a58592b72e9dc83eb4f24c3c640199d943f9c2a839",
         "pair_rank": 2,
         "design_transcript_id": "PATZ1-202",
         "design_equivalence_group_id": "cdna_eq_6c73e2052bd828f3",
