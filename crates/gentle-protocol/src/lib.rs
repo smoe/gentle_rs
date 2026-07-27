@@ -5530,6 +5530,7 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "agents plan",
     "agents execute-plan",
     "op",
+    "features edit-location",
     "workflow",
     "help",
     "genomes list",
