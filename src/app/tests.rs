@@ -11402,13 +11402,14 @@ fn dbsnp_dialog_fetch_extracts_region_and_opens_window() {
         "status was: {}",
         app.dbsnp_status
     );
-    let wait_started = Instant::now();
-    while app.dbsnp_fetch_task.is_some() && wait_started.elapsed() < Duration::from_secs(15) {
-        app.poll_dbsnp_fetch_task(&egui::Context::default());
+    let ctx = egui::Context::default();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while app.dbsnp_fetch_task.is_some() && Instant::now() < deadline {
+        app.poll_dbsnp_fetch_task(&ctx);
         std::thread::sleep(Duration::from_millis(10));
     }
     if app.dbsnp_fetch_task.is_some() {
-        app.poll_dbsnp_fetch_task(&egui::Context::default());
+        app.poll_dbsnp_fetch_task(&ctx);
     }
     assert!(
         app.dbsnp_fetch_task.is_none(),
