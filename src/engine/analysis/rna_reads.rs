@@ -14119,6 +14119,7 @@ impl GentleEngine {
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
+            feature_location_edit_report: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());
@@ -14233,6 +14234,7 @@ impl GentleEngine {
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
+            feature_location_edit_report: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());

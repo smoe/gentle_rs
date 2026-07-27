@@ -23154,6 +23154,146 @@ impl GentleEngine {
         Ok((report, created_seq_ids, warnings))
     }
 
+    fn execute_feature_location_edit(
+        &mut self,
+        request: FeatureLocationEditRequest,
+        apply_change: bool,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let (sequence_len, features) = {
+            let dna = self.state.sequences.get(&request.seq_id).ok_or_else(|| {
+                EngineError::new(
+                    ErrorCode::NotFound,
+                    format!("Sequence '{}' not found", request.seq_id),
+                )
+            })?;
+            (dna.len(), dna.features().clone())
+        };
+        let feature = features.get(request.feature_index).ok_or_else(|| {
+            EngineError::new(
+                ErrorCode::NotFound,
+                format!(
+                    "Feature index {} is out of range for sequence '{}' ({} features)",
+                    request.feature_index,
+                    request.seq_id,
+                    features.len()
+                ),
+            )
+        })?;
+        let before = crate::feature_location::exact_feature_location_snapshot(feature)?;
+        if request.new_start_0based < 0 || request.new_end_0based_exclusive < 0 {
+            return Err(EngineError::invalid_input(
+                "Feature edit coordinates must not be negative",
+            ));
+        }
+        if request.new_start_0based >= request.new_end_0based_exclusive {
+            return Err(EngineError::invalid_input(
+                "Feature edit requires start_0based < end_0based_exclusive",
+            ));
+        }
+        let new_start_0based = usize::try_from(request.new_start_0based).map_err(|_| {
+            EngineError::invalid_input("Feature edit start exceeds the supported coordinate range")
+        })?;
+        let new_end_0based_exclusive =
+            usize::try_from(request.new_end_0based_exclusive).map_err(|_| {
+                EngineError::invalid_input(
+                    "Feature edit end exceeds the supported coordinate range",
+                )
+            })?;
+        if new_end_0based_exclusive > sequence_len {
+            return Err(EngineError::invalid_input(format!(
+                "Feature edit range {}..{} exceeds sequence '{}' length {}",
+                request.new_start_0based,
+                request.new_end_0based_exclusive,
+                request.seq_id,
+                sequence_len
+            )));
+        }
+        let before_fingerprint = crate::feature_location::feature_fingerprint_sha256(feature)?;
+        if apply_change && request.expected_feature_fingerprint_sha256.is_none() {
+            return Err(EngineError::invalid_input(
+                "Applying a feature-location edit requires the fingerprint returned by preview",
+            ));
+        }
+        if let Some(expected) = request.expected_feature_fingerprint_sha256.as_deref()
+            && expected != before_fingerprint
+        {
+            return Err(EngineError::invalid_input(format!(
+                "Feature {} changed after preview: expected fingerprint {}, found {}",
+                request.feature_index, expected, before_fingerprint
+            )));
+        }
+        let after = crate::feature_location::feature_location_snapshot(
+            new_start_0based,
+            new_end_0based_exclusive,
+            before.strand,
+        )?;
+        let mut proposed_feature = feature.clone();
+        proposed_feature.location = crate::feature_location::simple_location_from_snapshot(&after)?;
+        let after_fingerprint =
+            crate::feature_location::feature_fingerprint_sha256(&proposed_feature)?;
+        let related_features = crate::feature_location::related_feature_boundary_candidates(
+            &features,
+            request.feature_index,
+            &before,
+        );
+
+        if apply_change {
+            let dna = self
+                .state
+                .sequences
+                .get_mut(&request.seq_id)
+                .ok_or_else(|| {
+                    EngineError::new(
+                        ErrorCode::NotFound,
+                        format!("Sequence '{}' not found", request.seq_id),
+                    )
+                })?;
+            let feature = dna
+                .features_mut()
+                .get_mut(request.feature_index)
+                .ok_or_else(|| {
+                    EngineError::new(
+                        ErrorCode::NotFound,
+                        format!(
+                            "Feature index {} is no longer present on sequence '{}'",
+                            request.feature_index, request.seq_id
+                        ),
+                    )
+                })?;
+            feature.location = proposed_feature.location.clone();
+            result.changed_seq_ids.push(request.seq_id.clone());
+        }
+
+        let feature_kind = feature.kind.to_string();
+        result.feature_location_edit_report = Some(Box::new(FeatureLocationEditReport {
+            schema: FEATURE_LOCATION_EDIT_SCHEMA.to_string(),
+            seq_id: request.seq_id.clone(),
+            feature_index: request.feature_index,
+            feature_kind: feature_kind.clone(),
+            dry_run: !apply_change,
+            applied: apply_change,
+            before,
+            after,
+            fingerprint_algorithm: FEATURE_LOCATION_FINGERPRINT_ALGORITHM.to_string(),
+            before_feature_fingerprint_sha256: before_fingerprint,
+            after_feature_fingerprint_sha256: after_fingerprint,
+            related_features,
+        }));
+        result.messages.push(if apply_change {
+            format!(
+                "Updated feature {} ({}) on '{}'",
+                request.feature_index, feature_kind, request.seq_id
+            )
+        } else {
+            format!(
+                "Previewed feature {} ({}) location edit on '{}'",
+                request.feature_index, feature_kind, request.seq_id
+            )
+        });
+        Ok(())
+    }
+
     pub(super) fn apply_internal(
         &mut self,
         op: Operation,
@@ -23289,6 +23429,7 @@ impl GentleEngine {
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
+            feature_location_edit_report: None,
         };
 
         if matches!(
@@ -34146,6 +34287,12 @@ impl GentleEngine {
                     result
                         .messages
                         .push(format!("Recomputed features for '{seq_id}'"));
+                }
+                Operation::PreviewFeatureLocationEdit { request } => {
+                    self.execute_feature_location_edit(request, false, &mut result)?;
+                }
+                Operation::EditFeatureLocation { request } => {
+                    self.execute_feature_location_edit(request, true, &mut result)?;
                 }
                 Operation::AnnotateTfbs {
                     seq_id,

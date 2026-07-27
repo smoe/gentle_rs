@@ -104,6 +104,7 @@ pub(super) struct FeatureTreeEntry {
     pub(super) disable_grouping: bool,
     pub(super) supports_splicing_expert: bool,
     pub(super) supports_variant_followup: bool,
+    pub(super) supports_location_edit: bool,
     pub(super) can_seed_promoter_anchor: bool,
     pub(super) regulatory_primary_group_key: Option<String>,
     pub(super) regulatory_primary_group_label: Option<String>,
@@ -1508,6 +1509,9 @@ impl MainAreaDna {
                             supports_variant_followup: Self::feature_kind_supports_variant_followup(
                                 kind_upper.as_str(),
                             ),
+                            supports_location_edit:
+                                crate::feature_location::exact_feature_location_snapshot(feature)
+                                    .is_ok(),
                             can_seed_promoter_anchor,
                             regulatory_primary_group_key: regulatory_grouping
                                 .as_ref()
@@ -1927,6 +1931,7 @@ impl MainAreaDna {
         let mut open_dotplot_feature: Option<usize> = None;
         let mut copy_feature_payload: Option<(usize, FeatureCopyPayloadKind)> = None;
         let mut focus_matching_array_feature: Option<usize> = None;
+        let mut edit_feature_location: Option<usize> = None;
         let feature_font_size = feature_details_font_size;
         let kind_font_size = feature_font_size + 1.0;
         let pending_feature_tree_scroll_to = self.pending_feature_tree_scroll_to;
@@ -2105,6 +2110,22 @@ impl MainAreaDna {
                                         }
                                     }
                                     ui.separator();
+                                    let edit_response = ui.add_enabled(
+                                        entry.supports_location_edit,
+                                        egui::Button::new("Edit feature location..."),
+                                    );
+                                    let edit_response = edit_response.on_hover_text(
+                                        if entry.supports_location_edit {
+                                            "Preview an exact numeric boundary edit before applying it"
+                                        } else {
+                                            "Compound and fuzzy locations are not editable in the simple boundary editor"
+                                        },
+                                    );
+                                    if edit_response.clicked() {
+                                        clicked_feature = Some((entry.id, false));
+                                        edit_feature_location = Some(entry.id);
+                                        ui.close();
+                                    }
                                     let promoter_response = ui.add_enabled(
                                         entry.can_seed_promoter_anchor,
                                         egui::Button::new("Use as promoter anchor (Engine Ops)"),
@@ -2327,6 +2348,9 @@ impl MainAreaDna {
         }
         if let Some(feature_id) = focus_matching_array_feature {
             self.focus_matching_array_features(feature_id);
+        }
+        if let Some(feature_id) = edit_feature_location {
+            self.focus_feature_location_editor(Some(feature_id));
         }
     }
 }

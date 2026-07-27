@@ -49921,3 +49921,239 @@ fn repeat_transcript_geometry_resolves_5utr_promoter_and_cds_stop_on_both_strand
     assert_eq!(stop.start_1based, Some(130));
     assert_eq!(stop.end_1based, Some(190));
 }
+
+fn feature_location_edit_engine() -> GentleEngine {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(100)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(10, 30),
+        qualifiers: vec![("gene".into(), Some("TEST1".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(10, 50),
+        qualifiers: vec![("transcript_id".into(), Some("TEST1-201".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "CDS".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            40, 60,
+        ))),
+        qualifiers: vec![],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna);
+    GentleEngine::from_state(state)
+}
+
+#[test]
+fn feature_location_preview_is_read_only_and_apply_is_undoable() {
+    let mut engine = feature_location_edit_engine();
+    let initial_execution = engine.execution_revision();
+    let initial_mutation = engine.mutation_revision();
+    let initial_undo = engine.undo_available();
+    let preview = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                new_start_0based: 12,
+                new_end_0based_exclusive: 35,
+                expected_feature_fingerprint_sha256: None,
+            },
+        })
+        .expect("preview");
+    let report = preview.feature_location_edit_report.expect("report");
+    assert!(report.dry_run);
+    assert!(!report.applied);
+    assert_eq!(report.before.start_1based, 11);
+    assert_eq!(report.after.end_1based_inclusive, 35);
+    assert_eq!(report.related_features.len(), 1);
+    assert_eq!(
+        report.related_features[0].match_reasons,
+        vec![RelatedFeatureBoundaryReason::SharesOldStartBoundary]
+    );
+    assert_eq!(engine.mutation_revision(), initial_mutation);
+    assert_eq!(engine.execution_revision(), initial_execution + 1);
+    assert_eq!(engine.undo_available(), initial_undo);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::simple_range(10, 30)
+    );
+
+    let applied = engine
+        .apply(Operation::EditFeatureLocation {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                new_start_0based: 12,
+                new_end_0based_exclusive: 35,
+                expected_feature_fingerprint_sha256: Some(
+                    report.before_feature_fingerprint_sha256.clone(),
+                ),
+            },
+        })
+        .expect("apply");
+    assert_eq!(applied.changed_seq_ids, vec!["seq"]);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::simple_range(12, 35)
+    );
+    assert_eq!(engine.undo_available(), initial_undo + 1);
+    engine.undo_last_operation().expect("undo");
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::simple_range(10, 30)
+    );
+    engine.redo_last_operation().expect("redo");
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::simple_range(12, 35)
+    );
+}
+
+#[test]
+fn feature_location_fingerprint_survives_project_json_round_trip() {
+    let engine = feature_location_edit_engine();
+    let before = crate::feature_location::feature_fingerprint_sha256(
+        &engine.state().sequences["seq"].features()[0],
+    )
+    .expect("fingerprint");
+    let encoded = serde_json::to_string(engine.state()).expect("project serializes");
+    let decoded: ProjectState = serde_json::from_str(&encoded).expect("project deserializes");
+    let after =
+        crate::feature_location::feature_fingerprint_sha256(&decoded.sequences["seq"].features()[0])
+            .expect("fingerprint");
+    assert_eq!(after, before);
+}
+
+#[test]
+fn feature_location_edit_preserves_reverse_strand_and_rejects_stale_preview() {
+    let mut engine = feature_location_edit_engine();
+    let preview = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 2,
+                new_start_0based: 42,
+                new_end_0based_exclusive: 65,
+                expected_feature_fingerprint_sha256: None,
+            },
+        })
+        .expect("preview");
+    let report = preview.feature_location_edit_report.expect("report");
+    assert_eq!(report.before.strand, FeatureLocationEditStrand::Reverse);
+    assert_eq!(report.after.five_prime_position_1based, 65);
+    assert_eq!(report.after.three_prime_position_1based, 43);
+    let error = engine
+        .apply(Operation::EditFeatureLocation {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 2,
+                new_start_0based: 42,
+                new_end_0based_exclusive: 65,
+                expected_feature_fingerprint_sha256: Some("sha256:stale".to_string()),
+            },
+        })
+        .expect_err("stale preview rejected");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("changed after preview"));
+
+    engine
+        .apply(Operation::EditFeatureLocation {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 2,
+                new_start_0based: 42,
+                new_end_0based_exclusive: 65,
+                expected_feature_fingerprint_sha256: Some(
+                    report.before_feature_fingerprint_sha256.clone(),
+                ),
+            },
+        })
+        .expect("apply");
+    assert_eq!(
+        engine.state().sequences["seq"].features()[2].location,
+        gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(42, 65)))
+    );
+}
+
+#[test]
+fn feature_location_edit_rejects_compound_and_fuzzy_locations() {
+    let mut engine = feature_location_edit_engine();
+    engine
+        .state
+        .sequences
+        .get_mut("seq")
+        .expect("seq")
+        .features_mut()[0]
+        .location = gb_io::seq::Location::Join(vec![
+        gb_io::seq::Location::simple_range(10, 20),
+        gb_io::seq::Location::simple_range(25, 30),
+    ]);
+    let error = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                new_start_0based: 12,
+                new_end_0based_exclusive: 35,
+                expected_feature_fingerprint_sha256: None,
+            },
+        })
+        .expect_err("compound location rejected");
+    assert_eq!(error.code, ErrorCode::Unsupported);
+
+    engine
+        .state
+        .sequences
+        .get_mut("seq")
+        .expect("seq")
+        .features_mut()[0]
+        .location = gb_io::seq::Location::Range(
+        (10, gb_io::seq::Before(true)),
+        (30, gb_io::seq::After(false)),
+    );
+    let error = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                new_start_0based: 12,
+                new_end_0based_exclusive: 35,
+                expected_feature_fingerprint_sha256: None,
+            },
+        })
+        .expect_err("fuzzy location rejected");
+    assert_eq!(error.code, ErrorCode::Unsupported);
+}
+
+#[test]
+fn feature_location_edit_rejects_invalid_and_out_of_bounds_ranges() {
+    let cases = [
+        (-1, 10, "must not be negative"),
+        (10, 10, "start_0based < end_0based_exclusive"),
+        (20, 10, "start_0based < end_0based_exclusive"),
+        (0, 101, "exceeds sequence"),
+    ];
+    for (new_start_0based, new_end_0based_exclusive, expected_message) in cases {
+        let mut engine = feature_location_edit_engine();
+        let error = engine
+            .apply(Operation::PreviewFeatureLocationEdit {
+                request: FeatureLocationEditRequest {
+                    seq_id: "seq".to_string(),
+                    feature_index: 0,
+                    new_start_0based,
+                    new_end_0based_exclusive,
+                    expected_feature_fingerprint_sha256: None,
+                },
+            })
+            .expect_err("invalid range rejected");
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(
+            error.message.contains(expected_message),
+            "unexpected error for {new_start_0based}..{new_end_0based_exclusive}: {}",
+            error.message
+        );
+    }
+}

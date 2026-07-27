@@ -153,6 +153,24 @@ impl Window {
         }
     }
 
+    pub fn focus_feature_location_editor(&mut self, feature_index: Option<usize>) {
+        match self {
+            Self::Dna(window) => window.focus_feature_location_editor(feature_index),
+        }
+    }
+
+    pub fn close_feature_location_editor(&mut self) -> bool {
+        match self {
+            Self::Dna(window) => window.close_feature_location_editor(),
+        }
+    }
+
+    pub fn feature_location_editor_is_open(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.feature_location_editor_is_open(),
+        }
+    }
+
     pub fn set_selection_range_0based(
         &mut self,
         start: usize,

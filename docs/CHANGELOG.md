@@ -12,6 +12,14 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-27
+
+- Added engine-owned exact feature-location preview/apply operations,
+  `features edit-location`, optimistic-concurrency fingerprints, undo/redo,
+  adapter introspection, and a GUI Feature Location Editor reached from the
+  command palette and feature context menus; complex/fuzzy locations remain
+  explicitly read-only and related annotations are review-only.
+
 ## 2026-07-22
 
 - Added a policy-aware PrimerBank adapter with live or saved-HTML search,

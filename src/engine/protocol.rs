@@ -52,7 +52,9 @@ pub use gentle_protocol::{
     EXON_SKIP_MATERIALIZATION_SCHEMA, EXON_SKIP_SELECTION_PLAN_SCHEMA, EditableStatus, EngineError,
     ErrorCode, EvidenceClass, EvidenceScope, ExonSkipCandidateExon, ExonSkipMaterializationReport,
     ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion, ExonSkipSelectionPlan,
-    FeatureBedCoordinateMode, FlexibilityModel, GENE_SET_CO_REGULATED_CACHE_SCHEMA,
+    FEATURE_LOCATION_EDIT_SCHEMA, FEATURE_LOCATION_FINGERPRINT_ALGORITHM, FeatureBedCoordinateMode,
+    FeatureLocationEditReport, FeatureLocationEditRequest, FeatureLocationEditStrand,
+    FeatureLocationSnapshot, FlexibilityModel, GENE_SET_CO_REGULATED_CACHE_SCHEMA,
     GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
     GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
     GENE_SET_RESOLUTION_SCHEMA, GeneSetCoRegulatedProducerMetadata, GeneSetCohortRelationship,
@@ -84,7 +86,8 @@ pub use gentle_protocol::{
     RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA, ReadAcquisitionAnalysisFormat,
     ReadAcquisitionCommandProvenance, ReadAcquisitionManifestRow, ReadAcquisitionOutputPath,
     ReadAcquisitionReadLayout, ReadAcquisitionReadLengthStats, ReadAcquisitionReport,
-    ReadAcquisitionRunReport, RenderSvgMode, ReporterAnnotatedRecord, ReporterBackboneResolution,
+    ReadAcquisitionRunReport, RelatedFeatureBoundaryCandidate, RelatedFeatureBoundaryReason,
+    RenderSvgMode, ReporterAnnotatedRecord, ReporterBackboneResolution,
     ReporterBackboneResolutionStatus, ReporterCatalog, ReporterCatalogReport,
     ReporterComputedAnnotation, ReporterConstraints, ReporterConstructHandoffCommand,
     ReporterConstructHandoffPlan, ReporterConstructHandoffProvenance, ReporterConstructPortBinding,
@@ -4577,6 +4580,8 @@ pub struct OpResult {
     pub uniprot_projection_audit_parity: Option<Box<UniprotProjectionAuditParityReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lab_assistant_instructions: Option<Box<LabAssistantInstructionsExport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_location_edit_report: Option<Box<FeatureLocationEditReport>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

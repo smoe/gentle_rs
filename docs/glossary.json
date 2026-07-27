@@ -17,6 +17,22 @@
       },
       {
          "aliases": [],
+         "engine_operations": [
+            "PreviewFeatureLocationEdit",
+            "EditFeatureLocation"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "features edit-location",
+         "summary": "Preview or apply one exact simple feature-boundary edit with an optimistic-concurrency fingerprint.",
+         "usage": "features edit-location SEQ_ID FEATURE_INDEX --start-1based N --end-1based-inclusive M [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--path OUT.json]"
+      },
+      {
+         "aliases": [],
          "engine_operations": [],
          "interfaces": [
             "cli-shell",

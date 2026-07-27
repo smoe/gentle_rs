@@ -50,7 +50,8 @@ use crate::{
         ExonSkipReturnKind, ExonSkipSelectionCriterion, ExperimentalAssayReadinessPolicy,
         FactAtom, FactBasis, FactExpression,
         FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode, FeatureExpertTarget,
-        FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
+        FeatureExpertView, FeatureLocationEditRequest, FlexibilityModel,
+        GUIDE_DESIGN_METADATA_KEY,
         GeneIsoformEvidenceRequest, GeneLocusEvidenceDisplayRequest,
         GeneSetCohortRelationship, GeneSetProducerFilter, GeneSetPromoterCohortReport,
         GeneSetRequest, GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
@@ -2137,6 +2138,15 @@ pub enum ShellCommand {
     FeaturesResolveFormula {
         seq_id: String,
         expression: String,
+    },
+    FeaturesEditLocation {
+        seq_id: String,
+        feature_index: usize,
+        start_1based: usize,
+        end_1based_inclusive: usize,
+        dry_run: bool,
+        expected_feature_fingerprint_sha256: Option<String>,
+        path: Option<String>,
     },
     FeaturesQuery {
         query: SequenceFeatureQuery,
@@ -10178,6 +10188,21 @@ impl ShellCommand {
                 "resolve feature-coordinate formula on '{}' ({})",
                 seq_id, expression
             ),
+            Self::FeaturesEditLocation {
+                seq_id,
+                feature_index,
+                start_1based,
+                end_1based_inclusive,
+                dry_run,
+                ..
+            } => format!(
+                "{} feature {} location on '{}' to {}..{}",
+                if *dry_run { "preview" } else { "edit" },
+                feature_index,
+                seq_id,
+                start_1based,
+                end_1based_inclusive
+            ),
             Self::FeaturesQuery { query } => format!(
                 "query features on '{}' (kinds={}, range={}..{}, relation={}, strand={}, label='{}', qualifiers={}, limit={}, offset={})",
                 query.seq_id,
@@ -12583,6 +12608,9 @@ impl ShellCommand {
     }
 
     pub fn is_state_mutating(&self) -> bool {
+        if let Self::FeaturesEditLocation { dry_run, .. } = self {
+            return !dry_run;
+        }
         if let Self::MacrosTemplateRun { validate_only, .. } = self
             && *validate_only
         {
@@ -19926,6 +19954,81 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Set the topology flag of one loaded sequence.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("SetTopology")
+        }),
+        json!({
+            "id": "features edit-location",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence containing the feature"},
+                {"name": "FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "zero-based feature index"},
+                {"name": "--start-1based", "required": true, "subject_kind": "other", "detail": "new 1-based inclusive start"},
+                {"name": "--end-1based-inclusive", "required": true, "subject_kind": "other", "detail": "new 1-based inclusive end"},
+                {"name": "--dry-run", "required": false, "subject_kind": "other", "detail": "preview without mutation and return the required feature fingerprint"},
+                {"name": "--expected-feature-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "preview fingerprint required when applying"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Preview or apply one exact simple feature-location edit; apply requires the fingerprint returned by preview.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features edit-location")
+        }),
+        json!({
+            "id": "PreviewFeatureLocationEdit",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.seq_id"},
+                {"name": "FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "zero-based feature index carried by request.feature_index"},
+                {"name": "NEW_START_0BASED", "required": true, "subject_kind": "other", "detail": "new half-open interval start"},
+                {"name": "NEW_END_0BASED_EXCLUSIVE", "required": true, "subject_kind": "other", "detail": "new half-open interval end"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Validate and report one simple feature-location edit without changing project state.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PreviewFeatureLocationEdit")
+        }),
+        json!({
+            "id": "EditFeatureLocation",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.seq_id"},
+                {"name": "FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "zero-based feature index carried by request.feature_index"},
+                {"name": "NEW_START_0BASED", "required": true, "subject_kind": "other", "detail": "new half-open interval start"},
+                {"name": "NEW_END_0BASED_EXCLUSIVE", "required": true, "subject_kind": "other", "detail": "new half-open interval end"},
+                {"name": "EXPECTED_FEATURE_FINGERPRINT_SHA256", "required": true, "subject_kind": "other", "detail": "complete-feature fingerprint returned by preview"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Apply one previewed exact simple feature-location edit while preserving strand and qualifier content.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("EditFeatureLocation")
         }),
         json!({
             "id": "RecomputeFeatures",
@@ -52573,6 +52676,59 @@ fn execute_feature_scan_command(
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
     match command {
+        ShellCommand::FeaturesEditLocation {
+            seq_id,
+            feature_index,
+            start_1based,
+            end_1based_inclusive,
+            dry_run,
+            expected_feature_fingerprint_sha256,
+            path,
+        } => {
+            let new_start_0based = i64::try_from(start_1based.checked_sub(1).ok_or_else(|| {
+                "features edit-location --start-1based must be at least 1".to_string()
+            })?)
+            .map_err(|_| {
+                "features edit-location start exceeds the supported coordinate range".to_string()
+            })?;
+            let new_end_0based_exclusive =
+                i64::try_from(*end_1based_inclusive).map_err(|_| {
+                    "features edit-location end exceeds the supported coordinate range".to_string()
+                })?;
+            let request = FeatureLocationEditRequest {
+                seq_id: seq_id.clone(),
+                feature_index: *feature_index,
+                new_start_0based,
+                new_end_0based_exclusive,
+                expected_feature_fingerprint_sha256: expected_feature_fingerprint_sha256.clone(),
+            };
+            let operation = if *dry_run {
+                Operation::PreviewFeatureLocationEdit { request }
+            } else {
+                Operation::EditFeatureLocation { request }
+            };
+            let op_result = engine.apply(operation).map_err(|e| e.to_string())?;
+            let report = op_result
+                .feature_location_edit_report
+                .clone()
+                .ok_or_else(|| "Feature-location operation returned no report".to_string())?;
+            if let Some(path) = path.as_deref() {
+                let text = serde_json::to_string_pretty(report.as_ref()).map_err(|e| {
+                    format!("Could not serialize feature-location report for '{path}': {e}")
+                })?;
+                fs::write(path, text).map_err(|e| {
+                    format!("Could not write feature-location report to '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: !dry_run,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
         ShellCommand::FeaturesResolveFormula { seq_id, expression } => {
             let dna = engine
                 .state()
@@ -57488,6 +57644,7 @@ fn execute_shell_command_with_options_dispatch_inner(
     if matches!(
         command,
         ShellCommand::FeaturesResolveFormula { .. }
+            | ShellCommand::FeaturesEditLocation { .. }
             | ShellCommand::FeaturesQuery { .. }
             | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
@@ -57809,6 +57966,7 @@ fn execute_shell_command_with_options_inner(
             execute_features_restriction_scan_command(engine, command)?
         }
         ShellCommand::FeaturesResolveFormula { .. }
+        | ShellCommand::FeaturesEditLocation { .. }
         | ShellCommand::FeaturesQuery { .. }
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }

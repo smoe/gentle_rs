@@ -53,12 +53,18 @@ this as a confidence map for the current GUI surface.
   mismatch; missing target-species metadata stays visibly unresolved.
 - Manual GUI walkthroughs in Help/Tutorial are useful for orientation, but the
   generated executable tutorials remain the stronger reproducibility baseline.
+- The command palette and feature/map context menus open **Feature Location
+  Editor** for exact simple annotations. The editor uses 1-based inclusive
+  fields, requires Preview before Apply, refuses stale previews, preserves the
+  feature strand, and lists annotations sharing an old boundary without
+  changing them. Compound/fuzzy GenBank locations remain read-only.
 
 ### Exploratory / not yet first choice
 
 - Broader routine-family coverage outside the strongest current Gibson and
   restriction-centered paths.
-- Direct GUI feature editing / transcript-boundary curation workflows.
+- Propagated transcript-boundary curation and complex/fuzzy feature-location
+  editing.
 - guideRNA workflows, deeper assay families, and richer virtual-PCR /
   off-target analysis paths.
 

@@ -1834,6 +1834,7 @@ impl GENtleApp {
             UiIntentTarget::RetrieveGenomeSequence => self.open_reference_genome_retrieve_dialog(),
             UiIntentTarget::BlastGenomeSequence => self.open_reference_genome_blast_dialog(),
             UiIntentTarget::ImportGenomeTrack => self.open_genome_bed_track_dialog(),
+            UiIntentTarget::FeatureLocationEditor => self.open_feature_location_editor(),
             UiIntentTarget::PcrDesign => self.open_pcr_design_dialog(),
             UiIntentTarget::SequencingConfirmation => self.open_sequencing_confirmation_dialog(),
             UiIntentTarget::AgentAssistant => self.open_agent_assistant_dialog(),
@@ -1878,6 +1879,7 @@ impl GENtleApp {
                 self.show_genome_bed_track_dialog = false;
                 was_open
             }
+            UiIntentTarget::FeatureLocationEditor => self.close_feature_location_editor(),
             UiIntentTarget::PcrDesign => {
                 let was_open = self.show_pcr_design_dialog;
                 self.show_pcr_design_dialog = false;

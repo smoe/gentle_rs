@@ -1169,6 +1169,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         uniprot_projection_audit: None,
         uniprot_projection_audit_parity: None,
         lab_assistant_instructions: None,
+        feature_location_edit_report: None,
     });
 
     assert_eq!(area.sequencing_confirmation_ui.selected_trace_id, "trace_b");
@@ -4981,6 +4982,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
+            feature_location_edit_report: None,
         },
         Instant::now(),
     );
@@ -14754,6 +14756,37 @@ fn rna_read_progress_eta_text_reports_remaining_time_for_known_working_set() {
         super::MainAreaDna::format_rna_read_progress_eta(100, 100, 10.0),
         Some("ETA: 0s".to_string())
     );
+}
+
+#[test]
+fn feature_location_editor_uses_shared_preview_operation() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(50)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "gene".into(),
+        location: Location::simple_range(5, 20),
+        qualifiers: vec![("gene".into(), Some("TEST".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("seq".to_string()), Some(engine));
+    area.focus_feature_location_editor(Some(0));
+    assert!(area.feature_location_editor_is_open());
+    assert_eq!(
+        area.feature_location_editor_ui.selected_feature_index,
+        Some(0)
+    );
+    assert_eq!(area.feature_location_editor_ui.start_1based, "6");
+    area.feature_location_editor_ui.start_1based = "7".to_string();
+    area.feature_location_editor_ui.end_1based_inclusive = "24".to_string();
+    area.run_feature_location_preview();
+    let preview = area
+        .feature_location_editor_ui
+        .preview
+        .as_ref()
+        .expect("preview");
+    assert_eq!(preview.after.start_1based, 7);
+    assert_eq!(preview.after.end_1based_inclusive, 24);
 }
 
 #[cfg(test)]

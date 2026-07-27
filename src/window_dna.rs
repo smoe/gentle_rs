@@ -447,6 +447,18 @@ impl WindowDna {
         self.main_area.selection_range_0based()
     }
 
+    pub fn focus_feature_location_editor(&mut self, feature_index: Option<usize>) {
+        self.main_area.focus_feature_location_editor(feature_index);
+    }
+
+    pub fn close_feature_location_editor(&mut self) -> bool {
+        self.main_area.close_feature_location_editor()
+    }
+
+    pub fn feature_location_editor_is_open(&self) -> bool {
+        self.main_area.feature_location_editor_is_open()
+    }
+
     pub fn set_selection_range_0based(
         &mut self,
         start: usize,

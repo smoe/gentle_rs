@@ -422,6 +422,9 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "cache clear" => Some("cache clear all-prepared-in-cache"),
         "transcripts derive" => Some("transcripts derive seq --feature-id 1"),
         "guides put" => Some("guides put guide_set --json {}"),
+        "features edit-location" => Some(
+            "features edit-location demo 0 --start-1based 1 --end-1based-inclusive 1 --dry-run",
+        ),
         "features tfbs-score-tracks-svg" => {
             Some("features tfbs-score-tracks-svg seq out.svg --motif SP1")
         }
@@ -40900,4 +40903,68 @@ fn execute_op_set_display_visibility_marks_state_changed() {
     .expect("execute op");
     assert!(out.state_changed);
     assert!(engine.state().display.show_tfbs);
+}
+
+#[test]
+fn parse_features_edit_location_requires_preview_token_for_apply() {
+    let preview = parse_shell_line(
+        "features edit-location seq 2 --start-1based 11 --end-1based-inclusive 30 --dry-run",
+    )
+    .expect("preview parses");
+    assert!(matches!(
+        preview,
+        ShellCommand::FeaturesEditLocation {
+            seq_id,
+            feature_index: 2,
+            start_1based: 11,
+            end_1based_inclusive: 30,
+            dry_run: true,
+            expected_feature_fingerprint_sha256: None,
+            ..
+        } if seq_id == "seq"
+    ));
+    let error = parse_shell_line(
+        "features edit-location seq 2 --start-1based 11 --end-1based-inclusive 30",
+    )
+    .expect_err("apply without fingerprint rejected");
+    assert!(error.contains("--expected-feature-fingerprint-sha256"));
+}
+
+#[test]
+fn execute_features_edit_location_preview_then_apply() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(50)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(5, 20),
+        qualifiers: vec![("gene".into(), Some("TEST".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let preview_command = parse_shell_line(
+        "features edit-location seq 0 --start-1based 7 --end-1based-inclusive 24 --dry-run",
+    )
+    .expect("preview command");
+    let preview = execute_shell_command(&mut engine, &preview_command).expect("preview execution");
+    assert!(!preview.state_changed);
+    let fingerprint = preview.output["report"]["before_feature_fingerprint_sha256"]
+        .as_str()
+        .expect("fingerprint")
+        .to_string();
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::simple_range(5, 20)
+    );
+
+    let apply_command = parse_shell_line(&format!(
+        "features edit-location seq 0 --start-1based 7 --end-1based-inclusive 24 --expected-feature-fingerprint-sha256 {fingerprint}"
+    ))
+    .expect("apply command");
+    let applied = execute_shell_command(&mut engine, &apply_command).expect("apply execution");
+    assert!(applied.state_changed);
+    assert_eq!(applied.output["report"]["applied"].as_bool(), Some(true));
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::simple_range(6, 24)
+    );
 }

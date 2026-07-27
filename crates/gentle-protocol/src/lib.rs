@@ -7,6 +7,7 @@
 
 pub mod construct_reasoning;
 pub mod dna_ladder;
+pub mod feature_location_edit;
 pub mod gene_groups;
 pub mod gene_sets;
 pub mod isoform_evidence;
@@ -46,6 +47,11 @@ pub use construct_reasoning::{
 pub use dna_ladder::{
     DNALadder, DNALadderBand, DNALadders, Ladder, LadderBand, LadderCatalog, LadderMolecule,
     RNALadder, RNALadderBand, RNALadders, default_dna_ladders, default_rna_ladders,
+};
+pub use feature_location_edit::{
+    FEATURE_LOCATION_EDIT_SCHEMA, FEATURE_LOCATION_FINGERPRINT_ALGORITHM,
+    FeatureLocationEditReport, FeatureLocationEditRequest, FeatureLocationEditStrand,
+    FeatureLocationSnapshot, RelatedFeatureBoundaryCandidate, RelatedFeatureBoundaryReason,
 };
 pub use gene_groups::{
     GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_DRAFT_REPORT_SCHEMA,
@@ -5177,6 +5183,8 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "QueryRepeatAnnotations",
     "QueryRepeatOverlaps",
     "MaterializeRepeatFeatures",
+    "PreviewFeatureLocationEdit",
+    "EditFeatureLocation",
     "BuildRepeatEnvironmentCohort",
     "MergeContainers",
     "Ligation",

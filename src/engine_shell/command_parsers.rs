@@ -2213,7 +2213,7 @@ fn parse_promoter_artifact_manifest_entry_json(
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: formula, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, promoter-isoform-comparison, promoter-expression-evidence, promoter-artifact-manifest, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
+            "features requires a subcommand: formula, edit-location, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, promoter-isoform-comparison, promoter-expression-evidence, promoter-artifact-manifest, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
                 .to_string(),
         );
     }
@@ -2242,6 +2242,89 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 return Err("features formula expression must not be empty".to_string());
             }
             Ok(ShellCommand::FeaturesResolveFormula { seq_id, expression })
+        }
+        "edit-location" | "edit_location" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "features edit-location requires SEQ_ID FEATURE_INDEX --start-1based N --end-1based-inclusive M [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--path OUT.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("features edit-location SEQ_ID must not be empty".to_string());
+            }
+            let feature_index = tokens[3].parse::<usize>().map_err(|_| {
+                "features edit-location FEATURE_INDEX must be an integer".to_string()
+            })?;
+            let mut start_1based = None;
+            let mut end_1based_inclusive = None;
+            let mut dry_run = false;
+            let mut expected_feature_fingerprint_sha256 = None;
+            let mut path = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--start-1based" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--start-1based")?;
+                        start_1based = Some(parse_usize_option_value(&raw, "--start-1based")?);
+                    }
+                    "--end-1based-inclusive" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--end-1based-inclusive")?;
+                        end_1based_inclusive =
+                            Some(parse_usize_option_value(&raw, "--end-1based-inclusive")?);
+                    }
+                    "--dry-run" => {
+                        dry_run = true;
+                        idx += 1;
+                    }
+                    "--expected-feature-fingerprint-sha256" | "--expected-fingerprint" => {
+                        idx += 1;
+                        expected_feature_fingerprint_sha256 = Some(parse_required_value(
+                            tokens,
+                            &mut idx,
+                            "--expected-feature-fingerprint-sha256",
+                        )?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!("Unknown features edit-location option '{other}'"));
+                    }
+                }
+            }
+            let start_1based = start_1based
+                .ok_or_else(|| "features edit-location requires --start-1based N".to_string())?;
+            let end_1based_inclusive = end_1based_inclusive.ok_or_else(|| {
+                "features edit-location requires --end-1based-inclusive M".to_string()
+            })?;
+            if start_1based == 0 {
+                return Err("features edit-location --start-1based must be at least 1".to_string());
+            }
+            if end_1based_inclusive < start_1based {
+                return Err(
+                    "features edit-location end must be greater than or equal to start".to_string(),
+                );
+            }
+            if !dry_run && expected_feature_fingerprint_sha256.is_none() {
+                return Err(
+                    "features edit-location apply requires --expected-feature-fingerprint-sha256 from a dry-run preview"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::FeaturesEditLocation {
+                seq_id,
+                feature_index,
+                start_1based,
+                end_1based_inclusive,
+                dry_run,
+                expected_feature_fingerprint_sha256,
+                path,
+            })
         }
         "repeat-query" | "repeats-query" => {
             if tokens.len() < 5 {

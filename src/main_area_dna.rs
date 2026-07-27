@@ -57,6 +57,9 @@ mod cutrun_support;
 #[path = "main_area_dna/feature_actions.rs"]
 mod feature_actions;
 
+#[path = "main_area_dna/feature_location_editor_ui.rs"]
+mod feature_location_editor_ui;
+
 #[path = "main_area_dna/feature_tree_ui.rs"]
 mod feature_tree_ui;
 
@@ -77,6 +80,8 @@ mod rna_read_mapping_ui;
 
 #[path = "main_area_dna/variant_followup.rs"]
 mod variant_followup;
+
+use feature_location_editor_ui::FeatureLocationEditorUiState;
 
 use crate::{
     app::{
@@ -1696,6 +1701,8 @@ pub struct MainAreaDna {
     show_isoform_expert_window: bool,
     isoform_expert_window_panel_id: Option<String>,
     isoform_expert_window_view: Option<Arc<IsoformArchitectureExpertView>>,
+    show_feature_location_editor: bool,
+    feature_location_editor_ui: FeatureLocationEditorUiState,
     linear_drag_selection_anchor_bp: Option<usize>,
     linear_selection_resize_drag: Option<LinearSelectionResizeDrag>,
     linear_pan_drag_origin_bp: Option<(usize, f32)>,
@@ -2475,6 +2482,8 @@ impl MainAreaDna {
             show_isoform_expert_window: false,
             isoform_expert_window_panel_id: None,
             isoform_expert_window_view: None,
+            show_feature_location_editor: false,
+            feature_location_editor_ui: FeatureLocationEditorUiState::default(),
             linear_drag_selection_anchor_bp: None,
             linear_selection_resize_drag: None,
             linear_pan_drag_origin_bp: None,
@@ -4285,6 +4294,7 @@ impl MainAreaDna {
         self.render_rna_read_mapping_window(ctx);
         self.render_variant_followup_window(ctx);
         self.render_isoform_expert_window(ctx);
+        self.render_feature_location_editor(ctx);
         self.render_error_popup(ctx);
         self.render_anchor_prepared_choice_popup(ctx);
     }
@@ -26054,6 +26064,7 @@ impl MainAreaDna {
                 let mut map_open_splicing_feature: Option<usize> = None;
                 let mut map_open_rna_read_mapping_feature: Option<usize> = None;
                 let mut map_open_dotplot_feature: Option<usize> = None;
+                let mut map_edit_feature_location: Option<usize> = None;
                 response.context_menu(|ui| {
                     let mut showed_any = false;
                     if self.render_selection_simple_pcr_context_action(ui) {
@@ -26128,6 +26139,21 @@ impl MainAreaDna {
                         return;
                     }
                     ui.separator();
+                    let edit_response = ui.add_enabled(
+                        self.feature_supports_location_edit(feature_id),
+                        egui::Button::new("Edit feature location..."),
+                    );
+                    let edit_response = edit_response.on_hover_text(
+                        if self.feature_supports_location_edit(feature_id) {
+                            "Preview an exact numeric boundary edit before applying it"
+                        } else {
+                            "Compound and fuzzy locations are not editable in the simple boundary editor"
+                        },
+                    );
+                    if edit_response.clicked() {
+                        map_edit_feature_location = Some(feature_id);
+                        ui.close();
+                    }
                     let variant_response = ui.add_enabled(
                         promoter_feature_id.is_some() || promoter_reasoning_evidence_id.is_some(),
                         egui::Button::new("Open Promoter Design"),
@@ -26290,6 +26316,9 @@ impl MainAreaDna {
                 if let Some(feature_id) = map_open_dotplot_feature {
                     self.open_dotplot_for_feature(feature_id, "map context menu");
                 }
+                if let Some(feature_id) = map_edit_feature_location {
+                    self.focus_feature_location_editor(Some(feature_id));
+                }
             }
         });
         if render_auxiliary_windows {
@@ -26298,6 +26327,7 @@ impl MainAreaDna {
             self.render_rna_read_mapping_window(ctx);
             self.render_variant_followup_window(ctx);
             self.render_isoform_expert_window(ctx);
+            self.render_feature_location_editor(ctx);
         }
     }
 }

@@ -8676,6 +8676,32 @@ Feature formula shell contract (implemented):
   - range results include `range.start_0based`,
     `range.end_0based_exclusive`, and `range.length_bp`
 
+Feature-location edit contract (implemented):
+
+- Schema: `gentle.feature_location_edit.v1`.
+- Shared operations:
+  - `PreviewFeatureLocationEdit` validates an edit and emits the complete
+    before/after report without changing project state or creating an undo
+    checkpoint.
+  - `EditFeatureLocation` applies the same request only when
+    `expected_feature_fingerprint_sha256` matches the complete current feature
+    record (kind, exact location structure, and ordered qualifiers).
+  - fingerprints use
+    `sha256_gb_io_feature_serde_json_ordered_qualifiers_v1` and the repository
+    `sha256:`-prefixed digest representation.
+- Shared-shell command:
+  - `features edit-location SEQ_ID FEATURE_INDEX --start-1based N --end-1based-inclusive M [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--path OUT.json]`
+  - run `--dry-run` first, then pass its
+    `before_feature_fingerprint_sha256` when applying.
+- Scope is intentionally strict: only exact `Range` and
+  `Complement(Range)` locations are editable. Fuzzy, joined, ordered,
+  between-base, external, bond, one-of, gap, and circular cross-origin
+  locations are rejected rather than normalized.
+- Strand is preserved. Reports expose local half-open coordinates, 1-based
+  inclusive coordinates, and strand-aware 5-prime/3-prime positions.
+  `related_features[]` lists annotations sharing the old start or end boundary
+  for human review; those annotations are never changed automatically.
+
 Feature-query shell contract (implemented):
 
 - Shared-shell command:

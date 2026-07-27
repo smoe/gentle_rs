@@ -5477,6 +5477,12 @@ pub enum Operation {
     RecomputeFeatures {
         seq_id: SeqId,
     },
+    PreviewFeatureLocationEdit {
+        request: FeatureLocationEditRequest,
+    },
+    EditFeatureLocation {
+        request: FeatureLocationEditRequest,
+    },
     SetParameter {
         name: String,
         value: serde_json::Value,
@@ -8983,6 +8989,7 @@ impl GentleEngine {
         if matches!(
             op,
             Operation::SaveFile { .. }
+                | Operation::PreviewFeatureLocationEdit { .. }
                 | Operation::RenderSequenceSvg { .. }
                 | Operation::RenderDotplotSvg { .. }
                 | Operation::RenderTfbsScoreTracksSvg { .. }

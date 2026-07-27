@@ -44,6 +44,7 @@ pub enum UiIntentTarget {
     RetrieveGenomeSequence,
     BlastGenomeSequence,
     ImportGenomeTrack,
+    FeatureLocationEditor,
     PcrDesign,
     SequencingConfirmation,
     AgentAssistant,
@@ -59,6 +60,7 @@ const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
     UiIntentTarget::RetrieveGenomeSequence,
     UiIntentTarget::BlastGenomeSequence,
     UiIntentTarget::ImportGenomeTrack,
+    UiIntentTarget::FeatureLocationEditor,
     UiIntentTarget::PcrDesign,
     UiIntentTarget::SequencingConfirmation,
     UiIntentTarget::AgentAssistant,
@@ -105,6 +107,7 @@ const UI_INTENT_ARGUMENT_LATEST: UiIntentArgument = UiIntentArgument {
     detail: "Prefer the latest matching prepared reference when deterministic selection is available.",
 };
 const UI_INTENT_OPTIONAL_ARGUMENTS_DEFAULT: [&str; 1] = ["genome_id"];
+const UI_INTENT_OPTIONAL_ARGUMENTS_NONE: [&str; 0] = [];
 const UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES: [&str; 7] = [
     "genome_id",
     "helpers",
@@ -115,6 +118,7 @@ const UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES: [&str; 7] = [
     "latest",
 ];
 const UI_INTENT_ARGUMENTS_DEFAULT: [UiIntentArgument; 1] = [UI_INTENT_ARGUMENT_GENOME_ID];
+const UI_INTENT_ARGUMENTS_NONE: [UiIntentArgument; 0] = [];
 const UI_INTENT_ARGUMENTS_PREPARED_REFERENCES: [UiIntentArgument; 7] = [
     UI_INTENT_ARGUMENT_GENOME_ID,
     UI_INTENT_ARGUMENT_HELPERS,
@@ -150,7 +154,7 @@ pub struct UiIntentTargetCatalogRow {
 
 impl UiIntentTarget {
     /// Number of stable UI-intent destinations.
-    pub const COUNT: usize = 12;
+    pub const COUNT: usize = 13;
 
     /// Stable catalog order used by shell, MCP, and GUI discoverability.
     pub fn all() -> &'static [Self] {
@@ -180,6 +184,10 @@ impl UiIntentTarget {
             "import-genome-track" | "import_genome_track" | "genome-track" | "tracks-import" => {
                 Some(Self::ImportGenomeTrack)
             }
+            "feature-location-editor"
+            | "feature_location_editor"
+            | "edit-feature-location"
+            | "edit_feature_location" => Some(Self::FeatureLocationEditor),
             "pcr-design" | "pcr_design" | "pcr" | "pcr-designer" | "pcr_designer" => {
                 Some(Self::PcrDesign)
             }
@@ -213,6 +221,7 @@ impl UiIntentTarget {
             Self::RetrieveGenomeSequence => "retrieve-genome-sequence",
             Self::BlastGenomeSequence => "blast-genome-sequence",
             Self::ImportGenomeTrack => "import-genome-track",
+            Self::FeatureLocationEditor => "feature-location-editor",
             Self::PcrDesign => "pcr-design",
             Self::SequencingConfirmation => "sequencing-confirmation",
             Self::AgentAssistant => "agent-assistant",
@@ -231,6 +240,7 @@ impl UiIntentTarget {
             Self::RetrieveGenomeSequence => "Retrieve Genomic Sequence",
             Self::BlastGenomeSequence => "BLAST Genome Sequence",
             Self::ImportGenomeTrack => "Import Genome Track",
+            Self::FeatureLocationEditor => "Feature Location Editor",
             Self::PcrDesign => "PCR Designer",
             Self::SequencingConfirmation => "Sequencing Confirmation",
             Self::AgentAssistant => "Agent Assistant",
@@ -256,6 +266,9 @@ impl UiIntentTarget {
             }
             Self::BlastGenomeSequence => "Run BLAST against prepared reference genome indices.",
             Self::ImportGenomeTrack => "Import BED/BigWig/VCF tracks onto anchored sequences.",
+            Self::FeatureLocationEditor => {
+                "Preview and apply exact simple feature-boundary edits with stale-state protection."
+            }
             Self::PcrDesign => "Paint-first pair-PCR specialist with queue and live geometry.",
             Self::SequencingConfirmation => {
                 "Confirm an expected construct from reads or imported traces."
@@ -283,6 +296,9 @@ impl UiIntentTarget {
             Self::RetrieveGenomeSequence => "genome retrieve extract anchor region gene",
             Self::BlastGenomeSequence => "genome blast reference",
             Self::ImportGenomeTrack => "genome track tracks bed bigwig vcf import anchored",
+            Self::FeatureLocationEditor => {
+                "feature annotation location boundary start end edit preview"
+            }
             Self::PcrDesign => "pcr primer pair roi paint queue designer",
             Self::SequencingConfirmation => {
                 "sequencing confirmation sanger construct reads trace junction"
@@ -303,6 +319,7 @@ impl UiIntentTarget {
     pub fn menu_path(self) -> &'static str {
         match self {
             Self::OpenSequence | Self::AgentAssistant => "File",
+            Self::FeatureLocationEditor => "Edit",
             Self::PcrDesign | Self::SequencingConfirmation => "Patterns",
             Self::PreparedReferences
             | Self::PrepareReferenceGenome
@@ -324,6 +341,7 @@ impl UiIntentTarget {
             | Self::RetrieveGenomeSequence
             | Self::BlastGenomeSequence
             | Self::ImportGenomeTrack
+            | Self::FeatureLocationEditor
             | Self::PcrDesign
             | Self::SequencingConfirmation
             | Self::AgentAssistant
@@ -337,6 +355,7 @@ impl UiIntentTarget {
     pub fn optional_arguments(self) -> &'static [&'static str] {
         match self {
             Self::PreparedReferences => &UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES,
+            Self::FeatureLocationEditor => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
             _ => &UI_INTENT_OPTIONAL_ARGUMENTS_DEFAULT,
         }
     }
@@ -345,6 +364,7 @@ impl UiIntentTarget {
     pub fn arguments(self) -> &'static [UiIntentArgument] {
         match self {
             Self::PreparedReferences => &UI_INTENT_ARGUMENTS_PREPARED_REFERENCES,
+            Self::FeatureLocationEditor => &UI_INTENT_ARGUMENTS_NONE,
             Self::OpenSequence
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
@@ -424,6 +444,22 @@ mod tests {
         ("import_genome_track", UiIntentTarget::ImportGenomeTrack),
         ("genome-track", UiIntentTarget::ImportGenomeTrack),
         ("tracks-import", UiIntentTarget::ImportGenomeTrack),
+        (
+            "feature-location-editor",
+            UiIntentTarget::FeatureLocationEditor,
+        ),
+        (
+            "feature_location_editor",
+            UiIntentTarget::FeatureLocationEditor,
+        ),
+        (
+            "edit-feature-location",
+            UiIntentTarget::FeatureLocationEditor,
+        ),
+        (
+            "edit_feature_location",
+            UiIntentTarget::FeatureLocationEditor,
+        ),
         ("pcr-design", UiIntentTarget::PcrDesign),
         ("pcr_design", UiIntentTarget::PcrDesign),
         ("pcr", UiIntentTarget::PcrDesign),
@@ -486,6 +522,7 @@ mod tests {
             | UiIntentTarget::RetrieveGenomeSequence
             | UiIntentTarget::BlastGenomeSequence
             | UiIntentTarget::ImportGenomeTrack
+            | UiIntentTarget::FeatureLocationEditor
             | UiIntentTarget::PcrDesign
             | UiIntentTarget::SequencingConfirmation
             | UiIntentTarget::AgentAssistant
@@ -519,6 +556,7 @@ mod tests {
             UiIntentTarget::RetrieveGenomeSequence,
             UiIntentTarget::BlastGenomeSequence,
             UiIntentTarget::ImportGenomeTrack,
+            UiIntentTarget::FeatureLocationEditor,
             UiIntentTarget::PcrDesign,
             UiIntentTarget::SequencingConfirmation,
             UiIntentTarget::AgentAssistant,
@@ -573,7 +611,7 @@ mod tests {
 
     #[test]
     fn ui_intent_catalog_rows_are_complete() {
-        let known_menus = BTreeSet::from(["File", "Genome", "Patterns"]);
+        let known_menus = BTreeSet::from(["Edit", "File", "Genome", "Patterns"]);
         for target in UiIntentTarget::all() {
             let row = target.catalog_row();
             assert!(!row.title.trim().is_empty());

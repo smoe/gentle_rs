@@ -8291,6 +8291,55 @@ Error: `{err}`"
         Some((guard.sequence_id()?, guard.selection_range_0based()))
     }
 
+    fn open_feature_location_editor(&mut self) {
+        let target_seq_id = self
+            .active_dna_window_context()
+            .map(|(seq_id, _)| seq_id)
+            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
+        let Some(seq_id) = target_seq_id else {
+            self.app_status =
+                "Cannot open Feature Location Editor: no project sequence is available".to_string();
+            return;
+        };
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
+            let opened = self
+                .windows
+                .get(&viewport_id)
+                .cloned()
+                .and_then(|window| {
+                    let mut window = window.write().ok()?;
+                    window.focus_feature_location_editor(None);
+                    Some(())
+                })
+                .is_some();
+            if opened {
+                self.queue_focus_viewport(viewport_id);
+                return;
+            }
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_feature_location_editor(None);
+            return;
+        }
+        self.open_sequence_window(&seq_id);
+        if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_feature_location_editor(None);
+        }
+    }
+
+    fn close_feature_location_editor(&mut self) -> bool {
+        let Some(active_key) = self.active_window_menu_key else {
+            return false;
+        };
+        let Some(viewport_id) = self.native_window_key_to_viewport.get(&active_key).copied() else {
+            return false;
+        };
+        self.windows
+            .get(&viewport_id)
+            .and_then(|window| window.write().ok())
+            .is_some_and(|mut window| window.close_feature_location_editor())
+    }
+
     fn gibson_ui_insert_rows(&self) -> Vec<GibsonUiInsertRow> {
         let mut rows = vec![];
         if !self.gibson_insert_seq_id.trim().is_empty() {
@@ -11700,6 +11749,7 @@ Error: `{err}`"
                 uniprot_projection_audit: None,
                 uniprot_projection_audit_parity: None,
                 lab_assistant_instructions: None,
+                feature_location_edit_report: None,
             });
             let _ = tx.send(GenomePrepareTaskMessage::Done {
                 job_id,
