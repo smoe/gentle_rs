@@ -1,11 +1,10 @@
 use super::{
-    AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
-    AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
-    ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, APP_CONFIGURATION_SCHEMA_VERSION,
-    AGENT_CONVERSATION_METADATA_KEY, AgentAskTask, AgentAskTaskMessage,
-    BACKGROUND_JOB_HISTORY_METADATA_KEY,
-    BACKGROUND_JOB_HISTORY_SCHEMA, BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID,
-    BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
+    AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_CONVERSATION_METADATA_KEY,
+    AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV,
+    AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT,
+    ANTHROPIC_API_KEY_ENV, APP_CONFIGURATION_SCHEMA_VERSION, AgentAskTask, AgentAskTaskMessage,
+    BACKGROUND_JOB_HISTORY_METADATA_KEY, BACKGROUND_JOB_HISTORY_SCHEMA,
+    BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID, BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
     BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID,
     BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID,
     BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID, BackgroundJobEventPhase, BackgroundJobKind,
@@ -32,8 +31,7 @@ use super::{
     RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
     SequenceIngressTask, SequenceIngressTaskKind, SequenceIngressTaskMessage,
     TutorialProjectOpenOutcome, TutorialProjectTask, TutorialProjectTaskMessage,
-    TutorialProjectTaskProgress, gui_prominent_glossary_entries,
-    load_agent_token_file_credentials,
+    TutorialProjectTaskProgress, gui_prominent_glossary_entries, load_agent_token_file_credentials,
     preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
     preferred_mistral_agent_system_id, preferred_openai_agent_system_id,
 };
@@ -51,12 +49,12 @@ use crate::{
         ContainerKind, DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings, DotplotMode, Engine,
         FlexibilityModel, GenomeAnnotationProjectionTelemetry, GenomeGeneExtractMode,
         GenomeTrackSource, GenomeTrackSubscription, GentleEngine, LineageEdge, LineageNode,
-        LinearSequenceLetterLayoutMode, OpResult, Operation,
-        PLANNING_ESTIMATE_SCHEMA, PairwiseAlignmentMode, PlanningEstimate, PlanningObjective,
-        PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-        ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy, Rack, RackAuthoringTemplate,
-        RackFillDirection, RackProfileKind, RackProfileSnapshot, RenderSvgMode,
-        RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode, ReverseTranslationReport,
+        LinearSequenceLetterLayoutMode, OpResult, Operation, PLANNING_ESTIMATE_SCHEMA,
+        PairwiseAlignmentMode, PlanningEstimate, PlanningObjective, PrimerDesignPairConstraint,
+        PrimerDesignSideConstraint, ProjectState, ProteinToDnaHandoffRankingGoal,
+        ProteinToDnaHandoffStrategy, Rack, RackAuthoringTemplate, RackFillDirection,
+        RackProfileKind, RackProfileSnapshot, RenderSvgMode, RestrictionCloningPcrHandoffMode,
+        RestrictionEnzymeDisplayMode, ReverseTranslationReport,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore, SequenceOrigin,
         TranslationSpeedMark, TranslationSpeedProfile, TranslationSpeedProfileSource,
@@ -73,12 +71,11 @@ use crate::{
     ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary, EnsemblProteinFeature},
     genomes::{
         BlastDatabaseIndexKind, BlastDatabaseInspectionReport, EnsemblCatalogUpdatePreview,
-        EnsemblInstallableGenomeCatalog, EnsemblQuickInstallPreview,
-        HelperConstructInterpretation, PrepareGenomePlan, PrepareGenomePlanStep,
-        PrepareGenomeProgress, PrepareGenomeStepId, PreparedCacheArtifactGroup,
-        PreparedCacheArtifactStat, PreparedCacheCleanupItemReport, PreparedCacheCleanupMode,
-        PreparedCacheCleanupReport, PreparedCacheEntryKind, PreparedCacheInspectionEntry,
-        PreparedCacheInspectionReport, PreparedGenomeInspection,
+        EnsemblInstallableGenomeCatalog, EnsemblQuickInstallPreview, HelperConstructInterpretation,
+        PrepareGenomePlan, PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
+        PreparedCacheArtifactGroup, PreparedCacheArtifactStat, PreparedCacheCleanupItemReport,
+        PreparedCacheCleanupMode, PreparedCacheCleanupReport, PreparedCacheEntryKind,
+        PreparedCacheInspectionEntry, PreparedCacheInspectionReport, PreparedGenomeInspection,
     },
     gibson_planning::{
         GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonCartoonPreview,
@@ -962,11 +959,9 @@ fn native_agent_uses_token_file_after_session_and_environment_sources() {
         .unwrap_or_else(|e| e.into_inner());
     let _guard = EnvVarGuard::set(OPENAI_API_KEY_ENV, "");
     let temp = tempdir().expect("temp home");
-    fs::write(temp.path().join(".codex_token"), "file-token")
-        .expect("write token file");
+    fs::write(temp.path().join(".codex_token"), "file-token").expect("write token file");
     let mut app = GENtleApp::default();
-    app.agent_token_file_credentials =
-        load_agent_token_file_credentials(Some(temp.path()));
+    app.agent_token_file_credentials = load_agent_token_file_credentials(Some(temp.path()));
     app.agent_token_file_credentials_loaded = true;
     let system = test_agent_system("openai_gpt5_native", AgentSystemTransport::NativeOpenai);
 
@@ -1001,11 +996,9 @@ fn native_agent_uses_token_file_after_session_and_environment_sources() {
 #[test]
 fn codex_local_keeps_cli_login_and_does_not_import_api_key_sources() {
     let temp = tempdir().expect("temp home");
-    fs::write(temp.path().join(".codex_token"), "file-token")
-        .expect("write token file");
+    fs::write(temp.path().join(".codex_token"), "file-token").expect("write token file");
     let mut app = GENtleApp::default();
-    app.agent_token_file_credentials =
-        load_agent_token_file_credentials(Some(temp.path()));
+    app.agent_token_file_credentials = load_agent_token_file_credentials(Some(temp.path()));
     app.agent_token_file_credentials_loaded = true;
     app.agent_openai_api_key = "session-token".to_string();
     let system = test_agent_system("codex_local_stdio", AgentSystemTransport::ExternalJsonStdio);
@@ -1361,7 +1354,14 @@ fn agent_prompt_history_aliases_use_guarded_gui_transitions() {
 
     app.execute_agent_prompt_command("/undo");
 
-    assert!(app.engine.read().expect("engine").state().display.show_features);
+    assert!(
+        app.engine
+            .read()
+            .expect("engine")
+            .state()
+            .display
+            .show_features
+    );
     assert!(!app.lineage_cache_valid);
     assert!(app.tracked_autosync_last_key.is_none());
     assert!(app.agent_status.contains("Undo applied"));
@@ -1371,7 +1371,14 @@ fn agent_prompt_history_aliases_use_guarded_gui_transitions() {
 
     app.execute_agent_prompt_command("/redo");
 
-    assert!(!app.engine.read().expect("engine").state().display.show_features);
+    assert!(
+        !app.engine
+            .read()
+            .expect("engine")
+            .state()
+            .display
+            .show_features
+    );
     assert!(app.agent_status.contains("Redo applied"));
     let redo_entry = app.agent_execution_log.last().expect("redo log entry");
     assert!(redo_entry.ok);
@@ -1391,7 +1398,14 @@ fn agent_history_transition_rejects_auto_execution_and_active_background_jobs() 
         .expect("create undo checkpoint");
 
     app.execute_agent_suggested_command(1, "/undo", "auto");
-    assert!(!app.engine.read().expect("engine").state().display.show_features);
+    assert!(
+        !app.engine
+            .read()
+            .expect("engine")
+            .state()
+            .display
+            .show_features
+    );
     assert!(
         app.agent_status
             .contains(AGENT_HISTORY_CONFIRMATION_REQUIRED)
@@ -1408,7 +1422,14 @@ fn agent_history_transition_rejects_auto_execution_and_active_background_jobs() 
     });
     app.execute_agent_suggested_command(2, "/undo", "manual");
 
-    assert!(!app.engine.read().expect("engine").state().display.show_features);
+    assert!(
+        !app.engine
+            .read()
+            .expect("engine")
+            .state()
+            .display
+            .show_features
+    );
     assert!(app.agent_status.contains("background jobs are active"));
     assert!(!app.agent_execution_log.last().expect("guard log entry").ok);
 }
@@ -1799,8 +1820,7 @@ fn agent_response_sanity_flags_auto_history_transition() {
 
     assert!(
         warnings.iter().any(|warning| {
-            warning.contains(AGENT_HISTORY_CONFIRMATION_REQUIRED)
-                && warning.contains("Click Run")
+            warning.contains(AGENT_HISTORY_CONFIRMATION_REQUIRED) && warning.contains("Click Run")
         }),
         "warnings: {warnings:?}"
     );
@@ -7582,8 +7602,8 @@ fn persisting_agent_selection_preserves_other_saved_settings() {
     app.persist_agent_system_selection_to_path(&path)
         .expect("persist agent selection");
 
-    let loaded = GENtleApp::read_persisted_configuration_from_path(&path)
-        .expect("read updated settings");
+    let loaded =
+        GENtleApp::read_persisted_configuration_from_path(&path).expect("read updated settings");
     assert_eq!(loaded.agent_system_id, "codex_local_stdio");
     assert_eq!(loaded.rnapkin_executable, "/saved/rnapkin");
 }
@@ -12816,7 +12836,10 @@ fn genome_track_autosync_key_ignores_read_only_operation_log_growth() {
         .expect("engine")
         .state_mut()
         .metadata
-        .insert("unrelated_structural_test".to_string(), serde_json::json!(true));
+        .insert(
+            "unrelated_structural_test".to_string(),
+            serde_json::json!(true),
+        );
     app.sync_tracked_bed_tracks_for_new_anchors();
     assert_eq!(app.tracked_autosync_full_scan_count, 4);
     assert!(
@@ -12843,9 +12866,8 @@ fn failed_tracked_import_still_marks_project_dirty() {
         .expect("temporary directory")
         .path()
         .join("missing-track.bed");
-    let report = crate::background_engine::execute_on_engine_snapshot(
-        &app.engine,
-        move |snapshot| {
+    let report =
+        crate::background_engine::execute_on_engine_snapshot(&app.engine, move |snapshot| {
             snapshot.import_genome_track_to_all_anchored(
                 GenomeTrackSubscription {
                     source: GenomeTrackSource::Bed,
@@ -12857,9 +12879,8 @@ fn failed_tracked_import_still_marks_project_dirty() {
                 },
                 true,
             )
-        },
-    )
-    .expect("failed individual imports still return a sync report");
+        })
+        .expect("failed individual imports still return a sync report");
 
     assert_eq!(report.applied_imports, 0);
     assert_eq!(report.failed_imports, 1);
@@ -12881,10 +12902,9 @@ fn bigwig_converter_preflight_keeps_actionable_failure_message() {
         .path()
         .join("missing-bigWigToBedGraph");
 
-    let error = GENtleApp::validate_bigwig_converter_in_background(
-        missing.to_string_lossy().as_ref(),
-    )
-    .expect_err("missing converter should fail");
+    let error =
+        GENtleApp::validate_bigwig_converter_in_background(missing.to_string_lossy().as_ref())
+            .expect_err("missing converter should fail");
 
     assert_eq!(error.code, ErrorCode::InvalidInput);
     assert!(error.message.contains("BigWig import preflight failed"));

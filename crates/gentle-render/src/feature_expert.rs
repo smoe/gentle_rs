@@ -184,8 +184,7 @@ pub fn compute_supported_splicing_exon_transitions(
         .enumerate()
         .map(|(idx, exon)| ((exon.start_1based, exon.end_1based), idx))
         .collect();
-    let mut transitions =
-        BTreeMap::<(usize, usize), (usize, BTreeSet<usize>)>::new();
+    let mut transitions = BTreeMap::<(usize, usize), (usize, BTreeSet<usize>)>::new();
     for transcript in &view.transcripts {
         let mut ordered_indices = transcript
             .exons
@@ -234,8 +233,7 @@ pub fn compute_splicing_exon_transition_matrix(
     let mut counts = vec![vec![0usize; exon_count]; exon_count];
     let mut transcript_feature_ids = vec![vec![Vec::<usize>::new(); exon_count]; exon_count];
     for transition in compute_supported_splicing_exon_transitions(view) {
-        counts[transition.from_exon_index][transition.to_exon_index] =
-            transition.support_count;
+        counts[transition.from_exon_index][transition.to_exon_index] = transition.support_count;
         transcript_feature_ids[transition.from_exon_index][transition.to_exon_index] =
             transition.transcript_feature_ids;
     }
@@ -4139,8 +4137,7 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
     let warning_rows = report.warnings.iter().take(8).collect::<Vec<_>>();
     let provenance_top = warning_top + 38.0 + warning_rows.len() as f32 * 15.0;
     let provenance_rows = report.provenance.iter().take(10).collect::<Vec<_>>();
-    let doc_height =
-        (provenance_top + 48.0 + provenance_rows.len() as f32 * 14.0).max(620.0);
+    let doc_height = (provenance_top + 48.0 + provenance_rows.len() as f32 * 14.0).max(620.0);
 
     let mut doc = Document::new()
         .set("viewBox", (0, 0, width, doc_height))

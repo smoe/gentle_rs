@@ -10304,10 +10304,8 @@ impl GentleEngine {
                 "EXF:{}:{}-{}:{}",
                 assembly_token, start_1based, end_1based, gene_strand
             );
-            exon_id_by_local_range.insert(
-                (exon.start_1based, exon.end_1based),
-                exon_family_id.clone(),
-            );
+            exon_id_by_local_range
+                .insert((exon.start_1based, exon.end_1based), exon_family_id.clone());
             let mut transcript_ids = Vec::new();
             let mut family_ids = Vec::new();
             for matrix_row in &splicing.matrix_rows {
@@ -10447,16 +10445,14 @@ impl GentleEngine {
                 genomic_high_1based: genomic_high,
                 local_low_1based: local_low,
                 local_high_1based: local_high,
-                transcript_donor_1based:
-                    Self::isoform_evidence_local_position_to_report_1based(
-                        anchor.as_ref(),
-                        transcript_donor_local,
-                    ),
-                transcript_acceptor_1based:
-                    Self::isoform_evidence_local_position_to_report_1based(
-                        anchor.as_ref(),
-                        transcript_acceptor_local,
-                    ),
+                transcript_donor_1based: Self::isoform_evidence_local_position_to_report_1based(
+                    anchor.as_ref(),
+                    transcript_donor_local,
+                ),
+                transcript_acceptor_1based: Self::isoform_evidence_local_position_to_report_1based(
+                    anchor.as_ref(),
+                    transcript_acceptor_local,
+                ),
                 strand: gene_strand.clone(),
                 annotation_model_count: junction.support_transcript_count,
                 transcript_ids,
@@ -10599,8 +10595,7 @@ impl GentleEngine {
                 if let Some(junction) = junctions.iter_mut().find(|junction| {
                     junction.local_low_1based == low && junction.local_high_1based == high
                 }) {
-                    let evidence_id =
-                        format!("rna:{}:junction:{}-{}", report.report_id, low, high);
+                    let evidence_id = format!("rna:{}:junction:{}-{}", report.report_id, low, high);
                     evidence_items.push(GeneIsoformEvidenceItem {
                         evidence_id: evidence_id.clone(),
                         source_kind: IsoformEvidenceSourceKind::RnaRead,
@@ -10691,9 +10686,7 @@ impl GentleEngine {
                     && !record_chromosome
                         .trim()
                         .trim_start_matches("chr")
-                        .eq_ignore_ascii_case(
-                            report_chromosome.trim().trim_start_matches("chr"),
-                        )
+                        .eq_ignore_ascii_case(report_chromosome.trim().trim_start_matches("chr"))
                 {
                     coordinate_mismatches.push(format!(
                         "chromosome '{}' != '{}'",
@@ -10761,8 +10754,9 @@ impl GentleEngine {
                     },
                     target_ids,
                     support_count: Some(record.support_count),
-                    method: "resource-declared exon/junction support with explicit accession provenance"
-                        .to_string(),
+                    method:
+                        "resource-declared exon/junction support with explicit accession provenance"
+                            .to_string(),
                     notes: record.notes,
                     ..Default::default()
                 });
@@ -10778,8 +10772,8 @@ impl GentleEngine {
                 message: format!("Could not read probe evidence report '{path}': {error}"),
                 cause_chain: vec![],
             })?;
-            let report: ProbeRegionEvidenceInterpretationReport =
-                serde_json::from_slice(&bytes).map_err(|error| EngineError {
+            let report: ProbeRegionEvidenceInterpretationReport = serde_json::from_slice(&bytes)
+                .map_err(|error| EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Could not parse probe evidence report '{path}': {error}"),
                     cause_chain: vec![],
@@ -11135,9 +11129,7 @@ impl GentleEngine {
             "llr_bits" => Ok(TfbsScoreTrackValueKind::LlrBits),
             "llr_quantile" => Ok(TfbsScoreTrackValueKind::LlrQuantile),
             "llr_background_quantile" => Ok(TfbsScoreTrackValueKind::LlrBackgroundQuantile),
-            "llr_background_tail_log10" => {
-                Ok(TfbsScoreTrackValueKind::LlrBackgroundTailLog10)
-            }
+            "llr_background_tail_log10" => Ok(TfbsScoreTrackValueKind::LlrBackgroundTailLog10),
             "true_log_odds_bits" => Ok(TfbsScoreTrackValueKind::TrueLogOddsBits),
             "true_log_odds_quantile" => Ok(TfbsScoreTrackValueKind::TrueLogOddsQuantile),
             "true_log_odds_background_quantile" => {
@@ -11620,8 +11612,9 @@ impl GentleEngine {
             .filter(|value| !value.is_empty())
             .ok_or_else(|| EngineError {
                 code: ErrorCode::InvalidInput,
-                message: "Gene-locus probe-effect overlays require --probe-effect-coordinate-system"
-                    .to_string(),
+                message:
+                    "Gene-locus probe-effect overlays require --probe-effect-coordinate-system"
+                        .to_string(),
                 cause_chain: vec![],
             })?;
         if Self::gene_locus_probe_genome_token(coordinate_system)
@@ -11649,7 +11642,8 @@ impl GentleEngine {
         paths.dedup();
         let mut contrasts = Vec::<GeneLocusProbeEffectContrast>::new();
         let mut overlays = Vec::new();
-        let mut unavailable_requested = requested_contrasts.iter().cloned().collect::<BTreeSet<_>>();
+        let mut unavailable_requested =
+            requested_contrasts.iter().cloned().collect::<BTreeSet<_>>();
 
         for path in paths {
             let bytes = std::fs::read(&path).map_err(|error| EngineError {
@@ -11661,11 +11655,16 @@ impl GentleEngine {
                 .delimiter(b'\t')
                 .trim(csv::Trim::All)
                 .from_reader(bytes.as_slice());
-            let headers = reader.headers().map_err(|error| EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!("Could not read probe-effect TSV header from '{path}': {error}"),
-                cause_chain: vec![],
-            })?.clone();
+            let headers = reader
+                .headers()
+                .map_err(|error| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not read probe-effect TSV header from '{path}': {error}"
+                    ),
+                    cause_chain: vec![],
+                })?
+                .clone();
             let feature_idx = Self::gene_locus_probe_required_header(
                 &headers,
                 &["probeset_id", "feature_id", "probeset_or_region_id"],
@@ -11687,14 +11686,10 @@ impl GentleEngine {
                 &headers,
                 &["primary_gene", "gene", "gene_symbol"],
             );
-            let start_idx = Self::gene_locus_probe_header_index(
-                &headers,
-                &["start", "start_1based"],
-            );
-            let end_idx = Self::gene_locus_probe_header_index(
-                &headers,
-                &["stop", "end", "end_1based"],
-            );
+            let start_idx =
+                Self::gene_locus_probe_header_index(&headers, &["start", "start_1based"]);
+            let end_idx =
+                Self::gene_locus_probe_header_index(&headers, &["stop", "end", "end_1based"]);
             let junction_start_idx =
                 Self::gene_locus_probe_header_index(&headers, &["junction_start_edge"]);
             let junction_stop_idx =
@@ -11723,7 +11718,8 @@ impl GentleEngine {
                         &contrast.source_column,
                     ];
                     let matched = candidates.iter().any(|candidate| {
-                        requested_contrasts.contains(&Self::gene_locus_probe_contrast_token(candidate))
+                        requested_contrasts
+                            .contains(&Self::gene_locus_probe_contrast_token(candidate))
                     });
                     if matched {
                         for candidate in candidates {
@@ -11804,18 +11800,10 @@ impl GentleEngine {
                     });
                 }
                 let start = Self::gene_locus_probe_optional_usize(
-                    &record,
-                    start_idx,
-                    "start",
-                    &path,
-                    row_1based,
+                    &record, start_idx, "start", &path, row_1based,
                 )?;
                 let end = Self::gene_locus_probe_optional_usize(
-                    &record,
-                    end_idx,
-                    "stop/end",
-                    &path,
-                    row_1based,
+                    &record, end_idx, "stop/end", &path, row_1based,
                 )?;
                 let junction_start = Self::gene_locus_probe_optional_usize(
                     &record,
@@ -12011,7 +11999,10 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: format!(
                     "Requested probe-effect contrast(s) were not found: {}",
-                    unavailable_requested.into_iter().collect::<Vec<_>>().join(", ")
+                    unavailable_requested
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ),
                 cause_chain: vec![],
             });
@@ -12103,10 +12094,7 @@ impl GentleEngine {
             feature_geometries
                 .entry(overlay.feature_id.to_ascii_lowercase())
                 .or_default()
-                .insert((
-                    overlay.genomic_start_1based,
-                    overlay.genomic_end_1based,
-                ));
+                .insert((overlay.genomic_start_1based, overlay.genomic_end_1based));
         }
         for (feature_id, geometries) in feature_geometries {
             if geometries.len() > 1 {
@@ -12118,13 +12106,9 @@ impl GentleEngine {
         }
         overlays.sort_by(|left, right| {
             let position_order = if gene_strand == "-" {
-                right
-                    .genomic_end_1based
-                    .cmp(&left.genomic_end_1based)
+                right.genomic_end_1based.cmp(&left.genomic_end_1based)
             } else {
-                left
-                    .genomic_start_1based
-                    .cmp(&right.genomic_start_1based)
+                left.genomic_start_1based.cmp(&right.genomic_start_1based)
             };
             position_order
                 .then(left.feature_id.cmp(&right.feature_id))
@@ -12441,9 +12425,7 @@ impl GentleEngine {
         seq_id: &str,
         request: &GeneLocusEvidenceDisplayRequest,
     ) -> Result<GeneLocusEvidenceDisplayReport, EngineError> {
-        crate::gentle_gui_profile_scope!(
-            "GentleEngine::build_gene_locus_evidence_display_report"
-        );
+        crate::gentle_gui_profile_scope!("GentleEngine::build_gene_locus_evidence_display_report");
         let mut base_request = request.isoform_evidence.clone();
         base_request.occupancy_track_names.clear();
         let isoform_evidence = self.build_gene_isoform_evidence_report(seq_id, &base_request)?;
@@ -12762,10 +12744,7 @@ mod gene_locus_probe_effect_tests {
         );
         let request = GeneLocusEvidenceDisplayRequest {
             probe_effect_table_paths: vec![fixture.to_string_lossy().to_string()],
-            probe_effect_contrasts: vec![
-                "TAp73alpha-GFP".to_string(),
-                "DNp73beta-GFP".to_string(),
-            ],
+            probe_effect_contrasts: vec!["TAp73alpha-GFP".to_string(), "DNp73beta-GFP".to_string()],
             probe_effect_coordinate_system: Some("GRCh38.p14".to_string()),
             ..Default::default()
         };
@@ -12809,7 +12788,10 @@ mod gene_locus_probe_effect_tests {
             7
         );
         assert_eq!(
-            overlays.iter().filter_map(|row| row.pm_probe_count).sum::<usize>(),
+            overlays
+                .iter()
+                .filter_map(|row| row.pm_probe_count)
+                .sum::<usize>(),
             130
         );
         assert_eq!(
@@ -12869,7 +12851,11 @@ mod gene_locus_probe_effect_tests {
                 .iter()
                 .any(|row| row.source_kind == "gene_locus_probe_effect_table")
         );
-        assert!(warnings.iter().any(|warning| warning.contains("raw activity")));
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("raw activity"))
+        );
     }
 
     #[test]
@@ -12951,6 +12937,10 @@ mod gene_locus_probe_effect_tests {
         assert_eq!(overlays[0].local_start_1based, 10);
         assert_eq!(overlays[0].local_end_1based, 15);
         assert_eq!(overlays[0].mapping_status, "clipped_to_display_locus");
-        assert!(warnings.iter().any(|warning| warning.contains("skipped 1 row")));
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("skipped 1 row"))
+        );
     }
 }

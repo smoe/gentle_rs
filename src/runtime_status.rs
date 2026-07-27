@@ -770,7 +770,9 @@ fn runtime_summary_lines(
 
 fn classify_activity_observation(lifecycle_status: &str) -> RuntimeStatusActivityObservation {
     match lifecycle_status.trim().to_ascii_lowercase().as_str() {
-        "running" | "queued" | "preparing" | "in_progress" => RuntimeStatusActivityObservation::Live,
+        "running" | "queued" | "preparing" | "in_progress" => {
+            RuntimeStatusActivityObservation::Live
+        }
         "ready" | "completed" | "done" | "ok" => RuntimeStatusActivityObservation::Completed,
         "failed" | "error" => RuntimeStatusActivityObservation::Failed,
         "cancelled" | "canceled" => RuntimeStatusActivityObservation::Cancelled,
@@ -885,10 +887,8 @@ mod tests {
             "running",
         );
 
-        let snapshot = runtime_status_snapshot(RuntimeStatusTrigger::Test).with_activities(
-            vec![activity],
-            vec!["test observation note".to_string()],
-        );
+        let snapshot = runtime_status_snapshot(RuntimeStatusTrigger::Test)
+            .with_activities(vec![activity], vec!["test observation note".to_string()]);
 
         assert_eq!(snapshot.activities.len(), 1);
         assert_eq!(

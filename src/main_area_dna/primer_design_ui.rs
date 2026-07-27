@@ -1247,17 +1247,13 @@ impl MainAreaDna {
         )?;
         let practicality = match (preferred_min_amplicon_bp, preferred_max_amplicon_bp) {
             (Some(min_bp), Some(max_bp)) => Some(TranscriptAssayPracticalityPolicy {
-                preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange {
-                    min_bp,
-                    max_bp,
-                }),
+                preferred_amplicon_bp: Some(TranscriptAssayAmpliconRange { min_bp, max_bp }),
                 allowed_amplicon_bp: None,
             }),
             (None, None) => None,
             _ => {
                 return Err(
-                    "Preferred amplicon minimum and maximum must be supplied together"
-                        .to_string(),
+                    "Preferred amplicon minimum and maximum must be supplied together".to_string(),
                 );
             }
         };
@@ -3878,8 +3874,12 @@ impl MainAreaDna {
                 self.transcript_assay_panel_ui.objective = report.objective;
                 self.transcript_assay_panel_ui.coverage_policy = report.coverage_policy;
                 self.transcript_assay_panel_ui.assay_tier = report.assay_tier;
-                self.transcript_assay_panel_ui.preferred_min_amplicon_bp.clear();
-                self.transcript_assay_panel_ui.preferred_max_amplicon_bp.clear();
+                self.transcript_assay_panel_ui
+                    .preferred_min_amplicon_bp
+                    .clear();
+                self.transcript_assay_panel_ui
+                    .preferred_max_amplicon_bp
+                    .clear();
                 if let Some(policy) = report.practicality_policy.as_ref()
                     && let Some(preferred) = policy.preferred_amplicon_bp.as_ref()
                 {
@@ -3964,9 +3964,7 @@ impl MainAreaDna {
             TranscriptAssayUseTier::Unspecified => "Unspecified",
             TranscriptAssayUseTier::RoutineCommonRegionScreen => "Routine common-region screen",
             TranscriptAssayUseTier::IsoformDiscrimination => "Isoform discrimination",
-            TranscriptAssayUseTier::LongRangeStructureDiscovery => {
-                "Long-range structure discovery"
-            }
+            TranscriptAssayUseTier::LongRangeStructureDiscovery => "Long-range structure discovery",
         }
     }
 
@@ -3979,9 +3977,7 @@ impl MainAreaDna {
             TranscriptAssayPracticalityClassification::AllowedNonpreferred => {
                 "allowed nonpreferred"
             }
-            TranscriptAssayPracticalityClassification::LongRangeFallback => {
-                "long-range fallback"
-            }
+            TranscriptAssayPracticalityClassification::LongRangeFallback => "long-range fallback",
         }
     }
 

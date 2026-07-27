@@ -798,7 +798,10 @@ impl GENtleApp {
             }
             if suggestion.execution == AgentExecutionIntent::Auto
                 && parsed_command.as_ref().is_ok_and(|parsed| {
-                    matches!(parsed, ShellCommand::HistoryUndo | ShellCommand::HistoryRedo)
+                    matches!(
+                        parsed,
+                        ShellCommand::HistoryUndo | ShellCommand::HistoryRedo
+                    )
                 })
             {
                 warnings.push(format!(
@@ -1491,7 +1494,10 @@ impl GENtleApp {
             }
         };
         if trigger == "auto"
-            && matches!(command, ShellCommand::HistoryUndo | ShellCommand::HistoryRedo)
+            && matches!(
+                command,
+                ShellCommand::HistoryUndo | ShellCommand::HistoryRedo
+            )
         {
             let summary = AGENT_HISTORY_CONFIRMATION_REQUIRED.to_string();
             self.agent_status = format!("{source_label} rejected: {summary}");
@@ -1526,7 +1532,10 @@ impl GENtleApp {
             });
             return;
         }
-        if matches!(command, ShellCommand::HistoryUndo | ShellCommand::HistoryRedo) {
+        if matches!(
+            command,
+            ShellCommand::HistoryUndo | ShellCommand::HistoryRedo
+        ) {
             let state_changed = match command {
                 ShellCommand::HistoryUndo => self.undo_last_operation(),
                 ShellCommand::HistoryRedo => self.redo_last_operation(),

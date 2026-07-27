@@ -3137,7 +3137,11 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
         "runtime_status" => {
             let args = params.arguments.as_object().cloned().unwrap_or_default();
             if args.keys().any(|key| key != "state_path") {
-                tool_result_text("runtime_status accepts only state_path".to_string(), "text", true)
+                tool_result_text(
+                    "runtime_status accepts only state_path".to_string(),
+                    "text",
+                    true,
+                )
             } else {
                 let state_path = state_path_from_args(default_state_path, &args);
                 match load_state(&state_path) {

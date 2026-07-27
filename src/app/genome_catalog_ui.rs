@@ -334,7 +334,8 @@ impl GENtleApp {
             || self.prepared_genome_inspection_cache_key.as_deref() != Some(key.as_str())
             || self.prepared_genome_inspection_cache.is_none()
         {
-            self.prepared_genome_inspection_cache = Some(self.collect_prepared_genome_inspections());
+            self.prepared_genome_inspection_cache =
+                Some(self.collect_prepared_genome_inspections());
             self.prepared_genome_inspection_cache_key = Some(key);
         }
         self.prepared_genome_inspection_cache
@@ -500,9 +501,7 @@ impl GENtleApp {
         )
     }
 
-    pub(super) fn format_prepared_blast_summary(
-        inspection: &PreparedGenomeInspection,
-    ) -> String {
+    pub(super) fn format_prepared_blast_summary(inspection: &PreparedGenomeInspection) -> String {
         let Some(database) = &inspection.blast_database else {
             return if inspection.blast_index_ready {
                 "index present; not validated".to_string()
@@ -514,10 +513,7 @@ impl GENtleApp {
             .sequence_count
             .map(|count| count.to_string())
             .unwrap_or_else(|| "?".to_string());
-        format!(
-            "{} | {} seqs",
-            database.validation_status, sequence_count
-        )
+        format!("{} | {} seqs", database.validation_status, sequence_count)
     }
 
     pub(super) fn format_prepared_blast_hover_text(

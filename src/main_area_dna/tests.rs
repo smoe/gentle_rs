@@ -9198,14 +9198,16 @@ fn transcript_assay_panel_gui_defaults_to_strict_endpoint_oligo_dt_design() {
         area.transcript_assay_panel_ui.assay_tier,
         crate::engine::TranscriptAssayUseTier::Unspecified
     );
-    assert!(area
-        .transcript_assay_panel_ui
-        .preferred_min_amplicon_bp
-        .is_empty());
-    assert!(area
-        .transcript_assay_panel_ui
-        .preferred_max_amplicon_bp
-        .is_empty());
+    assert!(
+        area.transcript_assay_panel_ui
+            .preferred_min_amplicon_bp
+            .is_empty()
+    );
+    assert!(
+        area.transcript_assay_panel_ui
+            .preferred_max_amplicon_bp
+            .is_empty()
+    );
     assert!(
         area.transcript_assay_panel_ui
             .oligo_dt_5prime_risk_threshold_bp

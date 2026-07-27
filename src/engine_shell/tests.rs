@@ -6829,9 +6829,11 @@ fn parse_primers_seed_from_feature_and_splicing() {
         "primers design-transcript-assay-panel seq_a 17 --preferred-min-amplicon-bp 80",
     )
     .expect_err("preferred transcript-assay range requires both bounds");
-    assert!(incomplete_preferred_range.contains(
-        "requires --preferred-min-amplicon-bp and --preferred-max-amplicon-bp together"
-    ));
+    assert!(
+        incomplete_preferred_range.contains(
+            "requires --preferred-min-amplicon-bp and --preferred-max-amplicon-bp together"
+        )
+    );
     let endpoint_panel = parse_shell_line(
         "primers design-transcript-assay-panel seq_a 17 --assay-kind endpoint-rt-pcr --cdna-synthesis oligo-dt --objective isoform-end-matrix --junctions @junctions.json --junction-evidence clariom_juc.json --junction-evidence-priority required --min-3prime-junction-overlap-bp 5 --min-5prime-junction-overlap-bp 8 --annotation-release Ensembl116 --max-amplicon-bp 10000 --oligo-dt-5prime-risk-threshold-bp 5000",
     )
@@ -11278,10 +11280,7 @@ fn execute_planning_protein_expression_handoff_applies_reviewed_requirements() {
     let report: crate::engine::ProteinExpressionHandoffReport =
         serde_json::from_value(out.output).expect("protein-expression handoff report");
     let echoed = report.requirements.as_ref().expect("requirements echoed");
-    assert_eq!(
-        echoed.schema,
-        "gentle.protein_expression_requirements.v1"
-    );
+    assert_eq!(echoed.schema, "gentle.protein_expression_requirements.v1");
     assert_eq!(
         echoed
             .yield_goal
@@ -11304,17 +11303,17 @@ fn execute_planning_protein_expression_handoff_applies_reviewed_requirements() {
             .iter()
             .any(|action| action.action_id == "consult_cloning_strategy")
     );
-    assert!(report.warnings.iter().any(|warning| {
-        warning.contains("Outsourcing is explicitly disallowed")
-    }));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| { warning.contains("Outsourcing is explicitly disallowed") })
+    );
     let service = report
         .service_handoff_candidates
         .first()
         .expect("withheld provider provenance row");
-    assert_eq!(
-        service.status,
-        "withheld_by_outsourcing_requirement"
-    );
+    assert_eq!(service.status, "withheld_by_outsourcing_requirement");
     assert!(service.shell_line.is_empty());
     let text_report = report.text_report.as_deref().unwrap_or_default();
     assert!(text_report.contains("Reviewed expression requirements: yield_goal, chassis"));
@@ -11324,7 +11323,7 @@ fn execute_planning_protein_expression_handoff_applies_reviewed_requirements() {
 
 #[test]
 fn execute_planning_protein_expression_handoff_partial_requirements_only_resolve_matching_questions()
-{
+ {
     let mut state = ProjectState::default();
     state.sequences.insert(
         "partial_requirements_cds".to_string(),
@@ -11351,22 +11350,30 @@ fn execute_planning_protein_expression_handoff_partial_requirements_only_resolve
     .expect("protein-expression handoff with partial requirements");
     let report: crate::engine::ProteinExpressionHandoffReport =
         serde_json::from_value(out.output).expect("protein-expression handoff report");
-    assert!(!report
-        .missing_questions
-        .iter()
-        .any(|question| question.question_id == "protein_yield_metric"));
-    assert!(!report
-        .missing_questions
-        .iter()
-        .any(|question| question.question_id == "protein_folding_requirements"));
-    assert!(report
-        .missing_questions
-        .iter()
-        .any(|question| question.question_id == "expression_chassis"));
-    assert!(report
-        .missing_questions
-        .iter()
-        .any(|question| question.question_id == "outsourcing_permission"));
+    assert!(
+        !report
+            .missing_questions
+            .iter()
+            .any(|question| question.question_id == "protein_yield_metric")
+    );
+    assert!(
+        !report
+            .missing_questions
+            .iter()
+            .any(|question| question.question_id == "protein_folding_requirements")
+    );
+    assert!(
+        report
+            .missing_questions
+            .iter()
+            .any(|question| question.question_id == "expression_chassis")
+    );
+    assert!(
+        report
+            .missing_questions
+            .iter()
+            .any(|question| question.question_id == "outsourcing_permission")
+    );
 }
 
 #[test]
@@ -21829,9 +21836,8 @@ fn execute_introspect_readiness_and_effects_cover_macro_templates() {
         "introspect verify-effects candidates template-delete --arg TEMPLATE_NAME=scan",
     )
     .expect("parse candidate template delete verify before");
-    let candidate_delete_before =
-        execute_shell_command(&mut engine, &candidate_delete_before)
-            .expect("execute candidate template delete verify before");
+    let candidate_delete_before = execute_shell_command(&mut engine, &candidate_delete_before)
+        .expect("execute candidate template delete verify before");
     assert_eq!(
         candidate_delete_before.output["verified"].as_bool(),
         Some(false)
@@ -21852,9 +21858,8 @@ fn execute_introspect_readiness_and_effects_cover_macro_templates() {
         "introspect verify-effects candidates template-delete --arg TEMPLATE_NAME=scan",
     )
     .expect("parse candidate template delete verify after");
-    let candidate_delete_after =
-        execute_shell_command(&mut engine, &candidate_delete_after)
-            .expect("execute candidate template delete verify after");
+    let candidate_delete_after = execute_shell_command(&mut engine, &candidate_delete_after)
+        .expect("execute candidate template delete verify after");
     assert_eq!(
         candidate_delete_after.output["verified"].as_bool(),
         Some(true)
@@ -21864,12 +21869,12 @@ fn execute_introspect_readiness_and_effects_cover_macro_templates() {
         Some("verified")
     );
 
-    let workflow_delete_before =
-        parse_shell_line("introspect verify-effects macros template-delete --arg TEMPLATE_NAME=clone")
-            .expect("parse workflow template delete verify before");
-    let workflow_delete_before =
-        execute_shell_command(&mut engine, &workflow_delete_before)
-            .expect("execute workflow template delete verify before");
+    let workflow_delete_before = parse_shell_line(
+        "introspect verify-effects macros template-delete --arg TEMPLATE_NAME=clone",
+    )
+    .expect("parse workflow template delete verify before");
+    let workflow_delete_before = execute_shell_command(&mut engine, &workflow_delete_before)
+        .expect("execute workflow template delete verify before");
     assert_eq!(
         workflow_delete_before.output["verified"].as_bool(),
         Some(false)
@@ -21886,12 +21891,12 @@ fn execute_introspect_readiness_and_effects_cover_macro_templates() {
     )
     .expect("delete workflow template");
     assert!(workflow_deleted.state_changed);
-    let workflow_delete_after =
-        parse_shell_line("introspect verify-effects macros template-delete --arg TEMPLATE_NAME=clone")
-            .expect("parse workflow template delete verify after");
-    let workflow_delete_after =
-        execute_shell_command(&mut engine, &workflow_delete_after)
-            .expect("execute workflow template delete verify after");
+    let workflow_delete_after = parse_shell_line(
+        "introspect verify-effects macros template-delete --arg TEMPLATE_NAME=clone",
+    )
+    .expect("parse workflow template delete verify after");
+    let workflow_delete_after = execute_shell_command(&mut engine, &workflow_delete_after)
+        .expect("execute workflow template delete verify after");
     assert_eq!(
         workflow_delete_after.output["verified"].as_bool(),
         Some(true)
@@ -21904,9 +21909,8 @@ fn execute_introspect_readiness_and_effects_cover_macro_templates() {
     let workflow_missing =
         parse_shell_line("introspect readiness macros template-run --arg TEMPLATE_NAME=clone")
             .expect("parse deleted workflow template-run readiness");
-    let workflow_missing =
-        execute_shell_command(&mut engine, &workflow_missing)
-            .expect("execute deleted workflow readiness");
+    let workflow_missing = execute_shell_command(&mut engine, &workflow_missing)
+        .expect("execute deleted workflow readiness");
     assert_eq!(
         workflow_missing.output["readiness"][0]["readiness"].as_str(),
         Some("blocked")
@@ -25906,8 +25910,7 @@ fn execute_introspect_capabilities_projects_full_registry_with_fact_annotations(
                         == Some("candidate_set.exists")
                     && descriptor["effects"][0]["not"]["subject"]["arg"].as_str()
                         == Some("SET_NAME")
-                    && descriptor["effects"][0]["effect_kind"].as_str()
-                        == Some("must_on_success")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("must_on_success")
             }),
             "{id} should declare candidate-set absence after delete"
         );
@@ -25978,12 +25981,10 @@ fn execute_introspect_capabilities_projects_full_registry_with_fact_annotations(
         assert!(
             capabilities.iter().any(|descriptor| {
                 descriptor["id"].as_str() == Some(id)
-                    && descriptor["effects"][0]["not"]["fact"].as_str()
-                        == Some("guide_set.exists")
+                    && descriptor["effects"][0]["not"]["fact"].as_str() == Some("guide_set.exists")
                     && descriptor["effects"][0]["not"]["subject"]["arg"].as_str()
                         == Some("GUIDE_SET_ID")
-                    && descriptor["effects"][0]["effect_kind"].as_str()
-                        == Some("must_on_success")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("must_on_success")
             }),
             "{id} should declare guide-set absence after delete"
         );
@@ -30116,7 +30117,11 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
         out.output["legacy_sha1"]["disable_env_var"].as_str(),
         Some("GENTLE_DISABLE_LEGACY_SHA1")
     );
-    assert!(out.output["legacy_sha1"]["support_status"].as_str().is_some());
+    assert!(
+        out.output["legacy_sha1"]["support_status"]
+            .as_str()
+            .is_some()
+    );
     assert!(out.output["legacy_sha1"]["available"].as_bool().is_some());
 }
 
@@ -35330,10 +35335,7 @@ fn parse_feature_expert_commands() {
                 request.probe_effect_coordinate_system.as_deref(),
                 Some("GRCh38.p14")
             );
-            assert_eq!(
-                request.motifs,
-                vec!["TP73".to_string(), "SP1".to_string()]
-            );
+            assert_eq!(request.motifs, vec!["TP73".to_string(), "SP1".to_string()]);
             assert_eq!(request.motif_score_kind, "llr_bits");
             assert_eq!(request.motif_display_threshold, Some(2.5));
             assert_eq!(request.motif_top_hit_count, 4);
@@ -39752,10 +39754,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         export_dexseq_gff_result.output["row_count"].as_u64(),
         export_dexseq_gff_result.output["aggregate_gene_count"]
             .as_u64()
-            .zip(
-                export_dexseq_gff_result.output["exonic_part_count"]
-                    .as_u64()
-            )
+            .zip(export_dexseq_gff_result.output["exonic_part_count"].as_u64())
             .map(|(genes, parts)| genes + parts)
     );
     let dexseq_gff_text =

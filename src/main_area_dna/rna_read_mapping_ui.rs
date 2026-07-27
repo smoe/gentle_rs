@@ -5039,10 +5039,7 @@ impl MainAreaDna {
                     let tx_progress = tx.clone();
                     let cancel_for_progress = Arc::clone(&cancel_requested);
                     let cancel_for_compute = Arc::clone(&cancel_requested);
-                    let outcome = match engine
-                        .read()
-                        .map(|guard| guard.clone_without_history())
-                    {
+                    let outcome = match engine.read().map(|guard| guard.clone_without_history()) {
                         Ok(snapshot) => {
                             let mut should_continue =
                                 move || !cancel_for_compute.load(AtomicOrdering::Relaxed);
@@ -5103,10 +5100,7 @@ impl MainAreaDna {
                     let tx_progress = tx.clone();
                     let cancel_for_progress = Arc::clone(&cancel_requested);
                     let cancel_for_compute = Arc::clone(&cancel_requested);
-                    let outcome = match engine
-                        .read()
-                        .map(|guard| guard.clone_without_history())
-                    {
+                    let outcome = match engine.read().map(|guard| guard.clone_without_history()) {
                         Ok(snapshot) => {
                             let mut should_continue =
                                 move || !cancel_for_compute.load(AtomicOrdering::Relaxed);
@@ -5317,10 +5311,8 @@ impl MainAreaDna {
             self.apply_rna_read_progress_snapshot(progress, started);
         }
 
-        self.rna_read_task_repaint_delay = Self::async_task_repaint_delay(
-            processed_progress_messages,
-            hit_progress_cap,
-        );
+        self.rna_read_task_repaint_delay =
+            Self::async_task_repaint_delay(processed_progress_messages, hit_progress_cap);
 
         if done.is_none() && task_still_running && !self.show_rna_read_mapping_window {
             ctx.request_repaint_after(self.rna_read_task_repaint_delay);

@@ -47,14 +47,13 @@ use crate::{
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine, EvidenceClass,
-        ExonSkipReturnKind, ExonSkipSelectionCriterion, ExperimentalAssayReadinessPolicy,
-        FactAtom, FactBasis, FactExpression,
-        FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode, FeatureExpertTarget,
-        FeatureExpertView, FeatureLocationEditRequest, FlexibilityModel,
-        GUIDE_DESIGN_METADATA_KEY,
-        GeneIsoformEvidenceRequest, GeneLocusEvidenceDisplayRequest,
-        GeneSetCohortRelationship, GeneSetProducerFilter, GeneSetPromoterCohortReport,
-        GeneSetRequest, GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
+        ExonSkipReturnKind, ExonSkipSelectionCriterion, ExperimentalAssayReadinessPolicy, FactAtom,
+        FactBasis, FactExpression, FactSubject, FactSubjectKind, FactTruth,
+        FeatureBedCoordinateMode, FeatureExpertTarget, FeatureExpertView,
+        FeatureLocationEditRequest, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
+        GeneIsoformEvidenceRequest, GeneLocusEvidenceDisplayRequest, GeneSetCohortRelationship,
+        GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
+        GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
         GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
         GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
         GuidePracticalFilterConfig, InlineSequenceTopology, LabAssistantInstructionsFormat,
@@ -64,15 +63,14 @@ use crate::{
         PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
         PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PROTEIN_EXPRESSION_HANDOFF_SCHEMA,
-        PROTEIN_EXPRESSION_REQUIREMENTS_SCHEMA,
-        PairwiseAlignmentMode, PlanningCloningConsultation, PlanningCloningHelperVectorSummary,
-        PlanningCloningHostProfileSummary, PlanningCloningLocalConstraint,
-        PlanningCloningMissingQuestion, PlanningCloningStrategyCandidate,
-        PlanningCloningSuggestedNextAction, PlanningCloningVectorCandidate, PlanningEstimate,
-        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
-        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
-        PrimerDesignSideConstraint, PrimerSpecificityCheckMode, PrimerSpecificityPolicy,
-        ProbeRegionRequest, ProjectFact,
+        PROTEIN_EXPRESSION_REQUIREMENTS_SCHEMA, PairwiseAlignmentMode, PlanningCloningConsultation,
+        PlanningCloningHelperVectorSummary, PlanningCloningHostProfileSummary,
+        PlanningCloningLocalConstraint, PlanningCloningMissingQuestion,
+        PlanningCloningStrategyCandidate, PlanningCloningSuggestedNextAction,
+        PlanningCloningVectorCandidate, PlanningEstimate, PlanningObjective, PlanningProfile,
+        PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
+        PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
+        PrimerSpecificityCheckMode, PrimerSpecificityPolicy, ProbeRegionRequest, ProjectFact,
         ProjectFactDomain, ProjectFactGraph, ProjectFactTypeSpec, ProjectState,
         PromoterArtifactManifestEntry, PromoterCohortKind, PromoterExpressionEvidenceInput,
         PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
@@ -101,15 +99,15 @@ use crate::{
         SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingRange,
         SplicingScopePreset, TfThresholdOverride, TfbsRegionSummaryRequest,
         TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
-        TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis,
-        TranscriptAssayCoveragePolicy, TranscriptAssayJunctionPriority,
-        TranscriptAssayAmpliconRange, TranscriptAssayJunctionRequest, TranscriptAssayKind,
-        TranscriptAssayPanelObjective,
-        TranscriptAssayPanelSpecificityExecutionManifest, TranscriptAssayPracticalityPolicy,
-        TranscriptAssaySpecificityRequest, TranscriptAssayUseTier,
-        TranslationSpeedMark, TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
-        VariantAlleleChoice, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow,
-        WorkflowMacroTemplate, WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
+        TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayAmpliconRange,
+        TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
+        TranscriptAssayJunctionPriority, TranscriptAssayJunctionRequest, TranscriptAssayKind,
+        TranscriptAssayPanelObjective, TranscriptAssayPanelSpecificityExecutionManifest,
+        TranscriptAssayPracticalityPolicy, TranscriptAssaySpecificityRequest,
+        TranscriptAssayUseTier, TranslationSpeedMark, TranslationSpeedProfile,
+        UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
+        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
+        WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
         construct_reasoning_action_dotplot_request, parse_feature_coordinate_term_on_sequence,
         project_fact_type_specs, resolve_selection_formula_range_0based_on_sequence,
         split_feature_formula_range_expression,
@@ -155,8 +153,7 @@ use gentle_protocol::{
     EXTERNAL_SERVICE_REQUEST_SCHEMA, ExternalServiceDeliveryRouteReport,
     ExternalServiceDeliveryRouteRequest, ExternalServiceRequest,
     GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
-    GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, capability_registry,
-    SharedAssetActivityStatus,
+    GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, SharedAssetActivityStatus, capability_registry,
 };
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_app_kit::NSApplication;
@@ -13784,8 +13781,7 @@ fn runtime_activity_from_blast_async_job(status: &BlastAsyncJobStatus) -> Runtim
     ));
     if status.total_queries > 0 {
         activity.progress_percent = Some(
-            ((status.done_queries as f64 / status.total_queries as f64) * 100.0)
-                .clamp(0.0, 100.0),
+            ((status.done_queries as f64 / status.total_queries as f64) * 100.0).clamp(0.0, 100.0),
         );
     }
     activity.started_at_unix_ms = status.started_at_unix_ms;
@@ -13810,7 +13806,9 @@ fn observed_activity_state(
         return RuntimeStatusActivityObservation::CrossProcess;
     }
     match lifecycle_status.trim().to_ascii_lowercase().as_str() {
-        "running" | "queued" | "preparing" | "in_progress" => RuntimeStatusActivityObservation::Live,
+        "running" | "queued" | "preparing" | "in_progress" => {
+            RuntimeStatusActivityObservation::Live
+        }
         "ready" | "completed" | "done" | "ok" => RuntimeStatusActivityObservation::Completed,
         "failed" | "error" => RuntimeStatusActivityObservation::Failed,
         "cancelled" | "canceled" => RuntimeStatusActivityObservation::Cancelled,
@@ -14505,16 +14503,10 @@ fn parse_feature_expert_target_tokens(
                             )?);
                     }
                     "--occupancy-layout" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--occupancy-layout",
-                            context,
-                        )?;
-                        request.occupancy_layout = parse_required_json_payload(
-                            &raw,
-                            "gene locus occupancy layout",
-                        )?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--occupancy-layout", context)?;
+                        request.occupancy_layout =
+                            parse_required_json_payload(&raw, "gene locus occupancy layout")?;
                     }
                     "--upstream-bp" | "--downstream-bp" | "--flank-bp" => {
                         let flag = tokens[idx].clone();
@@ -14532,12 +14524,9 @@ fn parse_feature_expert_target_tokens(
                         }
                     }
                     "--motif" => {
-                        request.motifs.push(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--motif",
-                            context,
-                        )?);
+                        request
+                            .motifs
+                            .push(parse_option_path(tokens, &mut idx, "--motif", context)?);
                     }
                     "--motifs" => {
                         let raw = parse_option_path(tokens, &mut idx, "--motifs", context)?;
@@ -14556,23 +14545,15 @@ fn parse_feature_expert_target_tokens(
                                 .to_string();
                     }
                     "--motif-threshold" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--motif-threshold",
-                            context,
-                        )?;
-                        request.motif_display_threshold = Some(raw.parse::<f64>().map_err(
-                            |error| format!("Invalid --motif-threshold value '{raw}': {error}"),
-                        )?);
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--motif-threshold", context)?;
+                        request.motif_display_threshold =
+                            Some(raw.parse::<f64>().map_err(|error| {
+                                format!("Invalid --motif-threshold value '{raw}': {error}")
+                            })?);
                     }
                     "--motif-top-hits" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--motif-top-hits",
-                            context,
-                        )?;
+                        let raw = parse_option_path(tokens, &mut idx, "--motif-top-hits", context)?;
                         request.motif_top_hit_count = raw.parse::<usize>().map_err(|error| {
                             format!("Invalid --motif-top-hits value '{raw}': {error}")
                         })?;
@@ -14617,11 +14598,7 @@ fn parse_feature_expert_target_tokens(
             }
             request.probe_effect_contrasts = unique_probe_effect_contrasts;
             let mut unique_occupancy_tracks = Vec::new();
-            for track_name in request
-                .isoform_evidence
-                .occupancy_track_names
-                .drain(..)
-            {
+            for track_name in request.isoform_evidence.occupancy_track_names.drain(..) {
                 if !unique_occupancy_tracks
                     .iter()
                     .any(|value: &String| value.eq_ignore_ascii_case(&track_name))
@@ -14911,9 +14888,7 @@ fn parse_primer_design_backend(value: &str) -> Result<PrimerDesignBackend, Strin
     }
 }
 
-fn parse_primer_specificity_check_mode(
-    value: &str,
-) -> Result<PrimerSpecificityCheckMode, String> {
+fn parse_primer_specificity_check_mode(value: &str) -> Result<PrimerSpecificityCheckMode, String> {
     match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
         "none" | "off" => Ok(PrimerSpecificityCheckMode::None),
         "report_only" | "report" => Ok(PrimerSpecificityCheckMode::ReportOnly),
@@ -28865,9 +28840,10 @@ fn validate_protein_expression_requirements(
                     .to_string(),
             );
         }
-        if scale_purification.target_purity_percent.is_some_and(|value| {
-            !value.is_finite() || !(0.0..=100.0).contains(&value)
-        }) {
+        if scale_purification
+            .target_purity_percent
+            .is_some_and(|value| !value.is_finite() || !(0.0..=100.0).contains(&value))
+        {
             return Err(
                 "Protein-expression scale_purification.target_purity_percent must be between 0 and 100"
                     .to_string(),
@@ -43277,7 +43253,10 @@ fn execute_agent_suggested_commands(
             }
         };
         if trigger == Some("allow_auto_exec")
-            && matches!(parsed, ShellCommand::HistoryUndo | ShellCommand::HistoryRedo)
+            && matches!(
+                parsed,
+                ShellCommand::HistoryUndo | ShellCommand::HistoryRedo
+            )
         {
             rows.push(AgentSuggestedExecutionReport {
                 index: index_1based,
@@ -44178,8 +44157,10 @@ fn execute_agent_meta_command(
             output: introspection_capabilities_payload(kind_filter.as_deref()),
         }),
         ShellCommand::IntrospectRuntime => {
-            let (output, state_changed) =
-                runtime_status_payload_with_observed_activities(engine, RuntimeStatusTrigger::Shell)?;
+            let (output, state_changed) = runtime_status_payload_with_observed_activities(
+                engine,
+                RuntimeStatusTrigger::Shell,
+            )?;
             Ok(ShellRunResult {
                 state_changed,
                 output,
@@ -52691,10 +52672,9 @@ fn execute_feature_scan_command(
             .map_err(|_| {
                 "features edit-location start exceeds the supported coordinate range".to_string()
             })?;
-            let new_end_0based_exclusive =
-                i64::try_from(*end_1based_inclusive).map_err(|_| {
-                    "features edit-location end exceeds the supported coordinate range".to_string()
-                })?;
+            let new_end_0based_exclusive = i64::try_from(*end_1based_inclusive).map_err(|_| {
+                "features edit-location end exceeds the supported coordinate range".to_string()
+            })?;
             let request = FeatureLocationEditRequest {
                 seq_id: seq_id.clone(),
                 feature_index: *feature_index,

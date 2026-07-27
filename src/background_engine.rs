@@ -38,9 +38,7 @@ pub(crate) fn execute_on_engine_snapshot<T>(
 mod tests {
     use super::*;
     use crate::dna_sequence::DNAsequence;
-    use crate::engine::{
-        Engine, GenomeTrackSource, GenomeTrackSubscription, Operation, Workflow,
-    };
+    use crate::engine::{Engine, GenomeTrackSource, GenomeTrackSubscription, Operation, Workflow};
 
     #[test]
     fn detached_fork_excludes_inherited_history_but_keeps_execution_baseline() {
@@ -123,10 +121,7 @@ mod tests {
             serde_json::to_value(snapshot.operation_log()).expect("snapshot journal"),
             serde_json::to_value(live.operation_log()).expect("live journal")
         );
-        assert_eq!(
-            snapshot.execution_revision(),
-            live.execution_revision()
-        );
+        assert_eq!(snapshot.execution_revision(), live.execution_revision());
         assert_eq!(snapshot.mutation_revision(), live.mutation_revision());
         assert_eq!(snapshot.structural_revision(), live.structural_revision());
         assert_eq!(
@@ -199,20 +194,19 @@ mod tests {
             assert_eq!(live.undo_available(), 1);
             assert_eq!(live.redo_available(), 1);
         }
-        let baseline_mutation_revision = shared
-            .read()
-            .expect("engine")
-            .mutation_revision();
+        let baseline_mutation_revision = shared.read().expect("engine").mutation_revision();
 
         execute_on_engine_snapshot(&shared, |snapshot| {
-            assert!(snapshot.add_genome_track_subscription(GenomeTrackSubscription {
-                source: GenomeTrackSource::Bed,
-                path: "tracked.bed".to_string(),
-                track_name: Some("tracked".to_string()),
-                min_score: None,
-                max_score: None,
-                clear_existing: false,
-            })?);
+            assert!(
+                snapshot.add_genome_track_subscription(GenomeTrackSubscription {
+                    source: GenomeTrackSource::Bed,
+                    path: "tracked.bed".to_string(),
+                    track_name: Some("tracked".to_string()),
+                    min_score: None,
+                    max_score: None,
+                    clear_existing: false,
+                })?
+            );
             Ok(())
         })
         .expect("commit metadata-only detached work");

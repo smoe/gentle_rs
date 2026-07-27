@@ -38,9 +38,8 @@ use crate::{
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
         BlastDatabaseIndexKind, BlastDatabaseInspectionReport, BlastExternalBinaryPreflightReport,
-        DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN,
-        DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN, EnsemblCatalogUpdatePreview,
-        EnsemblCatalogUpdateReport, EnsemblInstallableGenomeCatalog,
+        DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN, DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN,
+        EnsemblCatalogUpdatePreview, EnsemblCatalogUpdateReport, EnsemblInstallableGenomeCatalog,
         EnsemblQuickInstallCatalogWriteReport, EnsemblQuickInstallPreview,
         EnsemblQuickInstallReport, GenomeBlastReport, GenomeCatalog,
         GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
@@ -114,12 +113,11 @@ pub use gentle_protocol::{
     GelLaneLabelLayout, GelRunConditions, GelTopologyForm, HostLifecycleRole, LineageEdge,
     LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus,
     NodeId, OpId, OrthologAmbiguityPolicy, OrthologPromoterCohortReport,
-    OrthologPromoterComparisonReport, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
-    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-    RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
-    PoolGelRenderOptions, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
-    ReadAcquisitionAnalysisFormat,
-    ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
+    OrthologPromoterComparisonReport, PoolGelRenderOptions, ProteinExternalOpinionSource,
+    ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
+    RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind,
+    RackPhysicalTemplateSpec, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
+    ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -596,8 +594,7 @@ pub use crate::feature_expert::{
     GeneLocusOccupancyGroupRequest, GeneLocusOccupancyLane, GeneLocusOccupancyLaneRequest,
     GeneLocusOccupancyLaneRole, GeneLocusOccupancyLayout, GeneLocusOccupancyScaleMode,
     GeneLocusProbeClass, GeneLocusProbeEffectContrast, GeneLocusProbeEffectOverlay,
-    GeneLocusProbeEffectValue, GeneLocusTranscriptMetrics,
-    ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
+    GeneLocusProbeEffectValue, GeneLocusTranscriptMetrics, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
     IsoformArchitectureCdsAaSegment, IsoformArchitectureExpertView,
     IsoformArchitectureProteinDomain, IsoformArchitectureProteinLane,
     IsoformArchitectureTranscriptLane, IsoformEvidenceAssessmentStatus, IsoformEvidenceSourceKind,
@@ -4172,7 +4169,10 @@ pub enum Operation {
         #[serde(default)]
         coverage_policy: TranscriptAssayCoveragePolicy,
         /// Experimental purpose, independent of the panel-selection objective.
-        #[serde(default, skip_serializing_if = "TranscriptAssayUseTier::is_unspecified")]
+        #[serde(
+            default,
+            skip_serializing_if = "TranscriptAssayUseTier::is_unspecified"
+        )]
         assay_tier: TranscriptAssayUseTier,
         /// Optional preferred/allowed product-length policy. Existing
         /// `min_amplicon_bp`/`max_amplicon_bp` remain the legacy allowed range.
@@ -9146,16 +9146,12 @@ impl GentleEngine {
 
     #[cfg(test)]
     fn top_undo_checkpoint_kind(&self) -> Option<EngineHistoryCheckpointKind> {
-        self.undo_stack
-            .last()
-            .map(EngineHistoryCheckpoint::kind)
+        self.undo_stack.last().map(EngineHistoryCheckpoint::kind)
     }
 
     #[cfg(test)]
     fn top_redo_checkpoint_kind(&self) -> Option<EngineHistoryCheckpointKind> {
-        self.redo_stack
-            .last()
-            .map(EngineHistoryCheckpoint::kind)
+        self.redo_stack.last().map(EngineHistoryCheckpoint::kind)
     }
 
     pub fn undo_last_operation(&mut self) -> Result<(), EngineError> {
@@ -12213,9 +12209,7 @@ impl GentleEngine {
         Ok(report)
     }
 
-    pub fn list_transcript_assay_panel_reports(
-        &self,
-    ) -> Vec<TranscriptAssayPanelReportSummary> {
+    pub fn list_transcript_assay_panel_reports(&self) -> Vec<TranscriptAssayPanelReportSummary> {
         let store = self.read_primer_design_store();
         let mut ids = store
             .transcript_assay_panels
@@ -18880,28 +18874,29 @@ impl GentleEngine {
                     .map(Self::normalize_id_token)
                     .unwrap_or_default(),
             );
-            let row = by_family.entry(key).or_insert_with(|| {
-                ConstructReasoningRepeatFamilyProvenance {
-                    source_kind: support.source_kind.clone(),
-                    repeat_name: support.repeat_name.clone(),
-                    repeat_class: support.repeat_class.clone(),
-                    repeat_family: support.repeat_family.clone(),
-                    family_id: support
-                        .repeat_family
-                        .as_ref()
-                        .or(support.repeat_name.as_ref())
-                        .map(|value| Self::normalize_id_token(value)),
-                    family_name: support
-                        .repeat_family
-                        .clone()
-                        .or_else(|| support.repeat_name.clone())
-                        .or_else(|| support.repeat_class.clone()),
-                    agreement,
-                    source_refs: vec![],
-                    evidence_ids: vec![],
-                    confidence: Some(confidence),
-                }
-            });
+            let row =
+                by_family
+                    .entry(key)
+                    .or_insert_with(|| ConstructReasoningRepeatFamilyProvenance {
+                        source_kind: support.source_kind.clone(),
+                        repeat_name: support.repeat_name.clone(),
+                        repeat_class: support.repeat_class.clone(),
+                        repeat_family: support.repeat_family.clone(),
+                        family_id: support
+                            .repeat_family
+                            .as_ref()
+                            .or(support.repeat_name.as_ref())
+                            .map(|value| Self::normalize_id_token(value)),
+                        family_name: support
+                            .repeat_family
+                            .clone()
+                            .or_else(|| support.repeat_name.clone())
+                            .or_else(|| support.repeat_class.clone()),
+                        agreement,
+                        source_refs: vec![],
+                        evidence_ids: vec![],
+                        confidence: Some(confidence),
+                    });
             if agreement > row.agreement {
                 row.agreement = agreement;
                 row.confidence = Some(confidence);
@@ -19466,8 +19461,7 @@ impl GentleEngine {
     ) -> Result<ConstructReasoningInputFingerprint, EngineError> {
         // Serializing through `Value` gives object maps deterministic key order;
         // direct HashMap serialization would make fingerprints process-dependent.
-        let sequence_snapshot =
-            Self::construct_reasoning_canonical_json(dna, "sequence snapshot")?;
+        let sequence_snapshot = Self::construct_reasoning_canonical_json(dna, "sequence snapshot")?;
         let objective_snapshot = Self::construct_reasoning_canonical_json(objective, "objective")?;
         Ok(ConstructReasoningInputFingerprint {
             sequence_snapshot_sha256: sha256_prefixed_str(&sequence_snapshot),

@@ -4518,10 +4518,7 @@ impl GenomeCatalog {
             .map(PathBuf::from)
             .unwrap_or_else(|| default_blast_db_prefix(&install_dir));
         Ok(Some(inspect_blast_database_prefix(
-            genome_id,
-            entry,
-            &manifest,
-            &prefix,
+            genome_id, entry, &manifest, &prefix,
         )))
     }
 
@@ -6354,10 +6351,7 @@ FASTA index='{}'.{}{}",
             BLASTN_OUTFMT_FIELDS.to_string(),
         ];
         if limit_subjects {
-            args.extend([
-                "-max_target_seqs".to_string(),
-                max_hits.to_string(),
-            ]);
+            args.extend(["-max_target_seqs".to_string(), max_hits.to_string()]);
         } else {
             args.extend([
                 "-evalue".to_string(),
@@ -10220,8 +10214,7 @@ fn is_blast_index_ready(index_files: &[PathBuf]) -> bool {
 
 const BLAST_FINGERPRINT_FULL_FILE_MAX_BYTES: u64 = 16 * 1024 * 1024;
 const BLAST_FINGERPRINT_SAMPLE_BYTES: usize = 1024 * 1024;
-const BLAST_FINGERPRINT_ALGORITHM: &str =
-    "sha256:index-file-full-or-edge-sampled-v1";
+const BLAST_FINGERPRINT_ALGORITHM: &str = "sha256:index-file-full-or-edge-sampled-v1";
 
 fn blast_index_file_identity(path: &Path) -> Result<String, String> {
     let metadata = fs::metadata(path)
@@ -10273,7 +10266,9 @@ fn first_decimal_u64(text: &str) -> Option<u64> {
             .chars()
             .filter(|ch| ch.is_ascii_digit())
             .collect::<String>();
-        (!digits.is_empty()).then(|| digits.parse::<u64>().ok()).flatten()
+        (!digits.is_empty())
+            .then(|| digits.parse::<u64>().ok())
+            .flatten()
     })
 }
 
@@ -10332,9 +10327,10 @@ fn inspect_blast_database_prefix(
             .clone()
             .or_else(|| entry.ncbi_assembly_name.clone())
             .or_else(|| Some(genome_id.to_string())),
-        source_release: entry.ensembl_template.as_ref().map(|template| {
-            format!("{} release {}", template.provider, template.release)
-        }),
+        source_release: entry
+            .ensembl_template
+            .as_ref()
+            .map(|template| format!("{} release {}", template.provider, template.release)),
         masking: manifest
             .blast_masking
             .clone()
@@ -10381,8 +10377,7 @@ fn inspect_blast_database_prefix(
             report.status_code = output.status.code();
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
-            let (database_version, sequence_count, total_bases) =
-                parse_blastdbcmd_info(&stdout);
+            let (database_version, sequence_count, total_bases) = parse_blastdbcmd_info(&stdout);
             report.blast_database_version = database_version;
             report.sequence_count = sequence_count;
             report.total_bases = total_bases;
@@ -16793,10 +16788,8 @@ mod tests {
         let mut permissions = fs::metadata(&blastdbcmd).unwrap().permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(&blastdbcmd, permissions).unwrap();
-        let _blastdbcmd = EnvVarGuard::set(
-            BLASTDBCMD_ENV_BIN,
-            blastdbcmd.to_string_lossy().as_ref(),
-        );
+        let _blastdbcmd =
+            EnvVarGuard::set(BLASTDBCMD_ENV_BIN, blastdbcmd.to_string_lossy().as_ref());
         let catalog =
             GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
         let first = catalog

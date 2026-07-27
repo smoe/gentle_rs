@@ -9598,7 +9598,10 @@ impl GentleEngine {
             reverse_binding_ranges: vec![reverse],
             expected_product_range,
             contiguous_genomic_product_expected: true,
-            source: format!("primer_design_report:{}:pair_rank={}", report.report_id, pair.rank),
+            source: format!(
+                "primer_design_report:{}:pair_rank={}",
+                report.report_id, pair.rank
+            ),
             warnings: vec![],
         }
     }
@@ -10234,7 +10237,10 @@ impl GentleEngine {
         amplicons: &[PrimerSpecificityAmplicon],
         intended_target: &PrimerSpecificityIntendedTarget,
         index_kind: BlastDatabaseIndexKind,
-    ) -> (PrimerSpecificityTargetAssessment, PrimerSpecificityTargetAssessment) {
+    ) -> (
+        PrimerSpecificityTargetAssessment,
+        PrimerSpecificityTargetAssessment,
+    ) {
         let active = PrimerSpecificityTargetAssessment {
             target_space: index_kind.as_str().to_string(),
             status: summary.status.clone(),
@@ -10917,14 +10923,16 @@ impl GentleEngine {
             let command = command_for_role(role)?;
             match validated_outputs {
                 Some(outputs) => {
-                    let output = outputs.get(&command.command_id).ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "No validated output bytes were retained for command '{}'",
-                            command.command_id
-                        ),
-                        cause_chain: vec![],
-                    })?;
+                    let output = outputs
+                        .get(&command.command_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "No validated output bytes were retained for command '{}'",
+                                command.command_id
+                            ),
+                            cause_chain: vec![],
+                        })?;
                     Self::primer_specificity_blast_from_handoff_output(handoff, command, output)
                 }
                 None => Self::primer_specificity_blast_from_handoff(handoff, command),
@@ -11522,8 +11530,7 @@ impl GentleEngine {
         if handoff.policy_schema != PRIMER_SPECIFICITY_POLICY_SCHEMA
             || handoff.execution_manifest_schema
                 != TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA
-            || handoff.completion_policy
-                != "all_assays_all_commands_success_and_specificity_pass"
+            || handoff.completion_policy != "all_assays_all_commands_success_and_specificity_pass"
         {
             issues.push(Self::transcript_assay_panel_specificity_issue(
                 "handoff_contract_mismatch",
@@ -11616,20 +11623,18 @@ impl GentleEngine {
                     "The nested primer handoff does not match the aggregate genome provenance",
                 ));
             }
-            let nested_policy = serde_json::to_value(&assay.handoff.policy).map_err(|error| {
-                EngineError {
+            let nested_policy =
+                serde_json::to_value(&assay.handoff.policy).map_err(|error| EngineError {
                     code: ErrorCode::Internal,
                     message: format!("Could not compare specificity policies: {error}"),
                     cause_chain: vec![],
-                }
-            })?;
-            let aggregate_policy = serde_json::to_value(&handoff.policy).map_err(|error| {
-                EngineError {
+                })?;
+            let aggregate_policy =
+                serde_json::to_value(&handoff.policy).map_err(|error| EngineError {
                     code: ErrorCode::Internal,
                     message: format!("Could not compare specificity policies: {error}"),
                     cause_chain: vec![],
-                }
-            })?;
+                })?;
             if nested_policy != aggregate_policy {
                 issues.push(Self::transcript_assay_panel_specificity_issue(
                     "specificity_policy_mismatch",
@@ -11939,8 +11944,7 @@ impl GentleEngine {
             Self::normalize_primer_specificity_policy(target_genome_id, policy)?;
 
         let blast_preflight = self.blast_external_binary_preflight_report();
-        let forward_blast = self
-            .blast_reference_genome_complete_with_project_and_request_options(
+        let forward_blast = self.blast_reference_genome_complete_with_project_and_request_options(
             catalog_path,
             &target_genome_id,
             &resolved_input.forward.annealing_sequence,
@@ -11949,8 +11953,7 @@ impl GentleEngine {
             Some(policy.max_hits_per_primer),
             cache_dir,
         )?;
-        let reverse_blast = self
-            .blast_reference_genome_complete_with_project_and_request_options(
+        let reverse_blast = self.blast_reference_genome_complete_with_project_and_request_options(
             catalog_path,
             &target_genome_id,
             &resolved_input.reverse.annealing_sequence,
@@ -12006,11 +12009,8 @@ impl GentleEngine {
                 reverse_blast.stderr.trim()
             ));
         }
-        let subject_aliases = Self::primer_specificity_subject_aliases(
-            &catalog,
-            &forward_blast.genome_id,
-            cache_dir,
-        );
+        let subject_aliases =
+            Self::primer_specificity_subject_aliases(&catalog, &forward_blast.genome_id, cache_dir);
         let blast_database = catalog
             .inspect_blast_database(&forward_blast.genome_id, cache_dir)
             .map_err(|error| EngineError {
@@ -12076,11 +12076,7 @@ impl GentleEngine {
             &reverse_hits,
             &policy,
         );
-        Self::primer_specificity_finalize_amplicons(
-            &mut amplicons,
-            &intended_target,
-            &policy,
-        );
+        Self::primer_specificity_finalize_amplicons(&mut amplicons, &intended_target, &policy);
         let summary = Self::primer_specificity_summary(
             &forward_hits,
             &reverse_hits,
@@ -12983,7 +12979,10 @@ impl GentleEngine {
             "transcript_order": transcript_order,
             "transcript_map_coordinate_mode": transcript_map_coordinate_mode,
         });
-        format!("assay_test_sha256_{}", sha256_hex_str(&identity.to_string()))
+        format!(
+            "assay_test_sha256_{}",
+            sha256_hex_str(&identity.to_string())
+        )
     }
 
     fn default_cdna_assay_product_prefix(report: &CdnaAssayTestReport) -> String {
@@ -14577,13 +14576,14 @@ impl GentleEngine {
         if let Some(probe) = request.probe.as_deref() {
             let forward_present =
                 !Self::find_all_subsequences(template_bytes, probe.as_bytes()).is_empty();
-            let reverse_present = request
-                .probe_reverse_binding
-                .as_deref()
-                .is_some_and(|reverse_probe| {
-                    !Self::find_all_subsequences(template_bytes, reverse_probe.as_bytes())
-                        .is_empty()
-                });
+            let reverse_present =
+                request
+                    .probe_reverse_binding
+                    .as_deref()
+                    .is_some_and(|reverse_probe| {
+                        !Self::find_all_subsequences(template_bytes, reverse_probe.as_bytes())
+                            .is_empty()
+                    });
             if !(forward_present || reverse_present) {
                 return true;
             }
@@ -14945,9 +14945,10 @@ impl GentleEngine {
                 *index != selected_index
                     && (candidate.design_equivalence_group_id
                         == selected.design_equivalence_group_id
-                        || candidate.end_reaction_ids.iter().any(|reaction_id| {
-                            selected.end_reaction_ids.contains(reaction_id)
-                        }))
+                        || candidate
+                            .end_reaction_ids
+                            .iter()
+                            .any(|reaction_id| selected.end_reaction_ids.contains(reaction_id)))
             })
             .collect::<Vec<_>>();
         if related.is_empty() {
@@ -14960,15 +14961,20 @@ impl GentleEngine {
         related.sort_by(|(_, left), (_, right)| {
             Self::transcript_assay_candidate_preference(right, left, assay_tier)
         });
-        let mut picked = related.iter().take(3).map(|(index, _)| *index).collect::<Vec<_>>();
+        let mut picked = related
+            .iter()
+            .take(3)
+            .map(|(index, _)| *index)
+            .collect::<Vec<_>>();
         for classification in [
             TranscriptAssayPracticalityClassification::Routine,
             TranscriptAssayPracticalityClassification::AllowedNonpreferred,
             TranscriptAssayPracticalityClassification::LongRangeFallback,
         ] {
-            if let Some((index, _)) = related.iter().find(|(_, candidate)| {
-                candidate.practicality_classification == classification
-            }) && !picked.contains(index)
+            if let Some((index, _)) = related
+                .iter()
+                .find(|(_, candidate)| candidate.practicality_classification == classification)
+                && !picked.contains(index)
                 && picked.len() < 5
             {
                 picked.push(*index);
@@ -15675,16 +15681,22 @@ impl GentleEngine {
         if start_1based == 0 || end_1based < start_1based {
             return None;
         }
-        if report.coordinate_frame.to_ascii_lowercase().contains("local") {
+        if report
+            .coordinate_frame
+            .to_ascii_lowercase()
+            .contains("local")
+        {
             return Some(SequenceRange0Based {
                 start_0based: start_1based - 1,
                 end_0based_exclusive: end_1based,
             });
         }
         let anchor = anchor?;
-        if row.chromosome.as_deref().is_some_and(|chromosome| {
-            !Self::chromosomes_match(chromosome, &anchor.chromosome)
-        }) {
+        if row
+            .chromosome
+            .as_deref()
+            .is_some_and(|chromosome| !Self::chromosomes_match(chromosome, &anchor.chromosome))
+        {
             return None;
         }
         let overlap_start = start_1based.max(anchor.start_1based);
@@ -15787,9 +15799,7 @@ impl GentleEngine {
                         chromosome: row.chromosome.clone(),
                         region_start_1based: row.start_1based,
                         region_end_1based: row.end_1based,
-                        source_start_0based: source_range
-                            .as_ref()
-                            .map(|range| range.start_0based),
+                        source_start_0based: source_range.as_ref().map(|range| range.start_0based),
                         source_end_0based_exclusive: source_range
                             .as_ref()
                             .map(|range| range.end_0based_exclusive),
@@ -15868,9 +15878,7 @@ impl GentleEngine {
                         chromosome: row.chromosome.clone(),
                         region_start_1based: row.start_1based,
                         region_end_1based: row.end_1based,
-                        source_start_0based: source_range
-                            .as_ref()
-                            .map(|range| range.start_0based),
+                        source_start_0based: source_range.as_ref().map(|range| range.start_0based),
                         source_end_0based_exclusive: source_range
                             .as_ref()
                             .map(|range| range.end_0based_exclusive),
@@ -15915,10 +15923,7 @@ impl GentleEngine {
     }
 
     fn transcript_assay_primer_id(sequence: &str) -> String {
-        short_sha256_id(
-            "primer",
-            sequence.trim().to_ascii_uppercase().as_str(),
-        )
+        short_sha256_id("primer", sequence.trim().to_ascii_uppercase().as_str())
     }
 
     fn transcript_assay_display_token(value: &str) -> String {
@@ -16343,13 +16348,16 @@ impl GentleEngine {
                 primer_spans_junction: reverse_exons.len() > 1,
                 ..Default::default()
             },
-            probe: candidate.probe.as_ref().map(|probe| PrimerPairSummaryOligo {
-                primer_id: Self::transcript_assay_primer_id(&probe.sequence),
-                role: "probe".to_string(),
-                display_label: format!("{gene_token}_PROBE"),
-                origin: PrimerPairSummaryOrigin::DeNovo,
-                ..Default::default()
-            }),
+            probe: candidate
+                .probe
+                .as_ref()
+                .map(|probe| PrimerPairSummaryOligo {
+                    primer_id: Self::transcript_assay_primer_id(&probe.sequence),
+                    role: "probe".to_string(),
+                    display_label: format!("{gene_token}_PROBE"),
+                    origin: PrimerPairSummaryOrigin::DeNovo,
+                    ..Default::default()
+                }),
             design_amplicon_start_0based: candidate.primer_pair.amplicon_start_0based,
             design_amplicon_end_0based_exclusive: candidate
                 .primer_pair
@@ -16462,8 +16470,7 @@ impl GentleEngine {
             warnings,
             rule_flags: flags.clone(),
             primer_pair_complementary_run_bp: pair.primer_pair_complementary_run_bp,
-            primer_pair_3prime_complementary_run_bp: pair
-                .primer_pair_3prime_complementary_run_bp,
+            primer_pair_3prime_complementary_run_bp: pair.primer_pair_3prime_complementary_run_bp,
         }
     }
 
@@ -16858,16 +16865,15 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
-        let resolved_practicality = if practicality.is_some()
-            || assay_tier != TranscriptAssayUseTier::Unspecified
-        {
-            Some(TranscriptAssayPracticalityPolicy {
-                preferred_amplicon_bp: Some(preferred_amplicon_bp),
-                allowed_amplicon_bp: Some(allowed_amplicon_bp),
-            })
-        } else {
-            None
-        };
+        let resolved_practicality =
+            if practicality.is_some() || assay_tier != TranscriptAssayUseTier::Unspecified {
+                Some(TranscriptAssayPracticalityPolicy {
+                    preferred_amplicon_bp: Some(preferred_amplicon_bp),
+                    allowed_amplicon_bp: Some(allowed_amplicon_bp),
+                })
+            } else {
+                None
+            };
         if oligo_dt_5prime_risk_threshold_bp == Some(0) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -16993,12 +16999,7 @@ impl GentleEngine {
         let mut junction_selection_evidence = vec![];
         let source_anchor = self.transcript_qpcr_panel_source_anchor(&seq_id, &source_dna);
         for evidence_path in &junction_evidence_paths {
-            let (
-                mut evidence_junctions,
-                provenance,
-                mut evidence_rows,
-                evidence_warnings,
-            ) =
+            let (mut evidence_junctions, provenance, mut evidence_rows, evidence_warnings) =
                 Self::transcript_assay_load_junction_evidence(
                     evidence_path,
                     junction_evidence_priority,
@@ -17096,8 +17097,7 @@ impl GentleEngine {
             if assay_tier == TranscriptAssayUseTier::RoutineCommonRegionScreen {
                 let common_source_ranges =
                     Self::transcript_assay_common_annotation_source_ranges(&templates);
-                let minimum_pair_footprint =
-                    forward.min_length.saturating_add(reverse.min_length);
+                let minimum_pair_footprint = forward.min_length.saturating_add(reverse.min_length);
                 let mut scheduled_common_target = false;
                 for group in &equivalence_groups {
                     let template = &templates[group.representative_template_index];
@@ -17107,24 +17107,20 @@ impl GentleEngine {
                                 template,
                                 std::slice::from_ref(source_range),
                             );
-                        let Some((local_start, local_end)) = local_ranges
-                            .into_iter()
-                            .find(|(start, end)| {
+                        let Some((local_start, local_end)) =
+                            local_ranges.into_iter().find(|(start, end)| {
                                 end.saturating_sub(*start) >= min_amplicon_bp
                                     && end.saturating_sub(*start) >= minimum_pair_footprint
                             })
                         else {
                             continue;
                         };
-                        let midpoint = local_start.saturating_add(
-                            local_end.saturating_sub(local_start) / 2,
-                        );
+                        let midpoint =
+                            local_start.saturating_add(local_end.saturating_sub(local_start) / 2);
                         targets.push(TranscriptAssayDesignTarget {
                             template_index: group.representative_template_index,
                             roi_start_0based: midpoint.saturating_sub(1),
-                            roi_end_0based: midpoint
-                                .saturating_add(1)
-                                .min(template.sequence.len()),
+                            roi_end_0based: midpoint.saturating_add(1).min(template.sequence.len()),
                             junction: None,
                             end_reaction_id: None,
                             forward_window_0based: Some((local_start, local_end)),
@@ -17496,9 +17492,7 @@ impl GentleEngine {
                             .len()
                             .cmp(&detected_indices(right).len())
                             .then_with(|| {
-                                Self::transcript_assay_candidate_preference(
-                                    left, right, assay_tier,
-                                )
+                                Self::transcript_assay_candidate_preference(left, right, assay_tier)
                             })
                     })
                     .map(|(index, _)| index);
@@ -17611,9 +17605,7 @@ impl GentleEngine {
                             })
                         })
                         .max_by(|(_, left), (_, right)| {
-                            Self::transcript_assay_candidate_preference(
-                                left, right, assay_tier,
-                            )
+                            Self::transcript_assay_candidate_preference(left, right, assay_tier)
                         })
                         .map(|(index, _)| index);
                     if let Some(index) = best {
@@ -18033,9 +18025,7 @@ impl GentleEngine {
                 .collect::<Vec<_>>()
                 .join("|")
         );
-        if assay_tier != TranscriptAssayUseTier::Unspecified
-            || resolved_practicality.is_some()
-        {
+        if assay_tier != TranscriptAssayUseTier::Unspecified || resolved_practicality.is_some() {
             default_report_material.push_str(&format!(
                 "|{}|{}-{}|{}-{}",
                 assay_tier.as_str(),
@@ -18053,10 +18043,7 @@ impl GentleEngine {
                 max_amplicon_bp,
             ));
         }
-        let default_report_id = short_sha256_id(
-            "transcript_assay_panel",
-            &default_report_material,
-        );
+        let default_report_id = short_sha256_id("transcript_assay_panel", &default_report_material);
         let report_id = Self::normalize_primer_design_report_id(
             report_id.as_deref().unwrap_or(&default_report_id),
         )?;
@@ -29288,9 +29275,9 @@ impl GentleEngine {
                                 cause_chain: vec![],
                             },
                         )?;
-                        result.messages.push(format!(
-                            "Wrote PrimerBank search report JSON to '{path}'"
-                        ));
+                        result
+                            .messages
+                            .push(format!("Wrote PrimerBank search report JSON to '{path}'"));
                     }
                     result.warnings.extend(report.warnings.clone());
                     result.messages.push(format!(

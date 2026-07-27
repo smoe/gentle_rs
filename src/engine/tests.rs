@@ -8224,7 +8224,10 @@ fn primer_specificity_intended_genomic_product_uses_coordinates_not_cdna_length(
         .find(|amplicon| amplicon.intended)
         .expect("coordinate-matched genomic product");
     assert_eq!(intended.length_bp, 901);
-    assert_ne!(intended.length_bp, 140, "cDNA length must not identify target");
+    assert_ne!(
+        intended.length_bp, 140,
+        "cDNA length must not identify target"
+    );
 }
 
 #[test]
@@ -8259,10 +8262,7 @@ fn primer_specificity_normalizes_auxiliary_contig_subject_ids_and_aggregates_war
         ("ki270750.1".to_string(), "KI270750.1".to_string()),
     ]);
     assert_eq!(
-        GentleEngine::primer_specificity_normalize_subject_id(
-            "gb|KI270750.1|",
-            &aliases
-        ),
+        GentleEngine::primer_specificity_normalize_subject_id("gb|KI270750.1|", &aliases),
         "KI270750.1"
     );
     assert_eq!(
@@ -8557,10 +8557,7 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
     assert_eq!(product.amplicon_length_bp, 21);
     assert_eq!(
         product.product_sequence_sha256.as_deref(),
-        Some(
-            crate::digest_utils::oligo_sequence_sha256("AAACCCGGGCCCAAATTTGGG")
-                .as_str()
-        )
+        Some(crate::digest_utils::oligo_sequence_sha256("AAACCCGGGCCCAAATTTGGG").as_str())
     );
     assert_eq!(
         product.product_sequence_basis,
@@ -8606,12 +8603,11 @@ fn experimental_assay_identity_fields_are_backward_compatible() {
     assert!(old_product.product_sequence_sha256.is_none());
     assert!(old_product.product_sequence_basis.is_empty());
 
-    let old_summary: PrimerPairCommunicationSummary =
-        serde_json::from_value(serde_json::json!({
-            "schema": "gentle.primer_pair_summary.v2",
-            "assay_id": "legacy_assay"
-        }))
-        .expect("older primer-pair summary remains readable");
+    let old_summary: PrimerPairCommunicationSummary = serde_json::from_value(serde_json::json!({
+        "schema": "gentle.primer_pair_summary.v2",
+        "assay_id": "legacy_assay"
+    }))
+    .expect("older primer-pair summary remains readable");
     assert!(old_summary.pair_id.is_empty());
     assert!(old_summary.probe.is_none());
 }
@@ -9299,10 +9295,7 @@ fn transcript_qpcr_panel_test_engine() -> GentleEngine {
         qualifiers: vec![
             ("chromosome".into(), Some("chr1".to_string())),
             ("genomic_start_1based".into(), Some("1".to_string())),
-            (
-                "genomic_end_1based".into(),
-                Some(source_len.to_string()),
-            ),
+            ("genomic_end_1based".into(), Some(source_len.to_string())),
             ("strand".into(), Some("+".to_string())),
         ],
     });
@@ -9359,10 +9352,7 @@ fn transcript_assay_common_region_test_engine() -> GentleEngine {
         qualifiers: vec![
             ("chromosome".into(), Some("chr1".to_string())),
             ("genomic_start_1based".into(), Some("1".to_string())),
-            (
-                "genomic_end_1based".into(),
-                Some(source_len.to_string()),
-            ),
+            ("genomic_end_1based".into(), Some(source_len.to_string())),
             ("strand".into(), Some("+".to_string())),
         ],
     });
@@ -9515,11 +9505,7 @@ fn transcript_qpcr_panel_reports_shared_components_and_characteristic_forward_ro
             "not_distinguishable_between_members"
         );
         assert!(row.characteristic_forward.is_none());
-        assert!(
-            row.notes
-                .iter()
-                .any(|note| note.contains("byte-identical"))
-        );
+        assert!(row.notes.iter().any(|note| note.contains("byte-identical")));
     }
 
     let op_result = engine
@@ -9738,7 +9724,11 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
         ..PrimerSpecificityPolicy::default()
     };
 
-    for report_id in ["panel_external_pass", "panel_external_fail", "panel_external_incomplete"] {
+    for report_id in [
+        "panel_external_pass",
+        "panel_external_fail",
+        "panel_external_incomplete",
+    ] {
         let mut operation = transcript_assay_panel_operation(
             TranscriptAssayCoveragePolicy::BestEffort,
             transcript_assay_panel_relaxed_side(),
@@ -9777,14 +9767,8 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
         pass_plan.output["handoff"].clone(),
     )
     .expect("parse planned aggregate handoff");
-    assert_eq!(
-        pass_handoff.assays.len(),
-        pass_handoff.selected_assay_count
-    );
-    assert_eq!(
-        pass_handoff.policy_schema,
-        PRIMER_SPECIFICITY_POLICY_SCHEMA
-    );
+    assert_eq!(pass_handoff.assays.len(), pass_handoff.selected_assay_count);
+    assert_eq!(pass_handoff.policy_schema, PRIMER_SPECIFICITY_POLICY_SCHEMA);
     assert!(Path::new(&pass_handoff.execution_manifest_template_path).is_file());
     let pass_manifest = transcript_assay_specificity_execution_manifest(&pass_handoff, true);
     let pass_finalize = execute_shell_command(
@@ -9823,8 +9807,7 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
         pass.expected_assay_count
     );
     assert!(persisted_pass.selected_assays.iter().all(|assay| {
-        assay.primer_pair_summary.whole_genome_specificity_status
-            == "external_blast_pass"
+        assay.primer_pair_summary.whole_genome_specificity_status == "external_blast_pass"
     }));
 
     let fail_handoff = engine
@@ -9933,7 +9916,11 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
         .get_transcript_assay_panel_report("panel_external_incomplete")
         .expect("persisted incomplete panel");
     assert!(persisted_incomplete.specificity_acceptance.is_none());
-    assert!(persisted_incomplete.genomic_specificity_assessments.is_empty());
+    assert!(
+        persisted_incomplete
+            .genomic_specificity_assessments
+            .is_empty()
+    );
 }
 
 #[test]
@@ -10559,16 +10546,20 @@ fn transcript_assay_routine_common_region_records_annotation_and_practicality() 
             summary.practicality_classification,
             TranscriptAssayPracticalityClassification::Routine
         );
-        assert!(summary
-            .common_region_evidence
-            .basis
-            .contains("array intensity were not used"));
+        assert!(
+            summary
+                .common_region_evidence
+                .basis
+                .contains("array intensity were not used")
+        );
         assert!(summary.selection_reasons.iter().any(|reason| {
             reason.code == PrimerPairSelectionReasonCode::CommonRegionAnnotationConfirmed
         }));
-        assert!(summary
-            .selection_explanation
-            .contains("transcript annotation confirms"));
+        assert!(
+            summary
+                .selection_explanation
+                .contains("transcript annotation confirms")
+        );
         assert!(summary.considered_alternatives.len() <= 5);
     }
 }
@@ -10630,12 +10621,10 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
             assay.primer_pair.amplicon_length_bp
         );
         assert!(
-            summary.design_amplicon_start_0based
-                <= summary.design_amplicon_end_0based_exclusive
+            summary.design_amplicon_start_0based <= summary.design_amplicon_end_0based_exclusive
         );
         assert_eq!(
-            summary.design_amplicon_end_0based_exclusive
-                - summary.design_amplicon_start_0based,
+            summary.design_amplicon_end_0based_exclusive - summary.design_amplicon_start_0based,
             summary.design_amplicon_length_bp
         );
         for (summary_primer, source_primer) in [
@@ -10665,9 +10654,7 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
                 summary_primer.gc_fraction.to_bits(),
                 source_primer.gc_fraction.to_bits()
             );
-            assert!(
-                (summary_primer.gc_percent - source_primer.gc_fraction * 100.0).abs() < 1e-12
-            );
+            assert!((summary_primer.gc_percent - source_primer.gc_fraction * 100.0).abs() < 1e-12);
             assert_eq!(summary_primer.anneal_hit_count, source_primer.anneal_hits);
             assert_eq!(
                 summary_primer.binding_start_0based,
@@ -10677,7 +10664,10 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
                 summary_primer.binding_end_0based_exclusive,
                 source_primer.end_0based_exclusive
             );
-            assert_eq!(summary_primer.three_prime_base, source_primer.three_prime_base);
+            assert_eq!(
+                summary_primer.three_prime_base,
+                source_primer.three_prime_base
+            );
             assert_eq!(
                 summary_primer.three_prime_gc_clamp,
                 source_primer.three_prime_gc_clamp
@@ -10839,10 +10829,9 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
         },
     )
     .expect("shared transcript panel export route");
-    let exported: serde_json::Value = serde_json::from_slice(
-        &fs::read(&path).expect("read exported transcript panel report"),
-    )
-    .expect("parse exported transcript panel report");
+    let exported: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).expect("read exported transcript panel report"))
+            .expect("parse exported transcript panel report");
     assert_eq!(
         exported["selected_assays"][0]["primer_pair_summary"],
         first_summary
@@ -10879,13 +10868,17 @@ fn transcript_assay_panel_primer_pair_summary_survives_api_shell_and_export() {
         .expect("enrich legacy-shaped transcript panel on read");
     let legacy = &enriched.selected_assays[0].primer_pair_summary;
     assert_eq!(legacy.schema, PRIMER_PAIR_SUMMARY_SCHEMA);
-    assert_eq!(legacy.forward.sequence_5_to_3, report.selected_assays[0].primer_pair.forward.sequence);
-    assert_eq!(legacy.reverse.sequence_5_to_3, report.selected_assays[0].primer_pair.reverse.sequence);
+    assert_eq!(
+        legacy.forward.sequence_5_to_3,
+        report.selected_assays[0].primer_pair.forward.sequence
+    );
+    assert_eq!(
+        legacy.reverse.sequence_5_to_3,
+        report.selected_assays[0].primer_pair.reverse.sequence
+    );
     assert_eq!(
         legacy.design_amplicon_start_0based,
-        report.selected_assays[0]
-            .primer_pair
-            .amplicon_start_0based
+        report.selected_assays[0].primer_pair.amplicon_start_0based
     );
     assert_eq!(
         legacy.design_amplicon_end_0based_exclusive,
@@ -11076,13 +11069,21 @@ fn transcript_assay_panel_require_all_refuses_and_best_effort_is_explicit() {
         report.completion_status,
         TranscriptAssayPanelCompletionStatus::Partial
     );
-    assert_eq!(report.coverage_policy, TranscriptAssayCoveragePolicy::BestEffort);
+    assert_eq!(
+        report.coverage_policy,
+        TranscriptAssayCoveragePolicy::BestEffort
+    );
     assert_eq!(report.selected_assay_count, 0);
     assert_eq!(
         report.uncovered_equivalence_group_ids.len(),
         report.equivalence_group_count
     );
-    assert!(report.warnings.iter().any(|warning| warning.contains("best_effort")));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("best_effort"))
+    );
 }
 
 #[test]
@@ -11278,9 +11279,12 @@ fn transcript_assay_endpoint_end_matrix_is_primer_only_and_warns_for_oligo_dt() 
             .iter()
             .any(|warning| warning.contains("5' RACE"))
     );
-    assert!(report.warnings.iter().any(|warning| {
-        warning.contains("semi-quantitative") && warning.contains("not")
-    }));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| { warning.contains("semi-quantitative") && warning.contains("not") })
+    );
     assert!(report.detection_matrix.iter().any(|cell| {
         cell.oligo_dt_5prime_reach.status
             == TranscriptAssayOligoDtReachStatus::DistanceReportedUnthresholded
@@ -11469,13 +11473,19 @@ fn transcript_assay_sybr_evaluates_patz1_clariom_juc_without_probe() {
             evidence.influence,
             PrimerPairSelectionInfluence::ProbeSequenceReused
         );
-        assert_eq!(evidence.requirement, PrimerPairEvidenceRequirement::Required);
+        assert_eq!(
+            evidence.requirement,
+            PrimerPairEvidenceRequirement::Required
+        );
         assert_eq!(evidence.platform.as_deref(), Some("Clariom_D_Human"));
         assert_eq!(
             evidence.contrast.as_deref(),
             Some("synthetic_case_vs_control")
         );
-        assert_eq!(evidence.measured_statistic.as_deref(), Some("log2_fold_change"));
+        assert_eq!(
+            evidence.measured_statistic.as_deref(),
+            Some("log2_fold_change")
+        );
         assert_eq!(evidence.measured_value, Some(-1.2));
         assert_eq!(
             evidence.intensity_source.as_deref(),
@@ -18261,13 +18271,11 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
             amplicon_length_bp: 96,
             transcript_context: Some(QpcrTranscriptAssayContext {
                 assay_class_label: "junction_spanning".to_string(),
-                explanation: "Synthetic candidate spanning the PATZ1 long/alternative-family junction."
-                    .to_string(),
+                explanation:
+                    "Synthetic candidate spanning the PATZ1 long/alternative-family junction."
+                        .to_string(),
                 covered_junction_labels: vec!["181..220->101..140".to_string()],
-                supported_transcript_ids: vec![
-                    "PATZ1-201".to_string(),
-                    "PATZ1-203".to_string(),
-                ],
+                supported_transcript_ids: vec!["PATZ1-201".to_string(), "PATZ1-203".to_string()],
                 satisfies_requested_targeting: true,
                 ..Default::default()
             }),
@@ -18295,8 +18303,7 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
         .expect("store synthetic qPCR report");
 
     let mut mismatched_probe_report: serde_json::Value = serde_json::from_slice(
-        &fs::read(format!("{fixture}/patz1_probe_evidence.json"))
-            .expect("read probe fixture"),
+        &fs::read(format!("{fixture}/patz1_probe_evidence.json")).expect("read probe fixture"),
     )
     .expect("parse probe fixture");
     mismatched_probe_report["seq_id"] = serde_json::json!("another_sequence");
@@ -18336,7 +18343,10 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
         )
         .expect("inspect PATZ1 isoform evidence");
     let state_after = serde_json::to_value(engine.state()).expect("serialize state after");
-    assert_eq!(state_before, state_after, "inspection must remain pure read");
+    assert_eq!(
+        state_before, state_after,
+        "inspection must remain pure read"
+    );
     let FeatureExpertView::IsoformEvidence(report) = view else {
         panic!("expected isoform evidence view");
     };
@@ -18353,8 +18363,7 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
         .find(|row| row.transcript_id == "PATZ1-201")
         .expect("long transcript row");
     assert_ne!(
-        long.exon_family_ids_5_to_3,
-        long.exon_family_ids_genomic_ascending,
+        long.exon_family_ids_5_to_3, long.exon_family_ids_genomic_ascending,
         "minus-strand biological order must differ from genomic ascending order"
     );
     assert!(
@@ -18389,7 +18398,10 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
         item.source_kind == IsoformEvidenceSourceKind::ArrayProbe
             && item.status == IsoformEvidenceAssessmentStatus::ConstraintOnly
             && item.condition.as_deref() == Some("synthetic_case_vs_control")
-            && item.notes.iter().any(|note| note.contains("not establish isoform support"))
+            && item
+                .notes
+                .iter()
+                .any(|note| note.contains("not establish isoform support"))
     }));
     assert!(report.junctions.iter().any(|row| {
         row.junction_id != supported_junction.junction_id
@@ -18422,12 +18434,11 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
                     && note.contains("does not identify a regulated isoform")
             })
     }));
-    assert!(
-        report
-            .occupancy_lanes
-            .iter()
-            .all(|lane| lane.source_path.as_deref().is_some_and(|path| path.ends_with(".bigWig")))
-    );
+    assert!(report.occupancy_lanes.iter().all(|lane| {
+        lane.source_path
+            .as_deref()
+            .is_some_and(|path| path.ends_with(".bigWig"))
+    }));
     assert!(
         report
             .warnings
@@ -18499,10 +18510,7 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
         upstream_bp: 25,
         downstream_bp: 15,
         probe_effect_table_paths: vec![probe_effect_path.to_string_lossy().to_string()],
-        probe_effect_contrasts: vec![
-            "TAp73alpha-GFP".to_string(),
-            "DNp73beta-GFP".to_string(),
-        ],
+        probe_effect_contrasts: vec!["TAp73alpha-GFP".to_string(), "DNp73beta-GFP".to_string()],
         probe_effect_coordinate_system: Some("GRCh38.p14".to_string()),
         occupancy_layout: GeneLocusOccupancyLayout {
             schema: GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA.to_string(),
@@ -18578,7 +18586,10 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
         locus_report.probe_effect_overlays[1].probe_class,
         GeneLocusProbeClass::Psr
     );
-    assert_eq!(locus_report.probe_effect_overlays[1].effects[0].value, -0.6899);
+    assert_eq!(
+        locus_report.probe_effect_overlays[1].effects[0].value,
+        -0.6899
+    );
     assert!(
         locus_report.axis_left_genomic_1based > locus_report.axis_right_genomic_1based,
         "minus-strand locus must read 5' to 3' while genomic coordinates descend"
@@ -18592,10 +18603,10 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
             .all(|row| row.spliced_exon_length_bp > 0)
     );
     assert!(
-        locus_report.transcript_metrics.iter().all(|row| !row
-            .flags
+        locus_report
+            .transcript_metrics
             .iter()
-            .any(|flag| flag == "incomplete_5prime_cds")),
+            .all(|row| !row.flags.iter().any(|flag| flag == "incomplete_5prime_cds")),
         "noncoding/no-CDS models must not be mislabeled as incomplete CDS"
     );
     let noncoding_metrics = locus_report
@@ -45775,9 +45786,7 @@ fn construct_reasoning_task_severity_scores_follow_construct_objective() {
         "objective-specific scoring should preserve underlying evidence ids"
     );
     assert!(cloning_stability.base_score.unwrap() > 0.0);
-    assert!(
-        (cloning_stability.objective_adjustment.unwrap() - 0.08).abs() < f64::EPSILON
-    );
+    assert!((cloning_stability.objective_adjustment.unwrap() - 0.08).abs() < f64::EPSILON);
     assert_eq!(
         sequencing_cloning_stability.objective_adjustment,
         sequencing_cloning_stability.base_score.map(|score| -score)
@@ -50021,9 +50030,10 @@ fn feature_location_fingerprint_survives_project_json_round_trip() {
     .expect("fingerprint");
     let encoded = serde_json::to_string(engine.state()).expect("project serializes");
     let decoded: ProjectState = serde_json::from_str(&encoded).expect("project deserializes");
-    let after =
-        crate::feature_location::feature_fingerprint_sha256(&decoded.sequences["seq"].features()[0])
-            .expect("fingerprint");
+    let after = crate::feature_location::feature_fingerprint_sha256(
+        &decoded.sequences["seq"].features()[0],
+    )
+    .expect("fingerprint");
     assert_eq!(after, before);
 }
 

@@ -5935,7 +5935,10 @@ pub struct PrimerPairCommunicationSummary {
     pub aliases: Vec<String>,
     #[serde(default)]
     pub selection_role: Option<PrimerPairSelectionRole>,
-    #[serde(default, skip_serializing_if = "TranscriptAssayUseTier::is_unspecified")]
+    #[serde(
+        default,
+        skip_serializing_if = "TranscriptAssayUseTier::is_unspecified"
+    )]
     pub assay_tier: TranscriptAssayUseTier,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub practicality_policy: Option<TranscriptAssayPracticalityPolicy>,
@@ -8242,7 +8245,10 @@ pub struct TranscriptAssayPanelReport {
     pub objective: TranscriptAssayPanelObjective,
     #[serde(default)]
     pub coverage_policy: TranscriptAssayCoveragePolicy,
-    #[serde(default, skip_serializing_if = "TranscriptAssayUseTier::is_unspecified")]
+    #[serde(
+        default,
+        skip_serializing_if = "TranscriptAssayUseTier::is_unspecified"
+    )]
     pub assay_tier: TranscriptAssayUseTier,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub practicality_policy: Option<TranscriptAssayPracticalityPolicy>,
@@ -8679,7 +8685,10 @@ pub struct TranscriptAssayPanelReportSummary {
     pub objective: TranscriptAssayPanelObjective,
     #[serde(default)]
     pub coverage_policy: TranscriptAssayCoveragePolicy,
-    #[serde(default, skip_serializing_if = "TranscriptAssayUseTier::is_unspecified")]
+    #[serde(
+        default,
+        skip_serializing_if = "TranscriptAssayUseTier::is_unspecified"
+    )]
     pub assay_tier: TranscriptAssayUseTier,
     #[serde(default)]
     pub completion_status: TranscriptAssayPanelCompletionStatus,
