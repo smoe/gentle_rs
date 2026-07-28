@@ -5203,6 +5203,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "DesignTranscriptAssayPanel",
     "BuildExperimentalAssayHandoff",
     "SearchPrimerBank",
+    "ImportExternalPrimerPairs",
     "TestCdnaPcr",
     "TestCdnaQpcr",
     "TestCdnaQpcrFasta",

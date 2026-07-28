@@ -464,6 +464,7 @@ an agent has selected a deterministic operation.
 - `primers export-report`
 - `primers export-restriction-cloning-handoff`
 - `primers export-transcript-assay-panel`
+- `primers import-external-pairs`
 - `primers list-qpcr-reports`
 - `primers list-reports`
 - `primers list-restriction-cloning-handoffs`

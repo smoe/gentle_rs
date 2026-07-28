@@ -8158,6 +8158,7 @@ Primer-design shell command family (implemented):
   - `primers primerbank search QUERY [--by gene-symbol|gene-id|genbank|protein|primerbank-id|keyword] [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]`
   - `primers primerbank show PRIMERBANK_ID [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]`
   - `primers primerbank test-cdna SEQ_ID FEATURE_ID PRIMERBANK_ID --species human|mouse [--html SAVED.html] [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--path OUTPUT.json] [--svg OUTPUT.svg]`
+  - `primers import-external-pairs INPUT.json|tsv SEQ_ID FEATURE_ID [--format auto|json|tsv] [--report-id ID] [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--specificity-target-genome GENOME_ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--artifact-output-dir DIR] [--materialize-products] [--product-gel-ladder NAME ...] [--path OUTPUT.json]`
   - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
@@ -8200,6 +8201,42 @@ Primer-design shell command family (implemented):
   - an operation payload whose root variant is `{"DesignQpcrAssays": {...}}`
   - a full `gentle.qpcr_seed_request.v1` payload carrying one runnable
     `operation.DesignQpcrAssays`
+- External primer-pair import contracts:
+  - JSON input schema: `gentle.external_primer_pair_batch.v1`. TSV uses the
+    columns `source_kind`, `provider`, `catalogue_id`, `source_url`,
+    `claimed_accession`, `aliases`, `forward_sequence_5_to_3`,
+    `reverse_sequence_5_to_3`, `claimed_target`, `validation_claims`, and
+    `annotations_json`
+  - `source_kind` is `external`, `commercial_catalogue`, `literature`, or
+    `laboratory`. Provider is required for every row; commercial-catalogue rows
+    additionally require `catalogue_id`
+  - sequence normalization removes whitespace and copied position digits,
+    uppercases bases, maps RNA `U` to DNA `T`, and then rejects any
+    non-IUPAC character with row, role, and input-character position
+  - sequence-derived primer ids depend only on the normalized oligo sequence.
+    The oriented pair id depends only on normalized forward plus reverse sequence.
+    Duplicate pair rows are evaluated once but retain all source provenance,
+    aliases, claimed accessions, validation claims, source-file SHA-256, and
+    deterministic source-record ids. The report also carries a normalized,
+    row-order-independent batch SHA-256; automatic report ids bind that digest
+    to the cDNA/specificity/materialization settings so different evaluations
+    cannot silently overwrite one another
+  - output schema: `gentle.external_primer_pair_import_report.v1`, also returned
+    in `OpResult.external_primer_pair_import_report`. Every unique pair carries
+    GENtle-computed length, Tm, Tm method/assumptions, GC fraction/percent,
+    delta-Tm, 3-prime clamp, homopolymer/self-complementarity metrics, shared
+    oligo/inter-oligo QC, cDNA transcript products and map, genomic-DNA carryover
+    assessment, specificity state, optional product materialization/gel, and all
+    retained source rows
+  - `tm_c` is primer melting temperature from GENtle's shared primer Tm model,
+    not a PCR annealing temperature. No cycling condition is inferred
+  - provider targeting and validation text is provenance only. It never changes
+    cDNA coverage, carryover, QC, or specificity results, and
+    `vendor_claims_used_as_biological_evidence` is always false
+  - specificity is explicitly `not_run` without
+    `--specificity-target-genome`; vendor claims cannot turn that state into a
+    pass. Product materialization and gel rendering remain opt-in because they
+    create first-class project products
 - `primers test-cdna-pcr` and `primers test-cdna-qpcr` are non-mutating assay
   checks over transcript-derived cDNA templates and return
   `gentle.cdna_assay_test_report.v1`; `--path` persists that same report and

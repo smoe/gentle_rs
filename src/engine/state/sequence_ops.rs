@@ -2456,6 +2456,10 @@ impl GentleEngine {
                 template: input, ..
             }
             | Operation::TestCdnaPcr { seq_id: input, .. }
+            | Operation::ImportExternalPrimerPairs {
+                request: ExternalPrimerPairImportRequest { seq_id: input, .. },
+                ..
+            }
             | Operation::TestCdnaQpcr { seq_id: input, .. }
             | Operation::ExtractRegion { input, .. }
             | Operation::ExtractAnchoredRegion { input, .. }

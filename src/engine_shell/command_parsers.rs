@@ -5108,7 +5108,7 @@ fn parse_primers_primerbank_command(tokens: &[String]) -> Result<ShellCommand, S
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: primerbank, design, design-qpcr, design-transcript-assay-panel, experimental-handoff, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
+            "primers requires a subcommand: primerbank, design, design-qpcr, design-transcript-assay-panel, experimental-handoff, import-external-pairs, specificity, specificity-plan, specificity-import, transcript-assay-specificity-plan, transcript-assay-specificity-finalize, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, list-transcript-assay-panels, show-transcript-assay-panel, export-transcript-assay-panel, oligo-order"
                 .to_string(),
         );
     }
@@ -5622,6 +5622,221 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             Ok(ShellCommand::PrimersTranscriptAssaySpecificityFinalize {
                 handoff_path,
                 execution_manifest_json,
+                path,
+            })
+        }
+        "import-external-pairs" => {
+            const USAGE: &str = "primers import-external-pairs INPUT.json|tsv SEQ_ID FEATURE_ID [--format auto|json|tsv] [--report-id ID] [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--specificity-target-genome GENOME_ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--artifact-output-dir DIR] [--materialize-products] [--product-gel-ladder NAME] [--path OUTPUT.json]";
+            if tokens.len() < 5 {
+                return Err(USAGE.to_string());
+            }
+            let input_path = tokens[2].clone();
+            let seq_id = tokens[3].clone();
+            let feature_id = tokens[4].parse::<usize>().map_err(|error| {
+                format!(
+                    "Invalid feature id '{}' for primers import-external-pairs: {error}",
+                    tokens[4]
+                )
+            })?;
+            let mut input_format = None;
+            let mut report_id = None;
+            let mut transcript_id = None;
+            let mut min_amplicon_bp = None;
+            let mut max_amplicon_bp = None;
+            let mut max_mismatches = None;
+            let mut require_3prime_exact_bases = None;
+            let mut transcript_order = None;
+            let mut transcript_map_coordinate_mode = None;
+            let mut specificity_target_genome_id = None;
+            let mut specificity_catalog_path = None;
+            let mut specificity_cache_dir = None;
+            let mut artifact_output_dir = None;
+            let mut materialize_products = false;
+            let mut product_gel_ladders = vec![];
+            let mut path = None;
+            let mut idx = 5usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--format" => {
+                        let value = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--format",
+                            "primers import-external-pairs",
+                        )?
+                        .to_ascii_lowercase();
+                        if !matches!(value.as_str(), "auto" | "json" | "tsv") {
+                            return Err(format!(
+                                "Invalid --format '{value}' for primers import-external-pairs; expected auto, json, or tsv"
+                            ));
+                        }
+                        input_format = Some(value);
+                    }
+                    "--report-id" => {
+                        report_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--report-id",
+                            "primers import-external-pairs",
+                        )?);
+                    }
+                    "--transcript-id" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-id",
+                            "primers import-external-pairs",
+                        )?);
+                    }
+                    "--min-amplicon-bp" => {
+                        let value = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-amplicon-bp",
+                            "primers import-external-pairs",
+                        )?;
+                        min_amplicon_bp =
+                            Some(parse_usize_option_value(&value, "--min-amplicon-bp")?);
+                    }
+                    "--max-amplicon-bp" => {
+                        let value = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-amplicon-bp",
+                            "primers import-external-pairs",
+                        )?;
+                        max_amplicon_bp =
+                            Some(parse_usize_option_value(&value, "--max-amplicon-bp")?);
+                    }
+                    "--max-mismatches" => {
+                        let value = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-mismatches",
+                            "primers import-external-pairs",
+                        )?;
+                        max_mismatches =
+                            Some(parse_usize_option_value(&value, "--max-mismatches")?);
+                    }
+                    "--require-3prime-exact-bases" => {
+                        let value = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--require-3prime-exact-bases",
+                            "primers import-external-pairs",
+                        )?;
+                        require_3prime_exact_bases = Some(parse_usize_option_value(
+                            &value,
+                            "--require-3prime-exact-bases",
+                        )?);
+                    }
+                    "--transcript-order" => {
+                        let value = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-order",
+                            "primers import-external-pairs",
+                        )?;
+                        transcript_order = Some(parse_cdna_assay_transcript_order(&value)?);
+                    }
+                    "--map-coordinate-mode" => {
+                        let value = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--map-coordinate-mode",
+                            "primers import-external-pairs",
+                        )?;
+                        transcript_map_coordinate_mode =
+                            Some(parse_cdna_assay_transcript_map_coordinate_mode(&value)?);
+                    }
+                    "--specificity-target-genome" | "--target-genome" => {
+                        let flag = tokens[idx].clone();
+                        specificity_target_genome_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers import-external-pairs",
+                        )?);
+                    }
+                    "--specificity-catalog" => {
+                        specificity_catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--specificity-catalog",
+                            "primers import-external-pairs",
+                        )?);
+                    }
+                    "--specificity-cache-dir" => {
+                        specificity_cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--specificity-cache-dir",
+                            "primers import-external-pairs",
+                        )?);
+                    }
+                    "--artifact-output-dir" => {
+                        artifact_output_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--artifact-output-dir",
+                            "primers import-external-pairs",
+                        )?);
+                    }
+                    "--materialize-products" => {
+                        materialize_products = true;
+                        idx += 1;
+                    }
+                    "--product-gel-ladder" => {
+                        product_gel_ladders.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--product-gel-ladder",
+                            "primers import-external-pairs",
+                        )?);
+                    }
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers import-external-pairs",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers import-external-pairs"
+                        ));
+                    }
+                }
+            }
+            if (specificity_catalog_path.is_some() || specificity_cache_dir.is_some())
+                && specificity_target_genome_id.is_none()
+            {
+                return Err(
+                    "primers import-external-pairs requires --specificity-target-genome when specificity catalog/cache options are supplied"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::PrimersImportExternalPairs {
+                input_path,
+                input_format,
+                seq_id,
+                feature_id,
+                report_id,
+                transcript_id,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                max_mismatches,
+                require_3prime_exact_bases,
+                transcript_order,
+                transcript_map_coordinate_mode,
+                specificity_target_genome_id,
+                specificity_catalog_path,
+                specificity_cache_dir,
+                artifact_output_dir,
+                materialize_products,
+                product_gel_ladders,
                 path,
             })
         }

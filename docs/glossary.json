@@ -3476,6 +3476,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ImportExternalPrimerPairs"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers import-external-pairs",
+         "summary": "Import provenance-bearing external primer pairs from JSON or TSV, assign sequence-derived identities, and evaluate them through GENtle's shared cDNA, oligo-QC, genomic-carryover, optional specificity, transcript-map, and product-gel paths.",
+         "usage": "primers import-external-pairs INPUT.json|tsv SEQ_ID FEATURE_ID [--format auto|json|tsv] [--report-id ID] [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--specificity-target-genome GENOME_ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--artifact-output-dir DIR] [--materialize-products] [--product-gel-ladder NAME]... [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "TestCdnaPcr"
          ],
          "interfaces": [

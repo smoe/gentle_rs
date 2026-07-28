@@ -20,6 +20,14 @@ Maintenance rule:
   command palette and feature context menus; complex/fuzzy locations remain
   explicitly read-only and related annotations are review-only.
 
+## 2026-07-23
+
+- Added provenance-aware JSON/TSV external primer-pair import with stable
+  sequence-derived identities, duplicate-source retention, shared Tm/GC/oligo-QC
+  metrics, cDNA product and genomic-carryover evaluation, optional prepared-genome
+  specificity and product gels, and an explicit rule that provider claims never
+  count as transcript-coverage or specificity evidence.
+
 ## 2026-07-22
 
 - Added a policy-aware PrimerBank adapter with live or saved-HTML search,

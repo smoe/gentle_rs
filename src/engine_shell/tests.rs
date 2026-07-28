@@ -6693,6 +6693,63 @@ fn parse_primers_experimental_handoff_with_optional_evidence_and_exports() {
 }
 
 #[test]
+fn parse_primers_import_external_pairs_with_evaluation_options() {
+    let command = parse_shell_line(
+        "primers import-external-pairs vendor.tsv cdna_src 7 --format tsv --report-id vendor_panel --transcript-id TX1 --transcript-order genomic_first_exon --map-coordinate-mode genomic_aligned --min-amplicon-bp 80 --max-amplicon-bp 320 --max-mismatches 1 --require-3prime-exact-bases 5 --specificity-target-genome human_grch38 --specificity-catalog genomes.json --specificity-cache-dir genomes --artifact-output-dir artifacts --materialize-products --product-gel-ladder ladder_a --product-gel-ladder ladder_b --path vendor_panel.json",
+    )
+    .expect("parse external primer-pair import");
+    assert!(matches!(
+        command,
+        ShellCommand::PrimersImportExternalPairs {
+            input_path,
+            input_format,
+            seq_id,
+            feature_id,
+            report_id,
+            transcript_id,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_mismatches,
+            require_3prime_exact_bases,
+            transcript_order,
+            transcript_map_coordinate_mode,
+            specificity_target_genome_id,
+            specificity_catalog_path,
+            specificity_cache_dir,
+            artifact_output_dir,
+            materialize_products,
+            product_gel_ladders,
+            path,
+        } if input_path == "vendor.tsv"
+            && input_format.as_deref() == Some("tsv")
+            && seq_id == "cdna_src"
+            && feature_id == 7
+            && report_id.as_deref() == Some("vendor_panel")
+            && transcript_id.as_deref() == Some("TX1")
+            && min_amplicon_bp == Some(80)
+            && max_amplicon_bp == Some(320)
+            && max_mismatches == Some(1)
+            && require_3prime_exact_bases == Some(5)
+            && transcript_order == Some(CdnaAssayTranscriptOrder::GenomicFirstExon)
+            && transcript_map_coordinate_mode
+                == Some(CdnaAssayTranscriptMapCoordinateMode::GenomicAligned)
+            && specificity_target_genome_id.as_deref() == Some("human_grch38")
+            && specificity_catalog_path.as_deref() == Some("genomes.json")
+            && specificity_cache_dir.as_deref() == Some("genomes")
+            && artifact_output_dir.as_deref() == Some("artifacts")
+            && materialize_products
+            && product_gel_ladders == vec!["ladder_a", "ladder_b"]
+            && path.as_deref() == Some("vendor_panel.json")
+    ));
+
+    let error = parse_shell_line(
+        "primers import-external-pairs vendor.tsv cdna_src 7 --specificity-cache-dir genomes",
+    )
+    .expect_err("specificity cache requires target genome");
+    assert!(error.contains("--specificity-target-genome"));
+}
+
+#[test]
 fn parse_primers_seed_from_feature_and_splicing() {
     let feature =
         parse_shell_line("primers seed-from-feature seq_a 7").expect("parse seed-from-feature");
@@ -18149,6 +18206,96 @@ fn execute_primers_test_cdna_pcr_and_qpcr_reports_products() {
             .as_str()
             .is_some_and(|svg| svg.contains("TX1") && svg.contains("probe"))
     );
+}
+
+#[test]
+fn execute_primers_import_external_pairs_returns_provenance_and_metrics() {
+    let mut dna = DNAsequence::from_sequence("ATGAAACCCGGGTTTTTTTTCCCAAATTTGGG")
+        .expect("synthetic genomic sequence");
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::Join(vec![
+            Location::simple_range(0, 12),
+            Location::simple_range(20, 32),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("TEST1".to_string())),
+            ("transcript_id".into(), Some("TX1".to_string())),
+            ("label".into(), Some("TEST1 transcript".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("cdna_src".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let td = tempfile::tempdir().expect("tempdir");
+    let input_path = td.path().join("external_pairs.tsv");
+    let output_path = td.path().join("external_pairs.result.json");
+    std::fs::write(
+        &input_path,
+        concat!(
+            "source_kind\tprovider\tcatalogue_id\tsource_url\tclaimed_accession\taliases\tforward_sequence_5_to_3\treverse_sequence_5_to_3\tclaimed_target\tvalidation_claims\tannotations_json\n",
+            "commercial_catalogue\tExample Oligos\tEO-003\thttps://example.invalid/EO-003\tNM_VENDOR\tTEST1_F|TEST1_R\tAAACCC\tCCCAAA\tTEST1\tvalidated by provider\t{}\n"
+        ),
+    )
+    .expect("write external primer TSV");
+
+    let result = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersImportExternalPairs {
+            input_path: input_path.to_string_lossy().to_string(),
+            input_format: Some("tsv".to_string()),
+            seq_id: "cdna_src".to_string(),
+            feature_id: 0,
+            report_id: Some("external_shell".to_string()),
+            transcript_id: None,
+            min_amplicon_bp: Some(10),
+            max_amplicon_bp: Some(50),
+            max_mismatches: None,
+            require_3prime_exact_bases: Some(4),
+            transcript_order: None,
+            transcript_map_coordinate_mode: None,
+            specificity_target_genome_id: None,
+            specificity_catalog_path: None,
+            specificity_cache_dir: None,
+            artifact_output_dir: None,
+            materialize_products: false,
+            product_gel_ladders: vec![],
+            path: Some(output_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute external primer import");
+    assert!(result.state_changed);
+    assert_eq!(
+        result.output["schema"].as_str(),
+        Some("gentle.external_primer_pair_import_command.v1")
+    );
+    assert_eq!(
+        result.output["report"]["schema"].as_str(),
+        Some("gentle.external_primer_pair_import_report.v1")
+    );
+    assert_eq!(
+        result.output["report"]["pairs"][0]["sources"][0]["provider"].as_str(),
+        Some("Example Oligos")
+    );
+    assert_eq!(
+        result.output["report"]["pairs"][0]["specificity"]["status"].as_str(),
+        Some("not_run")
+    );
+    assert_eq!(
+        result.output["report"]["pairs"][0]["vendor_claims_used_as_biological_evidence"]
+            .as_bool(),
+        Some(false)
+    );
+    assert!(
+        result.output["report"]["pairs"][0]["forward"]["tm_c"]
+            .as_f64()
+            .is_some()
+    );
+    assert_eq!(
+        result.output["report"]["pairs"][0]["cdna_assay"]["product_count"].as_u64(),
+        Some(1)
+    );
+    assert!(output_path.is_file());
 }
 
 #[test]
