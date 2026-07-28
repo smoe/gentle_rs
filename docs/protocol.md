@@ -8762,6 +8762,43 @@ Feature-location edit contract (implemented):
   signature of the requested coordinates. GUI changes to feature, segment, or
   coordinates invalidate the cached preview before Apply is enabled.
 
+Feature-record curation contract (implemented):
+
+- Schema:
+  - `gentle.feature_record_curation.v1`
+- Shared operations:
+  - `PreviewFeatureRecordCuration`
+  - `ApplyFeatureRecordCuration`
+  - both accept a tagged `FeatureRecordCurationRequest` with
+    `operation_kind=create|delete`.
+- Shared-shell commands:
+  - `features create SEQ_ID --kind KIND --start-1based N --end-1based-inclusive M [--strand forward|reverse] [--qualifier KEY[=VALUE] ...] [--dry-run] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]`
+  - `features delete SEQ_ID FEATURE_INDEX [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]`
+  - run `--dry-run` first. Create apply requires the returned annotation-state
+    fingerprint; Delete apply requires both that fingerprint and the deleted
+    feature fingerprint.
+- Create appends one exact `Range` or `Complement(Range)` to the ordered feature
+  table. Preview deliberately does not promise the eventual feature index.
+  Qualifiers are an ordered list of `{key, value}` records: duplicate keys,
+  interleaving, empty string values, and valueless qualifiers remain distinct.
+- Delete removes one complete existing feature record and accepts any location
+  shape already represented by `gb-io`, including complex/fuzzy locations.
+  The report carries a lossless serialized location, human display location,
+  exact ordered qualifiers, and the number of later feature indices that shift
+  down by one.
+- Annotation-state fingerprints use
+  `sha256_sequence_id_length_topology_ordered_gb_io_features_serde_json_v1`.
+  They cover sequence id, sequence length, topology, and every complete feature
+  in stored order, and remain stable across project save/load. They are
+  optimistic-concurrency locks, not biological signatures.
+- `review_candidates[]` reports geometric overlap and exact shared recognized
+  INSDC identifiers (`locus_tag`, `gene`, `protein_id`, `transcript_id`) as
+  informational evidence only. It never interprets overlap as an error or a
+  shared identifier as a dependency, and it never edits another annotation.
+- Both applies are ordinary full-checkpoint mutations with undo/redo. Split,
+  merge, nested-location creation, dependency propagation, and automatic
+  transcript repair are outside v1.
+
 Feature-query shell contract (implemented):
 
 - Shared-shell command:

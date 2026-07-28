@@ -11751,6 +11751,7 @@ Error: `{err}`"
                 uniprot_projection_audit_parity: None,
                 lab_assistant_instructions: None,
                 feature_location_edit_report: None,
+                feature_record_curation_report: None,
             });
             let _ = tx.send(GenomePrepareTaskMessage::Done {
                 job_id,

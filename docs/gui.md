@@ -53,14 +53,16 @@ this as a confidence map for the current GUI surface.
   mismatch; missing target-species metadata stays visibly unresolved.
 - Manual GUI walkthroughs in Help/Tutorial are useful for orientation, but the
   generated executable tutorials remain the stronger reproducibility baseline.
-- The command palette and feature/map context menus open **Feature Location
-  Editor** for exact simple annotations and exact segments in flat
-  `Join`/`Order` compounds. The editor uses 1-based inclusive fields, shows
-  stored and biological 5-prime-to-3-prime segment numbering, requires Preview
-  before Apply, refuses stale previews, preserves strand and compound
-  topology, and lists annotations sharing an old boundary without changing
-  them. Nested, fuzzy, non-monotonic, and circular cross-origin compounds
-  remain read-only with a reason.
+- The command palette and feature/map context menus open **Feature Editor**.
+  Its Location tab edits exact simple annotations and exact segments in flat
+  `Join`/`Order` compounds. Its Create tab appends one exact forward/reverse
+  feature with ordered, duplicate-capable, optionally valueless qualifiers;
+  its Delete tab previews and removes a complete feature of any existing
+  location shape. Every mode requires Preview before Apply, refuses stale
+  previews, and uses shared engine operations. Create/Delete previews list
+  overlap and recognized shared identifiers as review evidence without
+  changing related annotations. Nested/fuzzy boundary editing and compound
+  topology changes remain out of scope.
 
 ### Exploratory / not yet first choice
 

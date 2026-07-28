@@ -52,12 +52,17 @@ pub use gentle_protocol::{
     EXON_SKIP_MATERIALIZATION_SCHEMA, EXON_SKIP_SELECTION_PLAN_SCHEMA, EditableStatus, EngineError,
     ErrorCode, EvidenceClass, EvidenceScope, ExonSkipCandidateExon, ExonSkipMaterializationReport,
     ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion, ExonSkipSelectionPlan,
-    FEATURE_LOCATION_EDIT_SCHEMA, FEATURE_LOCATION_EDIT_SCHEMA_V2,
-    FEATURE_LOCATION_FINGERPRINT_ALGORITHM, FeatureBedCoordinateMode,
+    FEATURE_ANNOTATION_STATE_FINGERPRINT_ALGORITHM, FEATURE_LOCATION_EDIT_SCHEMA,
+    FEATURE_LOCATION_EDIT_SCHEMA_V2, FEATURE_LOCATION_FINGERPRINT_ALGORITHM,
+    FEATURE_RECORD_CURATION_SCHEMA, FeatureBedCoordinateMode,
     FeatureLocationCompoundContext, FeatureLocationCompoundKind, FeatureLocationCompoundWarning,
     FeatureLocationEditReport, FeatureLocationEditRequest, FeatureLocationEditStrand,
     FeatureLocationEditTargetScope, FeatureLocationIntervalBoundaryRole, FeatureLocationSnapshot,
-    FeatureLocationStoredDirection, FlexibilityModel, GENE_SET_CO_REGULATED_CACHE_SCHEMA,
+    FeatureLocationStoredDirection, FeatureRecordCreateRequest, FeatureRecordCurationKind,
+    FeatureRecordCurationOutcome, FeatureRecordCurationReport, FeatureRecordCurationRequest,
+    FeatureRecordDeleteRequest, FeatureRecordQualifier, FeatureRecordReviewCandidate,
+    FeatureRecordReviewEvidence, FeatureRecordSnapshot, FlexibilityModel,
+    GENE_SET_CO_REGULATED_CACHE_SCHEMA,
     GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
     GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
     GENE_SET_RESOLUTION_SCHEMA, GeneSetCoRegulatedProducerMetadata, GeneSetCohortRelationship,
@@ -4587,6 +4592,8 @@ pub struct OpResult {
     pub lab_assistant_instructions: Option<Box<LabAssistantInstructionsExport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub feature_location_edit_report: Option<Box<FeatureLocationEditReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_record_curation_report: Option<Box<FeatureRecordCurationReport>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

@@ -124,6 +124,18 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: Some(UiIntentTarget::FeatureLocationEditor),
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "features create",
+        menu_path: "Edit > Feature Location Editor...",
+        palette_title: "Feature Location Editor",
+        ui_intent_target: Some(UiIntentTarget::FeatureLocationEditor),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "features delete",
+        menu_path: "Edit > Feature Location Editor...",
+        palette_title: "Feature Location Editor",
+        ui_intent_target: Some(UiIntentTarget::FeatureLocationEditor),
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "primers design",
         menu_path: "Patterns > PCR Designer...",
         palette_title: "PCR Designer",

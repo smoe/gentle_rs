@@ -23380,6 +23380,210 @@ impl GentleEngine {
         Ok(())
     }
 
+    fn execute_feature_record_curation(
+        &mut self,
+        request: FeatureRecordCurationRequest,
+        apply_change: bool,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let seq_id = request.seq_id().to_string();
+        let (sequence_len, sequence_is_circular, features) = {
+            let dna = self.state.sequences.get(&seq_id).ok_or_else(|| {
+                EngineError::new(
+                    ErrorCode::NotFound,
+                    format!("Sequence '{seq_id}' not found"),
+                )
+            })?;
+            (dna.len(), dna.is_circular(), dna.features().clone())
+        };
+        let before_annotation_fingerprint =
+            crate::feature_record_curation::annotation_state_fingerprint_sha256(
+                &seq_id,
+                sequence_len,
+                sequence_is_circular,
+                &features,
+            )?;
+
+        let (
+            operation_kind,
+            after_features,
+            outcome,
+            review_candidates,
+            expected_annotation_fingerprint,
+        ) = match request {
+            FeatureRecordCurationRequest::Create(request) => {
+                if request.start_0based < 0 || request.end_0based_exclusive < 0 {
+                    return Err(EngineError::invalid_input(
+                        "Feature create coordinates must not be negative",
+                    ));
+                }
+                if request.start_0based >= request.end_0based_exclusive {
+                    return Err(EngineError::invalid_input(
+                        "Feature create requires start_0based < end_0based_exclusive",
+                    ));
+                }
+                let start_0based = usize::try_from(request.start_0based).map_err(|_| {
+                    EngineError::invalid_input(
+                        "Feature create start exceeds the supported coordinate range",
+                    )
+                })?;
+                let end_0based_exclusive =
+                    usize::try_from(request.end_0based_exclusive).map_err(|_| {
+                        EngineError::invalid_input(
+                            "Feature create end exceeds the supported coordinate range",
+                        )
+                    })?;
+                if end_0based_exclusive > sequence_len {
+                    return Err(EngineError::invalid_input(format!(
+                        "Feature create range {}..{} exceeds sequence '{}' length {}",
+                        request.start_0based,
+                        request.end_0based_exclusive,
+                        seq_id,
+                        sequence_len
+                    )));
+                }
+                let proposed_feature = crate::feature_record_curation::build_simple_feature(
+                    &request.feature_kind,
+                    start_0based,
+                    end_0based_exclusive,
+                    request.strand,
+                    &request.qualifiers,
+                )?;
+                let review_candidates =
+                    crate::feature_record_curation::feature_record_review_candidates(
+                        &features,
+                        &proposed_feature,
+                        None,
+                    );
+                let proposed_snapshot =
+                    crate::feature_record_curation::feature_record_snapshot(&proposed_feature)?;
+                let mut after_features = features.clone();
+                after_features.push(proposed_feature);
+                (
+                    FeatureRecordCurationKind::Create,
+                    after_features,
+                    FeatureRecordCurationOutcome::Create {
+                        proposed_feature: proposed_snapshot,
+                        created_feature_index: apply_change.then_some(features.len()),
+                    },
+                    review_candidates,
+                    request.expected_annotation_state_fingerprint_sha256,
+                )
+            }
+            FeatureRecordCurationRequest::Delete(request) => {
+                let feature = features.get(request.feature_index).ok_or_else(|| {
+                    EngineError::new(
+                        ErrorCode::NotFound,
+                        format!(
+                            "Feature index {} is out of range for sequence '{}' ({} features)",
+                            request.feature_index,
+                            seq_id,
+                            features.len()
+                        ),
+                    )
+                })?;
+                let feature_fingerprint =
+                    crate::feature_location::feature_fingerprint_sha256(feature)?;
+                if apply_change && request.expected_feature_fingerprint_sha256.is_none() {
+                    return Err(EngineError::invalid_input(
+                        "Applying feature deletion requires the feature fingerprint returned by preview",
+                    ));
+                }
+                if let Some(expected) = request.expected_feature_fingerprint_sha256.as_deref()
+                    && expected != feature_fingerprint
+                {
+                    return Err(EngineError::invalid_input(format!(
+                        "Feature {} changed after preview: expected fingerprint {}, found {}",
+                        request.feature_index, expected, feature_fingerprint
+                    )));
+                }
+                let review_candidates =
+                    crate::feature_record_curation::feature_record_review_candidates(
+                        &features,
+                        feature,
+                        Some(request.feature_index),
+                    );
+                let deleted_snapshot =
+                    crate::feature_record_curation::feature_record_snapshot(feature)?;
+                let shifted_feature_count =
+                    features.len().saturating_sub(request.feature_index + 1);
+                let mut after_features = features.clone();
+                after_features.remove(request.feature_index);
+                (
+                    FeatureRecordCurationKind::Delete,
+                    after_features,
+                    FeatureRecordCurationOutcome::Delete {
+                        deleted_feature_index: request.feature_index,
+                        deleted_feature: deleted_snapshot,
+                        shifted_feature_count,
+                    },
+                    review_candidates,
+                    request.expected_annotation_state_fingerprint_sha256,
+                )
+            }
+        };
+
+        if apply_change && expected_annotation_fingerprint.is_none() {
+            return Err(EngineError::invalid_input(
+                "Applying feature-record curation requires the annotation-state fingerprint returned by preview",
+            ));
+        }
+        if let Some(expected) = expected_annotation_fingerprint.as_deref()
+            && expected != before_annotation_fingerprint
+        {
+            return Err(EngineError::invalid_input(format!(
+                "Sequence '{}' annotations changed after preview: expected fingerprint {}, found {}",
+                seq_id, expected, before_annotation_fingerprint
+            )));
+        }
+        let after_annotation_fingerprint =
+            crate::feature_record_curation::annotation_state_fingerprint_sha256(
+                &seq_id,
+                sequence_len,
+                sequence_is_circular,
+                &after_features,
+            )?;
+
+        if apply_change {
+            let dna = self.state.sequences.get_mut(&seq_id).ok_or_else(|| {
+                EngineError::new(
+                    ErrorCode::NotFound,
+                    format!("Sequence '{seq_id}' not found"),
+                )
+            })?;
+            *dna.features_mut() = after_features;
+            result.changed_seq_ids.push(seq_id.clone());
+        }
+
+        let review_candidate_count = review_candidates.len();
+        result.feature_record_curation_report = Some(Box::new(
+            FeatureRecordCurationReport {
+                schema: FEATURE_RECORD_CURATION_SCHEMA.to_string(),
+                seq_id: seq_id.clone(),
+                operation_kind,
+                dry_run: !apply_change,
+                applied: apply_change,
+                fingerprint_algorithm: FEATURE_ANNOTATION_STATE_FINGERPRINT_ALGORITHM.to_string(),
+                before_annotation_state_fingerprint_sha256: before_annotation_fingerprint,
+                after_annotation_state_fingerprint_sha256: after_annotation_fingerprint,
+                outcome,
+                review_candidates,
+            },
+        ));
+        result.messages.push(format!(
+            "{} feature-record {} on '{}' ({} informational review candidate{})",
+            if apply_change { "Applied" } else { "Previewed" },
+            match operation_kind {
+                FeatureRecordCurationKind::Create => "creation",
+                FeatureRecordCurationKind::Delete => "deletion",
+            },
+            seq_id,
+            review_candidate_count,
+            if review_candidate_count == 1 { "" } else { "s" }
+        ));
+        Ok(())
+    }
+
     pub(super) fn apply_internal(
         &mut self,
         op: Operation,
@@ -23517,6 +23721,7 @@ impl GentleEngine {
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
             feature_location_edit_report: None,
+            feature_record_curation_report: None,
         };
 
         if matches!(
@@ -34403,6 +34608,12 @@ impl GentleEngine {
                 }
                 Operation::EditFeatureLocation { request } => {
                     self.execute_feature_location_edit(request, true, &mut result)?;
+                }
+                Operation::PreviewFeatureRecordCuration { request } => {
+                    self.execute_feature_record_curation(request, false, &mut result)?;
+                }
+                Operation::ApplyFeatureRecordCuration { request } => {
+                    self.execute_feature_record_curation(request, true, &mut result)?;
                 }
                 Operation::AnnotateTfbs {
                     seq_id,

@@ -8,6 +8,7 @@
 pub mod construct_reasoning;
 pub mod dna_ladder;
 pub mod feature_location_edit;
+pub mod feature_record_curation;
 pub mod gene_groups;
 pub mod gene_sets;
 pub mod isoform_evidence;
@@ -55,6 +56,13 @@ pub use feature_location_edit::{
     FeatureLocationEditRequest, FeatureLocationEditStrand, FeatureLocationEditTargetScope,
     FeatureLocationIntervalBoundaryRole, FeatureLocationSnapshot, FeatureLocationStoredDirection,
     RelatedFeatureBoundaryCandidate, RelatedFeatureBoundaryReason, RelatedSegmentBoundaryCandidate,
+};
+pub use feature_record_curation::{
+    FEATURE_ANNOTATION_STATE_FINGERPRINT_ALGORITHM, FEATURE_RECORD_CURATION_SCHEMA,
+    FeatureRecordCreateRequest, FeatureRecordCurationKind, FeatureRecordCurationOutcome,
+    FeatureRecordCurationReport, FeatureRecordCurationRequest, FeatureRecordDeleteRequest,
+    FeatureRecordQualifier, FeatureRecordReviewCandidate, FeatureRecordReviewEvidence,
+    FeatureRecordSnapshot,
 };
 pub use gene_groups::{
     GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_DRAFT_REPORT_SCHEMA,
@@ -5188,6 +5196,8 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "MaterializeRepeatFeatures",
     "PreviewFeatureLocationEdit",
     "EditFeatureLocation",
+    "PreviewFeatureRecordCuration",
+    "ApplyFeatureRecordCuration",
     "BuildRepeatEnvironmentCohort",
     "MergeContainers",
     "Ligation",
@@ -5535,6 +5545,8 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "agents execute-plan",
     "op",
     "features edit-location",
+    "features create",
+    "features delete",
     "workflow",
     "help",
     "genomes list",

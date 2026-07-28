@@ -26064,6 +26064,8 @@ impl MainAreaDna {
                 let mut map_open_rna_read_mapping_feature: Option<usize> = None;
                 let mut map_open_dotplot_feature: Option<usize> = None;
                 let mut map_edit_feature_location: Option<usize> = None;
+                let mut map_create_feature_range: Option<(usize, usize)> = None;
+                let mut map_delete_feature: Option<usize> = None;
                 response.context_menu(|ui| {
                     let mut showed_any = false;
                     if self.render_selection_simple_pcr_context_action(ui) {
@@ -26105,6 +26107,23 @@ impl MainAreaDna {
                         }
                         showed_any = true;
                         if self.render_restriction_site_context_menu_items(ui, site, view) {
+                            return;
+                        }
+                    }
+                    if let Some(selected_range) = self.current_selection_range_0based() {
+                        if showed_any {
+                            ui.separator();
+                        }
+                        showed_any = true;
+                        if ui
+                            .button("Create feature from selection...")
+                            .on_hover_text(
+                                "Open the shared Feature Editor with this selected range",
+                            )
+                            .clicked()
+                        {
+                            map_create_feature_range = Some(selected_range);
+                            ui.close();
                             return;
                         }
                     }
@@ -26151,6 +26170,16 @@ impl MainAreaDna {
                     );
                     if edit_response.clicked() {
                         map_edit_feature_location = Some(feature_id);
+                        ui.close();
+                    }
+                    if ui
+                        .button("Delete feature...")
+                        .on_hover_text(
+                            "Preview the complete feature record and related annotations before deletion",
+                        )
+                        .clicked()
+                    {
+                        map_delete_feature = Some(feature_id);
                         ui.close();
                     }
                     let variant_response = ui.add_enabled(
@@ -26317,6 +26346,12 @@ impl MainAreaDna {
                 }
                 if let Some(feature_id) = map_edit_feature_location {
                     self.focus_feature_location_editor(Some(feature_id));
+                }
+                if let Some(range) = map_create_feature_range {
+                    self.focus_feature_record_create_editor(Some(range));
+                }
+                if let Some(feature_id) = map_delete_feature {
+                    self.focus_feature_record_delete_editor(Some(feature_id));
                 }
             }
         });

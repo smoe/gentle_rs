@@ -5491,6 +5491,12 @@ pub enum Operation {
     EditFeatureLocation {
         request: FeatureLocationEditRequest,
     },
+    PreviewFeatureRecordCuration {
+        request: FeatureRecordCurationRequest,
+    },
+    ApplyFeatureRecordCuration {
+        request: FeatureRecordCurationRequest,
+    },
     SetParameter {
         name: String,
         value: serde_json::Value,
@@ -8998,6 +9004,7 @@ impl GentleEngine {
             op,
             Operation::SaveFile { .. }
                 | Operation::PreviewFeatureLocationEdit { .. }
+                | Operation::PreviewFeatureRecordCuration { .. }
                 | Operation::RenderSequenceSvg { .. }
                 | Operation::RenderDotplotSvg { .. }
                 | Operation::RenderTfbsScoreTracksSvg { .. }

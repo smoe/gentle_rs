@@ -426,6 +426,10 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "features edit-location" => Some(
             "features edit-location demo 0 --start-1based 1 --end-1based-inclusive 1 --dry-run",
         ),
+        "features create" => Some(
+            "features create demo --kind misc_feature --start-1based 1 --end-1based-inclusive 1 --dry-run",
+        ),
+        "features delete" => Some("features delete demo 0 --dry-run"),
         "features tfbs-score-tracks-svg" => {
             Some("features tfbs-score-tracks-svg seq out.svg --motif SP1")
         }
@@ -41168,4 +41172,115 @@ fn execute_features_edit_location_segment_preview_then_apply() {
             gb_io::seq::Location::simple_range(32, 47),
         ])
     );
+}
+
+#[test]
+fn parse_features_create_and_delete_require_preview_tokens_for_apply() {
+    let create = parse_shell_line(
+        "features create seq --kind exon --start-1based 11 --end-1based-inclusive 20 --strand reverse --qualifier gene=TEST --qualifier pseudo --dry-run",
+    )
+    .expect("create preview parses");
+    assert!(matches!(
+        create,
+        ShellCommand::FeaturesCreate {
+            seq_id,
+            feature_kind,
+            start_1based: 11,
+            end_1based_inclusive: 20,
+            strand: FeatureLocationEditStrand::Reverse,
+            qualifiers,
+            dry_run: true,
+            ..
+        } if seq_id == "seq"
+            && feature_kind == "exon"
+            && qualifiers == vec![
+                FeatureRecordQualifier {
+                    key: "gene".to_string(),
+                    value: Some("TEST".to_string()),
+                },
+                FeatureRecordQualifier {
+                    key: "pseudo".to_string(),
+                    value: None,
+                },
+            ]
+    ));
+    let create_error = parse_shell_line(
+        "features create seq --kind exon --start-1based 11 --end-1based-inclusive 20",
+    )
+    .expect_err("create apply without token rejected");
+    assert!(create_error.contains("--expected-annotation-state-fingerprint-sha256"));
+
+    let delete =
+        parse_shell_line("features delete seq 2 --dry-run").expect("delete preview parses");
+    assert!(matches!(
+        delete,
+        ShellCommand::FeaturesDelete {
+            seq_id,
+            feature_index: 2,
+            dry_run: true,
+            ..
+        } if seq_id == "seq"
+    ));
+    let delete_error =
+        parse_shell_line("features delete seq 2").expect_err("delete apply without tokens rejected");
+    assert!(delete_error.contains("--expected-feature-fingerprint-sha256"));
+    assert!(delete_error.contains("--expected-annotation-state-fingerprint-sha256"));
+}
+
+#[test]
+fn execute_features_create_then_delete_uses_shared_curation_operations() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(50)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(5, 30),
+        qualifiers: vec![("gene".into(), Some("TEST".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let create_preview = parse_shell_line(
+        "features create seq --kind exon --start-1based 11 --end-1based-inclusive 20 --strand reverse --qualifier gene=TEST --qualifier pseudo --dry-run",
+    )
+    .expect("create preview command");
+    let create_preview =
+        execute_shell_command(&mut engine, &create_preview).expect("create preview execution");
+    assert!(!create_preview.state_changed);
+    let annotation_fingerprint = create_preview.output["report"]
+        ["before_annotation_state_fingerprint_sha256"]
+        .as_str()
+        .expect("annotation fingerprint");
+    let create_apply = parse_shell_line(&format!(
+        "features create seq --kind exon --start-1based 11 --end-1based-inclusive 20 --strand reverse --qualifier gene=TEST --qualifier pseudo --expected-annotation-state-fingerprint-sha256 {annotation_fingerprint}"
+    ))
+    .expect("create apply command");
+    let create_applied =
+        execute_shell_command(&mut engine, &create_apply).expect("create apply execution");
+    assert!(create_applied.state_changed);
+    assert_eq!(engine.state().sequences["seq"].features().len(), 2);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[1].qualifiers[1],
+        ("pseudo".into(), None)
+    );
+
+    let delete_preview =
+        parse_shell_line("features delete seq 1 --dry-run").expect("delete preview command");
+    let delete_preview =
+        execute_shell_command(&mut engine, &delete_preview).expect("delete preview execution");
+    let feature_fingerprint = delete_preview.output["report"]["outcome"]["deleted_feature"]
+        ["feature_fingerprint_sha256"]
+        .as_str()
+        .expect("feature fingerprint");
+    let annotation_fingerprint = delete_preview.output["report"]
+        ["before_annotation_state_fingerprint_sha256"]
+        .as_str()
+        .expect("annotation fingerprint");
+    let delete_apply = parse_shell_line(&format!(
+        "features delete seq 1 --expected-feature-fingerprint-sha256 {feature_fingerprint} --expected-annotation-state-fingerprint-sha256 {annotation_fingerprint}"
+    ))
+    .expect("delete apply command");
+    let delete_applied =
+        execute_shell_command(&mut engine, &delete_apply).expect("delete apply execution");
+    assert!(delete_applied.state_changed);
+    assert_eq!(engine.state().sequences["seq"].features().len(), 1);
 }

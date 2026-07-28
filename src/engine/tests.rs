@@ -50353,6 +50353,317 @@ fn feature_location_edit_engine() -> GentleEngine {
 }
 
 #[test]
+fn feature_record_curation_annotation_fingerprint_survives_project_round_trip() {
+    let engine = feature_location_edit_engine();
+    let dna = &engine.state().sequences["seq"];
+    let before = crate::feature_record_curation::annotation_state_fingerprint_sha256(
+        "seq",
+        dna.len(),
+        dna.is_circular(),
+        dna.features(),
+    )
+    .expect("fingerprint");
+    let encoded = serde_json::to_string(engine.state()).expect("project serializes");
+    let decoded: ProjectState = serde_json::from_str(&encoded).expect("project deserializes");
+    let dna = &decoded.sequences["seq"];
+    let after = crate::feature_record_curation::annotation_state_fingerprint_sha256(
+        "seq",
+        dna.len(),
+        dna.is_circular(),
+        dna.features(),
+    )
+    .expect("round-trip fingerprint");
+    assert_eq!(after, before);
+}
+
+#[test]
+fn feature_record_curation_create_preview_apply_and_undo_preserve_record() {
+    let mut engine = feature_location_edit_engine();
+    let initial_features = engine.state().sequences["seq"].features().clone();
+    let initial_undo = engine.undo_available();
+    let preview = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Create(FeatureRecordCreateRequest {
+                seq_id: "seq".to_string(),
+                feature_kind: "exon".to_string(),
+                start_0based: 15,
+                end_0based_exclusive: 25,
+                strand: FeatureLocationEditStrand::Reverse,
+                qualifiers: vec![
+                    FeatureRecordQualifier {
+                        key: "gene".to_string(),
+                        value: Some("TEST1".to_string()),
+                    },
+                    FeatureRecordQualifier {
+                        key: "pseudo".to_string(),
+                        value: None,
+                    },
+                    FeatureRecordQualifier {
+                        key: "note".to_string(),
+                        value: Some("first".to_string()),
+                    },
+                    FeatureRecordQualifier {
+                        key: "note".to_string(),
+                        value: Some("second".to_string()),
+                    },
+                ],
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect("create preview");
+    let report = preview
+        .feature_record_curation_report
+        .expect("curation report");
+    assert_eq!(report.schema, FEATURE_RECORD_CURATION_SCHEMA);
+    assert_eq!(report.operation_kind, FeatureRecordCurationKind::Create);
+    assert!(report.dry_run);
+    assert!(!report.applied);
+    assert_ne!(
+        report.before_annotation_state_fingerprint_sha256,
+        report.after_annotation_state_fingerprint_sha256
+    );
+    let FeatureRecordCurationOutcome::Create {
+        proposed_feature,
+        created_feature_index,
+    } = &report.outcome
+    else {
+        panic!("create outcome");
+    };
+    assert_eq!(*created_feature_index, None);
+    assert_eq!(proposed_feature.feature_kind, "exon");
+    assert_eq!(proposed_feature.qualifiers[1].value, None);
+    assert_eq!(proposed_feature.qualifiers[2].key, "note");
+    assert_eq!(proposed_feature.qualifiers[3].key, "note");
+    assert!(report.review_candidates.iter().any(|candidate| {
+        candidate.evidence.iter().any(|evidence| {
+            matches!(
+                evidence,
+                FeatureRecordReviewEvidence::SharedIdentifier {
+                    qualifier_key,
+                    qualifier_value,
+                    ..
+                } if qualifier_key == "gene" && qualifier_value == "TEST1"
+            )
+        })
+    }));
+    assert!(report.review_candidates.iter().any(|candidate| {
+        candidate
+            .evidence
+            .contains(&FeatureRecordReviewEvidence::OverlappingLocation)
+    }));
+    assert!(preview.warnings.is_empty());
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &initial_features
+    );
+    assert_eq!(engine.undo_available(), initial_undo);
+
+    let applied = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Create(FeatureRecordCreateRequest {
+                seq_id: "seq".to_string(),
+                feature_kind: "exon".to_string(),
+                start_0based: 15,
+                end_0based_exclusive: 25,
+                strand: FeatureLocationEditStrand::Reverse,
+                qualifiers: proposed_feature.qualifiers.clone(),
+                expected_annotation_state_fingerprint_sha256: Some(
+                    report
+                        .before_annotation_state_fingerprint_sha256
+                        .clone(),
+                ),
+            }),
+        })
+        .expect("create apply");
+    assert_eq!(applied.changed_seq_ids, vec!["seq"]);
+    let applied_report = applied
+        .feature_record_curation_report
+        .expect("applied report");
+    assert!(matches!(
+        applied_report.outcome,
+        FeatureRecordCurationOutcome::Create {
+            created_feature_index: Some(3),
+            ..
+        }
+    ));
+    let created = &engine.state().sequences["seq"].features()[3];
+    assert_eq!(
+        created.location,
+        gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(15, 25)))
+    );
+    assert_eq!(
+        created.qualifiers,
+        vec![
+            ("gene".into(), Some("TEST1".to_string())),
+            ("pseudo".into(), None),
+            ("note".into(), Some("first".to_string())),
+            ("note".into(), Some("second".to_string())),
+        ]
+    );
+    let created_qualifiers = created.qualifiers.clone();
+    assert_eq!(engine.undo_available(), initial_undo + 1);
+    engine.undo_last_operation().expect("undo create");
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &initial_features
+    );
+    engine.redo_last_operation().expect("redo create");
+    assert_eq!(engine.state().sequences["seq"].features().len(), 4);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[3].qualifiers,
+        created_qualifiers
+    );
+}
+
+#[test]
+fn feature_record_curation_rejects_missing_and_stale_annotation_lock() {
+    let mut engine = feature_location_edit_engine();
+    let request = FeatureRecordCreateRequest {
+        seq_id: "seq".to_string(),
+        feature_kind: "misc_feature".to_string(),
+        start_0based: 70,
+        end_0based_exclusive: 80,
+        strand: FeatureLocationEditStrand::Forward,
+        qualifiers: vec![],
+        expected_annotation_state_fingerprint_sha256: None,
+    };
+    let error = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Create(request.clone()),
+        })
+        .expect_err("missing annotation lock rejected");
+    assert!(error.message.contains("annotation-state fingerprint"));
+
+    let preview = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Create(request.clone()),
+        })
+        .expect("preview");
+    let report = preview.feature_record_curation_report.expect("report");
+    engine
+        .state
+        .sequences
+        .get_mut("seq")
+        .expect("seq")
+        .features_mut()
+        .push(gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: gb_io::seq::Location::simple_range(80, 90),
+            qualifiers: vec![],
+        });
+    let error = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Create(FeatureRecordCreateRequest {
+                expected_annotation_state_fingerprint_sha256: Some(
+                    report.before_annotation_state_fingerprint_sha256.clone(),
+                ),
+                ..request
+            }),
+        })
+        .expect_err("stale annotation lock rejected");
+    assert!(error.message.contains("annotations changed after preview"));
+}
+
+#[test]
+fn feature_record_curation_delete_accepts_complex_location_and_is_undoable() {
+    let mut engine = feature_location_edit_engine();
+    let complex_location = gb_io::seq::Location::Complement(Box::new(
+        gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::Range(
+                (10, gb_io::seq::Before(true)),
+                (20, gb_io::seq::After(false)),
+            ),
+            gb_io::seq::Location::Order(vec![
+                gb_io::seq::Location::simple_range(30, 40),
+                gb_io::seq::Location::simple_range(50, 60),
+            ]),
+        ]),
+    ));
+    engine
+        .state
+        .sequences
+        .get_mut("seq")
+        .expect("seq")
+        .features_mut()[1]
+        .location = complex_location.clone();
+    let original_features = engine.state().sequences["seq"].features().clone();
+    let initial_undo = engine.undo_available();
+    let preview = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Delete(FeatureRecordDeleteRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 1,
+                expected_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect("delete preview");
+    let report = preview.feature_record_curation_report.expect("report");
+    let FeatureRecordCurationOutcome::Delete {
+        deleted_feature_index,
+        deleted_feature,
+        shifted_feature_count,
+    } = &report.outcome
+    else {
+        panic!("delete outcome");
+    };
+    assert_eq!(*deleted_feature_index, 1);
+    assert_eq!(*shifted_feature_count, 1);
+    assert_eq!(deleted_feature.location_display, complex_location.to_string());
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &original_features
+    );
+
+    let stale_feature_error = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Delete(FeatureRecordDeleteRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 1,
+                expected_feature_fingerprint_sha256: Some("sha256:stale".to_string()),
+                expected_annotation_state_fingerprint_sha256: Some(
+                    report.before_annotation_state_fingerprint_sha256.clone(),
+                ),
+            }),
+        })
+        .expect_err("stale feature lock rejected");
+    assert!(stale_feature_error.message.contains("changed after preview"));
+
+    let applied = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Delete(FeatureRecordDeleteRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 1,
+                expected_feature_fingerprint_sha256: Some(
+                    deleted_feature.feature_fingerprint_sha256.clone(),
+                ),
+                expected_annotation_state_fingerprint_sha256: Some(
+                    report.before_annotation_state_fingerprint_sha256.clone(),
+                ),
+            }),
+        })
+        .expect("delete apply");
+    assert_eq!(applied.changed_seq_ids, vec!["seq"]);
+    assert_eq!(engine.state().sequences["seq"].features().len(), 2);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[1],
+        original_features[2]
+    );
+    assert_eq!(engine.undo_available(), initial_undo + 1);
+    engine.undo_last_operation().expect("undo delete");
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &original_features
+    );
+    engine.redo_last_operation().expect("redo delete");
+    assert_eq!(engine.state().sequences["seq"].features().len(), 2);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[1],
+        original_features[2]
+    );
+}
+
+#[test]
 fn feature_location_preview_is_read_only_and_apply_is_undoable() {
     let mut engine = feature_location_edit_engine();
     let initial_execution = engine.execution_revision();

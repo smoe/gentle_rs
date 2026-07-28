@@ -1940,6 +1940,7 @@ impl MainAreaDna {
         let mut copy_feature_payload: Option<(usize, FeatureCopyPayloadKind)> = None;
         let mut focus_matching_array_feature: Option<usize> = None;
         let mut edit_feature_location: Option<usize> = None;
+        let mut delete_feature_record: Option<usize> = None;
         let feature_font_size = feature_details_font_size;
         let kind_font_size = feature_font_size + 1.0;
         let pending_feature_tree_scroll_to = self.pending_feature_tree_scroll_to;
@@ -2135,6 +2136,17 @@ impl MainAreaDna {
                                     if edit_response.clicked() {
                                         clicked_feature = Some((entry.id, false));
                                         edit_feature_location = Some(entry.id);
+                                        ui.close();
+                                    }
+                                    if ui
+                                        .button("Delete feature...")
+                                        .on_hover_text(
+                                            "Preview the complete feature record and related annotations before deletion",
+                                        )
+                                        .clicked()
+                                    {
+                                        clicked_feature = Some((entry.id, false));
+                                        delete_feature_record = Some(entry.id);
                                         ui.close();
                                     }
                                     let promoter_response = ui.add_enabled(
@@ -2362,6 +2374,9 @@ impl MainAreaDna {
         }
         if let Some(feature_id) = edit_feature_location {
             self.focus_feature_location_editor(Some(feature_id));
+        }
+        if let Some(feature_id) = delete_feature_record {
+            self.focus_feature_record_delete_editor(Some(feature_id));
         }
     }
 }

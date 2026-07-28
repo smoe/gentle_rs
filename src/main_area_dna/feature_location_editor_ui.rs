@@ -3,8 +3,57 @@
 use super::*;
 use gentle_protocol::{
     FeatureLocationCompoundWarning, FeatureLocationEditReport, FeatureLocationEditRequest,
-    FeatureLocationIntervalBoundaryRole, RelatedFeatureBoundaryReason,
+    FeatureLocationEditStrand, FeatureLocationIntervalBoundaryRole, FeatureRecordCreateRequest,
+    FeatureRecordCurationOutcome, FeatureRecordCurationReport, FeatureRecordCurationRequest,
+    FeatureRecordDeleteRequest, FeatureRecordQualifier, FeatureRecordReviewEvidence,
+    RelatedFeatureBoundaryReason,
 };
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum FeatureEditorMode {
+    #[default]
+    Location,
+    Create,
+    Delete,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct FeatureRecordQualifierUiRow {
+    pub(super) key: String,
+    pub(super) value: String,
+    pub(super) has_value: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct FeatureRecordCurationUiState {
+    pub(super) mode: FeatureEditorMode,
+    pub(super) create_feature_kind: String,
+    pub(super) create_start_1based: String,
+    pub(super) create_end_1based_inclusive: String,
+    pub(super) create_strand: FeatureLocationEditStrand,
+    pub(super) create_qualifiers: Vec<FeatureRecordQualifierUiRow>,
+    pub(super) delete_feature_index: Option<usize>,
+    pub(super) preview_request: Option<FeatureRecordCurationRequest>,
+    pub(super) preview: Option<FeatureRecordCurationReport>,
+    pub(super) status: String,
+}
+
+impl Default for FeatureRecordCurationUiState {
+    fn default() -> Self {
+        Self {
+            mode: FeatureEditorMode::Location,
+            create_feature_kind: "misc_feature".to_string(),
+            create_start_1based: "1".to_string(),
+            create_end_1based_inclusive: "1".to_string(),
+            create_strand: FeatureLocationEditStrand::Forward,
+            create_qualifiers: Vec::new(),
+            delete_feature_index: None,
+            preview_request: None,
+            preview: None,
+            status: String::new(),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(super) struct FeatureLocationEditorSegmentOption {
@@ -23,6 +72,7 @@ pub(super) struct FeatureLocationEditorUiState {
     pub(super) end_1based_inclusive: String,
     pub(super) preview: Option<FeatureLocationEditReport>,
     pub(super) status: String,
+    pub(super) record: FeatureRecordCurationUiState,
 }
 
 impl MainAreaDna {
@@ -69,6 +119,83 @@ impl MainAreaDna {
                 )
             })
             .collect()
+    }
+
+    fn feature_record_editor_options(&self) -> Vec<(usize, String)> {
+        let Ok(dna) = self.dna.read() else {
+            return vec![];
+        };
+        dna.features()
+            .iter()
+            .enumerate()
+            .map(|(index, feature)| {
+                let label = feature
+                    .qualifier_values("label")
+                    .next()
+                    .or_else(|| feature.qualifier_values("gene").next())
+                    .or_else(|| feature.qualifier_values("transcript_id").next())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| feature.location.to_string());
+                (index, format!("{index}: {} ({label})", feature.kind))
+            })
+            .collect()
+    }
+
+    pub(super) fn invalidate_feature_record_preview(&mut self) {
+        self.feature_location_editor_ui.record.preview_request = None;
+        self.feature_location_editor_ui.record.preview = None;
+    }
+
+    pub fn focus_feature_record_create_editor(
+        &mut self,
+        selected_range_0based: Option<(usize, usize)>,
+    ) {
+        let sequence_len = self.dna.read().map(|dna| dna.len()).unwrap_or_default();
+        let range = selected_range_0based
+            .filter(|(start, end)| start < end && *end <= sequence_len)
+            .or_else(|| (sequence_len > 0).then_some((0, 1)));
+        if let Some((start, end)) = range {
+            self.feature_location_editor_ui.record.create_start_1based =
+                start.saturating_add(1).to_string();
+            self.feature_location_editor_ui
+                .record
+                .create_end_1based_inclusive = end.to_string();
+            self.feature_location_editor_ui.record.status.clear();
+        } else {
+            self.feature_location_editor_ui.record.status =
+                "The active sequence has no bases available for an exact feature range."
+                    .to_string();
+        }
+        self.feature_location_editor_ui.record.mode = FeatureEditorMode::Create;
+        self.invalidate_feature_record_preview();
+        self.show_feature_location_editor = true;
+    }
+
+    pub fn focus_feature_record_delete_editor(&mut self, feature_index: Option<usize>) {
+        let options = self.feature_record_editor_options();
+        self.feature_location_editor_ui.record.delete_feature_index = feature_index
+            .filter(|index| options.iter().any(|(candidate, _)| candidate == index))
+            .or(self.feature_location_editor_ui.record.delete_feature_index)
+            .filter(|index| options.iter().any(|(candidate, _)| candidate == index))
+            .or_else(|| {
+                self.get_selected_feature_id()
+                    .filter(|index| options.iter().any(|(candidate, _)| candidate == index))
+            })
+            .or_else(|| options.first().map(|(index, _)| *index));
+        self.feature_location_editor_ui.record.mode = FeatureEditorMode::Delete;
+        self.feature_location_editor_ui.record.status =
+            if self
+                .feature_location_editor_ui
+                .record
+                .delete_feature_index
+                .is_some()
+            {
+                String::new()
+            } else {
+                "No feature record is available to delete.".to_string()
+            };
+        self.invalidate_feature_record_preview();
+        self.show_feature_location_editor = true;
     }
 
     fn seed_feature_location_editor(&mut self, feature_index: usize) {
@@ -150,6 +277,7 @@ impl MainAreaDna {
     }
 
     pub fn focus_feature_location_editor(&mut self, feature_index: Option<usize>) {
+        self.feature_location_editor_ui.record.mode = FeatureEditorMode::Location;
         let options = self.feature_location_editor_options();
         let selected = feature_index
             .filter(|index| options.iter().any(|(candidate, _, _)| candidate == index))
@@ -296,6 +424,225 @@ impl MainAreaDna {
         self.feature_location_editor_ui.status = status;
     }
 
+    fn feature_record_create_request(
+        &self,
+        expected_annotation_state_fingerprint_sha256: Option<String>,
+    ) -> Result<FeatureRecordCurationRequest, String> {
+        let seq_id = self
+            .seq_id
+            .clone()
+            .ok_or_else(|| "No active sequence is attached to this window".to_string())?;
+        let start_1based = self
+            .feature_location_editor_ui
+            .record
+            .create_start_1based
+            .trim()
+            .parse::<i64>()
+            .map_err(|_| "Start must be a positive 1-based coordinate".to_string())?;
+        let end_1based_inclusive = self
+            .feature_location_editor_ui
+            .record
+            .create_end_1based_inclusive
+            .trim()
+            .parse::<i64>()
+            .map_err(|_| "End must be a positive 1-based inclusive coordinate".to_string())?;
+        if start_1based < 1 || end_1based_inclusive < 1 {
+            return Err("Start and end must both be at least 1".to_string());
+        }
+        if end_1based_inclusive < start_1based {
+            return Err("End must be greater than or equal to start".to_string());
+        }
+        let feature_kind = self
+            .feature_location_editor_ui
+            .record
+            .create_feature_kind
+            .trim();
+        if feature_kind.is_empty() {
+            return Err("Feature kind must not be empty".to_string());
+        }
+        let qualifiers = self
+            .feature_location_editor_ui
+            .record
+            .create_qualifiers
+            .iter()
+            .map(|row| FeatureRecordQualifier {
+                key: row.key.clone(),
+                value: row.has_value.then(|| row.value.clone()),
+            })
+            .collect();
+        Ok(FeatureRecordCurationRequest::Create(
+            FeatureRecordCreateRequest {
+                seq_id,
+                feature_kind: feature_kind.to_string(),
+                start_0based: start_1based - 1,
+                end_0based_exclusive: end_1based_inclusive,
+                strand: self.feature_location_editor_ui.record.create_strand,
+                qualifiers,
+                expected_annotation_state_fingerprint_sha256,
+            },
+        ))
+    }
+
+    fn feature_record_delete_request(
+        &self,
+        expected_feature_fingerprint_sha256: Option<String>,
+        expected_annotation_state_fingerprint_sha256: Option<String>,
+    ) -> Result<FeatureRecordCurationRequest, String> {
+        let seq_id = self
+            .seq_id
+            .clone()
+            .ok_or_else(|| "No active sequence is attached to this window".to_string())?;
+        let feature_index = self
+            .feature_location_editor_ui
+            .record
+            .delete_feature_index
+            .ok_or_else(|| "Select a feature record first".to_string())?;
+        Ok(FeatureRecordCurationRequest::Delete(
+            FeatureRecordDeleteRequest {
+                seq_id,
+                feature_index,
+                expected_feature_fingerprint_sha256,
+                expected_annotation_state_fingerprint_sha256,
+            },
+        ))
+    }
+
+    pub(super) fn run_feature_record_preview(&mut self) {
+        let request = match self.feature_location_editor_ui.record.mode {
+            FeatureEditorMode::Create => self.feature_record_create_request(None),
+            FeatureEditorMode::Delete => self.feature_record_delete_request(None, None),
+            FeatureEditorMode::Location => {
+                self.feature_location_editor_ui.record.status =
+                    "Choose Create or Delete first.".to_string();
+                return;
+            }
+        };
+        let request = match request {
+            Ok(request) => request,
+            Err(error) => {
+                self.feature_location_editor_ui.record.status = error;
+                self.invalidate_feature_record_preview();
+                return;
+            }
+        };
+        let Some(result) = self.apply_operation_with_feedback_and_result(
+            Operation::PreviewFeatureRecordCuration {
+                request: request.clone(),
+            },
+        ) else {
+            self.feature_location_editor_ui.record.status = self.op_status.clone();
+            self.invalidate_feature_record_preview();
+            return;
+        };
+        self.feature_location_editor_ui.record.preview_request = Some(request);
+        self.feature_location_editor_ui.record.preview = result
+            .feature_record_curation_report
+            .map(|report| report.as_ref().clone());
+        self.feature_location_editor_ui.record.status =
+            "Preview is current. Review the complete record and related annotations."
+                .to_string();
+    }
+
+    pub(super) fn run_feature_record_apply(&mut self) {
+        let Some(preview) = self.feature_location_editor_ui.record.preview.clone() else {
+            self.feature_location_editor_ui.record.status =
+                "Run Preview before applying feature-record curation.".to_string();
+            return;
+        };
+        let Some(preview_request) = self
+            .feature_location_editor_ui
+            .record
+            .preview_request
+            .clone()
+        else {
+            self.feature_location_editor_ui.record.status =
+                "Preview request is unavailable; preview again.".to_string();
+            return;
+        };
+        let current_request = match self.feature_location_editor_ui.record.mode {
+            FeatureEditorMode::Create => self.feature_record_create_request(None),
+            FeatureEditorMode::Delete => self.feature_record_delete_request(None, None),
+            FeatureEditorMode::Location => {
+                self.feature_location_editor_ui.record.status =
+                    "Choose Create or Delete first.".to_string();
+                return;
+            }
+        };
+        let current_request = match current_request {
+            Ok(request) => request,
+            Err(error) => {
+                self.feature_location_editor_ui.record.status = error;
+                return;
+            }
+        };
+        if current_request != preview_request {
+            self.feature_location_editor_ui.record.status =
+                "Feature record fields changed after preview; preview again before applying."
+                    .to_string();
+            self.invalidate_feature_record_preview();
+            return;
+        }
+        let request = match current_request {
+            FeatureRecordCurationRequest::Create(mut request) => {
+                request.expected_annotation_state_fingerprint_sha256 = Some(
+                    preview
+                        .before_annotation_state_fingerprint_sha256
+                        .clone(),
+                );
+                FeatureRecordCurationRequest::Create(request)
+            }
+            FeatureRecordCurationRequest::Delete(mut request) => {
+                let FeatureRecordCurationOutcome::Delete {
+                    deleted_feature, ..
+                } = &preview.outcome
+                else {
+                    self.feature_location_editor_ui.record.status =
+                        "Preview outcome no longer matches Delete mode.".to_string();
+                    self.invalidate_feature_record_preview();
+                    return;
+                };
+                request.expected_feature_fingerprint_sha256 =
+                    Some(deleted_feature.feature_fingerprint_sha256.clone());
+                request.expected_annotation_state_fingerprint_sha256 = Some(
+                    preview
+                        .before_annotation_state_fingerprint_sha256
+                        .clone(),
+                );
+                FeatureRecordCurationRequest::Delete(request)
+            }
+        };
+        let Some(result) = self.apply_operation_with_feedback_and_result(
+            Operation::ApplyFeatureRecordCuration { request },
+        ) else {
+            self.feature_location_editor_ui.record.status = self.op_status.clone();
+            return;
+        };
+        let outcome = result
+            .feature_record_curation_report
+            .as_ref()
+            .map(|report| report.outcome.clone());
+        let status = result
+            .messages
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "Feature-record curation applied.".to_string());
+        self.invalidate_feature_record_preview();
+        match outcome {
+            Some(FeatureRecordCurationOutcome::Create {
+                created_feature_index: Some(feature_index),
+                ..
+            }) => {
+                self.focus_feature(feature_index);
+            }
+            Some(FeatureRecordCurationOutcome::Delete { .. }) => {
+                self.feature_location_editor_ui.record.delete_feature_index =
+                    self.feature_record_editor_options().first().map(|(index, _)| *index);
+            }
+            _ => {}
+        }
+        self.feature_location_editor_ui.record.status = status;
+    }
+
     fn related_reason_label(reason: RelatedFeatureBoundaryReason) -> &'static str {
         match reason {
             RelatedFeatureBoundaryReason::SharesOldStartBoundary => "shares old start",
@@ -338,19 +685,358 @@ impl MainAreaDna {
         }
     }
 
+    fn render_feature_record_preview(
+        ui: &mut egui::Ui,
+        preview: &FeatureRecordCurationReport,
+    ) {
+        ui.separator();
+        ui.label(egui::RichText::new("Preview").strong());
+        match &preview.outcome {
+            FeatureRecordCurationOutcome::Create {
+                proposed_feature,
+                created_feature_index,
+            } => {
+                ui.monospace(format!(
+                    "Create {} at {}",
+                    proposed_feature.feature_kind, proposed_feature.location_display
+                ));
+                ui.small(match created_feature_index {
+                    Some(index) => format!("Applied feature index: {index}"),
+                    None => "Preview does not reserve a feature index.".to_string(),
+                });
+                for qualifier in &proposed_feature.qualifiers {
+                    ui.monospace(match qualifier.value.as_deref() {
+                        Some(value) => format!("/{}={value}", qualifier.key),
+                        None => format!("/{}", qualifier.key),
+                    });
+                }
+            }
+            FeatureRecordCurationOutcome::Delete {
+                deleted_feature_index,
+                deleted_feature,
+                shifted_feature_count,
+            } => {
+                ui.monospace(format!(
+                    "Delete {}: {} at {}",
+                    deleted_feature_index,
+                    deleted_feature.feature_kind,
+                    deleted_feature.location_display
+                ));
+                ui.small(format!(
+                    "{} subsequent feature index{} will shift down by one.",
+                    shifted_feature_count,
+                    if *shifted_feature_count == 1 {
+                        ""
+                    } else {
+                        "es"
+                    }
+                ));
+                for qualifier in &deleted_feature.qualifiers {
+                    ui.monospace(match qualifier.value.as_deref() {
+                        Some(value) => format!("/{}={value}", qualifier.key),
+                        None => format!("/{}", qualifier.key),
+                    });
+                }
+            }
+        }
+        ui.small(format!(
+            "annotation state: {} -> {}",
+            preview.before_annotation_state_fingerprint_sha256,
+            preview.after_annotation_state_fingerprint_sha256
+        ));
+        ui.separator();
+        ui.label(egui::RichText::new("Annotations to review").strong());
+        if preview.review_candidates.is_empty() {
+            ui.small("No location overlap or recognized shared identifier was found.");
+        } else {
+            egui::ScrollArea::vertical()
+                .max_height(160.0)
+                .show(ui, |ui| {
+                    for candidate in &preview.review_candidates {
+                        let evidence = candidate
+                            .evidence
+                            .iter()
+                            .map(|evidence| match evidence {
+                                FeatureRecordReviewEvidence::OverlappingLocation => {
+                                    "location overlap".to_string()
+                                }
+                                FeatureRecordReviewEvidence::SharedIdentifier {
+                                    qualifier_key,
+                                    qualifier_value,
+                                    ..
+                                } => {
+                                    format!("shared /{qualifier_key}={qualifier_value}")
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        ui.monospace(format!(
+                            "{} {} {} [{}]; not modified",
+                            candidate.feature_index,
+                            candidate.feature_kind,
+                            candidate.location_display,
+                            evidence
+                        ));
+                    }
+                });
+        }
+        ui.small(
+            "Overlap and shared identifiers are informational review evidence, not dependency claims.",
+        );
+    }
+
+    fn render_feature_record_create_editor(&mut self, ui: &mut egui::Ui) {
+        ui.label("Append one exact simple GenBank feature after preview.");
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            ui.label("Kind");
+            changed |= ui
+                .text_edit_singleline(
+                    &mut self
+                        .feature_location_editor_ui
+                        .record
+                        .create_feature_kind,
+                )
+                .changed();
+            ui.label("Strand");
+            let before = self.feature_location_editor_ui.record.create_strand;
+            egui::ComboBox::from_id_salt((
+                "feature_record_create_strand",
+                self.panel_scope_key(),
+            ))
+            .selected_text(match before {
+                FeatureLocationEditStrand::Forward => "Forward",
+                FeatureLocationEditStrand::Reverse => "Reverse",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(
+                    &mut self.feature_location_editor_ui.record.create_strand,
+                    FeatureLocationEditStrand::Forward,
+                    "Forward",
+                );
+                ui.selectable_value(
+                    &mut self.feature_location_editor_ui.record.create_strand,
+                    FeatureLocationEditStrand::Reverse,
+                    "Reverse",
+                );
+            });
+            changed |= before != self.feature_location_editor_ui.record.create_strand;
+        });
+        ui.horizontal(|ui| {
+            ui.label("Start (1-based)");
+            changed |= ui
+                .text_edit_singleline(
+                    &mut self
+                        .feature_location_editor_ui
+                        .record
+                        .create_start_1based,
+                )
+                .changed();
+            ui.label("End (1-based, inclusive)");
+            changed |= ui
+                .text_edit_singleline(
+                    &mut self
+                        .feature_location_editor_ui
+                        .record
+                        .create_end_1based_inclusive,
+                )
+                .changed();
+        });
+        ui.label(egui::RichText::new("Ordered qualifiers").strong());
+        let mut remove_row = None;
+        for (index, row) in self
+            .feature_location_editor_ui
+            .record
+            .create_qualifiers
+            .iter_mut()
+            .enumerate()
+        {
+            ui.horizontal(|ui| {
+                changed |= ui
+                    .add(egui::TextEdit::singleline(&mut row.key).hint_text("key"))
+                    .changed();
+                changed |= ui.checkbox(&mut row.has_value, "Value").changed();
+                if row.has_value {
+                    changed |= ui
+                        .add(egui::TextEdit::singleline(&mut row.value).hint_text("value"))
+                        .changed();
+                }
+                if ui.small_button("x").on_hover_text("Remove qualifier").clicked() {
+                    remove_row = Some(index);
+                }
+            });
+        }
+        if let Some(index) = remove_row {
+            self.feature_location_editor_ui
+                .record
+                .create_qualifiers
+                .remove(index);
+            changed = true;
+        }
+        if ui
+            .small_button("+")
+            .on_hover_text("Add qualifier")
+            .clicked()
+        {
+            self.feature_location_editor_ui
+                .record
+                .create_qualifiers
+                .push(FeatureRecordQualifierUiRow::default());
+            changed = true;
+        }
+        if changed {
+            self.invalidate_feature_record_preview();
+        }
+        ui.horizontal(|ui| {
+            if ui.button("Preview").clicked() {
+                self.run_feature_record_preview();
+            }
+            let apply = ui.add_enabled(
+                self.feature_location_editor_ui.record.preview.is_some(),
+                egui::Button::new("Create"),
+            );
+            if apply
+                .on_hover_text("Create is enabled only for the exact record just previewed")
+                .clicked()
+            {
+                self.run_feature_record_apply();
+            }
+        });
+        if !self.feature_location_editor_ui.record.status.is_empty() {
+            ui.label(&self.feature_location_editor_ui.record.status);
+        }
+        if let Some(preview) = self.feature_location_editor_ui.record.preview.as_ref() {
+            Self::render_feature_record_preview(ui, preview);
+        }
+    }
+
+    fn render_feature_record_delete_editor(
+        &mut self,
+        ui: &mut egui::Ui,
+        options: &[(usize, String)],
+    ) {
+        ui.label("Delete one complete feature record of any existing location shape.");
+        let selected_label = self
+            .feature_location_editor_ui
+            .record
+            .delete_feature_index
+            .and_then(|selected| {
+                options
+                    .iter()
+                    .find(|(index, _)| *index == selected)
+                    .map(|(_, label)| label.clone())
+            })
+            .unwrap_or_else(|| "Select feature".to_string());
+        let mut next_selected = None;
+        egui::ComboBox::from_id_salt((
+            "feature_record_delete_feature",
+            self.panel_scope_key(),
+        ))
+        .selected_text(selected_label)
+        .width(430.0)
+        .show_ui(ui, |ui| {
+            for (index, label) in options {
+                if ui
+                    .selectable_label(
+                        self.feature_location_editor_ui
+                            .record
+                            .delete_feature_index
+                            == Some(*index),
+                        label,
+                    )
+                    .clicked()
+                {
+                    next_selected = Some(*index);
+                }
+            }
+        });
+        if let Some(index) = next_selected {
+            self.feature_location_editor_ui.record.delete_feature_index = Some(index);
+            self.invalidate_feature_record_preview();
+            self.feature_location_editor_ui.record.status.clear();
+        }
+        ui.horizontal(|ui| {
+            if ui.button("Preview").clicked() {
+                self.run_feature_record_preview();
+            }
+            let apply = ui.add_enabled(
+                self.feature_location_editor_ui.record.preview.is_some(),
+                egui::Button::new("Delete"),
+            );
+            if apply
+                .on_hover_text("Delete is enabled only for the exact record just previewed")
+                .clicked()
+            {
+                self.run_feature_record_apply();
+            }
+        });
+        if !self.feature_location_editor_ui.record.status.is_empty() {
+            ui.label(&self.feature_location_editor_ui.record.status);
+        }
+        if let Some(preview) = self.feature_location_editor_ui.record.preview.as_ref() {
+            Self::render_feature_record_preview(ui, preview);
+        }
+    }
+
     pub(super) fn render_feature_location_editor(&mut self, ctx: &egui::Context) {
         if !self.show_feature_location_editor {
             return;
         }
         let options = self.feature_location_editor_options();
+        let record_options = self.feature_record_editor_options();
         let mut open = self.show_feature_location_editor;
         let spec = crate::egui_compat::HostedWindowSpec::new(
-            "Feature Location Editor",
+            "Feature Editor",
             egui::Id::new(("feature_location_editor", self.panel_scope_key())),
-            egui::vec2(620.0, 520.0),
+            egui::vec2(680.0, 560.0),
             egui::vec2(460.0, 340.0),
         );
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+            let previous_mode = self.feature_location_editor_ui.record.mode;
+            ui.horizontal(|ui| {
+                ui.selectable_value(
+                    &mut self.feature_location_editor_ui.record.mode,
+                    FeatureEditorMode::Location,
+                    "Location",
+                );
+                ui.selectable_value(
+                    &mut self.feature_location_editor_ui.record.mode,
+                    FeatureEditorMode::Create,
+                    "Create",
+                );
+                ui.selectable_value(
+                    &mut self.feature_location_editor_ui.record.mode,
+                    FeatureEditorMode::Delete,
+                    "Delete",
+                );
+            });
+            if previous_mode != self.feature_location_editor_ui.record.mode {
+                self.feature_location_editor_ui.preview = None;
+                self.invalidate_feature_record_preview();
+                self.feature_location_editor_ui.record.status.clear();
+                if self.feature_location_editor_ui.record.mode == FeatureEditorMode::Delete
+                    && self
+                        .feature_location_editor_ui
+                        .record
+                        .delete_feature_index
+                        .is_none()
+                {
+                    self.feature_location_editor_ui.record.delete_feature_index =
+                        record_options.first().map(|(index, _)| *index);
+                }
+            }
+            ui.separator();
+            match self.feature_location_editor_ui.record.mode {
+                FeatureEditorMode::Create => {
+                    self.render_feature_record_create_editor(ui);
+                    return;
+                }
+                FeatureEditorMode::Delete => {
+                    self.render_feature_record_delete_editor(ui, &record_options);
+                    return;
+                }
+                FeatureEditorMode::Location => {}
+            }
             ui.label("Edit one exact simple range or one segment in a flat Join/Order annotation.");
             ui.separator();
             let selected_label = self

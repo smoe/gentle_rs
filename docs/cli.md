@@ -2930,6 +2930,8 @@ Shared shell command:
     - `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
     - `features formula SEQ_ID EXPR`
     - `features edit-location SEQ_ID FEATURE_INDEX [--segment-index INDEX] --start-1based N --end-1based-inclusive M [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--path OUT.json]`
+    - `features create SEQ_ID --kind KIND --start-1based N --end-1based-inclusive M [--strand forward|reverse] [--qualifier KEY[=VALUE] ...] [--dry-run] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]`
+    - `features delete SEQ_ID FEATURE_INDEX [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]`
     - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
@@ -3824,6 +3826,18 @@ Shared shell command:
       - the report lists boundary-sharing annotations for review but modifies
         only the selected feature
       - a successful apply is a normal undoable project mutation
+    - Feature-record curation notes (`features create`, `features delete`):
+      - always preview first; apply uses the returned annotation-state lock,
+        and Delete additionally uses the complete selected-feature lock
+      - Create appends one exact forward or reverse range; repeat
+        `--qualifier` in the required stored order and omit `=VALUE` for a
+        valueless qualifier
+      - Delete accepts any existing location shape and reports the complete
+        deleted record; later feature indices shift down by one
+      - overlap and matching `locus_tag`, `gene`, `protein_id`, or
+        `transcript_id` values are informational review candidates, not
+        inferred dependencies or automatic propagation
+      - both successful applies use the normal undo/redo history
     - Feature query helper notes (`features query`):
       - non-mutating structured result schema:
         `gentle.sequence_feature_query_result.v1`

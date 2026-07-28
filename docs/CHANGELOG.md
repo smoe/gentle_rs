@@ -14,6 +14,13 @@ Maintenance rule:
 
 ## 2026-07-28
 
+- Added engine-owned `gentle.feature_record_curation.v1` Create/Delete
+  preview/apply operations, portable annotation-state locks, ordered
+  duplicate/valueless qualifier preservation, full undo/redo, shared
+  `features create` / `features delete` routes, and Create/Delete tabs in the
+  DNA Feature Editor. Overlap and shared INSDC identifiers remain
+  informational review evidence; split/merge and automatic propagation remain
+  deferred.
 - Extended the engine-owned Feature Location Editor and shared
   `features edit-location` route to edit one exact child in flat
   `Join`/`Order` annotations, including outer-complement reverse-strand

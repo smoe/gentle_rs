@@ -6,6 +6,7 @@ use super::{
     SequencingConfirmationOverviewSelection, SequencingConfirmationReviewFocusKind,
     SplicingIntronSignalKey, SplicingIntronSignalRow, ViewSvgExportProfile,
     auxiliary_workspaces::LocusEvidenceResourceReadiness,
+    feature_location_editor_ui::{FeatureEditorMode, FeatureRecordQualifierUiRow},
 };
 use crate::{
     dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
@@ -17,7 +18,8 @@ use crate::{
         CutRunAlignConfig, CutRunInputFormat, CutRunReadLayout,
         CutRunRegulatoryTfbsConfirmationStatus, CutRunSeedFilterConfig, DotplotMode,
         DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
-        EngineError, ErrorCode, EvidenceClass, FlexibilityModel, FlexibilityTrack,
+        EngineError, ErrorCode, EvidenceClass, FeatureLocationEditStrand,
+        FeatureRecordCurationOutcome, FlexibilityModel, FlexibilityTrack,
         GeneIsoformEvidenceReport, GentleEngine, LinearSequenceLetterLayoutMode, OpResult,
         Operation, PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport,
@@ -1171,6 +1173,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         uniprot_projection_audit_parity: None,
         lab_assistant_instructions: None,
         feature_location_edit_report: None,
+        feature_record_curation_report: None,
     });
 
     assert_eq!(area.sequencing_confirmation_ui.selected_trace_id, "trace_b");
@@ -4985,6 +4988,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
             feature_location_edit_report: None,
+            feature_record_curation_report: None,
         },
         Instant::now(),
     );
@@ -14846,6 +14850,103 @@ fn feature_location_editor_selects_compound_segments_and_invalidates_preview() {
             .biological_segment_number,
         1
     );
+}
+
+#[test]
+fn feature_editor_create_mode_uses_shared_preview_apply_and_preserves_qualifiers() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(50)).expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("seq".to_string()), Some(engine.clone()));
+    area.focus_feature_record_create_editor(Some((9, 20)));
+    assert!(area.feature_location_editor_is_open());
+    assert_eq!(
+        area.feature_location_editor_ui.record.mode,
+        FeatureEditorMode::Create
+    );
+    area.feature_location_editor_ui.record.create_feature_kind = "exon".to_string();
+    area.feature_location_editor_ui.record.create_strand =
+        FeatureLocationEditStrand::Reverse;
+    area.feature_location_editor_ui
+        .record
+        .create_qualifiers = vec![
+        FeatureRecordQualifierUiRow {
+            key: "gene".to_string(),
+            value: "TEST".to_string(),
+            has_value: true,
+        },
+        FeatureRecordQualifierUiRow {
+            key: "pseudo".to_string(),
+            value: String::new(),
+            has_value: false,
+        },
+    ];
+    area.run_feature_record_preview();
+    let preview = area
+        .feature_location_editor_ui
+        .record
+        .preview
+        .as_ref()
+        .expect("preview");
+    assert!(matches!(
+        preview.outcome,
+        FeatureRecordCurationOutcome::Create {
+            created_feature_index: None,
+            ..
+        }
+    ));
+    assert!(engine.read().expect("engine").state().sequences["seq"]
+        .features()
+        .is_empty());
+
+    area.run_feature_record_apply();
+    let guard = engine.read().expect("engine");
+    let created = &guard.state().sequences["seq"].features()[0];
+    assert_eq!(
+        created.location,
+        Location::Complement(Box::new(Location::simple_range(9, 20)))
+    );
+    assert_eq!(
+        created.qualifiers,
+        vec![
+            ("gene".into(), Some("TEST".to_string())),
+            ("pseudo".into(), None),
+        ]
+    );
+}
+
+#[test]
+fn feature_editor_delete_mode_accepts_compound_feature_and_invalidates_preview() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(50)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::Join(vec![
+            Location::simple_range(5, 15),
+            Location::simple_range(25, 35),
+        ]),
+        qualifiers: vec![("transcript_id".into(), Some("TX1".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("seq".to_string()), Some(engine.clone()));
+    area.focus_feature_record_delete_editor(Some(0));
+    assert_eq!(
+        area.feature_location_editor_ui.record.mode,
+        FeatureEditorMode::Delete
+    );
+    area.run_feature_record_preview();
+    assert!(area.feature_location_editor_ui.record.preview.is_some());
+    area.feature_location_editor_ui.record.delete_feature_index = None;
+    area.invalidate_feature_record_preview();
+    assert!(area.feature_location_editor_ui.record.preview.is_none());
+    area.feature_location_editor_ui.record.delete_feature_index = Some(0);
+    area.run_feature_record_preview();
+    area.run_feature_record_apply();
+    assert!(engine.read().expect("engine").state().sequences["seq"]
+        .features()
+        .is_empty());
 }
 
 #[cfg(test)]

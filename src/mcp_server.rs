@@ -1220,7 +1220,12 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "agent_models" => &["agents discover-models"],
         "agent_plan" => &["agents plan"],
         "agent_execute_plan" => &["agents execute-plan"],
-        "op" => &["op", "features edit-location"],
+        "op" => &[
+            "op",
+            "features edit-location",
+            "features create",
+            "features delete",
+        ],
         "workflow" => &["workflow"],
         "help" => &["help"],
         "reference_catalog_entries" => &["genomes list"],

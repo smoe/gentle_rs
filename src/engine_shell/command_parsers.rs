@@ -2213,7 +2213,7 @@ fn parse_promoter_artifact_manifest_entry_json(
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: formula, edit-location, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, promoter-isoform-comparison, promoter-expression-evidence, promoter-artifact-manifest, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
+            "features requires a subcommand: formula, edit-location, create, delete, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, promoter-isoform-comparison, promoter-expression-evidence, promoter-artifact-manifest, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
                 .to_string(),
         );
     }
@@ -2330,6 +2330,196 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 end_1based_inclusive,
                 dry_run,
                 expected_feature_fingerprint_sha256,
+                path,
+            })
+        }
+        "create" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features create requires SEQ_ID --kind KIND --start-1based N --end-1based-inclusive M [--strand forward|reverse] [--qualifier KEY[=VALUE] ...] [--dry-run] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("features create SEQ_ID must not be empty".to_string());
+            }
+            let mut feature_kind = None;
+            let mut start_1based = None;
+            let mut end_1based_inclusive = None;
+            let mut strand = FeatureLocationEditStrand::Forward;
+            let mut qualifiers = Vec::new();
+            let mut dry_run = false;
+            let mut expected_annotation_state_fingerprint_sha256 = None;
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--kind" | "--feature-kind" => {
+                        idx += 1;
+                        feature_kind = Some(parse_required_value(tokens, &mut idx, "--kind")?);
+                    }
+                    "--start-1based" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--start-1based")?;
+                        start_1based = Some(parse_usize_option_value(&raw, "--start-1based")?);
+                    }
+                    "--end-1based-inclusive" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--end-1based-inclusive")?;
+                        end_1based_inclusive =
+                            Some(parse_usize_option_value(&raw, "--end-1based-inclusive")?);
+                    }
+                    "--strand" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--strand")?;
+                        strand = match raw.trim().to_ascii_lowercase().as_str() {
+                            "forward" | "plus" | "+" => FeatureLocationEditStrand::Forward,
+                            "reverse" | "minus" | "-" => FeatureLocationEditStrand::Reverse,
+                            _ => {
+                                return Err(format!(
+                                    "Unknown feature strand '{raw}' (expected forward|reverse)"
+                                ));
+                            }
+                        };
+                    }
+                    "--qualifier" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--qualifier")?;
+                        let (key, value) = raw
+                            .split_once('=')
+                            .map_or((raw.as_str(), None), |(key, value)| {
+                                (key, Some(value.to_string()))
+                            });
+                        if key.trim().is_empty() {
+                            return Err(
+                                "features create --qualifier key must not be empty".to_string()
+                            );
+                        }
+                        qualifiers.push(FeatureRecordQualifier {
+                            key: key.to_string(),
+                            value,
+                        });
+                    }
+                    "--dry-run" => {
+                        dry_run = true;
+                        idx += 1;
+                    }
+                    "--expected-annotation-state-fingerprint-sha256"
+                    | "--expected-annotation-fingerprint" => {
+                        idx += 1;
+                        expected_annotation_state_fingerprint_sha256 =
+                            Some(parse_required_value(
+                                tokens,
+                                &mut idx,
+                                "--expected-annotation-state-fingerprint-sha256",
+                            )?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => return Err(format!("Unknown features create option '{other}'")),
+                }
+            }
+            let feature_kind =
+                feature_kind.ok_or_else(|| "features create requires --kind KIND".to_string())?;
+            let start_1based = start_1based
+                .ok_or_else(|| "features create requires --start-1based N".to_string())?;
+            let end_1based_inclusive = end_1based_inclusive.ok_or_else(|| {
+                "features create requires --end-1based-inclusive M".to_string()
+            })?;
+            if start_1based == 0 {
+                return Err("features create --start-1based must be at least 1".to_string());
+            }
+            if end_1based_inclusive < start_1based {
+                return Err(
+                    "features create end must be greater than or equal to start".to_string(),
+                );
+            }
+            if !dry_run && expected_annotation_state_fingerprint_sha256.is_none() {
+                return Err(
+                    "features create apply requires --expected-annotation-state-fingerprint-sha256 from a dry-run preview"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::FeaturesCreate {
+                seq_id,
+                feature_kind,
+                start_1based,
+                end_1based_inclusive,
+                strand,
+                qualifiers,
+                dry_run,
+                expected_annotation_state_fingerprint_sha256,
+                path,
+            })
+        }
+        "delete" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "features delete requires SEQ_ID FEATURE_INDEX [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("features delete SEQ_ID must not be empty".to_string());
+            }
+            let feature_index = tokens[3]
+                .parse::<usize>()
+                .map_err(|_| "features delete FEATURE_INDEX must be an integer".to_string())?;
+            let mut dry_run = false;
+            let mut expected_feature_fingerprint_sha256 = None;
+            let mut expected_annotation_state_fingerprint_sha256 = None;
+            let mut path = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--dry-run" => {
+                        dry_run = true;
+                        idx += 1;
+                    }
+                    "--expected-feature-fingerprint-sha256" | "--expected-fingerprint" => {
+                        idx += 1;
+                        expected_feature_fingerprint_sha256 = Some(parse_required_value(
+                            tokens,
+                            &mut idx,
+                            "--expected-feature-fingerprint-sha256",
+                        )?);
+                    }
+                    "--expected-annotation-state-fingerprint-sha256"
+                    | "--expected-annotation-fingerprint" => {
+                        idx += 1;
+                        expected_annotation_state_fingerprint_sha256 =
+                            Some(parse_required_value(
+                                tokens,
+                                &mut idx,
+                                "--expected-annotation-state-fingerprint-sha256",
+                            )?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => return Err(format!("Unknown features delete option '{other}'")),
+                }
+            }
+            if !dry_run
+                && (expected_feature_fingerprint_sha256.is_none()
+                    || expected_annotation_state_fingerprint_sha256.is_none())
+            {
+                return Err(
+                    "features delete apply requires both --expected-feature-fingerprint-sha256 and --expected-annotation-state-fingerprint-sha256 from a dry-run preview"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::FeaturesDelete {
+                seq_id,
+                feature_index,
+                dry_run,
+                expected_feature_fingerprint_sha256,
+                expected_annotation_state_fingerprint_sha256,
                 path,
             })
         }

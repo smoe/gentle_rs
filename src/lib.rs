@@ -61,6 +61,8 @@ pub mod external_service_providers;
 pub mod feature_expert;
 /// Feature location/strand utilities used across render and engine code.
 pub mod feature_location;
+/// Deterministic helpers for complete feature-record creation and deletion.
+pub mod feature_record_curation;
 /// GC-content computations and display helpers.
 pub mod gc_contents;
 /// Catalog-extensible gene-group knowledge records and validation helpers.

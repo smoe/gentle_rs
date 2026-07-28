@@ -33,6 +33,38 @@
       },
       {
          "aliases": [],
+         "engine_operations": [
+            "PreviewFeatureRecordCuration",
+            "ApplyFeatureRecordCuration"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "features create",
+         "summary": "Preview or append one exact simple feature record with ordered GenBank qualifiers.",
+         "usage": "features create SEQ_ID --kind KIND --start-1based N --end-1based-inclusive M [--strand forward|reverse] [--qualifier KEY[=VALUE] ...] [--dry-run] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PreviewFeatureRecordCuration",
+            "ApplyFeatureRecordCuration"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "features delete",
+         "summary": "Preview or delete one complete feature record of any existing location shape.",
+         "usage": "features delete SEQ_ID FEATURE_INDEX [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]"
+      },
+      {
+         "aliases": [],
          "engine_operations": [],
          "interfaces": [
             "cli-shell",

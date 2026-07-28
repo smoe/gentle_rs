@@ -50,7 +50,9 @@ use crate::{
         ExonSkipReturnKind, ExonSkipSelectionCriterion, ExperimentalAssayReadinessPolicy,
         ExternalPrimerPairImportRequest, ExternalPrimerPairSpecificityRequest, FactAtom, FactBasis,
         FactExpression, FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode,
-        FeatureExpertTarget, FeatureExpertView, FeatureLocationEditRequest, FlexibilityModel,
+        FeatureExpertTarget, FeatureExpertView, FeatureLocationEditRequest,
+        FeatureLocationEditStrand, FeatureRecordCreateRequest, FeatureRecordCurationRequest,
+        FeatureRecordDeleteRequest, FeatureRecordQualifier, FlexibilityModel,
         GUIDE_DESIGN_METADATA_KEY, GeneIsoformEvidenceRequest, GeneLocusEvidenceDisplayRequest,
         GeneSetCohortRelationship, GeneSetProducerFilter, GeneSetPromoterCohortReport,
         GeneSetRequest, GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
@@ -2144,6 +2146,25 @@ pub enum ShellCommand {
         end_1based_inclusive: usize,
         dry_run: bool,
         expected_feature_fingerprint_sha256: Option<String>,
+        path: Option<String>,
+    },
+    FeaturesCreate {
+        seq_id: String,
+        feature_kind: String,
+        start_1based: usize,
+        end_1based_inclusive: usize,
+        strand: FeatureLocationEditStrand,
+        qualifiers: Vec<FeatureRecordQualifier>,
+        dry_run: bool,
+        expected_annotation_state_fingerprint_sha256: Option<String>,
+        path: Option<String>,
+    },
+    FeaturesDelete {
+        seq_id: String,
+        feature_index: usize,
+        dry_run: bool,
+        expected_feature_fingerprint_sha256: Option<String>,
+        expected_annotation_state_fingerprint_sha256: Option<String>,
         path: Option<String>,
     },
     FeaturesQuery {
@@ -10226,6 +10247,34 @@ impl ShellCommand {
                 start_1based,
                 end_1based_inclusive
             ),
+            Self::FeaturesCreate {
+                seq_id,
+                feature_kind,
+                start_1based,
+                end_1based_inclusive,
+                strand,
+                dry_run,
+                ..
+            } => format!(
+                "{} {} feature on '{}' at {}..{} ({:?})",
+                if *dry_run { "preview" } else { "create" },
+                feature_kind,
+                seq_id,
+                start_1based,
+                end_1based_inclusive,
+                strand
+            ),
+            Self::FeaturesDelete {
+                seq_id,
+                feature_index,
+                dry_run,
+                ..
+            } => format!(
+                "{} feature {} deletion on '{}'",
+                if *dry_run { "preview" } else { "apply" },
+                feature_index,
+                seq_id
+            ),
             Self::FeaturesQuery { query } => format!(
                 "query features on '{}' (kinds={}, range={}..{}, relation={}, strand={}, label='{}', qualifiers={}, limit={}, offset={})",
                 query.seq_id,
@@ -12646,7 +12695,10 @@ impl ShellCommand {
     }
 
     pub fn is_state_mutating(&self) -> bool {
-        if let Self::FeaturesEditLocation { dry_run, .. } = self {
+        if let Self::FeaturesEditLocation { dry_run, .. }
+        | Self::FeaturesCreate { dry_run, .. }
+        | Self::FeaturesDelete { dry_run, .. } = self
+        {
             return !dry_run;
         }
         if let Self::MacrosTemplateRun { validate_only, .. } = self
@@ -20096,6 +20148,87 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Apply one previewed exact simple or flat-compound segment location edit while preserving strand, topology, and qualifier content.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("EditFeatureLocation")
+        }),
+        json!({
+            "id": "features create",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence receiving the appended feature record"},
+                {"name": "--kind", "required": true, "subject_kind": "other", "detail": "GenBank feature kind"},
+                {"name": "--start-1based", "required": true, "subject_kind": "other", "detail": "new 1-based inclusive start"},
+                {"name": "--end-1based-inclusive", "required": true, "subject_kind": "other", "detail": "new 1-based inclusive end"},
+                {"name": "--strand", "required": false, "subject_kind": "other", "detail": "forward or reverse; defaults to forward"},
+                {"name": "--qualifier", "required": false, "subject_kind": "other", "detail": "repeatable ordered KEY or KEY=VALUE qualifier"},
+                {"name": "--dry-run", "required": false, "subject_kind": "other", "detail": "preview without mutation and return the annotation-state fingerprint"},
+                {"name": "--expected-annotation-state-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "preview fingerprint required when applying"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Preview or append one exact simple feature record while preserving ordered duplicate and valueless qualifiers.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features create")
+        }),
+        json!({
+            "id": "features delete",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence containing the feature"},
+                {"name": "FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "zero-based feature index"},
+                {"name": "--dry-run", "required": false, "subject_kind": "other", "detail": "preview without mutation and return both required fingerprints"},
+                {"name": "--expected-feature-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "complete-feature preview fingerprint required when applying"},
+                {"name": "--expected-annotation-state-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "ordered annotation-state preview fingerprint required when applying"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Preview or delete one complete feature record of any existing location shape; later feature indices shift down by one.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features delete")
+        }),
+        json!({
+            "id": "PreviewFeatureRecordCuration",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "tagged create/delete request carrying request.seq_id"}
+            ],
+            "reads": [],
+            "effects": [],
+            "description": "Validate and report one feature-record creation or deletion without changing project state.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PreviewFeatureRecordCuration")
+        }),
+        json!({
+            "id": "ApplyFeatureRecordCuration",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "tagged create/delete request carrying preview fingerprints"}
+            ],
+            "reads": [],
+            "effects": [],
+            "description": "Apply one preview-locked feature-record creation or deletion with full undo history.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ApplyFeatureRecordCuration")
         }),
         json!({
             "id": "RecomputeFeatures",
@@ -52910,6 +53043,106 @@ fn execute_feature_scan_command(
                 }),
             })
         }
+        ShellCommand::FeaturesCreate {
+            seq_id,
+            feature_kind,
+            start_1based,
+            end_1based_inclusive,
+            strand,
+            qualifiers,
+            dry_run,
+            expected_annotation_state_fingerprint_sha256,
+            path,
+        } => {
+            let start_0based = i64::try_from(start_1based.checked_sub(1).ok_or_else(|| {
+                "features create --start-1based must be at least 1".to_string()
+            })?)
+            .map_err(|_| {
+                "features create start exceeds the supported coordinate range".to_string()
+            })?;
+            let end_0based_exclusive = i64::try_from(*end_1based_inclusive).map_err(|_| {
+                "features create end exceeds the supported coordinate range".to_string()
+            })?;
+            let request =
+                FeatureRecordCurationRequest::Create(FeatureRecordCreateRequest {
+                    seq_id: seq_id.clone(),
+                    feature_kind: feature_kind.clone(),
+                    start_0based,
+                    end_0based_exclusive,
+                    strand: *strand,
+                    qualifiers: qualifiers.clone(),
+                    expected_annotation_state_fingerprint_sha256:
+                        expected_annotation_state_fingerprint_sha256.clone(),
+                });
+            let operation = if *dry_run {
+                Operation::PreviewFeatureRecordCuration { request }
+            } else {
+                Operation::ApplyFeatureRecordCuration { request }
+            };
+            let op_result = engine.apply(operation).map_err(|e| e.to_string())?;
+            let report = op_result
+                .feature_record_curation_report
+                .clone()
+                .ok_or_else(|| "Feature create operation returned no report".to_string())?;
+            if let Some(path) = path.as_deref() {
+                let text = serde_json::to_string_pretty(report.as_ref()).map_err(|e| {
+                    format!("Could not serialize feature create report for '{path}': {e}")
+                })?;
+                fs::write(path, text)
+                    .map_err(|e| format!("Could not write feature create report to '{path}': {e}"))?;
+            }
+            Ok(ShellRunResult {
+                state_changed: !dry_run,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
+        ShellCommand::FeaturesDelete {
+            seq_id,
+            feature_index,
+            dry_run,
+            expected_feature_fingerprint_sha256,
+            expected_annotation_state_fingerprint_sha256,
+            path,
+        } => {
+            let request =
+                FeatureRecordCurationRequest::Delete(FeatureRecordDeleteRequest {
+                    seq_id: seq_id.clone(),
+                    feature_index: *feature_index,
+                    expected_feature_fingerprint_sha256:
+                        expected_feature_fingerprint_sha256.clone(),
+                    expected_annotation_state_fingerprint_sha256:
+                        expected_annotation_state_fingerprint_sha256.clone(),
+                });
+            let operation = if *dry_run {
+                Operation::PreviewFeatureRecordCuration { request }
+            } else {
+                Operation::ApplyFeatureRecordCuration { request }
+            };
+            let op_result = engine.apply(operation).map_err(|e| e.to_string())?;
+            let report = op_result
+                .feature_record_curation_report
+                .clone()
+                .ok_or_else(|| "Feature delete operation returned no report".to_string())?;
+            if let Some(path) = path.as_deref() {
+                let text = serde_json::to_string_pretty(report.as_ref()).map_err(|e| {
+                    format!("Could not serialize feature delete report for '{path}': {e}")
+                })?;
+                fs::write(path, text)
+                    .map_err(|e| format!("Could not write feature delete report to '{path}': {e}"))?;
+            }
+            Ok(ShellRunResult {
+                state_changed: !dry_run,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
         ShellCommand::FeaturesResolveFormula { seq_id, expression } => {
             let dna = engine
                 .state()
@@ -57827,6 +58060,8 @@ fn execute_shell_command_with_options_dispatch_inner(
         command,
         ShellCommand::FeaturesResolveFormula { .. }
             | ShellCommand::FeaturesEditLocation { .. }
+            | ShellCommand::FeaturesCreate { .. }
+            | ShellCommand::FeaturesDelete { .. }
             | ShellCommand::FeaturesQuery { .. }
             | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
@@ -58149,6 +58384,8 @@ fn execute_shell_command_with_options_inner(
         }
         ShellCommand::FeaturesResolveFormula { .. }
         | ShellCommand::FeaturesEditLocation { .. }
+        | ShellCommand::FeaturesCreate { .. }
+        | ShellCommand::FeaturesDelete { .. }
         | ShellCommand::FeaturesQuery { .. }
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }
