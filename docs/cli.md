@@ -2929,7 +2929,7 @@ Shared shell command:
     - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]`
     - `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
     - `features formula SEQ_ID EXPR`
-    - `features edit-location SEQ_ID FEATURE_INDEX --start-1based N --end-1based-inclusive M [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--path OUT.json]`
+    - `features edit-location SEQ_ID FEATURE_INDEX [--segment-index INDEX] --start-1based N --end-1based-inclusive M [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--path OUT.json]`
     - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
@@ -3810,8 +3810,17 @@ Shared shell command:
     - Feature-location edit notes (`features edit-location`):
       - use `--dry-run` first; applying requires the returned
         `before_feature_fingerprint_sha256`
-      - accepts only exact simple GenBank ranges and preserves the current
-        strand; complex/fuzzy locations are rejected
+      - without `--segment-index`, accepts an exact simple GenBank range and
+        preserves its strand
+      - `--segment-index` selects one zero-based child in an exact flat
+        `Join`/`Order`, optionally under one outer `Complement`; the operation
+        preserves operator kind, wrapper, child count/order, qualifiers, and
+        every unedited child
+      - nested, fuzzy, between-base, external, gap, bond, one-of,
+        non-monotonic, and circular cross-origin compounds remain read-only
+      - compound reports distinguish stored child index from biological
+        5-prime-to-3-prime segment number and emit review warnings for overlap,
+        changed stored direction, or a CDS length delta not divisible by three
       - the report lists boundary-sharing annotations for review but modifies
         only the selected feature
       - a successful apply is a normal undoable project mutation

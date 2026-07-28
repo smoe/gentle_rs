@@ -49,9 +49,12 @@ pub use dna_ladder::{
     RNALadder, RNALadderBand, RNALadders, default_dna_ladders, default_rna_ladders,
 };
 pub use feature_location_edit::{
-    FEATURE_LOCATION_EDIT_SCHEMA, FEATURE_LOCATION_FINGERPRINT_ALGORITHM,
-    FeatureLocationEditReport, FeatureLocationEditRequest, FeatureLocationEditStrand,
-    FeatureLocationSnapshot, RelatedFeatureBoundaryCandidate, RelatedFeatureBoundaryReason,
+    FEATURE_LOCATION_EDIT_SCHEMA, FEATURE_LOCATION_EDIT_SCHEMA_V2,
+    FEATURE_LOCATION_FINGERPRINT_ALGORITHM, FeatureLocationCompoundContext,
+    FeatureLocationCompoundKind, FeatureLocationCompoundWarning, FeatureLocationEditReport,
+    FeatureLocationEditRequest, FeatureLocationEditStrand, FeatureLocationEditTargetScope,
+    FeatureLocationIntervalBoundaryRole, FeatureLocationSnapshot, FeatureLocationStoredDirection,
+    RelatedFeatureBoundaryCandidate, RelatedFeatureBoundaryReason, RelatedSegmentBoundaryCandidate,
 };
 pub use gene_groups::{
     GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_DRAFT_REPORT_SCHEMA,

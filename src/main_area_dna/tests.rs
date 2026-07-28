@@ -14793,6 +14793,61 @@ fn feature_location_editor_uses_shared_preview_operation() {
     assert_eq!(preview.after.end_1based_inclusive, 24);
 }
 
+#[test]
+fn feature_location_editor_selects_compound_segments_and_invalidates_preview() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(80)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::Complement(Box::new(Location::Join(vec![
+            Location::simple_range(5, 20),
+            Location::simple_range(30, 45),
+        ]))),
+        qualifiers: vec![("transcript_id".into(), Some("TX1".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("seq".to_string()), Some(engine));
+    area.focus_feature_location_editor(Some(0));
+    assert_eq!(
+        area.feature_location_editor_ui.selected_segment_index,
+        Some(0)
+    );
+    assert_eq!(area.feature_location_editor_ui.segment_options.len(), 2);
+    assert!(
+        area.feature_location_editor_ui.segment_options[0]
+            .label
+            .contains("biological 2")
+    );
+    area.run_feature_location_preview();
+    assert!(
+        area.feature_location_editor_ui.preview.is_some(),
+        "first segment preview"
+    );
+
+    area.select_feature_location_editor_segment(1);
+    assert!(area.feature_location_editor_ui.preview.is_none());
+    assert_eq!(
+        area.feature_location_editor_ui.selected_segment_index,
+        Some(1)
+    );
+    assert_eq!(area.feature_location_editor_ui.start_1based, "31");
+    area.run_feature_location_preview();
+    let preview = area
+        .feature_location_editor_ui
+        .preview
+        .as_ref()
+        .expect("second segment preview");
+    assert_eq!(
+        preview
+            .compound_context
+            .as_ref()
+            .expect("context")
+            .biological_segment_number,
+        1
+    );
+}
+
 #[cfg(test)]
 mod embedded_scope_tests {
     use super::MainAreaDna;

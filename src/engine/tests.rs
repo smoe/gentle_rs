@@ -50366,10 +50366,35 @@ fn feature_location_preview_is_read_only_and_apply_is_undoable() {
                 new_start_0based: 12,
                 new_end_0based_exclusive: 35,
                 expected_feature_fingerprint_sha256: None,
+                segment_index: None,
             },
         })
         .expect("preview");
     let report = preview.feature_location_edit_report.expect("report");
+    assert_eq!(report.schema, FEATURE_LOCATION_EDIT_SCHEMA);
+    let report_json = serde_json::to_value(report.as_ref()).expect("report serializes");
+    assert_eq!(
+        report_json
+            .as_object()
+            .expect("object")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "after",
+            "after_feature_fingerprint_sha256",
+            "applied",
+            "before",
+            "before_feature_fingerprint_sha256",
+            "dry_run",
+            "feature_index",
+            "feature_kind",
+            "fingerprint_algorithm",
+            "related_features",
+            "schema",
+            "seq_id",
+        ])
+    );
     assert!(report.dry_run);
     assert!(!report.applied);
     assert_eq!(report.before.start_1based, 11);
@@ -50397,6 +50422,7 @@ fn feature_location_preview_is_read_only_and_apply_is_undoable() {
                 expected_feature_fingerprint_sha256: Some(
                     report.before_feature_fingerprint_sha256.clone(),
                 ),
+                segment_index: None,
             },
         })
         .expect("apply");
@@ -50415,6 +50441,148 @@ fn feature_location_preview_is_read_only_and_apply_is_undoable() {
     assert_eq!(
         engine.state().sequences["seq"].features()[0].location,
         gb_io::seq::Location::simple_range(12, 35)
+    );
+}
+
+#[test]
+fn feature_location_segment_edit_preserves_join_ast_and_is_undoable() {
+    let mut engine = feature_location_edit_engine();
+    let original_qualifiers = vec![
+        ("transcript_id".into(), Some("TEST1-201".to_string())),
+        ("note".into(), Some("preserve-order".to_string())),
+    ];
+    {
+        let feature = &mut engine
+            .state
+            .sequences
+            .get_mut("seq")
+            .expect("seq")
+            .features_mut()[1];
+        feature.location = gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 20),
+            gb_io::seq::Location::simple_range(30, 40),
+            gb_io::seq::Location::simple_range(50, 60),
+        ]);
+        feature.qualifiers = original_qualifiers.clone();
+    }
+    let original_location = engine.state().sequences["seq"].features()[1]
+        .location
+        .clone();
+    let initial_undo = engine.undo_available();
+    let preview = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 1,
+                new_start_0based: 32,
+                new_end_0based_exclusive: 42,
+                expected_feature_fingerprint_sha256: None,
+                segment_index: Some(1),
+            },
+        })
+        .expect("segment preview");
+    let report = preview.feature_location_edit_report.expect("report");
+    assert_eq!(report.schema, FEATURE_LOCATION_EDIT_SCHEMA_V2);
+    assert_eq!(
+        report.target_scope,
+        Some(FeatureLocationEditTargetScope::Segment)
+    );
+    assert_eq!(report.before.start_0based, 30);
+    assert_eq!(report.after.start_0based, 32);
+    let context = report.compound_context.as_ref().expect("compound context");
+    assert_eq!(context.container_kind, FeatureLocationCompoundKind::Join);
+    assert_eq!(context.segment_index, 1);
+    assert_eq!(context.biological_segment_number, 2);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[1].location,
+        original_location
+    );
+    assert_eq!(engine.undo_available(), initial_undo);
+
+    engine
+        .apply(Operation::EditFeatureLocation {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 1,
+                new_start_0based: 32,
+                new_end_0based_exclusive: 42,
+                expected_feature_fingerprint_sha256: Some(
+                    report.before_feature_fingerprint_sha256.clone(),
+                ),
+                segment_index: Some(1),
+            },
+        })
+        .expect("segment apply");
+    let feature = &engine.state().sequences["seq"].features()[1];
+    assert_eq!(
+        feature.location,
+        gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 20),
+            gb_io::seq::Location::simple_range(32, 42),
+            gb_io::seq::Location::simple_range(50, 60),
+        ])
+    );
+    assert_eq!(feature.qualifiers, original_qualifiers);
+    assert_eq!(engine.undo_available(), initial_undo + 1);
+    engine.undo_last_operation().expect("undo");
+    assert_eq!(
+        engine.state().sequences["seq"].features()[1].location,
+        original_location
+    );
+}
+
+#[test]
+fn feature_location_reverse_order_segment_reports_biological_number_and_warnings() {
+    let mut engine = feature_location_edit_engine();
+    {
+        let feature = &mut engine
+            .state
+            .sequences
+            .get_mut("seq")
+            .expect("seq")
+            .features_mut()[2];
+        feature.location =
+            gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Order(vec![
+                gb_io::seq::Location::simple_range(10, 20),
+                gb_io::seq::Location::simple_range(30, 40),
+                gb_io::seq::Location::simple_range(50, 60),
+            ])));
+        feature.qualifiers = vec![("codon_start".into(), Some("1".to_string()))];
+    }
+    let preview = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 2,
+                new_start_0based: 5,
+                new_end_0based_exclusive: 19,
+                expected_feature_fingerprint_sha256: None,
+                segment_index: Some(1),
+            },
+        })
+        .expect("reverse order preview");
+    let report = preview.feature_location_edit_report.expect("report");
+    let context = report.compound_context.as_ref().expect("context");
+    assert_eq!(context.container_kind, FeatureLocationCompoundKind::Order);
+    assert_eq!(context.biological_segment_number, 2);
+    assert_eq!(report.before.five_prime_position_1based, 40);
+    assert_eq!(report.before.three_prime_position_1based, 31);
+    assert!(report.compound_validation_warnings.contains(
+        &FeatureLocationCompoundWarning::OverlappingSegments {
+            edited_segment_index: 1,
+            overlapping_segment_index: 0,
+        }
+    ));
+    assert!(report.compound_validation_warnings.contains(
+        &FeatureLocationCompoundWarning::CdsCodingLengthDeltaNotDivisibleByThree {
+            signed_length_delta_nt: 4,
+        }
+    ));
+    assert!(
+        preview
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("/codon_start was preserved"))
     );
 }
 
@@ -50445,6 +50613,7 @@ fn feature_location_edit_preserves_reverse_strand_and_rejects_stale_preview() {
                 new_start_0based: 42,
                 new_end_0based_exclusive: 65,
                 expected_feature_fingerprint_sha256: None,
+                segment_index: None,
             },
         })
         .expect("preview");
@@ -50460,6 +50629,7 @@ fn feature_location_edit_preserves_reverse_strand_and_rejects_stale_preview() {
                 new_start_0based: 42,
                 new_end_0based_exclusive: 65,
                 expected_feature_fingerprint_sha256: Some("sha256:stale".to_string()),
+                segment_index: None,
             },
         })
         .expect_err("stale preview rejected");
@@ -50476,6 +50646,7 @@ fn feature_location_edit_preserves_reverse_strand_and_rejects_stale_preview() {
                 expected_feature_fingerprint_sha256: Some(
                     report.before_feature_fingerprint_sha256.clone(),
                 ),
+                segment_index: None,
             },
         })
         .expect("apply");
@@ -50506,6 +50677,7 @@ fn feature_location_edit_rejects_compound_and_fuzzy_locations() {
                 new_start_0based: 12,
                 new_end_0based_exclusive: 35,
                 expected_feature_fingerprint_sha256: None,
+                segment_index: None,
             },
         })
         .expect_err("compound location rejected");
@@ -50529,9 +50701,66 @@ fn feature_location_edit_rejects_compound_and_fuzzy_locations() {
                 new_start_0based: 12,
                 new_end_0based_exclusive: 35,
                 expected_feature_fingerprint_sha256: None,
+                segment_index: None,
             },
         })
         .expect_err("fuzzy location rejected");
+    assert_eq!(error.code, ErrorCode::Unsupported);
+}
+
+#[test]
+fn feature_location_segment_edit_rejects_invalid_index_and_nested_compound() {
+    let mut engine = feature_location_edit_engine();
+    engine
+        .state
+        .sequences
+        .get_mut("seq")
+        .expect("seq")
+        .features_mut()[0]
+        .location = gb_io::seq::Location::Join(vec![
+        gb_io::seq::Location::simple_range(10, 20),
+        gb_io::seq::Location::simple_range(25, 30),
+    ]);
+    let error = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                new_start_0based: 12,
+                new_end_0based_exclusive: 18,
+                expected_feature_fingerprint_sha256: None,
+                segment_index: Some(2),
+            },
+        })
+        .expect_err("invalid segment rejected");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("out of range"));
+
+    engine
+        .state
+        .sequences
+        .get_mut("seq")
+        .expect("seq")
+        .features_mut()[0]
+        .location = gb_io::seq::Location::Join(vec![
+        gb_io::seq::Location::simple_range(10, 20),
+        gb_io::seq::Location::Order(vec![
+            gb_io::seq::Location::simple_range(25, 30),
+            gb_io::seq::Location::simple_range(35, 40),
+        ]),
+    ]);
+    let error = engine
+        .apply(Operation::PreviewFeatureLocationEdit {
+            request: FeatureLocationEditRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                new_start_0based: 12,
+                new_end_0based_exclusive: 18,
+                expected_feature_fingerprint_sha256: None,
+                segment_index: Some(0),
+            },
+        })
+        .expect_err("nested compound rejected");
     assert_eq!(error.code, ErrorCode::Unsupported);
 }
 
@@ -50553,6 +50782,7 @@ fn feature_location_edit_rejects_invalid_and_out_of_bounds_ranges() {
                     new_start_0based,
                     new_end_0based_exclusive,
                     expected_feature_fingerprint_sha256: None,
+                    segment_index: None,
                 },
             })
             .expect_err("invalid range rejected");

@@ -8715,7 +8715,13 @@ Feature formula shell contract (implemented):
 
 Feature-location edit contract (implemented):
 
-- Schema: `gentle.feature_location_edit.v1`.
+- Schemas:
+  - `gentle.feature_location_edit.v1` remains the exact simple-location
+    request/report shape.
+  - `gentle.feature_location_edit.v2` is emitted when `segment_index` selects
+    one child in a supported flat compound. The same Rust contract carries
+    optional v2 fields; simple serialization omits them and retains the v1 key
+    set.
 - Shared operations:
   - `PreviewFeatureLocationEdit` validates an edit and emits the complete
     before/after report without changing project state or creating an undo
@@ -8727,17 +8733,34 @@ Feature-location edit contract (implemented):
     `sha256_gb_io_feature_serde_json_ordered_qualifiers_v1` and the repository
     `sha256:`-prefixed digest representation.
 - Shared-shell command:
-  - `features edit-location SEQ_ID FEATURE_INDEX --start-1based N --end-1based-inclusive M [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--path OUT.json]`
+  - `features edit-location SEQ_ID FEATURE_INDEX [--segment-index INDEX] --start-1based N --end-1based-inclusive M [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--path OUT.json]`
   - run `--dry-run` first, then pass its
     `before_feature_fingerprint_sha256` when applying.
-- Scope is intentionally strict: only exact `Range` and
-  `Complement(Range)` locations are editable. Fuzzy, joined, ordered,
-  between-base, external, bond, one-of, gap, and circular cross-origin
-  locations are rejected rather than normalized.
+- Scope is intentionally strict:
+  - v1 edits exact `Range` and `Complement(Range)` locations.
+  - v2 edits one existing exact child of flat `Join(Range...)`,
+    `Order(Range...)`, `Complement(Join(...))`, or
+    `Complement(Order(...))`.
+  - v2 clones the location AST and replaces only the selected child; container
+    kind, complement wrapper, child count/order, qualifiers, and every
+    unedited node are preserved.
+  - nested, fuzzy, between-base, external, bond, one-of, gap, non-monotonic,
+    and circular cross-origin compounds are rejected rather than normalized.
 - Strand is preserved. Reports expose local half-open coordinates, 1-based
   inclusive coordinates, and strand-aware 5-prime/3-prime positions.
   `related_features[]` lists annotations sharing the old start or end boundary
   for human review; those annotations are never changed automatically.
+  Segment reports additionally expose `target_scope=segment`,
+  `compound_context` (operator, stored direction/index, biological segment
+  number, and count), typed `compound_validation_warnings[]`, and
+  `related_segment_boundaries[]` with both interval-boundary roles.
+- Invalid, empty, negative, inverted, out-of-range, and unsupported edits are
+  errors. Segment overlap, departure from the compound's established stored
+  direction, and CDS coding-length deltas not divisible by three are
+  non-blocking review warnings; GENtle does not rewrite `/codon_start`.
+- The fingerprint is an optimistic lock on the complete current feature, not a
+  signature of the requested coordinates. GUI changes to feature, segment, or
+  coordinates invalidate the cached preview before Apply is enabled.
 
 Feature-query shell contract (implemented):
 

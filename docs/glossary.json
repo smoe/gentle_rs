@@ -28,8 +28,8 @@
             "cli-direct"
          ],
          "path": "features edit-location",
-         "summary": "Preview or apply one exact simple feature-boundary edit with an optimistic-concurrency fingerprint.",
-         "usage": "features edit-location SEQ_ID FEATURE_INDEX --start-1based N --end-1based-inclusive M [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--path OUT.json]"
+         "summary": "Preview or apply one exact simple boundary edit or one segment edit in a supported flat Join/Order compound.",
+         "usage": "features edit-location SEQ_ID FEATURE_INDEX [--segment-index INDEX] --start-1based N --end-1based-inclusive M [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--path OUT.json]"
       },
       {
          "aliases": [],

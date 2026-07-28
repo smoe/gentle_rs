@@ -23147,14 +23147,14 @@ impl GentleEngine {
         apply_change: bool,
         result: &mut OpResult,
     ) -> Result<(), EngineError> {
-        let (sequence_len, features) = {
+        let (sequence_len, sequence_is_circular, features) = {
             let dna = self.state.sequences.get(&request.seq_id).ok_or_else(|| {
                 EngineError::new(
                     ErrorCode::NotFound,
                     format!("Sequence '{}' not found", request.seq_id),
                 )
             })?;
-            (dna.len(), dna.features().clone())
+            (dna.len(), dna.is_circular(), dna.features().clone())
         };
         let feature = features.get(request.feature_index).ok_or_else(|| {
             EngineError::new(
@@ -23167,7 +23167,6 @@ impl GentleEngine {
                 ),
             )
         })?;
-        let before = crate::feature_location::exact_feature_location_snapshot(feature)?;
         if request.new_start_0based < 0 || request.new_end_0based_exclusive < 0 {
             return Err(EngineError::invalid_input(
                 "Feature edit coordinates must not be negative",
@@ -23210,13 +23209,52 @@ impl GentleEngine {
                 request.feature_index, expected, before_fingerprint
             )));
         }
-        let after = crate::feature_location::feature_location_snapshot(
-            new_start_0based,
-            new_end_0based_exclusive,
-            before.strand,
-        )?;
+        let (before, after, proposed_location, compound_context, compound_validation_warnings) =
+            if let Some(segment_index) = request.segment_index {
+                let view = crate::feature_location::flat_compound_location_view(
+                    &feature.location,
+                    sequence_len,
+                    sequence_is_circular,
+                )?;
+                let segment = view.segments.get(segment_index).ok_or_else(|| {
+                    EngineError::invalid_input(format!(
+                        "Segment index {} is out of range for compound feature with {} segments",
+                        segment_index,
+                        view.segments.len()
+                    ))
+                })?;
+                let before = segment.snapshot.clone();
+                let after = crate::feature_location::feature_location_snapshot(
+                    new_start_0based,
+                    new_end_0based_exclusive,
+                    view.strand,
+                )?;
+                let proposed_location = crate::feature_location::replace_flat_compound_segment(
+                    &feature.location,
+                    segment_index,
+                    &after,
+                )?;
+                let warnings = crate::feature_location::compound_location_edit_warnings(
+                    feature,
+                    &view,
+                    segment_index,
+                    &after,
+                )?;
+                let context = view.context_for_segment(segment_index)?;
+                (before, after, proposed_location, Some(context), warnings)
+            } else {
+                let before = crate::feature_location::exact_feature_location_snapshot(feature)?;
+                let after = crate::feature_location::feature_location_snapshot(
+                    new_start_0based,
+                    new_end_0based_exclusive,
+                    before.strand,
+                )?;
+                let proposed_location =
+                    crate::feature_location::simple_location_from_snapshot(&after)?;
+                (before, after, proposed_location, None, Vec::new())
+            };
         let mut proposed_feature = feature.clone();
-        proposed_feature.location = crate::feature_location::simple_location_from_snapshot(&after)?;
+        proposed_feature.location = proposed_location;
         let after_fingerprint =
             crate::feature_location::feature_fingerprint_sha256(&proposed_feature)?;
         let related_features = crate::feature_location::related_feature_boundary_candidates(
@@ -23224,6 +23262,19 @@ impl GentleEngine {
             request.feature_index,
             &before,
         );
+        let related_segment_boundaries = request
+            .segment_index
+            .map(|segment_index| {
+                crate::feature_location::related_segment_boundary_candidates(
+                    &features,
+                    request.feature_index,
+                    segment_index,
+                    &before,
+                    sequence_len,
+                    sequence_is_circular,
+                )
+            })
+            .unwrap_or_default();
 
         if apply_change {
             let dna = self
@@ -23253,8 +23304,38 @@ impl GentleEngine {
         }
 
         let feature_kind = feature.kind.to_string();
+        for warning in &compound_validation_warnings {
+            result.warnings.push(match warning {
+                FeatureLocationCompoundWarning::OverlappingSegments {
+                    edited_segment_index,
+                    overlapping_segment_index,
+                } => format!(
+                    "Edited segment {} overlaps segment {}; review the compound annotation",
+                    edited_segment_index, overlapping_segment_index
+                ),
+                FeatureLocationCompoundWarning::EstablishedDirectionBroken {
+                    first_segment_index,
+                    second_segment_index,
+                    established_direction,
+                } => format!(
+                    "Edited compound no longer follows its established {:?} direction between segments {} and {}",
+                    established_direction, first_segment_index, second_segment_index
+                ),
+                FeatureLocationCompoundWarning::CdsCodingLengthDeltaNotDivisibleByThree {
+                    signed_length_delta_nt,
+                } => format!(
+                    "CDS coding length changes by {signed_length_delta_nt} nt, which is not divisible by three; /codon_start was preserved"
+                ),
+            });
+        }
+        let is_segment_edit = request.segment_index.is_some();
         result.feature_location_edit_report = Some(Box::new(FeatureLocationEditReport {
-            schema: FEATURE_LOCATION_EDIT_SCHEMA.to_string(),
+            schema: if is_segment_edit {
+                FEATURE_LOCATION_EDIT_SCHEMA_V2
+            } else {
+                FEATURE_LOCATION_EDIT_SCHEMA
+            }
+            .to_string(),
             seq_id: request.seq_id.clone(),
             feature_index: request.feature_index,
             feature_kind: feature_kind.clone(),
@@ -23266,17 +23347,35 @@ impl GentleEngine {
             before_feature_fingerprint_sha256: before_fingerprint,
             after_feature_fingerprint_sha256: after_fingerprint,
             related_features,
+            target_scope: is_segment_edit.then_some(FeatureLocationEditTargetScope::Segment),
+            compound_context,
+            compound_validation_warnings,
+            related_segment_boundaries,
         }));
         result.messages.push(if apply_change {
-            format!(
-                "Updated feature {} ({}) on '{}'",
-                request.feature_index, feature_kind, request.seq_id
-            )
+            if let Some(segment_index) = request.segment_index {
+                format!(
+                    "Updated segment {} of feature {} ({}) on '{}'",
+                    segment_index, request.feature_index, feature_kind, request.seq_id
+                )
+            } else {
+                format!(
+                    "Updated feature {} ({}) on '{}'",
+                    request.feature_index, feature_kind, request.seq_id
+                )
+            }
         } else {
-            format!(
-                "Previewed feature {} ({}) location edit on '{}'",
-                request.feature_index, feature_kind, request.seq_id
-            )
+            if let Some(segment_index) = request.segment_index {
+                format!(
+                    "Previewed segment {} of feature {} ({}) location edit on '{}'",
+                    segment_index, request.feature_index, feature_kind, request.seq_id
+                )
+            } else {
+                format!(
+                    "Previewed feature {} ({}) location edit on '{}'",
+                    request.feature_index, feature_kind, request.seq_id
+                )
+            }
         });
         Ok(())
     }

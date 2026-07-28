@@ -105,6 +105,7 @@ pub(super) struct FeatureTreeEntry {
     pub(super) supports_splicing_expert: bool,
     pub(super) supports_variant_followup: bool,
     pub(super) supports_location_edit: bool,
+    pub(super) location_edit_unavailable_reason: Option<String>,
     pub(super) can_seed_promoter_anchor: bool,
     pub(super) regulatory_primary_group_key: Option<String>,
     pub(super) regulatory_primary_group_label: Option<String>,
@@ -1482,6 +1483,14 @@ impl MainAreaDna {
                     let can_seed_promoter_anchor = kind_label.eq_ignore_ascii_case("mrna")
                         || kind_label.eq_ignore_ascii_case("transcript");
                     let disable_grouping = feature.kind.to_string().eq_ignore_ascii_case("GENE");
+                    let location_edit_unavailable_reason =
+                        crate::feature_location::editable_feature_location(
+                            feature,
+                            sequence_length,
+                            dna.is_circular(),
+                        )
+                        .err()
+                        .map(|error| error.message);
                     Some((
                         kind_label,
                         FeatureTreeEntry {
@@ -1509,9 +1518,8 @@ impl MainAreaDna {
                             supports_variant_followup: Self::feature_kind_supports_variant_followup(
                                 kind_upper.as_str(),
                             ),
-                            supports_location_edit:
-                                crate::feature_location::exact_feature_location_snapshot(feature)
-                                    .is_ok(),
+                            supports_location_edit: location_edit_unavailable_reason.is_none(),
+                            location_edit_unavailable_reason,
                             can_seed_promoter_anchor,
                             regulatory_primary_group_key: regulatory_grouping
                                 .as_ref()
@@ -2116,9 +2124,12 @@ impl MainAreaDna {
                                     );
                                     let edit_response = edit_response.on_hover_text(
                                         if entry.supports_location_edit {
-                                            "Preview an exact numeric boundary edit before applying it"
+                                            "Preview an exact simple or flat compound segment boundary edit before applying it"
                                         } else {
-                                            "Compound and fuzzy locations are not editable in the simple boundary editor"
+                                            entry
+                                                .location_edit_unavailable_reason
+                                                .as_deref()
+                                                .unwrap_or("This location is read-only")
                                         },
                                     );
                                     if edit_response.clicked() {

@@ -2,12 +2,23 @@
 
 use super::*;
 use gentle_protocol::{
-    FeatureLocationEditReport, FeatureLocationEditRequest, RelatedFeatureBoundaryReason,
+    FeatureLocationCompoundWarning, FeatureLocationEditReport, FeatureLocationEditRequest,
+    FeatureLocationIntervalBoundaryRole, RelatedFeatureBoundaryReason,
 };
+
+#[derive(Clone, Debug)]
+pub(super) struct FeatureLocationEditorSegmentOption {
+    pub(super) segment_index: usize,
+    pub(super) label: String,
+    pub(super) start_1based: usize,
+    pub(super) end_1based_inclusive: usize,
+}
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct FeatureLocationEditorUiState {
     pub(super) selected_feature_index: Option<usize>,
+    pub(super) selected_segment_index: Option<usize>,
+    pub(super) segment_options: Vec<FeatureLocationEditorSegmentOption>,
     pub(super) start_1based: String,
     pub(super) end_1based_inclusive: String,
     pub(super) preview: Option<FeatureLocationEditReport>,
@@ -15,17 +26,22 @@ pub(super) struct FeatureLocationEditorUiState {
 }
 
 impl MainAreaDna {
-    pub(super) fn feature_supports_location_edit(&self, feature_index: usize) -> bool {
-        self.dna
-            .read()
-            .ok()
-            .and_then(|dna| dna.features().get(feature_index).cloned())
-            .is_some_and(|feature| {
-                crate::feature_location::exact_feature_location_snapshot(&feature).is_ok()
-            })
+    pub(super) fn feature_location_edit_unavailable_reason(
+        &self,
+        feature_index: usize,
+    ) -> Option<String> {
+        let Ok(dna) = self.dna.read() else {
+            return Some("Sequence state is temporarily unavailable.".to_string());
+        };
+        let Some(feature) = dna.features().get(feature_index) else {
+            return Some("The selected feature is no longer available.".to_string());
+        };
+        crate::feature_location::editable_feature_location(feature, dna.len(), dna.is_circular())
+            .err()
+            .map(|error| error.message)
     }
 
-    fn feature_location_editor_options(&self) -> Vec<(usize, String, bool)> {
+    fn feature_location_editor_options(&self) -> Vec<(usize, String, Option<String>)> {
         let Ok(dna) = self.dna.read() else {
             return vec![];
         };
@@ -43,38 +59,94 @@ impl MainAreaDna {
                 (
                     index,
                     format!("{index}: {} ({label})", feature.kind),
-                    crate::feature_location::exact_feature_location_snapshot(feature).is_ok(),
+                    crate::feature_location::editable_feature_location(
+                        feature,
+                        dna.len(),
+                        dna.is_circular(),
+                    )
+                    .err()
+                    .map(|error| error.message),
                 )
             })
             .collect()
     }
 
     fn seed_feature_location_editor(&mut self, feature_index: usize) {
-        let snapshot = self
-            .dna
-            .read()
-            .ok()
-            .and_then(|dna| dna.features().get(feature_index).cloned())
-            .and_then(|feature| {
-                crate::feature_location::exact_feature_location_snapshot(&feature).ok()
-            });
+        let editability = self.dna.read().ok().and_then(|dna| {
+            let feature = dna.features().get(feature_index)?;
+            Some(crate::feature_location::editable_feature_location(
+                feature,
+                dna.len(),
+                dna.is_circular(),
+            ))
+        });
         self.feature_location_editor_ui.selected_feature_index = Some(feature_index);
+        self.feature_location_editor_ui.selected_segment_index = None;
+        self.feature_location_editor_ui.segment_options.clear();
         self.feature_location_editor_ui.preview = None;
-        match snapshot {
-            Some(snapshot) => {
+        match editability {
+            Some(Ok(crate::feature_location::EditableFeatureLocation::Simple(snapshot))) => {
                 self.feature_location_editor_ui.start_1based = snapshot.start_1based.to_string();
                 self.feature_location_editor_ui.end_1based_inclusive =
                     snapshot.end_1based_inclusive.to_string();
                 self.feature_location_editor_ui.status.clear();
             }
+            Some(Ok(crate::feature_location::EditableFeatureLocation::FlatCompound(view))) => {
+                self.feature_location_editor_ui.segment_options = view
+                    .segments
+                    .iter()
+                    .map(|segment| FeatureLocationEditorSegmentOption {
+                        segment_index: segment.segment_index,
+                        label: format!(
+                            "Stored {} / biological {}: {}..{}",
+                            segment.segment_index + 1,
+                            segment.biological_segment_number,
+                            segment.snapshot.start_1based,
+                            segment.snapshot.end_1based_inclusive
+                        ),
+                        start_1based: segment.snapshot.start_1based,
+                        end_1based_inclusive: segment.snapshot.end_1based_inclusive,
+                    })
+                    .collect();
+                let first = self.feature_location_editor_ui.segment_options[0].clone();
+                self.feature_location_editor_ui.selected_segment_index = Some(first.segment_index);
+                self.feature_location_editor_ui.start_1based = first.start_1based.to_string();
+                self.feature_location_editor_ui.end_1based_inclusive =
+                    first.end_1based_inclusive.to_string();
+                self.feature_location_editor_ui.status.clear();
+            }
+            Some(Err(error)) => {
+                self.feature_location_editor_ui.start_1based.clear();
+                self.feature_location_editor_ui.end_1based_inclusive.clear();
+                self.feature_location_editor_ui.status = error.message;
+            }
             None => {
                 self.feature_location_editor_ui.start_1based.clear();
                 self.feature_location_editor_ui.end_1based_inclusive.clear();
                 self.feature_location_editor_ui.status =
-                    "This feature has a compound or fuzzy location and cannot be edited here."
-                        .to_string();
+                    "The selected feature is no longer available.".to_string();
             }
         }
+    }
+
+    pub(super) fn select_feature_location_editor_segment(&mut self, segment_index: usize) {
+        let Some(option) = self
+            .feature_location_editor_ui
+            .segment_options
+            .iter()
+            .find(|option| option.segment_index == segment_index)
+            .cloned()
+        else {
+            self.feature_location_editor_ui.status =
+                format!("Segment index {segment_index} is not available.");
+            return;
+        };
+        self.feature_location_editor_ui.selected_segment_index = Some(segment_index);
+        self.feature_location_editor_ui.start_1based = option.start_1based.to_string();
+        self.feature_location_editor_ui.end_1based_inclusive =
+            option.end_1based_inclusive.to_string();
+        self.feature_location_editor_ui.preview = None;
+        self.feature_location_editor_ui.status.clear();
     }
 
     pub fn focus_feature_location_editor(&mut self, feature_index: Option<usize>) {
@@ -87,15 +159,15 @@ impl MainAreaDna {
                     .filter(|index| options.iter().any(|(candidate, _, _)| candidate == index))
             })
             .or_else(|| {
-                options
-                    .iter()
-                    .find_map(|(index, _, supported)| supported.then_some(*index))
+                options.iter().find_map(|(index, _, unavailable_reason)| {
+                    unavailable_reason.is_none().then_some(*index)
+                })
             });
         if let Some(selected) = selected {
             self.seed_feature_location_editor(selected);
         } else {
             self.feature_location_editor_ui.status =
-                "No editable exact feature is available on this sequence.".to_string();
+                "No editable exact simple or flat compound feature is available.".to_string();
         }
         self.show_feature_location_editor = true;
     }
@@ -149,6 +221,7 @@ impl MainAreaDna {
             new_start_0based,
             new_end_0based_exclusive: end_1based_inclusive,
             expected_feature_fingerprint_sha256,
+            segment_index: self.feature_location_editor_ui.selected_segment_index,
         })
     }
 
@@ -193,6 +266,11 @@ impl MainAreaDna {
             }
         };
         if request.feature_index != preview.feature_index
+            || preview
+                .compound_context
+                .as_ref()
+                .map(|context| context.segment_index)
+                != request.segment_index
             || i64::try_from(preview.after.start_0based).ok() != Some(request.new_start_0based)
             || i64::try_from(preview.after.end_0based_exclusive).ok()
                 != Some(request.new_end_0based_exclusive)
@@ -225,6 +303,41 @@ impl MainAreaDna {
         }
     }
 
+    fn boundary_role_label(role: FeatureLocationIntervalBoundaryRole) -> &'static str {
+        match role {
+            FeatureLocationIntervalBoundaryRole::Start0Based => "start",
+            FeatureLocationIntervalBoundaryRole::End0BasedExclusive => "end",
+        }
+    }
+
+    fn compound_warning_label(warning: &FeatureLocationCompoundWarning) -> String {
+        match warning {
+            FeatureLocationCompoundWarning::OverlappingSegments {
+                edited_segment_index,
+                overlapping_segment_index,
+            } => format!(
+                "Segment {} overlaps segment {}.",
+                edited_segment_index + 1,
+                overlapping_segment_index + 1
+            ),
+            FeatureLocationCompoundWarning::EstablishedDirectionBroken {
+                first_segment_index,
+                second_segment_index,
+                established_direction,
+            } => format!(
+                "Stored {:?} direction is broken between segments {} and {}.",
+                established_direction,
+                first_segment_index + 1,
+                second_segment_index + 1
+            ),
+            FeatureLocationCompoundWarning::CdsCodingLengthDeltaNotDivisibleByThree {
+                signed_length_delta_nt,
+            } => format!(
+                "CDS length changes by {signed_length_delta_nt} nt; /codon_start is unchanged."
+            ),
+        }
+    }
+
     pub(super) fn render_feature_location_editor(&mut self, ctx: &egui::Context) {
         if !self.show_feature_location_editor {
             return;
@@ -238,9 +351,7 @@ impl MainAreaDna {
             egui::vec2(460.0, 340.0),
         );
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
-            ui.label(
-                "Edit an exact Range or Complement(Range). Compound and fuzzy GenBank locations require a dedicated curation workflow.",
-            );
+            ui.label("Edit one exact simple range or one segment in a flat Join/Order annotation.");
             ui.separator();
             let selected_label = self
                 .feature_location_editor_ui
@@ -260,13 +371,18 @@ impl MainAreaDna {
             .selected_text(selected_label)
             .width(430.0)
             .show_ui(ui, |ui| {
-                for (index, label, supported) in &options {
+                for (index, label, unavailable_reason) in &options {
                     let response = ui.add_enabled(
-                        *supported,
+                        unavailable_reason.is_none(),
                         egui::Button::new(label).selected(
                             self.feature_location_editor_ui.selected_feature_index == Some(*index),
                         ),
                     );
+                    let response = if let Some(reason) = unavailable_reason {
+                        response.on_disabled_hover_text(reason)
+                    } else {
+                        response
+                    };
                     if response.clicked() {
                         next_selected = Some(*index);
                     }
@@ -274,6 +390,43 @@ impl MainAreaDna {
             });
             if let Some(index) = next_selected {
                 self.seed_feature_location_editor(index);
+            }
+            if !self.feature_location_editor_ui.segment_options.is_empty() {
+                let selected_segment_label = self
+                    .feature_location_editor_ui
+                    .selected_segment_index
+                    .and_then(|selected| {
+                        self.feature_location_editor_ui
+                            .segment_options
+                            .iter()
+                            .find(|option| option.segment_index == selected)
+                    })
+                    .map(|option| option.label.clone())
+                    .unwrap_or_else(|| "Select segment".to_string());
+                let mut next_segment = None;
+                egui::ComboBox::from_id_salt((
+                    "feature_location_editor_segment",
+                    self.panel_scope_key(),
+                ))
+                .selected_text(selected_segment_label)
+                .width(430.0)
+                .show_ui(ui, |ui| {
+                    for option in &self.feature_location_editor_ui.segment_options {
+                        if ui
+                            .selectable_label(
+                                self.feature_location_editor_ui.selected_segment_index
+                                    == Some(option.segment_index),
+                                &option.label,
+                            )
+                            .clicked()
+                        {
+                            next_segment = Some(option.segment_index);
+                        }
+                    }
+                });
+                if let Some(segment_index) = next_segment {
+                    self.select_feature_location_editor_segment(segment_index);
+                }
             }
             ui.horizontal(|ui| {
                 ui.label("Start (1-based)");
@@ -327,9 +480,26 @@ impl MainAreaDna {
                     preview.after.three_prime_position_1based,
                     preview.before_feature_fingerprint_sha256
                 ));
+                if let Some(context) = preview.compound_context.as_ref() {
+                    ui.small(format!(
+                        "{:?}; stored segment {} of {}; biological segment {}",
+                        context.container_kind,
+                        context.segment_index + 1,
+                        context.total_segments,
+                        context.biological_segment_number
+                    ));
+                }
+                for warning in &preview.compound_validation_warnings {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(180, 120, 0),
+                        Self::compound_warning_label(warning),
+                    );
+                }
                 ui.separator();
                 ui.label(egui::RichText::new("Related annotations to review").strong());
-                if preview.related_features.is_empty() {
+                if preview.related_features.is_empty()
+                    && preview.related_segment_boundaries.is_empty()
+                {
                     ui.small("No other feature shares either old boundary.");
                 } else {
                     egui::ScrollArea::vertical()
@@ -349,6 +519,20 @@ impl MainAreaDna {
                                     related.feature_kind,
                                     related.location_display,
                                     reasons
+                                ));
+                            }
+                            for related in &preview.related_segment_boundaries {
+                                ui.monospace(format!(
+                                    "{} {}{}: edited {} = related {} at boundary {}; not modified",
+                                    related.related_feature_index,
+                                    related.related_feature_kind,
+                                    related
+                                        .related_segment_index
+                                        .map(|index| format!(" segment {}", index + 1))
+                                        .unwrap_or_default(),
+                                    Self::boundary_role_label(related.edited_boundary),
+                                    Self::boundary_role_label(related.related_boundary),
+                                    related.boundary_coordinate_0based
                                 ));
                             }
                         });

@@ -26138,16 +26138,16 @@ impl MainAreaDna {
                         return;
                     }
                     ui.separator();
+                    let location_edit_unavailable_reason =
+                        self.feature_location_edit_unavailable_reason(feature_id);
                     let edit_response = ui.add_enabled(
-                        self.feature_supports_location_edit(feature_id),
+                        location_edit_unavailable_reason.is_none(),
                         egui::Button::new("Edit feature location..."),
                     );
                     let edit_response = edit_response.on_hover_text(
-                        if self.feature_supports_location_edit(feature_id) {
-                            "Preview an exact numeric boundary edit before applying it"
-                        } else {
-                            "Compound and fuzzy locations are not editable in the simple boundary editor"
-                        },
+                        location_edit_unavailable_reason.as_deref().unwrap_or(
+                            "Preview an exact simple or flat compound segment boundary edit before applying it",
+                        ),
                     );
                     if edit_response.clicked() {
                         map_edit_feature_location = Some(feature_id);

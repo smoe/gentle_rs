@@ -2139,6 +2139,7 @@ pub enum ShellCommand {
     FeaturesEditLocation {
         seq_id: String,
         feature_index: usize,
+        segment_index: Option<usize>,
         start_1based: usize,
         end_1based_inclusive: usize,
         dry_run: bool,
@@ -10209,14 +10210,18 @@ impl ShellCommand {
             Self::FeaturesEditLocation {
                 seq_id,
                 feature_index,
+                segment_index,
                 start_1based,
                 end_1based_inclusive,
                 dry_run,
                 ..
             } => format!(
-                "{} feature {} location on '{}' to {}..{}",
+                "{} feature {}{} location on '{}' to {}..{}",
                 if *dry_run { "preview" } else { "edit" },
                 feature_index,
+                segment_index
+                    .map(|index| format!(" segment {index}"))
+                    .unwrap_or_default(),
                 seq_id,
                 start_1based,
                 end_1based_inclusive
@@ -20022,6 +20027,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "args": [
                 {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence containing the feature"},
                 {"name": "FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "zero-based feature index"},
+                {"name": "--segment-index", "required": false, "subject_kind": "other", "detail": "zero-based child index in a supported flat exact Join/Order compound"},
                 {"name": "--start-1based", "required": true, "subject_kind": "other", "detail": "new 1-based inclusive start"},
                 {"name": "--end-1based-inclusive", "required": true, "subject_kind": "other", "detail": "new 1-based inclusive end"},
                 {"name": "--dry-run", "required": false, "subject_kind": "other", "detail": "preview without mutation and return the required feature fingerprint"},
@@ -20036,7 +20042,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                     {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
                 ]
             },
-            "description": "Preview or apply one exact simple feature-location edit; apply requires the fingerprint returned by preview.",
+            "description": "Preview or apply one exact simple feature-location edit or one segment-boundary edit in a supported flat compound; apply requires the fingerprint returned by preview.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("features edit-location")
         }),
@@ -20048,6 +20054,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "args": [
                 {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.seq_id"},
                 {"name": "FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "zero-based feature index carried by request.feature_index"},
+                {"name": "SEGMENT_INDEX", "required": false, "subject_kind": "other", "detail": "optional zero-based child index for a supported flat exact Join/Order compound"},
                 {"name": "NEW_START_0BASED", "required": true, "subject_kind": "other", "detail": "new half-open interval start"},
                 {"name": "NEW_END_0BASED_EXCLUSIVE", "required": true, "subject_kind": "other", "detail": "new half-open interval end"}
             ],
@@ -20060,7 +20067,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                     {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
                 ]
             },
-            "description": "Validate and report one simple feature-location edit without changing project state.",
+            "description": "Validate and report one exact simple or flat-compound segment location edit without changing project state.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("PreviewFeatureLocationEdit")
         }),
@@ -20072,6 +20079,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "args": [
                 {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by request.seq_id"},
                 {"name": "FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "zero-based feature index carried by request.feature_index"},
+                {"name": "SEGMENT_INDEX", "required": false, "subject_kind": "other", "detail": "optional zero-based child index for a supported flat exact Join/Order compound"},
                 {"name": "NEW_START_0BASED", "required": true, "subject_kind": "other", "detail": "new half-open interval start"},
                 {"name": "NEW_END_0BASED_EXCLUSIVE", "required": true, "subject_kind": "other", "detail": "new half-open interval end"},
                 {"name": "EXPECTED_FEATURE_FINGERPRINT_SHA256", "required": true, "subject_kind": "other", "detail": "complete-feature fingerprint returned by preview"}
@@ -20085,7 +20093,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                     {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
                 ]
             },
-            "description": "Apply one previewed exact simple feature-location edit while preserving strand and qualifier content.",
+            "description": "Apply one previewed exact simple or flat-compound segment location edit while preserving strand, topology, and qualifier content.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("EditFeatureLocation")
         }),
@@ -52851,6 +52859,7 @@ fn execute_feature_scan_command(
         ShellCommand::FeaturesEditLocation {
             seq_id,
             feature_index,
+            segment_index,
             start_1based,
             end_1based_inclusive,
             dry_run,
@@ -52872,6 +52881,7 @@ fn execute_feature_scan_command(
                 new_start_0based,
                 new_end_0based_exclusive,
                 expected_feature_fingerprint_sha256: expected_feature_fingerprint_sha256.clone(),
+                segment_index: *segment_index,
             };
             let operation = if *dry_run {
                 Operation::PreviewFeatureLocationEdit { request }

@@ -12,6 +12,17 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-28
+
+- Extended the engine-owned Feature Location Editor and shared
+  `features edit-location` route to edit one exact child in flat
+  `Join`/`Order` annotations, including outer-complement reverse-strand
+  compounds. Segment edits preserve the complete location topology and
+  qualifiers, report stored versus biological segment numbering, expose typed
+  overlap/direction/CDS-length warnings and cross-role related boundaries, and
+  keep nested, fuzzy, topology-changing, and circular cross-origin locations
+  read-only.
+
 ## 2026-07-27
 
 - Added engine-owned exact feature-location preview/apply operations,

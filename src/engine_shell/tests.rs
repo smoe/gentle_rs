@@ -11,6 +11,7 @@
 
 use super::*;
 use crate::dna_sequence::DNAsequence;
+use crate::engine::FEATURE_LOCATION_EDIT_SCHEMA_V2;
 use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
     ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings,
@@ -428,6 +429,9 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "features tfbs-score-tracks-svg" => {
             Some("features tfbs-score-tracks-svg seq out.svg --motif SP1")
         }
+        "primers import-external-pairs" => Some(
+            "primers import-external-pairs out.json demo 1 --specificity-target-genome demo",
+        ),
         "arrays probe-regions" => Some("arrays probe-regions --cel demo --gene demo"),
         "cutrun inspect-regulatory-support" => {
             Some("cutrun inspect-regulatory-support seq --dataset dataset")
@@ -41062,6 +41066,7 @@ fn parse_features_edit_location_requires_preview_token_for_apply() {
         ShellCommand::FeaturesEditLocation {
             seq_id,
             feature_index: 2,
+            segment_index: None,
             start_1based: 11,
             end_1based_inclusive: 30,
             dry_run: true,
@@ -41112,5 +41117,55 @@ fn execute_features_edit_location_preview_then_apply() {
     assert_eq!(
         engine.state().sequences["seq"].features()[0].location,
         gb_io::seq::Location::simple_range(6, 24)
+    );
+}
+
+#[test]
+fn execute_features_edit_location_segment_preview_then_apply() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(80)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(5, 20),
+            gb_io::seq::Location::simple_range(30, 45),
+        ]),
+        qualifiers: vec![("transcript_id".into(), Some("TX1".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let preview_command = parse_shell_line(
+        "features edit-location seq 0 --segment-index 1 --start-1based 33 --end-1based-inclusive 47 --dry-run",
+    )
+    .expect("segment preview command");
+    assert!(matches!(
+        preview_command,
+        ShellCommand::FeaturesEditLocation {
+            segment_index: Some(1),
+            ..
+        }
+    ));
+    let preview = execute_shell_command(&mut engine, &preview_command).expect("segment preview");
+    assert!(!preview.state_changed);
+    assert_eq!(
+        preview.output["report"]["schema"].as_str(),
+        Some(FEATURE_LOCATION_EDIT_SCHEMA_V2)
+    );
+    let fingerprint = preview.output["report"]["before_feature_fingerprint_sha256"]
+        .as_str()
+        .expect("fingerprint");
+    let apply_command = parse_shell_line(&format!(
+        "features edit-location seq 0 --segment-index 1 --start-1based 33 --end-1based-inclusive 47 --expected-feature-fingerprint-sha256 {fingerprint}"
+    ))
+    .expect("segment apply command");
+    let applied =
+        execute_shell_command(&mut engine, &apply_command).expect("segment apply execution");
+    assert!(applied.state_changed);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(5, 20),
+            gb_io::seq::Location::simple_range(32, 47),
+        ])
     );
 }

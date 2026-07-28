@@ -2259,6 +2259,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
             })?;
             let mut start_1based = None;
             let mut end_1based_inclusive = None;
+            let mut segment_index = None;
             let mut dry_run = false;
             let mut expected_feature_fingerprint_sha256 = None;
             let mut path = None;
@@ -2275,6 +2276,11 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                         let raw = parse_required_value(tokens, &mut idx, "--end-1based-inclusive")?;
                         end_1based_inclusive =
                             Some(parse_usize_option_value(&raw, "--end-1based-inclusive")?);
+                    }
+                    "--segment-index" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--segment-index")?;
+                        segment_index = Some(parse_usize_option_value(&raw, "--segment-index")?);
                     }
                     "--dry-run" => {
                         dry_run = true;
@@ -2319,6 +2325,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
             Ok(ShellCommand::FeaturesEditLocation {
                 seq_id,
                 feature_index,
+                segment_index,
                 start_1based,
                 end_1based_inclusive,
                 dry_run,
