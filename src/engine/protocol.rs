@@ -6427,6 +6427,38 @@ pub struct PrimerSpecificityAmplicon {
     pub failure_reasons: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+/// Evidence that every database subject was eligible to appear in the BLAST
+/// output. A biological specificity pass is withheld unless `complete` is true.
+pub struct PrimerSpecificitySearchCompleteness {
+    pub complete: bool,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database_sequence_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_max_target_seqs: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_min_max_target_seqs: Option<u64>,
+    pub command_count: usize,
+    pub reason: String,
+}
+
+impl Default for PrimerSpecificitySearchCompleteness {
+    fn default() -> Self {
+        Self {
+            complete: false,
+            status: "incomplete".to_string(),
+            database_sequence_count: None,
+            required_max_target_seqs: None,
+            observed_min_max_target_seqs: None,
+            command_count: 0,
+            reason: "Search completeness was not recorded; regenerate the specificity report."
+                .to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Summary badge for a local primer specificity report.
@@ -6479,6 +6511,8 @@ pub struct PrimerSpecificityReport {
     pub reverse_hits: Vec<PrimerSpecificityPrimerHit>,
     #[serde(default)]
     pub amplicons: Vec<PrimerSpecificityAmplicon>,
+    #[serde(default)]
+    pub search_completeness: PrimerSpecificitySearchCompleteness,
     #[serde(default)]
     pub summary: PrimerSpecificitySummary,
     #[serde(default)]
@@ -6550,6 +6584,8 @@ pub struct PrimerSpecificityHandoff {
     pub effective_blast_options: Option<BlastResolvedOptions>,
     #[serde(default)]
     pub commands: Vec<PrimerSpecificityHandoffCommand>,
+    #[serde(default)]
+    pub search_completeness: PrimerSpecificitySearchCompleteness,
     /// Import readiness requires every command to finish with one of its
     /// declared successful exit codes.
     pub completion_policy: String,

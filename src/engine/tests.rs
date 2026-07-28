@@ -8559,6 +8559,120 @@ fn primer_specificity_pairs_forward_reverse_and_same_primer_warning_products() {
 }
 
 #[test]
+fn primer_specificity_pairs_minus_strand_targets_without_role_order_assumptions() {
+    let policy = PrimerSpecificityPolicy::default();
+    let forward_hits = vec![primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Forward,
+        0,
+        "chr1",
+        220,
+        239,
+        "-",
+        0,
+    )];
+    let reverse_hits = vec![primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Reverse,
+        0,
+        "chr1",
+        100,
+        119,
+        "+",
+        0,
+    )];
+    let mut amplicons = GentleEngine::primer_specificity_collect_amplicons_for_hits(
+        &forward_hits,
+        &reverse_hits,
+        &policy,
+    );
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &PrimerSpecificityIntendedTarget {
+            model: PrimerSpecificityIntendedTargetModel::GenomicInterval,
+            subject_id: Some("chr1".to_string()),
+            expected_product_range: Some(PrimerSpecificitySubjectRange {
+                start_1based: 100,
+                end_1based: 239,
+            }),
+            contiguous_genomic_product_expected: true,
+            ..PrimerSpecificityIntendedTarget::default()
+        },
+        &policy,
+    );
+    let intended = amplicons
+        .iter()
+        .find(|amplicon| amplicon.intended)
+        .expect("minus-strand intended product");
+    assert_eq!(intended.start_1based, 100);
+    assert_eq!(intended.end_1based, 239);
+    assert_eq!(intended.left_role, PrimerSpecificityPrimerRole::Reverse);
+    assert_eq!(intended.right_role, PrimerSpecificityPrimerRole::Forward);
+}
+
+#[test]
+fn primer_specificity_uses_per_hsp_query_coordinates_not_aggregated_qcovs() {
+    let hit = BlastHit {
+        subject_id: "chr1".to_string(),
+        identity_percent: 100.0,
+        alignment_length: 8,
+        mismatches: 0,
+        gap_opens: 0,
+        query_start: 5,
+        query_end: 12,
+        subject_start: 100,
+        subject_end: 107,
+        evalue: 1e-8,
+        bit_score: 20.0,
+        query_coverage_percent: Some(100.0),
+    };
+    assert_eq!(
+        GentleEngine::primer_specificity_hsp_query_coverage_fraction(20, &hit),
+        0.4
+    );
+    let mut reverse_query_coordinates = hit;
+    reverse_query_coordinates.query_start = 12;
+    reverse_query_coordinates.query_end = 5;
+    assert_eq!(
+        GentleEngine::primer_specificity_hsp_query_coverage_fraction(
+            20,
+            &reverse_query_coordinates,
+        ),
+        0.4
+    );
+}
+
+#[test]
+fn primer_specificity_completeness_requires_subject_limit_above_database_count() {
+    let database = crate::genomes::BlastDatabaseInspectionReport {
+        validation_status: "valid".to_string(),
+        sequence_count: Some(3),
+        ..crate::genomes::BlastDatabaseInspectionReport::default()
+    };
+    let complete_commands = vec![
+        vec!["-max_target_seqs".to_string(), "4".to_string()],
+        vec!["-max_target_seqs".to_string(), "5".to_string()],
+    ];
+    let complete = GentleEngine::primer_specificity_search_completeness_for_commands(
+        Some(&database),
+        &complete_commands,
+    );
+    assert!(complete.complete);
+    assert_eq!(complete.status, "complete");
+    assert_eq!(complete.required_max_target_seqs, Some(4));
+    assert_eq!(complete.observed_min_max_target_seqs, Some(4));
+
+    let incomplete_commands = vec![
+        vec!["-max_target_seqs".to_string(), "3".to_string()],
+        vec!["-dust".to_string(), "no".to_string()],
+    ];
+    let incomplete = GentleEngine::primer_specificity_search_completeness_for_commands(
+        Some(&database),
+        &incomplete_commands,
+    );
+    assert!(!incomplete.complete);
+    assert_eq!(incomplete.status, "incomplete");
+}
+
+#[test]
 fn primer_specificity_empty_amplicon_set_is_a_non_panicking_no_hit_result() {
     let mut amplicons = vec![];
     GentleEngine::primer_specificity_finalize_amplicons(
@@ -8645,11 +8759,57 @@ fn junction_primer_can_pass_genomic_carryover_screen_without_intended_product() 
         &amplicons,
         &target,
         crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+        true,
     );
     assert!(summary.specificity_pass);
     assert_eq!(summary.status, "pass");
     assert_eq!(summary.intended_amplicon_count, 0);
     assert!(summary.summary.contains("junction-spanning"));
+}
+
+#[test]
+fn primer_specificity_withholds_pass_when_search_completeness_is_unproven() {
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::JunctionSpanning,
+        subject_id: Some("chr1".to_string()),
+        contiguous_genomic_product_expected: false,
+        source: "synthetic_junction_assay".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    let summary = GentleEngine::primer_specificity_summary(
+        &[],
+        &[],
+        &[],
+        &target,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+        false,
+    );
+    assert!(!summary.specificity_pass);
+    assert_eq!(summary.status, "incomplete");
+    assert!(
+        summary
+            .summary
+            .contains("exhaustive BLAST subject coverage")
+    );
+}
+
+#[test]
+fn legacy_primer_specificity_reports_default_to_incomplete_search_evidence() {
+    let report: PrimerSpecificityReport = serde_json::from_value(serde_json::json!({
+        "summary": {
+            "specificity_pass": true,
+            "status": "pass"
+        }
+    }))
+    .expect("deserialize legacy report");
+    assert!(!report.search_completeness.complete);
+    assert_eq!(report.search_completeness.status, "incomplete");
+    assert!(
+        report
+            .search_completeness
+            .reason
+            .contains("not recorded")
+    );
 }
 
 #[test]
@@ -8817,7 +8977,12 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
                 .windows(2)
                 .any(|row| row[0] == "-out" && row[1] == command.output_tsv_path)
         );
-        assert!(!command.args.iter().any(|arg| arg == "-max_target_seqs"));
+        assert!(
+            command
+                .args
+                .windows(2)
+                .any(|row| row == ["-max_target_seqs", "2"])
+        );
         assert!(command.args.windows(2).any(|row| row == ["-dust", "no"]));
         assert!(
             command
@@ -8827,6 +8992,9 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
         );
         fs::write(&command.output_tsv_path, "stale\n").expect("seed stale BLAST output");
     }
+    assert!(handoff.search_completeness.complete);
+    assert_eq!(handoff.search_completeness.status, "complete");
+    assert_eq!(handoff.search_completeness.database_sequence_count, Some(1));
     let replanned = execute_shell_command(
         &mut engine,
         &ShellCommand::PrimersSpecificityPlan {
@@ -8890,6 +9058,7 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
     assert!(!report.summary.specificity_pass);
     assert_eq!(report.summary.status, "not_assessed");
     assert_eq!(report.summary.intended_amplicon_count, 0);
+    assert!(report.search_completeness.complete);
     assert_eq!(report.forward_hits.len(), 1);
     assert_eq!(report.reverse_hits.len(), 1);
     assert!(

@@ -6226,10 +6226,11 @@ FASTA index='{}'.{}{}",
         )
     }
 
-    /// Run an exhaustive short-query BLAST without subject-count truncation.
+    /// Run an exhaustive short-query BLAST with a subject limit proven to
+    /// exceed the validated database sequence count.
     ///
     /// `hit_warning_threshold` is retained in provenance and may trigger a
-    /// warning, but it is never translated to `-max_target_seqs`.
+    /// warning. It is not used as the BLAST subject limit.
     pub fn blast_sequence_complete_with_cache(
         &self,
         genome_id: &str,
@@ -6325,6 +6326,38 @@ FASTA index='{}'.{}{}",
         if should_cancel() {
             return Err(blast_cancelled_error("before blast launch"));
         }
+        let exhaustive_subject_limit = if limit_subjects {
+            None
+        } else {
+            let inspection = self
+                .inspect_blast_database(&resolved_genome_id, cache_dir_override)?
+                .ok_or_else(|| {
+                    format!(
+                        "Could not prove exhaustive BLAST coverage for '{}': no database inspection is available",
+                        resolved_genome_id
+                    )
+                })?;
+            if inspection.validation_status != "valid" {
+                return Err(format!(
+                    "Could not prove exhaustive BLAST coverage for '{}': database validation status is '{}'",
+                    resolved_genome_id, inspection.validation_status
+                ));
+            }
+            let sequence_count = inspection.sequence_count.filter(|count| *count > 0).ok_or_else(
+                || {
+                    format!(
+                        "Could not prove exhaustive BLAST coverage for '{}': database sequence count is unavailable",
+                        resolved_genome_id
+                    )
+                },
+            )?;
+            Some(sequence_count.checked_add(1).ok_or_else(|| {
+                format!(
+                    "Could not derive a safe exhaustive BLAST subject limit for '{}'",
+                    resolved_genome_id
+                )
+            })?)
+        };
 
         let blastn_executable = resolve_tool_executable(BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN);
         let mut query_file = NamedTempFile::new_in(&install_dir).map_err(|e| {
@@ -6360,6 +6393,12 @@ FASTA index='{}'.{}{}",
                 "no".to_string(),
                 "-soft_masking".to_string(),
                 "false".to_string(),
+                "-max_target_seqs".to_string(),
+                exhaustive_subject_limit
+                    .ok_or_else(|| {
+                        "Internal error: complete BLAST search has no subject limit".to_string()
+                    })?
+                    .to_string(),
             ]);
         }
         let mut child = Command::new(&blastn_executable)
@@ -6409,7 +6448,7 @@ FASTA index='{}'.{}{}",
         }
         if !limit_subjects && hits.len() > max_hits {
             blast_outcome.warnings.push(format!(
-                "Complete primer search returned {} HSPs, above the configured review threshold {}; no database subjects were excluded or truncated",
+                "Complete primer search returned {} HSPs, above the configured review threshold {}; -max_target_seqs was set above the validated database sequence count",
                 hits.len(), max_hits
             ));
         }
@@ -12433,6 +12472,65 @@ mod tests {
         );
         assert!(report.blastn.resolved_path.is_some());
         assert!(report.makeblastdb.resolved_path.is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn complete_blast_sets_subject_limit_above_validated_database_sequence_count() {
+        let _lock = genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let td = tempdir().expect("tempdir");
+        let root = td.path().join("cache");
+        let (install_dir, _blast_prefix) = write_prepared_cache_install(&root, "ToyGenome");
+        let catalog_path = td.path().join("catalog.json");
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "ToyGenome": {{
+    "description": "synthetic exhaustive BLAST fixture",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+                install_dir.join("sequence.fa").display(),
+                install_dir.join("annotation.gtf").display(),
+                root.display()
+            ),
+        )
+        .expect("write catalog");
+        let blastdbcmd = td.path().join("blastdbcmd.sh");
+        write_executable_script(
+            &blastdbcmd,
+            "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastdbcmd: fake 1.0'; exit 0; fi\nif [ \"$1\" = '-db' ] && [ \"$3\" = '-info' ]; then printf 'Database: synthetic\\nBLASTDB Version: 5\\n\\t3 sequences; 220 total letters\\n'; exit 0; fi\nexit 2\n",
+        );
+        let blastn = td.path().join("blastn.sh");
+        write_executable_script(
+            &blastn,
+            "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastn: fake 1.0'; exit 0; fi\nexit 0\n",
+        );
+        let _blastdbcmd =
+            EnvVarGuard::set(BLASTDBCMD_ENV_BIN, blastdbcmd.to_string_lossy().as_ref());
+        let _blastn = EnvVarGuard::set(BLASTN_ENV_BIN, blastn.to_string_lossy().as_ref());
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let report = catalog
+            .blast_sequence_complete_with_cache(
+                "ToyGenome",
+                "ACGTACGTACGTACGTACGT",
+                20,
+                Some("blastn-short"),
+                None,
+            )
+            .expect("complete BLAST search");
+        assert!(
+            report
+                .command
+                .windows(2)
+                .any(|row| row == ["-max_target_seqs", "4"])
+        );
     }
 
     #[test]

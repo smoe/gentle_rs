@@ -7532,10 +7532,12 @@ Operation progress/cancellation semantics:
 - Target scope in v1:
   - prepared reference genomes only
   - runs through GENtle's existing BLAST index/preflight machinery
-  - local `blastn-short` is used with short-query settings and without
-    `-max_target_seqs`, so auxiliary contigs are not silently excluded;
-    `max_hits_per_primer` is a post-search review threshold and never truncates
-    the database search
+  - local `blastn-short` is used with short-query settings; GENtle validates
+    the database sequence count through `blastdbcmd` and sets
+    `-max_target_seqs` above that count, so auxiliary contigs are not silently
+    excluded
+  - `max_hits_per_primer` is a post-search review threshold and never becomes
+    the BLAST subject cap
 - Report schema:
   - `gentle.primer_specificity_report.v1`
   - includes BLAST binary preflight, per-primer BLAST invocation provenance,
@@ -7546,8 +7548,13 @@ Operation progress/cancellation semantics:
     1-based subject coordinates; wrapped BLAST identifiers such as
     `gb|KI270750.1|` are normalized against the prepared FASTA index while the
     raw identifier remains available
+  - `query_coverage_fraction` is computed independently for every HSP from its
+    inclusive `qstart..qend` span divided by primer length; BLAST `qcovs`
+    cannot promote a short HSP because that field is aggregated per subject
   - candidate amplicons include forward/reverse products plus Primer-BLAST-style
-    forward/forward and reverse/reverse warning products
+    forward/forward and reverse/reverse warning products. Genomic left/right
+    ordering is derived from subject strand and coordinates rather than primer
+    role, so minus-strand targets are paired without swapping assay roles
   - intended genomic products are resolved only from an explicit prepared-FASTA
     subject and genomic binding interval; cDNA amplicon length is retained as
     provenance but is never used to identify a genomic product
@@ -7561,6 +7568,11 @@ Operation progress/cancellation semantics:
     separate from whole-transcriptome/cDNA cross-amplification. Only the
     assessment matching the inspected BLAST index kind is populated by one run;
     the other remains `not_run`
+  - `search_completeness` is an enforceable result state containing the
+    validated database sequence count, required `-max_target_seqs`, minimum
+    observed command limit, command count, and explanatory reason. If
+    completeness is not proven, `summary.status = incomplete` and
+    `specificity_pass = false` regardless of observed hits
 - Additive policy vocabulary reserved for design-time parity:
   - `specificity_check = none|report_only|require_pass`
   - `specificity_target_genome_id`
@@ -7596,7 +7608,8 @@ External BLAST handoff for wrapper-owned execution:
     is convenience text only);
   - explicit `-out` paths, accepted exit code `0`, database prefix plus current
     content fingerprint/index kind, resolved genome/catalog/cache provenance,
-    intended-target geometry, policy, an
+    a subject cap above the validated database sequence count,
+    `search_completeness`, intended-target geometry, policy, an
     `all_commands_success` completion policy, and an import command.
 - An outer scheduler owns process lifetime and completion. It should run both
   commands, require a successful exit code, and only then call
@@ -7610,8 +7623,8 @@ External BLAST handoff for wrapper-owned execution:
   the inline `AssessPrimerPairSpecificity` path.
 - Import and whole-panel finalization re-inspect the database and refuse a
   handoff when the content fingerprint or index kind changed at the same
-  prefix. Legacy handoffs without this additive identity remain readable, but
-  emit a warning and should be regenerated before final assay acceptance.
+  prefix. Legacy handoffs without a proven `-max_target_seqs` remain readable,
+  but their reports are `incomplete` and cannot become accepted evidence.
 - GENtle never executes a `command_line` read from a handoff. Adapters should
   dispatch the stored `program` and `args[]` directly.
 

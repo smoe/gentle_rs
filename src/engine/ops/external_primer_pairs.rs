@@ -506,7 +506,9 @@ impl GentleEngine {
             request.cache_dir.as_deref(),
         ) {
             Ok(report) => ExternalPrimerPairSpecificityAssessment {
-                status: if report.summary.specificity_pass {
+                status: if !report.search_completeness.complete {
+                    "incomplete"
+                } else if report.summary.specificity_pass {
                     "pass"
                 } else {
                     "specificity_fail"

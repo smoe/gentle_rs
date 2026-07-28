@@ -3508,8 +3508,18 @@ Shared shell command:
         forward/reverse products, forward/forward and reverse/reverse warning
         products, intended/unintended classification, and pass/fail summary
       - short-primer searches are exhaustive with respect to database subjects:
-        GENtle does not pass `max_hits_per_primer` to BLAST as
-        `-max_target_seqs`; the value is a post-search review threshold
+        GENtle validates the database sequence count with `blastdbcmd` and sets
+        `-max_target_seqs` above that count. `max_hits_per_primer` remains a
+        post-search review threshold and does not truncate the search
+      - `search_completeness` records the validated database count, required
+        subject limit, observed command limit, and `complete|incomplete`
+        status. An unproven search can never produce a specificity pass
+      - per-hit primer coverage is calculated from that HSP's inclusive
+        `qstart..qend` span and primer length; BLAST's subject-aggregated
+        `qcovs` value is retained only in raw BLAST provenance
+      - inward-facing products are paired by subject coordinates and strands,
+        independently of whether the forward-role primer is the leftmost hit;
+        minus-strand intended products are therefore treated symmetrically
       - intended genomic products are matched by prepared-FASTA subject and
         genomic interval, never by equality to a cDNA amplicon length;
         junction-spanning primers may therefore have no contiguous intended
@@ -3534,8 +3544,10 @@ Shared shell command:
       - regenerating the same deterministic handoff clears its old declared
         output TSVs, preventing a fresh run from importing stale results
       - planned handoffs bind the inspected BLAST database content fingerprint
-        and index kind; import/finalization rejects replacement content at the
-        same prefix
+        and index kind, and each command carries the same proven subject limit;
+        import/finalization rejects replacement content at the same prefix.
+        Legacy or modified commands lacking sufficient subject coverage yield
+        `incomplete`, not `pass`
       - the plan/import convenience commands dispatch the shared
         `PreparePrimerPairSpecificityHandoff` and
         `ImportPrimerPairSpecificityHandoff` operations. The same operation

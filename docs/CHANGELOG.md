@@ -29,6 +29,11 @@ Maintenance rule:
   overlap/direction/CDS-length warnings and cross-role related boundaries, and
   keep nested, fuzzy, topology-changing, and circular cross-origin locations
   read-only.
+- Corrected primer-specificity interpretation for minus-strand targets and
+  per-HSP query coverage, and made exhaustive BLAST coverage enforceable by
+  setting a subject cap above the validated database sequence count; direct and
+  handoff reports now expose `search_completeness`, and unproven searches yield
+  `incomplete` rather than a specificity pass.
 
 ## 2026-07-27
 

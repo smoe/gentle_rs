@@ -9890,11 +9890,8 @@ impl GentleEngine {
         let mut canonical_hit = hit.clone();
         canonical_hit.subject_id = canonical_subject_id.clone();
         let query_length = query_sequence.len().max(1);
-        let query_coverage_fraction = hit
-            .query_coverage_percent
-            .map(|value| value / 100.0)
-            .unwrap_or_else(|| hit.alignment_length as f64 / query_length as f64)
-            .clamp(0.0, 1.0);
+        let query_coverage_fraction =
+            Self::primer_specificity_hsp_query_coverage_fraction(query_length, hit);
         let three_prime_mismatches = match Self::primer_specificity_three_prime_mismatches(
             catalog,
             target_genome_id,
@@ -9986,29 +9983,56 @@ impl GentleEngine {
             .collect()
     }
 
-    fn primer_specificity_inward_amplicon_bounds(
-        left: &PrimerSpecificityPrimerHit,
-        right: &PrimerSpecificityPrimerHit,
-    ) -> Option<(usize, usize, usize)> {
-        if left.subject_id != right.subject_id || left.strand != "+" || right.strand != "-" {
+    pub(crate) fn primer_specificity_hsp_query_coverage_fraction(
+        query_length: usize,
+        hit: &BlastHit,
+    ) -> f64 {
+        if query_length == 0 {
+            return 0.0;
+        }
+        let query_start = hit.query_start.min(hit.query_end);
+        let query_end = hit.query_start.max(hit.query_end);
+        if query_start == 0 || query_end == 0 {
+            return 0.0;
+        }
+        query_end
+            .saturating_sub(query_start)
+            .saturating_add(1)
+            .min(query_length) as f64
+            / query_length as f64
+    }
+
+    fn primer_specificity_inward_amplicon_hits<'a>(
+        first: &'a PrimerSpecificityPrimerHit,
+        second: &'a PrimerSpecificityPrimerHit,
+    ) -> Option<(
+        &'a PrimerSpecificityPrimerHit,
+        &'a PrimerSpecificityPrimerHit,
+    )> {
+        if first.subject_id != second.subject_id {
             return None;
         }
+        let (left, right) = match (first.strand.as_str(), second.strand.as_str()) {
+            ("+", "-") => (first, second),
+            ("-", "+") => (second, first),
+            _ => return None,
+        };
         if left.subject_min_1based > right.subject_min_1based {
             return None;
         }
-        let start = left.subject_min_1based.min(right.subject_min_1based);
-        let end = left.subject_max_1based.max(right.subject_max_1based);
-        Some((start, end, end.saturating_sub(start).saturating_add(1)))
+        Some((left, right))
     }
 
     fn primer_specificity_amplicon_from_hits(
         kind: PrimerSpecificityAmpliconKind,
-        left: &PrimerSpecificityPrimerHit,
-        right: &PrimerSpecificityPrimerHit,
+        first: &PrimerSpecificityPrimerHit,
+        second: &PrimerSpecificityPrimerHit,
         policy: &PrimerSpecificityPolicy,
     ) -> Option<PrimerSpecificityAmplicon> {
-        let (start_1based, end_1based, length_bp) =
-            Self::primer_specificity_inward_amplicon_bounds(left, right)?;
+        let (left, right) = Self::primer_specificity_inward_amplicon_hits(first, second)?;
+        let start_1based = left.subject_min_1based;
+        let end_1based = left.subject_max_1based.max(right.subject_max_1based);
+        let length_bp = end_1based.saturating_sub(start_1based).saturating_add(1);
         if length_bp > policy.max_target_amplicon_bp {
             return None;
         }
@@ -10160,12 +10184,97 @@ impl GentleEngine {
         }
     }
 
+    fn primer_specificity_max_target_seqs(args: &[String]) -> Option<u64> {
+        args.windows(2).find_map(|window| {
+            (window[0] == "-max_target_seqs")
+                .then(|| window[1].parse::<u64>().ok())
+                .flatten()
+        })
+    }
+
+    pub(crate) fn primer_specificity_search_completeness_for_commands(
+        database: Option<&BlastDatabaseInspectionReport>,
+        commands: &[Vec<String>],
+    ) -> PrimerSpecificitySearchCompleteness {
+        let command_limits = commands
+            .iter()
+            .map(|args| Self::primer_specificity_max_target_seqs(args))
+            .collect::<Vec<_>>();
+        let observed_min_max_target_seqs = command_limits.iter().flatten().copied().min();
+        let mut result = PrimerSpecificitySearchCompleteness {
+            complete: false,
+            status: "incomplete".to_string(),
+            database_sequence_count: database.and_then(|row| row.sequence_count),
+            required_max_target_seqs: None,
+            observed_min_max_target_seqs,
+            command_count: commands.len(),
+            reason: String::new(),
+        };
+        let Some(database) = database else {
+            result.reason =
+                "No validated BLAST database inspection was attached to the search.".to_string();
+            return result;
+        };
+        if database.validation_status != "valid" {
+            result.reason = format!(
+                "BLAST database validation status is '{}', not 'valid'.",
+                database.validation_status
+            );
+            return result;
+        }
+        let Some(sequence_count) = database.sequence_count.filter(|count| *count > 0) else {
+            result.reason =
+                "The validated BLAST database does not report a positive sequence count."
+                    .to_string();
+            return result;
+        };
+        let Some(required_limit) = sequence_count.checked_add(1) else {
+            result.reason =
+                "The BLAST database sequence count cannot be converted into a safe subject limit."
+                    .to_string();
+            return result;
+        };
+        result.required_max_target_seqs = Some(required_limit);
+        if commands.len() != 2 {
+            result.reason = format!(
+                "Expected two primer BLAST commands, but observed {}.",
+                commands.len()
+            );
+            return result;
+        }
+        if command_limits.iter().any(Option::is_none) {
+            result.reason =
+                "At least one primer BLAST command omitted -max_target_seqs; BLAST's finite default cannot prove exhaustive subject coverage."
+                    .to_string();
+            return result;
+        }
+        if command_limits
+            .iter()
+            .flatten()
+            .any(|limit| *limit < required_limit)
+        {
+            result.reason = format!(
+                "At least one primer BLAST command used -max_target_seqs below the required {} for a database containing {} sequences.",
+                required_limit, sequence_count
+            );
+            return result;
+        }
+        result.complete = true;
+        result.status = "complete".to_string();
+        result.reason = format!(
+            "Both primer BLAST commands used -max_target_seqs at or above {} for the validated {}-sequence database.",
+            required_limit, sequence_count
+        );
+        result
+    }
+
     pub(crate) fn primer_specificity_summary(
         forward_hits: &[PrimerSpecificityPrimerHit],
         reverse_hits: &[PrimerSpecificityPrimerHit],
         amplicons: &[PrimerSpecificityAmplicon],
         intended_target: &PrimerSpecificityIntendedTarget,
         index_kind: BlastDatabaseIndexKind,
+        search_complete: bool,
     ) -> PrimerSpecificitySummary {
         let primer_hit_count = forward_hits.len().saturating_add(reverse_hits.len());
         let accepted_primer_hit_count = forward_hits
@@ -10193,9 +10302,12 @@ impl GentleEngine {
         } else {
             target_known
         };
-        let specificity_pass =
+        let biological_pass =
             target_known && intended_requirement_met && failing_unintended_amplicon_count == 0;
-        let status = if !target_known {
+        let specificity_pass = search_complete && biological_pass;
+        let status = if !search_complete {
+            "incomplete"
+        } else if !target_known {
             "not_assessed"
         } else if specificity_pass {
             "pass"
@@ -10203,7 +10315,10 @@ impl GentleEngine {
             "fail"
         }
         .to_string();
-        let summary = if !target_known {
+        let summary = if !search_complete {
+            "Specificity is incomplete because exhaustive BLAST subject coverage was not proven; no biological pass is asserted."
+                .to_string()
+        } else if !target_known {
             "Off-target products were enumerated, but no explicit intended-target geometry was available; aggregate specificity is not assessed."
                 .to_string()
         } else if specificity_pass && !requires_contiguous_intended {
@@ -10514,6 +10629,18 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        let exhaustive_subject_limit = blast_database
+            .sequence_count
+            .filter(|count| *count > 0)
+            .and_then(|count| count.checked_add(1))
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Prepared genome '{}' has no positive validated BLAST database sequence count; exhaustive primer specificity cannot be guaranteed",
+                    resolution.resolved_genome_id
+                ),
+                cause_chain: vec![],
+            })?;
         let blast_db_prefix = inspection
             .blast_db_prefix
             .clone()
@@ -10622,6 +10749,8 @@ impl GentleEngine {
                 "no".to_string(),
                 "-soft_masking".to_string(),
                 "false".to_string(),
+                "-max_target_seqs".to_string(),
+                exhaustive_subject_limit.to_string(),
                 "-out".to_string(),
                 output_tsv_path.clone(),
             ];
@@ -10638,6 +10767,14 @@ impl GentleEngine {
                 success_exit_codes: vec![0],
             });
         }
+        let command_args = commands
+            .iter()
+            .map(|command| command.args.clone())
+            .collect::<Vec<_>>();
+        let search_completeness = Self::primer_specificity_search_completeness_for_commands(
+            Some(&blast_database),
+            &command_args,
+        );
 
         let handoff_path_text = handoff_path.to_string_lossy().to_string();
         let import_command = vec![
@@ -10681,6 +10818,7 @@ impl GentleEngine {
             intended_target: resolved_input.intended_target,
             effective_blast_options: Some(effective_options),
             commands,
+            search_completeness,
             completion_policy: "all_commands_success".to_string(),
             import_command_line: import_command
                 .iter()
@@ -11809,16 +11947,27 @@ impl GentleEngine {
                     &assay.handoff,
                     Some(&validated_outputs),
                 ) {
-                    Ok(report) => assessments.push(TranscriptAssayGenomicSpecificityAssessment {
-                        assay_id: assay.assay_id.clone(),
-                        assay_rank: assay.assay_rank,
-                        status: if report.summary.specificity_pass {
-                            "external_blast_pass".to_string()
+                    Ok(report) => {
+                        let status = if !report.search_completeness.complete {
+                            issues.push(Self::transcript_assay_panel_specificity_issue(
+                                "specificity_search_incomplete",
+                                Some(&assay.assay_id),
+                                None,
+                                report.search_completeness.reason.clone(),
+                            ));
+                            "external_blast_incomplete"
+                        } else if report.summary.specificity_pass {
+                            "external_blast_pass"
                         } else {
-                            "external_blast_fail".to_string()
-                        },
-                        report,
-                    }),
+                            "external_blast_fail"
+                        };
+                        assessments.push(TranscriptAssayGenomicSpecificityAssessment {
+                            assay_id: assay.assay_id.clone(),
+                            assay_rank: assay.assay_rank,
+                            status: status.to_string(),
+                            report,
+                        });
+                    }
                     Err(error) => issues.push(Self::transcript_assay_panel_specificity_issue(
                         "specificity_import_failed",
                         Some(&assay.assay_id),
@@ -12025,6 +12174,17 @@ impl GentleEngine {
             .as_ref()
             .map(|database| database.index_kind)
             .unwrap_or(BlastDatabaseIndexKind::GenomicDna);
+        let search_commands = vec![forward_blast.command.clone(), reverse_blast.command.clone()];
+        let search_completeness = Self::primer_specificity_search_completeness_for_commands(
+            blast_database.as_ref(),
+            &search_commands,
+        );
+        if !search_completeness.complete {
+            warnings.push(format!(
+                "Primer specificity search is incomplete: {}",
+                search_completeness.reason
+            ));
+        }
         let mut intended_target = resolved_input.intended_target.clone();
         if let Some(subject_id) = intended_target.subject_id.clone() {
             intended_target.subject_id = Some(Self::primer_specificity_normalize_subject_id(
@@ -12083,6 +12243,7 @@ impl GentleEngine {
             &amplicons,
             &intended_target,
             index_kind,
+            search_completeness.complete,
         );
         let (genomic_specificity, transcriptome_specificity) =
             Self::primer_specificity_target_assessments(
@@ -12128,6 +12289,7 @@ impl GentleEngine {
             forward_hits,
             reverse_hits,
             amplicons,
+            search_completeness,
             summary,
             genomic_specificity,
             transcriptome_specificity,
@@ -18117,7 +18279,9 @@ impl GentleEngine {
                 genomic_specificity_assessments.push(TranscriptAssayGenomicSpecificityAssessment {
                     assay_id: assay.assay_id.clone(),
                     assay_rank: assay.rank,
-                    status: if report.summary.specificity_pass {
+                    status: if !report.search_completeness.complete {
+                        "local_blast_incomplete".to_string()
+                    } else if report.summary.specificity_pass {
                         "local_blast_pass".to_string()
                     } else {
                         "local_blast_fail".to_string()
