@@ -1,8 +1,8 @@
 {
   "schema": "gentle.workflow_example.v1",
   "id": "pcr_selection_batch_primer_pairs_offline",
-  "title": "PCR selection-first batch primer design on TP73-AS2 promoter context (offline)",
-  "summary": "Loads local TP73 locus sequence, materializes two TP73-AS2 promoter-window ROI copy artifacts, and designs primer-pair reports for both regions.",
+  "title": "Determine and compare PCR primer pairs on TP73-AS2 promoter context (offline)",
+  "summary": "Loads local TP73 locus sequence, separates two indispensable core ROIs from their primer-search flanks, designs five deterministic candidate pairs per ROI, and exports both complete primer-design reports for review.",
   "test_mode": "always",
   "required_files": [
     "test_files/tp73.ncbi.gb"
@@ -50,65 +50,95 @@
       {
         "DesignPrimerPairs": {
           "template": "tp73_locus",
-          "roi_start_0based": 61720,
-          "roi_end_0based": 62120,
+          "roi_start_0based": 61820,
+          "roi_end_0based": 61920,
           "forward": {
             "min_length": 18,
-            "max_length": 26,
-            "location_0based": 61760,
-            "min_tm_c": 35.0,
-            "max_tm_c": 90.0,
-            "min_gc_fraction": 0.0,
-            "max_gc_fraction": 1.0,
-            "max_anneal_hits": 100000
+            "max_length": 24,
+            "start_0based": 61720,
+            "end_0based": 61745,
+            "min_tm_c": 55.0,
+            "max_tm_c": 78.0,
+            "min_gc_fraction": 0.3,
+            "max_gc_fraction": 0.8,
+            "max_anneal_hits": 1
           },
           "reverse": {
             "min_length": 18,
-            "max_length": 26,
-            "location_0based": 62080,
-            "min_tm_c": 35.0,
-            "max_tm_c": 90.0,
-            "min_gc_fraction": 0.0,
-            "max_gc_fraction": 1.0,
-            "max_anneal_hits": 100000
+            "max_length": 24,
+            "start_0based": 62000,
+            "end_0based": 62040,
+            "min_tm_c": 55.0,
+            "max_tm_c": 78.0,
+            "min_gc_fraction": 0.3,
+            "max_gc_fraction": 0.8,
+            "max_anneal_hits": 1
+          },
+          "pair_constraints": {
+            "require_roi_flanking": true,
+            "required_amplicon_motifs": [],
+            "forbidden_amplicon_motifs": [],
+            "fixed_amplicon_start_0based": null,
+            "fixed_amplicon_end_0based_exclusive": null
           },
           "min_amplicon_bp": 90,
-          "max_amplicon_bp": 400,
-          "max_tm_delta_c": 15.0,
-          "max_pairs": 50,
+          "max_amplicon_bp": 350,
+          "max_tm_delta_c": 5.0,
+          "max_pairs": 5,
           "report_id": "tp73_as2_promoter_batch_r01"
         }
       },
       {
         "DesignPrimerPairs": {
           "template": "tp73_locus",
-          "roi_start_0based": 61940,
-          "roi_end_0based": 62340,
+          "roi_start_0based": 62040,
+          "roi_end_0based": 62140,
           "forward": {
             "min_length": 18,
-            "max_length": 26,
-            "location_0based": 61980,
-            "min_tm_c": 35.0,
-            "max_tm_c": 90.0,
-            "min_gc_fraction": 0.0,
-            "max_gc_fraction": 1.0,
-            "max_anneal_hits": 100000
+            "max_length": 24,
+            "start_0based": 61940,
+            "end_0based": 61965,
+            "min_tm_c": 55.0,
+            "max_tm_c": 78.0,
+            "min_gc_fraction": 0.3,
+            "max_gc_fraction": 0.8,
+            "max_anneal_hits": 1
           },
           "reverse": {
             "min_length": 18,
-            "max_length": 26,
-            "location_0based": 62300,
-            "min_tm_c": 35.0,
-            "max_tm_c": 90.0,
-            "min_gc_fraction": 0.0,
-            "max_gc_fraction": 1.0,
-            "max_anneal_hits": 100000
+            "max_length": 24,
+            "start_0based": 62158,
+            "end_0based": 62188,
+            "min_tm_c": 55.0,
+            "max_tm_c": 78.0,
+            "min_gc_fraction": 0.3,
+            "max_gc_fraction": 0.8,
+            "max_anneal_hits": 1
+          },
+          "pair_constraints": {
+            "require_roi_flanking": true,
+            "required_amplicon_motifs": [],
+            "forbidden_amplicon_motifs": [],
+            "fixed_amplicon_start_0based": null,
+            "fixed_amplicon_end_0based_exclusive": null
           },
           "min_amplicon_bp": 90,
-          "max_amplicon_bp": 400,
-          "max_tm_delta_c": 15.0,
-          "max_pairs": 50,
+          "max_amplicon_bp": 350,
+          "max_tm_delta_c": 5.0,
+          "max_pairs": 5,
           "report_id": "tp73_as2_promoter_batch_r02"
+        }
+      },
+      {
+        "ExportPrimerDesignReport": {
+          "report_id": "tp73_as2_promoter_batch_r01",
+          "path": "artifacts/tp73_as2_promoter_batch_r01.report.json"
+        }
+      },
+      {
+        "ExportPrimerDesignReport": {
+          "report_id": "tp73_as2_promoter_batch_r02",
+          "path": "artifacts/tp73_as2_promoter_batch_r02.report.json"
         }
       }
     ]

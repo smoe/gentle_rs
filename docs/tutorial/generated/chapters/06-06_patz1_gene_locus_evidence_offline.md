@@ -26,7 +26,7 @@ Gene-centered interpretation becomes difficult when transcript order, genomic co
 
 Read the figure as a structured evidence ledger. A probe interval or junction marker identifies where an array design interrogates the locus; its colored cells show raw activity differences, not statistical significance. An occupancy interval reports a projected experimental track at the locus, not the affected isoform. A motif score is a sequence-model result, not proof of binding. The shared visual axis helps formulate validation experiments while preserving those boundaries.
 
-**Prerequisites:** Read [Chapter 10: TP53 isoform architecture expert panel (online)](./06-03_tp53_isoform_architecture_online.md), [Chapter 13: Selection-first PCR batch primer design (offline)](./04-02_pcr_selection_batch_primer_pairs_offline.md) first.
+**Prerequisites:** Read [Chapter 10: TP53 isoform architecture expert panel (online)](./06-03_tp53_isoform_architecture_online.md), [Chapter 13: Determine and review PCR primer pairs (offline)](./04-02_pcr_selection_batch_primer_pairs_offline.md) first.
 
 ## Parameters That Matter
 

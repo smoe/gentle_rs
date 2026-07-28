@@ -28,7 +28,7 @@ This chapter uses a deliberately sequence-diverse, synthetic PATZ1-like locus on
 
 Each selected assay also records a `primers specificity-plan` follow-up template. Planning creates structured BLAST jobs but does not execute them. An external scheduler can run each returned `program` with its `args[]`, wait for exit code 0, and then call `primers specificity-import`; until that happens, `genomic_confirmation_status` remains `not_run`.
 
-**Prerequisites:** Read [Chapter 13: Selection-first PCR batch primer design (offline)](./04-02_pcr_selection_batch_primer_pairs_offline.md) first.
+**Prerequisites:** Read [Chapter 13: Determine and review PCR primer pairs (offline)](./04-02_pcr_selection_batch_primer_pairs_offline.md) first.
 
 ## Parameters That Matter
 

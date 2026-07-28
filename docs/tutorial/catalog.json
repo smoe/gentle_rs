@@ -731,7 +731,7 @@
     },
     {
       "id": "pcr_selection_batch_primer_pairs_offline",
-      "title": "Selection-first PCR batch primer design (offline)",
+      "title": "Determine and review PCR primer pairs (offline)",
       "path": "docs/tutorial/generated/chapters/04-02_pcr_selection_batch_primer_pairs_offline.md",
       "group": "04",
       "group_label": "Primers, PCR & qPCR",
@@ -747,9 +747,8 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-07-28"
     },
     {
       "id": "tp73_cdna_genomic_dotplot_online",
