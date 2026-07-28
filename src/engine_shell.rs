@@ -19104,8 +19104,17 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "reads": [],
             "effects": [
                 {
+                    "fact": "report.exists",
+                    "report_kind": "primer_specificity",
+                    "equals": "primer_specificity",
                     "effect_kind": "may_on_success",
-                    "description": "Persists a derived-id primer_specificity report fact and may also write the optional JSON path."
+                    "description": "Persists a primer_specificity report under a deterministic id derived from the assessed pair, policy, and database provenance."
+                },
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "may_on_success",
+                    "description": "Writes the optional external JSON export when OUTPUT_PATH is supplied."
                 }
             ],
             "precondition_expr": {"all": []},
@@ -19136,8 +19145,17 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "reads": [],
             "effects": [
                 {
+                    "fact": "report.exists",
+                    "report_kind": "primer_specificity",
+                    "equals": "primer_specificity",
                     "effect_kind": "may_on_success",
-                    "description": "Persists a derived-id primer_specificity report fact and may also write the optional JSON path."
+                    "description": "Persists the imported primer_specificity report under its deterministic report id."
+                },
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "may_on_success",
+                    "description": "Writes the optional external JSON export when OUTPUT_PATH is supplied."
                 }
             ],
             "precondition_expr": {"all": []},

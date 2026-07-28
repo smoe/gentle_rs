@@ -4354,7 +4354,20 @@ mod tests {
             response
                 .pointer("/result/structuredContent/result/primer_specificity_report/schema")
                 .and_then(Value::as_str),
-            Some("gentle.primer_specificity_report.v1")
+            Some("gentle.primer_specificity_report.v2")
+        );
+        let report_id = response
+            .pointer("/result/structuredContent/result/primer_specificity_report/report_id")
+            .and_then(Value::as_str)
+            .expect("MCP specificity import should return the persisted report id");
+        assert!(report_id.starts_with("primer_specificity_"));
+        let persisted = ProjectState::load_from_path(&state_path.to_string_lossy())
+            .expect("load persisted specificity state");
+        assert!(
+            GentleEngine::from_state(persisted)
+                .get_primer_specificity_report(report_id)
+                .is_ok(),
+            "MCP specificity import should persist the same report exposed to CLI and GUI"
         );
     }
 

@@ -26443,14 +26443,30 @@ fn execute_introspect_capabilities_projects_full_registry_with_fact_annotations(
         descriptor["id"].as_str() == Some("primers show-report")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
             && descriptor["reads"][0]["fact"].as_str() == Some("report.exists")
-            && descriptor["reads"][0]["equals"].as_str() == Some("primer_design")
+            && descriptor["precondition_expr"]["any"]
+                .as_array()
+                .is_some_and(|items| {
+                    items.iter().any(|item| {
+                        item["equals"].as_str() == Some("primer_design")
+                    }) && items.iter().any(|item| {
+                        item["equals"].as_str() == Some("primer_specificity")
+                    })
+                })
             && descriptor["effects"].as_array().map(Vec::len) == Some(0)
     }));
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("primers export-report")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
             && descriptor["reads"][0]["fact"].as_str() == Some("report.exists")
-            && descriptor["reads"][0]["equals"].as_str() == Some("primer_design")
+            && descriptor["precondition_expr"]["any"]
+                .as_array()
+                .is_some_and(|items| {
+                    items.iter().any(|item| {
+                        item["equals"].as_str() == Some("primer_design")
+                    }) && items.iter().any(|item| {
+                        item["equals"].as_str() == Some("primer_specificity")
+                    })
+                })
             && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
             && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
     }));
@@ -26775,16 +26791,25 @@ fn execute_introspect_capabilities_projects_full_registry_with_fact_annotations(
     );
     for id in [
         "AssessPrimerPairSpecificity",
-        "PreparePrimerPairSpecificityHandoff",
         "ImportPrimerPairSpecificityHandoff",
     ] {
         assert!(capabilities.iter().any(|descriptor| {
             descriptor["id"].as_str() == Some(id)
                 && descriptor["annotation_status"].as_str() == Some("fact_annotated")
-                && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
-                && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+                && descriptor["mutating"].as_str() == Some("true")
+                && descriptor["effects"][0]["fact"].as_str() == Some("report.exists")
+                && descriptor["effects"][0]["equals"].as_str() == Some("primer_specificity")
+                && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+                && descriptor["effects"][1]["fact"].as_str() == Some("artifact.written")
+                && descriptor["effects"][1]["effect_kind"].as_str() == Some("may_on_success")
         }));
     }
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("PreparePrimerPairSpecificityHandoff")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+            && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+    }));
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("screenshot-window")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")

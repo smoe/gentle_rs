@@ -2187,6 +2187,33 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_forwarded_shell_command_routes_primer_specificity_through_shared_parser() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "primers".to_string(),
+            "specificity".to_string(),
+            "primer_report_1".to_string(),
+            "--pair-rank".to_string(),
+            "2".to_string(),
+            "--target-genome".to_string(),
+            "GRCh38.p14".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1)
+            .expect("parse forwarded primer specificity")
+            .expect("primers is a forwarded shell root");
+        assert!(matches!(
+            parsed,
+            ShellCommand::PrimersSpecificity {
+                primer_report_id,
+                pair_rank: Some(2),
+                target_genome_id,
+                ..
+            } if primer_report_id.as_deref() == Some("primer_report_1")
+                && target_genome_id == "GRCh38.p14"
+        ));
+    }
+
+    #[test]
     fn test_parse_forwarded_shell_command_routes_hosts_through_shared_parser() {
         let args = vec![
             "gentle_cli".to_string(),
