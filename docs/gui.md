@@ -3968,9 +3968,11 @@ Primer pairs form:
   - accepts a prepared reference genome id, max product length, and max BLAST
     hits per primer
   - `Confirm specificity` calls the shared
-    `AssessPrimerPairSpecificity` engine operation and reports pass/fail,
-    intended/unintended product counts, primer-hit counts, and warning count in
-    the status line
+    `AssessPrimerPairSpecificity` engine operation, persists its report, and
+    reports the stable report id, pass/fail state, intended/unintended product
+    counts, primer-hit counts, and warning count in the status line
+  - the confirmation block retains the latest persisted specificity-report id
+    and shows a compact target/status/product/design-provenance summary
   - only annealing segments are BLASTed; saved 5' tails remain provenance in
     the shared report contract
   - the search does not use BLAST `-max_target_seqs`; the configured maximum
@@ -4173,14 +4175,19 @@ Restriction-site cloning handoff:
   and fall back to unique cutters by cut position when no explicit MCS order is
   available
 
-Persisted primer/qPCR reports now also appear in the project lineage graph/table
-as analysis artifacts linked from the template sequence.
+Persisted primer/qPCR design reports and primer-specificity reports now also
+appear in the project lineage graph/table as analysis artifacts linked from the
+template sequence.
 
 - lineage actions reopen the PCR Designer on the selected report instead of
   only opening the source sequence
 - clicking the underlying PCR-related operation glyph or `Op` cell reopens the
   same PCR Designer on the originating template sequence
 - lineage details expose the stored backend plus pair/assay counts
+- primer-specificity lineage details expose target database kind, result
+  status, candidate-product count, and failing off-target count; reopening
+  restores its compact evidence summary and cited primer-design report when
+  available
 - restriction-cloning handoffs also appear as lineage analysis artifacts linked
   from the template sequence and reopen the same PCR Designer with the saved
   handoff highlighted

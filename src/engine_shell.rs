@@ -11420,12 +11420,17 @@ impl ShellCommand {
                     .filter(|v| !v.is_empty())
                     .unwrap_or("default"),
             ),
-            Self::PrimersListReports => "list stored primer-design reports".to_string(),
+            Self::PrimersListReports => {
+                "list stored primer-design and primer-specificity reports".to_string()
+            }
             Self::PrimersShowReport { report_id } => {
-                format!("show stored primer-design report '{}'", report_id)
+                format!(
+                    "show stored primer-design or primer-specificity report '{}'",
+                    report_id
+                )
             }
             Self::PrimersExportReport { report_id, path } => format!(
-                "export stored primer-design report '{}' to '{}'",
+                "export stored primer-design or primer-specificity report '{}' to '{}'",
                 report_id, path
             ),
             Self::PrimersListQpcrReports => "list stored qPCR-design reports".to_string(),
@@ -15677,6 +15682,12 @@ fn push_introspection_report_facts(graph: &mut ProjectFactGraph, engine: &Gentle
     );
     graph.facts.extend(
         engine
+            .list_primer_specificity_reports()
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "primer_specificity")),
+    );
+    graph.facts.extend(
+        engine
             .list_qpcr_design_reports()
             .into_iter()
             .map(|row| introspection_report_fact(row.report_id, "qpcr_design")),
@@ -19078,17 +19089,30 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 arrangement_id_atom()
             ]}),
         ),
-        pool_artifact_descriptor(
-            "AssessPrimerPairSpecificity",
-            "Assess one primer pair against a prepared reference genome and optionally write the returned specificity report to JSON.",
-            vec![
+        json!({
+            "id": "AssessPrimerPairSpecificity",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
                 json!({"name": "PRIMER_REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional primer-design report id carried by primer_report_id"}),
                 json!({"name": "FORWARD_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit forward primer sequence alternative"}),
                 json!({"name": "REVERSE_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit reverse primer sequence alternative"}),
                 json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference genome id used for specificity search"}),
                 json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path carried by path"}),
             ],
-        ),
+            "reads": [],
+            "effects": [
+                {
+                    "effect_kind": "may_on_success",
+                    "description": "Persists a derived-id primer_specificity report fact and may also write the optional JSON path."
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Assess one primer pair against a prepared reference genome, persist the returned specificity artifact, and optionally write it to JSON.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("AssessPrimerPairSpecificity")
+        }),
         pool_artifact_descriptor(
             "PreparePrimerPairSpecificityHandoff",
             "Prepare deterministic primer BLAST commands and query files without running the BLAST searches.",
@@ -19100,14 +19124,27 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external handoff bundle directory carried by output_dir"}),
             ],
         ),
-        pool_artifact_descriptor(
-            "ImportPrimerPairSpecificityHandoff",
-            "Import completed primer BLAST TSVs from a deterministic handoff and apply the shared specificity interpretation.",
-            vec![
+        json!({
+            "id": "ImportPrimerPairSpecificityHandoff",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
                 json!({"name": "HANDOFF_PATH", "required": true, "subject_kind": "other", "detail": "existing gentle.primer_specificity_handoff.v1 JSON path"}),
                 json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path carried by path"}),
             ],
-        ),
+            "reads": [],
+            "effects": [
+                {
+                    "effect_kind": "may_on_success",
+                    "description": "Persists a derived-id primer_specificity report fact and may also write the optional JSON path."
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Import completed primer BLAST TSVs from a deterministic handoff, apply the shared specificity interpretation, and persist the report artifact.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ImportPrimerPairSpecificityHandoff")
+        }),
         arrangement_create_descriptor(
             "arrange-serial",
             "Create a persisted serial arrangement from one or more existing containers.",
@@ -22094,7 +22131,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "reads": [],
             "effects": [],
             "precondition_expr": {"all": []},
-            "description": "List persisted primer-pair design reports.",
+            "description": "List persisted primer-pair design reports and primer-specificity artifacts.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers list-reports")
         }),
@@ -22104,18 +22141,19 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "mutating": "false",
             "requires_confirmation": false,
             "args": [
-                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design report id"}
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design or primer-specificity report id"}
             ],
             "reads": [
-                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}}
             ],
             "effects": [],
             "precondition_expr": {
-                "all": [
-                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}
+                "any": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"},
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_specificity"}
                 ]
             },
-            "description": "Inspect one persisted primer-pair design report.",
+            "description": "Inspect one persisted primer-pair design or primer-specificity report.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers show-report")
         }),
@@ -22125,11 +22163,11 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "mutating": "false",
             "requires_confirmation": false,
             "args": [
-                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design report id"},
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design or primer-specificity report id"},
                 {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
             ],
             "reads": [
-                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}}
             ],
             "effects": [
                 {
@@ -22139,11 +22177,12 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 }
             ],
             "precondition_expr": {
-                "all": [
-                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}
+                "any": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"},
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_specificity"}
                 ]
             },
-            "description": "Export one persisted primer-pair design report to an external JSON file.",
+            "description": "Export one persisted primer-pair design or primer-specificity report to an external JSON file.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers export-report")
         }),
@@ -26867,10 +26906,10 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         ]),
         "primers list-reports" => Some(vec![]),
         "primers show-report" => Some(vec![
-            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}),
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}}),
         ]),
         "primers export-report" => Some(vec![
-            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}),
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}}),
         ]),
         "primers design-qpcr" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
@@ -51612,34 +51651,40 @@ fn execute_primers_command(
             cache_dir,
             path,
         } => {
-            let report = engine
-                .assess_primer_pair_specificity(
-                    primer_report_id.as_deref(),
-                    *pair_rank,
-                    *pair_index,
-                    forward_primer.as_deref(),
-                    reverse_primer.as_deref(),
-                    target_genome_id,
-                    policy.clone(),
-                    catalog_path.as_deref(),
-                    cache_dir.as_deref(),
-                )
-                .map_err(|e| e.to_string())?;
-            if let Some(path) = path
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::AssessPrimerPairSpecificity {
+                    primer_report_id: primer_report_id.clone(),
+                    pair_rank: *pair_rank,
+                    pair_index: *pair_index,
+                    forward_primer: forward_primer.clone(),
+                    reverse_primer: reverse_primer.clone(),
+                    target_genome_id: target_genome_id.clone(),
+                    policy: policy.clone(),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .primer_specificity_report
                 .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                let json_text = serde_json::to_string_pretty(&report)
-                    .map_err(|e| format!("Could not serialize primer specificity report: {e}"))?;
-                fs::write(path, json_text).map_err(|e| {
-                    format!("Could not write primer specificity report to '{path}': {e}")
-                })?;
-            }
+                .cloned()
+                .ok_or_else(|| "Primer specificity operation returned no report".to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
             Ok(ShellRunResult {
-                state_changed: false,
+                state_changed: before != after,
                 output: json!({
                     "schema": "gentle.primer_specificity_command.v1",
+                    "result": op_result,
                     "report": report,
                     "path": path,
                 }),
@@ -51686,6 +51731,11 @@ fn execute_primers_command(
             })
         }
         ShellCommand::PrimersSpecificityImport { handoff_path, path } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
             let op_result = engine
                 .apply(Operation::ImportPrimerPairSpecificityHandoff {
                     handoff_path: handoff_path.clone(),
@@ -51698,8 +51748,13 @@ fn execute_primers_command(
                 .ok_or_else(|| {
                     "Primer specificity handoff import operation returned no report".to_string()
                 })?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
             Ok(ShellRunResult {
-                state_changed: false,
+                state_changed: before != after,
                 output: json!({
                     "schema": "gentle.primer_specificity_import_command.v1",
                     "report": report,
@@ -52522,41 +52577,73 @@ fn execute_primers_command(
         }
         ShellCommand::PrimersListReports => {
             let reports = engine.list_primer_design_reports();
+            let specificity_reports = engine.list_primer_specificity_reports();
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "schema": "gentle.primer_design_report_list.v1",
                     "report_count": reports.len(),
                     "reports": reports,
+                    "specificity_report_count": specificity_reports.len(),
+                    "specificity_reports": specificity_reports,
                 }),
             })
         }
         ShellCommand::PrimersShowReport { report_id } => {
-            let report = engine
-                .get_primer_design_report(report_id)
-                .map_err(|e| e.to_string())?;
-            let simple_pcr_pairs = primer_design_simple_pcr_pairs_json(&report);
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "report": report,
-                    "simple_pcr_pairs": simple_pcr_pairs,
-                }),
-            })
+            if let Ok(report) = engine.get_primer_design_report(report_id) {
+                let simple_pcr_pairs = primer_design_simple_pcr_pairs_json(&report);
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "report_kind": "primer_design",
+                        "report": report,
+                        "simple_pcr_pairs": simple_pcr_pairs,
+                    }),
+                })
+            } else {
+                let report = engine
+                    .get_primer_specificity_report(report_id)
+                    .map_err(|error| error.to_string())?;
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "report_kind": "primer_specificity",
+                        "report": report,
+                        "simple_pcr_pairs": [],
+                    }),
+                })
+            }
         }
         ShellCommand::PrimersExportReport { report_id, path } => {
-            let report = engine
-                .export_primer_design_report(report_id, path)
-                .map_err(|e| e.to_string())?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.primer_design_report_export.v1",
-                    "report_id": report.report_id,
-                    "path": path,
-                    "pair_count": report.pair_count,
-                }),
-            })
+            if let Ok(report) = engine.get_primer_design_report(report_id) {
+                engine
+                    .export_primer_design_report(report_id, path)
+                    .map_err(|error| error.to_string())?;
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "schema": "gentle.primer_design_report_export.v1",
+                        "report_kind": "primer_design",
+                        "report_id": report.report_id,
+                        "path": path,
+                        "pair_count": report.pair_count,
+                    }),
+                })
+            } else {
+                let report = engine
+                    .export_primer_specificity_report(report_id, path)
+                    .map_err(|error| error.to_string())?;
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "schema": "gentle.primer_specificity_report_export.v1",
+                        "report_kind": "primer_specificity",
+                        "report_id": report.report_id,
+                        "path": path,
+                        "status": report.summary.status,
+                    }),
+                })
+            }
         }
         ShellCommand::PrimersListQpcrReports => {
             let reports = engine.list_qpcr_design_reports();

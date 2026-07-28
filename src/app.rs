@@ -2127,6 +2127,7 @@ enum LineageAnalysisKind {
     FlexibilityTrack,
     RnaReadInterpretation,
     PrimerDesign,
+    PrimerSpecificity,
     QpcrDesign,
     RestrictionCloningPcrHandoff,
     ProteinDerivation,
@@ -2143,6 +2144,7 @@ impl LineageAnalysisKind {
             Self::FlexibilityTrack => "flexibility_track",
             Self::RnaReadInterpretation => "rna_read_interpretation",
             Self::PrimerDesign => "primer_design",
+            Self::PrimerSpecificity => "primer_specificity",
             Self::QpcrDesign => "qpcr_design",
             Self::RestrictionCloningPcrHandoff => "restriction_cloning_pcr_handoff",
             Self::ProteinDerivation => "protein_derivation",
@@ -6376,6 +6378,67 @@ Error: `{err}`"
         }
     }
 
+    fn open_sequence_window_for_primer_specificity_report(
+        &mut self,
+        seq_id: &str,
+        report_id: &str,
+    ) {
+        let report = self
+            .engine
+            .read()
+            .ok()
+            .and_then(|engine| engine.get_primer_specificity_report(report_id).ok());
+        let Some(report) = report else {
+            self.app_status = format!(
+                "Cannot reopen primer-specificity report '{}': persisted report not found",
+                report_id
+            );
+            return;
+        };
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+            if let Some(window) = self.windows.get(&viewport_id)
+                && let Ok(mut window) = window.write()
+            {
+                window.focus_primer_specificity_report(report_id);
+            }
+        } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+            window.focus_primer_specificity_report(report_id);
+        } else {
+            let exists = self
+                .engine
+                .read()
+                .unwrap()
+                .state()
+                .sequences
+                .contains_key(seq_id);
+            if exists {
+                let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+                window.focus_primer_specificity_report(report_id);
+                self.new_windows.push(window);
+            }
+        }
+        if let Err(error) = self.open_pcr_design_dialog_for_seq_id(seq_id) {
+            self.app_status = format!(
+                "Cannot open PCR Designer for primer-specificity report '{}' on '{}': {}",
+                report_id, seq_id, error
+            );
+            return;
+        }
+        self.app_status = if let Some(primer_report_id) =
+            report.design_provenance.primer_report_id.as_deref()
+        {
+            format!(
+                "Opened persisted primer-specificity report '{}' with cited primer-design report '{}'",
+                report.report_id, primer_report_id
+            )
+        } else {
+            format!(
+                "Opened persisted primer-specificity report '{}'; design-selection provenance is not available",
+                report.report_id
+            )
+        };
+    }
+
     fn open_sequence_window_for_qpcr_design_report(&mut self, seq_id: &str, report_id: &str) {
         if !report_id.trim().is_empty() {
             if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
@@ -6497,6 +6560,9 @@ Error: `{err}`"
             }
             LineageAnalysisKind::PrimerDesign => {
                 self.open_sequence_window_for_primer_design_report(seq_id, artifact_id);
+            }
+            LineageAnalysisKind::PrimerSpecificity => {
+                self.open_sequence_window_for_primer_specificity_report(seq_id, artifact_id);
             }
             LineageAnalysisKind::QpcrDesign => {
                 self.open_sequence_window_for_qpcr_design_report(seq_id, artifact_id);
@@ -17770,6 +17836,70 @@ Error: `{err}`"
                         node_id.clone(),
                         edge_op_id.clone(),
                     ));
+                }
+            }
+
+            let primer_specificity_summaries = engine.list_primer_specificity_reports();
+            for summary in primer_specificity_summaries {
+                let Some(seq_id) = summary.primary_seq_id.clone() else {
+                    continue;
+                };
+                let node_id = format!("analysis:primer_specificity:{}", summary.report_id);
+                let created_by_op = summary.op_id.clone().unwrap_or_else(|| "-".to_string());
+                let edge_op_id = if created_by_op == "-" {
+                    format!("analysis:primer_specificity:{}", summary.report_id)
+                } else {
+                    created_by_op.clone()
+                };
+                op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+                    format!(
+                        "Assess primer specificity: report_id={}, target={}",
+                        summary.report_id, summary.target_genome_id
+                    )
+                });
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: seq_id.clone(),
+                    display_name: summary.report_id.clone(),
+                    origin: "PrimerSpecificity".to_string(),
+                    created_by_op,
+                    created_at: summary.generated_at_unix_ms,
+                    parents: vec![seq_id.clone()],
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: Some(LineageAnalysisKind::PrimerSpecificity),
+                    analysis_artifact_id: Some(summary.report_id.clone()),
+                    analysis_reference_seq_id: Some(summary.target_genome_id.clone()),
+                    analysis_mode: Some(summary.target_kind.clone()),
+                    analysis_status: Some(summary.status.clone()),
+                    analysis_point_count: Some(summary.amplicon_count),
+                    analysis_bin_count: None,
+                    analysis_read_count: None,
+                    analysis_trace_count: None,
+                    analysis_target_count: Some(1),
+                    analysis_variant_count: Some(summary.failing_unintended_amplicon_count),
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                if let Some(source_node_id) = state.lineage.seq_to_node.get(&seq_id) {
+                    lineage_edges.push((source_node_id.clone(), node_id, edge_op_id));
                 }
             }
 

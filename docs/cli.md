@@ -3072,10 +3072,15 @@ Shared shell command:
     - `primers seed-qpcr-from-feature SEQ_ID FEATURE_ID`
     - `primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID] [--specificity-evidence junction_only|unique_exon_or_chain|either_prefer_junction]`
     - `primers list-reports`
+      - lists both persisted primer-design reports and persisted
+        primer-specificity artifacts in separate arrays
     - `primers show-report REPORT_ID`
-      - includes `simple_pcr_pairs` with per-pair left/right distance from the
-        core ROI, overlap flags, and flanking labels for quick CLI inspection
+      - accepts either kind; design reports include `simple_pcr_pairs` with
+        per-pair left/right distance from the core ROI, overlap flags, and
+        flanking labels for quick CLI inspection
     - `primers export-report REPORT_ID OUTPUT.json`
+      - exports either a primer-design report or a persisted
+        primer-specificity artifact without rerunning BLAST
     - `primers list-qpcr-reports`
     - `primers show-qpcr-report REPORT_ID`
       - persisted qPCR report output now includes `best_assay_summary` plus
@@ -3496,7 +3501,20 @@ Shared shell command:
         shell/CLI/ClawBio flows can promote the same qPCR strip without hard-
         coding that protocol id elsewhere
     - Primer specificity confirmation notes (`primers specificity`):
-      - returns `gentle.primer_specificity_report.v1`
+      - returns and persists `gentle.primer_specificity_report.v2`; repeated
+        assessment of the same biological inputs and policy reuses one stable
+        content-derived `report_id`
+      - the report follows GENtle's computational-artifact contract with
+        `op_id`, `run_id`, sequence links, external inputs/database
+        fingerprints, request/effective-setting summaries, a reopen hint, and
+        supported export kinds
+      - independent characterization rows use
+        `pass|fail|incomplete|not_run`; design provenance is cited when the
+        assessed pair came from a persisted primer-design report, while raw or
+        commercial/literature primer strings explicitly remain `not_run`
+      - this operation does not silently rerun Primer3/oligo-pair QC, variant
+        masking, or repeat/low-complexity masking. Those dimensions remain
+        `not_run` unless their own evidence exists
       - uses local BLAST+ through the prepared reference-genome index path; no
         NCBI remote submission is performed
       - saved report mode consumes `REPORT_ID --pair-rank N` from a persisted
@@ -3528,7 +3546,8 @@ Shared shell command:
         FASTA index, repeated warnings are aggregated, and genomic-DNA versus
         transcriptome/cDNA assessments remain separate in the report
       - `--path OUTPUT.json` writes the same structured report returned on
-        stdout
+        stdout; the persisted copy can later be inspected or exported with
+        `primers show-report REPORT_ID` and `primers export-report`
       - use `primers specificity-plan` when a scheduler, ClawBio skill, or
         another wrapper should own the BLAST processes. The returned
         `gentle.primer_specificity_handoff.v1` stores authoritative

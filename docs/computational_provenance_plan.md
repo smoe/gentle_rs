@@ -71,12 +71,26 @@ Shipped baseline:
   sequence
 - lineage can reopen the PCR Designer on the selected report
 - lineage details expose backend provenance plus pair/assay counts
+- primer-specificity assessment and handoff import now persist the existing
+  specificity report family as first-class computational artifacts rather than
+  creating a second primer evaluator
+- specificity artifacts carry stable ids, operation/run provenance, sequence
+  links, database/external-input fingerprints, request/effective-setting
+  summaries, and explicit independent `pass|fail|incomplete|not_run`
+  characterization dimensions
+- specificity artifacts cite a persisted primer-design decision when one
+  exists and explicitly mark design-selection provenance unavailable for raw
+  primer pairs
+- project facts, CLI report inspection/export, and GUI lineage expose and
+  reopen the same persisted specificity artifact
 
 Expected next step:
 
-- extend the same artifact contract to richer primer-adjacent outputs such as
-  backend-equivalence audits, nested-PCR follow-ons, or future batch summary
-  artifacts when those become persisted review objects
+- retain score decomposition and bounded rejected near-miss candidates in
+  primer-design reports, then connect their selection narrative/evidence and
+  excluded intervals to the existing construct-reasoning graph family
+- treat multiplex cross-dimer/cross-product characterization as a separate
+  panel-level artifact rather than widening the one-pair specificity schema
 
 ### 2. Projection/annotation analysis artifacts
 

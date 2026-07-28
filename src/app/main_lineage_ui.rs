@@ -210,6 +210,11 @@ impl GENtleApp {
         {
             return Some(LineageAnalysisKind::PrimerDesign);
         }
+        if row.node_id.starts_with("analysis:primer_specificity:")
+            || row.origin.eq_ignore_ascii_case("primerspecificity")
+        {
+            return Some(LineageAnalysisKind::PrimerSpecificity);
+        }
         if row.node_id.starts_with("analysis:qpcr:")
             || row.origin.eq_ignore_ascii_case("qpcrdesign")
         {
@@ -1250,6 +1255,20 @@ impl GENtleApp {
                                                             row.analysis_target_count.unwrap_or(0)
                                                         )
                                                     }
+                                                    Some(LineageAnalysisKind::PrimerSpecificity) => {
+                                                        format!(
+                                                            "{} | target={} | status={} | products={} | failing_off_targets={}",
+                                                            artifact_id,
+                                                            row.analysis_reference_seq_id
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
+                                                        )
+                                                    }
                                                     Some(LineageAnalysisKind::QpcrDesign) => {
                                                         format!(
                                                             "{} | backend={} | assays={}",
@@ -1904,6 +1923,20 @@ impl GENtleApp {
                                                             row.analysis_target_count.unwrap_or(0)
                                                         )
                                                     }
+                                                    Some(LineageAnalysisKind::PrimerSpecificity) => {
+                                                        format!(
+                                                            "primer_specificity={} | target={} | status={} | products={} | failing_off_targets={}",
+                                                            artifact_id,
+                                                            row.analysis_reference_seq_id
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
+                                                        )
+                                                    }
                                                     Some(LineageAnalysisKind::QpcrDesign) => {
                                                         format!(
                                                             "qpcr_report={} | backend={} | assays={}",
@@ -2172,6 +2205,23 @@ impl GENtleApp {
                                                                 .as_deref()
                                                                 .unwrap_or("-"),
                                                             row.analysis_target_count.unwrap_or(0)
+                                                        ));
+                                                    }
+                                                    Some(LineageAnalysisKind::PrimerSpecificity) => {
+                                                        ui.small(format!(
+                                                            "template={} | target={} | database_kind={} | status={} | products={} | failing_off_targets={}",
+                                                            row.seq_id,
+                                                            row.analysis_reference_seq_id
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_mode
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
                                                         ));
                                                     }
                                                     Some(LineageAnalysisKind::QpcrDesign) => {
@@ -2942,6 +2992,10 @@ impl GENtleApp {
                                                 "Open Primer Report",
                                                 "Open the PCR Designer on this persisted primer-design report",
                                             ),
+                                            Some(LineageAnalysisKind::PrimerSpecificity) => (
+                                                "Open Specificity Evidence",
+                                                "Open this persisted primer-specificity artifact in PCR Designer, together with its cited design report when available",
+                                            ),
                                             Some(LineageAnalysisKind::QpcrDesign) => (
                                                 "Open qPCR Report",
                                                 "Open the PCR Designer on this persisted qPCR-design report",
@@ -3231,6 +3285,7 @@ impl GENtleApp {
                         ) {
                             Some(LineageAnalysisKind::SequencingConfirmation) => "baseline sequence",
                             Some(LineageAnalysisKind::ReverseTranslation) => "product sequence",
+                            Some(LineageAnalysisKind::PrimerSpecificity) => "target genome/database",
                             _ => "reference sequence",
                         };
                         ui.small(format!("{reference_label}={reference_seq_id}"));
@@ -3242,6 +3297,7 @@ impl GENtleApp {
                             Some(LineageAnalysisKind::RnaReadInterpretation) => "profile",
                             Some(LineageAnalysisKind::PrimerDesign)
                             | Some(LineageAnalysisKind::QpcrDesign) => "backend",
+                            Some(LineageAnalysisKind::PrimerSpecificity) => "database_kind",
                             Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => {
                                 "handoff_mode"
                             }
@@ -3279,6 +3335,7 @@ impl GENtleApp {
                             }
                             Some(LineageAnalysisKind::ReverseTranslation) => "translation_table",
                             Some(LineageAnalysisKind::ConstructReasoning) => "evidence_count",
+                            Some(LineageAnalysisKind::PrimerSpecificity) => "product_count",
                             _ => "point_count",
                         };
                         ui.small(format!("{point_label}={points}"));
@@ -3300,6 +3357,7 @@ impl GENtleApp {
                                 "target_gene_count"
                             }
                             Some(LineageAnalysisKind::PrimerDesign) => "pair_count",
+                            Some(LineageAnalysisKind::PrimerSpecificity) => "assessed_pair_count",
                             Some(LineageAnalysisKind::QpcrDesign) => "assay_count",
                             Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => {
                                 "handoff_count"
@@ -3321,6 +3379,9 @@ impl GENtleApp {
                             }
                             Some(LineageAnalysisKind::ReverseTranslation) => "protein_aa",
                             Some(LineageAnalysisKind::ConstructReasoning) => "decision_count",
+                            Some(LineageAnalysisKind::PrimerSpecificity) => {
+                                "failing_off_target_count"
+                            }
                             _ => "variant_count",
                         };
                         ui.small(format!("{variant_label}={variant_count}"));
@@ -3344,6 +3405,9 @@ impl GENtleApp {
                                 "Open RNA-read Mapping"
                             }
                             Some(LineageAnalysisKind::PrimerDesign) => "Open Primer Report",
+                            Some(LineageAnalysisKind::PrimerSpecificity) => {
+                                "Open Specificity Evidence"
+                            }
                             Some(LineageAnalysisKind::QpcrDesign) => "Open qPCR Report",
                             Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => {
                                 "Open Cloning Handoff"

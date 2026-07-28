@@ -6459,6 +6459,82 @@ impl Default for PrimerSpecificitySearchCompleteness {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Four-state verdict used by independent primer-pair characterization dimensions.
+pub enum PrimerPairCharacterizationStatus {
+    Pass,
+    Fail,
+    Incomplete,
+    #[default]
+    NotRun,
+}
+
+impl PrimerPairCharacterizationStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::Fail => "fail",
+            Self::Incomplete => "incomplete",
+            Self::NotRun => "not_run",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One non-sequence input bound to a persisted computational artifact.
+pub struct ComputationalArtifactExternalInput {
+    pub source_kind: String,
+    pub source_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum_algorithm: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Citation from a primer-specificity artifact back to the design decision that
+/// selected the assessed primer pair.
+pub struct PrimerDesignProvenanceCitation {
+    pub status: PrimerPairCharacterizationStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_rank: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_report_schema: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_generated_at_unix_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend_used: Option<String>,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Independent, explicit status for one characterization dimension.
+pub struct PrimerPairCharacterizationDimension {
+    pub dimension: String,
+    pub status: PrimerPairCharacterizationStatus,
+    pub summary: String,
+    #[serde(default)]
+    pub evidence_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Summary badge for a local primer specificity report.
@@ -6480,7 +6556,26 @@ pub struct PrimerSpecificitySummary {
 /// prepared genome BLAST database.
 pub struct PrimerSpecificityReport {
     pub schema: String,
+    pub report_id: String,
     pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_seq_id: Option<String>,
+    #[serde(default)]
+    pub related_seq_ids: Vec<String>,
+    #[serde(default)]
+    pub external_inputs: Vec<ComputationalArtifactExternalInput>,
+    #[serde(default)]
+    pub request_summary: BTreeMap<String, Value>,
+    #[serde(default)]
+    pub effective_settings_summary: BTreeMap<String, Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reopen_hint: Option<String>,
+    #[serde(default)]
+    pub export_kinds: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_report_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -6520,7 +6615,36 @@ pub struct PrimerSpecificityReport {
     #[serde(default)]
     pub transcriptome_specificity: PrimerSpecificityTargetAssessment,
     #[serde(default)]
+    pub design_provenance: PrimerDesignProvenanceCitation,
+    #[serde(default)]
+    pub characterization_dimensions: Vec<PrimerPairCharacterizationDimension>,
+    #[serde(default)]
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Compact row for listing persisted primer-specificity artifacts.
+pub struct PrimerSpecificityReportSummary {
+    pub report_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_rank: Option<usize>,
+    pub target_kind: String,
+    pub target_genome_id: String,
+    pub status: String,
+    pub specificity_pass: bool,
+    pub amplicon_count: usize,
+    pub failing_unintended_amplicon_count: usize,
+    pub design_provenance_status: PrimerPairCharacterizationStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -6555,6 +6679,12 @@ pub struct PrimerSpecificityHandoff {
     pub handoff_id: String,
     pub bundle_dir: String,
     pub handoff_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_seq_id: Option<String>,
+    #[serde(default)]
+    pub related_seq_ids: Vec<String>,
+    #[serde(default)]
+    pub design_provenance: PrimerDesignProvenanceCitation,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_report_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -13534,6 +13534,21 @@ fn lineage_analysis_open_payload_infers_missing_metadata_from_node_id() {
         ))
     );
 
+    let mut specificity_row =
+        make_lineage_row("analysis:primer_specificity:tp73_specificity", "seq_primer");
+    specificity_row.kind = LineageNodeKind::Analysis;
+    specificity_row.display_name.clear();
+    specificity_row.analysis_kind = None;
+    specificity_row.analysis_artifact_id = None;
+    assert_eq!(
+        GENtleApp::lineage_analysis_open_payload(&specificity_row),
+        Some((
+            LineageAnalysisKind::PrimerSpecificity,
+            "seq_primer".to_string(),
+            "tp73_specificity".to_string(),
+        ))
+    );
+
     let mut qpcr_row = make_lineage_row("analysis:qpcr:tp73_qpcr", "seq_qpcr");
     qpcr_row.kind = LineageNodeKind::Analysis;
     qpcr_row.display_name.clear();
@@ -14144,6 +14159,56 @@ fn refresh_lineage_cache_includes_primer_and_qpcr_design_analysis_nodes() {
             .expect("design qpcr assays");
         (primer_result.op_id, qpcr_result.op_id)
     };
+    let specificity_op_id = "op-primer-specificity-test".to_string();
+    {
+        let mut engine = app.engine.write().unwrap();
+        let report = PrimerSpecificityReport {
+            schema: "gentle.primer_specificity_report.v2".to_string(),
+            report_id: "tp73_primer_specificity".to_string(),
+            generated_at_unix_ms: 42,
+            op_id: Some(specificity_op_id.clone()),
+            run_id: Some("run-primer-specificity-test".to_string()),
+            primary_seq_id: Some("tpl".to_string()),
+            primer_report_id: Some("tp73_primer".to_string()),
+            pair_rank: Some(1),
+            target_kind: "genomic_dna".to_string(),
+            target_genome_id: "GRCh38".to_string(),
+            summary: PrimerSpecificitySummary {
+                specificity_pass: true,
+                status: "pass".to_string(),
+                amplicon_count: 1,
+                summary: "Synthetic persisted specificity result".to_string(),
+                ..PrimerSpecificitySummary::default()
+            },
+            design_provenance: PrimerDesignProvenanceCitation {
+                status: PrimerPairCharacterizationStatus::Pass,
+                primer_report_id: Some("tp73_primer".to_string()),
+                pair_rank: Some(1),
+                pair_index: Some(0),
+                primary_seq_id: Some("tpl".to_string()),
+                summary: "Cited synthetic primer-design report".to_string(),
+                ..PrimerDesignProvenanceCitation::default()
+            },
+            ..PrimerSpecificityReport::default()
+        };
+        let metadata = engine
+            .state_mut()
+            .metadata
+            .get_mut(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+            .expect("primer design metadata");
+        let store = metadata
+            .as_object_mut()
+            .expect("primer design store object");
+        let reports = store
+            .entry("primer_specificity_reports")
+            .or_insert_with(|| serde_json::json!({}))
+            .as_object_mut()
+            .expect("specificity report store object");
+        reports.insert(
+            report.report_id.clone(),
+            serde_json::to_value(report).expect("serialize specificity report"),
+        );
+    }
 
     app.refresh_lineage_cache_if_needed();
 
@@ -14180,6 +14245,30 @@ fn refresh_lineage_cache_includes_primer_and_qpcr_design_analysis_nodes() {
     assert!(qpcr_row.analysis_target_count.is_some());
     assert_eq!(qpcr_row.created_by_op, qpcr_op_id);
 
+    let specificity_row = app
+        .lineage_rows
+        .iter()
+        .find(|row| row.node_id == "analysis:primer_specificity:tp73_primer_specificity")
+        .expect("primer-specificity lineage row");
+    assert_eq!(
+        specificity_row.analysis_kind,
+        Some(LineageAnalysisKind::PrimerSpecificity)
+    );
+    assert_eq!(
+        specificity_row.analysis_artifact_id.as_deref(),
+        Some("tp73_primer_specificity")
+    );
+    assert_eq!(
+        specificity_row.analysis_mode.as_deref(),
+        Some("genomic_dna")
+    );
+    assert_eq!(specificity_row.analysis_status.as_deref(), Some("pass"));
+    assert_eq!(
+        specificity_row.analysis_reference_seq_id.as_deref(),
+        Some("GRCh38")
+    );
+    assert_eq!(specificity_row.created_by_op, specificity_op_id);
+
     assert!(
         app.lineage_edges
             .iter()
@@ -14193,6 +14282,13 @@ fn refresh_lineage_cache_includes_primer_and_qpcr_design_analysis_nodes() {
             .any(|(from, to, op_id)| from == "n_tpl"
                 && to == "analysis:qpcr:tp73_qpcr"
                 && op_id == &qpcr_op_id)
+    );
+    assert!(
+        app.lineage_edges
+            .iter()
+            .any(|(from, to, op_id)| from == "n_tpl"
+                && to == "analysis:primer_specificity:tp73_primer_specificity"
+                && op_id == &specificity_op_id)
     );
     assert_eq!(
         app.lineage_reopenable_pcr_op_seq_ids.get(&primer_op_id),

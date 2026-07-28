@@ -97,6 +97,10 @@ struct PrimerSpecificityResolvedInput {
     pair_rank: Option<usize>,
     pair_index: Option<usize>,
     expected_amplicon_length_bp: Option<usize>,
+    primary_seq_id: Option<String>,
+    related_seq_ids: Vec<String>,
+    design_provenance: PrimerDesignProvenanceCitation,
+    source_handoff_id: Option<String>,
     intended_target: PrimerSpecificityIntendedTarget,
     forward: PrimerSpecificityInputPrimer,
     reverse: PrimerSpecificityInputPrimer,
@@ -9606,6 +9610,68 @@ impl GentleEngine {
         }
     }
 
+    fn primer_specificity_design_provenance_not_run(
+        summary: impl Into<String>,
+    ) -> PrimerDesignProvenanceCitation {
+        PrimerDesignProvenanceCitation {
+            status: PrimerPairCharacterizationStatus::NotRun,
+            summary: summary.into(),
+            ..PrimerDesignProvenanceCitation::default()
+        }
+    }
+
+    fn primer_specificity_design_provenance_from_report(
+        report: &PrimerDesignReport,
+        pair_rank: Option<usize>,
+        pair_index: Option<usize>,
+    ) -> PrimerDesignProvenanceCitation {
+        PrimerDesignProvenanceCitation {
+            status: PrimerPairCharacterizationStatus::Pass,
+            primer_report_id: Some(report.report_id.clone()),
+            pair_rank,
+            pair_index,
+            primary_seq_id: Some(report.template.clone()),
+            source_report_schema: Some(report.schema.clone()),
+            source_op_id: report.op_id.clone(),
+            source_run_id: report.run_id.clone(),
+            source_generated_at_unix_ms: Some(report.generated_at_unix_ms),
+            backend_used: Some(report.backend.used.clone()),
+            summary: format!(
+                "Primer selection is cited from design report '{}' on template '{}'.",
+                report.report_id, report.template
+            ),
+        }
+    }
+
+    fn primer_specificity_design_provenance_from_reference(
+        &self,
+        primer_report_id: Option<&str>,
+        pair_rank: Option<usize>,
+        pair_index: Option<usize>,
+    ) -> PrimerDesignProvenanceCitation {
+        let Some(report_id) = primer_report_id else {
+            return Self::primer_specificity_design_provenance_not_run(
+                "No GENtle primer-design report was supplied; design-selection provenance is not available.",
+            );
+        };
+        match self.get_primer_design_report(report_id) {
+            Ok(report) => Self::primer_specificity_design_provenance_from_report(
+                &report, pair_rank, pair_index,
+            ),
+            Err(error) => PrimerDesignProvenanceCitation {
+                status: PrimerPairCharacterizationStatus::Incomplete,
+                primer_report_id: Some(report_id.to_string()),
+                pair_rank,
+                pair_index,
+                summary: format!(
+                    "The cited primer-design report '{}' could not be resolved: {}",
+                    report_id, error.message
+                ),
+                ..PrimerDesignProvenanceCitation::default()
+            },
+        }
+    }
+
     fn resolve_primer_specificity_input(
         &self,
         primer_report_id: Option<&str>,
@@ -9620,6 +9686,12 @@ impl GentleEngine {
                 pair_rank: None,
                 pair_index: None,
                 expected_amplicon_length_bp: None,
+                primary_seq_id: None,
+                related_seq_ids: vec![],
+                design_provenance: Self::primer_specificity_design_provenance_not_run(
+                    "Explicit primer sequences were assessed without a GENtle design report; selection provenance is not available.",
+                ),
+                source_handoff_id: None,
                 intended_target: Self::primer_specificity_unknown_intended_target(
                     "explicit_primer_sequences",
                 ),
@@ -9685,6 +9757,15 @@ impl GentleEngine {
                     pair_rank: Some(pair.rank),
                     pair_index: Some(resolved_index),
                     expected_amplicon_length_bp: Some(pair.amplicon_length_bp),
+                    primary_seq_id: Some(report.template.clone()),
+                    related_seq_ids: vec![],
+                    design_provenance:
+                        Self::primer_specificity_design_provenance_from_report(
+                            &report,
+                            Some(pair.rank),
+                            Some(resolved_index),
+                        ),
+                    source_handoff_id: None,
                     intended_target: self
                         .primer_specificity_intended_target_from_primer_report(&report, pair),
                     forward: Self::primer_specificity_input_from_record(
@@ -10388,6 +10469,140 @@ impl GentleEngine {
         }
     }
 
+    fn primer_pair_characterization_status(status: &str) -> PrimerPairCharacterizationStatus {
+        match status.trim().to_ascii_lowercase().as_str() {
+            "pass" | "complete" => PrimerPairCharacterizationStatus::Pass,
+            "fail" | "failed" => PrimerPairCharacterizationStatus::Fail,
+            "not_run" => PrimerPairCharacterizationStatus::NotRun,
+            _ => PrimerPairCharacterizationStatus::Incomplete,
+        }
+    }
+
+    fn primer_specificity_characterization_dimensions(
+        design_provenance: &PrimerDesignProvenanceCitation,
+        genomic_specificity: &PrimerSpecificityTargetAssessment,
+        transcriptome_specificity: &PrimerSpecificityTargetAssessment,
+        search_completeness: &PrimerSpecificitySearchCompleteness,
+        policy: &PrimerSpecificityPolicy,
+        target_genome_id: &str,
+    ) -> Vec<PrimerPairCharacterizationDimension> {
+        let design_evidence_ids = design_provenance
+            .primer_report_id
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        vec![
+            PrimerPairCharacterizationDimension {
+                dimension: "design_provenance".to_string(),
+                status: design_provenance.status,
+                summary: design_provenance.summary.clone(),
+                evidence_ids: design_evidence_ids.clone(),
+            },
+            PrimerPairCharacterizationDimension {
+                dimension: "oligo_pair_qc".to_string(),
+                status: PrimerPairCharacterizationStatus::NotRun,
+                summary: if design_provenance.status == PrimerPairCharacterizationStatus::Pass {
+                    "This specificity operation did not rerun Primer3 or GENtle oligo-pair QC; consult the cited primer-design report for its stored constraints and metrics."
+                        .to_string()
+                } else {
+                    "This specificity operation did not run a separate Primer3 or GENtle oligo-pair QC assessment."
+                        .to_string()
+                },
+                evidence_ids: design_evidence_ids,
+            },
+            PrimerPairCharacterizationDimension {
+                dimension: "genomic_specificity".to_string(),
+                status: Self::primer_pair_characterization_status(&genomic_specificity.status),
+                summary: genomic_specificity.summary.clone(),
+                evidence_ids: vec![target_genome_id.to_string()],
+            },
+            PrimerPairCharacterizationDimension {
+                dimension: "transcriptome_specificity".to_string(),
+                status: Self::primer_pair_characterization_status(
+                    &transcriptome_specificity.status,
+                ),
+                summary: transcriptome_specificity.summary.clone(),
+                evidence_ids: vec![target_genome_id.to_string()],
+            },
+            PrimerPairCharacterizationDimension {
+                dimension: "search_completeness".to_string(),
+                status: if search_completeness.complete {
+                    PrimerPairCharacterizationStatus::Pass
+                } else {
+                    PrimerPairCharacterizationStatus::Incomplete
+                },
+                summary: search_completeness.reason.clone(),
+                evidence_ids: vec![target_genome_id.to_string()],
+            },
+            PrimerPairCharacterizationDimension {
+                dimension: "known_variant_screen".to_string(),
+                status: PrimerPairCharacterizationStatus::NotRun,
+                summary: if policy.avoid_known_variants {
+                    "Known-variant avoidance was requested, but v2 records that policy without applying a variant mask; no variant-clear claim is made."
+                        .to_string()
+                } else {
+                    "No known-variant screen was requested or run.".to_string()
+                },
+                evidence_ids: vec![],
+            },
+            PrimerPairCharacterizationDimension {
+                dimension: "repeat_low_complexity_screen".to_string(),
+                status: PrimerPairCharacterizationStatus::NotRun,
+                summary: if policy.avoid_rmsk_repeats || policy.avoid_low_complexity {
+                    "Repeat/low-complexity avoidance was requested, but v2 records that policy without applying a mask; no repeat-clear claim is made."
+                        .to_string()
+                } else {
+                    "No separate repeat or low-complexity mask assessment was requested or run."
+                        .to_string()
+                },
+                evidence_ids: vec![],
+            },
+        ]
+    }
+
+    fn primer_specificity_report_id(
+        resolved_input: &PrimerSpecificityResolvedInput,
+        target_genome_id: &str,
+        target_kind: BlastDatabaseIndexKind,
+        blast_database: Option<&BlastDatabaseInspectionReport>,
+        policy: &PrimerSpecificityPolicy,
+    ) -> Result<String, EngineError> {
+        let identity = serde_json::to_string(&json!({
+            "schema": PRIMER_SPECIFICITY_REPORT_SCHEMA,
+            "primer_report_id": resolved_input.primer_report_id,
+            "pair_rank": resolved_input.pair_rank,
+            "pair_index": resolved_input.pair_index,
+            "primary_seq_id": resolved_input.primary_seq_id,
+            "target_genome_id": target_genome_id,
+            "target_kind": target_kind.as_str(),
+            "blast_database_content_fingerprint": blast_database
+                .and_then(|database| database.content_fingerprint.as_deref()),
+            "blast_database_index_kind": blast_database.map(|database| database.index_kind),
+            "intended_target": resolved_input.intended_target,
+            "policy": policy,
+            "forward": resolved_input.forward,
+            "reverse": resolved_input.reverse,
+        }))
+        .map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not identify primer-specificity report: {error}"),
+            cause_chain: vec![],
+        })?;
+        Ok(short_sha256_id("primer_specificity", &identity))
+    }
+
+    fn persist_primer_specificity_report(
+        &mut self,
+        mut report: PrimerSpecificityReport,
+        op_id: &str,
+        run_id: &str,
+    ) -> Result<(PrimerSpecificityReport, bool), EngineError> {
+        report.op_id = Some(op_id.to_string());
+        report.run_id = Some(run_id.to_string());
+        let replaced = self.upsert_primer_specificity_report(report.clone())?;
+        Ok((report, replaced))
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn assess_primer_pair_specificity(
         &self,
@@ -10430,6 +10645,12 @@ impl GentleEngine {
             pair_rank: Some(pair.rank),
             pair_index: None,
             expected_amplicon_length_bp: Some(pair.amplicon_length_bp),
+            primary_seq_id: None,
+            related_seq_ids: vec![],
+            design_provenance: Self::primer_specificity_design_provenance_not_run(
+                "The assessed pair was not retained in a persisted primer-design report.",
+            ),
+            source_handoff_id: None,
             intended_target: Self::primer_specificity_unknown_intended_target(
                 "unpersisted_primer_design_pair",
             ),
@@ -10799,6 +11020,9 @@ impl GentleEngine {
             handoff_id,
             bundle_dir: bundle_dir.to_string_lossy().to_string(),
             handoff_path: handoff_path_text,
+            primary_seq_id: resolved_input.primary_seq_id,
+            related_seq_ids: resolved_input.related_seq_ids,
+            design_provenance: resolved_input.design_provenance,
             primer_report_id: resolved_input.primer_report_id,
             pair_rank: resolved_input.pair_rank,
             pair_index: resolved_input.pair_index,
@@ -11083,6 +11307,24 @@ impl GentleEngine {
             pair_rank: handoff.pair_rank,
             pair_index: handoff.pair_index,
             expected_amplicon_length_bp: handoff.expected_amplicon_length_bp,
+            primary_seq_id: handoff.primary_seq_id.clone().or_else(|| {
+                handoff.primer_report_id.as_deref().and_then(|report_id| {
+                    self.get_primer_design_report(report_id)
+                        .ok()
+                        .map(|report| report.template)
+                })
+            }),
+            related_seq_ids: handoff.related_seq_ids.clone(),
+            design_provenance: if handoff.design_provenance.summary.trim().is_empty() {
+                self.primer_specificity_design_provenance_from_reference(
+                    handoff.primer_report_id.as_deref(),
+                    handoff.pair_rank,
+                    handoff.pair_index,
+                )
+            } else {
+                handoff.design_provenance.clone()
+            },
+            source_handoff_id: Some(handoff.handoff_id.clone()),
             intended_target: handoff.intended_target.clone(),
             forward,
             reverse,
@@ -11452,6 +11694,15 @@ impl GentleEngine {
                     pair_rank: Some(assay.rank),
                     pair_index: None,
                     expected_amplicon_length_bp: Some(assay.primer_pair.amplicon_length_bp),
+                    primary_seq_id: Some(report.source_seq_id.clone()),
+                    related_seq_ids: vec![],
+                    design_provenance: Self::primer_specificity_design_provenance_not_run(
+                        format!(
+                            "Primer selection is recorded by transcript assay panel '{}' rather than a standalone primer-design report.",
+                            report.report_id
+                        ),
+                    ),
+                    source_handoff_id: None,
                     intended_target: self
                         .primer_specificity_intended_target_from_transcript_assay(&report, &assay),
                     forward: forward.clone(),
@@ -12252,9 +12503,161 @@ impl GentleEngine {
                 &intended_target,
                 index_kind,
             );
+        let report_id = Self::primer_specificity_report_id(
+            &resolved_input,
+            target_genome_id,
+            index_kind,
+            blast_database.as_ref(),
+            &policy,
+        )?;
+        let mut related_seq_ids = resolved_input.related_seq_ids.clone();
+        related_seq_ids.sort();
+        related_seq_ids.dedup();
+        let design_provenance = resolved_input.design_provenance.clone();
+        let characterization_dimensions = Self::primer_specificity_characterization_dimensions(
+            &design_provenance,
+            &genomic_specificity,
+            &transcriptome_specificity,
+            &search_completeness,
+            &policy,
+            target_genome_id,
+        );
+        let mut external_inputs = vec![];
+        if let Some(database) = blast_database.as_ref() {
+            let label = [
+                database.source_assembly.as_deref(),
+                database.source_release.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .filter(|value| !value.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+            external_inputs.push(ComputationalArtifactExternalInput {
+                source_kind: "blast_database".to_string(),
+                source_id: target_genome_id.to_string(),
+                source_path: Some(database.prefix.clone()),
+                checksum: database.content_fingerprint.clone(),
+                checksum_algorithm: (!database.fingerprint_algorithm.trim().is_empty())
+                    .then(|| database.fingerprint_algorithm.clone()),
+                label: (!label.is_empty()).then_some(label),
+            });
+        }
+        external_inputs.push(ComputationalArtifactExternalInput {
+            source_kind: "reference_genome_catalog".to_string(),
+            source_id: target_genome_id.to_string(),
+            source_path: Some(resolved_catalog_path.clone()),
+            checksum: None,
+            checksum_algorithm: None,
+            label: Some("Genome catalog used to resolve the prepared BLAST database".to_string()),
+        });
+        if let Some(primer_report_id) = resolved_input.primer_report_id.as_ref() {
+            external_inputs.push(ComputationalArtifactExternalInput {
+                source_kind: "primer_design_report".to_string(),
+                source_id: primer_report_id.clone(),
+                source_path: None,
+                checksum: None,
+                checksum_algorithm: None,
+                label: Some("Cited GENtle primer-selection artifact".to_string()),
+            });
+        }
+        if let Some(handoff_id) = resolved_input.source_handoff_id.as_ref() {
+            external_inputs.push(ComputationalArtifactExternalInput {
+                source_kind: "primer_specificity_handoff".to_string(),
+                source_id: handoff_id.clone(),
+                source_path: None,
+                checksum: None,
+                checksum_algorithm: None,
+                label: Some("Externally executed GENtle BLAST handoff".to_string()),
+            });
+        }
+        external_inputs.sort_by(|left, right| {
+            left.source_kind
+                .cmp(&right.source_kind)
+                .then(left.source_id.cmp(&right.source_id))
+        });
+        let input_kind = if resolved_input.source_handoff_id.is_some() {
+            "specificity_handoff"
+        } else if resolved_input.primer_report_id.is_some() {
+            "primer_design_report"
+        } else {
+            "explicit_primers"
+        };
+        let request_summary = BTreeMap::from([
+            ("input_kind".to_string(), json!(input_kind)),
+            (
+                "primer_report_id".to_string(),
+                json!(resolved_input.primer_report_id),
+            ),
+            ("pair_rank".to_string(), json!(resolved_input.pair_rank)),
+            ("pair_index".to_string(), json!(resolved_input.pair_index)),
+            ("target_genome_id".to_string(), json!(target_genome_id)),
+            ("target_kind".to_string(), json!(index_kind.as_str())),
+        ]);
+        let effective_settings_summary = BTreeMap::from([
+            ("policy".to_string(), json!(policy)),
+            (
+                "database_content_fingerprint".to_string(),
+                json!(
+                    blast_database
+                        .as_ref()
+                        .and_then(|database| database.content_fingerprint.as_deref())
+                ),
+            ),
+            (
+                "database_release".to_string(),
+                json!(
+                    blast_database
+                        .as_ref()
+                        .and_then(|database| database.source_release.as_deref())
+                ),
+            ),
+            (
+                "blast_tool_version".to_string(),
+                json!(
+                    blast_database
+                        .as_ref()
+                        .and_then(|database| database.tool_version.as_deref())
+                ),
+            ),
+            (
+                "search_completeness".to_string(),
+                json!(search_completeness.status),
+            ),
+            (
+                "intended_target_model".to_string(),
+                json!(intended_target.model),
+            ),
+        ]);
+        let reopen_hint = resolved_input
+            .primer_report_id
+            .as_ref()
+            .zip(resolved_input.primary_seq_id.as_ref())
+            .map(|(primer_report_id, seq_id)| {
+                format!(
+                    "pcr_designer?seq_id={}&primer_report_id={}",
+                    seq_id, primer_report_id
+                )
+            })
+            .or_else(|| {
+                resolved_input
+                    .primary_seq_id
+                    .as_ref()
+                    .map(|seq_id| format!("sequence?seq_id={seq_id}"))
+            });
         Ok(PrimerSpecificityReport {
             schema: PRIMER_SPECIFICITY_REPORT_SCHEMA.to_string(),
+            report_id,
             generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            primary_seq_id: resolved_input.primary_seq_id,
+            related_seq_ids,
+            external_inputs,
+            request_summary,
+            effective_settings_summary,
+            reopen_hint,
+            export_kinds: vec!["json".to_string()],
             primer_report_id: resolved_input.primer_report_id,
             pair_rank: resolved_input.pair_rank,
             pair_index: resolved_input.pair_index,
@@ -12293,6 +12696,8 @@ impl GentleEngine {
             summary,
             genomic_specificity,
             transcriptome_specificity,
+            design_provenance,
+            characterization_dimensions,
             warnings: Self::primer_specificity_aggregate_warnings(warnings),
         })
     }
@@ -29534,6 +29939,11 @@ impl GentleEngine {
                         catalog_path.as_deref(),
                         cache_dir.as_deref(),
                     )?;
+                    let (report, replaced) =
+                        self.persist_primer_specificity_report(report, &result.op_id, run_id)?;
+                    if let Some(seq_id) = report.primary_seq_id.as_ref() {
+                        parent_seq_ids.push(seq_id.clone());
+                    }
                     if let Some(path) = path
                         .as_deref()
                         .map(str::trim)
@@ -29560,6 +29970,11 @@ impl GentleEngine {
                             .messages
                             .push(format!("Wrote primer specificity report to '{path}'"));
                     }
+                    result.messages.push(format!(
+                        "{} persisted primer-specificity report '{}'",
+                        if replaced { "Updated" } else { "Created" },
+                        report.report_id
+                    ));
                     result.messages.push(report.summary.summary.clone());
                     result.primer_specificity_report = Some(Box::new(report));
                 }
@@ -29597,6 +30012,11 @@ impl GentleEngine {
                 }
                 Operation::ImportPrimerPairSpecificityHandoff { handoff_path, path } => {
                     let report = self.import_primer_pair_specificity_handoff(&handoff_path)?;
+                    let (report, replaced) =
+                        self.persist_primer_specificity_report(report, &result.op_id, run_id)?;
+                    if let Some(seq_id) = report.primary_seq_id.as_ref() {
+                        parent_seq_ids.push(seq_id.clone());
+                    }
                     if let Some(path) = path
                         .as_deref()
                         .map(str::trim)
@@ -29623,6 +30043,11 @@ impl GentleEngine {
                             .messages
                             .push(format!("Wrote primer specificity report to '{path}'"));
                     }
+                    result.messages.push(format!(
+                        "{} persisted primer-specificity report '{}'",
+                        if replaced { "Updated" } else { "Created" },
+                        report.report_id
+                    ));
                     result.messages.push(report.summary.summary.clone());
                     result.primer_specificity_report = Some(Box::new(report));
                 }

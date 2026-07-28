@@ -632,7 +632,7 @@ const CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA: &str = "gentle.cdna_assay_transcript_map
 const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
     "gentle.cdna_assay_product_materialization.v1";
 const OLIGO_QC_REPORT_SCHEMA: &str = "gentle.oligo_qc_report.v1";
-const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v1";
+const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v2";
 const PRIMER_SPECIFICITY_HANDOFF_SCHEMA: &str = "gentle.primer_specificity_handoff.v1";
 const PRIMER_SPECIFICITY_POLICY_SCHEMA: &str = "gentle.primer_specificity_policy.v1";
 const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_HANDOFF_SCHEMA: &str =
@@ -2539,6 +2539,7 @@ struct PrimerDesignStore {
     updated_at_unix_ms: u128,
     reports: HashMap<String, PrimerDesignReport>,
     qpcr_reports: HashMap<String, QpcrDesignReport>,
+    primer_specificity_reports: HashMap<String, PrimerSpecificityReport>,
     transcript_assay_panels: HashMap<String, TranscriptAssayPanelReport>,
     external_primer_pair_imports: HashMap<String, ExternalPrimerPairImportReport>,
     restriction_cloning_handoffs: HashMap<String, RestrictionCloningPcrHandoffReport>,
@@ -9019,9 +9020,7 @@ impl GentleEngine {
                 | Operation::RenderProteaseDigestGelSvg { .. }
                 | Operation::RenderProtein2dGelSvg { .. }
                 | Operation::ExportPrimerDesignReport { .. }
-                | Operation::AssessPrimerPairSpecificity { .. }
                 | Operation::PreparePrimerPairSpecificityHandoff { .. }
-                | Operation::ImportPrimerPairSpecificityHandoff { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::RenderProtocolCartoonTemplateSvg { .. }
                 | Operation::ValidateProtocolCartoonTemplate { .. }
@@ -11541,6 +11540,7 @@ impl GentleEngine {
     ) -> Result<(), EngineError> {
         if store.reports.is_empty()
             && store.qpcr_reports.is_empty()
+            && store.primer_specificity_reports.is_empty()
             && store.transcript_assay_panels.is_empty()
             && store.external_primer_pair_imports.is_empty()
             && store.restriction_cloning_handoffs.is_empty()
@@ -12159,6 +12159,89 @@ impl GentleEngine {
             code: ErrorCode::Io,
             message: format!("Could not write primer-design report to '{path}': {e}"),
 
+            cause_chain: vec![],
+        })?;
+        Ok(report)
+    }
+
+    fn upsert_primer_specificity_report(
+        &mut self,
+        report: PrimerSpecificityReport,
+    ) -> Result<bool, EngineError> {
+        let mut store = self.read_primer_design_store();
+        let replaced = store
+            .primer_specificity_reports
+            .insert(report.report_id.clone(), report)
+            .is_some();
+        self.write_primer_design_store(store)?;
+        Ok(replaced)
+    }
+
+    pub fn list_primer_specificity_reports(&self) -> Vec<PrimerSpecificityReportSummary> {
+        let store = self.read_primer_design_store();
+        let mut ids = store
+            .primer_specificity_reports
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids.into_iter()
+            .filter_map(|id| store.primer_specificity_reports.get(&id))
+            .map(|report| PrimerSpecificityReportSummary {
+                report_id: report.report_id.clone(),
+                generated_at_unix_ms: report.generated_at_unix_ms,
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
+                primary_seq_id: report.primary_seq_id.clone(),
+                primer_report_id: report.primer_report_id.clone(),
+                pair_rank: report.pair_rank,
+                target_kind: report.target_kind.clone(),
+                target_genome_id: report.target_genome_id.clone(),
+                status: report.summary.status.clone(),
+                specificity_pass: report.summary.specificity_pass,
+                amplicon_count: report.summary.amplicon_count,
+                failing_unintended_amplicon_count: report.summary.failing_unintended_amplicon_count,
+                design_provenance_status: report.design_provenance.status,
+            })
+            .collect()
+    }
+
+    pub fn get_primer_specificity_report(
+        &self,
+        report_id: &str,
+    ) -> Result<PrimerSpecificityReport, EngineError> {
+        let report_id = Self::normalize_primer_design_report_id(report_id)?;
+        self.read_primer_design_store()
+            .primer_specificity_reports
+            .get(&report_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Primer-specificity report '{}' not found", report_id),
+                cause_chain: vec![],
+            })
+    }
+
+    pub fn export_primer_specificity_report(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<PrimerSpecificityReport, EngineError> {
+        let report = self.get_primer_specificity_report(report_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize primer-specificity report '{}': {}",
+                report.report_id, error
+            ),
+            cause_chain: vec![],
+        })?;
+        std::fs::write(path, text).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write primer-specificity report '{}' to '{}': {}",
+                report.report_id, path, error
+            ),
             cause_chain: vec![],
         })?;
         Ok(report)

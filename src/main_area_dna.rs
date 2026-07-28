@@ -2709,6 +2709,30 @@ impl MainAreaDna {
         self.show_primer_design_report(normalized_id);
     }
 
+    pub fn focus_primer_specificity_report(&mut self, report_id: &str) {
+        let normalized_id = report_id.trim();
+        if normalized_id.is_empty() {
+            self.op_status =
+                "Could not open primer-specificity evidence: report_id is empty".to_string();
+            return;
+        }
+        let report = self.engine.as_ref().and_then(|engine| {
+            engine
+                .read()
+                .ok()
+                .and_then(|engine| engine.get_primer_specificity_report(normalized_id).ok())
+        });
+        if let Some(report) = report.as_ref()
+            && let Some(primer_report_id) = report.design_provenance.primer_report_id.as_deref()
+        {
+            self.primer_design_ui.report_id = primer_report_id.to_string();
+        }
+        self.primer_design_ui.specificity_report_id = normalized_id.to_string();
+        self.pcr_designer_mode = PcrDesignerMode::PrimerPairs;
+        self.show_engine_ops = true;
+        self.show_primer_specificity_report(normalized_id);
+    }
+
     pub fn focus_qpcr_design_report(&mut self, report_id: &str) {
         let normalized_id = report_id.trim();
         if !normalized_id.is_empty() {

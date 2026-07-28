@@ -34,6 +34,12 @@ Maintenance rule:
   setting a subject cap above the validated database sequence count; direct and
   handoff reports now expose `search_completeness`, and unproven searches yield
   `incomplete` rather than a specificity pass.
+- Promoted the existing primer-specificity report family to persisted
+  `gentle.primer_specificity_report.v2` computational artifacts with stable
+  ids, operation/run and database provenance, explicit independent assessment
+  states, design-report citations, CLI inspection/export, and GUI lineage
+  reopening; raw primer pairs remain explicit about absent selection
+  provenance.
 
 ## 2026-07-27
 

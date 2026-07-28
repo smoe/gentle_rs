@@ -9055,6 +9055,35 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
         .map(|report| *report)
         .expect("specificity import operation result");
     assert!(report_path.is_file());
+    assert_eq!(report.schema, "gentle.primer_specificity_report.v2");
+    assert!(report.report_id.starts_with("primer_specificity_"));
+    assert!(report.op_id.is_some());
+    assert!(report.run_id.is_some());
+    assert_eq!(
+        report.design_provenance.status,
+        PrimerPairCharacterizationStatus::NotRun
+    );
+    assert!(
+        report
+            .external_inputs
+            .iter()
+            .any(|input| input.source_kind == "blast_database" && input.checksum.is_some())
+    );
+    assert!(
+        report
+            .external_inputs
+            .iter()
+            .any(|input| input.source_kind == "primer_specificity_handoff"
+                && input.source_id == handoff.handoff_id)
+    );
+    assert_eq!(
+        report
+            .characterization_dimensions
+            .iter()
+            .find(|dimension| dimension.dimension == "search_completeness")
+            .map(|dimension| dimension.status),
+        Some(PrimerPairCharacterizationStatus::Pass)
+    );
     assert!(!report.summary.specificity_pass);
     assert_eq!(report.summary.status, "not_assessed");
     assert_eq!(report.summary.intended_amplicon_count, 0);
@@ -9067,6 +9096,46 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
             .iter()
             .any(|warning| warning.contains("did not launch or monitor"))
     );
+    assert_eq!(engine.list_primer_specificity_reports().len(), 1);
+    let persisted = engine
+        .get_primer_specificity_report(&report.report_id)
+        .expect("persisted primer-specificity report");
+    assert_eq!(persisted.op_id, report.op_id);
+    assert_eq!(persisted.run_id, report.run_id);
+    assert_eq!(persisted.external_inputs, report.external_inputs);
+    let listed = execute_shell_command(&mut engine, &ShellCommand::PrimersListReports)
+        .expect("list primer reports after specificity import");
+    assert_eq!(listed.output["specificity_report_count"], json!(1));
+    assert_eq!(
+        listed.output["specificity_reports"][0]["report_id"],
+        json!(report.report_id)
+    );
+    let shown = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersShowReport {
+            report_id: report.report_id.clone(),
+        },
+    )
+    .expect("show persisted primer-specificity report");
+    assert_eq!(shown.output["report_kind"], "primer_specificity");
+    assert_eq!(
+        shown.output["report"]["schema"],
+        PRIMER_SPECIFICITY_REPORT_SCHEMA
+    );
+    let persisted_export = root.join("persisted_specificity_export.json");
+    let exported = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersExportReport {
+            report_id: report.report_id.clone(),
+            path: persisted_export.to_string_lossy().to_string(),
+        },
+    )
+    .expect("export persisted primer-specificity report");
+    assert_eq!(
+        exported.output["schema"],
+        "gentle.primer_specificity_report_export.v1"
+    );
+    assert!(persisted_export.is_file());
     fs::write(
         PathBuf::from(&handoff.blast_db_prefix).with_extension("nsq"),
         "replacement database content",

@@ -7539,7 +7539,29 @@ Operation progress/cancellation semantics:
   - `max_hits_per_primer` is a post-search review threshold and never becomes
     the BLAST subject cap
 - Report schema:
-  - `gentle.primer_specificity_report.v1`
+  - `gentle.primer_specificity_report.v2`
+  - both `AssessPrimerPairSpecificity` and
+    `ImportPrimerPairSpecificityHandoff` persist the report in project
+    metadata. Its stable, content-derived `report_id` binds the primer pair,
+    intended-target model, database content, and effective policy
+  - follows the shared computational-artifact vocabulary:
+    `report_id`, `op_id`, `run_id`, `generated_at_unix_ms`,
+    `primary_seq_id`, `related_seq_ids`, `external_inputs`,
+    `request_summary`, `effective_settings_summary`, `reopen_hint`, and
+    `export_kinds`
+  - `external_inputs` binds prepared-BLAST database identity/release and
+    content fingerprint, the genome catalog, and any cited primer-design
+    report or externally executed specificity handoff
+  - `design_provenance` cites the persisted primer-design report and selected
+    pair when resolvable. Explicit raw/commercial/literature primer strings do
+    not acquire a reconstructed design rationale; their design provenance is
+    `not_run`
+  - `characterization_dimensions[]` gives independent
+    `pass|fail|incomplete|not_run` states for design provenance, oligo-pair QC,
+    genomic specificity, transcriptome specificity, search completeness,
+    known-variant screening, and repeat/low-complexity screening. A cited
+    design report is not promoted into a freshly rerun oligo-QC pass, and no
+    variant/repeat clearance is claimed when those analyses were not run
   - includes BLAST binary preflight, per-primer BLAST invocation provenance,
     BLAST database content identity, input primers, policy, aggregated
     warnings, primer hits, candidate amplicons, and a summary badge
@@ -7573,6 +7595,15 @@ Operation progress/cancellation semantics:
     observed command limit, command count, and explanatory reason. If
     completeness is not proven, `summary.status = incomplete` and
     `specificity_pass = false` regardless of observed hits
+  - `primers list-reports` lists specificity summaries alongside
+    primer-design summaries. `primers show-report REPORT_ID` and
+    `primers export-report REPORT_ID OUTPUT.json` accept either persisted
+    report kind, so headless adapters can reopen or export the artifact
+    without rerunning BLAST
+  - project fact projection exposes persisted specificity artifacts as
+    `report.exists = "primer_specificity"`. Reports linked to a project
+    sequence are also projected as GUI lineage analysis nodes; PCR Designer
+    reopens the specificity summary and its design citation
 - Additive policy vocabulary reserved for design-time parity:
   - `specificity_check = none|report_only|require_pass`
   - `specificity_target_genome_id`

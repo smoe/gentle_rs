@@ -250,6 +250,7 @@ pub(super) struct PrimerDesignOpsUiState {
     pub(super) max_tm_delta_c: String,
     pub(super) max_pairs: String,
     pub(super) report_id: String,
+    pub(super) specificity_report_id: String,
     pub(super) specificity_target_genome_id: String,
     pub(super) specificity_pair_rank_1based: String,
     pub(super) specificity_max_target_amplicon_bp: String,
@@ -270,6 +271,7 @@ impl Default for PrimerDesignOpsUiState {
             max_tm_delta_c: "2.0".to_string(),
             max_pairs: "200".to_string(),
             report_id: "primer_report_gui".to_string(),
+            specificity_report_id: String::new(),
             specificity_target_genome_id: String::new(),
             specificity_pair_rank_1based: "1".to_string(),
             specificity_max_target_amplicon_bp: "4000".to_string(),
@@ -1636,21 +1638,21 @@ impl MainAreaDna {
             max_hits_per_primer,
             ..PrimerSpecificityPolicy::default()
         };
-        let report = match engine
-            .read()
-            .expect("Engine lock poisoned")
-            .assess_primer_pair_specificity(
-                Some(report_id),
-                Some(pair_rank),
-                None,
-                None,
-                None,
-                target_genome_id,
+        let op_result = match engine.write().expect("Engine lock poisoned").apply(
+            Operation::AssessPrimerPairSpecificity {
+                primer_report_id: Some(report_id.to_string()),
+                pair_rank: Some(pair_rank),
+                pair_index: None,
+                forward_primer: None,
+                reverse_primer: None,
+                target_genome_id: target_genome_id.to_string(),
                 policy,
-                None,
-                None,
-            ) {
-            Ok(report) => report,
+                catalog_path: None,
+                cache_dir: None,
+                path: None,
+            },
+        ) {
+            Ok(result) => result,
             Err(err) => {
                 self.op_status = format!(
                     "Primer specificity failed for report '{}' rank {} against '{}': {}",
@@ -1659,8 +1661,17 @@ impl MainAreaDna {
                 return;
             }
         };
+        let Some(report) = op_result.primer_specificity_report.map(|report| *report) else {
+            self.op_status = format!(
+                "Primer specificity operation for '{}' rank {} returned no report",
+                report_id, pair_rank
+            );
+            return;
+        };
+        self.primer_design_ui.specificity_report_id = report.report_id.clone();
         self.op_status = format!(
-            "Primer specificity {} for '{}' rank {} against '{}': intended={} unintended={} failing_unintended={} primer_hits={} accepted_hits={} warnings={}",
+            "Persisted primer specificity '{}' ({}) for '{}' rank {} against '{}': intended={} unintended={} failing_unintended={} primer_hits={} accepted_hits={} warnings={}",
+            report.report_id,
             report.summary.status,
             report_id,
             pair_rank,
@@ -1672,6 +1683,43 @@ impl MainAreaDna {
             report.summary.accepted_primer_hit_count,
             report.warnings.len()
         );
+    }
+
+    pub(super) fn show_primer_specificity_report(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Primer-specificity report_id is empty".to_string();
+            return;
+        }
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        match engine
+            .read()
+            .expect("Engine lock poisoned")
+            .get_primer_specificity_report(report_id)
+        {
+            Ok(report) => {
+                self.primer_design_ui.specificity_report_id = report.report_id.clone();
+                self.op_status = format!(
+                    "Primer specificity '{}' status={} target={} ({}) products={} failing_off_targets={} design_provenance={}",
+                    report.report_id,
+                    report.summary.status,
+                    report.target_genome_id,
+                    report.target_kind,
+                    report.summary.amplicon_count,
+                    report.summary.failing_unintended_amplicon_count,
+                    report.design_provenance.status.as_str()
+                );
+            }
+            Err(error) => {
+                self.op_status = format!(
+                    "Could not load primer-specificity report '{}': {}",
+                    report_id, error.message
+                );
+            }
+        }
     }
 
     pub(super) fn load_primer_design_report(
@@ -5745,6 +5793,59 @@ impl MainAreaDna {
                             self.confirm_primer_specificity_for_report(&report_id);
                         }
                     });
+                    if !self
+                        .primer_design_ui
+                        .specificity_report_id
+                        .trim()
+                        .is_empty()
+                    {
+                        ui.separator();
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("Persisted specificity evidence");
+                            ui.monospace(
+                                self.primer_design_ui
+                                    .specificity_report_id
+                                    .trim(),
+                            );
+                            if ui
+                                .button("Show summary")
+                                .on_hover_text(
+                                    "Reload this persisted specificity artifact and show its status, target database, product count, and design-provenance state.",
+                                )
+                                .clicked()
+                            {
+                                let report_id =
+                                    self.primer_design_ui.specificity_report_id.clone();
+                                self.show_primer_specificity_report(&report_id);
+                            }
+                        });
+                        let summary = self.engine.as_ref().and_then(|engine| {
+                            engine.read().ok().and_then(|engine| {
+                                engine
+                                    .list_primer_specificity_reports()
+                                    .into_iter()
+                                    .find(|summary| {
+                                        summary.report_id
+                                            == self.primer_design_ui.specificity_report_id
+                                    })
+                            })
+                        });
+                        if let Some(summary) = summary {
+                            ui.small(format!(
+                                "status={} | target={} ({}) | products={} | failing off-targets={} | design provenance={}",
+                                summary.status,
+                                summary.target_genome_id,
+                                summary.target_kind,
+                                summary.amplicon_count,
+                                summary.failing_unintended_amplicon_count,
+                                summary.design_provenance_status.as_str()
+                            ));
+                        } else {
+                            ui.small(
+                                "The selected specificity report is no longer present in project metadata.",
+                            );
+                        }
+                    }
                 });
                 self.render_primer_design_report_preview(ui);
                 self.render_restriction_cloning_handoff_section(ui, &template);
