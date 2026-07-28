@@ -14,6 +14,12 @@ understand what changed.
 
 ## 2026-07-29
 
+- Hardened persisted primer-specificity artifacts as
+  `gentle.primer_specificity_report.v3`: each HSP now exposes unaligned query
+  bases and effective mismatches, expected products are explicit per genomic or
+  transcriptome target space, intended isoform coverage and
+  junction/genomic-carryover have independent four-state results, and cited
+  design pairs are content-fingerprinted against the oligos actually assessed.
 - Completed engine-owned feature-record curation with strict Split/Merge
   preview/apply variants in `gentle.feature_record_curation.v2`, shared
   `features split` / `features merge` routes, and matching Feature Editor tabs.

@@ -3507,7 +3507,7 @@ Shared shell command:
         shell/CLI/ClawBio flows can promote the same qPCR strip without hard-
         coding that protocol id elsewhere
     - Primer specificity confirmation notes (`primers specificity`):
-      - returns and persists `gentle.primer_specificity_report.v2`; repeated
+      - returns and persists `gentle.primer_specificity_report.v3`; repeated
         assessment of the same biological inputs and policy reuses one stable
         content-derived `report_id`
       - the report follows GENtle's computational-artifact contract with
@@ -3518,6 +3518,16 @@ Shared shell command:
         `pass|fail|incomplete|not_run`; design provenance is cited when the
         assessed pair came from a persisted primer-design report, while raw or
         commercial/literature primer strings explicitly remain `not_run`
+      - cited design pairs are independently fingerprinted against the
+        normalized oligos actually assessed. A drifted pair makes
+        `design_provenance` fail rather than trusting only the report id
+      - explicit target-space products make intended isoform coverage and
+        junction/genomic-carryover interpretation separate four-state
+        dimensions; absent transcript products or unresolved genomic geometry
+        remain visible as `incomplete` or `not_run`
+      - intended isoform coverage compares expected and observed transcript
+        products independently of the off-target verdict, so a transcriptome
+        specificity failure does not erase successful intended coverage
       - this operation does not silently rerun Primer3/oligo-pair QC, variant
         masking, or repeat/low-complexity masking. Those dimensions remain
         `not_run` unless their own evidence exists

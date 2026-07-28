@@ -6394,6 +6394,10 @@ pub struct PrimerSpecificityExpectedProduct {
     pub source_transcript_id: Option<String>,
 }
 
+fn primer_specificity_bool_is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Explicit intended-target geometry; never inferred from cDNA product length.
@@ -6408,12 +6412,13 @@ pub struct PrimerSpecificityIntendedTarget {
     pub expected_product_range: Option<PrimerSpecificitySubjectRange>,
     /// Target-space-specific expected products. The legacy singular subject
     /// and product range above remain populated when the projection is unique.
-    #[serde(default)]
-    pub expected_products: Vec<PrimerSpecificityExpectedProduct>,
     /// Whether GENtle resolved enough source geometry to decide if the intended
     /// transcript product should exist contiguously in genomic DNA.
+    #[serde(default, skip_serializing_if = "primer_specificity_bool_is_false")]
     pub genomic_target_geometry_known: bool,
     pub contiguous_genomic_product_expected: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub expected_products: Vec<PrimerSpecificityExpectedProduct>,
     pub source: String,
     #[serde(default)]
     pub warnings: Vec<String>,
@@ -6428,6 +6433,8 @@ pub struct PrimerSpecificityTargetAssessment {
     pub intended_target_model: PrimerSpecificityIntendedTargetModel,
     pub contiguous_intended_product_expected: bool,
     pub intended_product_observed: bool,
+    pub expected_intended_product_count: usize,
+    pub observed_intended_product_count: usize,
     pub compatible_product_count: usize,
     pub failing_off_target_product_count: usize,
     pub summary: String,
@@ -6511,6 +6518,9 @@ impl PrimerPairCharacterizationStatus {
     }
 }
 
+pub const PRIMER_DESIGN_PAIR_CONTENT_FINGERPRINT_ALGORITHM: &str =
+    "sha256_canonical_forward_reverse_full_sequence_json_v1";
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 /// One non-sequence input bound to a persisted computational artifact.
@@ -6551,6 +6561,15 @@ pub struct PrimerDesignProvenanceCitation {
     pub source_generated_at_unix_ms: Option<u128>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backend_used: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_content_fingerprint_algorithm: Option<String>,
+    /// Digest computed independently from the selected pair in the cited
+    /// primer-design report.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_pair_content_sha256: Option<String>,
+    /// Digest computed from the normalized primers actually assessed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assessed_pair_content_sha256: Option<String>,
     pub summary: String,
 }
 

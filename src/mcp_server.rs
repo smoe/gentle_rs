@@ -4356,7 +4356,7 @@ mod tests {
             response
                 .pointer("/result/structuredContent/result/primer_specificity_report/schema")
                 .and_then(Value::as_str),
-            Some("gentle.primer_specificity_report.v2")
+            Some("gentle.primer_specificity_report.v3")
         );
         let report_id = response
             .pointer("/result/structuredContent/result/primer_specificity_report/report_id")

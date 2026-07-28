@@ -7529,7 +7529,7 @@ Operation progress/cancellation semantics:
 - For saved `PrimerDesignReport` pairs, the recorded
   `non_annealing_5prime_tail_bp` is removed before BLAST. Full oligos and tails
   remain in report provenance.
-- Target scope in v2:
+- Target scope in v3:
   - prepared genomic-DNA or transcriptome-cDNA BLAST indexes
   - runs through GENtle's existing BLAST index/preflight machinery
   - local `blastn-short` is used with short-query settings; GENtle validates
@@ -7539,7 +7539,7 @@ Operation progress/cancellation semantics:
   - `max_hits_per_primer` is a post-search review threshold and never becomes
     the BLAST subject cap
 - Report schema:
-  - `gentle.primer_specificity_report.v2`
+  - `gentle.primer_specificity_report.v3`
   - both `AssessPrimerPairSpecificity` and
     `ImportPrimerPairSpecificityHandoff` persist the report in project
     metadata. Its stable, content-derived `report_id` binds the primer pair,
@@ -7556,9 +7556,15 @@ Operation progress/cancellation semantics:
     pair when resolvable. Explicit raw/commercial/literature primer strings do
     not acquire a reconstructed design rationale; their design provenance is
     `not_run`
+  - a cited design pair and the normalized full oligos actually assessed are
+    fingerprinted independently with
+    `sha256_canonical_forward_reverse_full_sequence_json_v1`. Matching digests
+    yield `pass`; content drift yields `fail`; an unresolved citation remains
+    `incomplete`
   - `characterization_dimensions[]` gives independent
     `pass|fail|incomplete|not_run` states for design provenance, oligo-pair QC,
-    genomic specificity, transcriptome specificity, search completeness,
+    genomic specificity, transcriptome specificity, intended isoform coverage,
+    junction/genomic-carryover interpretation, search completeness,
     known-variant screening, and repeat/low-complexity screening. A cited
     design report is not promoted into a freshly rerun oligo-QC pass, and no
     variant/repeat clearance is claimed when those analyses were not run
@@ -7576,6 +7582,8 @@ Operation progress/cancellation semantics:
     cannot promote a short HSP because that field is aggregated per subject.
     Unaligned query bases count as effective mismatches when candidate products
     are ranked and screened
+    and therefore a short otherwise mismatch-free HSP cannot look like a full
+    clean primer match
   - candidate amplicons include forward/reverse products plus Primer-BLAST-style
     forward/forward and reverse/reverse warning products. Genomic left/right
     ordering is derived from subject strand and coordinates rather than primer
@@ -7598,6 +7606,17 @@ Operation progress/cancellation semantics:
     separate from whole-transcriptome/cDNA cross-amplification. Only the
     assessment matching the inspected BLAST index kind is populated by one run;
     the other remains `not_run`
+  - `intended_target.expected_products[]` records explicit expected subjects,
+    optional one-based ranges or product lengths, transcript ids, and evidence
+    source per BLAST target space. `genomic_target_geometry_known` distinguishes
+    resolved annotation geometry from a missing geometry; GENtle does not infer
+    a genomic product from cDNA length. If a transcript product has neither
+    portable coordinates nor a known length, exactly one compatible product on
+    that named transcript is required
+  - each target-space assessment records expected and observed intended-product
+    counts. Intended isoform coverage is derived from those counts independently
+    of the transcriptome-specificity verdict, so an off-target product can fail
+    specificity without erasing evidence that all intended isoforms were covered
   - `search_completeness` is an enforceable result state containing the
     validated database sequence count, required `-max_target_seqs`, minimum
     observed command limit, command count, and explanatory reason. If
@@ -7621,9 +7640,9 @@ Operation progress/cancellation semantics:
   - transcript-aware policy enums:
     `exon_junction_policy = no_preference|must_span|must_not_span` and
     `intron_separation_policy = no_preference|must_separate_by_intron`
-  - current v1 stores/report-routes these knobs, while hard design-time
-    rejection by genome-wide specificity and binding-site masks remains a
-    follow-up.
+  - the current implementation stores/report-routes these knobs, while hard
+    design-time rejection by genome-wide specificity and binding-site masks
+    remains a follow-up.
 
 External BLAST handoff for wrapper-owned execution:
 

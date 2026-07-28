@@ -632,7 +632,7 @@ const CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA: &str = "gentle.cdna_assay_transcript_map
 const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
     "gentle.cdna_assay_product_materialization.v1";
 const OLIGO_QC_REPORT_SCHEMA: &str = "gentle.oligo_qc_report.v1";
-const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v2";
+const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v3";
 const PRIMER_SPECIFICITY_HANDOFF_SCHEMA: &str = "gentle.primer_specificity_handoff.v1";
 const PRIMER_SPECIFICITY_POLICY_SCHEMA: &str = "gentle.primer_specificity_policy.v1";
 const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_HANDOFF_SCHEMA: &str =

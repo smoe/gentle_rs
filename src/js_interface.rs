@@ -1494,7 +1494,7 @@ mod tests {
             .primer_specificity_report
             .as_deref()
             .expect("specificity import report");
-        assert_eq!(report.schema, "gentle.primer_specificity_report.v2");
+        assert_eq!(report.schema, "gentle.primer_specificity_report.v3");
         assert_eq!(report.forward_hits.len(), 0);
         assert_eq!(report.reverse_hits.len(), 0);
     }

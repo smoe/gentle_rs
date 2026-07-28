@@ -8530,6 +8530,7 @@ fn primer_specificity_pairs_forward_reverse_and_same_primer_warning_products() {
                 start_1based: 100,
                 end_1based: 239,
             }),
+            genomic_target_geometry_known: true,
             contiguous_genomic_product_expected: true,
             ..PrimerSpecificityIntendedTarget::default()
         },
@@ -8591,6 +8592,7 @@ fn primer_specificity_pairs_minus_strand_targets_without_role_order_assumptions(
                 start_1based: 100,
                 end_1based: 239,
             }),
+            genomic_target_geometry_known: true,
             contiguous_genomic_product_expected: true,
             ..PrimerSpecificityIntendedTarget::default()
         },
@@ -8647,6 +8649,95 @@ fn primer_specificity_uses_per_hsp_query_coordinates_not_aggregated_qcovs() {
         GentleEngine::primer_specificity_effective_mismatch_count(20, &reverse_query_coordinates),
         13
     );
+}
+
+#[test]
+fn primer_specificity_design_citation_binds_the_exact_assessed_pair() {
+    let pair = PrimerDesignPairRecord {
+        rank: 1,
+        forward: PrimerDesignPrimerRecord {
+            sequence: "ACGTACGTACGTACGTACGT".to_string(),
+            ..PrimerDesignPrimerRecord::default()
+        },
+        reverse: PrimerDesignPrimerRecord {
+            sequence: "CCCCCCCCCCCCCCCCCCCC".to_string(),
+            ..PrimerDesignPrimerRecord::default()
+        },
+        ..PrimerDesignPairRecord::default()
+    };
+    let report = PrimerDesignReport {
+        schema: "gentle.primer_design_report.v1".to_string(),
+        report_id: "design_report".to_string(),
+        template: "template".to_string(),
+        generated_at_unix_ms: 42,
+        pairs: vec![pair.clone()],
+        ..PrimerDesignReport::default()
+    };
+    let assessed_forward = PrimerSpecificityInputPrimer {
+        role: PrimerSpecificityPrimerRole::Forward,
+        full_sequence: pair.forward.sequence.clone(),
+        annealing_sequence: pair.forward.sequence.clone(),
+        annealing_length_bp: pair.forward.sequence.len(),
+        ..PrimerSpecificityInputPrimer::default()
+    };
+    let assessed_reverse = PrimerSpecificityInputPrimer {
+        role: PrimerSpecificityPrimerRole::Reverse,
+        full_sequence: pair.reverse.sequence.clone(),
+        annealing_sequence: pair.reverse.sequence.clone(),
+        annealing_length_bp: pair.reverse.sequence.len(),
+        ..PrimerSpecificityInputPrimer::default()
+    };
+    let citation = GentleEngine::primer_specificity_design_provenance_from_report(
+        &report,
+        &pair,
+        Some(1),
+        Some(0),
+        &assessed_forward,
+        &assessed_reverse,
+    )
+    .expect("matching citation");
+    assert_eq!(citation.status, PrimerPairCharacterizationStatus::Pass);
+    assert_eq!(
+        citation.source_pair_content_sha256,
+        citation.assessed_pair_content_sha256
+    );
+    assert_eq!(
+        citation.pair_content_fingerprint_algorithm.as_deref(),
+        Some(PRIMER_DESIGN_PAIR_CONTENT_FINGERPRINT_ALGORITHM)
+    );
+
+    let mut changed_reverse = assessed_reverse.clone();
+    changed_reverse.full_sequence = "AAAAAAAAAAAAAAAAAAAA".to_string();
+    let drifted = GentleEngine::primer_specificity_design_provenance_from_report(
+        &report,
+        &pair,
+        Some(1),
+        Some(0),
+        &assessed_forward,
+        &changed_reverse,
+    )
+    .expect("drifted citation remains reportable");
+    assert_eq!(drifted.status, PrimerPairCharacterizationStatus::Fail);
+    assert_ne!(
+        drifted.source_pair_content_sha256,
+        drifted.assessed_pair_content_sha256
+    );
+
+    let unresolved = GentleEngine::default().primer_specificity_design_provenance_from_reference(
+        Some("missing_report"),
+        Some(1),
+        None,
+        &assessed_forward,
+        &assessed_reverse,
+    );
+    assert_eq!(
+        unresolved.status,
+        PrimerPairCharacterizationStatus::Incomplete
+    );
+    let not_run = GentleEngine::primer_specificity_design_provenance_not_run(
+        "No design report was supplied.",
+    );
+    assert_eq!(not_run.status, PrimerPairCharacterizationStatus::NotRun);
 }
 
 #[test]
@@ -8739,6 +8830,97 @@ fn primer_specificity_transcript_set_accepts_every_declared_transcript_product()
     assert!(
         !incomplete.specificity_pass,
         "a complete search missing one declared transcript product must fail"
+    );
+}
+
+#[test]
+fn primer_specificity_dimensions_keep_isoform_coverage_separate_from_off_targets() {
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::TranscriptSet,
+        genomic_target_geometry_known: true,
+        contiguous_genomic_product_expected: false,
+        expected_products: ["TX1", "TX2"]
+            .into_iter()
+            .map(|transcript_id| PrimerSpecificityExpectedProduct {
+                target_space: crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna
+                    .as_str()
+                    .to_string(),
+                subject_id: transcript_id.to_string(),
+                expected_product_range: None,
+                source_transcript_id: Some(transcript_id.to_string()),
+            })
+            .collect(),
+        source: "transcript_assay_panel:synthetic".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    let policy = PrimerSpecificityPolicy::default();
+    let dimensions = GentleEngine::primer_specificity_characterization_dimensions(
+        &PrimerDesignProvenanceCitation {
+            status: PrimerPairCharacterizationStatus::Pass,
+            summary: "matched".to_string(),
+            ..PrimerDesignProvenanceCitation::default()
+        },
+        &PrimerSpecificityTargetAssessment {
+            target_space: "genomic_dna".to_string(),
+            status: "not_run".to_string(),
+            summary: "not run".to_string(),
+            ..PrimerSpecificityTargetAssessment::default()
+        },
+        &PrimerSpecificityTargetAssessment {
+            target_space: "transcriptome_cdna".to_string(),
+            status: "fail".to_string(),
+            intended_product_observed: true,
+            expected_intended_product_count: 2,
+            observed_intended_product_count: 2,
+            summary:
+                "all expected products were observed, but an unintended transcript product failed policy"
+                    .to_string(),
+            ..PrimerSpecificityTargetAssessment::default()
+        },
+        &PrimerSpecificitySearchCompleteness {
+            complete: true,
+            status: "complete".to_string(),
+            reason: "complete".to_string(),
+            ..PrimerSpecificitySearchCompleteness::default()
+        },
+        &target,
+        &policy,
+        "Transcriptome",
+    );
+    assert_eq!(
+        dimensions
+            .iter()
+            .find(|row| row.dimension == "intended_isoform_coverage")
+            .map(|row| row.status),
+        Some(PrimerPairCharacterizationStatus::Pass)
+    );
+    assert_eq!(
+        dimensions
+            .iter()
+            .find(|row| row.dimension == "junction_and_genomic_carryover")
+            .map(|row| row.status),
+        Some(PrimerPairCharacterizationStatus::NotRun)
+    );
+
+    let unresolved_target = PrimerSpecificityIntendedTarget {
+        expected_products: vec![],
+        ..target
+    };
+    let unresolved_dimensions = GentleEngine::primer_specificity_characterization_dimensions(
+        &PrimerDesignProvenanceCitation::default(),
+        &PrimerSpecificityTargetAssessment::default(),
+        &PrimerSpecificityTargetAssessment::default(),
+        &PrimerSpecificitySearchCompleteness::default(),
+        &unresolved_target,
+        &policy,
+        "Transcriptome",
+    );
+    assert_eq!(
+        unresolved_dimensions
+            .iter()
+            .find(|row| row.dimension == "intended_isoform_coverage")
+            .map(|row| row.status),
+        Some(PrimerPairCharacterizationStatus::Incomplete)
     );
 }
 
@@ -8934,6 +9116,7 @@ fn primer_specificity_empty_amplicon_set_is_a_non_panicking_no_hit_result() {
                 start_1based: 1,
                 end_1based: 120,
             }),
+            genomic_target_geometry_known: true,
             contiguous_genomic_product_expected: true,
             ..PrimerSpecificityIntendedTarget::default()
         },
@@ -8976,6 +9159,7 @@ fn primer_specificity_intended_genomic_product_uses_coordinates_not_cdna_length(
             start_1based: 100,
             end_1based: 1000,
         }),
+        genomic_target_geometry_known: true,
         contiguous_genomic_product_expected: true,
         source: "synthetic_intron_containing_target".to_string(),
         ..PrimerSpecificityIntendedTarget::default()
@@ -9003,6 +9187,7 @@ fn junction_primer_can_pass_genomic_carryover_screen_without_intended_product() 
     let target = PrimerSpecificityIntendedTarget {
         model: PrimerSpecificityIntendedTargetModel::JunctionSpanning,
         subject_id: Some("chr1".to_string()),
+        genomic_target_geometry_known: true,
         contiguous_genomic_product_expected: false,
         source: "synthetic_junction_assay".to_string(),
         ..PrimerSpecificityIntendedTarget::default()
@@ -9033,6 +9218,7 @@ fn primer_specificity_withholds_pass_when_search_completeness_is_unproven() {
     let target = PrimerSpecificityIntendedTarget {
         model: PrimerSpecificityIntendedTargetModel::JunctionSpanning,
         subject_id: Some("chr1".to_string()),
+        genomic_target_geometry_known: true,
         contiguous_genomic_product_expected: false,
         source: "synthetic_junction_assay".to_string(),
         ..PrimerSpecificityIntendedTarget::default()
@@ -9055,6 +9241,28 @@ fn primer_specificity_withholds_pass_when_search_completeness_is_unproven() {
 }
 
 #[test]
+fn primer_specificity_withholds_pass_when_genomic_geometry_is_unknown() {
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::JunctionSpanning,
+        subject_id: Some("chr1".to_string()),
+        genomic_target_geometry_known: false,
+        contiguous_genomic_product_expected: false,
+        source: "legacy_or_unresolved_target".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    let summary = GentleEngine::primer_specificity_summary(
+        &[],
+        &[],
+        &[],
+        &target,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+        true,
+    );
+    assert!(!summary.specificity_pass);
+    assert_eq!(summary.status, "not_assessed");
+}
+
+#[test]
 fn legacy_primer_specificity_reports_default_to_incomplete_search_evidence() {
     let report: PrimerSpecificityReport = serde_json::from_value(serde_json::json!({
         "summary": {
@@ -9066,6 +9274,22 @@ fn legacy_primer_specificity_reports_default_to_incomplete_search_evidence() {
     assert!(!report.search_completeness.complete);
     assert_eq!(report.search_completeness.status, "incomplete");
     assert!(report.search_completeness.reason.contains("not recorded"));
+    assert!(!report.intended_target.genomic_target_geometry_known);
+    assert!(report.intended_target.expected_products.is_empty());
+    assert!(
+        report
+            .design_provenance
+            .source_pair_content_sha256
+            .is_none()
+    );
+    let legacy_target_json =
+        serde_json::to_value(&report.intended_target).expect("serialize legacy intended target");
+    assert!(
+        legacy_target_json
+            .get("genomic_target_geometry_known")
+            .is_none()
+    );
+    assert!(legacy_target_json.get("expected_products").is_none());
 }
 
 #[test]
@@ -9311,7 +9535,7 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
         .map(|report| *report)
         .expect("specificity import operation result");
     assert!(report_path.is_file());
-    assert_eq!(report.schema, "gentle.primer_specificity_report.v2");
+    assert_eq!(report.schema, "gentle.primer_specificity_report.v3");
     assert!(report.report_id.starts_with("primer_specificity_"));
     assert!(report.op_id.is_some());
     assert!(report.run_id.is_some());

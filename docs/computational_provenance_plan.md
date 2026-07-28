@@ -81,6 +81,12 @@ Shipped baseline:
 - specificity artifacts cite a persisted primer-design decision when one
   exists and explicitly mark design-selection provenance unavailable for raw
   primer pairs
+- cited design pairs are content-fingerprinted independently against the
+  normalized oligos actually assessed, making citation drift a first-class
+  failed provenance state rather than trusting an artifact id alone
+- explicit per-target-space expected products now support separate
+  intended-isoform-coverage and junction/genomic-carryover characterization
+  rows without conflating transcript intent with genomic geometry
 - project facts, CLI report inspection/export, and GUI lineage expose and
   reopen the same persisted specificity artifact
 
