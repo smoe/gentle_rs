@@ -1,12 +1,15 @@
-//! Portable contracts for previewing and applying feature-record creation and deletion.
+//! Portable contracts for previewing and applying complete feature-record curation.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::FeatureLocationEditStrand;
 
+/// Original Create/Delete-only feature-record curation schema.
+pub const FEATURE_RECORD_CURATION_SCHEMA_V1: &str = "gentle.feature_record_curation.v1";
+
 /// Schema emitted by feature-record curation preview and apply operations.
-pub const FEATURE_RECORD_CURATION_SCHEMA: &str = "gentle.feature_record_curation.v1";
+pub const FEATURE_RECORD_CURATION_SCHEMA: &str = "gentle.feature_record_curation.v2";
 
 /// Algorithm identifier for sequence annotation-state fingerprints.
 pub const FEATURE_ANNOTATION_STATE_FINGERPRINT_ALGORITHM: &str =
@@ -48,6 +51,34 @@ pub struct FeatureRecordDeleteRequest {
     pub expected_annotation_state_fingerprint_sha256: Option<String>,
 }
 
+/// Split one exact simple feature at an internal zero-based boundary.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FeatureRecordSplitRequest {
+    pub seq_id: String,
+    pub feature_index: usize,
+    pub split_at_0based: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_feature_fingerprint_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_annotation_state_fingerprint_sha256: Option<String>,
+}
+
+/// Merge two touching exact simple features with identical record semantics.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FeatureRecordMergeRequest {
+    pub seq_id: String,
+    pub first_feature_index: usize,
+    pub second_feature_index: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_first_feature_fingerprint_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_second_feature_fingerprint_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_annotation_state_fingerprint_sha256: Option<String>,
+}
+
 /// One tagged feature-record curation request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
@@ -59,6 +90,8 @@ pub struct FeatureRecordDeleteRequest {
 pub enum FeatureRecordCurationRequest {
     Create(FeatureRecordCreateRequest),
     Delete(FeatureRecordDeleteRequest),
+    Split(FeatureRecordSplitRequest),
+    Merge(FeatureRecordMergeRequest),
 }
 
 impl FeatureRecordCurationRequest {
@@ -67,6 +100,8 @@ impl FeatureRecordCurationRequest {
         match self {
             Self::Create(request) => &request.seq_id,
             Self::Delete(request) => &request.seq_id,
+            Self::Split(request) => &request.seq_id,
+            Self::Merge(request) => &request.seq_id,
         }
     }
 }
@@ -77,6 +112,8 @@ impl FeatureRecordCurationRequest {
 pub enum FeatureRecordCurationKind {
     Create,
     Delete,
+    Split,
+    Merge,
 }
 
 /// Portable snapshot of a complete feature record.
@@ -134,6 +171,29 @@ pub enum FeatureRecordCurationOutcome {
         deleted_feature_index: usize,
         deleted_feature: FeatureRecordSnapshot,
         /// Records the index renumbering caused by removal from the ordered table.
+        shifted_feature_count: usize,
+    },
+    Split {
+        split_feature_index: usize,
+        split_at_0based: usize,
+        original_feature: FeatureRecordSnapshot,
+        genomic_left_feature: FeatureRecordSnapshot,
+        genomic_right_feature: FeatureRecordSnapshot,
+        /// The original index and the inserted index immediately after it.
+        resulting_feature_indices: [usize; 2],
+        /// Records index renumbering after insertion into the ordered table.
+        shifted_feature_count: usize,
+    },
+    Merge {
+        /// Sorted ordered-table indices of the two source records.
+        source_feature_indices: [usize; 2],
+        source_features: [FeatureRecordSnapshot; 2],
+        merged_feature: FeatureRecordSnapshot,
+        /// Lower source table index retained by the merged record.
+        resulting_feature_index: usize,
+        /// Higher source table index removed from the ordered table.
+        removed_feature_index: usize,
+        /// Records index renumbering after removal from the ordered table.
         shifted_feature_count: usize,
     },
 }
@@ -208,6 +268,40 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Value>(&encoded).expect("JSON")["operation_kind"],
             "delete"
+        );
+    }
+
+    #[test]
+    fn split_and_merge_requests_round_trip_with_distinct_tags() {
+        let split = FeatureRecordCurationRequest::Split(FeatureRecordSplitRequest {
+            seq_id: "seq".to_string(),
+            feature_index: 2,
+            split_at_0based: 40,
+            expected_feature_fingerprint_sha256: None,
+            expected_annotation_state_fingerprint_sha256: None,
+        });
+        let split_json = serde_json::to_value(&split).expect("split serializes");
+        assert_eq!(split_json["operation_kind"], "split");
+        assert_eq!(
+            serde_json::from_value::<FeatureRecordCurationRequest>(split_json)
+                .expect("split deserializes"),
+            split
+        );
+
+        let merge = FeatureRecordCurationRequest::Merge(FeatureRecordMergeRequest {
+            seq_id: "seq".to_string(),
+            first_feature_index: 2,
+            second_feature_index: 5,
+            expected_first_feature_fingerprint_sha256: None,
+            expected_second_feature_fingerprint_sha256: None,
+            expected_annotation_state_fingerprint_sha256: None,
+        });
+        let merge_json = serde_json::to_value(&merge).expect("merge serializes");
+        assert_eq!(merge_json["operation_kind"], "merge");
+        assert_eq!(
+            serde_json::from_value::<FeatureRecordCurationRequest>(merge_json)
+                .expect("merge deserializes"),
+            merge
         );
     }
 }

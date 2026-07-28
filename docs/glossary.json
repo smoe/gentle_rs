@@ -65,6 +65,38 @@
       },
       {
          "aliases": [],
+         "engine_operations": [
+            "PreviewFeatureRecordCuration",
+            "ApplyFeatureRecordCuration"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "features split",
+         "summary": "Preview or split one exact simple feature at an internal base boundary.",
+         "usage": "features split SEQ_ID FEATURE_INDEX --split-before-1based N [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PreviewFeatureRecordCuration",
+            "ApplyFeatureRecordCuration"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "gui-menu",
+            "cli-direct"
+         ],
+         "path": "features merge",
+         "summary": "Preview or merge two exactly touching simple features with matching record semantics.",
+         "usage": "features merge SEQ_ID FIRST_FEATURE_INDEX SECOND_FEATURE_INDEX [--dry-run] [--expected-first-feature-fingerprint-sha256 SHA] [--expected-second-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]"
+      },
+      {
+         "aliases": [],
          "engine_operations": [],
          "interfaces": [
             "cli-shell",

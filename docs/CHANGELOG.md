@@ -10,7 +10,18 @@ Maintenance rule:
 - At the end of each session, move completed roadmap items here.
 - Prefer a date and one short outcome sentence. Include command names,
   document names, schemas, or feature names only when they help a reader
-  understand what changed.
+understand what changed.
+
+## 2026-07-29
+
+- Completed engine-owned feature-record curation with strict Split/Merge
+  preview/apply variants in `gentle.feature_record_curation.v2`, shared
+  `features split` / `features merge` routes, and matching Feature Editor tabs.
+  Split is limited to an internal boundary in one exact simple feature; Merge
+  requires exactly touching simple records with identical kind, strand, and
+  ordered qualifiers. Both use per-feature plus annotation-state locks and
+  normal undo/redo, while ambiguous topology or metadata reconciliation is
+  rejected.
 
 ## 2026-07-29
 
@@ -26,8 +37,7 @@ Maintenance rule:
   duplicate/valueless qualifier preservation, full undo/redo, shared
   `features create` / `features delete` routes, and Create/Delete tabs in the
   DNA Feature Editor. Overlap and shared INSDC identifiers remain
-  informational review evidence; split/merge and automatic propagation remain
-  deferred.
+  informational review evidence; automatic propagation remains deferred.
 - Extended the engine-owned Feature Location Editor and shared
   `features edit-location` route to edit one exact child in flat
   `Join`/`Order` annotations, including outer-complement reverse-strand

@@ -100,6 +100,97 @@ pub fn build_simple_feature(
     })
 }
 
+/// Split an exact simple feature into genomic-left and genomic-right records.
+pub fn split_exact_simple_feature(
+    feature: &Feature,
+    split_at_0based: usize,
+    sequence_length: usize,
+) -> Result<(Feature, Feature), EngineError> {
+    let source = crate::feature_location::exact_feature_location_snapshot(feature)?;
+    if source.end_0based_exclusive > sequence_length {
+        return Err(EngineError::invalid_input(format!(
+            "Feature range {}..{} exceeds sequence length {}",
+            source.start_0based, source.end_0based_exclusive, sequence_length
+        )));
+    }
+    if split_at_0based <= source.start_0based || split_at_0based >= source.end_0based_exclusive {
+        return Err(EngineError::invalid_input(format!(
+            "Feature split boundary {} must be strictly inside {}..{}",
+            split_at_0based, source.start_0based, source.end_0based_exclusive
+        )));
+    }
+    let left_snapshot = crate::feature_location::feature_location_snapshot(
+        source.start_0based,
+        split_at_0based,
+        source.strand,
+    )?;
+    let right_snapshot = crate::feature_location::feature_location_snapshot(
+        split_at_0based,
+        source.end_0based_exclusive,
+        source.strand,
+    )?;
+    let mut left = feature.clone();
+    left.location = crate::feature_location::simple_location_from_snapshot(&left_snapshot)?;
+    let mut right = feature.clone();
+    right.location = crate::feature_location::simple_location_from_snapshot(&right_snapshot)?;
+    Ok((left, right))
+}
+
+/// Merge two touching exact simple features with identical kind, strand, and qualifiers.
+pub fn merge_touching_simple_features(
+    first: &Feature,
+    second: &Feature,
+    sequence_length: usize,
+) -> Result<Feature, EngineError> {
+    if first.kind != second.kind {
+        return Err(EngineError::invalid_input(format!(
+            "Feature merge requires matching kinds; found '{}' and '{}'",
+            first.kind, second.kind
+        )));
+    }
+    if first.qualifiers != second.qualifiers {
+        return Err(EngineError::invalid_input(
+            "Feature merge requires identical ordered qualifiers; reconcile qualifier differences before merging",
+        ));
+    }
+    let first_location = crate::feature_location::exact_feature_location_snapshot(first)?;
+    let second_location = crate::feature_location::exact_feature_location_snapshot(second)?;
+    if first_location.end_0based_exclusive > sequence_length
+        || second_location.end_0based_exclusive > sequence_length
+    {
+        return Err(EngineError::invalid_input(format!(
+            "Feature merge source range exceeds sequence length {sequence_length}"
+        )));
+    }
+    if first_location.strand != second_location.strand {
+        return Err(EngineError::invalid_input(
+            "Feature merge requires matching strands",
+        ));
+    }
+    let (left, right) = if first_location.start_0based < second_location.start_0based {
+        (&first_location, &second_location)
+    } else {
+        (&second_location, &first_location)
+    };
+    if left.end_0based_exclusive != right.start_0based {
+        return Err(EngineError::invalid_input(format!(
+            "Feature merge requires exactly touching ranges; found {}..{} and {}..{}",
+            left.start_0based,
+            left.end_0based_exclusive,
+            right.start_0based,
+            right.end_0based_exclusive
+        )));
+    }
+    let merged_snapshot = crate::feature_location::feature_location_snapshot(
+        left.start_0based,
+        right.end_0based_exclusive,
+        left.strand,
+    )?;
+    let mut merged = first.clone();
+    merged.location = crate::feature_location::simple_location_from_snapshot(&merged_snapshot)?;
+    Ok(merged)
+}
+
 /// Convert one gb-io feature into a lossless portable report snapshot.
 pub fn feature_record_snapshot(feature: &Feature) -> Result<FeatureRecordSnapshot, EngineError> {
     let location = serde_json::to_value(&feature.location).map_err(|err| {
@@ -172,23 +263,31 @@ fn shared_identifier_evidence(
 }
 
 /// Find existing annotations worth inspecting before create/delete.
-pub fn feature_record_review_candidates(
+pub fn feature_record_review_candidates_for_targets(
     features: &[Feature],
-    target: &Feature,
-    excluded_feature_index: Option<usize>,
+    targets: &[&Feature],
+    excluded_feature_indices: &[usize],
 ) -> Vec<FeatureRecordReviewCandidate> {
     features
         .iter()
         .enumerate()
         .filter_map(|(feature_index, feature)| {
-            if excluded_feature_index == Some(feature_index) {
+            if excluded_feature_indices.contains(&feature_index) {
                 return None;
             }
             let mut evidence = Vec::new();
-            if features_overlap(target, feature) {
-                evidence.push(FeatureRecordReviewEvidence::OverlappingLocation);
+            for target in targets {
+                if features_overlap(target, feature)
+                    && !evidence.contains(&FeatureRecordReviewEvidence::OverlappingLocation)
+                {
+                    evidence.push(FeatureRecordReviewEvidence::OverlappingLocation);
+                }
+                for item in shared_identifier_evidence(target, feature) {
+                    if !evidence.contains(&item) {
+                        evidence.push(item);
+                    }
+                }
             }
-            evidence.extend(shared_identifier_evidence(target, feature));
             if evidence.is_empty() {
                 return None;
             }
@@ -201,6 +300,16 @@ pub fn feature_record_review_candidates(
             })
         })
         .collect()
+}
+
+/// Find existing annotations worth inspecting before one-target create/delete.
+pub fn feature_record_review_candidates(
+    features: &[Feature],
+    target: &Feature,
+    excluded_feature_index: Option<usize>,
+) -> Vec<FeatureRecordReviewCandidate> {
+    let excluded = excluded_feature_index.into_iter().collect::<Vec<_>>();
+    feature_record_review_candidates_for_targets(features, &[target], &excluded)
 }
 
 #[cfg(test)]
@@ -252,5 +361,49 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn split_and_merge_require_exact_simple_compatible_records() {
+        let source = Feature {
+            kind: "exon".into(),
+            location: Location::Complement(Box::new(Location::simple_range(10, 30))),
+            qualifiers: vec![("gene".into(), Some("TEST".to_string()))],
+        };
+        let (left, right) =
+            split_exact_simple_feature(&source, 20, 100).expect("strict split succeeds");
+        assert_eq!(
+            left.location,
+            Location::Complement(Box::new(Location::simple_range(10, 20)))
+        );
+        assert_eq!(
+            right.location,
+            Location::Complement(Box::new(Location::simple_range(20, 30)))
+        );
+        assert_eq!(left.qualifiers, source.qualifiers);
+        assert_eq!(right.qualifiers, source.qualifiers);
+
+        let merged =
+            merge_touching_simple_features(&right, &left, 100).expect("strict merge succeeds");
+        assert_eq!(merged, source);
+
+        let mut mismatched = right.clone();
+        mismatched
+            .qualifiers
+            .push(("note".into(), Some("different".to_string())));
+        let error = merge_touching_simple_features(&left, &mismatched, 100)
+            .expect_err("qualifier mismatch rejected");
+        assert!(error.message.contains("identical ordered qualifiers"));
+
+        let compound = Feature {
+            location: Location::Join(vec![
+                Location::simple_range(10, 20),
+                Location::simple_range(20, 30),
+            ]),
+            ..source
+        };
+        let error =
+            split_exact_simple_feature(&compound, 20, 100).expect_err("compound split rejected");
+        assert_eq!(error.code, gentle_protocol::ErrorCode::Unsupported);
     }
 }

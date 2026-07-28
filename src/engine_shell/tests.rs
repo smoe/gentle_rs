@@ -430,12 +430,14 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
             "features create demo --kind misc_feature --start-1based 1 --end-1based-inclusive 1 --dry-run",
         ),
         "features delete" => Some("features delete demo 0 --dry-run"),
+        "features split" => Some("features split demo 0 --split-before-1based 2 --dry-run"),
+        "features merge" => Some("features merge demo 0 1 --dry-run"),
         "features tfbs-score-tracks-svg" => {
             Some("features tfbs-score-tracks-svg seq out.svg --motif SP1")
         }
-        "primers import-external-pairs" => Some(
-            "primers import-external-pairs out.json demo 1 --specificity-target-genome demo",
-        ),
+        "primers import-external-pairs" => {
+            Some("primers import-external-pairs out.json demo 1 --specificity-target-genome demo")
+        }
         "arrays probe-regions" => Some("arrays probe-regions --cel demo --gene demo"),
         "cutrun inspect-regulatory-support" => {
             Some("cutrun inspect-regulatory-support seq --dataset dataset")
@@ -18290,8 +18292,7 @@ fn execute_primers_import_external_pairs_returns_provenance_and_metrics() {
         Some("not_run")
     );
     assert_eq!(
-        result.output["report"]["pairs"][0]["vendor_claims_used_as_biological_evidence"]
-            .as_bool(),
+        result.output["report"]["pairs"][0]["vendor_claims_used_as_biological_evidence"].as_bool(),
         Some(false)
     );
     assert!(
@@ -26446,11 +26447,12 @@ fn execute_introspect_capabilities_projects_full_registry_with_fact_annotations(
             && descriptor["precondition_expr"]["any"]
                 .as_array()
                 .is_some_and(|items| {
-                    items.iter().any(|item| {
-                        item["equals"].as_str() == Some("primer_design")
-                    }) && items.iter().any(|item| {
-                        item["equals"].as_str() == Some("primer_specificity")
-                    })
+                    items
+                        .iter()
+                        .any(|item| item["equals"].as_str() == Some("primer_design"))
+                        && items
+                            .iter()
+                            .any(|item| item["equals"].as_str() == Some("primer_specificity"))
                 })
             && descriptor["effects"].as_array().map(Vec::len) == Some(0)
     }));
@@ -26461,11 +26463,12 @@ fn execute_introspect_capabilities_projects_full_registry_with_fact_annotations(
             && descriptor["precondition_expr"]["any"]
                 .as_array()
                 .is_some_and(|items| {
-                    items.iter().any(|item| {
-                        item["equals"].as_str() == Some("primer_design")
-                    }) && items.iter().any(|item| {
-                        item["equals"].as_str() == Some("primer_specificity")
-                    })
+                    items
+                        .iter()
+                        .any(|item| item["equals"].as_str() == Some("primer_design"))
+                        && items
+                            .iter()
+                            .any(|item| item["equals"].as_str() == Some("primer_specificity"))
                 })
             && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
             && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
@@ -41246,10 +41249,52 @@ fn parse_features_create_and_delete_require_preview_tokens_for_apply() {
             ..
         } if seq_id == "seq"
     ));
-    let delete_error =
-        parse_shell_line("features delete seq 2").expect_err("delete apply without tokens rejected");
+    let delete_error = parse_shell_line("features delete seq 2")
+        .expect_err("delete apply without tokens rejected");
     assert!(delete_error.contains("--expected-feature-fingerprint-sha256"));
     assert!(delete_error.contains("--expected-annotation-state-fingerprint-sha256"));
+}
+
+#[test]
+fn parse_features_split_and_merge_require_preview_tokens_for_apply() {
+    let split = parse_shell_line("features split seq 2 --split-before-1based 21 --dry-run")
+        .expect("split preview parses");
+    assert!(matches!(
+        split,
+        ShellCommand::FeaturesSplit {
+            seq_id,
+            feature_index: 2,
+            split_before_1based: 21,
+            dry_run: true,
+            ..
+        } if seq_id == "seq"
+    ));
+    let split_error = parse_shell_line("features split seq 2 --split-before-1based 21")
+        .expect_err("split apply without tokens rejected");
+    assert!(split_error.contains("--expected-feature-fingerprint-sha256"));
+    assert!(split_error.contains("--expected-annotation-state-fingerprint-sha256"));
+
+    let merge = parse_shell_line("features merge seq 2 3 --dry-run").expect("merge preview parses");
+    assert!(matches!(
+        merge,
+        ShellCommand::FeaturesMerge {
+            seq_id,
+            first_feature_index: 2,
+            second_feature_index: 3,
+            dry_run: true,
+            ..
+        } if seq_id == "seq"
+    ));
+    let merge_error = parse_shell_line("features merge seq 2 3")
+        .expect_err("merge apply without tokens rejected");
+    assert!(merge_error.contains("--expected-first-feature-fingerprint-sha256"));
+    assert!(merge_error.contains("--expected-second-feature-fingerprint-sha256"));
+    assert!(merge_error.contains("--expected-annotation-state-fingerprint-sha256"));
+    assert!(
+        parse_shell_line("features merge seq 2 2 --dry-run")
+            .expect_err("same index rejected")
+            .contains("two distinct")
+    );
 }
 
 #[test]
@@ -41271,10 +41316,10 @@ fn execute_features_create_then_delete_uses_shared_curation_operations() {
     let create_preview =
         execute_shell_command(&mut engine, &create_preview).expect("create preview execution");
     assert!(!create_preview.state_changed);
-    let annotation_fingerprint = create_preview.output["report"]
-        ["before_annotation_state_fingerprint_sha256"]
-        .as_str()
-        .expect("annotation fingerprint");
+    let annotation_fingerprint =
+        create_preview.output["report"]["before_annotation_state_fingerprint_sha256"]
+            .as_str()
+            .expect("annotation fingerprint");
     let create_apply = parse_shell_line(&format!(
         "features create seq --kind exon --start-1based 11 --end-1based-inclusive 20 --strand reverse --qualifier gene=TEST --qualifier pseudo --expected-annotation-state-fingerprint-sha256 {annotation_fingerprint}"
     ))
@@ -41292,14 +41337,14 @@ fn execute_features_create_then_delete_uses_shared_curation_operations() {
         parse_shell_line("features delete seq 1 --dry-run").expect("delete preview command");
     let delete_preview =
         execute_shell_command(&mut engine, &delete_preview).expect("delete preview execution");
-    let feature_fingerprint = delete_preview.output["report"]["outcome"]["deleted_feature"]
-        ["feature_fingerprint_sha256"]
-        .as_str()
-        .expect("feature fingerprint");
-    let annotation_fingerprint = delete_preview.output["report"]
-        ["before_annotation_state_fingerprint_sha256"]
-        .as_str()
-        .expect("annotation fingerprint");
+    let feature_fingerprint =
+        delete_preview.output["report"]["outcome"]["deleted_feature"]["feature_fingerprint_sha256"]
+            .as_str()
+            .expect("feature fingerprint");
+    let annotation_fingerprint =
+        delete_preview.output["report"]["before_annotation_state_fingerprint_sha256"]
+            .as_str()
+            .expect("annotation fingerprint");
     let delete_apply = parse_shell_line(&format!(
         "features delete seq 1 --expected-feature-fingerprint-sha256 {feature_fingerprint} --expected-annotation-state-fingerprint-sha256 {annotation_fingerprint}"
     ))
@@ -41308,4 +41353,72 @@ fn execute_features_create_then_delete_uses_shared_curation_operations() {
         execute_shell_command(&mut engine, &delete_apply).expect("delete apply execution");
     assert!(delete_applied.state_changed);
     assert_eq!(engine.state().sequences["seq"].features().len(), 1);
+}
+
+#[test]
+fn execute_features_split_then_merge_uses_shared_curation_operations() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(50)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(5, 25),
+        qualifiers: vec![("gene".into(), Some("TEST".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let split_preview = parse_shell_line("features split seq 0 --split-before-1based 16 --dry-run")
+        .expect("split preview command");
+    let split_preview =
+        execute_shell_command(&mut engine, &split_preview).expect("split preview execution");
+    assert!(!split_preview.state_changed);
+    assert_eq!(
+        split_preview.output["report"]["outcome"]["split_at_0based"],
+        15
+    );
+    let feature_fingerprint =
+        split_preview.output["report"]["outcome"]["original_feature"]["feature_fingerprint_sha256"]
+            .as_str()
+            .expect("feature fingerprint");
+    let annotation_fingerprint =
+        split_preview.output["report"]["before_annotation_state_fingerprint_sha256"]
+            .as_str()
+            .expect("annotation fingerprint");
+    let split_apply = parse_shell_line(&format!(
+        "features split seq 0 --split-before-1based 16 --expected-feature-fingerprint-sha256 {feature_fingerprint} --expected-annotation-state-fingerprint-sha256 {annotation_fingerprint}"
+    ))
+    .expect("split apply command");
+    let split_applied =
+        execute_shell_command(&mut engine, &split_apply).expect("split apply execution");
+    assert!(split_applied.state_changed);
+    assert_eq!(engine.state().sequences["seq"].features().len(), 2);
+
+    let merge_preview =
+        parse_shell_line("features merge seq 0 1 --dry-run").expect("merge preview command");
+    let merge_preview =
+        execute_shell_command(&mut engine, &merge_preview).expect("merge preview execution");
+    let first_fingerprint = merge_preview.output["report"]["outcome"]["source_features"][0]
+        ["feature_fingerprint_sha256"]
+        .as_str()
+        .expect("first feature fingerprint");
+    let second_fingerprint = merge_preview.output["report"]["outcome"]["source_features"][1]
+        ["feature_fingerprint_sha256"]
+        .as_str()
+        .expect("second feature fingerprint");
+    let annotation_fingerprint =
+        merge_preview.output["report"]["before_annotation_state_fingerprint_sha256"]
+            .as_str()
+            .expect("annotation fingerprint");
+    let merge_apply = parse_shell_line(&format!(
+        "features merge seq 0 1 --expected-first-feature-fingerprint-sha256 {first_fingerprint} --expected-second-feature-fingerprint-sha256 {second_fingerprint} --expected-annotation-state-fingerprint-sha256 {annotation_fingerprint}"
+    ))
+    .expect("merge apply command");
+    let merge_applied =
+        execute_shell_command(&mut engine, &merge_apply).expect("merge apply execution");
+    assert!(merge_applied.state_changed);
+    assert_eq!(engine.state().sequences["seq"].features().len(), 1);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::simple_range(5, 25)
+    );
 }

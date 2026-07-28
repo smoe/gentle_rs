@@ -8130,8 +8130,7 @@ fn external_primer_pair_import_preserves_mixed_claims_and_computes_shared_metric
     assert_eq!(pair.duplicate_source_record_count, 1);
     assert_eq!(pair.sources.len(), 2);
     assert_ne!(
-        pair.sources[0].source_record_id,
-        pair.sources[1].source_record_id,
+        pair.sources[0].source_record_id, pair.sources[1].source_record_id,
         "source records with different accessions/claims need distinct provenance identities"
     );
     assert_eq!(
@@ -8142,8 +8141,7 @@ fn external_primer_pair_import_preserves_mixed_claims_and_computes_shared_metric
         BTreeSet::from(["ENST_LITERATURE_CLAIM", "NM_VENDOR_CLAIM"])
     );
     assert!(pair.sources.iter().all(|source| {
-        source.claim_evidence_status
-            == "provenance_only_not_used_for_coverage_or_specificity"
+        source.claim_evidence_status == "provenance_only_not_used_for_coverage_or_specificity"
     }));
     assert_eq!(
         pair.origins,
@@ -8168,10 +8166,7 @@ fn external_primer_pair_import_preserves_mixed_claims_and_computes_shared_metric
         pair.reverse.tm_c,
         GentleEngine::estimate_primer_tm_c(pair.reverse.sequence_5_to_3.as_bytes())
     );
-    assert!(
-        (pair.tm_delta_c - (pair.forward.tm_c - pair.reverse.tm_c).abs()).abs()
-            < f64::EPSILON
-    );
+    assert!((pair.tm_delta_c - (pair.forward.tm_c - pair.reverse.tm_c).abs()).abs() < f64::EPSILON);
     assert!((pair.forward.gc_percent - pair.forward.gc_fraction * 100.0).abs() < f64::EPSILON);
     assert!((pair.reverse.gc_percent - pair.reverse.gc_fraction * 100.0).abs() < f64::EPSILON);
     assert!(!pair.forward.tm_method.is_empty());
@@ -9070,12 +9065,7 @@ fn legacy_primer_specificity_reports_default_to_incomplete_search_evidence() {
     .expect("deserialize legacy report");
     assert!(!report.search_completeness.complete);
     assert_eq!(report.search_completeness.status, "incomplete");
-    assert!(
-        report
-            .search_completeness
-            .reason
-            .contains("not recorded")
-    );
+    assert!(report.search_completeness.reason.contains("not recorded"));
 }
 
 #[test]
@@ -51116,9 +51106,7 @@ fn feature_record_curation_create_preview_apply_and_undo_preserve_record() {
                 strand: FeatureLocationEditStrand::Reverse,
                 qualifiers: proposed_feature.qualifiers.clone(),
                 expected_annotation_state_fingerprint_sha256: Some(
-                    report
-                        .before_annotation_state_fingerprint_sha256
-                        .clone(),
+                    report.before_annotation_state_fingerprint_sha256.clone(),
                 ),
             }),
         })
@@ -51215,8 +51203,8 @@ fn feature_record_curation_rejects_missing_and_stale_annotation_lock() {
 #[test]
 fn feature_record_curation_delete_accepts_complex_location_and_is_undoable() {
     let mut engine = feature_location_edit_engine();
-    let complex_location = gb_io::seq::Location::Complement(Box::new(
-        gb_io::seq::Location::Join(vec![
+    let complex_location =
+        gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
             gb_io::seq::Location::Range(
                 (10, gb_io::seq::Before(true)),
                 (20, gb_io::seq::After(false)),
@@ -51225,8 +51213,7 @@ fn feature_record_curation_delete_accepts_complex_location_and_is_undoable() {
                 gb_io::seq::Location::simple_range(30, 40),
                 gb_io::seq::Location::simple_range(50, 60),
             ]),
-        ]),
-    ));
+        ])));
     engine
         .state
         .sequences
@@ -51257,7 +51244,10 @@ fn feature_record_curation_delete_accepts_complex_location_and_is_undoable() {
     };
     assert_eq!(*deleted_feature_index, 1);
     assert_eq!(*shifted_feature_count, 1);
-    assert_eq!(deleted_feature.location_display, complex_location.to_string());
+    assert_eq!(
+        deleted_feature.location_display,
+        complex_location.to_string()
+    );
     assert_eq!(
         engine.state().sequences["seq"].features(),
         &original_features
@@ -51275,7 +51265,11 @@ fn feature_record_curation_delete_accepts_complex_location_and_is_undoable() {
             }),
         })
         .expect_err("stale feature lock rejected");
-    assert!(stale_feature_error.message.contains("changed after preview"));
+    assert!(
+        stale_feature_error
+            .message
+            .contains("changed after preview")
+    );
 
     let applied = engine
         .apply(Operation::ApplyFeatureRecordCuration {
@@ -51309,6 +51303,212 @@ fn feature_record_curation_delete_accepts_complex_location_and_is_undoable() {
         engine.state().sequences["seq"].features()[1],
         original_features[2]
     );
+}
+
+#[test]
+fn feature_record_curation_split_then_merge_is_preview_locked_and_undoable() {
+    let mut engine = feature_location_edit_engine();
+    let original_features = engine.state().sequences["seq"].features().clone();
+    let split_preview = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Split(FeatureRecordSplitRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                split_at_0based: 20,
+                expected_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect("split preview");
+    let split_report = split_preview
+        .feature_record_curation_report
+        .expect("split report");
+    assert_eq!(split_report.schema, FEATURE_RECORD_CURATION_SCHEMA);
+    assert_eq!(
+        split_report.operation_kind,
+        FeatureRecordCurationKind::Split
+    );
+    let FeatureRecordCurationOutcome::Split {
+        original_feature,
+        genomic_left_feature,
+        genomic_right_feature,
+        resulting_feature_indices,
+        shifted_feature_count,
+        ..
+    } = &split_report.outcome
+    else {
+        panic!("split outcome");
+    };
+    assert_eq!(*resulting_feature_indices, [0, 1]);
+    assert_eq!(*shifted_feature_count, 2);
+    assert_eq!(genomic_left_feature.bounding_start_0based, Some(10));
+    assert_eq!(genomic_left_feature.bounding_end_0based_exclusive, Some(20));
+    assert_eq!(genomic_right_feature.bounding_start_0based, Some(20));
+    assert_eq!(
+        genomic_right_feature.bounding_end_0based_exclusive,
+        Some(30)
+    );
+    assert_eq!(genomic_left_feature.qualifiers, original_feature.qualifiers);
+    assert_eq!(
+        genomic_right_feature.qualifiers,
+        original_feature.qualifiers
+    );
+
+    let split_apply = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Split(FeatureRecordSplitRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                split_at_0based: 20,
+                expected_feature_fingerprint_sha256: Some(
+                    original_feature.feature_fingerprint_sha256.clone(),
+                ),
+                expected_annotation_state_fingerprint_sha256: Some(
+                    split_report
+                        .before_annotation_state_fingerprint_sha256
+                        .clone(),
+                ),
+            }),
+        })
+        .expect("split apply");
+    assert_eq!(split_apply.changed_seq_ids, vec!["seq"]);
+    assert_eq!(engine.state().sequences["seq"].features().len(), 4);
+    assert_eq!(
+        engine.state().sequences["seq"].features()[0].location,
+        gb_io::seq::Location::simple_range(10, 20)
+    );
+    assert_eq!(
+        engine.state().sequences["seq"].features()[1].location,
+        gb_io::seq::Location::simple_range(20, 30)
+    );
+    engine.undo_last_operation().expect("undo split");
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &original_features
+    );
+    engine.redo_last_operation().expect("redo split");
+
+    let merge_preview = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Merge(FeatureRecordMergeRequest {
+                seq_id: "seq".to_string(),
+                first_feature_index: 0,
+                second_feature_index: 1,
+                expected_first_feature_fingerprint_sha256: None,
+                expected_second_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect("merge preview");
+    let merge_report = merge_preview
+        .feature_record_curation_report
+        .expect("merge report");
+    let FeatureRecordCurationOutcome::Merge {
+        source_feature_indices,
+        source_features,
+        merged_feature,
+        resulting_feature_index,
+        removed_feature_index,
+        shifted_feature_count,
+    } = &merge_report.outcome
+    else {
+        panic!("merge outcome");
+    };
+    assert_eq!(*source_feature_indices, [0, 1]);
+    assert_eq!(*resulting_feature_index, 0);
+    assert_eq!(*removed_feature_index, 1);
+    assert_eq!(*shifted_feature_count, 2);
+    assert_eq!(merged_feature.location_display, "11..30");
+
+    engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Merge(FeatureRecordMergeRequest {
+                seq_id: "seq".to_string(),
+                first_feature_index: 0,
+                second_feature_index: 1,
+                expected_first_feature_fingerprint_sha256: Some(
+                    source_features[0].feature_fingerprint_sha256.clone(),
+                ),
+                expected_second_feature_fingerprint_sha256: Some(
+                    source_features[1].feature_fingerprint_sha256.clone(),
+                ),
+                expected_annotation_state_fingerprint_sha256: Some(
+                    merge_report
+                        .before_annotation_state_fingerprint_sha256
+                        .clone(),
+                ),
+            }),
+        })
+        .expect("merge apply");
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &original_features
+    );
+    engine.undo_last_operation().expect("undo merge");
+    assert_eq!(engine.state().sequences["seq"].features().len(), 4);
+    engine.redo_last_operation().expect("redo merge");
+    assert_eq!(
+        engine.state().sequences["seq"].features(),
+        &original_features
+    );
+}
+
+#[test]
+fn feature_record_curation_split_and_merge_reject_ambiguous_semantics() {
+    let mut engine = feature_location_edit_engine();
+    let edge_error = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Split(FeatureRecordSplitRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                split_at_0based: 10,
+                expected_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect_err("edge split rejected");
+    assert!(edge_error.message.contains("strictly inside"));
+
+    let kind_error = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Merge(FeatureRecordMergeRequest {
+                seq_id: "seq".to_string(),
+                first_feature_index: 0,
+                second_feature_index: 1,
+                expected_first_feature_fingerprint_sha256: None,
+                expected_second_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect_err("kind mismatch rejected");
+    assert!(kind_error.message.contains("matching kinds"));
+
+    let missing_lock_error = engine
+        .apply(Operation::ApplyFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Split(FeatureRecordSplitRequest {
+                seq_id: "seq".to_string(),
+                feature_index: 0,
+                split_at_0based: 20,
+                expected_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect_err("split without preview locks rejected");
+    assert!(missing_lock_error.message.contains("feature fingerprint"));
+
+    let same_index_error = engine
+        .apply(Operation::PreviewFeatureRecordCuration {
+            request: FeatureRecordCurationRequest::Merge(FeatureRecordMergeRequest {
+                seq_id: "seq".to_string(),
+                first_feature_index: 0,
+                second_feature_index: 0,
+                expected_first_feature_fingerprint_sha256: None,
+                expected_second_feature_fingerprint_sha256: None,
+                expected_annotation_state_fingerprint_sha256: None,
+            }),
+        })
+        .expect_err("same-index merge rejected");
+    assert!(same_index_error.message.contains("two distinct"));
 }
 
 #[test]

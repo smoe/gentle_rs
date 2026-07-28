@@ -52,10 +52,11 @@ use crate::{
         FactExpression, FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode,
         FeatureExpertTarget, FeatureExpertView, FeatureLocationEditRequest,
         FeatureLocationEditStrand, FeatureRecordCreateRequest, FeatureRecordCurationRequest,
-        FeatureRecordDeleteRequest, FeatureRecordQualifier, FlexibilityModel,
-        GUIDE_DESIGN_METADATA_KEY, GeneIsoformEvidenceRequest, GeneLocusEvidenceDisplayRequest,
-        GeneSetCohortRelationship, GeneSetProducerFilter, GeneSetPromoterCohortReport,
-        GeneSetRequest, GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
+        FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
+        FeatureRecordSplitRequest, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
+        GeneIsoformEvidenceRequest, GeneLocusEvidenceDisplayRequest, GeneSetCohortRelationship,
+        GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
+        GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
         GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
         GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
         GuidePracticalFilterConfig, InlineSequenceTopology, LabAssistantInstructionsFormat,
@@ -2164,6 +2165,25 @@ pub enum ShellCommand {
         feature_index: usize,
         dry_run: bool,
         expected_feature_fingerprint_sha256: Option<String>,
+        expected_annotation_state_fingerprint_sha256: Option<String>,
+        path: Option<String>,
+    },
+    FeaturesSplit {
+        seq_id: String,
+        feature_index: usize,
+        split_before_1based: usize,
+        dry_run: bool,
+        expected_feature_fingerprint_sha256: Option<String>,
+        expected_annotation_state_fingerprint_sha256: Option<String>,
+        path: Option<String>,
+    },
+    FeaturesMerge {
+        seq_id: String,
+        first_feature_index: usize,
+        second_feature_index: usize,
+        dry_run: bool,
+        expected_first_feature_fingerprint_sha256: Option<String>,
+        expected_second_feature_fingerprint_sha256: Option<String>,
         expected_annotation_state_fingerprint_sha256: Option<String>,
         path: Option<String>,
     },
@@ -10275,6 +10295,32 @@ impl ShellCommand {
                 feature_index,
                 seq_id
             ),
+            Self::FeaturesSplit {
+                seq_id,
+                feature_index,
+                split_before_1based,
+                dry_run,
+                ..
+            } => format!(
+                "{} feature {} split on '{}' before base {}",
+                if *dry_run { "preview" } else { "apply" },
+                feature_index,
+                seq_id,
+                split_before_1based
+            ),
+            Self::FeaturesMerge {
+                seq_id,
+                first_feature_index,
+                second_feature_index,
+                dry_run,
+                ..
+            } => format!(
+                "{} merge of features {} and {} on '{}'",
+                if *dry_run { "preview" } else { "apply" },
+                first_feature_index,
+                second_feature_index,
+                seq_id
+            ),
             Self::FeaturesQuery { query } => format!(
                 "query features on '{}' (kinds={}, range={}..{}, relation={}, strand={}, label='{}', qualifiers={}, limit={}, offset={})",
                 query.seq_id,
@@ -12702,7 +12748,9 @@ impl ShellCommand {
     pub fn is_state_mutating(&self) -> bool {
         if let Self::FeaturesEditLocation { dry_run, .. }
         | Self::FeaturesCreate { dry_run, .. }
-        | Self::FeaturesDelete { dry_run, .. } = self
+        | Self::FeaturesDelete { dry_run, .. }
+        | Self::FeaturesSplit { dry_run, .. }
+        | Self::FeaturesMerge { dry_run, .. } = self
         {
             return !dry_run;
         }
@@ -20258,16 +20306,69 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("features delete")
         }),
         json!({
+            "id": "features split",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence containing the exact simple feature"},
+                {"name": "FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "zero-based feature index"},
+                {"name": "--split-before-1based", "required": true, "subject_kind": "other", "detail": "1-based base before which the feature is divided"},
+                {"name": "--dry-run", "required": false, "subject_kind": "other", "detail": "preview without mutation and return both required fingerprints"},
+                {"name": "--expected-feature-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "complete-feature preview fingerprint required when applying"},
+                {"name": "--expected-annotation-state-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "ordered annotation-state preview fingerprint required when applying"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Preview or split one exact simple feature at an internal boundary, preserving kind, strand, and ordered qualifiers on both explicit outputs.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features split")
+        }),
+        json!({
+            "id": "features merge",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence containing both exact simple features"},
+                {"name": "FIRST_FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "first zero-based feature index"},
+                {"name": "SECOND_FEATURE_INDEX", "required": true, "subject_kind": "other", "detail": "second distinct zero-based feature index"},
+                {"name": "--dry-run", "required": false, "subject_kind": "other", "detail": "preview without mutation and return all required fingerprints"},
+                {"name": "--expected-first-feature-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "first complete-feature preview fingerprint required when applying"},
+                {"name": "--expected-second-feature-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "second complete-feature preview fingerprint required when applying"},
+                {"name": "--expected-annotation-state-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "ordered annotation-state preview fingerprint required when applying"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Preview or merge two exactly touching simple features only when kind, strand, and ordered qualifiers are identical.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features merge")
+        }),
+        json!({
             "id": "PreviewFeatureRecordCuration",
             "kind": "operation",
             "mutating": "false",
             "requires_confirmation": false,
             "args": [
-                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "tagged create/delete request carrying request.seq_id"}
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "tagged create/delete/split/merge request carrying request.seq_id"}
             ],
             "reads": [],
             "effects": [],
-            "description": "Validate and report one feature-record creation or deletion without changing project state.",
+            "description": "Validate and report one feature-record creation, deletion, split, or merge without changing project state.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("PreviewFeatureRecordCuration")
         }),
@@ -20277,11 +20378,11 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "mutating": "true",
             "requires_confirmation": true,
             "args": [
-                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "tagged create/delete request carrying preview fingerprints"}
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "tagged create/delete/split/merge request carrying preview fingerprints"}
             ],
             "reads": [],
             "effects": [],
-            "description": "Apply one preview-locked feature-record creation or deletion with full undo history.",
+            "description": "Apply one preview-locked feature-record creation, deletion, split, or merge with full undo history.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("ApplyFeatureRecordCuration")
         }),
@@ -53169,26 +53270,26 @@ fn execute_feature_scan_command(
             expected_annotation_state_fingerprint_sha256,
             path,
         } => {
-            let start_0based = i64::try_from(start_1based.checked_sub(1).ok_or_else(|| {
-                "features create --start-1based must be at least 1".to_string()
-            })?)
-            .map_err(|_| {
-                "features create start exceeds the supported coordinate range".to_string()
-            })?;
+            let start_0based =
+                i64::try_from(start_1based.checked_sub(1).ok_or_else(|| {
+                    "features create --start-1based must be at least 1".to_string()
+                })?)
+                .map_err(|_| {
+                    "features create start exceeds the supported coordinate range".to_string()
+                })?;
             let end_0based_exclusive = i64::try_from(*end_1based_inclusive).map_err(|_| {
                 "features create end exceeds the supported coordinate range".to_string()
             })?;
-            let request =
-                FeatureRecordCurationRequest::Create(FeatureRecordCreateRequest {
-                    seq_id: seq_id.clone(),
-                    feature_kind: feature_kind.clone(),
-                    start_0based,
-                    end_0based_exclusive,
-                    strand: *strand,
-                    qualifiers: qualifiers.clone(),
-                    expected_annotation_state_fingerprint_sha256:
-                        expected_annotation_state_fingerprint_sha256.clone(),
-                });
+            let request = FeatureRecordCurationRequest::Create(FeatureRecordCreateRequest {
+                seq_id: seq_id.clone(),
+                feature_kind: feature_kind.clone(),
+                start_0based,
+                end_0based_exclusive,
+                strand: *strand,
+                qualifiers: qualifiers.clone(),
+                expected_annotation_state_fingerprint_sha256:
+                    expected_annotation_state_fingerprint_sha256.clone(),
+            });
             let operation = if *dry_run {
                 Operation::PreviewFeatureRecordCuration { request }
             } else {
@@ -53203,8 +53304,9 @@ fn execute_feature_scan_command(
                 let text = serde_json::to_string_pretty(report.as_ref()).map_err(|e| {
                     format!("Could not serialize feature create report for '{path}': {e}")
                 })?;
-                fs::write(path, text)
-                    .map_err(|e| format!("Could not write feature create report to '{path}': {e}"))?;
+                fs::write(path, text).map_err(|e| {
+                    format!("Could not write feature create report to '{path}': {e}")
+                })?;
             }
             Ok(ShellRunResult {
                 state_changed: !dry_run,
@@ -53223,15 +53325,13 @@ fn execute_feature_scan_command(
             expected_annotation_state_fingerprint_sha256,
             path,
         } => {
-            let request =
-                FeatureRecordCurationRequest::Delete(FeatureRecordDeleteRequest {
-                    seq_id: seq_id.clone(),
-                    feature_index: *feature_index,
-                    expected_feature_fingerprint_sha256:
-                        expected_feature_fingerprint_sha256.clone(),
-                    expected_annotation_state_fingerprint_sha256:
-                        expected_annotation_state_fingerprint_sha256.clone(),
-                });
+            let request = FeatureRecordCurationRequest::Delete(FeatureRecordDeleteRequest {
+                seq_id: seq_id.clone(),
+                feature_index: *feature_index,
+                expected_feature_fingerprint_sha256: expected_feature_fingerprint_sha256.clone(),
+                expected_annotation_state_fingerprint_sha256:
+                    expected_annotation_state_fingerprint_sha256.clone(),
+            });
             let operation = if *dry_run {
                 Operation::PreviewFeatureRecordCuration { request }
             } else {
@@ -53246,8 +53346,108 @@ fn execute_feature_scan_command(
                 let text = serde_json::to_string_pretty(report.as_ref()).map_err(|e| {
                     format!("Could not serialize feature delete report for '{path}': {e}")
                 })?;
-                fs::write(path, text)
-                    .map_err(|e| format!("Could not write feature delete report to '{path}': {e}"))?;
+                fs::write(path, text).map_err(|e| {
+                    format!("Could not write feature delete report to '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: !dry_run,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
+        ShellCommand::FeaturesSplit {
+            seq_id,
+            feature_index,
+            split_before_1based,
+            dry_run,
+            expected_feature_fingerprint_sha256,
+            expected_annotation_state_fingerprint_sha256,
+            path,
+        } => {
+            let split_at_0based =
+                i64::try_from(split_before_1based.checked_sub(1).ok_or_else(|| {
+                    "features split --split-before-1based must be at least 1".to_string()
+                })?)
+                .map_err(|_| {
+                    "features split boundary exceeds the supported coordinate range".to_string()
+                })?;
+            let request = FeatureRecordCurationRequest::Split(FeatureRecordSplitRequest {
+                seq_id: seq_id.clone(),
+                feature_index: *feature_index,
+                split_at_0based,
+                expected_feature_fingerprint_sha256: expected_feature_fingerprint_sha256.clone(),
+                expected_annotation_state_fingerprint_sha256:
+                    expected_annotation_state_fingerprint_sha256.clone(),
+            });
+            let operation = if *dry_run {
+                Operation::PreviewFeatureRecordCuration { request }
+            } else {
+                Operation::ApplyFeatureRecordCuration { request }
+            };
+            let op_result = engine.apply(operation).map_err(|e| e.to_string())?;
+            let report = op_result
+                .feature_record_curation_report
+                .clone()
+                .ok_or_else(|| "Feature split operation returned no report".to_string())?;
+            if let Some(path) = path.as_deref() {
+                let text = serde_json::to_string_pretty(report.as_ref()).map_err(|e| {
+                    format!("Could not serialize feature split report for '{path}': {e}")
+                })?;
+                fs::write(path, text).map_err(|e| {
+                    format!("Could not write feature split report to '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: !dry_run,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
+        ShellCommand::FeaturesMerge {
+            seq_id,
+            first_feature_index,
+            second_feature_index,
+            dry_run,
+            expected_first_feature_fingerprint_sha256,
+            expected_second_feature_fingerprint_sha256,
+            expected_annotation_state_fingerprint_sha256,
+            path,
+        } => {
+            let request = FeatureRecordCurationRequest::Merge(FeatureRecordMergeRequest {
+                seq_id: seq_id.clone(),
+                first_feature_index: *first_feature_index,
+                second_feature_index: *second_feature_index,
+                expected_first_feature_fingerprint_sha256:
+                    expected_first_feature_fingerprint_sha256.clone(),
+                expected_second_feature_fingerprint_sha256:
+                    expected_second_feature_fingerprint_sha256.clone(),
+                expected_annotation_state_fingerprint_sha256:
+                    expected_annotation_state_fingerprint_sha256.clone(),
+            });
+            let operation = if *dry_run {
+                Operation::PreviewFeatureRecordCuration { request }
+            } else {
+                Operation::ApplyFeatureRecordCuration { request }
+            };
+            let op_result = engine.apply(operation).map_err(|e| e.to_string())?;
+            let report = op_result
+                .feature_record_curation_report
+                .clone()
+                .ok_or_else(|| "Feature merge operation returned no report".to_string())?;
+            if let Some(path) = path.as_deref() {
+                let text = serde_json::to_string_pretty(report.as_ref()).map_err(|e| {
+                    format!("Could not serialize feature merge report for '{path}': {e}")
+                })?;
+                fs::write(path, text).map_err(|e| {
+                    format!("Could not write feature merge report to '{path}': {e}")
+                })?;
             }
             Ok(ShellRunResult {
                 state_changed: !dry_run,
@@ -58177,6 +58377,8 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::FeaturesEditLocation { .. }
             | ShellCommand::FeaturesCreate { .. }
             | ShellCommand::FeaturesDelete { .. }
+            | ShellCommand::FeaturesSplit { .. }
+            | ShellCommand::FeaturesMerge { .. }
             | ShellCommand::FeaturesQuery { .. }
             | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
@@ -58501,6 +58703,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesEditLocation { .. }
         | ShellCommand::FeaturesCreate { .. }
         | ShellCommand::FeaturesDelete { .. }
+        | ShellCommand::FeaturesSplit { .. }
+        | ShellCommand::FeaturesMerge { .. }
         | ShellCommand::FeaturesQuery { .. }
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }

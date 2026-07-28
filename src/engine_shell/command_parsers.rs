@@ -2213,7 +2213,7 @@ fn parse_promoter_artifact_manifest_entry_json(
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: formula, edit-location, create, delete, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, promoter-isoform-comparison, promoter-expression-evidence, promoter-artifact-manifest, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
+            "features requires a subcommand: formula, edit-location, create, delete, split, merge, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, promoter-isoform-comparison, promoter-expression-evidence, promoter-artifact-manifest, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
                 .to_string(),
         );
     }
@@ -2408,12 +2408,11 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                     "--expected-annotation-state-fingerprint-sha256"
                     | "--expected-annotation-fingerprint" => {
                         idx += 1;
-                        expected_annotation_state_fingerprint_sha256 =
-                            Some(parse_required_value(
-                                tokens,
-                                &mut idx,
-                                "--expected-annotation-state-fingerprint-sha256",
-                            )?);
+                        expected_annotation_state_fingerprint_sha256 = Some(parse_required_value(
+                            tokens,
+                            &mut idx,
+                            "--expected-annotation-state-fingerprint-sha256",
+                        )?);
                     }
                     "--path" | "--output" => {
                         idx += 1;
@@ -2426,15 +2425,14 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 feature_kind.ok_or_else(|| "features create requires --kind KIND".to_string())?;
             let start_1based = start_1based
                 .ok_or_else(|| "features create requires --start-1based N".to_string())?;
-            let end_1based_inclusive = end_1based_inclusive.ok_or_else(|| {
-                "features create requires --end-1based-inclusive M".to_string()
-            })?;
+            let end_1based_inclusive = end_1based_inclusive
+                .ok_or_else(|| "features create requires --end-1based-inclusive M".to_string())?;
             if start_1based == 0 {
                 return Err("features create --start-1based must be at least 1".to_string());
             }
             if end_1based_inclusive < start_1based {
                 return Err(
-                    "features create end must be greater than or equal to start".to_string(),
+                    "features create end must be greater than or equal to start".to_string()
                 );
             }
             if !dry_run && expected_annotation_state_fingerprint_sha256.is_none() {
@@ -2491,12 +2489,11 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                     "--expected-annotation-state-fingerprint-sha256"
                     | "--expected-annotation-fingerprint" => {
                         idx += 1;
-                        expected_annotation_state_fingerprint_sha256 =
-                            Some(parse_required_value(
-                                tokens,
-                                &mut idx,
-                                "--expected-annotation-state-fingerprint-sha256",
-                            )?);
+                        expected_annotation_state_fingerprint_sha256 = Some(parse_required_value(
+                            tokens,
+                            &mut idx,
+                            "--expected-annotation-state-fingerprint-sha256",
+                        )?);
                     }
                     "--path" | "--output" => {
                         idx += 1;
@@ -2519,6 +2516,171 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 feature_index,
                 dry_run,
                 expected_feature_fingerprint_sha256,
+                expected_annotation_state_fingerprint_sha256,
+                path,
+            })
+        }
+        "split" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "features split requires SEQ_ID FEATURE_INDEX --split-before-1based N [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("features split SEQ_ID must not be empty".to_string());
+            }
+            let feature_index = tokens[3]
+                .parse::<usize>()
+                .map_err(|_| "features split FEATURE_INDEX must be an integer".to_string())?;
+            let mut split_before_1based = None;
+            let mut dry_run = false;
+            let mut expected_feature_fingerprint_sha256 = None;
+            let mut expected_annotation_state_fingerprint_sha256 = None;
+            let mut path = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--split-before-1based" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--split-before-1based")?;
+                        split_before_1based =
+                            Some(parse_usize_option_value(&raw, "--split-before-1based")?);
+                    }
+                    "--dry-run" => {
+                        dry_run = true;
+                        idx += 1;
+                    }
+                    "--expected-feature-fingerprint-sha256" | "--expected-fingerprint" => {
+                        idx += 1;
+                        expected_feature_fingerprint_sha256 = Some(parse_required_value(
+                            tokens,
+                            &mut idx,
+                            "--expected-feature-fingerprint-sha256",
+                        )?);
+                    }
+                    "--expected-annotation-state-fingerprint-sha256"
+                    | "--expected-annotation-fingerprint" => {
+                        idx += 1;
+                        expected_annotation_state_fingerprint_sha256 = Some(parse_required_value(
+                            tokens,
+                            &mut idx,
+                            "--expected-annotation-state-fingerprint-sha256",
+                        )?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => return Err(format!("Unknown features split option '{other}'")),
+                }
+            }
+            let split_before_1based = split_before_1based
+                .ok_or_else(|| "features split requires --split-before-1based N".to_string())?;
+            if split_before_1based == 0 {
+                return Err("features split --split-before-1based must be at least 1".to_string());
+            }
+            if !dry_run
+                && (expected_feature_fingerprint_sha256.is_none()
+                    || expected_annotation_state_fingerprint_sha256.is_none())
+            {
+                return Err(
+                    "features split apply requires both --expected-feature-fingerprint-sha256 and --expected-annotation-state-fingerprint-sha256 from a dry-run preview"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::FeaturesSplit {
+                seq_id,
+                feature_index,
+                split_before_1based,
+                dry_run,
+                expected_feature_fingerprint_sha256,
+                expected_annotation_state_fingerprint_sha256,
+                path,
+            })
+        }
+        "merge" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "features merge requires SEQ_ID FIRST_FEATURE_INDEX SECOND_FEATURE_INDEX [--dry-run] [--expected-first-feature-fingerprint-sha256 SHA] [--expected-second-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("features merge SEQ_ID must not be empty".to_string());
+            }
+            let first_feature_index = tokens[3]
+                .parse::<usize>()
+                .map_err(|_| "features merge FIRST_FEATURE_INDEX must be an integer".to_string())?;
+            let second_feature_index = tokens[4].parse::<usize>().map_err(|_| {
+                "features merge SECOND_FEATURE_INDEX must be an integer".to_string()
+            })?;
+            if first_feature_index == second_feature_index {
+                return Err("features merge requires two distinct feature indices".to_string());
+            }
+            let mut dry_run = false;
+            let mut expected_first_feature_fingerprint_sha256 = None;
+            let mut expected_second_feature_fingerprint_sha256 = None;
+            let mut expected_annotation_state_fingerprint_sha256 = None;
+            let mut path = None;
+            let mut idx = 5usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--dry-run" => {
+                        dry_run = true;
+                        idx += 1;
+                    }
+                    "--expected-first-feature-fingerprint-sha256" => {
+                        idx += 1;
+                        expected_first_feature_fingerprint_sha256 = Some(parse_required_value(
+                            tokens,
+                            &mut idx,
+                            "--expected-first-feature-fingerprint-sha256",
+                        )?);
+                    }
+                    "--expected-second-feature-fingerprint-sha256" => {
+                        idx += 1;
+                        expected_second_feature_fingerprint_sha256 = Some(parse_required_value(
+                            tokens,
+                            &mut idx,
+                            "--expected-second-feature-fingerprint-sha256",
+                        )?);
+                    }
+                    "--expected-annotation-state-fingerprint-sha256"
+                    | "--expected-annotation-fingerprint" => {
+                        idx += 1;
+                        expected_annotation_state_fingerprint_sha256 = Some(parse_required_value(
+                            tokens,
+                            &mut idx,
+                            "--expected-annotation-state-fingerprint-sha256",
+                        )?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => return Err(format!("Unknown features merge option '{other}'")),
+                }
+            }
+            if !dry_run
+                && (expected_first_feature_fingerprint_sha256.is_none()
+                    || expected_second_feature_fingerprint_sha256.is_none()
+                    || expected_annotation_state_fingerprint_sha256.is_none())
+            {
+                return Err(
+                    "features merge apply requires --expected-first-feature-fingerprint-sha256, --expected-second-feature-fingerprint-sha256, and --expected-annotation-state-fingerprint-sha256 from a dry-run preview"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::FeaturesMerge {
+                seq_id,
+                first_feature_index,
+                second_feature_index,
+                dry_run,
+                expected_first_feature_fingerprint_sha256,
+                expected_second_feature_fingerprint_sha256,
                 expected_annotation_state_fingerprint_sha256,
                 path,
             })

@@ -5,8 +5,8 @@ use gentle_protocol::{
     FeatureLocationCompoundWarning, FeatureLocationEditReport, FeatureLocationEditRequest,
     FeatureLocationEditStrand, FeatureLocationIntervalBoundaryRole, FeatureRecordCreateRequest,
     FeatureRecordCurationOutcome, FeatureRecordCurationReport, FeatureRecordCurationRequest,
-    FeatureRecordDeleteRequest, FeatureRecordQualifier, FeatureRecordReviewEvidence,
-    RelatedFeatureBoundaryReason,
+    FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
+    FeatureRecordReviewEvidence, FeatureRecordSplitRequest, RelatedFeatureBoundaryReason,
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -15,6 +15,8 @@ pub(super) enum FeatureEditorMode {
     Location,
     Create,
     Delete,
+    Split,
+    Merge,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -33,6 +35,10 @@ pub(super) struct FeatureRecordCurationUiState {
     pub(super) create_strand: FeatureLocationEditStrand,
     pub(super) create_qualifiers: Vec<FeatureRecordQualifierUiRow>,
     pub(super) delete_feature_index: Option<usize>,
+    pub(super) split_feature_index: Option<usize>,
+    pub(super) split_before_1based: String,
+    pub(super) merge_first_feature_index: Option<usize>,
+    pub(super) merge_second_feature_index: Option<usize>,
     pub(super) preview_request: Option<FeatureRecordCurationRequest>,
     pub(super) preview: Option<FeatureRecordCurationReport>,
     pub(super) status: String,
@@ -48,6 +54,10 @@ impl Default for FeatureRecordCurationUiState {
             create_strand: FeatureLocationEditStrand::Forward,
             create_qualifiers: Vec::new(),
             delete_feature_index: None,
+            split_feature_index: None,
+            split_before_1based: String::new(),
+            merge_first_feature_index: None,
+            merge_second_feature_index: None,
             preview_request: None,
             preview: None,
             status: String::new(),
@@ -183,17 +193,16 @@ impl MainAreaDna {
             })
             .or_else(|| options.first().map(|(index, _)| *index));
         self.feature_location_editor_ui.record.mode = FeatureEditorMode::Delete;
-        self.feature_location_editor_ui.record.status =
-            if self
-                .feature_location_editor_ui
-                .record
-                .delete_feature_index
-                .is_some()
-            {
-                String::new()
-            } else {
-                "No feature record is available to delete.".to_string()
-            };
+        self.feature_location_editor_ui.record.status = if self
+            .feature_location_editor_ui
+            .record
+            .delete_feature_index
+            .is_some()
+        {
+            String::new()
+        } else {
+            "No feature record is available to delete.".to_string()
+        };
         self.invalidate_feature_record_preview();
         self.show_feature_location_editor = true;
     }
@@ -507,13 +516,85 @@ impl MainAreaDna {
         ))
     }
 
+    fn feature_record_split_request(
+        &self,
+        expected_feature_fingerprint_sha256: Option<String>,
+        expected_annotation_state_fingerprint_sha256: Option<String>,
+    ) -> Result<FeatureRecordCurationRequest, String> {
+        let seq_id = self
+            .seq_id
+            .clone()
+            .ok_or_else(|| "No active sequence is attached to this window".to_string())?;
+        let feature_index = self
+            .feature_location_editor_ui
+            .record
+            .split_feature_index
+            .ok_or_else(|| "Select a feature record first".to_string())?;
+        let split_before_1based = self
+            .feature_location_editor_ui
+            .record
+            .split_before_1based
+            .trim()
+            .parse::<i64>()
+            .map_err(|_| "Split boundary must be a positive 1-based coordinate".to_string())?;
+        if split_before_1based < 1 {
+            return Err("Split boundary must be at least 1".to_string());
+        }
+        Ok(FeatureRecordCurationRequest::Split(
+            FeatureRecordSplitRequest {
+                seq_id,
+                feature_index,
+                split_at_0based: split_before_1based - 1,
+                expected_feature_fingerprint_sha256,
+                expected_annotation_state_fingerprint_sha256,
+            },
+        ))
+    }
+
+    fn feature_record_merge_request(
+        &self,
+        expected_first_feature_fingerprint_sha256: Option<String>,
+        expected_second_feature_fingerprint_sha256: Option<String>,
+        expected_annotation_state_fingerprint_sha256: Option<String>,
+    ) -> Result<FeatureRecordCurationRequest, String> {
+        let seq_id = self
+            .seq_id
+            .clone()
+            .ok_or_else(|| "No active sequence is attached to this window".to_string())?;
+        let first_feature_index = self
+            .feature_location_editor_ui
+            .record
+            .merge_first_feature_index
+            .ok_or_else(|| "Select the first feature record".to_string())?;
+        let second_feature_index = self
+            .feature_location_editor_ui
+            .record
+            .merge_second_feature_index
+            .ok_or_else(|| "Select the second feature record".to_string())?;
+        if first_feature_index == second_feature_index {
+            return Err("Select two distinct feature records".to_string());
+        }
+        Ok(FeatureRecordCurationRequest::Merge(
+            FeatureRecordMergeRequest {
+                seq_id,
+                first_feature_index,
+                second_feature_index,
+                expected_first_feature_fingerprint_sha256,
+                expected_second_feature_fingerprint_sha256,
+                expected_annotation_state_fingerprint_sha256,
+            },
+        ))
+    }
+
     pub(super) fn run_feature_record_preview(&mut self) {
         let request = match self.feature_location_editor_ui.record.mode {
             FeatureEditorMode::Create => self.feature_record_create_request(None),
             FeatureEditorMode::Delete => self.feature_record_delete_request(None, None),
+            FeatureEditorMode::Split => self.feature_record_split_request(None, None),
+            FeatureEditorMode::Merge => self.feature_record_merge_request(None, None, None),
             FeatureEditorMode::Location => {
                 self.feature_location_editor_ui.record.status =
-                    "Choose Create or Delete first.".to_string();
+                    "Choose Create, Delete, Split, or Merge first.".to_string();
                 return;
             }
         };
@@ -539,8 +620,7 @@ impl MainAreaDna {
             .feature_record_curation_report
             .map(|report| report.as_ref().clone());
         self.feature_location_editor_ui.record.status =
-            "Preview is current. Review the complete record and related annotations."
-                .to_string();
+            "Preview is current. Review the complete record and related annotations.".to_string();
     }
 
     pub(super) fn run_feature_record_apply(&mut self) {
@@ -562,9 +642,11 @@ impl MainAreaDna {
         let current_request = match self.feature_location_editor_ui.record.mode {
             FeatureEditorMode::Create => self.feature_record_create_request(None),
             FeatureEditorMode::Delete => self.feature_record_delete_request(None, None),
+            FeatureEditorMode::Split => self.feature_record_split_request(None, None),
+            FeatureEditorMode::Merge => self.feature_record_merge_request(None, None, None),
             FeatureEditorMode::Location => {
                 self.feature_location_editor_ui.record.status =
-                    "Choose Create or Delete first.".to_string();
+                    "Choose Create, Delete, Split, or Merge first.".to_string();
                 return;
             }
         };
@@ -584,11 +666,8 @@ impl MainAreaDna {
         }
         let request = match current_request {
             FeatureRecordCurationRequest::Create(mut request) => {
-                request.expected_annotation_state_fingerprint_sha256 = Some(
-                    preview
-                        .before_annotation_state_fingerprint_sha256
-                        .clone(),
-                );
+                request.expected_annotation_state_fingerprint_sha256 =
+                    Some(preview.before_annotation_state_fingerprint_sha256.clone());
                 FeatureRecordCurationRequest::Create(request)
             }
             FeatureRecordCurationRequest::Delete(mut request) => {
@@ -603,17 +682,70 @@ impl MainAreaDna {
                 };
                 request.expected_feature_fingerprint_sha256 =
                     Some(deleted_feature.feature_fingerprint_sha256.clone());
-                request.expected_annotation_state_fingerprint_sha256 = Some(
-                    preview
-                        .before_annotation_state_fingerprint_sha256
-                        .clone(),
-                );
+                request.expected_annotation_state_fingerprint_sha256 =
+                    Some(preview.before_annotation_state_fingerprint_sha256.clone());
                 FeatureRecordCurationRequest::Delete(request)
             }
+            FeatureRecordCurationRequest::Split(mut request) => {
+                let FeatureRecordCurationOutcome::Split {
+                    original_feature, ..
+                } = &preview.outcome
+                else {
+                    self.feature_location_editor_ui.record.status =
+                        "Preview outcome no longer matches Split mode.".to_string();
+                    self.invalidate_feature_record_preview();
+                    return;
+                };
+                request.expected_feature_fingerprint_sha256 =
+                    Some(original_feature.feature_fingerprint_sha256.clone());
+                request.expected_annotation_state_fingerprint_sha256 =
+                    Some(preview.before_annotation_state_fingerprint_sha256.clone());
+                FeatureRecordCurationRequest::Split(request)
+            }
+            FeatureRecordCurationRequest::Merge(mut request) => {
+                let FeatureRecordCurationOutcome::Merge {
+                    source_feature_indices,
+                    source_features,
+                    ..
+                } = &preview.outcome
+                else {
+                    self.feature_location_editor_ui.record.status =
+                        "Preview outcome no longer matches Merge mode.".to_string();
+                    self.invalidate_feature_record_preview();
+                    return;
+                };
+                let fingerprint_for = |feature_index: usize| {
+                    source_feature_indices
+                        .iter()
+                        .position(|candidate| *candidate == feature_index)
+                        .map(|position| {
+                            source_features[position].feature_fingerprint_sha256.clone()
+                        })
+                };
+                let Some(first_fingerprint) = fingerprint_for(request.first_feature_index) else {
+                    self.feature_location_editor_ui.record.status =
+                        "First merge feature no longer matches the preview.".to_string();
+                    self.invalidate_feature_record_preview();
+                    return;
+                };
+                let Some(second_fingerprint) = fingerprint_for(request.second_feature_index) else {
+                    self.feature_location_editor_ui.record.status =
+                        "Second merge feature no longer matches the preview.".to_string();
+                    self.invalidate_feature_record_preview();
+                    return;
+                };
+                request.expected_first_feature_fingerprint_sha256 = Some(first_fingerprint);
+                request.expected_second_feature_fingerprint_sha256 = Some(second_fingerprint);
+                request.expected_annotation_state_fingerprint_sha256 =
+                    Some(preview.before_annotation_state_fingerprint_sha256.clone());
+                FeatureRecordCurationRequest::Merge(request)
+            }
         };
-        let Some(result) = self.apply_operation_with_feedback_and_result(
-            Operation::ApplyFeatureRecordCuration { request },
-        ) else {
+        let Some(result) =
+            self.apply_operation_with_feedback_and_result(Operation::ApplyFeatureRecordCuration {
+                request,
+            })
+        else {
             self.feature_location_editor_ui.record.status = self.op_status.clone();
             return;
         };
@@ -635,8 +767,30 @@ impl MainAreaDna {
                 self.focus_feature(feature_index);
             }
             Some(FeatureRecordCurationOutcome::Delete { .. }) => {
-                self.feature_location_editor_ui.record.delete_feature_index =
-                    self.feature_record_editor_options().first().map(|(index, _)| *index);
+                self.feature_location_editor_ui.record.delete_feature_index = self
+                    .feature_record_editor_options()
+                    .first()
+                    .map(|(index, _)| *index);
+            }
+            Some(FeatureRecordCurationOutcome::Split {
+                resulting_feature_indices,
+                ..
+            }) => {
+                self.feature_location_editor_ui.record.split_feature_index =
+                    Some(resulting_feature_indices[0]);
+                self.focus_feature(resulting_feature_indices[0]);
+            }
+            Some(FeatureRecordCurationOutcome::Merge {
+                resulting_feature_index,
+                ..
+            }) => {
+                self.feature_location_editor_ui
+                    .record
+                    .merge_first_feature_index = Some(resulting_feature_index);
+                self.feature_location_editor_ui
+                    .record
+                    .merge_second_feature_index = None;
+                self.focus_feature(resulting_feature_index);
             }
             _ => {}
         }
@@ -685,10 +839,7 @@ impl MainAreaDna {
         }
     }
 
-    fn render_feature_record_preview(
-        ui: &mut egui::Ui,
-        preview: &FeatureRecordCurationReport,
-    ) {
+    fn render_feature_record_preview(ui: &mut egui::Ui, preview: &FeatureRecordCurationReport) {
         ui.separator();
         ui.label(egui::RichText::new("Preview").strong());
         match &preview.outcome {
@@ -737,6 +888,72 @@ impl MainAreaDna {
                         None => format!("/{}", qualifier.key),
                     });
                 }
+            }
+            FeatureRecordCurationOutcome::Split {
+                split_feature_index,
+                split_at_0based,
+                original_feature,
+                genomic_left_feature,
+                genomic_right_feature,
+                resulting_feature_indices,
+                shifted_feature_count,
+            } => {
+                ui.monospace(format!(
+                    "Split {}: {} at boundary {} (before base {})",
+                    split_feature_index,
+                    original_feature.location_display,
+                    split_at_0based,
+                    split_at_0based + 1
+                ));
+                ui.monospace(format!(
+                    "{} -> {}: {}",
+                    resulting_feature_indices[0],
+                    genomic_left_feature.feature_kind,
+                    genomic_left_feature.location_display
+                ));
+                ui.monospace(format!(
+                    "{} -> {}: {}",
+                    resulting_feature_indices[1],
+                    genomic_right_feature.feature_kind,
+                    genomic_right_feature.location_display
+                ));
+                ui.small(format!(
+                    "{} subsequent feature index{} will shift up by one. Ordered qualifiers are preserved on both outputs.",
+                    shifted_feature_count,
+                    if *shifted_feature_count == 1 { "" } else { "es" }
+                ));
+            }
+            FeatureRecordCurationOutcome::Merge {
+                source_feature_indices,
+                source_features,
+                merged_feature,
+                resulting_feature_index,
+                removed_feature_index,
+                shifted_feature_count,
+            } => {
+                ui.monospace(format!(
+                    "Merge {} ({}) + {} ({})",
+                    source_feature_indices[0],
+                    source_features[0].location_display,
+                    source_feature_indices[1],
+                    source_features[1].location_display
+                ));
+                ui.monospace(format!(
+                    "{} -> {} at {}",
+                    resulting_feature_index,
+                    merged_feature.feature_kind,
+                    merged_feature.location_display
+                ));
+                ui.small(format!(
+                    "Feature {} is removed; {} subsequent feature index{} will shift down by one.",
+                    removed_feature_index,
+                    shifted_feature_count,
+                    if *shifted_feature_count == 1 {
+                        ""
+                    } else {
+                        "es"
+                    }
+                ));
             }
         }
         ui.small(format!(
@@ -792,44 +1009,35 @@ impl MainAreaDna {
             ui.label("Kind");
             changed |= ui
                 .text_edit_singleline(
-                    &mut self
-                        .feature_location_editor_ui
-                        .record
-                        .create_feature_kind,
+                    &mut self.feature_location_editor_ui.record.create_feature_kind,
                 )
                 .changed();
             ui.label("Strand");
             let before = self.feature_location_editor_ui.record.create_strand;
-            egui::ComboBox::from_id_salt((
-                "feature_record_create_strand",
-                self.panel_scope_key(),
-            ))
-            .selected_text(match before {
-                FeatureLocationEditStrand::Forward => "Forward",
-                FeatureLocationEditStrand::Reverse => "Reverse",
-            })
-            .show_ui(ui, |ui| {
-                ui.selectable_value(
-                    &mut self.feature_location_editor_ui.record.create_strand,
-                    FeatureLocationEditStrand::Forward,
-                    "Forward",
-                );
-                ui.selectable_value(
-                    &mut self.feature_location_editor_ui.record.create_strand,
-                    FeatureLocationEditStrand::Reverse,
-                    "Reverse",
-                );
-            });
+            egui::ComboBox::from_id_salt(("feature_record_create_strand", self.panel_scope_key()))
+                .selected_text(match before {
+                    FeatureLocationEditStrand::Forward => "Forward",
+                    FeatureLocationEditStrand::Reverse => "Reverse",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.feature_location_editor_ui.record.create_strand,
+                        FeatureLocationEditStrand::Forward,
+                        "Forward",
+                    );
+                    ui.selectable_value(
+                        &mut self.feature_location_editor_ui.record.create_strand,
+                        FeatureLocationEditStrand::Reverse,
+                        "Reverse",
+                    );
+                });
             changed |= before != self.feature_location_editor_ui.record.create_strand;
         });
         ui.horizontal(|ui| {
             ui.label("Start (1-based)");
             changed |= ui
                 .text_edit_singleline(
-                    &mut self
-                        .feature_location_editor_ui
-                        .record
-                        .create_start_1based,
+                    &mut self.feature_location_editor_ui.record.create_start_1based,
                 )
                 .changed();
             ui.label("End (1-based, inclusive)");
@@ -861,7 +1069,11 @@ impl MainAreaDna {
                         .add(egui::TextEdit::singleline(&mut row.value).hint_text("value"))
                         .changed();
                 }
-                if ui.small_button("x").on_hover_text("Remove qualifier").clicked() {
+                if ui
+                    .small_button("x")
+                    .on_hover_text("Remove qualifier")
+                    .clicked()
+                {
                     remove_row = Some(index);
                 }
             });
@@ -928,28 +1140,23 @@ impl MainAreaDna {
             })
             .unwrap_or_else(|| "Select feature".to_string());
         let mut next_selected = None;
-        egui::ComboBox::from_id_salt((
-            "feature_record_delete_feature",
-            self.panel_scope_key(),
-        ))
-        .selected_text(selected_label)
-        .width(430.0)
-        .show_ui(ui, |ui| {
-            for (index, label) in options {
-                if ui
-                    .selectable_label(
-                        self.feature_location_editor_ui
-                            .record
-                            .delete_feature_index
-                            == Some(*index),
-                        label,
-                    )
-                    .clicked()
-                {
-                    next_selected = Some(*index);
+        egui::ComboBox::from_id_salt(("feature_record_delete_feature", self.panel_scope_key()))
+            .selected_text(selected_label)
+            .width(430.0)
+            .show_ui(ui, |ui| {
+                for (index, label) in options {
+                    if ui
+                        .selectable_label(
+                            self.feature_location_editor_ui.record.delete_feature_index
+                                == Some(*index),
+                            label,
+                        )
+                        .clicked()
+                    {
+                        next_selected = Some(*index);
+                    }
                 }
-            }
-        });
+            });
         if let Some(index) = next_selected {
             self.feature_location_editor_ui.record.delete_feature_index = Some(index);
             self.invalidate_feature_record_preview();
@@ -965,6 +1172,199 @@ impl MainAreaDna {
             );
             if apply
                 .on_hover_text("Delete is enabled only for the exact record just previewed")
+                .clicked()
+            {
+                self.run_feature_record_apply();
+            }
+        });
+        if !self.feature_location_editor_ui.record.status.is_empty() {
+            ui.label(&self.feature_location_editor_ui.record.status);
+        }
+        if let Some(preview) = self.feature_location_editor_ui.record.preview.as_ref() {
+            Self::render_feature_record_preview(ui, preview);
+        }
+    }
+
+    fn render_feature_record_split_editor(
+        &mut self,
+        ui: &mut egui::Ui,
+        options: &[(usize, String)],
+    ) {
+        ui.label("Split one exact simple Range or Complement(Range) at an internal base boundary.");
+        let selected_label = self
+            .feature_location_editor_ui
+            .record
+            .split_feature_index
+            .and_then(|selected| {
+                options
+                    .iter()
+                    .find(|(index, _)| *index == selected)
+                    .map(|(_, label)| label.clone())
+            })
+            .unwrap_or_else(|| "Select feature".to_string());
+        let mut next_selected = None;
+        egui::ComboBox::from_id_salt(("feature_record_split_feature", self.panel_scope_key()))
+            .selected_text(selected_label)
+            .width(430.0)
+            .show_ui(ui, |ui| {
+                for (index, label) in options {
+                    if ui
+                        .selectable_label(
+                            self.feature_location_editor_ui.record.split_feature_index
+                                == Some(*index),
+                            label,
+                        )
+                        .clicked()
+                    {
+                        next_selected = Some(*index);
+                    }
+                }
+            });
+        if let Some(index) = next_selected {
+            self.feature_location_editor_ui.record.split_feature_index = Some(index);
+            self.invalidate_feature_record_preview();
+            self.feature_location_editor_ui.record.status.clear();
+        }
+        ui.horizontal(|ui| {
+            ui.label("Split before base (1-based)");
+            if ui
+                .text_edit_singleline(
+                    &mut self.feature_location_editor_ui.record.split_before_1based,
+                )
+                .changed()
+            {
+                self.invalidate_feature_record_preview();
+            }
+        });
+        ui.small(
+            "The two output records retain the original kind, strand, and ordered qualifiers.",
+        );
+        ui.horizontal(|ui| {
+            if ui.button("Preview").clicked() {
+                self.run_feature_record_preview();
+            }
+            let apply = ui.add_enabled(
+                self.feature_location_editor_ui.record.preview.is_some(),
+                egui::Button::new("Split"),
+            );
+            if apply
+                .on_hover_text("Split is enabled only for the exact record just previewed")
+                .clicked()
+            {
+                self.run_feature_record_apply();
+            }
+        });
+        if !self.feature_location_editor_ui.record.status.is_empty() {
+            ui.label(&self.feature_location_editor_ui.record.status);
+        }
+        if let Some(preview) = self.feature_location_editor_ui.record.preview.as_ref() {
+            Self::render_feature_record_preview(ui, preview);
+        }
+    }
+
+    fn render_feature_record_merge_editor(
+        &mut self,
+        ui: &mut egui::Ui,
+        options: &[(usize, String)],
+    ) {
+        ui.label(
+            "Merge two exactly touching simple features with identical kind, strand, and ordered qualifiers.",
+        );
+        let first_label = self
+            .feature_location_editor_ui
+            .record
+            .merge_first_feature_index
+            .and_then(|selected| {
+                options
+                    .iter()
+                    .find(|(index, _)| *index == selected)
+                    .map(|(_, label)| label.clone())
+            })
+            .unwrap_or_else(|| "Select first feature".to_string());
+        let mut next_first = None;
+        ui.horizontal(|ui| {
+            ui.label("First");
+            egui::ComboBox::from_id_salt(("feature_record_merge_first", self.panel_scope_key()))
+                .selected_text(first_label)
+                .width(430.0)
+                .show_ui(ui, |ui| {
+                    for (index, label) in options {
+                        if ui
+                            .selectable_label(
+                                self.feature_location_editor_ui
+                                    .record
+                                    .merge_first_feature_index
+                                    == Some(*index),
+                                label,
+                            )
+                            .clicked()
+                        {
+                            next_first = Some(*index);
+                        }
+                    }
+                });
+        });
+        let second_label = self
+            .feature_location_editor_ui
+            .record
+            .merge_second_feature_index
+            .and_then(|selected| {
+                options
+                    .iter()
+                    .find(|(index, _)| *index == selected)
+                    .map(|(_, label)| label.clone())
+            })
+            .unwrap_or_else(|| "Select second feature".to_string());
+        let mut next_second = None;
+        ui.horizontal(|ui| {
+            ui.label("Second");
+            egui::ComboBox::from_id_salt(("feature_record_merge_second", self.panel_scope_key()))
+                .selected_text(second_label)
+                .width(430.0)
+                .show_ui(ui, |ui| {
+                    for (index, label) in options {
+                        if ui
+                            .selectable_label(
+                                self.feature_location_editor_ui
+                                    .record
+                                    .merge_second_feature_index
+                                    == Some(*index),
+                                label,
+                            )
+                            .clicked()
+                        {
+                            next_second = Some(*index);
+                        }
+                    }
+                });
+        });
+        if let Some(index) = next_first {
+            self.feature_location_editor_ui
+                .record
+                .merge_first_feature_index = Some(index);
+            self.invalidate_feature_record_preview();
+            self.feature_location_editor_ui.record.status.clear();
+        }
+        if let Some(index) = next_second {
+            self.feature_location_editor_ui
+                .record
+                .merge_second_feature_index = Some(index);
+            self.invalidate_feature_record_preview();
+            self.feature_location_editor_ui.record.status.clear();
+        }
+        ui.small(
+            "GENtle refuses gaps, overlaps, compound/fuzzy locations, strand differences, and qualifier conflicts.",
+        );
+        ui.horizontal(|ui| {
+            if ui.button("Preview").clicked() {
+                self.run_feature_record_preview();
+            }
+            let apply = ui.add_enabled(
+                self.feature_location_editor_ui.record.preview.is_some(),
+                egui::Button::new("Merge"),
+            );
+            if apply
+                .on_hover_text("Merge is enabled only for the exact records just previewed")
                 .clicked()
             {
                 self.run_feature_record_apply();
@@ -1009,6 +1409,16 @@ impl MainAreaDna {
                     FeatureEditorMode::Delete,
                     "Delete",
                 );
+                ui.selectable_value(
+                    &mut self.feature_location_editor_ui.record.mode,
+                    FeatureEditorMode::Split,
+                    "Split",
+                );
+                ui.selectable_value(
+                    &mut self.feature_location_editor_ui.record.mode,
+                    FeatureEditorMode::Merge,
+                    "Merge",
+                );
             });
             if previous_mode != self.feature_location_editor_ui.record.mode {
                 self.feature_location_editor_ui.preview = None;
@@ -1024,6 +1434,45 @@ impl MainAreaDna {
                     self.feature_location_editor_ui.record.delete_feature_index =
                         record_options.first().map(|(index, _)| *index);
                 }
+                if self.feature_location_editor_ui.record.mode == FeatureEditorMode::Split
+                    && self
+                        .feature_location_editor_ui
+                        .record
+                        .split_feature_index
+                        .is_none()
+                {
+                    self.feature_location_editor_ui.record.split_feature_index =
+                        record_options.first().map(|(index, _)| *index);
+                }
+                if self.feature_location_editor_ui.record.mode == FeatureEditorMode::Merge {
+                    if self
+                        .feature_location_editor_ui
+                        .record
+                        .merge_first_feature_index
+                        .is_none()
+                    {
+                        self.feature_location_editor_ui
+                            .record
+                            .merge_first_feature_index =
+                            record_options.first().map(|(index, _)| *index);
+                    }
+                    if self
+                        .feature_location_editor_ui
+                        .record
+                        .merge_second_feature_index
+                        .is_none()
+                    {
+                        let first = self
+                            .feature_location_editor_ui
+                            .record
+                            .merge_first_feature_index;
+                        self.feature_location_editor_ui
+                            .record
+                            .merge_second_feature_index = record_options
+                            .iter()
+                            .find_map(|(index, _)| (Some(*index) != first).then_some(*index));
+                    }
+                }
             }
             ui.separator();
             match self.feature_location_editor_ui.record.mode {
@@ -1033,6 +1482,14 @@ impl MainAreaDna {
                 }
                 FeatureEditorMode::Delete => {
                     self.render_feature_record_delete_editor(ui, &record_options);
+                    return;
+                }
+                FeatureEditorMode::Split => {
+                    self.render_feature_record_split_editor(ui, &record_options);
+                    return;
+                }
+                FeatureEditorMode::Merge => {
+                    self.render_feature_record_merge_editor(ui, &record_options);
                     return;
                 }
                 FeatureEditorMode::Location => {}

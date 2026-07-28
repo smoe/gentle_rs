@@ -1225,6 +1225,8 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "features edit-location",
             "features create",
             "features delete",
+            "features split",
+            "features merge",
         ],
         "workflow" => &["workflow"],
         "help" => &["help"],

@@ -58,11 +58,15 @@ this as a confidence map for the current GUI surface.
   `Join`/`Order` compounds. Its Create tab appends one exact forward/reverse
   feature with ordered, duplicate-capable, optionally valueless qualifiers;
   its Delete tab previews and removes a complete feature of any existing
-  location shape. Every mode requires Preview before Apply, refuses stale
-  previews, and uses shared engine operations. Create/Delete previews list
-  overlap and recognized shared identifiers as review evidence without
-  changing related annotations. Nested/fuzzy boundary editing and compound
-  topology changes remain out of scope.
+  location shape. Its Split tab divides an exact simple feature at an internal
+  base boundary while preserving its record fields on both explicit outputs;
+  its Merge tab combines only exactly touching simple records whose kind,
+  strand, and ordered qualifiers already match. Every mode requires Preview
+  before Apply, refuses stale previews, and uses shared engine operations.
+  Curation previews list overlap and recognized shared identifiers as review
+  evidence without changing related annotations. Split/Merge reject
+  nested/fuzzy locations, gaps, overlaps, and metadata conflicts rather than
+  guessing a biological repair.
 
 ### Exploratory / not yet first choice
 

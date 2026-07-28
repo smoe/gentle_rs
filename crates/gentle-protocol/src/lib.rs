@@ -59,10 +59,11 @@ pub use feature_location_edit::{
 };
 pub use feature_record_curation::{
     FEATURE_ANNOTATION_STATE_FINGERPRINT_ALGORITHM, FEATURE_RECORD_CURATION_SCHEMA,
-    FeatureRecordCreateRequest, FeatureRecordCurationKind, FeatureRecordCurationOutcome,
-    FeatureRecordCurationReport, FeatureRecordCurationRequest, FeatureRecordDeleteRequest,
-    FeatureRecordQualifier, FeatureRecordReviewCandidate, FeatureRecordReviewEvidence,
-    FeatureRecordSnapshot,
+    FEATURE_RECORD_CURATION_SCHEMA_V1, FeatureRecordCreateRequest, FeatureRecordCurationKind,
+    FeatureRecordCurationOutcome, FeatureRecordCurationReport, FeatureRecordCurationRequest,
+    FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
+    FeatureRecordReviewCandidate, FeatureRecordReviewEvidence, FeatureRecordSnapshot,
+    FeatureRecordSplitRequest,
 };
 pub use gene_groups::{
     GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_DRAFT_REPORT_SCHEMA,
@@ -5547,6 +5548,8 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "features edit-location",
     "features create",
     "features delete",
+    "features split",
+    "features merge",
     "workflow",
     "help",
     "genomes list",

@@ -14866,11 +14866,8 @@ fn feature_editor_create_mode_uses_shared_preview_apply_and_preserves_qualifiers
         FeatureEditorMode::Create
     );
     area.feature_location_editor_ui.record.create_feature_kind = "exon".to_string();
-    area.feature_location_editor_ui.record.create_strand =
-        FeatureLocationEditStrand::Reverse;
-    area.feature_location_editor_ui
-        .record
-        .create_qualifiers = vec![
+    area.feature_location_editor_ui.record.create_strand = FeatureLocationEditStrand::Reverse;
+    area.feature_location_editor_ui.record.create_qualifiers = vec![
         FeatureRecordQualifierUiRow {
             key: "gene".to_string(),
             value: "TEST".to_string(),
@@ -14896,9 +14893,11 @@ fn feature_editor_create_mode_uses_shared_preview_apply_and_preserves_qualifiers
             ..
         }
     ));
-    assert!(engine.read().expect("engine").state().sequences["seq"]
-        .features()
-        .is_empty());
+    assert!(
+        engine.read().expect("engine").state().sequences["seq"]
+            .features()
+            .is_empty()
+    );
 
     area.run_feature_record_apply();
     let guard = engine.read().expect("engine");
@@ -14944,9 +14943,75 @@ fn feature_editor_delete_mode_accepts_compound_feature_and_invalidates_preview()
     area.feature_location_editor_ui.record.delete_feature_index = Some(0);
     area.run_feature_record_preview();
     area.run_feature_record_apply();
-    assert!(engine.read().expect("engine").state().sequences["seq"]
-        .features()
-        .is_empty());
+    assert!(
+        engine.read().expect("engine").state().sequences["seq"]
+            .features()
+            .is_empty()
+    );
+}
+
+#[test]
+fn feature_editor_split_and_merge_modes_use_shared_preview_apply_contract() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(50)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "exon".into(),
+        location: Location::simple_range(5, 25),
+        qualifiers: vec![("gene".into(), Some("TEST".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("seq".to_string()), Some(engine.clone()));
+
+    area.feature_location_editor_ui.record.mode = FeatureEditorMode::Split;
+    area.feature_location_editor_ui.record.split_feature_index = Some(0);
+    area.feature_location_editor_ui.record.split_before_1based = "16".to_string();
+    area.run_feature_record_preview();
+    assert!(matches!(
+        area.feature_location_editor_ui
+            .record
+            .preview
+            .as_ref()
+            .map(|preview| &preview.outcome),
+        Some(FeatureRecordCurationOutcome::Split {
+            resulting_feature_indices: [0, 1],
+            ..
+        })
+    ));
+    area.run_feature_record_apply();
+    assert_eq!(
+        engine.read().expect("engine").state().sequences["seq"]
+            .features()
+            .len(),
+        2
+    );
+
+    area.feature_location_editor_ui.record.mode = FeatureEditorMode::Merge;
+    area.feature_location_editor_ui
+        .record
+        .merge_first_feature_index = Some(0);
+    area.feature_location_editor_ui
+        .record
+        .merge_second_feature_index = Some(1);
+    area.run_feature_record_preview();
+    assert!(matches!(
+        area.feature_location_editor_ui
+            .record
+            .preview
+            .as_ref()
+            .map(|preview| &preview.outcome),
+        Some(FeatureRecordCurationOutcome::Merge {
+            resulting_feature_index: 0,
+            ..
+        })
+    ));
+    area.run_feature_record_apply();
+    let guard = engine.read().expect("engine");
+    assert_eq!(guard.state().sequences["seq"].features().len(), 1);
+    assert_eq!(
+        guard.state().sequences["seq"].features()[0].location,
+        Location::simple_range(5, 25)
+    );
 }
 
 #[cfg(test)]

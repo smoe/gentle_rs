@@ -24417,10 +24417,7 @@ impl GentleEngine {
                 if end_0based_exclusive > sequence_len {
                     return Err(EngineError::invalid_input(format!(
                         "Feature create range {}..{} exceeds sequence '{}' length {}",
-                        request.start_0based,
-                        request.end_0based_exclusive,
-                        seq_id,
-                        sequence_len
+                        request.start_0based, request.end_0based_exclusive, seq_id, sequence_len
                     )));
                 }
                 let proposed_feature = crate::feature_record_curation::build_simple_feature(
@@ -24502,6 +24499,188 @@ impl GentleEngine {
                     request.expected_annotation_state_fingerprint_sha256,
                 )
             }
+            FeatureRecordCurationRequest::Split(request) => {
+                let feature = features.get(request.feature_index).ok_or_else(|| {
+                    EngineError::new(
+                        ErrorCode::NotFound,
+                        format!(
+                            "Feature index {} is out of range for sequence '{}' ({} features)",
+                            request.feature_index,
+                            seq_id,
+                            features.len()
+                        ),
+                    )
+                })?;
+                if request.split_at_0based < 0 {
+                    return Err(EngineError::invalid_input(
+                        "Feature split boundary must not be negative",
+                    ));
+                }
+                let split_at_0based = usize::try_from(request.split_at_0based).map_err(|_| {
+                    EngineError::invalid_input(
+                        "Feature split boundary exceeds the supported coordinate range",
+                    )
+                })?;
+                let feature_fingerprint =
+                    crate::feature_location::feature_fingerprint_sha256(feature)?;
+                if apply_change && request.expected_feature_fingerprint_sha256.is_none() {
+                    return Err(EngineError::invalid_input(
+                        "Applying feature split requires the feature fingerprint returned by preview",
+                    ));
+                }
+                if let Some(expected) = request.expected_feature_fingerprint_sha256.as_deref()
+                    && expected != feature_fingerprint
+                {
+                    return Err(EngineError::invalid_input(format!(
+                        "Feature {} changed after preview: expected fingerprint {}, found {}",
+                        request.feature_index, expected, feature_fingerprint
+                    )));
+                }
+                let (genomic_left, genomic_right) =
+                    crate::feature_record_curation::split_exact_simple_feature(
+                        feature,
+                        split_at_0based,
+                        sequence_len,
+                    )?;
+                let review_candidates =
+                    crate::feature_record_curation::feature_record_review_candidates_for_targets(
+                        &features,
+                        &[&genomic_left, &genomic_right],
+                        &[request.feature_index],
+                    );
+                let original_snapshot =
+                    crate::feature_record_curation::feature_record_snapshot(feature)?;
+                let left_snapshot =
+                    crate::feature_record_curation::feature_record_snapshot(&genomic_left)?;
+                let right_snapshot =
+                    crate::feature_record_curation::feature_record_snapshot(&genomic_right)?;
+                let shifted_feature_count =
+                    features.len().saturating_sub(request.feature_index + 1);
+                let mut after_features = features.clone();
+                after_features[request.feature_index] = genomic_left;
+                after_features.insert(request.feature_index + 1, genomic_right);
+                (
+                    FeatureRecordCurationKind::Split,
+                    after_features,
+                    FeatureRecordCurationOutcome::Split {
+                        split_feature_index: request.feature_index,
+                        split_at_0based,
+                        original_feature: original_snapshot,
+                        genomic_left_feature: left_snapshot,
+                        genomic_right_feature: right_snapshot,
+                        resulting_feature_indices: [
+                            request.feature_index,
+                            request.feature_index + 1,
+                        ],
+                        shifted_feature_count,
+                    },
+                    review_candidates,
+                    request.expected_annotation_state_fingerprint_sha256,
+                )
+            }
+            FeatureRecordCurationRequest::Merge(request) => {
+                if request.first_feature_index == request.second_feature_index {
+                    return Err(EngineError::invalid_input(
+                        "Feature merge requires two distinct feature indices",
+                    ));
+                }
+                let first = features.get(request.first_feature_index).ok_or_else(|| {
+                    EngineError::new(
+                        ErrorCode::NotFound,
+                        format!(
+                            "Feature index {} is out of range for sequence '{}' ({} features)",
+                            request.first_feature_index,
+                            seq_id,
+                            features.len()
+                        ),
+                    )
+                })?;
+                let second = features.get(request.second_feature_index).ok_or_else(|| {
+                    EngineError::new(
+                        ErrorCode::NotFound,
+                        format!(
+                            "Feature index {} is out of range for sequence '{}' ({} features)",
+                            request.second_feature_index,
+                            seq_id,
+                            features.len()
+                        ),
+                    )
+                })?;
+                let first_fingerprint = crate::feature_location::feature_fingerprint_sha256(first)?;
+                let second_fingerprint =
+                    crate::feature_location::feature_fingerprint_sha256(second)?;
+                if apply_change
+                    && (request.expected_first_feature_fingerprint_sha256.is_none()
+                        || request.expected_second_feature_fingerprint_sha256.is_none())
+                {
+                    return Err(EngineError::invalid_input(
+                        "Applying feature merge requires both feature fingerprints returned by preview",
+                    ));
+                }
+                if let Some(expected) = request.expected_first_feature_fingerprint_sha256.as_deref()
+                    && expected != first_fingerprint
+                {
+                    return Err(EngineError::invalid_input(format!(
+                        "Feature {} changed after preview: expected fingerprint {}, found {}",
+                        request.first_feature_index, expected, first_fingerprint
+                    )));
+                }
+                if let Some(expected) = request
+                    .expected_second_feature_fingerprint_sha256
+                    .as_deref()
+                    && expected != second_fingerprint
+                {
+                    return Err(EngineError::invalid_input(format!(
+                        "Feature {} changed after preview: expected fingerprint {}, found {}",
+                        request.second_feature_index, expected, second_fingerprint
+                    )));
+                }
+                let merged = crate::feature_record_curation::merge_touching_simple_features(
+                    first,
+                    second,
+                    sequence_len,
+                )?;
+                let (retained_index, removed_index) =
+                    if request.first_feature_index < request.second_feature_index {
+                        (request.first_feature_index, request.second_feature_index)
+                    } else {
+                        (request.second_feature_index, request.first_feature_index)
+                    };
+                let review_candidates =
+                    crate::feature_record_curation::feature_record_review_candidates_for_targets(
+                        &features,
+                        &[&merged],
+                        &[retained_index, removed_index],
+                    );
+                let source_features = [
+                    crate::feature_record_curation::feature_record_snapshot(
+                        &features[retained_index],
+                    )?,
+                    crate::feature_record_curation::feature_record_snapshot(
+                        &features[removed_index],
+                    )?,
+                ];
+                let merged_snapshot =
+                    crate::feature_record_curation::feature_record_snapshot(&merged)?;
+                let shifted_feature_count = features.len().saturating_sub(removed_index + 1);
+                let mut after_features = features.clone();
+                after_features[retained_index] = merged;
+                after_features.remove(removed_index);
+                (
+                    FeatureRecordCurationKind::Merge,
+                    after_features,
+                    FeatureRecordCurationOutcome::Merge {
+                        source_feature_indices: [retained_index, removed_index],
+                        source_features,
+                        merged_feature: merged_snapshot,
+                        resulting_feature_index: retained_index,
+                        removed_feature_index: removed_index,
+                        shifted_feature_count,
+                    },
+                    review_candidates,
+                    request.expected_annotation_state_fingerprint_sha256,
+                )
+            }
         };
 
         if apply_change && expected_annotation_fingerprint.is_none() {
@@ -24537,26 +24716,26 @@ impl GentleEngine {
         }
 
         let review_candidate_count = review_candidates.len();
-        result.feature_record_curation_report = Some(Box::new(
-            FeatureRecordCurationReport {
-                schema: FEATURE_RECORD_CURATION_SCHEMA.to_string(),
-                seq_id: seq_id.clone(),
-                operation_kind,
-                dry_run: !apply_change,
-                applied: apply_change,
-                fingerprint_algorithm: FEATURE_ANNOTATION_STATE_FINGERPRINT_ALGORITHM.to_string(),
-                before_annotation_state_fingerprint_sha256: before_annotation_fingerprint,
-                after_annotation_state_fingerprint_sha256: after_annotation_fingerprint,
-                outcome,
-                review_candidates,
-            },
-        ));
+        result.feature_record_curation_report = Some(Box::new(FeatureRecordCurationReport {
+            schema: FEATURE_RECORD_CURATION_SCHEMA.to_string(),
+            seq_id: seq_id.clone(),
+            operation_kind,
+            dry_run: !apply_change,
+            applied: apply_change,
+            fingerprint_algorithm: FEATURE_ANNOTATION_STATE_FINGERPRINT_ALGORITHM.to_string(),
+            before_annotation_state_fingerprint_sha256: before_annotation_fingerprint,
+            after_annotation_state_fingerprint_sha256: after_annotation_fingerprint,
+            outcome,
+            review_candidates,
+        }));
         result.messages.push(format!(
             "{} feature-record {} on '{}' ({} informational review candidate{})",
             if apply_change { "Applied" } else { "Previewed" },
             match operation_kind {
                 FeatureRecordCurationKind::Create => "creation",
                 FeatureRecordCurationKind::Delete => "deletion",
+                FeatureRecordCurationKind::Split => "split",
+                FeatureRecordCurationKind::Merge => "merge",
             },
             seq_id,
             review_candidate_count,

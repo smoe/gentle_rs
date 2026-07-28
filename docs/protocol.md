@@ -8827,18 +8827,23 @@ Feature-location edit contract (implemented):
 Feature-record curation contract (implemented):
 
 - Schema:
-  - `gentle.feature_record_curation.v1`
+  - `gentle.feature_record_curation.v2`
+  - v1 is the Create/Delete-only predecessor; v2 adds strict Split/Merge
+    request and outcome variants without changing v1 field meanings
 - Shared operations:
   - `PreviewFeatureRecordCuration`
   - `ApplyFeatureRecordCuration`
   - both accept a tagged `FeatureRecordCurationRequest` with
-    `operation_kind=create|delete`.
+    `operation_kind=create|delete|split|merge`.
 - Shared-shell commands:
   - `features create SEQ_ID --kind KIND --start-1based N --end-1based-inclusive M [--strand forward|reverse] [--qualifier KEY[=VALUE] ...] [--dry-run] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]`
   - `features delete SEQ_ID FEATURE_INDEX [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]`
+  - `features split SEQ_ID FEATURE_INDEX --split-before-1based N [--dry-run] [--expected-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]`
+  - `features merge SEQ_ID FIRST_FEATURE_INDEX SECOND_FEATURE_INDEX [--dry-run] [--expected-first-feature-fingerprint-sha256 SHA] [--expected-second-feature-fingerprint-sha256 SHA] [--expected-annotation-state-fingerprint-sha256 SHA] [--path OUT.json]`
   - run `--dry-run` first. Create apply requires the returned annotation-state
     fingerprint; Delete apply requires both that fingerprint and the deleted
-    feature fingerprint.
+    feature fingerprint; Split has the same two-lock rule; Merge requires the
+    annotation-state fingerprint plus both source-feature fingerprints.
 - Create appends one exact `Range` or `Complement(Range)` to the ordered feature
   table. Preview deliberately does not promise the eventual feature index.
   Qualifiers are an ordered list of `{key, value}` records: duplicate keys,
@@ -8848,6 +8853,17 @@ Feature-record curation contract (implemented):
   The report carries a lossless serialized location, human display location,
   exact ordered qualifiers, and the number of later feature indices that shift
   down by one.
+- Split accepts only exact simple `Range` or `Complement(Range)` locations and
+  an internal boundary. It replaces table index `i` with genomic-left and
+  genomic-right records at `[i, i+1]`, retaining the original kind, strand, and
+  exact ordered qualifier vector on both outputs. The report names both output
+  indices and the number of later indices shifted up.
+- Merge accepts only two distinct, exactly touching simple records with equal
+  kind, strand, and exact ordered qualifier vectors. It spans their combined
+  genomic interval, retains the lower source table index, removes the higher
+  index, and reports the resulting index shift. Gaps, overlaps, compound or
+  fuzzy locations, strand differences, and qualifier conflicts are rejected;
+  GENtle does not infer a metadata reconciliation.
 - Annotation-state fingerprints use
   `sha256_sequence_id_length_topology_ordered_gb_io_features_serde_json_v1`.
   They cover sequence id, sequence length, topology, and every complete feature
@@ -8857,9 +8873,9 @@ Feature-record curation contract (implemented):
   INSDC identifiers (`locus_tag`, `gene`, `protein_id`, `transcript_id`) as
   informational evidence only. It never interprets overlap as an error or a
   shared identifier as a dependency, and it never edits another annotation.
-- Both applies are ordinary full-checkpoint mutations with undo/redo. Split,
-  merge, nested-location creation, dependency propagation, and automatic
-  transcript repair are outside v1.
+- All applies are ordinary full-checkpoint mutations with undo/redo.
+  Nested-location creation, dependency propagation, qualifier reconciliation,
+  and automatic transcript repair remain outside v2.
 
 Feature-query shell contract (implemented):
 
