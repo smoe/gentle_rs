@@ -14,6 +14,18 @@ understand what changed.
 
 ## 2026-07-29
 
+- Preserved gene-level identity for prepared transcriptome BLAST resources in
+  checksum-bound `gentle.blast_subject_annotation_index.v1` sidecars. Primer
+  specificity hits and products now retain optional Ensembl/GenBank subject
+  annotation in compact and full reports without allowing gene identity to
+  affect transcript-level intended-product matching; readiness ceilings also
+  record their human-readable derivation.
+- Completed the primer-specificity follow-up with narrow Ensembl transcript
+  version matching, persisted panel genome anchors, distinct external
+  `pass|specificity_fail|not_assessed|incomplete` outcomes, panel-inherited
+  readiness ceilings plus long-product warnings, indexed/compact v4 reports,
+  complete shell help, and catalog-driven preparation/inspection of
+  `transcriptome_cdna` BLAST resources.
 - Hardened persisted primer-specificity artifacts as
   `gentle.primer_specificity_report.v3`: each HSP now exposes unaligned query
   bases and effective mismatches, expected products are explicit per genomic or

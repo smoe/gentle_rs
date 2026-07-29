@@ -20,7 +20,7 @@ use crate::ensembl_gene::{
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
 };
-use crate::genomes::BlastHit;
+use crate::genomes::{BlastHit, BlastSubjectAnnotation, BlastSubjectAnnotationSource};
 use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
 use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
@@ -8432,6 +8432,7 @@ fn primer_specificity_test_hit(
         role,
         raw_subject_id: None,
         subject_id: subject_id.to_string(),
+        subject_annotation: None,
         identity_percent: 100.0,
         alignment_length_bp: end_1based.saturating_sub(start_1based).saturating_add(1),
         mismatches,
@@ -8746,22 +8747,28 @@ fn primer_specificity_transcript_set_accepts_every_declared_transcript_product()
     let mut forward_hits = vec![];
     let mut reverse_hits = vec![];
     let mut expected_products = vec![];
-    for (index, transcript_id) in ["TX1", "TX2"].into_iter().enumerate() {
+    for (index, (expected_transcript_id, observed_transcript_id)) in [
+        ("ENST00000465287", "ENST00000465287.1"),
+        ("ENST00000266269", "ENST00000266269.10"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
         forward_hits.push(primer_specificity_test_hit(
             PrimerSpecificityPrimerRole::Forward,
             index,
-            transcript_id,
-            10,
-            29,
+            observed_transcript_id,
+            if index == 0 { 528 } else { 1_991 },
+            if index == 0 { 547 } else { 2_010 },
             "+",
             0,
         ));
         reverse_hits.push(primer_specificity_test_hit(
             PrimerSpecificityPrimerRole::Reverse,
             index,
-            transcript_id,
-            80,
-            99,
+            observed_transcript_id,
+            if index == 0 { 991 } else { 2_473 },
+            if index == 0 { 1_010 } else { 2_492 },
             "-",
             0,
         ));
@@ -8769,12 +8776,12 @@ fn primer_specificity_transcript_set_accepts_every_declared_transcript_product()
             target_space: crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna
                 .as_str()
                 .to_string(),
-            subject_id: transcript_id.to_string(),
+            subject_id: expected_transcript_id.to_string(),
             expected_product_range: Some(PrimerSpecificitySubjectRange {
-                start_1based: 10,
-                end_1based: 99,
+                start_1based: if index == 0 { 528 } else { 1_991 },
+                end_1based: if index == 0 { 1_010 } else { 2_492 },
             }),
-            source_transcript_id: Some(transcript_id.to_string()),
+            source_transcript_id: Some(expected_transcript_id.to_string()),
         });
     }
     let target = PrimerSpecificityIntendedTarget {
@@ -8831,6 +8838,420 @@ fn primer_specificity_transcript_set_accepts_every_declared_transcript_product()
         !incomplete.specificity_pass,
         "a complete search missing one declared transcript product must fail"
     );
+}
+
+#[test]
+fn primer_specificity_assay_ceiling_keeps_patz1_long_products_as_nonfailing_warnings() {
+    let policy = PrimerSpecificityPolicy {
+        max_target_amplicon_bp: 4_000,
+        readiness_max_target_amplicon_bp: Some(1_000),
+        readiness_max_target_amplicon_bp_source:
+            PrimerSpecificityAmpliconCeilingSource::TranscriptAssayPanelAllowedRange,
+        ..PrimerSpecificityPolicy::default()
+    };
+    let mut forward_hits = vec![primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Forward,
+        0,
+        "ENST00000930048.2",
+        865,
+        884,
+        "+",
+        0,
+    )];
+    let mut reverse_hits = vec![primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Reverse,
+        0,
+        "ENST00000930048.2",
+        1_478,
+        1_497,
+        "-",
+        0,
+    )];
+    for (index, (subject_id, start_1based, end_1based)) in [
+        ("ENST00000266269.10", 606, 2_756),
+        ("ENST00000351933.9", 839, 2_851),
+        ("ENST00000405309.8", 839, 2_924),
+        ("ENST00000930049.2", 839, 2_818),
+        ("ENST00000930050.2", 839, 2_848),
+        ("ENST00000941424.2", 839, 2_986),
+        ("ENST00001069189.1", 839, 2_921),
+        ("ENST00001135483.1", 839, 2_989),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        forward_hits.push(primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Forward,
+            index + 1,
+            subject_id,
+            start_1based,
+            start_1based + 19,
+            "+",
+            0,
+        ));
+        reverse_hits.push(primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Reverse,
+            index + 1,
+            subject_id,
+            end_1based - 19,
+            end_1based,
+            "-",
+            0,
+        ));
+    }
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::TranscriptSet,
+        expected_products: vec![PrimerSpecificityExpectedProduct {
+            target_space: "transcriptome_cdna".to_string(),
+            subject_id: "ENST00000930048".to_string(),
+            expected_product_range: Some(PrimerSpecificitySubjectRange {
+                start_1based: 865,
+                end_1based: 1_497,
+            }),
+            source_transcript_id: Some("ENST00000930048".to_string()),
+        }],
+        genomic_target_geometry_known: true,
+        contiguous_genomic_product_expected: true,
+        source: "synthetic_patz1_assay_2".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    let mut amplicons = GentleEngine::primer_specificity_collect_amplicons_for_hits(
+        &forward_hits,
+        &reverse_hits,
+        &policy,
+    );
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &target,
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna,
+    );
+    let summary = GentleEngine::primer_specificity_summary(
+        &forward_hits,
+        &reverse_hits,
+        &amplicons,
+        &target,
+        crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna,
+        true,
+    );
+    assert!(summary.specificity_pass);
+    assert_eq!(summary.intended_amplicon_count, 1);
+    assert_eq!(summary.long_product_warning_count, 8);
+    assert_eq!(summary.failing_unintended_amplicon_count, 0);
+    assert_eq!(
+        amplicons
+            .iter()
+            .filter(|amplicon| amplicon.long_product_warning)
+            .count(),
+        8
+    );
+    assert!(
+        amplicons
+            .iter()
+            .filter(|amplicon| amplicon.long_product_warning)
+            .all(|amplicon| {
+                !amplicon.within_readiness_amplicon_range && !amplicon.specificity_failure
+            })
+    );
+}
+
+#[test]
+fn primer_specificity_indexed_pairing_and_compact_detail_are_bounded_and_deterministic() {
+    let policy = PrimerSpecificityPolicy {
+        max_target_amplicon_bp: 500,
+        readiness_max_target_amplicon_bp: Some(250),
+        report_detail_mode: PrimerSpecificityReportDetailMode::Compact,
+        ..PrimerSpecificityPolicy::default()
+    };
+    let mut forward_hits = vec![];
+    let mut reverse_hits = vec![];
+    for index in 0..500usize {
+        let start = index.saturating_mul(1_000).saturating_add(1);
+        let mut forward = primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Forward,
+            index,
+            "ENST00000465287.1",
+            start,
+            start + 19,
+            "+",
+            0,
+        );
+        let mut reverse = primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Reverse,
+            index,
+            "ENST00000465287.1",
+            start + 100,
+            start + 119,
+            "-",
+            0,
+        );
+        if index % 2 == 1 {
+            forward.accepted_by_policy = false;
+            forward.rejection_reasons = vec!["synthetic_rejected_hsp".to_string()];
+            reverse.accepted_by_policy = false;
+            reverse.rejection_reasons = vec!["synthetic_rejected_hsp".to_string()];
+        }
+        forward_hits.push(forward);
+        reverse_hits.push(reverse);
+    }
+    let annotation = BlastSubjectAnnotation {
+        record_id: "ENST00000465287.1".to_string(),
+        transcript_stable_id: Some("ENST00000465287".to_string()),
+        transcript_id: Some("ENST00000465287.1".to_string()),
+        gene_stable_id: Some("ENSG00000100105".to_string()),
+        gene_id: Some("ENSG00000100105.18".to_string()),
+        gene_symbol: Some("PATZ1".to_string()),
+        annotation_source: BlastSubjectAnnotationSource::EnsemblFastaDefline,
+        ..BlastSubjectAnnotation::default()
+    };
+    let annotations = BTreeMap::from([("ENST00000465287".to_string(), annotation)]);
+    GentleEngine::primer_specificity_apply_subject_annotations(&mut forward_hits, &annotations);
+    GentleEngine::primer_specificity_apply_subject_annotations(&mut reverse_hits, &annotations);
+    let (mut amplicons, comparisons) =
+        GentleEngine::primer_specificity_collect_amplicons_for_hits_with_stats(
+            &forward_hits,
+            &reverse_hits,
+            &policy,
+        );
+    assert_eq!(amplicons.len(), 500);
+    assert_eq!(comparisons, 500);
+    assert!(
+        comparisons < forward_hits.len().saturating_mul(reverse_hits.len()) / 100,
+        "indexed pairing should inspect nearby coordinate candidates, not the global cross product"
+    );
+
+    let full_json = serde_json::to_vec(&PrimerSpecificityReport {
+        schema: PRIMER_SPECIFICITY_REPORT_SCHEMA.to_string(),
+        forward_hits: forward_hits.clone(),
+        reverse_hits: reverse_hits.clone(),
+        amplicons: amplicons.clone(),
+        ..PrimerSpecificityReport::default()
+    })
+    .expect("serialize full synthetic report");
+    let mut warnings = vec![];
+    let compaction = GentleEngine::primer_specificity_apply_report_detail_mode(
+        &policy,
+        &mut forward_hits,
+        &mut reverse_hits,
+        &mut amplicons,
+        comparisons,
+        &mut warnings,
+    );
+    let compact_json = serde_json::to_vec(&PrimerSpecificityReport {
+        schema: PRIMER_SPECIFICITY_REPORT_SCHEMA.to_string(),
+        forward_hits,
+        reverse_hits,
+        amplicons: amplicons.clone(),
+        compaction: compaction.clone(),
+        warnings: warnings.clone(),
+        ..PrimerSpecificityReport::default()
+    })
+    .expect("serialize compact synthetic report");
+    assert_eq!(compaction.raw_forward_hit_count, 500);
+    assert_eq!(compaction.retained_forward_hit_count, 250);
+    assert_eq!(compaction.raw_reverse_hit_count, 500);
+    assert_eq!(compaction.retained_reverse_hit_count, 250);
+    assert_eq!(compaction.raw_amplicon_count, 500);
+    assert_eq!(compaction.retained_amplicon_count, 250);
+    assert_eq!(compaction.pairing_candidate_comparison_count, 500);
+    assert!(warnings.iter().any(|warning| warning.contains("Compact")));
+    assert!(
+        amplicons.iter().all(|amplicon| amplicon
+            .subject_annotation
+            .as_ref()
+            .is_some_and(|annotation| annotation.gene_symbol.as_deref() == Some("PATZ1"))),
+        "compact reports retain summary-level subject identity"
+    );
+    let compact_value: serde_json::Value =
+        serde_json::from_slice(&compact_json).expect("parse compact report JSON");
+    assert_eq!(
+        compact_value["amplicons"][0]["subject_annotation"]["gene_symbol"],
+        json!("PATZ1")
+    );
+    assert!(
+        compact_json.len() * 2 < full_json.len(),
+        "compact report should deterministically omit most rejected inline detail"
+    );
+}
+
+#[test]
+fn primer_specificity_same_gene_non_declared_transcript_stays_unintended() {
+    let annotation = BlastSubjectAnnotation {
+        record_id: "ENST00000999999.1".to_string(),
+        transcript_stable_id: Some("ENST00000999999".to_string()),
+        transcript_id: Some("ENST00000999999.1".to_string()),
+        gene_stable_id: Some("ENSG00000100105".to_string()),
+        gene_id: Some("ENSG00000100105.18".to_string()),
+        gene_symbol: Some("PATZ1".to_string()),
+        annotation_source: BlastSubjectAnnotationSource::EnsemblFastaDefline,
+        ..BlastSubjectAnnotation::default()
+    };
+    let mut forward = primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Forward,
+        0,
+        "ENST00000999999.1",
+        10,
+        29,
+        "+",
+        0,
+    );
+    forward.subject_annotation = Some(annotation.clone());
+    let mut reverse = primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Reverse,
+        0,
+        "ENST00000999999.1",
+        90,
+        109,
+        "-",
+        0,
+    );
+    reverse.subject_annotation = Some(annotation);
+    let policy = PrimerSpecificityPolicy::default();
+    let (mut amplicons, _) = GentleEngine::primer_specificity_collect_amplicons_for_hits_with_stats(
+        &[forward],
+        &[reverse],
+        &policy,
+    );
+    let intended_target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::TranscriptSet,
+        expected_products: vec![PrimerSpecificityExpectedProduct {
+            target_space: BlastDatabaseIndexKind::TranscriptomeCdna
+                .as_str()
+                .to_string(),
+            subject_id: "ENST00000465287.1".to_string(),
+            expected_product_range: None,
+            source_transcript_id: Some("ENST00000465287.1".to_string()),
+        }],
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &intended_target,
+        &policy,
+        BlastDatabaseIndexKind::TranscriptomeCdna,
+    );
+    assert_eq!(amplicons.len(), 1);
+    assert_eq!(
+        amplicons[0]
+            .subject_annotation
+            .as_ref()
+            .and_then(|annotation| annotation.gene_symbol.as_deref()),
+        Some("PATZ1")
+    );
+    assert!(
+        !amplicons[0].intended,
+        "gene annotation is descriptive; a different transcript of PATZ1 is not promoted"
+    );
+}
+
+#[test]
+fn primer_specificity_subject_id_matching_is_narrowly_ensembl_version_aware() {
+    assert!(GentleEngine::primer_specificity_subject_ids_match(
+        "ENST00000465287",
+        "ENST00000465287.1"
+    ));
+    assert!(GentleEngine::primer_specificity_subject_ids_match(
+        "ENSMUST00000193812.2",
+        "ENSMUST00000193812"
+    ));
+    assert!(!GentleEngine::primer_specificity_subject_ids_match(
+        "vendor.target",
+        "vendor.target.1"
+    ));
+    assert!(!GentleEngine::primer_specificity_subject_ids_match(
+        "NC_000022",
+        "NC_000022.11"
+    ));
+    assert!(!GentleEngine::primer_specificity_subject_ids_match(
+        "ENSG00000100000",
+        "ENSG00000100000.2"
+    ));
+}
+
+#[test]
+fn primer_specificity_v4_defaults_preserve_legacy_full_reports() {
+    let legacy_policy: PrimerSpecificityPolicy =
+        serde_json::from_str("{}").expect("deserialize pre-v2 policy");
+    assert_eq!(
+        legacy_policy.report_detail_mode,
+        PrimerSpecificityReportDetailMode::Full,
+        "a policy serialized before report-detail modes existed described a lossless report"
+    );
+    assert_eq!(
+        PrimerSpecificityPolicy::default().report_detail_mode,
+        PrimerSpecificityReportDetailMode::Compact,
+        "new calls should default to bounded compact output"
+    );
+    assert!(
+        legacy_policy
+            .readiness_max_target_amplicon_bp_reason
+            .is_none()
+    );
+
+    let legacy_report: PrimerSpecificityReport = serde_json::from_value(serde_json::json!({
+        "schema": "gentle.primer_specificity_report.v3",
+        "amplicons": [{
+            "kind": "forward_reverse",
+            "subject_id": "ENST00000465287.1",
+            "left_role": "forward",
+            "left_hit_index": 0,
+            "right_role": "reverse",
+            "right_hit_index": 0,
+            "start_1based": 528,
+            "end_1based": 1010,
+            "length_bp": 483,
+            "combined_mismatches": 0,
+            "max_three_prime_mismatches": 0,
+            "terminal_policy_pass": true,
+            "intended": true,
+            "specificity_failure": false
+        }]
+    }))
+    .expect("deserialize pre-v4 report");
+    assert_eq!(
+        legacy_report.compaction.detail_mode,
+        PrimerSpecificityReportDetailMode::Full
+    );
+    assert!(legacy_report.amplicons[0].within_readiness_amplicon_range);
+    assert!(!legacy_report.amplicons[0].long_product_warning);
+    assert!(legacy_report.amplicons[0].subject_annotation.is_none());
+    assert!(legacy_report.raw_detail_artifacts.is_empty());
+
+    let legacy_panel: TranscriptAssayPanelReport = serde_json::from_value(serde_json::json!({
+        "schema": "gentle.transcript_assay_panel.v2",
+        "report_id": "legacy_panel",
+        "source_seq_id": "legacy_source"
+    }))
+    .expect("deserialize panel without persisted genome anchor");
+    assert!(legacy_panel.source_genome_anchor.is_none());
+}
+
+#[test]
+fn transcript_assay_specificity_acceptance_states_serialize_distinctly() {
+    for (status, expected) in [
+        (
+            TranscriptAssayPanelSpecificityAcceptanceStatus::Pass,
+            "pass",
+        ),
+        (
+            TranscriptAssayPanelSpecificityAcceptanceStatus::SpecificityFail,
+            "specificity_fail",
+        ),
+        (
+            TranscriptAssayPanelSpecificityAcceptanceStatus::NotAssessed,
+            "not_assessed",
+        ),
+        (
+            TranscriptAssayPanelSpecificityAcceptanceStatus::Incomplete,
+            "incomplete",
+        ),
+    ] {
+        let value = serde_json::to_value(status).expect("serialize acceptance status");
+        assert_eq!(value, serde_json::Value::String(expected.to_string()));
+        let round_trip: TranscriptAssayPanelSpecificityAcceptanceStatus =
+            serde_json::from_value(value).expect("deserialize acceptance status");
+        assert_eq!(round_trip, status);
+    }
 }
 
 #[test]
@@ -9535,7 +9956,7 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
         .map(|report| *report)
         .expect("specificity import operation result");
     assert!(report_path.is_file());
-    assert_eq!(report.schema, "gentle.primer_specificity_report.v3");
+    assert_eq!(report.schema, "gentle.primer_specificity_report.v4");
     assert!(report.report_id.starts_with("primer_specificity_"));
     assert!(report.op_id.is_some());
     assert!(report.run_id.is_some());
@@ -10873,6 +11294,7 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
         "panel_external_pass",
         "panel_external_fail",
         "panel_external_incomplete",
+        "panel_external_search_incomplete",
     ] {
         let mut operation = transcript_assay_panel_operation(
             TranscriptAssayCoveragePolicy::BestEffort,
@@ -10893,7 +11315,48 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
             report.selected_assays.len() >= 2,
             "aggregate fixture must exercise more than one selected assay"
         );
+        assert_eq!(
+            report
+                .source_genome_anchor
+                .as_ref()
+                .map(|anchor| anchor.chromosome.as_str()),
+            Some("chr1"),
+            "the panel must persist its design-time genome anchor"
+        );
     }
+    engine.state_mut().metadata.remove(PROVENANCE_METADATA_KEY);
+    let panel_source = engine
+        .state_mut()
+        .sequences
+        .get_mut("panel_src")
+        .expect("panel source sequence");
+    let source_feature = panel_source
+        .features_mut()
+        .iter_mut()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("source"))
+        .expect("panel source feature");
+    source_feature.qualifiers.retain(|(key, _)| {
+        !matches!(
+            key.as_ref(),
+            "chromosome" | "genomic_start_1based" | "genomic_end_1based" | "strand"
+        )
+    });
+    let mut unanchored_operation = transcript_assay_panel_operation(
+        TranscriptAssayCoveragePolicy::BestEffort,
+        transcript_assay_panel_relaxed_side(),
+        1,
+        "panel_external_not_assessed",
+    );
+    let Operation::DesignTranscriptAssayPanel { objective, .. } = &mut unanchored_operation else {
+        unreachable!("transcript assay panel helper returned another operation")
+    };
+    *objective = TranscriptAssayPanelObjective::OnePerClass;
+    let unanchored_panel = engine
+        .apply(unanchored_operation)
+        .expect("design legacy-like unanchored transcript assay panel")
+        .transcript_assay_panel
+        .expect("unanchored transcript assay panel result");
+    assert!(unanchored_panel.source_genome_anchor.is_none());
 
     let pass_plan = execute_shell_command(
         &mut engine,
@@ -10918,6 +11381,22 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
     let planned_panel = engine
         .get_transcript_assay_panel_report("panel_external_pass")
         .expect("planned source panel");
+    assert_eq!(
+        pass_handoff.policy.readiness_max_target_amplicon_bp,
+        Some(planned_panel.max_amplicon_bp)
+    );
+    let expected_ceiling_reason = format!(
+        "Transcript assay panel '{}' declares an allowed product range of {}-{} bp; its upper bound is the ordinary assay/readiness ceiling.",
+        planned_panel.report_id, planned_panel.min_amplicon_bp, planned_panel.max_amplicon_bp
+    );
+    assert_eq!(
+        pass_handoff
+            .policy
+            .readiness_max_target_amplicon_bp_reason
+            .as_deref(),
+        Some(expected_ceiling_reason.as_str()),
+        "panel-derived readiness ceiling must explain its declared range"
+    );
     for planned_assay in &pass_handoff.assays {
         let selected_assay = planned_panel
             .selected_assays
@@ -11066,7 +11545,7 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
     let persisted_failing_assay_ids = persisted_fail
         .genomic_specificity_assessments
         .iter()
-        .filter(|assessment| assessment.status == "external_blast_fail")
+        .filter(|assessment| assessment.status == "external_blast_specificity_fail")
         .map(|assessment| assessment.assay_id.as_str())
         .collect::<BTreeSet<_>>();
     assert_eq!(
@@ -11133,6 +11612,7 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
     failed_execution.exit_code = Some(17);
     failed_execution.output_size_bytes = None;
     failed_execution.output_sha256 = None;
+    let failed_execution_assay_id = failed_execution.assay_id.clone();
     incomplete_manifest.panel_digest = "sha256:stale-panel".to_string();
     let incomplete = engine
         .finalize_transcript_assay_panel_specificity_handoff(
@@ -11158,6 +11638,11 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
             .iter()
             .any(|issue| issue.code == "panel_digest_mismatch")
     );
+    assert!(
+        incomplete
+            .execution_failed_assay_ids
+            .contains(&failed_execution_assay_id)
+    );
     let persisted_incomplete = engine
         .get_transcript_assay_panel_report("panel_external_incomplete")
         .expect("persisted incomplete panel");
@@ -11167,6 +11652,85 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
             .genomic_specificity_assessments
             .is_empty()
     );
+
+    let search_incomplete_handoff = engine
+        .prepare_transcript_assay_panel_specificity_handoff(
+            "panel_external_search_incomplete",
+            "ToyGenome",
+            PrimerSpecificityPolicy {
+                max_3prime_mismatches: 5,
+                ..PrimerSpecificityPolicy::default()
+            },
+            Some(&catalog.to_string_lossy()),
+            None,
+            &root.join("search-incomplete").to_string_lossy(),
+        )
+        .expect("plan panel before database subject count changes");
+    let search_incomplete_manifest =
+        transcript_assay_specificity_execution_manifest(&search_incomplete_handoff, false);
+    write_fake_blastdbcmd(&fake_blastdbcmd, 10, 1_000);
+    let search_incomplete = engine
+        .finalize_transcript_assay_panel_specificity_handoff(
+            &search_incomplete_handoff.handoff_path,
+            search_incomplete_manifest,
+            None,
+        )
+        .expect("classify a no-longer-exhaustive search as incomplete");
+    assert_eq!(
+        search_incomplete.status,
+        TranscriptAssayPanelSpecificityAcceptanceStatus::Incomplete
+    );
+    assert!(
+        search_incomplete
+            .issues
+            .iter()
+            .any(|issue| issue.code == "specificity_search_incomplete")
+    );
+    let persisted_search_incomplete = engine
+        .get_transcript_assay_panel_report("panel_external_search_incomplete")
+        .expect("persisted source panel after incomplete search");
+    assert!(persisted_search_incomplete.specificity_acceptance.is_none());
+    assert!(
+        persisted_search_incomplete
+            .genomic_specificity_assessments
+            .is_empty(),
+        "a partially assessed incomplete panel must not be attached"
+    );
+    write_fake_blastdbcmd(&fake_blastdbcmd, 1, 1_000);
+
+    let not_assessed_handoff = engine
+        .prepare_transcript_assay_panel_specificity_handoff(
+            "panel_external_not_assessed",
+            "ToyGenome",
+            PrimerSpecificityPolicy {
+                max_3prime_mismatches: 5,
+                ..PrimerSpecificityPolicy::default()
+            },
+            Some(&catalog.to_string_lossy()),
+            None,
+            &root.join("not_assessed").to_string_lossy(),
+        )
+        .expect("plan unanchored panel handoff");
+    let not_assessed_manifest =
+        transcript_assay_specificity_execution_manifest(&not_assessed_handoff, false);
+    let not_assessed = engine
+        .finalize_transcript_assay_panel_specificity_handoff(
+            &not_assessed_handoff.handoff_path,
+            not_assessed_manifest,
+            None,
+        )
+        .expect("interpret complete but unassessable genomic search");
+    assert_eq!(
+        not_assessed.status,
+        TranscriptAssayPanelSpecificityAcceptanceStatus::NotAssessed
+    );
+    assert!(!not_assessed.accepted);
+    assert!(not_assessed.issues.is_empty());
+    assert!(!not_assessed.not_assessed_assay_ids.is_empty());
+    assert!(not_assessed.execution_failed_assay_ids.is_empty());
+    let serialized =
+        serde_json::to_value(&not_assessed).expect("serialize not-assessed acceptance");
+    assert_eq!(serialized["status"], "not_assessed");
 }
 
 #[test]

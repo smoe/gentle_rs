@@ -26,7 +26,7 @@ A multi-transcript PCR experiment has three distinct jobs. Long endpoint RT-PCR 
 
 This chapter uses a deliberately sequence-diverse, synthetic PATZ1-like locus on the minus strand. It demonstrates exact mature-cDNA equivalence classes, a 10 kb allowed endpoint ceiling, caller-supplied preferred product ranges, oligo-dT reverse-transcription warnings, and distinct synthetic Clariom JUC and PSR evidence. Transcript annotation alone establishes whether a selected amplicon is common; PSR signal remains independent support and cannot manufacture that claim. The fixture does not produce orderable primers for the human PATZ1 locus and does not claim that a missing long product proves isoform absence. The canonical workflow is the deterministic reference; the direct CLI steps extract the same three operation objects and submit them unchanged through `primers design-transcript-assay-panel`.
 
-Each selected assay also records a `primers specificity-plan` follow-up template. Planning creates structured BLAST jobs but does not execute them. An external scheduler can run each returned `program` with its `args[]`, wait for exit code 0, and then call `primers specificity-import`; until that happens, `genomic_confirmation_status` remains `not_run`.
+Each selected assay also records a `primers specificity-plan` follow-up template. Planning creates structured BLAST jobs but does not execute them. For a real complete panel, prepare or import catalogued genomic-DNA and whole-cDNA BLAST resources, then use `primers transcript-assay-specificity-plan` and always call `primers transcript-assay-specificity-finalize` with the scheduler's execution manifest. GENtle distinguishes a completed biological `specificity_fail`, a completed but geometrically `not_assessed` result, and incomplete or failed execution evidence; only `pass` is accepted. Until a handoff is actually executed and finalized, this offline tutorial honestly retains `genomic_confirmation_status: not_run`.
 
 **Prerequisites:** Read [Chapter 13: Determine and review PCR primer pairs (offline)](./04-02_pcr_selection_batch_primer_pairs_offline.md) first.
 
@@ -53,6 +53,9 @@ Each selected assay also records a `primers specificity-plan` follow-up template
 - `primers specificity-plan / specificity-import` (where used: Per-assay genomic-confirmation follow-up)
   - Why it matters: The handoff lets an outer workflow own long-running BLAST processes and use their exit status as the completion signal, while GENtle remains responsible for deterministic queries, policy, provenance, and interpretation.
   - How to derive it: Generate the handoff against a prepared genome, run every returned `program` with its exact `args[]`, require exit code 0, and only then import the handoff. Do not infer completion from a non-empty output file.
+- `transcript-assay-specificity-plan / transcript-assay-specificity-finalize` (where used: Complete-panel genomic or whole-cDNA confirmation after this offline tutorial)
+  - Why it matters: Aggregate finalization verifies every declared command and output identity atomically, inherits the panel's allowed product ceiling for readiness, and keeps biological failure, unavailable target geometry, and execution failure separate.
+  - How to derive it: Prepare a catalogued `genomic_dna` or `transcriptome_cdna` BLAST resource, generate one panel handoff, execute every declared command, and return the completed execution manifest even when a process fails. Accept only a final `pass`.
 
 ## When This Routine Is Useful
 
@@ -62,6 +65,7 @@ Each selected assay also records a `primers specificity-plan` follow-up template
 - You want a routine common-region screen whose structural claim comes from transcript annotation while PSR support remains separate.
 - You need to preserve every shared operation field instead of relying only on convenience flags.
 - You want an external scheduler to own BLAST process completion while GENtle retains deterministic specificity inputs and interpretation.
+- You need complete-panel acceptance to distinguish a biological specificity failure from unavailable target geometry or failed external execution.
 - You want persisted reports that can be listed, shown, exported, or consumed through MCP, JavaScript, Lua, and workflows.
 
 ## What You Learn
@@ -72,6 +76,7 @@ Each selected assay also records a `primers specificity-plan` follow-up template
 - Read first-end x terminal-end reactions and predicted band sizes without treating a missing long product as proof of transcript absence.
 - Require every supplied junction to be evaluated or returned with an explicit unresolved reason.
 - Separate BLAST job planning and execution from GENtle's import-time specificity interpretation.
+- Interpret `pass`, `specificity_fail`, `not_assessed`, and `incomplete` as distinct whole-panel outcomes.
 - Separate transcript-annotation commonality, PSR support, product-length practicality, and the existing primer score in the selection rationale.
 - Persist, list, inspect, and export transcript assay reports from one explicit project state.
 

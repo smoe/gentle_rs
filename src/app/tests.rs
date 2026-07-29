@@ -11683,6 +11683,7 @@ fn prepared_genome_blast_summary_exposes_component_validation_and_identity() {
         status_code: Some(0),
         compatible_operations: vec!["primer_genomic_specificity".to_string()],
         warnings: vec![],
+        ..BlastDatabaseInspectionReport::default()
     });
 
     assert_eq!(

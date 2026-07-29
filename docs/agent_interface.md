@@ -373,6 +373,8 @@ an agent has selected a deterministic operation.
 - `genomes genes`
 - `genomes install-ensembl`
 - `genomes prepare`
+- `genomes prepare-blast-resource`
+- `genomes inspect-blast-resource`
 - `genomes preview-ensembl-specs`
 - `genomes remove-catalog-entry`
 - `genomes remove-prepared`
@@ -482,6 +484,8 @@ an agent has selected a deterministic operation.
 - `primers show-report`
 - `primers show-restriction-cloning-handoff`
 - `primers show-transcript-assay-panel`
+- `primers transcript-assay-specificity-plan`
+- `primers transcript-assay-specificity-finalize`
 - `primers test-cdna-pcr`
 - `primers test-cdna-qpcr`
 - `primers test-cdna-qpcr-fasta`

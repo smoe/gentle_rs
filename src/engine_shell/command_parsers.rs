@@ -15,14 +15,27 @@ use super::*;
 use crate::engine::{
     CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
-    PrimerSpecificityCheckMode, PrimerSpecificityPolicy, QpcrTranscriptSpecificityEvidence,
-    QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, ReadAcquisitionAnalysisFormat,
-    ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode, TfbsScoreTrackCorrelationMetric,
+    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityCheckMode, PrimerSpecificityPolicy,
+    PrimerSpecificityReportDetailMode, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
+    QpcrTranscriptTargetingMode, ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout,
+    RepeatEnvironmentGeometryMode, TfbsScoreTrackCorrelationMetric,
     TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric, TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
     TranscriptAssayJunctionPriority, TranscriptAssayKind, TranscriptAssayPanelObjective,
     TranscriptAssayPracticalityPolicy, TranscriptAssaySpecificityRequest, TranscriptAssayUseTier,
 };
+
+fn parse_primer_specificity_report_detail_mode(
+    raw: &str,
+) -> Result<PrimerSpecificityReportDetailMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "compact" => Ok(PrimerSpecificityReportDetailMode::Compact),
+        "full" | "lossless" | "audit" => Ok(PrimerSpecificityReportDetailMode::Full),
+        other => Err(format!(
+            "Unknown primer-specificity report detail '{other}' (expected compact|full)"
+        )),
+    }
+}
 
 fn parse_read_acquisition_analysis_format(
     raw: &str,
@@ -5616,7 +5629,41 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                     "--max-target-amplicon-bp" | "--max-amplicon-bp" => {
                         let flag = tokens[idx].clone();
                         let raw = parse_option_path(tokens, &mut idx, &flag, command_name)?;
-                        policy.max_target_amplicon_bp = parse_usize_option_value(&raw, &flag)?;
+                        let ceiling = parse_usize_option_value(&raw, &flag)?;
+                        policy.max_target_amplicon_bp = ceiling;
+                        policy.readiness_max_target_amplicon_bp = Some(ceiling);
+                        policy.readiness_max_target_amplicon_bp_source =
+                            PrimerSpecificityAmpliconCeilingSource::ExplicitOverride;
+                    }
+                    "--readiness-max-amplicon-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--readiness-max-amplicon-bp",
+                            command_name,
+                        )?;
+                        policy.readiness_max_target_amplicon_bp = Some(parse_usize_option_value(
+                            &raw,
+                            "--readiness-max-amplicon-bp",
+                        )?);
+                        policy.readiness_max_target_amplicon_bp_source =
+                            PrimerSpecificityAmpliconCeilingSource::ExplicitOverride;
+                    }
+                    "--exploratory-max-amplicon-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--exploratory-max-amplicon-bp",
+                            command_name,
+                        )?;
+                        policy.max_target_amplicon_bp =
+                            parse_usize_option_value(&raw, "--exploratory-max-amplicon-bp")?;
+                    }
+                    "--report-detail" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--report-detail", command_name)?;
+                        policy.report_detail_mode =
+                            parse_primer_specificity_report_detail_mode(&raw)?;
                     }
                     "--min-primer-coverage-fraction" => {
                         let raw = parse_option_path(
@@ -5799,7 +5846,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             Ok(ShellCommand::PrimersSpecificityImport { handoff_path, path })
         }
         "transcript-assay-specificity-plan" => {
-            const USAGE: &str = "primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome GENOME_ID --output-dir DIR [--max-target-amplicon-bp N] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--allow-same-gene-splice-variants] [--max-hits-per-primer N] [--avoid-known-variants] [--avoid-rmsk-repeats] [--avoid-low-complexity] [--catalog PATH] [--cache-dir DIR]";
+            const USAGE: &str = "primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome GENOME_ID --output-dir DIR [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--allow-same-gene-splice-variants] [--max-hits-per-primer N] [--avoid-known-variants] [--avoid-rmsk-repeats] [--avoid-low-complexity] [--catalog PATH] [--cache-dir DIR]";
             if tokens.len() < 3 {
                 return Err(USAGE.to_string());
             }
@@ -5838,7 +5885,45 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                             &flag,
                             "primers transcript-assay-specificity-plan",
                         )?;
-                        policy.max_target_amplicon_bp = parse_usize_option_value(&raw, &flag)?;
+                        let ceiling = parse_usize_option_value(&raw, &flag)?;
+                        policy.max_target_amplicon_bp = ceiling;
+                        policy.readiness_max_target_amplicon_bp = Some(ceiling);
+                        policy.readiness_max_target_amplicon_bp_source =
+                            PrimerSpecificityAmpliconCeilingSource::ExplicitOverride;
+                    }
+                    "--readiness-max-amplicon-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--readiness-max-amplicon-bp",
+                            "primers transcript-assay-specificity-plan",
+                        )?;
+                        policy.readiness_max_target_amplicon_bp = Some(parse_usize_option_value(
+                            &raw,
+                            "--readiness-max-amplicon-bp",
+                        )?);
+                        policy.readiness_max_target_amplicon_bp_source =
+                            PrimerSpecificityAmpliconCeilingSource::ExplicitOverride;
+                    }
+                    "--exploratory-max-amplicon-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--exploratory-max-amplicon-bp",
+                            "primers transcript-assay-specificity-plan",
+                        )?;
+                        policy.max_target_amplicon_bp =
+                            parse_usize_option_value(&raw, "--exploratory-max-amplicon-bp")?;
+                    }
+                    "--report-detail" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--report-detail",
+                            "primers transcript-assay-specificity-plan",
+                        )?;
+                        policy.report_detail_mode =
+                            parse_primer_specificity_report_detail_mode(&raw)?;
                     }
                     "--min-primer-coverage-fraction" => {
                         let raw = parse_option_path(

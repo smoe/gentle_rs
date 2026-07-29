@@ -1227,6 +1227,9 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "features delete",
             "features split",
             "features merge",
+            "primers specificity",
+            "primers specificity-plan",
+            "primers specificity-import",
         ],
         "workflow" => &["workflow"],
         "help" => &["help"],
@@ -4356,7 +4359,7 @@ mod tests {
             response
                 .pointer("/result/structuredContent/result/primer_specificity_report/schema")
                 .and_then(Value::as_str),
-            Some("gentle.primer_specificity_report.v3")
+            Some("gentle.primer_specificity_report.v4")
         );
         let report_id = response
             .pointer("/result/structuredContent/result/primer_specificity_report/report_id")

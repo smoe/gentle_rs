@@ -2527,6 +2527,32 @@ Current draft operations:
   - new reference-genome manifests default to `genomic_dna`; transcriptome/cDNA
     databases use the distinct `transcriptome_cdna` identity so their
     specificity interpretation cannot be conflated with genomic carryover
+- Sequence-only BLAST resources use the shared-shell routes
+  `genomes prepare-blast-resource` (alias `import-blast-resource`) and
+  `genomes inspect-blast-resource` rather than `PrepareGenome`:
+  - the catalog entry declares `blast_index_kind = transcriptome_cdna`,
+    `sequence_local` or `sequence_remote`, and optional `reference_name`,
+    `reference_release`, and `blast_masking`
+  - preparation returns `gentle.prepare_blast_sequence_resource.v1` and writes
+    an engine-owned `gentle.blast_sequence_resource_manifest.v1`; callers do
+    not author the prepared manifest
+  - the manifest binds the source/digest, materialized FASTA, BLAST prefix and
+    executable, index kind, masking, reference identity/release, and install
+    time. It deliberately has no genome gene/transcript indexes
+  - preparation also writes
+    `gentle.blast_subject_annotation_index.v1`, a compact sidecar keyed by
+    subject/transcript id. Ensembl FASTA deflines are parsed once for optional
+    gene identity, symbol, biotypes, and description; GenBank records retain
+    their versioned accession plus `/gene` and `/db_xref` values. Unknown
+    identity stays explicitly unavailable. The sidecar is bound to both the
+    prepared sequence checksum and its own checksum
+  - inspection reuses `gentle.blast_database_inspection.v1`, including
+    `blastdbcmd` validation, sequence count, content fingerprint, and compatible
+    operations, plus subject-annotation status, record/annotated counts, source
+    counts, path, and fingerprint
+  - prepared sequence-only resources resolve through the same exhaustive
+    `blastn-short` executor used by primer specificity. They do not fall back
+    to a similarly named genome install
 - `ExtractGenomeRegion { genome_id, chromosome, start_1based, end_1based, output_id?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
   - `annotation_scope` accepts `none|core|full` and defaults to `core` when omitted.
   - `max_annotation_features` is an optional safety cap (0 or omitted = unlimited for explicit requests).
@@ -7511,6 +7537,10 @@ Operation progress/cancellation semantics:
     "policy": {
       "specificity_check": "report_only",
       "max_target_amplicon_bp": 4000,
+      "readiness_max_target_amplicon_bp": 1000,
+      "readiness_max_target_amplicon_bp_source": "explicit_override",
+      "readiness_max_target_amplicon_bp_reason": "The caller explicitly set the ordinary assay/readiness ceiling to 1000 bp.",
+      "report_detail_mode": "compact",
       "min_primer_coverage_fraction": 0.8,
       "max_3prime_mismatches": 0,
       "three_prime_window_bp": 5,
@@ -7529,7 +7559,7 @@ Operation progress/cancellation semantics:
 - For saved `PrimerDesignReport` pairs, the recorded
   `non_annealing_5prime_tail_bp` is removed before BLAST. Full oligos and tails
   remain in report provenance.
-- Target scope in v3:
+- Target scope in v4:
   - prepared genomic-DNA or transcriptome-cDNA BLAST indexes
   - runs through GENtle's existing BLAST index/preflight machinery
   - local `blastn-short` is used with short-query settings; GENtle validates
@@ -7539,7 +7569,8 @@ Operation progress/cancellation semantics:
   - `max_hits_per_primer` is a post-search review threshold and never becomes
     the BLAST subject cap
 - Report schema:
-  - `gentle.primer_specificity_report.v3`
+  - `gentle.primer_specificity_report.v4` with
+    `gentle.primer_specificity_policy.v2`
   - both `AssessPrimerPairSpecificity` and
     `ImportPrimerPairSpecificityHandoff` persist the report in project
     metadata. Its stable, content-derived `report_id` binds the primer pair,
@@ -7577,6 +7608,16 @@ Operation progress/cancellation semantics:
     subject coordinates; wrapped BLAST identifiers such as
     `gb|KI270750.1|` are normalized against the prepared FASTA index while the
     raw identifier remains available
+  - prepared transcriptome resources add optional `subject_annotation` to
+    primer hits and candidate amplicons. It includes the full and normalized
+    transcript stable id, full and normalized gene stable id, `gene_symbol`,
+    biotypes, description, and explicit annotation source when those values
+    were present in the prepared reference. GenBank subjects instead retain
+    their versioned accession, `/gene`, and `/db_xref` values. Missing values
+    remain absent and use `annotation_source = unavailable`
+  - BLAST tabular output remains compact and does not request `stitle`;
+    descriptive identity is joined from the prepared sidecar instead of
+    repeating a potentially long title on every HSP
   - `query_coverage_fraction` is computed independently for every HSP from its
     inclusive `qstart..qend` span divided by primer length; BLAST `qcovs`
     cannot promote a short HSP because that field is aggregated per subject.
@@ -7588,11 +7629,23 @@ Operation progress/cancellation semantics:
     forward/forward and reverse/reverse warning products. Genomic left/right
     ordering is derived from subject strand and coordinates rather than primer
     role, so minus-strand targets are paired without swapping assay roles
+  - accepted hits are indexed by subject, strand/orientation, and coordinate
+    before product pairing. `compaction.pairing_candidate_comparison_count`
+    records the bounded work performed instead of relying on wall-clock
+    measurements
   - `intended_target.model = transcript_set` supports assays intended to
     amplify multiple transcripts. `expected_products[]` records each intended
     subject and optional exact product range in its `genomic_dna` or
     `transcriptome_cdna` target space; a transcriptome pass requires exactly
     one compatible product for every declared transcript
+  - intended transcript matching ignores only an optional final numeric
+    version suffix on an Ensembl transcript stable id. For example,
+    `ENST00000465287` matches observed `ENST00000465287.1`, while the full
+    observed id remains in hit/product provenance. Arbitrary dotted ids,
+    Ensembl gene ids, and non-Ensembl accessions remain exact-match
+  - gene ids and symbols are descriptive annotation only. Transcript subject
+    ids remain authoritative for intended-product matching; another transcript
+    of the same annotated gene is still unintended unless it was declared
   - intended genomic products are resolved only from an explicit prepared-FASTA
     subject and computed genomic binding interval; cDNA amplicon length is
     retained as provenance but is never used to identify a genomic product
@@ -7622,6 +7675,25 @@ Operation progress/cancellation semantics:
     observed command limit, command count, and explanatory reason. If
     completeness is not proven, `summary.status = incomplete` and
     `specificity_pass = false` regardless of observed hits
+  - `policy.readiness_max_target_amplicon_bp` is the ordinary assay gate.
+    `policy.max_target_amplicon_bp` remains the broader exploratory ceiling.
+    Compatible products between them carry `long_product_warning = true` and
+    are summarized separately without becoming ordinary in-window specificity
+    failures. `readiness_max_target_amplicon_bp_source` records
+    `legacy_policy_max`, `explicit_override`, or
+    `transcript_assay_panel_allowed_range`, while
+    `readiness_max_target_amplicon_bp_reason` records the human-readable
+    derivation (for example, the panel's declared 70-1,000 bp range)
+  - newly created reports default to compact detail:
+    `compaction` records raw and retained hit/product counts and compact mode
+    omits rejected HSPs plus nonviable products from inline JSON. Full mode is
+    an explicit lossless/debug option. Imported handoffs record raw TSV path,
+    size, and SHA-256 under `raw_detail_artifacts`
+  - compatibility: a v3 report without `compaction`,
+    `within_readiness_amplicon_range`, or `raw_detail_artifacts` deserializes
+    as full detail, treats its historical products as inside the one legacy
+    ceiling, and leaves raw-artifact citations empty. A v1 policy missing
+    v2 fields likewise keeps the old single-ceiling/full-detail meaning
   - `primers list-reports` lists specificity summaries alongside
     primer-design summaries. `primers show-report REPORT_ID` and
     `primers export-report REPORT_ID OUTPUT.json` accept either persisted
@@ -7692,7 +7764,7 @@ Whole-panel external specificity acceptance:
   GENOME_ID --output-dir DIR` emits
   `gentle.transcript_assay_panel_specificity_handoff.v1`. It binds the current
   transcript-assay panel digest, selected assay ids/ranks and annealing
-  sequences, `gentle.primer_specificity_policy.v1`, prepared-genome identity,
+  sequences, `gentle.primer_specificity_policy.v2`, prepared-genome identity,
   BLAST database prefix/content fingerprint/index kind/options, nested handoff
   schemas, and structured commands.
 - The adjacent
@@ -7708,18 +7780,25 @@ Whole-panel external specificity acceptance:
   current panel identity, primer/policy/database provenance, and then applies
   the same specificity interpretation as the inline route.
 - Finalization returns
-  `gentle.transcript_assay_panel_specificity_acceptance.v1` with exactly one of
-  `pass`, `specificity_fail`, or `incomplete`. `specificity_fail` means all
-  process evidence was complete but at least one assay failed GENtle's
-  biological policy. `incomplete` covers failed/missing/duplicate execution,
-  stale panel or primer state, altered handoffs, and provenance mismatch.
-- Only `pass` sets `accepted = true`. Every provenance-valid assay assessment
-  produced during finalization is retained on the persisted panel, including
-  explicit `specificity_fail` or `incomplete` evidence, keyed by assay and
-  BLAST target kind. This lets readiness distinguish failed/incomplete evidence
-  from a search that was never run while preserving genomic and transcriptome
-  assessments side by side. An optional `--path` writes the same acceptance
-  object returned by the shell command.
+  `gentle.transcript_assay_panel_specificity_acceptance.v2` with exactly one of
+  `pass`, `specificity_fail`, `not_assessed`, or `incomplete`.
+  `specificity_fail` means all process evidence was complete but at least one
+  assay failed GENtle's biological policy. `not_assessed` means all commands
+  and output identities were complete but intended-target geometry was
+  unavailable for at least one assay. `incomplete` covers
+  failed/missing/duplicate execution, stale panel or primer state, altered
+  handoffs, and provenance mismatch. Separate assay-id arrays identify
+  biological failures, not-assessed results, incomplete interpretations, and
+  failed external processes.
+- Only `pass` sets `accepted = true`. A complete panel result (`pass`,
+  `specificity_fail`, or `not_assessed`) atomically retains all per-assay
+  assessments on the persisted panel, keyed by assay and BLAST target kind.
+  An `incomplete` result remains available as the returned or exported
+  acceptance evidence but attaches neither a partial acceptance nor partial
+  assay assessments to the panel. This keeps failed/incomplete execution
+  distinct from `not_run` without making a half-validated panel look current.
+  An optional `--path` writes the same acceptance object returned by the shell
+  command.
 - NCBI e-PCR is not part of this contract. A future provider-neutral
   Primer-BLAST evidence importer may supplement, but must not weaken, the
   reproducible prepared-genome local-BLAST gate.
@@ -8356,6 +8435,14 @@ Primer-design shell command family (implemented):
   reference strand labels are included when a genome anchor is available.
 - Transcript assay panel schema:
   - `gentle.transcript_assay_panel.v2`
+  - new reports persist `source_genome_anchor` at design time, including the
+    source sequence, genome/reference id, chromosome, one-based inclusive
+    interval, strand, and verification state. Whole-panel genomic specificity
+    therefore remains reproducible after live project provenance changes
+  - old v2 reports without `source_genome_anchor` remain readable. Finalization
+    may use current project provenance as a compatibility fallback; if no
+    trustworthy target geometry is available, a complete external search is
+    reported as `not_assessed`, never as pass or biological failure
   - the shell command's operation-JSON form accepts the externally tagged
     `DesignTranscriptAssayPanel` operation unchanged. It therefore exposes the
     complete engine request, including side/pair constraints and optional

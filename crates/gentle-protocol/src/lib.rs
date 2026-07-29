@@ -767,6 +767,34 @@ impl PrimerSpecificityCheckMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Provenance of the amplicon ceiling used for the ordinary specificity gate.
+pub enum PrimerSpecificityAmpliconCeilingSource {
+    /// The readiness ceiling falls back to the legacy exploratory policy cap.
+    #[default]
+    LegacyPolicyMax,
+    /// A user or adapter explicitly supplied the readiness ceiling.
+    ExplicitOverride,
+    /// A transcript-assay panel supplied its declared allowed product range.
+    TranscriptAssayPanelAllowedRange,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Amount of hit/product detail retained in the routine report.
+pub enum PrimerSpecificityReportDetailMode {
+    /// Retain accepted primer sites and biologically relevant products.
+    #[default]
+    Compact,
+    /// Retain every normalized HSP and candidate product inline.
+    Full,
+}
+
+fn primer_specificity_legacy_full_detail_mode() -> PrimerSpecificityReportDetailMode {
+    PrimerSpecificityReportDetailMode::Full
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 /// Local BLAST specificity policy shared by standalone confirmation and future
@@ -775,7 +803,19 @@ pub struct PrimerSpecificityPolicy {
     pub specificity_check: PrimerSpecificityCheckMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub specificity_target_genome_id: Option<String>,
+    /// Broad product window inspected for review/debug evidence.
     pub max_target_amplicon_bp: usize,
+    /// Ordinary assay/readiness ceiling. Products above this value but within
+    /// `max_target_amplicon_bp` remain visible as long-product warnings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_max_target_amplicon_bp: Option<usize>,
+    #[serde(default)]
+    pub readiness_max_target_amplicon_bp_source: PrimerSpecificityAmpliconCeilingSource,
+    /// Human-readable derivation of the ordinary assay/readiness ceiling.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness_max_target_amplicon_bp_reason: Option<String>,
+    #[serde(default = "primer_specificity_legacy_full_detail_mode")]
+    pub report_detail_mode: PrimerSpecificityReportDetailMode,
     pub min_primer_coverage_fraction: f64,
     pub max_3prime_mismatches: usize,
     pub three_prime_window_bp: usize,
@@ -793,6 +833,11 @@ impl Default for PrimerSpecificityPolicy {
             specificity_check: PrimerSpecificityCheckMode::ReportOnly,
             specificity_target_genome_id: None,
             max_target_amplicon_bp: 4_000,
+            readiness_max_target_amplicon_bp: None,
+            readiness_max_target_amplicon_bp_source:
+                PrimerSpecificityAmpliconCeilingSource::LegacyPolicyMax,
+            readiness_max_target_amplicon_bp_reason: None,
+            report_detail_mode: PrimerSpecificityReportDetailMode::Compact,
             min_primer_coverage_fraction: 0.80,
             max_3prime_mismatches: 0,
             three_prime_window_bp: 5,
@@ -5550,6 +5595,9 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "features delete",
     "features split",
     "features merge",
+    "primers specificity",
+    "primers specificity-plan",
+    "primers specificity-import",
     "workflow",
     "help",
     "genomes list",

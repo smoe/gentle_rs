@@ -6,6 +6,14 @@
   "run_id": "example_patz1_endpoint_sybr_transcript_assay_panel_offline",
   "source_seq_id": "patz1_transcript_assay_demo",
   "source_feature_id": 1,
+  "source_genome_anchor": {
+    "seq_id": "patz1_transcript_assay_demo",
+    "genome_id": "PATZ1ASSAY",
+    "chromosome": "PATZ1ASSAY",
+    "start_1based": 31325800,
+    "end_1based": 31326039,
+    "strand": "+"
+  },
   "group_label": "PATZ1",
   "strand": "-",
   "assay_kind": "sybr_qpcr",

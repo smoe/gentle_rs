@@ -2414,6 +2414,32 @@
          "usage": "genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]"
       },
       {
+         "aliases": [
+            "genomes import-blast-resource"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes prepare-blast-resource",
+         "summary": "Prepare or import a catalog-declared sequence-only transcriptome-cDNA BLAST resource without inventing genome annotation artifacts.",
+         "usage": "genomes prepare-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes inspect-blast-resource",
+         "summary": "Inspect the type, reference release, masking, sequence count, BLAST validation, fingerprint, and compatible operations of one prepared sequence-only resource.",
+         "usage": "genomes inspect-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
          "aliases": [],
          "engine_operations": [],
          "interfaces": [
@@ -3494,6 +3520,72 @@
          "path": "primers experimental-handoff",
          "summary": "Project a persisted transcript assay panel into deterministic per-pair assay cards and an order/readiness table, running the shared cDNA assay test for every selected pair.",
          "usage": "primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "AssessPrimerPairSpecificity"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers specificity",
+         "summary": "Run local BLAST specificity interpretation for one persisted or explicit primer pair against a prepared genomic-DNA or transcriptome-cDNA resource.",
+         "usage": "primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--readiness-max-amplicon-bp N] [--exploratory-max-amplicon-bp N] [--report-detail compact|full] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PreparePrimerPairSpecificityHandoff"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers specificity-plan",
+         "summary": "Prepare a non-executing, provenance-bound two-command BLAST handoff for one primer pair so an outer scheduler can run the declared searches.",
+         "usage": "primers specificity-plan REPORT_ID --pair-rank N --target-genome GENOME_ID --output-dir DIR [--readiness-max-amplicon-bp N] [--exploratory-max-amplicon-bp N] [--report-detail compact|full] [--catalog PATH] [--cache-dir DIR]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportPrimerPairSpecificityHandoff"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers specificity-import",
+         "summary": "Validate and interpret completed raw BLAST TSV outputs from one GENtle specificity handoff without treating process completion as a biological pass.",
+         "usage": "primers specificity-import HANDOFF.json [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers transcript-assay-specificity-plan",
+         "summary": "Prepare one atomic external BLAST handoff for every selected assay in a persisted transcript panel, inheriting its ordinary amplicon ceiling unless explicitly overridden.",
+         "usage": "primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome GENOME_ID --output-dir DIR [--readiness-max-amplicon-bp N] [--exploratory-max-amplicon-bp N] [--report-detail compact|full] [--catalog PATH] [--cache-dir DIR]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers transcript-assay-specificity-finalize",
+         "summary": "Atomically validate a panel handoff execution manifest and classify complete evidence as pass, biological specificity failure, not assessed, or incomplete.",
+         "usage": "primers transcript-assay-specificity-finalize HANDOFF.json EXECUTION_MANIFEST_JSON_OR_@FILE [--path OUTPUT.json]"
       },
       {
          "aliases": [],
