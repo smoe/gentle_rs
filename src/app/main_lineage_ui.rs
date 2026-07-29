@@ -305,6 +305,12 @@ impl GENtleApp {
                 return Some(id.to_string());
             }
         }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:primer_specificity:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
         if let Some(rest) = row.node_id.strip_prefix("analysis:qpcr:") {
             let id = rest.trim();
             if !id.is_empty() {
