@@ -2838,6 +2838,9 @@ Shared shell command:
     - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
     - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
     - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
+    - `genomes prepare-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]`
+    - `genomes import-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]` (alias)
+    - `genomes inspect-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]`
     - `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
     - `genomes blast-start GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
     - `genomes blast-status JOB_ID [--with-report]`
@@ -3009,8 +3012,8 @@ Shared shell command:
     - `variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
-    - `primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--max-target-amplicon-bp N] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
-    - `primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
+    - `primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
+    - `primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
     - `primers specificity-plan REPORT_ID --pair-rank N --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-plan --forward SEQ --reverse SEQ --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-import HANDOFF.json [--path OUTPUT.json]`
@@ -3507,7 +3510,7 @@ Shared shell command:
         shell/CLI/ClawBio flows can promote the same qPCR strip without hard-
         coding that protocol id elsewhere
     - Primer specificity confirmation notes (`primers specificity`):
-      - returns and persists `gentle.primer_specificity_report.v3`; repeated
+      - returns and persists `gentle.primer_specificity_report.v4`; repeated
         assessment of the same biological inputs and policy reuses one stable
         content-derived `report_id`
       - the report follows GENtle's computational-artifact contract with
@@ -3563,9 +3566,32 @@ Shared shell command:
       - transcript-aware assays use a transcript-set intended target. Every
         declared transcript may contribute one expected product, so a clean
         assay targeting many isoforms is not forced into a one-product model
+      - Ensembl transcript stable ids match an optional final numeric version
+        suffix (`ENST00000465287` matches `ENST00000465287.1`) when recognizing
+        and counting intended products. The full observed subject id remains
+        in the report. This rule is deliberately restricted to Ensembl
+        transcript ids; arbitrary dotted ids and genomic/gene accessions are
+        not stripped
       - wrapped BLAST subject identifiers are normalized against the prepared
         FASTA index, repeated warnings are aggregated, and genomic-DNA versus
         transcriptome/cDNA assessments remain separate in the report
+      - `--readiness-max-amplicon-bp N` controls the ordinary pass/fail window,
+        while `--exploratory-max-amplicon-bp N` retains longer compatible
+        products as `long_product_warning` evidence. The legacy
+        `--max-target-amplicon-bp N` sets both ceilings
+      - whole-panel planning inherits the panel's declared maximum allowed
+        amplicon length as its readiness ceiling unless the caller overrides
+        it; the report records the effective ceiling source as
+        `transcript_assay_panel_allowed_range`, `explicit_override`, or
+        `legacy_policy_max`
+      - `--report-detail compact` is the default for newly created reports. It
+        retains accepted primer sites and intended, terminal-compatible, or
+        failing products plus raw/retained counts. `--report-detail full`
+        keeps every normalized HSP and candidate product inline. Imported
+        handoffs also cite the raw BLAST TSV paths, byte sizes, and digests
+      - candidate pairing is indexed by subject, strand, and coordinate; the
+        report records `pairing_candidate_comparison_count` so large inputs can
+        be regression-tested without elapsed-time thresholds
       - `--path OUTPUT.json` writes the same structured report returned on
         stdout; the persisted copy can later be inspected or exported with
         `primers show-report REPORT_ID` and `primers export-report`
@@ -3601,16 +3627,23 @@ Shared shell command:
         exact output byte length/hash, even when a command fails
       - always call `primers transcript-assay-specificity-finalize` after the
         scheduler finishes. A successful command with an empty TSV is a valid
-        completed no-hit result and can yield `specificity_fail`; missing,
-        duplicate, failed, stale, or provenance-mismatched evidence yields
-        `incomplete`
+        completed no-hit result. Complete biological evidence can yield
+        `specificity_fail`; complete searches whose intended target geometry
+        cannot be assessed yield `not_assessed`; missing, duplicate, failed,
+        stale, or provenance-mismatched execution evidence yields `incomplete`
       - finalization binds the current panel, assay ids/ranks, annealing
         sequences, policy, prepared genome/BLAST database, handoff schema, and
-        output identities. Only a complete all-assay result is accepted, but
-        every provenance-valid per-assay report is persisted by assay and
-        target kind. Thus `specificity_fail`, `incomplete`, and `not_run`
-        remain distinguishable and genomic plus transcriptome evidence can
-        coexist
+        output identities. Panels persist their design-time genome anchor so
+        later finalization does not depend on mutable live provenance; old
+        panels without an anchor remain readable and may resolve to
+        `not_assessed`. Only a complete all-assay `pass` is accepted. Complete
+        `pass`, `specificity_fail`, and `not_assessed` outcomes atomically
+        persist every per-assay report by assay and target kind; an
+        `incomplete` outcome is returned/exportable but does not attach a
+        partial panel result. The acceptance record separately lists
+        biologically failing, not-assessed, incomplete, and execution-failed
+        assay ids, so those states and `not_run` remain distinguishable while
+        genomic plus transcriptome evidence can coexist
     - cDNA PCR/qPCR assay test notes
       (`primers test-cdna-pcr` / `primers test-cdna-qpcr` /
       `primers test-cdna-qpcr-fasta`):
@@ -5510,6 +5543,47 @@ Genome convenience commands:
     `--cache-dir` argument. This matters for relative cache directories because
     they resolve relative to the catalog file or fragment that supplied the
     entry.
+- `genomes prepare-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]`
+  - Prepares a catalog-declared, sequence-only nucleotide BLAST resource.
+    `genomes import-blast-resource` is an exact alias for local collections.
+  - The initial supported `blast_index_kind` is `transcriptome_cdna`. The route
+    resolves `sequence_local` or `sequence_remote`, materializes the FASTA
+    (converting sequence-bearing GenBank records when supplied), runs
+    `makeblastdb`, validates the database with `blastdbcmd`, fingerprints the
+    content, and writes a dedicated resource manifest. It also parses
+    available Ensembl FASTA-defline or GenBank record identity once into a
+    checksum-bound `gentle.blast_subject_annotation_index.v1` sidecar. It does
+    not invent missing symbols or gene ids, nor create FASTA-index, gene-index,
+    or transcript-index files.
+  - A minimal catalog row is:
+
+    ```json
+    {
+      "Human GRCh38 Ensembl 116 cDNA": {
+        "description": "Ensembl 116 Homo sapiens whole-cDNA collection",
+        "sequence_local": "/path/to/Homo_sapiens.GRCh38.cdna.all.fa.gz",
+        "blast_index_kind": "transcriptome_cdna",
+        "reference_name": "Homo_sapiens.GRCh38.cdna.all",
+        "reference_release": "Ensembl 116",
+        "blast_masking": "unmasked",
+        "cache_dir": "data/genomes"
+      }
+    }
+    ```
+
+    Use `sequence_remote` instead of `sequence_local` for a catalogued remote
+    FASTA. GENtle records the actual source and digest; users do not hand-write
+    a prepared-resource manifest.
+- `genomes inspect-blast-resource RESOURCE_ID [--catalog PATH] [--cache-dir PATH]`
+  - Returns whether the resource is prepared plus
+    `gentle.blast_database_inspection.v1`: reference name/release, index kind,
+    masking, sequence count, `blastdbcmd` validation, content fingerprint, and
+    compatible operations. Subject-annotation status, total/annotated record
+    counts, source counts, sidecar path, and fingerprint let users verify that
+    gene labels are available before running primer specificity.
+  - A prepared `transcriptome_cdna` resource can be used directly as
+    `--target-genome` for `primers specificity`,
+    `primers specificity-plan`, and whole-panel specificity planning.
 - `genomes remove-prepared GENOME_ID [--catalog PATH] [--cache-dir PATH]`
   - Deletes only the prepared install directory for one genome from the selected cache.
   - Catalog JSON is left unchanged.

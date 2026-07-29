@@ -76,6 +76,8 @@ pub const MAKEBLASTDB_ENV_BIN: &str = "GENTLE_MAKEBLASTDB_BIN";
 pub const BLASTN_ENV_BIN: &str = "GENTLE_BLASTN_BIN";
 pub const BLASTDBCMD_ENV_BIN: &str = "GENTLE_BLASTDBCMD_BIN";
 pub const BLAST_DATABASE_INSPECTION_SCHEMA: &str = "gentle.blast_database_inspection.v1";
+pub const PREPARE_BLAST_SEQUENCE_RESOURCE_SCHEMA: &str =
+    "gentle.prepare_blast_sequence_resource.v1";
 pub const PREPARE_GENOME_TIMEOUT_SECS_ENV: &str = "GENTLE_PREPARE_GENOME_TIMEOUT_SECS";
 const DEFAULT_NCBI_EFETCH_ENDPOINT: &str =
     "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi";
@@ -93,6 +95,11 @@ const ANNOTATION_PARSE_CONTEXT_CHARS: usize = 140;
 const PREPARE_ACTIVITY_STATUS_FILE: &str = ".prepare_activity.json";
 const PREPARE_ACTIVITY_LOCK_FILE: &str = ".prepare_activity.lock";
 const PREPARE_ACTIVITY_STALE_AFTER_MS: u128 = 6 * 60 * 60 * 1000;
+const BLAST_SEQUENCE_RESOURCE_MANIFEST_FILE: &str = "blast-resource-manifest.json";
+const BLAST_SEQUENCE_RESOURCE_MANIFEST_SCHEMA: &str = "gentle.blast_sequence_resource_manifest.v1";
+const BLAST_SUBJECT_ANNOTATION_INDEX_FILE: &str = "blast-subject-annotations.json";
+pub const BLAST_SUBJECT_ANNOTATION_INDEX_SCHEMA: &str = "gentle.blast_subject_annotation_index.v1";
+const BLAST_SUBJECT_ANNOTATION_FINGERPRINT_ALGORITHM: &str = "sha1";
 
 #[cfg(test)]
 pub(crate) fn genbank_env_lock() -> &'static std::sync::Mutex<()> {
@@ -496,6 +503,22 @@ pub struct GenomeCatalogEntry {
     pub annotations_remote: Option<String>,
     pub sequence_local: Option<String>,
     pub annotations_local: Option<String>,
+    /// Optional BLAST resource kind for sequence-only catalog entries.
+    ///
+    /// When set to `transcriptome_cdna`, callers can prepare this entry without
+    /// inventing genome-annotation artifacts.
+    #[serde(default)]
+    pub blast_index_kind: Option<BlastDatabaseIndexKind>,
+    /// Human-readable reference collection name, for example
+    /// `Homo_sapiens.GRCh38.cdna.all`.
+    #[serde(default)]
+    pub reference_name: Option<String>,
+    /// Provider/release identity, for example `Ensembl 116`.
+    #[serde(default)]
+    pub reference_release: Option<String>,
+    /// Masking state of the authored sequence collection.
+    #[serde(default)]
+    pub blast_masking: Option<String>,
     #[serde(default = "default_cache_dir")]
     pub cache_dir: Option<String>,
     #[serde(default)]
@@ -2172,6 +2195,63 @@ struct GenomeInstallManifest {
     installed_at_unix_ms: u128,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BlastSequenceResourceManifest {
+    schema: String,
+    resource_id: String,
+    sequence_source: String,
+    #[serde(default)]
+    sequence_source_type: Option<String>,
+    #[serde(default)]
+    sequence_sha1: Option<String>,
+    sequence_path: String,
+    blast_db_prefix: String,
+    #[serde(default)]
+    blast_index_executable: Option<String>,
+    #[serde(default)]
+    blast_indexed_at_unix_ms: Option<u128>,
+    index_kind: BlastDatabaseIndexKind,
+    masking: String,
+    #[serde(default)]
+    reference_name: Option<String>,
+    #[serde(default)]
+    reference_release: Option<String>,
+    #[serde(default)]
+    subject_annotation_index_path: Option<String>,
+    #[serde(default)]
+    subject_annotation_index_sha1: Option<String>,
+    installed_at_unix_ms: u128,
+}
+
+/// Result of preparing or importing one sequence-only BLAST resource.
+///
+/// Unlike [`PrepareGenomeReport`], this deliberately has no annotation, FASTA
+/// index, or gene-index fields. A whole-cDNA database is a searchable sequence
+/// collection rather than a genomic annotation install.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrepareBlastSequenceResourceReport {
+    pub schema: String,
+    pub resource_id: String,
+    pub reused_existing: bool,
+    pub sequence_source: String,
+    pub sequence_source_type: String,
+    pub sequence_path: String,
+    pub sequence_sha1: Option<String>,
+    pub blast_db_prefix: String,
+    pub blast_index_ready: bool,
+    pub index_kind: BlastDatabaseIndexKind,
+    pub masking: String,
+    pub reference_name: Option<String>,
+    pub reference_release: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_annotation_index_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_annotation_index_sha1: Option<String>,
+    pub inspection: BlastDatabaseInspectionReport,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 /// Summary of one prepare/reuse/reindex genome-install run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrepareGenomeReport {
@@ -2583,7 +2663,74 @@ impl BlastDatabaseIndexKind {
     }
 }
 
+/// Provenance of descriptive identity attached to one prepared BLAST subject.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum BlastSubjectAnnotationSource {
+    EnsemblFastaDefline,
+    GenbankRecord,
+    GtfAnnotation,
+    #[default]
+    Unavailable,
+}
+
+impl BlastSubjectAnnotationSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::EnsemblFastaDefline => "ensembl_fasta_defline",
+            Self::GenbankRecord => "genbank_record",
+            Self::GtfAnnotation => "gtf_annotation",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+
+/// Descriptive identity parsed once from a prepared BLAST subject collection.
+///
+/// These fields never participate in primer intended-product matching. The
+/// versioned transcript subject remains the authoritative matching identity.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct BlastSubjectAnnotation {
+    /// Full subject identifier observed in the source record.
+    pub record_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_stable_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_stable_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_symbol: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_biotype: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_biotype: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub db_xrefs: Vec<String>,
+    pub annotation_source: BlastSubjectAnnotationSource,
+}
+
+/// Prepared, fingerprint-bound subject annotations for one sequence resource.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct BlastSubjectAnnotationIndex {
+    pub schema: String,
+    pub resource_id: String,
+    pub sequence_sha1: String,
+    #[serde(default)]
+    pub records: Vec<BlastSubjectAnnotation>,
+}
+
 /// Current, executable-backed identity and readiness of one BLAST database.
+fn default_blast_subject_annotation_status() -> String {
+    "unavailable".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct BlastDatabaseInspectionReport {
@@ -2601,6 +2748,20 @@ pub struct BlastDatabaseInspectionReport {
     pub tool_version: Option<String>,
     pub content_fingerprint: Option<String>,
     pub fingerprint_algorithm: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_annotation_index_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_annotation_fingerprint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_annotation_fingerprint_algorithm: Option<String>,
+    #[serde(default)]
+    pub subject_annotation_record_count: usize,
+    #[serde(default)]
+    pub subject_annotation_annotated_count: usize,
+    #[serde(default)]
+    pub subject_annotation_source_counts: BTreeMap<String, usize>,
+    #[serde(default = "default_blast_subject_annotation_status")]
+    pub subject_annotation_status: String,
     pub validation_status: String,
     pub index_files_present: bool,
     pub blastdbcmd_reachable: bool,
@@ -4495,6 +4656,246 @@ impl GenomeCatalog {
         Ok(statuses)
     }
 
+    /// Prepare or import one sequence-only BLAST resource from its catalog
+    /// entry.
+    ///
+    /// This is the first-class route for whole-cDNA collections. It resolves
+    /// `sequence_local` or `sequence_remote`, copies/decompresses that source,
+    /// builds a nucleotide BLAST database, and persists a dedicated resource
+    /// manifest. It intentionally does not manufacture genome annotation
+    /// artifacts.
+    pub fn prepare_blast_sequence_resource(
+        &self,
+        resource_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<PrepareBlastSequenceResourceReport, String> {
+        let resolved_resource_id = self.resolve_entry_key(resource_id)?;
+        let entry = self.entry(&resolved_resource_id)?;
+        let index_kind = entry.blast_index_kind.ok_or_else(|| {
+            format!(
+                "Catalog entry '{}' does not declare blast_index_kind; set it to 'transcriptome_cdna' for a whole-cDNA resource",
+                resolved_resource_id
+            )
+        })?;
+        if index_kind != BlastDatabaseIndexKind::TranscriptomeCdna {
+            return Err(format!(
+                "Catalog entry '{}' declares blast_index_kind='{}'; prepare-blast-resource currently accepts transcriptome_cdna resources",
+                resolved_resource_id,
+                index_kind.as_str()
+            ));
+        }
+
+        let sequence_resolution = self.resolve_source_with_type(
+            &resolved_resource_id,
+            "sequence",
+            entry.sequence_local.as_ref(),
+            entry.sequence_remote.as_ref(),
+            entry,
+        )?;
+        let install_dir = self.install_dir(&resolved_resource_id, entry, cache_dir_override);
+        fs::create_dir_all(&install_dir).map_err(|error| {
+            format!(
+                "Could not create BLAST resource cache dir '{}': {error}",
+                install_dir.display()
+            )
+        })?;
+        let manifest_path = install_dir.join(BLAST_SEQUENCE_RESOURCE_MANIFEST_FILE);
+        let existing_manifest = manifest_path
+            .exists()
+            .then(|| Self::load_blast_sequence_resource_manifest(&manifest_path))
+            .transpose()?;
+        let source_matches = existing_manifest
+            .as_ref()
+            .map(|manifest| {
+                sources_equivalent(&manifest.sequence_source, &sequence_resolution.source)
+                    && manifest.index_kind == index_kind
+            })
+            .unwrap_or(false);
+        let sequence_path = existing_manifest
+            .as_ref()
+            .filter(|_| source_matches)
+            .map(|manifest| PathBuf::from(&manifest.sequence_path))
+            .unwrap_or_else(|| install_dir.join("blast-resource.fa"));
+        let blast_prefix_path = existing_manifest
+            .as_ref()
+            .filter(|_| source_matches)
+            .map(|manifest| PathBuf::from(&manifest.blast_db_prefix))
+            .unwrap_or_else(|| install_dir.join("blastdb").join("resource"));
+        let subject_annotation_index_path = existing_manifest
+            .as_ref()
+            .filter(|_| source_matches)
+            .and_then(|manifest| manifest.subject_annotation_index_path.as_deref())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| install_dir.join(BLAST_SUBJECT_ANNOTATION_INDEX_FILE));
+        let reuse_sequence = source_matches && non_empty_regular_file_exists(&sequence_path);
+
+        if !reuse_sequence {
+            materialize_source_with_progress(
+                &sequence_resolution.source,
+                &sequence_path,
+                |_done, _total| true,
+            )?;
+            for index_path in collect_blast_index_files(&blast_prefix_path) {
+                remove_optional_file(&index_path, "stale BLAST resource index")?;
+            }
+        }
+
+        let (sequence_sha1, subject_annotation_index_sha1, converted_from_genbank) =
+            ensure_blast_subject_annotation_index(
+                &resolved_resource_id,
+                &sequence_path,
+                &subject_annotation_index_path,
+            )?;
+        if converted_from_genbank {
+            for index_path in collect_blast_index_files(&blast_prefix_path) {
+                remove_optional_file(
+                    &index_path,
+                    "BLAST index predating GenBank-to-FASTA conversion",
+                )?;
+            }
+        }
+        let blast_outcome = ensure_blast_index(&sequence_path, &blast_prefix_path);
+        let masking = entry
+            .blast_masking
+            .clone()
+            .unwrap_or_else(|| "source_fasta_as_prepared".to_string());
+        let manifest = BlastSequenceResourceManifest {
+            schema: BLAST_SEQUENCE_RESOURCE_MANIFEST_SCHEMA.to_string(),
+            resource_id: resolved_resource_id.clone(),
+            sequence_source: sequence_resolution.source.clone(),
+            sequence_source_type: Some(
+                source_type_label(sequence_resolution.source_type).to_string(),
+            ),
+            sequence_sha1: Some(sequence_sha1.clone()),
+            sequence_path: canonical_or_display(&sequence_path),
+            blast_db_prefix: canonical_or_display(&blast_prefix_path),
+            blast_index_executable: blast_outcome.executable.clone(),
+            blast_indexed_at_unix_ms: blast_outcome.ready.then_some(now_unix_ms()),
+            index_kind,
+            masking: masking.clone(),
+            reference_name: entry.reference_name.clone(),
+            reference_release: entry.reference_release.clone(),
+            subject_annotation_index_path: Some(canonical_or_display(
+                &subject_annotation_index_path,
+            )),
+            subject_annotation_index_sha1: Some(subject_annotation_index_sha1.clone()),
+            installed_at_unix_ms: now_unix_ms(),
+        };
+        Self::write_blast_sequence_resource_manifest(&manifest_path, &manifest)?;
+        let inspection = inspect_blast_database_resource_prefix(
+            &resolved_resource_id,
+            entry,
+            &manifest,
+            &blast_prefix_path,
+        );
+
+        Ok(PrepareBlastSequenceResourceReport {
+            schema: PREPARE_BLAST_SEQUENCE_RESOURCE_SCHEMA.to_string(),
+            resource_id: resolved_resource_id,
+            reused_existing: reuse_sequence && !converted_from_genbank && blast_outcome.ready,
+            sequence_source: sequence_resolution.source,
+            sequence_source_type: source_type_label(sequence_resolution.source_type).to_string(),
+            sequence_path: canonical_or_display(&sequence_path),
+            sequence_sha1: Some(sequence_sha1),
+            blast_db_prefix: canonical_or_display(&blast_prefix_path),
+            blast_index_ready: blast_outcome.ready,
+            index_kind,
+            masking,
+            reference_name: manifest.reference_name,
+            reference_release: manifest.reference_release,
+            subject_annotation_index_path: manifest.subject_annotation_index_path,
+            subject_annotation_index_sha1: manifest.subject_annotation_index_sha1,
+            inspection,
+            warnings: {
+                let mut warnings = blast_outcome.warnings;
+                if converted_from_genbank {
+                    warnings.push(
+                        "Converted sequence-bearing GenBank records to the prepared BLAST FASTA while retaining record annotations in the subject sidecar."
+                            .to_string(),
+                    );
+                }
+                warnings
+            },
+        })
+    }
+
+    /// Inspect a prepared sequence-only BLAST resource without treating it as
+    /// a genome annotation install.
+    pub fn inspect_blast_sequence_resource(
+        &self,
+        resource_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<Option<BlastDatabaseInspectionReport>, String> {
+        let resolved_resource_id = self.resolve_entry_key(resource_id)?;
+        let entry = self.entry(&resolved_resource_id)?;
+        let install_dir = self.install_dir(&resolved_resource_id, entry, cache_dir_override);
+        let manifest_path = install_dir.join(BLAST_SEQUENCE_RESOURCE_MANIFEST_FILE);
+        if !manifest_path.exists() {
+            return Ok(None);
+        }
+        let manifest = Self::load_blast_sequence_resource_manifest(&manifest_path)?;
+        Self::validate_blast_sequence_resource_manifest(&manifest)?;
+        Ok(Some(inspect_blast_database_resource_prefix(
+            &resolved_resource_id,
+            entry,
+            &manifest,
+            Path::new(&manifest.blast_db_prefix),
+        )))
+    }
+
+    /// Load fingerprint-validated descriptive annotations for prepared BLAST
+    /// subjects. Ensembl transcripts use the version-independent stable id as
+    /// their key; other records use the full prepared subject id.
+    pub(crate) fn blast_subject_annotation_lookup(
+        &self,
+        resource_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<BTreeMap<String, BlastSubjectAnnotation>, String> {
+        let resolved_resource_id = self.resolve_entry_key(resource_id)?;
+        let entry = self.entry(&resolved_resource_id)?;
+        let install_dir = self.install_dir(&resolved_resource_id, entry, cache_dir_override);
+        let manifest_path = install_dir.join(BLAST_SEQUENCE_RESOURCE_MANIFEST_FILE);
+        if !manifest_path.exists() {
+            return Ok(BTreeMap::new());
+        }
+        let manifest = Self::load_blast_sequence_resource_manifest(&manifest_path)?;
+        let Some(index_path) = manifest.subject_annotation_index_path.as_deref() else {
+            return Ok(BTreeMap::new());
+        };
+        let index_path = Path::new(index_path);
+        let index = load_blast_subject_annotation_index(index_path)?;
+        if Some(index.sequence_sha1.as_str()) != manifest.sequence_sha1.as_deref() {
+            return Err(format!(
+                "BLAST subject annotation index '{}' is stale for resource '{}'; re-run genomes prepare-blast-resource",
+                index_path.display(),
+                resolved_resource_id
+            ));
+        }
+        if let Some(expected_sha1) = manifest.subject_annotation_index_sha1.as_deref() {
+            let observed_sha1 = compute_file_sha1(index_path)?.ok_or_else(|| {
+                format!(
+                    "Could not fingerprint BLAST subject annotation index '{}'",
+                    index_path.display()
+                )
+            })?;
+            if observed_sha1 != expected_sha1 {
+                return Err(format!(
+                    "BLAST subject annotation index '{}' fingerprint does not match its prepared-resource manifest",
+                    index_path.display()
+                ));
+            }
+        }
+        let mut lookup = BTreeMap::new();
+        for annotation in index.records {
+            let lookup_id = annotation
+                .transcript_stable_id
+                .clone()
+                .unwrap_or_else(|| annotation.record_id.clone());
+            lookup.entry(lookup_id).or_insert(annotation);
+        }
+        Ok(lookup)
+    }
+
     /// Validate and identify the BLAST component of one prepared genome.
     ///
     /// This deliberately ignores the age/status of the encompassing prepare
@@ -4505,8 +4906,20 @@ impl GenomeCatalog {
         genome_id: &str,
         cache_dir_override: Option<&str>,
     ) -> Result<Option<BlastDatabaseInspectionReport>, String> {
-        let entry = self.entry(genome_id)?;
-        let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
+        let resolved_genome_id = self.resolve_entry_key(genome_id)?;
+        let entry = self.entry(&resolved_genome_id)?;
+        let install_dir = self.install_dir(&resolved_genome_id, entry, cache_dir_override);
+        let resource_manifest_path = install_dir.join(BLAST_SEQUENCE_RESOURCE_MANIFEST_FILE);
+        if resource_manifest_path.exists() {
+            let manifest = Self::load_blast_sequence_resource_manifest(&resource_manifest_path)?;
+            Self::validate_blast_sequence_resource_manifest(&manifest)?;
+            return Ok(Some(inspect_blast_database_resource_prefix(
+                &resolved_genome_id,
+                entry,
+                &manifest,
+                Path::new(&manifest.blast_db_prefix),
+            )));
+        }
         let manifest_path = install_dir.join("manifest.json");
         if !manifest_path.exists() {
             return Ok(None);
@@ -4518,7 +4931,10 @@ impl GenomeCatalog {
             .map(PathBuf::from)
             .unwrap_or_else(|| default_blast_db_prefix(&install_dir));
         Ok(Some(inspect_blast_database_prefix(
-            genome_id, entry, &manifest, &prefix,
+            &resolved_genome_id,
+            entry,
+            &manifest,
+            &prefix,
         )))
     }
 
@@ -6271,7 +6687,17 @@ FASTA index='{}'.{}{}",
         let task = normalize_blast_task(task)?;
         let query = normalize_blast_query_sequence(query_sequence)?;
 
-        let prepared = self.resolve_prepared_genome_id(genome_id, cache_dir_override)?;
+        let requested_entry_id = self.resolve_entry_key(genome_id)?;
+        let prepared =
+            if self.has_blast_sequence_resource_ready(&requested_entry_id, cache_dir_override)? {
+                PreparedGenomeResolution {
+                    requested_genome_id: genome_id.to_string(),
+                    resolved_genome_id: requested_entry_id,
+                    fallback_warning: None,
+                }
+            } else {
+                self.resolve_prepared_genome_id(genome_id, cache_dir_override)?
+            };
         let resolved_genome_id = prepared.resolved_genome_id;
         let mut additional_warnings: Vec<String> = vec![];
         if let Some(warning) = prepared.fallback_warning {
@@ -6279,39 +6705,68 @@ FASTA index='{}'.{}{}",
         }
         let entry = self.entry(&resolved_genome_id)?;
         let install_dir = self.install_dir(&resolved_genome_id, entry, cache_dir_override);
-        let manifest_path = install_dir.join("manifest.json");
-        let mut manifest = Self::load_manifest(&manifest_path)?;
-        Self::validate_manifest_files(&manifest)?;
-
-        let blast_prefix_path = manifest
-            .blast_db_prefix
-            .as_deref()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| default_blast_db_prefix(&install_dir));
-        let mut blast_outcome =
-            ensure_blast_index(Path::new(&manifest.sequence_path), &blast_prefix_path);
-        let mut manifest_changed = false;
-        let blast_prefix = canonical_or_display(&blast_prefix_path);
-        if manifest.blast_db_prefix.as_deref() != Some(blast_prefix.as_str()) {
-            manifest.blast_db_prefix = Some(blast_prefix.clone());
-            manifest_changed = true;
-        }
-        if manifest.blast_index_executable != blast_outcome.executable {
-            manifest.blast_index_executable = blast_outcome.executable.clone();
-            manifest_changed = true;
-        }
-        if blast_outcome.ready {
-            if manifest.blast_indexed_at_unix_ms.is_none() {
-                manifest.blast_indexed_at_unix_ms = Some(now_unix_ms());
+        let resource_manifest_path = install_dir.join(BLAST_SEQUENCE_RESOURCE_MANIFEST_FILE);
+        let (blast_prefix_path, mut blast_outcome) = if resource_manifest_path.exists() {
+            let mut manifest =
+                Self::load_blast_sequence_resource_manifest(&resource_manifest_path)?;
+            Self::validate_blast_sequence_resource_manifest(&manifest)?;
+            let blast_prefix_path = PathBuf::from(&manifest.blast_db_prefix);
+            let blast_outcome =
+                ensure_blast_index(Path::new(&manifest.sequence_path), &blast_prefix_path);
+            let mut manifest_changed = false;
+            if manifest.blast_index_executable != blast_outcome.executable {
+                manifest.blast_index_executable = blast_outcome.executable.clone();
                 manifest_changed = true;
             }
-        } else if manifest.blast_indexed_at_unix_ms.is_some() {
-            manifest.blast_indexed_at_unix_ms = None;
-            manifest_changed = true;
-        }
-        if manifest_changed {
-            Self::write_manifest(&manifest_path, &manifest)?;
-        }
+            if blast_outcome.ready {
+                if manifest.blast_indexed_at_unix_ms.is_none() {
+                    manifest.blast_indexed_at_unix_ms = Some(now_unix_ms());
+                    manifest_changed = true;
+                }
+            } else if manifest.blast_indexed_at_unix_ms.is_some() {
+                manifest.blast_indexed_at_unix_ms = None;
+                manifest_changed = true;
+            }
+            if manifest_changed {
+                Self::write_blast_sequence_resource_manifest(&resource_manifest_path, &manifest)?;
+            }
+            (blast_prefix_path, blast_outcome)
+        } else {
+            let manifest_path = install_dir.join("manifest.json");
+            let mut manifest = Self::load_manifest(&manifest_path)?;
+            Self::validate_manifest_files(&manifest)?;
+            let blast_prefix_path = manifest
+                .blast_db_prefix
+                .as_deref()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| default_blast_db_prefix(&install_dir));
+            let blast_outcome =
+                ensure_blast_index(Path::new(&manifest.sequence_path), &blast_prefix_path);
+            let mut manifest_changed = false;
+            let blast_prefix = canonical_or_display(&blast_prefix_path);
+            if manifest.blast_db_prefix.as_deref() != Some(blast_prefix.as_str()) {
+                manifest.blast_db_prefix = Some(blast_prefix);
+                manifest_changed = true;
+            }
+            if manifest.blast_index_executable != blast_outcome.executable {
+                manifest.blast_index_executable = blast_outcome.executable.clone();
+                manifest_changed = true;
+            }
+            if blast_outcome.ready {
+                if manifest.blast_indexed_at_unix_ms.is_none() {
+                    manifest.blast_indexed_at_unix_ms = Some(now_unix_ms());
+                    manifest_changed = true;
+                }
+            } else if manifest.blast_indexed_at_unix_ms.is_some() {
+                manifest.blast_indexed_at_unix_ms = None;
+                manifest_changed = true;
+            }
+            if manifest_changed {
+                Self::write_manifest(&manifest_path, &manifest)?;
+            }
+            (blast_prefix_path, blast_outcome)
+        };
+        let blast_prefix = canonical_or_display(&blast_prefix_path);
         if !blast_outcome.ready {
             let detail = if blast_outcome.warnings.is_empty() {
                 "no index files found and makeblastdb could not build one".to_string()
@@ -6693,6 +7148,22 @@ FASTA index='{}'.{}{}",
         Ok(Self::validate_manifest_files(&manifest).is_ok())
     }
 
+    fn has_blast_sequence_resource_ready(
+        &self,
+        resource_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<bool, String> {
+        let entry = self.entry(resource_id)?;
+        let manifest_path = self
+            .install_dir(resource_id, entry, cache_dir_override)
+            .join(BLAST_SEQUENCE_RESOURCE_MANIFEST_FILE);
+        if !manifest_path.exists() {
+            return Ok(false);
+        }
+        let manifest = Self::load_blast_sequence_resource_manifest(&manifest_path)?;
+        Ok(Self::validate_blast_sequence_resource_manifest(&manifest).is_ok())
+    }
+
     fn resolve_entry_key(&self, genome_id: &str) -> Result<String, String> {
         if self.entries.contains_key(genome_id) {
             return Ok(genome_id.to_string());
@@ -6881,6 +7352,59 @@ FASTA index='{}'.{}{}",
             .map_err(|e| format!("Could not serialize genome manifest: {e}"))?;
         fs::write(path, text)
             .map_err(|e| format!("Could not write genome manifest '{}': {e}", path.display()))
+    }
+
+    fn load_blast_sequence_resource_manifest(
+        path: &Path,
+    ) -> Result<BlastSequenceResourceManifest, String> {
+        let text = fs::read_to_string(path).map_err(|error| {
+            format!(
+                "Could not read BLAST sequence resource manifest '{}': {error}",
+                path.display()
+            )
+        })?;
+        let manifest: BlastSequenceResourceManifest =
+            serde_json::from_str(&text).map_err(|error| {
+                format!(
+                    "Could not parse BLAST sequence resource manifest '{}': {error}",
+                    path.display()
+                )
+            })?;
+        if manifest.schema != BLAST_SEQUENCE_RESOURCE_MANIFEST_SCHEMA {
+            return Err(format!(
+                "Unsupported BLAST sequence resource manifest schema '{}' in '{}'; expected '{}'",
+                manifest.schema,
+                path.display(),
+                BLAST_SEQUENCE_RESOURCE_MANIFEST_SCHEMA
+            ));
+        }
+        Ok(manifest)
+    }
+
+    fn write_blast_sequence_resource_manifest(
+        path: &Path,
+        manifest: &BlastSequenceResourceManifest,
+    ) -> Result<(), String> {
+        let text = serde_json::to_string_pretty(manifest)
+            .map_err(|error| format!("Could not serialize BLAST resource manifest: {error}"))?;
+        fs::write(path, text).map_err(|error| {
+            format!(
+                "Could not write BLAST sequence resource manifest '{}': {error}",
+                path.display()
+            )
+        })
+    }
+
+    fn validate_blast_sequence_resource_manifest(
+        manifest: &BlastSequenceResourceManifest,
+    ) -> Result<(), String> {
+        if !Path::new(&manifest.sequence_path).exists() {
+            return Err(format!(
+                "BLAST sequence resource '{}' is incomplete; missing sequence file '{}'",
+                manifest.resource_id, manifest.sequence_path
+            ));
+        }
+        Ok(())
     }
 
     fn validate_manifest_files(manifest: &GenomeInstallManifest) -> Result<(), String> {
@@ -8519,6 +9043,7 @@ fn validate_catalog_entries(
             || has_assembly
             || genbank_accession.is_some();
         let metadata_only_candidate = allows_metadata_only_catalog_entry(entry);
+        let sequence_only_blast_resource = entry.blast_index_kind.is_some();
 
         if !has_sequence_source && !metadata_only_candidate {
             entry_errors.push(
@@ -8526,7 +9051,7 @@ fn validate_catalog_entries(
                     .to_string(),
             );
         }
-        if !has_annotation_source && !metadata_only_candidate {
+        if !has_annotation_source && !metadata_only_candidate && !sequence_only_blast_resource {
             entry_errors.push(
                 "Missing annotation source: provide annotations_local/annotations_remote or NCBI assembly/GenBank accession fields"
                     .to_string(),
@@ -10344,6 +10869,8 @@ fn blast_database_compatible_operations(kind: BlastDatabaseIndexKind) -> Vec<Str
         BlastDatabaseIndexKind::TranscriptomeCdna => vec![
             "genomes blast".to_string(),
             "primers specificity (whole-transcriptome cDNA)".to_string(),
+            "primers specificity-plan".to_string(),
+            "primers transcript-assay-specificity-plan".to_string(),
         ],
     }
 }
@@ -10354,31 +10881,146 @@ fn inspect_blast_database_prefix(
     manifest: &GenomeInstallManifest,
     prefix: &Path,
 ) -> BlastDatabaseInspectionReport {
+    inspect_blast_database_prefix_with_metadata(
+        genome_id,
+        entry,
+        manifest.blast_index_kind,
+        manifest.blast_masking.as_deref(),
+        entry.reference_name.as_deref(),
+        entry.reference_release.as_deref(),
+        prefix,
+    )
+}
+
+fn inspect_blast_database_resource_prefix(
+    resource_id: &str,
+    entry: &GenomeCatalogEntry,
+    manifest: &BlastSequenceResourceManifest,
+    prefix: &Path,
+) -> BlastDatabaseInspectionReport {
+    inspect_blast_database_prefix_with_metadata(
+        resource_id,
+        entry,
+        manifest.index_kind,
+        Some(&manifest.masking),
+        manifest.reference_name.as_deref(),
+        manifest.reference_release.as_deref(),
+        prefix,
+    )
+    .with_subject_annotations(manifest)
+}
+
+impl BlastDatabaseInspectionReport {
+    fn with_subject_annotations(mut self, manifest: &BlastSequenceResourceManifest) -> Self {
+        let Some(path) = manifest.subject_annotation_index_path.as_deref() else {
+            self.subject_annotation_status = "unavailable".to_string();
+            return self;
+        };
+        self.subject_annotation_index_path = Some(path.to_string());
+        self.subject_annotation_fingerprint = manifest.subject_annotation_index_sha1.clone();
+        self.subject_annotation_fingerprint_algorithm =
+            Some(BLAST_SUBJECT_ANNOTATION_FINGERPRINT_ALGORITHM.to_string());
+        if let Some(expected_sha1) = manifest.subject_annotation_index_sha1.as_deref() {
+            match compute_file_sha1(Path::new(path)) {
+                Ok(Some(observed_sha1)) if observed_sha1 == expected_sha1 => {}
+                Ok(Some(_)) => {
+                    self.subject_annotation_status = "stale".to_string();
+                    self.warnings.push(
+                        "Prepared BLAST subject annotation index fingerprint does not match its manifest"
+                            .to_string(),
+                    );
+                    return self;
+                }
+                Ok(None) => {
+                    self.subject_annotation_status = "unavailable".to_string();
+                    self.warnings.push(format!(
+                        "Prepared BLAST subject annotation index '{}' is missing",
+                        path
+                    ));
+                    return self;
+                }
+                Err(error) => {
+                    self.subject_annotation_status = "unavailable".to_string();
+                    self.warnings.push(error);
+                    return self;
+                }
+            }
+        }
+        match load_blast_subject_annotation_index(Path::new(path)) {
+            Ok(index)
+                if Some(index.sequence_sha1.as_str()) == manifest.sequence_sha1.as_deref() =>
+            {
+                self.subject_annotation_record_count = index.records.len();
+                for record in index.records {
+                    let source = record.annotation_source.as_str().to_string();
+                    *self
+                        .subject_annotation_source_counts
+                        .entry(source)
+                        .or_default() += 1;
+                    if record.annotation_source != BlastSubjectAnnotationSource::Unavailable {
+                        self.subject_annotation_annotated_count += 1;
+                    }
+                }
+                self.subject_annotation_status = "ready".to_string();
+            }
+            Ok(_) => {
+                self.subject_annotation_status = "stale".to_string();
+                self.warnings.push(
+                    "Prepared BLAST subject annotations do not match the current sequence checksum"
+                        .to_string(),
+                );
+            }
+            Err(error) => {
+                self.subject_annotation_status = "unavailable".to_string();
+                self.warnings.push(error);
+            }
+        }
+        self
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn inspect_blast_database_prefix_with_metadata(
+    genome_id: &str,
+    entry: &GenomeCatalogEntry,
+    index_kind: BlastDatabaseIndexKind,
+    masking: Option<&str>,
+    reference_name: Option<&str>,
+    reference_release: Option<&str>,
+    prefix: &Path,
+) -> BlastDatabaseInspectionReport {
     let index_files = collect_blast_index_files(prefix);
     let index_files_present = is_blast_index_ready(&index_files);
     let executable = resolve_tool_executable(BLASTDBCMD_ENV_BIN, DEFAULT_BLASTDBCMD_BIN);
     let mut report = BlastDatabaseInspectionReport {
         schema: BLAST_DATABASE_INSPECTION_SCHEMA.to_string(),
-        index_kind: manifest.blast_index_kind,
+        index_kind,
         source_genome_id: genome_id.to_string(),
-        source_assembly: entry
-            .ncbi_assembly_accession
-            .clone()
+        source_assembly: reference_name
+            .map(str::to_string)
+            .or_else(|| entry.reference_name.clone())
+            .or_else(|| entry.ncbi_assembly_accession.clone())
             .or_else(|| entry.ncbi_assembly_name.clone())
             .or_else(|| Some(genome_id.to_string())),
-        source_release: entry
-            .ensembl_template
-            .as_ref()
-            .map(|template| format!("{} release {}", template.provider, template.release)),
-        masking: manifest
-            .blast_masking
-            .clone()
+        source_release: reference_release
+            .map(str::to_string)
+            .or_else(|| entry.reference_release.clone())
+            .or_else(|| {
+                entry
+                    .ensembl_template
+                    .as_ref()
+                    .map(|template| format!("{} release {}", template.provider, template.release))
+            }),
+        masking: masking
+            .map(str::to_string)
+            .or_else(|| entry.blast_masking.clone())
             .unwrap_or_else(|| "not_recorded".to_string()),
         prefix: canonical_or_display(prefix),
         tool_executable: executable.clone(),
         fingerprint_algorithm: BLAST_FINGERPRINT_ALGORITHM.to_string(),
+        subject_annotation_status: "unavailable".to_string(),
         index_files_present,
-        compatible_operations: blast_database_compatible_operations(manifest.blast_index_kind),
+        compatible_operations: blast_database_compatible_operations(index_kind),
         ..BlastDatabaseInspectionReport::default()
     };
     if index_files_present {
@@ -10530,6 +11172,343 @@ fn wait_for_child_output_with_cancel(
             }
         }
     }
+}
+
+fn ensembl_stable_id_without_version(raw: &str, terminal_kind: u8) -> Option<&str> {
+    let raw = raw.trim();
+    let stable_id = match raw.rsplit_once('.') {
+        Some((base, version))
+            if !version.is_empty() && version.bytes().all(|byte| byte.is_ascii_digit()) =>
+        {
+            base
+        }
+        Some(_) => return None,
+        None => raw,
+    };
+    if !stable_id.starts_with("ENS") {
+        return None;
+    }
+    let digit_start = stable_id.bytes().position(|byte| byte.is_ascii_digit())?;
+    let (prefix, numeric_id) = stable_id.split_at(digit_start);
+    if !prefix.ends_with(terminal_kind as char)
+        || !prefix.bytes().all(|byte| byte.is_ascii_uppercase())
+        || numeric_id.is_empty()
+        || !numeric_id.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    Some(stable_id)
+}
+
+/// Return the normalized stable Ensembl transcript id for one strict subject id.
+pub(crate) fn ensembl_transcript_stable_id(raw: &str) -> Option<&str> {
+    ensembl_stable_id_without_version(raw, b'T')
+}
+
+fn ensembl_gene_stable_id(raw: &str) -> Option<&str> {
+    ensembl_stable_id_without_version(raw, b'G')
+}
+
+fn nonempty_blast_annotation_value(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn parse_ensembl_fasta_subject_annotation(header: &str) -> BlastSubjectAnnotation {
+    let header = header.trim();
+    let record_id = header
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    let Some(transcript_stable_id) = ensembl_transcript_stable_id(&record_id) else {
+        return BlastSubjectAnnotation {
+            record_id,
+            annotation_source: BlastSubjectAnnotationSource::Unavailable,
+            ..BlastSubjectAnnotation::default()
+        };
+    };
+    let remainder = header
+        .strip_prefix(record_id.as_str())
+        .unwrap_or_default()
+        .trim();
+    let (metadata, description) = if let Some(description) = remainder.strip_prefix("description:")
+    {
+        ("", nonempty_blast_annotation_value(Some(description)))
+    } else {
+        match remainder.split_once(" description:") {
+            Some((metadata, description)) => {
+                (metadata, nonempty_blast_annotation_value(Some(description)))
+            }
+            None => (remainder, None),
+        }
+    };
+    let mut fields = BTreeMap::<&str, &str>::new();
+    for token in metadata.split_whitespace() {
+        if matches!(token, "cdna" | "ncrna" | "dna" | "pep") {
+            continue;
+        }
+        let Some((key, value)) = token.split_once(':') else {
+            return BlastSubjectAnnotation {
+                record_id,
+                annotation_source: BlastSubjectAnnotationSource::Unavailable,
+                ..BlastSubjectAnnotation::default()
+            };
+        };
+        if key.is_empty() || value.is_empty() {
+            return BlastSubjectAnnotation {
+                record_id,
+                annotation_source: BlastSubjectAnnotationSource::Unavailable,
+                ..BlastSubjectAnnotation::default()
+            };
+        }
+        fields.entry(key).or_insert(value);
+    }
+    let (gene_id, gene_stable_id) = match fields.get("gene").copied() {
+        Some(gene_id) => {
+            let Some(stable_id) = ensembl_gene_stable_id(gene_id) else {
+                return BlastSubjectAnnotation {
+                    record_id,
+                    annotation_source: BlastSubjectAnnotationSource::Unavailable,
+                    ..BlastSubjectAnnotation::default()
+                };
+            };
+            (Some(gene_id.to_string()), Some(stable_id.to_string()))
+        }
+        None => (None, None),
+    };
+    BlastSubjectAnnotation {
+        record_id: record_id.clone(),
+        transcript_stable_id: Some(transcript_stable_id.to_string()),
+        transcript_id: Some(record_id),
+        gene_stable_id,
+        gene_id,
+        gene_symbol: nonempty_blast_annotation_value(fields.get("gene_symbol").copied()),
+        gene_biotype: nonempty_blast_annotation_value(fields.get("gene_biotype").copied()),
+        transcript_biotype: nonempty_blast_annotation_value(
+            fields.get("transcript_biotype").copied(),
+        ),
+        description,
+        db_xrefs: vec![],
+        annotation_source: BlastSubjectAnnotationSource::EnsemblFastaDefline,
+    }
+}
+
+fn parse_fasta_subject_annotations(path: &Path) -> Result<Vec<BlastSubjectAnnotation>, String> {
+    let file = File::open(path).map_err(|error| {
+        format!(
+            "Could not open BLAST resource FASTA '{}' for subject annotations: {error}",
+            path.display()
+        )
+    })?;
+    let mut records = vec![];
+    for line in BufReader::new(file).lines() {
+        let line = line.map_err(|error| {
+            format!(
+                "Could not read BLAST resource FASTA '{}' for subject annotations: {error}",
+                path.display()
+            )
+        })?;
+        if let Some(header) = line.strip_prefix('>') {
+            records.push(parse_ensembl_fasta_subject_annotation(header));
+        }
+    }
+    Ok(records)
+}
+
+fn genbank_subject_annotation(seq: &gb_io::seq::Seq, record_idx: usize) -> BlastSubjectAnnotation {
+    let record_id = genbank_record_chromosome(seq, record_idx);
+    let mut gene_symbols = BTreeSet::new();
+    let mut gene_biotypes = BTreeSet::new();
+    let mut db_xrefs = BTreeSet::new();
+    for feature in &seq.features {
+        for (key, value) in &feature.qualifiers {
+            let Some(value) = value
+                .as_deref()
+                .and_then(|value| nonempty_blast_annotation_value(Some(value)))
+            else {
+                continue;
+            };
+            match key.trim().to_ascii_lowercase().as_str() {
+                "gene" => {
+                    gene_symbols.insert(value);
+                }
+                "gene_biotype" | "gene_type" => {
+                    gene_biotypes.insert(value);
+                }
+                "db_xref" | "dbxref" => {
+                    db_xrefs.insert(value);
+                }
+                _ => {}
+            }
+        }
+    }
+    BlastSubjectAnnotation {
+        record_id,
+        gene_symbol: (gene_symbols.len() == 1)
+            .then(|| gene_symbols.iter().next().cloned().unwrap_or_default()),
+        gene_biotype: (gene_biotypes.len() == 1)
+            .then(|| gene_biotypes.iter().next().cloned().unwrap_or_default()),
+        description: nonempty_blast_annotation_value(seq.definition.as_deref()),
+        db_xrefs: db_xrefs.into_iter().collect(),
+        annotation_source: BlastSubjectAnnotationSource::GenbankRecord,
+        ..BlastSubjectAnnotation::default()
+    }
+}
+
+fn write_genbank_records_as_fasta(path: &Path, records: &[gb_io::seq::Seq]) -> Result<(), String> {
+    let file = File::create(path).map_err(|error| {
+        format!(
+            "Could not convert GenBank BLAST resource '{}' to FASTA: {error}",
+            path.display()
+        )
+    })?;
+    let mut writer = BufWriter::new(file);
+    for (record_idx, record) in records.iter().enumerate() {
+        if record.seq.is_empty() {
+            return Err(format!(
+                "GenBank BLAST resource record '{}' has no sequence",
+                genbank_record_chromosome(record, record_idx)
+            ));
+        }
+        writeln!(writer, ">{}", genbank_record_chromosome(record, record_idx))
+            .map_err(|error| format!("Could not write converted BLAST FASTA: {error}"))?;
+        for chunk in record.seq.chunks(80) {
+            writer
+                .write_all(chunk)
+                .and_then(|_| writer.write_all(b"\n"))
+                .map_err(|error| format!("Could not write converted BLAST FASTA: {error}"))?;
+        }
+    }
+    writer
+        .flush()
+        .map_err(|error| format!("Could not flush converted BLAST FASTA: {error}"))
+}
+
+fn normalize_genbank_blast_resource_if_needed(
+    path: &Path,
+) -> Result<Option<Vec<BlastSubjectAnnotation>>, String> {
+    let mut prefix = [0u8; 64];
+    let mut file = File::open(path).map_err(|error| {
+        format!(
+            "Could not inspect BLAST sequence resource '{}': {error}",
+            path.display()
+        )
+    })?;
+    let read = file.read(&mut prefix).map_err(|error| {
+        format!(
+            "Could not inspect BLAST sequence resource '{}': {error}",
+            path.display()
+        )
+    })?;
+    let starts_with_locus = String::from_utf8_lossy(&prefix[..read])
+        .trim_start()
+        .starts_with("LOCUS");
+    drop(file);
+    if !starts_with_locus {
+        return Ok(None);
+    }
+    let records = gb_io::reader::parse_file(path.to_string_lossy().as_ref()).map_err(|error| {
+        format!(
+            "Could not parse GenBank BLAST sequence resource '{}': {error}",
+            path.display()
+        )
+    })?;
+    let annotations = records
+        .iter()
+        .enumerate()
+        .map(|(record_idx, record)| genbank_subject_annotation(record, record_idx))
+        .collect::<Vec<_>>();
+    write_genbank_records_as_fasta(path, &records)?;
+    Ok(Some(annotations))
+}
+
+fn load_blast_subject_annotation_index(path: &Path) -> Result<BlastSubjectAnnotationIndex, String> {
+    let text = fs::read_to_string(path).map_err(|error| {
+        format!(
+            "Could not read BLAST subject annotation index '{}': {error}",
+            path.display()
+        )
+    })?;
+    let index: BlastSubjectAnnotationIndex = serde_json::from_str(&text).map_err(|error| {
+        format!(
+            "Could not parse BLAST subject annotation index '{}': {error}",
+            path.display()
+        )
+    })?;
+    if index.schema != BLAST_SUBJECT_ANNOTATION_INDEX_SCHEMA {
+        return Err(format!(
+            "Unsupported BLAST subject annotation index schema '{}' in '{}'; expected '{}'",
+            index.schema,
+            path.display(),
+            BLAST_SUBJECT_ANNOTATION_INDEX_SCHEMA
+        ));
+    }
+    Ok(index)
+}
+
+fn write_blast_subject_annotation_index(
+    path: &Path,
+    index: &BlastSubjectAnnotationIndex,
+) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(index)
+        .map_err(|error| format!("Could not serialize BLAST subject annotations: {error}"))?;
+    fs::write(path, text).map_err(|error| {
+        format!(
+            "Could not write BLAST subject annotation index '{}': {error}",
+            path.display()
+        )
+    })
+}
+
+fn ensure_blast_subject_annotation_index(
+    resource_id: &str,
+    sequence_path: &Path,
+    index_path: &Path,
+) -> Result<(String, String, bool), String> {
+    let genbank_annotations = normalize_genbank_blast_resource_if_needed(sequence_path)?;
+    let converted_from_genbank = genbank_annotations.is_some();
+    let sequence_sha1 = compute_file_sha1(sequence_path)?.ok_or_else(|| {
+        format!(
+            "Could not fingerprint prepared BLAST sequence '{}'",
+            sequence_path.display()
+        )
+    })?;
+    if genbank_annotations.is_none()
+        && index_path.exists()
+        && let Ok(existing) = load_blast_subject_annotation_index(index_path)
+        && existing.resource_id == resource_id
+        && existing.sequence_sha1 == sequence_sha1
+    {
+        let index_sha1 = compute_file_sha1(index_path)?.ok_or_else(|| {
+            format!(
+                "Could not fingerprint BLAST subject annotation index '{}'",
+                index_path.display()
+            )
+        })?;
+        return Ok((sequence_sha1, index_sha1, false));
+    }
+    let mut records = match genbank_annotations {
+        Some(records) => records,
+        None => parse_fasta_subject_annotations(sequence_path)?,
+    };
+    records.sort_by(|left, right| left.record_id.cmp(&right.record_id));
+    records.dedup_by(|left, right| left.record_id == right.record_id);
+    let index = BlastSubjectAnnotationIndex {
+        schema: BLAST_SUBJECT_ANNOTATION_INDEX_SCHEMA.to_string(),
+        resource_id: resource_id.to_string(),
+        sequence_sha1: sequence_sha1.clone(),
+        records,
+    };
+    write_blast_subject_annotation_index(index_path, &index)?;
+    let index_sha1 = compute_file_sha1(index_path)?.ok_or_else(|| {
+        format!(
+            "Could not fingerprint BLAST subject annotation index '{}'",
+            index_path.display()
+        )
+    })?;
+    Ok((sequence_sha1, index_sha1, converted_from_genbank))
 }
 
 fn ensure_blast_index(sequence_path: &Path, db_prefix: &Path) -> BlastIndexOutcome {
@@ -12530,6 +13509,270 @@ mod tests {
                 .command
                 .windows(2)
                 .any(|row| row == ["-max_target_seqs", "4"])
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn transcriptome_cdna_resource_prepares_inspects_and_supports_exhaustive_blast_offline() {
+        let _lock = genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let td = tempdir().expect("tempdir");
+        let source_fasta = td.path().join("toy.cdna.fa");
+        fs::write(
+            &source_fasta,
+            ">ENST00000465287.1 cdna chromosome:GRCh38:22:31337055:31345000:1 gene:ENSG00000100105.18 gene_biotype:protein_coding transcript_biotype:protein_coding gene_symbol:PATZ1 description:POZ/BTB and AT hook containing zinc finger 1 [Source:HGNC Symbol;Acc:HGNC:13071]\nACGTACGTACGTACGTACGT\n>ENST00000266269.10 cdna chromosome:GRCh38:22:30976746:30987045:1 gene:ENSG00000100320.23 gene_biotype:protein_coding transcript_biotype:protein_coding gene_symbol:RBFOX2 description:RNA binding fox-1 homolog 2\nTTTTCCCCAAAAGGGG\n",
+        )
+        .expect("write cDNA FASTA");
+        let cache_dir = td.path().join("cache");
+        let catalog_path = td.path().join("catalog.json");
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "Human GRCh38 Ensembl 116 cDNA": {{
+    "description": "synthetic whole-cDNA fixture",
+    "sequence_local": "{}",
+    "cache_dir": "{}",
+    "blast_index_kind": "transcriptome_cdna",
+    "reference_name": "Homo_sapiens.GRCh38.cdna.all",
+    "reference_release": "Ensembl 116",
+    "blast_masking": "unmasked"
+  }}
+}}"#,
+                source_fasta.display(),
+                cache_dir.display()
+            ),
+        )
+        .expect("write catalog");
+
+        let makeblastdb = td.path().join("makeblastdb.sh");
+        write_executable_script(
+            &makeblastdb,
+            "#!/bin/sh\nout=''\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = '-out' ]; then shift; out=\"$1\"; fi\n  shift\ndone\nmkdir -p \"$(dirname \"$out\")\"\nprintf nhr > \"${out}.nhr\"\nprintf nin > \"${out}.nin\"\nprintf nsq > \"${out}.nsq\"\n",
+        );
+        let blastdbcmd = td.path().join("blastdbcmd.sh");
+        write_executable_script(
+            &blastdbcmd,
+            "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastdbcmd: fake 1.0'; exit 0; fi\nif [ \"$1\" = '-db' ] && [ \"$3\" = '-info' ]; then printf 'Database: synthetic cDNA\\nBLASTDB Version: 5\\n\\t2 sequences; 36 total letters\\n'; exit 0; fi\nexit 2\n",
+        );
+        let blastn = td.path().join("blastn.sh");
+        write_executable_script(
+            &blastn,
+            "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastn: fake 1.0'; exit 0; fi\nexit 0\n",
+        );
+        let _makeblastdb =
+            EnvVarGuard::set(MAKEBLASTDB_ENV_BIN, makeblastdb.to_string_lossy().as_ref());
+        let _blastdbcmd =
+            EnvVarGuard::set(BLASTDBCMD_ENV_BIN, blastdbcmd.to_string_lossy().as_ref());
+        let _blastn = EnvVarGuard::set(BLASTN_ENV_BIN, blastn.to_string_lossy().as_ref());
+
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let prepared = catalog
+            .prepare_blast_sequence_resource("Human GRCh38 Ensembl 116 cDNA", None)
+            .expect("prepare cDNA resource");
+        assert_eq!(prepared.schema, PREPARE_BLAST_SEQUENCE_RESOURCE_SCHEMA);
+        assert_eq!(
+            prepared.index_kind,
+            BlastDatabaseIndexKind::TranscriptomeCdna
+        );
+        assert_eq!(
+            prepared.reference_name.as_deref(),
+            Some("Homo_sapiens.GRCh38.cdna.all")
+        );
+        assert_eq!(prepared.reference_release.as_deref(), Some("Ensembl 116"));
+        assert_eq!(prepared.masking, "unmasked");
+        assert!(prepared.blast_index_ready);
+        assert_eq!(prepared.inspection.validation_status, "valid");
+        assert_eq!(prepared.inspection.sequence_count, Some(2));
+        assert!(prepared.inspection.content_fingerprint.is_some());
+        assert_eq!(prepared.inspection.subject_annotation_status, "ready");
+        assert_eq!(prepared.inspection.subject_annotation_record_count, 2);
+        assert_eq!(prepared.inspection.subject_annotation_annotated_count, 2);
+        assert!(prepared.inspection.subject_annotation_fingerprint.is_some());
+        assert!(
+            prepared
+                .subject_annotation_index_path
+                .as_deref()
+                .is_some_and(|path| Path::new(path).exists())
+        );
+
+        let install_dir = cache_dir.join("human_grch38_ensembl_116_cdna");
+        assert!(
+            install_dir
+                .join(BLAST_SEQUENCE_RESOURCE_MANIFEST_FILE)
+                .exists()
+        );
+        assert!(!install_dir.join("manifest.json").exists());
+        assert!(!install_dir.join("annotation.gtf").exists());
+        assert!(!install_dir.join("genes.json").exists());
+
+        let inspection = catalog
+            .inspect_blast_sequence_resource("Human GRCh38 Ensembl 116 cDNA", None)
+            .unwrap()
+            .expect("inspect cDNA resource");
+        assert_eq!(
+            inspection.index_kind,
+            BlastDatabaseIndexKind::TranscriptomeCdna
+        );
+        assert_eq!(inspection.source_release.as_deref(), Some("Ensembl 116"));
+        assert_eq!(inspection.subject_annotation_status, "ready");
+        assert_eq!(
+            inspection
+                .subject_annotation_source_counts
+                .get("ensembl_fasta_defline"),
+            Some(&2)
+        );
+        assert!(
+            inspection
+                .compatible_operations
+                .iter()
+                .any(|operation| operation == "primers transcript-assay-specificity-plan")
+        );
+
+        let blast = catalog
+            .blast_sequence_complete_with_cache(
+                "Human GRCh38 Ensembl 116 cDNA",
+                "ACGTACGTACGTACGTACGT",
+                20,
+                Some("blastn-short"),
+                None,
+            )
+            .expect("exhaustive cDNA BLAST");
+        assert!(
+            blast
+                .command
+                .windows(2)
+                .any(|row| row == ["-max_target_seqs", "3"])
+        );
+
+        let reused = catalog
+            .prepare_blast_sequence_resource("Human GRCh38 Ensembl 116 cDNA", None)
+            .expect("reuse cDNA resource");
+        assert!(reused.reused_existing);
+
+        let annotations = catalog
+            .blast_subject_annotation_lookup("Human GRCh38 Ensembl 116 cDNA", None)
+            .expect("load subject annotations");
+        let patz1 = annotations
+            .get("ENST00000465287")
+            .expect("normalized transcript annotation");
+        assert_eq!(patz1.transcript_id.as_deref(), Some("ENST00000465287.1"));
+        assert_eq!(patz1.gene_id.as_deref(), Some("ENSG00000100105.18"));
+        assert_eq!(patz1.gene_symbol.as_deref(), Some("PATZ1"));
+
+        fs::write(
+            prepared
+                .subject_annotation_index_path
+                .as_deref()
+                .expect("subject annotation path"),
+            "{}",
+        )
+        .expect("tamper annotation sidecar");
+        let stale = catalog
+            .inspect_blast_sequence_resource("Human GRCh38 Ensembl 116 cDNA", None)
+            .unwrap()
+            .expect("inspect stale cDNA annotations");
+        assert_eq!(stale.subject_annotation_status, "stale");
+    }
+
+    #[test]
+    fn ensembl_subject_annotation_parser_is_strict_species_agnostic_and_colon_safe() {
+        let human = parse_ensembl_fasta_subject_annotation(
+            "ENST00000215919.4 cdna chromosome:GRCh38:22:31337055:31345000:1 gene:ENSG00000005156.13 gene_biotype:protein_coding transcript_biotype:protein_coding gene_symbol:PATZ1 description:POZ/BTB protein: isoform [Source:HGNC Symbol;Acc:HGNC:13071]",
+        );
+        assert_eq!(
+            human.annotation_source,
+            BlastSubjectAnnotationSource::EnsemblFastaDefline
+        );
+        assert_eq!(
+            human.transcript_stable_id.as_deref(),
+            Some("ENST00000215919")
+        );
+        assert_eq!(human.gene_stable_id.as_deref(), Some("ENSG00000005156"));
+        assert_eq!(human.gene_symbol.as_deref(), Some("PATZ1"));
+        assert_eq!(
+            human.description.as_deref(),
+            Some("POZ/BTB protein: isoform [Source:HGNC Symbol;Acc:HGNC:13071]")
+        );
+
+        let no_symbol = parse_ensembl_fasta_subject_annotation(
+            "ENST00000999999.1 ncrna chromosome:GRCh38:1:10:40:-1 gene:ENSG00000999999.2 gene_biotype:lncRNA transcript_biotype:lncRNA description:annotated non-coding RNA",
+        );
+        assert_eq!(
+            no_symbol.annotation_source,
+            BlastSubjectAnnotationSource::EnsemblFastaDefline
+        );
+        assert!(no_symbol.gene_symbol.is_none());
+
+        for (header, transcript, gene) in [
+            (
+                "ENSMUST00000193812.2 cdna gene:ENSMUSG00000064341.1 gene_symbol:mt-Nd1",
+                "ENSMUST00000193812",
+                "ENSMUSG00000064341",
+            ),
+            (
+                "ENSRNOT00000082536.1 cdna gene:ENSRNOG00000000001.7 gene_symbol:Tp73",
+                "ENSRNOT00000082536",
+                "ENSRNOG00000000001",
+            ),
+        ] {
+            let annotation = parse_ensembl_fasta_subject_annotation(header);
+            assert_eq!(
+                annotation.annotation_source,
+                BlastSubjectAnnotationSource::EnsemblFastaDefline
+            );
+            assert_eq!(annotation.transcript_stable_id.as_deref(), Some(transcript));
+            assert_eq!(annotation.gene_stable_id.as_deref(), Some(gene));
+        }
+
+        for malformed in [
+            "vendor.target gene:ENSG00000100105.18 gene_symbol:PATZ1",
+            "ENST00000465287.1 cdna gene:not-an-ensembl-gene gene_symbol:PATZ1",
+            "ENST00000465287.bad cdna gene:ENSG00000100105.18",
+            "ENST00000465287.1 unexpected-token gene:ENSG00000100105.18",
+        ] {
+            let annotation = parse_ensembl_fasta_subject_annotation(malformed);
+            assert_eq!(
+                annotation.annotation_source,
+                BlastSubjectAnnotationSource::Unavailable
+            );
+            assert!(annotation.gene_symbol.is_none());
+            assert!(annotation.gene_id.is_none());
+        }
+    }
+
+    #[test]
+    fn genbank_subject_annotation_retains_accession_gene_and_db_xrefs() {
+        let td = tempdir().expect("tempdir");
+        let path = td.path().join("subject.gb");
+        fs::write(
+            &path,
+            "LOCUS       PATZ1TEST                 12 bp    DNA     linear   SYN 01-JAN-2000\nDEFINITION  synthetic PATZ1 transcript.\nACCESSION   TEST000001\nVERSION     TEST000001.2\nFEATURES             Location/Qualifiers\n     gene            1..12\n                     /gene=\"PATZ1\"\n                     /db_xref=\"GeneID:23598\"\n                     /db_xref=\"HGNC:13071\"\nORIGIN\n        1 acgtacgtacgt\n//\n",
+        )
+        .expect("write GenBank subject");
+        let annotations = normalize_genbank_blast_resource_if_needed(&path)
+            .expect("normalize GenBank BLAST subject")
+            .expect("detect GenBank BLAST subject");
+        let annotation = &annotations[0];
+        assert_eq!(
+            annotation.annotation_source,
+            BlastSubjectAnnotationSource::GenbankRecord
+        );
+        assert_eq!(annotation.record_id, "TEST000001.2");
+        assert_eq!(annotation.gene_symbol.as_deref(), Some("PATZ1"));
+        assert_eq!(
+            annotation.db_xrefs,
+            vec!["GeneID:23598".to_string(), "HGNC:13071".to_string()]
+        );
+        assert!(annotation.transcript_id.is_none());
+        assert!(annotation.gene_id.is_none());
+        assert!(
+            fs::read_to_string(&path)
+                .expect("read converted FASTA")
+                .starts_with(">TEST000001.2\n")
         );
     }
 

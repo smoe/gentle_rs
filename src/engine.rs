@@ -113,11 +113,12 @@ pub use gentle_protocol::{
     GelLaneLabelLayout, GelRunConditions, GelTopologyForm, HostLifecycleRole, LineageEdge,
     LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus,
     NodeId, OpId, OrthologAmbiguityPolicy, OrthologPromoterCohortReport,
-    OrthologPromoterComparisonReport, PoolGelRenderOptions, ProteinExternalOpinionSource,
-    ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
-    RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind,
-    RackPhysicalTemplateSpec, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
-    ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
+    OrthologPromoterComparisonReport, PoolGelRenderOptions, PrimerSpecificityAmpliconCeilingSource,
+    PrimerSpecificityReportDetailMode, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
+    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+    RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
+    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
+    ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -632,15 +633,15 @@ const CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA: &str = "gentle.cdna_assay_transcript_map
 const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
     "gentle.cdna_assay_product_materialization.v1";
 const OLIGO_QC_REPORT_SCHEMA: &str = "gentle.oligo_qc_report.v1";
-const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v3";
+const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v4";
 const PRIMER_SPECIFICITY_HANDOFF_SCHEMA: &str = "gentle.primer_specificity_handoff.v1";
-const PRIMER_SPECIFICITY_POLICY_SCHEMA: &str = "gentle.primer_specificity_policy.v1";
+const PRIMER_SPECIFICITY_POLICY_SCHEMA: &str = "gentle.primer_specificity_policy.v2";
 const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_HANDOFF_SCHEMA: &str =
     "gentle.transcript_assay_panel_specificity_handoff.v1";
 const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_EXECUTION_MANIFEST_SCHEMA: &str =
     "gentle.transcript_assay_panel_specificity_execution_manifest.v1";
 const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_ACCEPTANCE_SCHEMA: &str =
-    "gentle.transcript_assay_panel_specificity_acceptance.v1";
+    "gentle.transcript_assay_panel_specificity_acceptance.v2";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
 pub const TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_assay_panel.v2";
 pub const PRIMER_PAIR_SUMMARY_SCHEMA: &str = "gentle.primer_pair_summary.v2";

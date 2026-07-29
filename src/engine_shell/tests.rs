@@ -20,7 +20,8 @@ use crate::engine::{
     ContainerKind, CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
     CutRunSeedFilterConfig, DesignDecisionNode, DesignEvidence, DesignFact, DisplayTarget,
     EditableStatus, ExonSkipReturnKind, GeneSetCohortRelationship, GeneSetResolutionReviewStatus,
-    InlineSequenceTopology, OrthologAmbiguityPolicy, PrimerDesignProgress, PromoterCohortKind,
+    InlineSequenceTopology, OrthologAmbiguityPolicy, PrimerDesignProgress,
+    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityReportDetailMode, PromoterCohortKind,
     PromoterTfbsGeneQuery, ProteinExternalOpinionSource, ProteinFeatureFilter,
     QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate,
     RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
@@ -1786,6 +1787,33 @@ fn execute_help_topic_json() {
         out.output["doc"]["capability"]["name"].as_str(),
         Some("introspect capabilities")
     );
+}
+
+#[test]
+fn primer_specificity_help_topics_resolve_from_the_canonical_glossary() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    for topic in [
+        "primers specificity",
+        "primers specificity-plan",
+        "primers specificity-import",
+        "primers transcript-assay-specificity-plan",
+        "primers transcript-assay-specificity-finalize",
+    ] {
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::Help {
+                topic: topic.split_whitespace().map(ToString::to_string).collect(),
+                format: HelpOutputFormat::Json,
+                interface_filter: None,
+            },
+        )
+        .unwrap_or_else(|error| panic!("help topic '{topic}' must resolve: {error}"));
+        assert_eq!(out.output["doc"]["path"].as_str(), Some(topic));
+        assert_eq!(
+            out.output["doc"]["capability"]["source"].as_str(),
+            Some("glossary_command")
+        );
+    }
 }
 
 #[test]
@@ -6470,6 +6498,11 @@ fn parse_primers_specificity_saved_report_and_explicit_pair() {
             assert!(reverse_primer.is_none());
             assert_eq!(target_genome_id, "GRCh38.p14");
             assert_eq!(policy.max_target_amplicon_bp, 800);
+            assert_eq!(policy.readiness_max_target_amplicon_bp, Some(800));
+            assert_eq!(
+                policy.readiness_max_target_amplicon_bp_source,
+                PrimerSpecificityAmpliconCeilingSource::ExplicitOverride
+            );
             assert_eq!(policy.max_hits_per_primer, 250);
             assert_eq!(path.as_deref(), Some("specificity.json"));
         }
@@ -6540,7 +6573,7 @@ fn parse_primers_specificity_plan_and_import() {
 #[test]
 fn parse_primers_transcript_assay_specificity_plan_and_finalize() {
     let plan = parse_shell_line(
-        "primers transcript-assay-specificity-plan panel_1 --target-genome GRCh38.p14 --output-dir panel_specificity --max-hits-per-primer 125 --avoid-rmsk-repeats",
+        "primers transcript-assay-specificity-plan panel_1 --target-genome GRCh38.p14 --output-dir panel_specificity --readiness-max-amplicon-bp 1000 --exploratory-max-amplicon-bp 4000 --report-detail full --max-hits-per-primer 125 --avoid-rmsk-repeats",
     )
     .expect("parse transcript-assay specificity plan");
     match plan {
@@ -6555,6 +6588,16 @@ fn parse_primers_transcript_assay_specificity_plan_and_finalize() {
             assert_eq!(target_genome_id, "GRCh38.p14");
             assert_eq!(output_dir, "panel_specificity");
             assert_eq!(policy.max_hits_per_primer, 125);
+            assert_eq!(policy.readiness_max_target_amplicon_bp, Some(1000));
+            assert_eq!(policy.max_target_amplicon_bp, 4000);
+            assert_eq!(
+                policy.readiness_max_target_amplicon_bp_source,
+                PrimerSpecificityAmpliconCeilingSource::ExplicitOverride
+            );
+            assert_eq!(
+                policy.report_detail_mode,
+                PrimerSpecificityReportDetailMode::Full
+            );
             assert!(policy.avoid_rmsk_repeats);
             assert_eq!(
                 policy.specificity_check,
@@ -31980,6 +32023,51 @@ fn parse_genomes_prepare_with_timeout() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn parse_genomes_prepare_and_inspect_blast_resource() {
+    let prepare = parse_shell_line(
+        "genomes prepare-blast-resource human_cdna --catalog c.json --cache-dir cache",
+    )
+    .expect("parse prepare-blast-resource");
+    assert!(matches!(
+        prepare,
+        ShellCommand::ReferencePrepareBlastResource {
+            helper_mode: false,
+            resource_id,
+            catalog_path: Some(catalog_path),
+            cache_dir: Some(cache_dir),
+        } if resource_id == "human_cdna"
+            && catalog_path == "c.json"
+            && cache_dir == "cache"
+    ));
+
+    let import = parse_shell_line("genomes import-blast-resource human_cdna")
+        .expect("parse import-blast-resource alias");
+    assert!(matches!(
+        import,
+        ShellCommand::ReferencePrepareBlastResource {
+            resource_id,
+            ..
+        } if resource_id == "human_cdna"
+    ));
+
+    let inspect = parse_shell_line(
+        "genomes inspect-blast-resource human_cdna --catalog c.json --cache-dir cache",
+    )
+    .expect("parse inspect-blast-resource");
+    assert!(matches!(
+        inspect,
+        ShellCommand::ReferenceInspectBlastResource {
+            helper_mode: false,
+            resource_id,
+            catalog_path: Some(catalog_path),
+            cache_dir: Some(cache_dir),
+        } if resource_id == "human_cdna"
+            && catalog_path == "c.json"
+            && cache_dir == "cache"
+    ));
 }
 
 #[test]

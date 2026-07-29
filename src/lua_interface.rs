@@ -2195,7 +2195,7 @@ mod tests {
             .expect("Lua output JSON conversion");
         assert_eq!(
             out_json["result"]["primer_specificity_report"]["schema"].as_str(),
-            Some("gentle.primer_specificity_report.v3")
+            Some("gentle.primer_specificity_report.v4")
         );
     }
 

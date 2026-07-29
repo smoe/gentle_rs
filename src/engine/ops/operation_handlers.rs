@@ -22,8 +22,9 @@ use crate::{
         intron_length_between_exons_0based, phase_entry_kind, transcript_entry_phase,
     },
     genomes::{
-        BLASTN_OUTFMT_FIELDS, BlastHit, GenomeBlastReport, default_catalog_discovery_label,
-        default_catalog_discovery_token, parse_blastn_tabular_hits,
+        BLASTN_OUTFMT_FIELDS, BlastHit, BlastSubjectAnnotation, GenomeBlastReport,
+        default_catalog_discovery_label, default_catalog_discovery_token,
+        ensembl_transcript_stable_id, parse_blastn_tabular_hits,
     },
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
     protein_gel::{
@@ -10099,6 +10100,7 @@ impl GentleEngine {
             raw_subject_id: (canonical_subject_id != hit.subject_id)
                 .then(|| hit.subject_id.clone()),
             subject_id: canonical_subject_id,
+            subject_annotation: None,
             identity_percent: hit.identity_percent,
             alignment_length_bp: hit.alignment_length,
             mismatches: hit.mismatches,
@@ -10216,6 +10218,19 @@ impl GentleEngine {
         Some((left, right))
     }
 
+    fn primer_specificity_ensembl_transcript_stable_id(subject_id: &str) -> Option<&str> {
+        ensembl_transcript_stable_id(subject_id)
+    }
+
+    pub(crate) fn primer_specificity_subject_ids_match(expected: &str, observed: &str) -> bool {
+        expected == observed
+            || Self::primer_specificity_ensembl_transcript_stable_id(expected)
+                .zip(Self::primer_specificity_ensembl_transcript_stable_id(
+                    observed,
+                ))
+                .is_some_and(|(expected, observed)| expected == observed)
+    }
+
     fn primer_specificity_amplicon_from_hits(
         kind: PrimerSpecificityAmpliconKind,
         first: &PrimerSpecificityPrimerHit,
@@ -10229,10 +10244,17 @@ impl GentleEngine {
         if length_bp > policy.max_target_amplicon_bp {
             return None;
         }
+        let readiness_max_target_amplicon_bp = policy
+            .readiness_max_target_amplicon_bp
+            .unwrap_or(policy.max_target_amplicon_bp);
         let terminal_policy_pass = left.accepted_by_policy && right.accepted_by_policy;
         Some(PrimerSpecificityAmplicon {
             kind,
             subject_id: left.subject_id.clone(),
+            subject_annotation: left
+                .subject_annotation
+                .clone()
+                .or_else(|| right.subject_annotation.clone()),
             left_role: left.role,
             left_hit_index: left.hit_index,
             right_role: right.role,
@@ -10247,11 +10269,28 @@ impl GentleEngine {
                 .three_prime_mismatches
                 .max(right.three_prime_mismatches),
             terminal_policy_pass,
+            within_readiness_amplicon_range: length_bp <= readiness_max_target_amplicon_bp,
+            long_product_warning: length_bp > readiness_max_target_amplicon_bp,
             intended: false,
             intended_reason: None,
             specificity_failure: false,
             failure_reasons: vec![],
         })
+    }
+
+    pub(crate) fn primer_specificity_apply_subject_annotations(
+        hits: &mut [PrimerSpecificityPrimerHit],
+        annotations: &BTreeMap<String, BlastSubjectAnnotation>,
+    ) {
+        for hit in hits {
+            hit.subject_annotation = annotations
+                .get(&hit.subject_id)
+                .or_else(|| {
+                    Self::primer_specificity_ensembl_transcript_stable_id(&hit.subject_id)
+                        .and_then(|stable_id| annotations.get(stable_id))
+                })
+                .cloned();
+        }
     }
 
     fn primer_specificity_collect_amplicons_between(
@@ -10260,53 +10299,143 @@ impl GentleEngine {
         right_hits: &[PrimerSpecificityPrimerHit],
         policy: &PrimerSpecificityPolicy,
         same_role: bool,
-    ) -> Vec<PrimerSpecificityAmplicon> {
-        let mut amplicons = vec![];
-        for (left_pos, left) in left_hits.iter().enumerate() {
-            for (right_pos, right) in right_hits.iter().enumerate() {
-                if same_role && left_pos == right_pos {
+    ) -> (Vec<PrimerSpecificityAmplicon>, usize) {
+        fn collect_orientation_pairs(
+            kind: PrimerSpecificityAmpliconKind,
+            plus_hits: &[&PrimerSpecificityPrimerHit],
+            minus_hits: &[&PrimerSpecificityPrimerHit],
+            policy: &PrimerSpecificityPolicy,
+            amplicons: &mut Vec<PrimerSpecificityAmplicon>,
+            comparisons: &mut usize,
+        ) {
+            let mut plus_by_subject = BTreeMap::<&str, Vec<&PrimerSpecificityPrimerHit>>::new();
+            let mut minus_by_subject = BTreeMap::<&str, Vec<&PrimerSpecificityPrimerHit>>::new();
+            for hit in plus_hits {
+                plus_by_subject
+                    .entry(hit.subject_id.as_str())
+                    .or_default()
+                    .push(*hit);
+            }
+            for hit in minus_hits {
+                minus_by_subject
+                    .entry(hit.subject_id.as_str())
+                    .or_default()
+                    .push(*hit);
+            }
+            for (subject_id, plus_rows) in &mut plus_by_subject {
+                let Some(minus_rows) = minus_by_subject.get_mut(subject_id) else {
                     continue;
-                }
-                if same_role && left.hit_index > right.hit_index {
-                    continue;
-                }
-                if let Some(amplicon) =
-                    Self::primer_specificity_amplicon_from_hits(kind, left, right, policy)
-                {
-                    amplicons.push(amplicon);
+                };
+                plus_rows.sort_by_key(|hit| (hit.subject_min_1based, hit.hit_index));
+                minus_rows.sort_by_key(|hit| (hit.subject_min_1based, hit.hit_index));
+                for plus in plus_rows {
+                    let first = minus_rows.partition_point(|minus| {
+                        minus.subject_min_1based < plus.subject_min_1based
+                    });
+                    let last_subject_start = plus
+                        .subject_min_1based
+                        .saturating_add(policy.max_target_amplicon_bp.saturating_sub(1));
+                    let last = minus_rows
+                        .partition_point(|minus| minus.subject_min_1based <= last_subject_start);
+                    for minus in &minus_rows[first..last] {
+                        *comparisons = comparisons.saturating_add(1);
+                        if let Some(amplicon) = GentleEngine::primer_specificity_amplicon_from_hits(
+                            kind, plus, minus, policy,
+                        ) {
+                            amplicons.push(amplicon);
+                        }
+                    }
                 }
             }
         }
-        amplicons
+
+        let mut amplicons = vec![];
+        let mut comparisons = 0usize;
+        let left_plus = left_hits
+            .iter()
+            .filter(|hit| hit.strand == "+")
+            .collect::<Vec<_>>();
+        let left_minus = left_hits
+            .iter()
+            .filter(|hit| hit.strand == "-")
+            .collect::<Vec<_>>();
+        let right_plus = right_hits
+            .iter()
+            .filter(|hit| hit.strand == "+")
+            .collect::<Vec<_>>();
+        let right_minus = right_hits
+            .iter()
+            .filter(|hit| hit.strand == "-")
+            .collect::<Vec<_>>();
+        collect_orientation_pairs(
+            kind,
+            &left_plus,
+            &right_minus,
+            policy,
+            &mut amplicons,
+            &mut comparisons,
+        );
+        if !same_role {
+            collect_orientation_pairs(
+                kind,
+                &right_plus,
+                &left_minus,
+                policy,
+                &mut amplicons,
+                &mut comparisons,
+            );
+        }
+        (amplicons, comparisons)
     }
 
+    #[cfg(test)]
     pub(crate) fn primer_specificity_collect_amplicons_for_hits(
         forward_hits: &[PrimerSpecificityPrimerHit],
         reverse_hits: &[PrimerSpecificityPrimerHit],
         policy: &PrimerSpecificityPolicy,
     ) -> Vec<PrimerSpecificityAmplicon> {
+        Self::primer_specificity_collect_amplicons_for_hits_with_stats(
+            forward_hits,
+            reverse_hits,
+            policy,
+        )
+        .0
+    }
+
+    pub(crate) fn primer_specificity_collect_amplicons_for_hits_with_stats(
+        forward_hits: &[PrimerSpecificityPrimerHit],
+        reverse_hits: &[PrimerSpecificityPrimerHit],
+        policy: &PrimerSpecificityPolicy,
+    ) -> (Vec<PrimerSpecificityAmplicon>, usize) {
         let mut amplicons = vec![];
-        amplicons.extend(Self::primer_specificity_collect_amplicons_between(
+        let mut comparisons = 0usize;
+        let (rows, count) = Self::primer_specificity_collect_amplicons_between(
             PrimerSpecificityAmpliconKind::ForwardReverse,
             forward_hits,
             reverse_hits,
             policy,
             false,
-        ));
-        amplicons.extend(Self::primer_specificity_collect_amplicons_between(
+        );
+        amplicons.extend(rows);
+        comparisons = comparisons.saturating_add(count);
+        let (rows, count) = Self::primer_specificity_collect_amplicons_between(
             PrimerSpecificityAmpliconKind::ForwardForward,
             forward_hits,
             forward_hits,
             policy,
             true,
-        ));
-        amplicons.extend(Self::primer_specificity_collect_amplicons_between(
+        );
+        amplicons.extend(rows);
+        comparisons = comparisons.saturating_add(count);
+        let (rows, count) = Self::primer_specificity_collect_amplicons_between(
             PrimerSpecificityAmpliconKind::ReverseReverse,
             reverse_hits,
             reverse_hits,
             policy,
             true,
-        ));
+        );
+        amplicons.extend(rows);
+        comparisons = comparisons.saturating_add(count);
         amplicons.sort_by(|left, right| {
             left.subject_id
                 .cmp(&right.subject_id)
@@ -10316,7 +10445,46 @@ impl GentleEngine {
                 .then(left.left_hit_index.cmp(&right.left_hit_index))
                 .then(left.right_hit_index.cmp(&right.right_hit_index))
         });
-        amplicons
+        (amplicons, comparisons)
+    }
+
+    pub(crate) fn primer_specificity_apply_report_detail_mode(
+        policy: &PrimerSpecificityPolicy,
+        forward_hits: &mut Vec<PrimerSpecificityPrimerHit>,
+        reverse_hits: &mut Vec<PrimerSpecificityPrimerHit>,
+        amplicons: &mut Vec<PrimerSpecificityAmplicon>,
+        pairing_candidate_comparison_count: usize,
+        warnings: &mut Vec<String>,
+    ) -> PrimerSpecificityReportCompaction {
+        let raw_forward_hit_count = forward_hits.len();
+        let raw_reverse_hit_count = reverse_hits.len();
+        let raw_amplicon_count = amplicons.len();
+        if policy.report_detail_mode == PrimerSpecificityReportDetailMode::Compact {
+            forward_hits.retain(|hit| hit.accepted_by_policy);
+            reverse_hits.retain(|hit| hit.accepted_by_policy);
+            amplicons.retain(|amplicon| {
+                amplicon.intended || amplicon.terminal_policy_pass || amplicon.specificity_failure
+            });
+            if forward_hits.len() < raw_forward_hit_count
+                || reverse_hits.len() < raw_reverse_hit_count
+                || amplicons.len() < raw_amplicon_count
+            {
+                warnings.push(
+                    "Compact specificity detail omits rejected HSPs and nonviable candidate products from the inline report; use --report-detail full or retain handoff raw BLAST TSV artifacts for lossless review."
+                        .to_string(),
+                );
+            }
+        }
+        PrimerSpecificityReportCompaction {
+            detail_mode: policy.report_detail_mode,
+            raw_forward_hit_count,
+            retained_forward_hit_count: forward_hits.len(),
+            raw_reverse_hit_count,
+            retained_reverse_hit_count: reverse_hits.len(),
+            raw_amplicon_count,
+            retained_amplicon_count: amplicons.len(),
+            pairing_candidate_comparison_count,
+        }
     }
 
     pub(crate) fn primer_specificity_finalize_amplicons(
@@ -10339,7 +10507,10 @@ impl GentleEngine {
                     .filter(|(_, amplicon)| {
                         if amplicon.kind != PrimerSpecificityAmpliconKind::ForwardReverse
                             || !amplicon.terminal_policy_pass
-                            || amplicon.subject_id != expected.subject_id
+                            || !Self::primer_specificity_subject_ids_match(
+                                &expected.subject_id,
+                                &amplicon.subject_id,
+                            )
                         {
                             return false;
                         }
@@ -10369,7 +10540,12 @@ impl GentleEngine {
                 .filter(|(_, amplicon)| {
                     amplicon.kind == PrimerSpecificityAmpliconKind::ForwardReverse
                         && amplicon.terminal_policy_pass
-                        && expected_subject == Some(amplicon.subject_id.as_str())
+                        && expected_subject.is_some_and(|expected_subject| {
+                            Self::primer_specificity_subject_ids_match(
+                                expected_subject,
+                                &amplicon.subject_id,
+                            )
+                        })
                         && expected_range
                             .map(|range| {
                                 range.start_1based == amplicon.start_1based
@@ -10398,6 +10574,17 @@ impl GentleEngine {
                 continue;
             }
             if amplicon.intended {
+                continue;
+            }
+            if amplicon.long_product_warning {
+                amplicon.failure_reasons.push(format!(
+                    "{} bp product exceeds the ordinary assay ceiling of {} bp but remains visible inside the {} bp exploratory window",
+                    amplicon.length_bp,
+                    policy
+                        .readiness_max_target_amplicon_bp
+                        .unwrap_or(policy.max_target_amplicon_bp),
+                    policy.max_target_amplicon_bp,
+                ));
                 continue;
             }
             if amplicon.combined_mismatches < policy.min_total_mismatches_to_unintended_target {
@@ -10522,6 +10709,10 @@ impl GentleEngine {
             .iter()
             .filter(|amplicon| amplicon.specificity_failure)
             .count();
+        let long_product_warning_count = amplicons
+            .iter()
+            .filter(|amplicon| amplicon.long_product_warning)
+            .count();
         let active_expected_products = intended_target
             .expected_products
             .iter()
@@ -10549,7 +10740,10 @@ impl GentleEngine {
                         .filter(|amplicon| {
                             amplicon.kind == PrimerSpecificityAmpliconKind::ForwardReverse
                                 && amplicon.terminal_policy_pass
-                                && expected.subject_id == amplicon.subject_id
+                                && Self::primer_specificity_subject_ids_match(
+                                    &expected.subject_id,
+                                    &amplicon.subject_id,
+                                )
                                 && expected
                                     .expected_product_range
                                     .as_ref()
@@ -10635,6 +10829,7 @@ impl GentleEngine {
             intended_amplicon_count,
             unintended_amplicon_count,
             failing_unintended_amplicon_count,
+            long_product_warning_count,
             summary,
         }
     }
@@ -10656,8 +10851,7 @@ impl GentleEngine {
         let legacy_genomic_product_count = usize::from(
             declared_expected_product_count == 0
                 && index_kind == BlastDatabaseIndexKind::GenomicDna
-                && intended_target.model
-                    == PrimerSpecificityIntendedTargetModel::GenomicInterval
+                && intended_target.model == PrimerSpecificityIntendedTargetModel::GenomicInterval
                 && intended_target.genomic_target_geometry_known
                 && intended_target.subject_id.is_some()
                 && intended_target.expected_product_range.is_some(),
@@ -10763,8 +10957,7 @@ impl GentleEngine {
                 PrimerPairCharacterizationStatus::Incomplete => {
                     PrimerPairCharacterizationStatus::Incomplete
                 }
-                PrimerPairCharacterizationStatus::Pass
-                | PrimerPairCharacterizationStatus::Fail => {
+                PrimerPairCharacterizationStatus::Pass | PrimerPairCharacterizationStatus::Fail => {
                     if observed_count == expected_count {
                         PrimerPairCharacterizationStatus::Pass
                     } else {
@@ -11092,6 +11285,32 @@ impl GentleEngine {
                 message: "max_target_amplicon_bp must be >= 1".to_string(),
                 cause_chain: vec![],
             });
+        }
+        if let Some(readiness_max) = policy.readiness_max_target_amplicon_bp {
+            if readiness_max == 0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "readiness_max_target_amplicon_bp must be >= 1".to_string(),
+                    cause_chain: vec![],
+                });
+            }
+            policy.max_target_amplicon_bp = policy.max_target_amplicon_bp.max(readiness_max);
+            if policy.readiness_max_target_amplicon_bp_source
+                == PrimerSpecificityAmpliconCeilingSource::LegacyPolicyMax
+            {
+                policy.readiness_max_target_amplicon_bp_source =
+                    PrimerSpecificityAmpliconCeilingSource::ExplicitOverride;
+            }
+            if policy.readiness_max_target_amplicon_bp_reason.is_none() {
+                policy.readiness_max_target_amplicon_bp_reason = Some(format!(
+                    "The caller explicitly set the ordinary assay/readiness ceiling to {readiness_max} bp."
+                ));
+            }
+        } else if policy.readiness_max_target_amplicon_bp_reason.is_none() {
+            policy.readiness_max_target_amplicon_bp_reason = Some(format!(
+                "No separate readiness ceiling was supplied; the legacy exploratory maximum of {} bp is also used as the ordinary assay ceiling.",
+                policy.max_target_amplicon_bp
+            ));
         }
         if !(0.0..=1.0).contains(&policy.min_primer_coverage_fraction) {
             return Err(EngineError {
@@ -11740,7 +11959,7 @@ impl GentleEngine {
                     .to_string(),
             );
         }
-        self.primer_specificity_report_from_blast_reports(
+        let mut report = self.primer_specificity_report_from_blast_reports(
             resolved_input,
             &handoff.requested_target_genome_id,
             handoff.policy.clone(),
@@ -11750,7 +11969,68 @@ impl GentleEngine {
             forward_blast,
             reverse_blast,
             import_warnings,
-        )
+        )?;
+        for command in &handoff.commands {
+            let bytes = match validated_outputs {
+                Some(outputs) => outputs
+                    .get(&command.command_id)
+                    .map(String::as_bytes)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "No validated output bytes were retained for command '{}'",
+                            command.command_id
+                        ),
+                        cause_chain: vec![],
+                    })?,
+                None => {
+                    let bytes =
+                        fs::read(&command.output_tsv_path).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not read raw BLAST detail artifact '{}': {}",
+                                command.output_tsv_path, error
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                    report
+                        .raw_detail_artifacts
+                        .push(ComputationalArtifactExternalInput {
+                            source_kind: "primer_specificity_raw_blast_tsv".to_string(),
+                            source_id: command.command_id.clone(),
+                            source_path: Some(command.output_tsv_path.clone()),
+                            checksum: Some(sha256_prefixed_bytes(&bytes)),
+                            checksum_algorithm: Some("sha256".to_string()),
+                            label: Some(format!(
+                                "{} primer raw BLAST TSV ({} bytes)",
+                                command.role.as_str(),
+                                bytes.len()
+                            )),
+                        });
+                    continue;
+                }
+            };
+            report
+                .raw_detail_artifacts
+                .push(ComputationalArtifactExternalInput {
+                    source_kind: "primer_specificity_raw_blast_tsv".to_string(),
+                    source_id: command.command_id.clone(),
+                    source_path: Some(command.output_tsv_path.clone()),
+                    checksum: Some(sha256_prefixed_bytes(bytes)),
+                    checksum_algorithm: Some("sha256".to_string()),
+                    label: Some(format!(
+                        "{} primer raw BLAST TSV ({} bytes)",
+                        command.role.as_str(),
+                        bytes.len()
+                    )),
+                });
+        }
+        report.raw_detail_artifacts.sort_by(|left, right| {
+            left.source_id
+                .cmp(&right.source_id)
+                .then(left.source_path.cmp(&right.source_path))
+        });
+        Ok(report)
     }
 
     fn transcript_assay_panel_specificity_digest(
@@ -11762,6 +12042,7 @@ impl GentleEngine {
             "generated_at_unix_ms": report.generated_at_unix_ms,
             "source_seq_id": report.source_seq_id,
             "source_feature_id": report.source_feature_id,
+            "source_genome_anchor": report.source_genome_anchor,
             "assay_kind": report.assay_kind,
             "cdna_synthesis": report.cdna_synthesis,
             "objective": report.objective,
@@ -11896,7 +12177,7 @@ impl GentleEngine {
         source: &str,
     ) -> PrimerSpecificityIntendedTarget {
         self.primer_specificity_intended_target_from_cdna_assay_for_transcripts(
-            assay_test, None, source,
+            assay_test, None, None, source,
         )
     }
 
@@ -11904,11 +12185,13 @@ impl GentleEngine {
         &self,
         assay_test: &CdnaAssayTestReport,
         intended_transcript_ids: Option<&BTreeSet<String>>,
+        persisted_anchor: Option<&SequenceGenomeAnchorSummary>,
         source: &str,
     ) -> PrimerSpecificityIntendedTarget {
-        let anchor = self
-            .sequence_genome_anchor_summary(&assay_test.source_seq_id)
-            .ok();
+        let anchor = persisted_anchor.cloned().or_else(|| {
+            self.sequence_genome_anchor_summary(&assay_test.source_seq_id)
+                .ok()
+        });
         let mut expected_products = vec![];
         let mut forward_binding_ranges = vec![];
         let mut reverse_binding_ranges = vec![];
@@ -12158,6 +12441,7 @@ impl GentleEngine {
             self.primer_specificity_intended_target_from_cdna_assay_for_transcripts(
                 &assay_test,
                 Some(&intended_transcript_ids),
+                report.source_genome_anchor.as_ref(),
                 &format!(
                     "transcript_assay_panel:{}:assay={}",
                     report.report_id, assay.assay_id
@@ -12186,6 +12470,17 @@ impl GentleEngine {
                 ),
                 cause_chain: vec![],
             });
+        }
+        if policy.readiness_max_target_amplicon_bp.is_none() {
+            policy.readiness_max_target_amplicon_bp = Some(report.max_amplicon_bp);
+            policy.readiness_max_target_amplicon_bp_source =
+                PrimerSpecificityAmpliconCeilingSource::TranscriptAssayPanelAllowedRange;
+            policy.readiness_max_target_amplicon_bp_reason = Some(format!(
+                "Transcript assay panel '{}' declares an allowed product range of {}-{} bp; its upper bound is the ordinary assay/readiness ceiling.",
+                report.report_id, report.min_amplicon_bp, report.max_amplicon_bp
+            ));
+            policy.max_target_amplicon_bp =
+                policy.max_target_amplicon_bp.max(report.max_amplicon_bp);
         }
         policy.specificity_check = PrimerSpecificityCheckMode::RequirePass;
         let (target_genome_id, policy) =
@@ -12755,18 +13050,19 @@ impl GentleEngine {
                     Some(&validated_outputs),
                 ) {
                     Ok(report) => {
-                        let status = if !report.search_completeness.complete {
-                            issues.push(Self::transcript_assay_panel_specificity_issue(
-                                "specificity_search_incomplete",
-                                Some(&assay.assay_id),
-                                None,
-                                report.search_completeness.reason.clone(),
-                            ));
-                            "external_blast_incomplete"
-                        } else if report.summary.specificity_pass {
-                            "external_blast_pass"
-                        } else {
-                            "external_blast_fail"
+                        let status = match report.summary.status.as_str() {
+                            "pass" => "external_blast_pass",
+                            "fail" => "external_blast_specificity_fail",
+                            "not_assessed" => "external_blast_not_assessed",
+                            _ => {
+                                issues.push(Self::transcript_assay_panel_specificity_issue(
+                                    "specificity_search_incomplete",
+                                    Some(&assay.assay_id),
+                                    None,
+                                    report.search_completeness.reason.clone(),
+                                ));
+                                "external_blast_incomplete"
+                            }
                         };
                         assessments.push(TranscriptAssayGenomicSpecificityAssessment {
                             assay_id: assay.assay_id.clone(),
@@ -12786,22 +13082,43 @@ impl GentleEngine {
         }
         let mut passing_assay_ids = assessments
             .iter()
-            .filter(|row| row.report.summary.specificity_pass)
+            .filter(|row| row.status == "external_blast_pass")
             .map(|row| row.assay_id.clone())
             .collect::<Vec<_>>();
         let mut failing_assay_ids = assessments
             .iter()
-            .filter(|row| !row.report.summary.specificity_pass)
+            .filter(|row| row.status == "external_blast_specificity_fail")
             .map(|row| row.assay_id.clone())
+            .collect::<Vec<_>>();
+        let mut not_assessed_assay_ids = assessments
+            .iter()
+            .filter(|row| row.status == "external_blast_not_assessed")
+            .map(|row| row.assay_id.clone())
+            .collect::<Vec<_>>();
+        let mut incomplete_assay_ids = assessments
+            .iter()
+            .filter(|row| row.status == "external_blast_incomplete")
+            .map(|row| row.assay_id.clone())
+            .collect::<Vec<_>>();
+        let mut execution_failed_assay_ids = issues
+            .iter()
+            .filter(|issue| issue.code == "execution_failed")
+            .filter_map(|issue| issue.assay_id.clone())
             .collect::<Vec<_>>();
         passing_assay_ids.sort();
         failing_assay_ids.sort();
+        not_assessed_assay_ids.sort();
+        incomplete_assay_ids.sort();
+        execution_failed_assay_ids.sort();
+        execution_failed_assay_ids.dedup();
         let status = if !issues.is_empty() || assessments.len() != handoff.assays.len() {
             TranscriptAssayPanelSpecificityAcceptanceStatus::Incomplete
-        } else if failing_assay_ids.is_empty() {
-            TranscriptAssayPanelSpecificityAcceptanceStatus::Pass
-        } else {
+        } else if !failing_assay_ids.is_empty() {
             TranscriptAssayPanelSpecificityAcceptanceStatus::SpecificityFail
+        } else if !not_assessed_assay_ids.is_empty() {
+            TranscriptAssayPanelSpecificityAcceptanceStatus::NotAssessed
+        } else {
+            TranscriptAssayPanelSpecificityAcceptanceStatus::Pass
         };
         let acceptance_identity = serde_json::to_string(&json!({
             "handoff_id": handoff.handoff_id,
@@ -12810,6 +13127,9 @@ impl GentleEngine {
             "manifest": execution_manifest,
             "passing_assay_ids": passing_assay_ids,
             "failing_assay_ids": failing_assay_ids,
+            "not_assessed_assay_ids": not_assessed_assay_ids,
+            "incomplete_assay_ids": incomplete_assay_ids,
+            "execution_failed_assay_ids": execution_failed_assay_ids,
             "issues": issues,
         }))
         .map_err(|error| EngineError {
@@ -12834,6 +13154,9 @@ impl GentleEngine {
             assessed_assay_count: assessments.len(),
             passing_assay_ids,
             failing_assay_ids,
+            not_assessed_assay_ids,
+            incomplete_assay_ids,
+            execution_failed_assay_ids,
             assessments: assessments.clone(),
             issues,
             execution_manifest,
@@ -12853,7 +13176,9 @@ impl GentleEngine {
                 cause_chain: vec![],
             })?;
         }
-        if !assessments.is_empty() {
+        if status != TranscriptAssayPanelSpecificityAcceptanceStatus::Incomplete
+            && !assessments.is_empty()
+        {
             let mut updated = report;
             updated.specificity_request = Some(TranscriptAssaySpecificityRequest {
                 policy: handoff.policy.clone(),
@@ -12996,6 +13321,21 @@ impl GentleEngine {
             .as_ref()
             .map(|database| database.index_kind)
             .unwrap_or(BlastDatabaseIndexKind::GenomicDna);
+        if index_kind == BlastDatabaseIndexKind::TranscriptomeCdna
+            && let Some(database) = blast_database.as_ref()
+        {
+            if database.subject_annotation_status != "ready" {
+                warnings.push(
+                    "Prepared transcriptome subject annotations are unavailable; re-run genomes prepare-blast-resource to retain gene identity in this report."
+                        .to_string(),
+                );
+            } else if database.subject_annotation_annotated_count == 0 {
+                warnings.push(
+                    "The prepared transcriptome subject index contains no parsed gene annotations; transcript identifiers remain available, but gene identity is unknown."
+                        .to_string(),
+                );
+            }
+        }
         let search_commands = vec![forward_blast.command.clone(), reverse_blast.command.clone()];
         let search_completeness = Self::primer_specificity_search_completeness_for_commands(
             blast_database.as_ref(),
@@ -13039,7 +13379,17 @@ impl GentleEngine {
         });
         intended_target.expected_products.dedup();
         warnings.extend(intended_target.warnings.clone());
-        let forward_hits = forward_blast
+        let subject_annotations =
+            match catalog.blast_subject_annotation_lookup(&forward_blast.genome_id, cache_dir) {
+                Ok(annotations) => annotations,
+                Err(error) => {
+                    warnings.push(format!(
+                        "Prepared BLAST subject annotations could not be used: {error}"
+                    ));
+                    BTreeMap::new()
+                }
+            };
+        let mut forward_hits = forward_blast
             .hits
             .iter()
             .enumerate()
@@ -13058,7 +13408,7 @@ impl GentleEngine {
                 )
             })
             .collect::<Vec<_>>();
-        let reverse_hits = reverse_blast
+        let mut reverse_hits = reverse_blast
             .hits
             .iter()
             .enumerate()
@@ -13077,11 +13427,14 @@ impl GentleEngine {
                 )
             })
             .collect::<Vec<_>>();
-        let mut amplicons = Self::primer_specificity_collect_amplicons_for_hits(
-            &forward_hits,
-            &reverse_hits,
-            &policy,
-        );
+        Self::primer_specificity_apply_subject_annotations(&mut forward_hits, &subject_annotations);
+        Self::primer_specificity_apply_subject_annotations(&mut reverse_hits, &subject_annotations);
+        let (mut amplicons, pairing_candidate_comparison_count) =
+            Self::primer_specificity_collect_amplicons_for_hits_with_stats(
+                &forward_hits,
+                &reverse_hits,
+                &policy,
+            );
         Self::primer_specificity_finalize_amplicons(
             &mut amplicons,
             &intended_target,
@@ -13103,6 +13456,14 @@ impl GentleEngine {
                 &intended_target,
                 index_kind,
             );
+        let compaction = Self::primer_specificity_apply_report_detail_mode(
+            &policy,
+            &mut forward_hits,
+            &mut reverse_hits,
+            &mut amplicons,
+            pairing_candidate_comparison_count,
+            &mut warnings,
+        );
         let report_id = Self::primer_specificity_report_id(
             &resolved_input,
             target_genome_id,
@@ -13144,8 +13505,24 @@ impl GentleEngine {
                 checksum: database.content_fingerprint.clone(),
                 checksum_algorithm: (!database.fingerprint_algorithm.trim().is_empty())
                     .then(|| database.fingerprint_algorithm.clone()),
-                label: (!label.is_empty()).then_some(label),
+                label: (!label.is_empty()).then_some(label.clone()),
             });
+            if database.subject_annotation_status == "ready"
+                && let Some(annotation_path) = database.subject_annotation_index_path.as_ref()
+            {
+                external_inputs.push(ComputationalArtifactExternalInput {
+                    source_kind: "prepared_blast_subject_annotation_index".to_string(),
+                    source_id: target_genome_id.to_string(),
+                    source_path: Some(annotation_path.clone()),
+                    checksum: database.subject_annotation_fingerprint.clone(),
+                    checksum_algorithm: database.subject_annotation_fingerprint_algorithm.clone(),
+                    label: Some(if label.is_empty() {
+                        "Prepared-reference descriptive subject annotations".to_string()
+                    } else {
+                        format!("Prepared-reference descriptive subject annotations from {label}")
+                    }),
+                });
+            }
         }
         external_inputs.push(ComputationalArtifactExternalInput {
             source_kind: "reference_genome_catalog".to_string(),
@@ -13304,6 +13681,8 @@ impl GentleEngine {
             forward_hits,
             reverse_hits,
             amplicons,
+            compaction,
+            raw_detail_artifacts: vec![],
             search_completeness,
             summary,
             genomic_specificity,
@@ -19405,6 +19784,7 @@ impl GentleEngine {
             run_id: Some(run_id.to_string()),
             source_seq_id: seq_id.clone(),
             source_feature_id,
+            source_genome_anchor: source_anchor.clone(),
             group_label: splicing.group_label,
             strand: splicing.strand,
             assay_kind,
@@ -20102,12 +20482,14 @@ impl GentleEngine {
                     "external_blast_pass" | "specificity_pass" | "pass" => {
                         ExperimentalAssayGateStatus::Pass
                     }
-                    "external_blast_incomplete" | "incomplete" => {
-                        ExperimentalAssayGateStatus::Incomplete
-                    }
-                    "external_blast_fail" | "specificity_fail" | "fail" => {
-                        ExperimentalAssayGateStatus::Fail
-                    }
+                    "external_blast_incomplete"
+                    | "external_blast_not_assessed"
+                    | "not_assessed"
+                    | "incomplete" => ExperimentalAssayGateStatus::Incomplete,
+                    "external_blast_fail"
+                    | "external_blast_specificity_fail"
+                    | "specificity_fail"
+                    | "fail" => ExperimentalAssayGateStatus::Fail,
                     _ => ExperimentalAssayGateStatus::NotEvaluated,
                 };
                 if genomic_carryover_status != ExperimentalAssayGateStatus::NotEvaluated {

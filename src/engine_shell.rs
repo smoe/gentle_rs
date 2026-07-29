@@ -1567,6 +1567,18 @@ pub enum ShellCommand {
         cache_dir: Option<String>,
         timeout_seconds: Option<u64>,
     },
+    ReferencePrepareBlastResource {
+        helper_mode: bool,
+        resource_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    ReferenceInspectBlastResource {
+        helper_mode: bool,
+        resource_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
     ReferenceRemovePrepared {
         helper_mode: bool,
         genome_id: String,
@@ -8804,6 +8816,36 @@ impl ShellCommand {
                     "prepare {label} '{genome_id}' (catalog='{catalog}', cache='{cache}', timeout='{timeout}')"
                 )
             }
+            Self::ReferencePrepareBlastResource {
+                helper_mode,
+                resource_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let label = if *helper_mode { "helper" } else { "reference" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                format!(
+                    "prepare {label} BLAST sequence resource '{resource_id}' (catalog='{catalog}', cache='{cache}')"
+                )
+            }
+            Self::ReferenceInspectBlastResource {
+                helper_mode,
+                resource_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let label = if *helper_mode { "helper" } else { "reference" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                format!(
+                    "inspect {label} BLAST sequence resource '{resource_id}' (catalog='{catalog}', cache='{cache}')"
+                )
+            }
             Self::ReferenceRemovePrepared {
                 helper_mode,
                 genome_id,
@@ -12766,6 +12808,7 @@ impl ShellCommand {
                 | Self::ImportPool { .. }
                 | Self::ReferenceInstallEnsembl { .. }
                 | Self::ReferencePrepare { .. }
+                | Self::ReferencePrepareBlastResource { .. }
                 | Self::ReferenceExtractRegion { .. }
                 | Self::ReferenceExtractGene { .. }
                 | Self::ReferenceExtractPromoter { .. }
@@ -12971,6 +13014,18 @@ fn resolved_catalog_path(catalog_path: &Option<String>, _helper_mode: bool) -> O
         .as_deref()
         .map(str::trim)
         .filter(|v| !v.is_empty())
+}
+
+fn load_shell_genome_catalog(
+    catalog_path: &Option<String>,
+    helper_mode: bool,
+) -> Result<GenomeCatalog, String> {
+    match resolved_catalog_path(catalog_path, helper_mode) {
+        Some(path) if path != default_catalog_discovery_token(helper_mode) => {
+            GenomeCatalog::from_json_file(path)
+        }
+        _ => GenomeCatalog::from_default_discovery(helper_mode),
+    }
 }
 
 fn effective_catalog_path(catalog_path: &Option<String>, helper_mode: bool) -> String {
@@ -18261,6 +18316,92 @@ fn pool_artifact_descriptor_with_readiness(
     })
 }
 
+fn primer_specificity_report_descriptor(
+    id: &str,
+    description: &str,
+    args: Vec<Value>,
+) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [],
+        "effects": [
+            {
+                "fact": "report.exists",
+                "report_kind": "primer_specificity",
+                "equals": "primer_specificity",
+                "effect_kind": "may_on_success",
+                "description": "Persists a primer_specificity report under its deterministic report id."
+            },
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "may_on_success",
+                "description": "Writes the optional external JSON export when OUTPUT_PATH is supplied."
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn transcript_assay_specificity_plan_descriptor(id: &str, description: &str) -> Value {
+    pool_artifact_descriptor_with_readiness(
+        id,
+        description,
+        vec![
+            json!({"name": "PANEL_REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted transcript assay panel report id"}),
+            json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared genomic-DNA or transcriptome-cDNA resource id"}),
+            json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external aggregate handoff bundle directory carried by --output-dir"}),
+        ],
+        vec![
+            json!({"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}),
+        ],
+        json!({"all": [
+            {"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}
+        ]}),
+    )
+}
+
+fn transcript_assay_specificity_finalize_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "HANDOFF_PATH", "required": true, "subject_kind": "other", "detail": "existing aggregate panel specificity handoff JSON path"},
+            {"name": "EXECUTION_MANIFEST", "required": true, "subject_kind": "other", "detail": "execution manifest JSON or @file proving every declared command outcome"},
+            {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external acceptance JSON path"}
+        ],
+        "reads": [],
+        "effects": [
+            {
+                "fact": "report.exists",
+                "report_kind": "transcript_assay_panel",
+                "equals": "transcript_assay_panel",
+                "effect_kind": "may_on_success",
+                "description": "Atomically attaches complete pass, specificity-fail, or not-assessed evidence to the source panel; incomplete evidence is returned but not attached."
+            },
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "may_on_success",
+                "description": "Writes the optional external acceptance JSON when OUTPUT_PATH is supplied."
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn uniprot_projection_read_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -19137,39 +19278,28 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 arrangement_id_atom()
             ]}),
         ),
-        json!({
-            "id": "AssessPrimerPairSpecificity",
-            "kind": "operation",
-            "mutating": "true",
-            "requires_confirmation": false,
-            "args": [
+        primer_specificity_report_descriptor(
+            "AssessPrimerPairSpecificity",
+            "Assess one primer pair against a prepared reference genome, persist the returned specificity artifact, and optionally write it to JSON.",
+            vec![
                 json!({"name": "PRIMER_REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional primer-design report id carried by primer_report_id"}),
                 json!({"name": "FORWARD_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit forward primer sequence alternative"}),
                 json!({"name": "REVERSE_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit reverse primer sequence alternative"}),
                 json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference genome id used for specificity search"}),
                 json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path carried by path"}),
             ],
-            "reads": [],
-            "effects": [
-                {
-                    "fact": "report.exists",
-                    "report_kind": "primer_specificity",
-                    "equals": "primer_specificity",
-                    "effect_kind": "may_on_success",
-                    "description": "Persists a primer_specificity report under a deterministic id derived from the assessed pair, policy, and database provenance."
-                },
-                {
-                    "fact": "artifact.written",
-                    "subject": {"arg": "OUTPUT_PATH"},
-                    "effect_kind": "may_on_success",
-                    "description": "Writes the optional external JSON export when OUTPUT_PATH is supplied."
-                }
+        ),
+        primer_specificity_report_descriptor(
+            "primers specificity",
+            "Run and persist the shared local-BLAST specificity interpretation for one persisted or explicit primer pair.",
+            vec![
+                json!({"name": "PRIMER_REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional persisted primer-design report id"}),
+                json!({"name": "FORWARD_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit forward primer sequence alternative"}),
+                json!({"name": "REVERSE_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit reverse primer sequence alternative"}),
+                json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared genomic-DNA or transcriptome-cDNA resource id"}),
+                json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path"}),
             ],
-            "precondition_expr": {"all": []},
-            "description": "Assess one primer pair against a prepared reference genome, persist the returned specificity artifact, and optionally write it to JSON.",
-            "annotation_status": "fact_annotated",
-            "registry": registry_metadata_for_introspection("AssessPrimerPairSpecificity")
-        }),
+        ),
         pool_artifact_descriptor(
             "PreparePrimerPairSpecificityHandoff",
             "Prepare deterministic primer BLAST commands and query files without running the BLAST searches.",
@@ -19181,36 +19311,41 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external handoff bundle directory carried by output_dir"}),
             ],
         ),
-        json!({
-            "id": "ImportPrimerPairSpecificityHandoff",
-            "kind": "operation",
-            "mutating": "true",
-            "requires_confirmation": false,
-            "args": [
+        pool_artifact_descriptor(
+            "primers specificity-plan",
+            "Prepare deterministic primer BLAST commands and query files without running the BLAST searches.",
+            vec![
+                json!({"name": "PRIMER_REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional persisted primer-design report id"}),
+                json!({"name": "FORWARD_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit forward primer sequence alternative"}),
+                json!({"name": "REVERSE_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit reverse primer sequence alternative"}),
+                json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared genomic-DNA or transcriptome-cDNA resource id"}),
+                json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external handoff bundle directory carried by --output-dir"}),
+            ],
+        ),
+        primer_specificity_report_descriptor(
+            "ImportPrimerPairSpecificityHandoff",
+            "Import completed primer BLAST TSVs from a deterministic handoff, apply the shared specificity interpretation, and persist the report artifact.",
+            vec![
                 json!({"name": "HANDOFF_PATH", "required": true, "subject_kind": "other", "detail": "existing gentle.primer_specificity_handoff.v1 JSON path"}),
                 json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path carried by path"}),
             ],
-            "reads": [],
-            "effects": [
-                {
-                    "fact": "report.exists",
-                    "report_kind": "primer_specificity",
-                    "equals": "primer_specificity",
-                    "effect_kind": "may_on_success",
-                    "description": "Persists the imported primer_specificity report under its deterministic report id."
-                },
-                {
-                    "fact": "artifact.written",
-                    "subject": {"arg": "OUTPUT_PATH"},
-                    "effect_kind": "may_on_success",
-                    "description": "Writes the optional external JSON export when OUTPUT_PATH is supplied."
-                }
+        ),
+        primer_specificity_report_descriptor(
+            "primers specificity-import",
+            "Validate and import completed primer BLAST TSVs from a deterministic handoff through the shared specificity interpreter.",
+            vec![
+                json!({"name": "HANDOFF_PATH", "required": true, "subject_kind": "other", "detail": "existing gentle.primer_specificity_handoff.v1 JSON path"}),
+                json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path"}),
             ],
-            "precondition_expr": {"all": []},
-            "description": "Import completed primer BLAST TSVs from a deterministic handoff, apply the shared specificity interpretation, and persist the report artifact.",
-            "annotation_status": "fact_annotated",
-            "registry": registry_metadata_for_introspection("ImportPrimerPairSpecificityHandoff")
-        }),
+        ),
+        transcript_assay_specificity_plan_descriptor(
+            "primers transcript-assay-specificity-plan",
+            "Prepare one aggregate external BLAST handoff covering every selected assay in a persisted transcript panel.",
+        ),
+        transcript_assay_specificity_finalize_descriptor(
+            "primers transcript-assay-specificity-finalize",
+            "Validate one aggregate execution manifest, classify each assay, and atomically attach only a complete panel verdict.",
+        ),
         arrangement_create_descriptor(
             "arrange-serial",
             "Create a persisted serial arrangement from one or more existing containers.",
@@ -25893,6 +26028,25 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "GENOME_ID",
             "Prepare and index one genome through the JS/Lua adapter alias; catalog, cache, source, and BLAST-binary checks happen during execution.",
         ),
+        local_state_may_change_descriptor(
+            "genomes prepare-blast-resource",
+            "Prepare or import one catalog-declared sequence-only transcriptome-cDNA BLAST resource without manufacturing genome annotation artifacts.",
+            "external",
+            vec![
+                json!({"name": "RESOURCE_ID", "required": true, "subject_kind": "other", "detail": "catalog id declaring blast_index_kind=transcriptome_cdna"}),
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional genome catalog path"}),
+                json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared-resource cache directory"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "genomes inspect-blast-resource",
+            "Inspect validation, sequence count, masking, release, and fingerprint metadata for one prepared sequence-only BLAST resource.",
+            vec![
+                json!({"name": "RESOURCE_ID", "required": true, "subject_kind": "other", "detail": "catalog id of the prepared sequence-only BLAST resource"}),
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional genome catalog path"}),
+                json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared-resource cache directory"}),
+            ],
+        ),
         genome_install_ensembl_descriptor(
             "genomes install-ensembl",
             "Resolve one current Ensembl candidate into a reference-genome catalog row and prepare its local cache.",
@@ -31875,6 +32029,74 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 catalog_path,
                 cache_dir,
                 timeout_seconds,
+            })
+        }
+        "prepare-blast-resource" | "import-blast-resource" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} {} requires RESOURCE_ID [--catalog PATH] [--cache-dir PATH]",
+                    tokens[1]
+                ));
+            }
+            let resource_id = tokens[2].clone();
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} {}",
+                            tokens[1]
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferencePrepareBlastResource {
+                helper_mode,
+                resource_id,
+                catalog_path,
+                cache_dir,
+            })
+        }
+        "inspect-blast-resource" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} inspect-blast-resource requires RESOURCE_ID [--catalog PATH] [--cache-dir PATH]"
+                ));
+            }
+            let resource_id = tokens[2].clone();
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} inspect-blast-resource"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceInspectBlastResource {
+                helper_mode,
+                resource_id,
+                catalog_path,
+                cache_dir,
             })
         }
         "remove-prepared" => {
@@ -43738,6 +43960,8 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::ReferenceStatus { .. }
             | ShellCommand::ReferenceGenes { .. }
             | ShellCommand::ReferencePrepare { .. }
+            | ShellCommand::ReferencePrepareBlastResource { .. }
+            | ShellCommand::ReferenceInspectBlastResource { .. }
             | ShellCommand::ReferenceRemovePrepared { .. }
             | ShellCommand::ReferenceRemoveCatalogEntry { .. }
             | ShellCommand::ReferenceBlast { .. }
@@ -43783,6 +44007,7 @@ fn execute_stack_safe_reference_command(
     if matches!(
         command,
         ShellCommand::ReferencePrepare { .. }
+            | ShellCommand::ReferencePrepareBlastResource { .. }
             | ShellCommand::ReferenceExtractRegion { .. }
             | ShellCommand::ReferenceExtendAnchor { .. }
     ) {
@@ -48876,6 +49101,46 @@ fn execute_reference_and_track_command(
                 output: json!({
                     "binary_preflight": binary_preflight,
                     "result": op_result
+                }),
+            })
+        }
+        ShellCommand::ReferencePrepareBlastResource {
+            helper_mode,
+            resource_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let catalog = load_shell_genome_catalog(catalog_path, *helper_mode)?;
+            let report = catalog
+                .prepare_blast_sequence_resource(resource_id, cache_dir.as_deref())
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog_path(catalog_path, *helper_mode),
+                    "cache_dir": cache_dir,
+                    "result": report,
+                }),
+            })
+        }
+        ShellCommand::ReferenceInspectBlastResource {
+            helper_mode,
+            resource_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let catalog = load_shell_genome_catalog(catalog_path, *helper_mode)?;
+            let inspection = catalog
+                .inspect_blast_sequence_resource(resource_id, cache_dir.as_deref())
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog_path(catalog_path, *helper_mode),
+                    "cache_dir": cache_dir,
+                    "resource_id": resource_id,
+                    "prepared": inspection.is_some(),
+                    "inspection": inspection,
                 }),
             })
         }
@@ -59195,6 +59460,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ReferenceStatus { .. }
         | ShellCommand::ReferenceGenes { .. }
         | ShellCommand::ReferencePrepare { .. }
+        | ShellCommand::ReferencePrepareBlastResource { .. }
+        | ShellCommand::ReferenceInspectBlastResource { .. }
         | ShellCommand::ReferenceRemovePrepared { .. }
         | ShellCommand::ReferenceRemoveCatalogEntry { .. }
         | ShellCommand::ReferenceBlast { .. }

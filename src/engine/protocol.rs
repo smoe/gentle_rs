@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use crate::genomes::BlastDatabaseInspectionReport;
+use crate::genomes::{BlastDatabaseInspectionReport, BlastSubjectAnnotation};
 use crate::primerbank::PrimerBankSearchReport;
 
 pub use gentle_protocol::{
@@ -83,7 +83,8 @@ pub use gentle_protocol::{
     OrthologSequenceSimilarityRow, OrthologSpeciesAlias, OrthologTfbsPeakSummary,
     OrthologTfbsSummaryRow, OrthologUnresolvedRow, PairwiseAlignmentMode, PortBindingStatus,
     PreparedCacheCleanupMode, PreparedCacheCleanupRequest, PrimerDesignBackend,
-    PrimerSpecificityCheckMode, PrimerSpecificityPolicy, ProteinResidueGenomicCoordinateBase,
+    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityCheckMode, PrimerSpecificityPolicy,
+    PrimerSpecificityReportDetailMode, ProteinResidueGenomicCoordinateBase,
     ProteinResidueGenomicCoordinateMatch, ProteinResidueGenomicCoordinateReport,
     ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal,
     ProteinToDnaHandoffStrategy, ProtocolCartoonKind, QpcrTranscriptSpecificityEvidence,
@@ -6333,6 +6334,10 @@ pub struct PrimerSpecificityPrimerHit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw_subject_id: Option<String>,
     pub subject_id: String,
+    /// Descriptive identity from the prepared reference. It never participates
+    /// in intended-product matching.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_annotation: Option<BlastSubjectAnnotation>,
     pub identity_percent: f64,
     pub alignment_length_bp: usize,
     /// Mismatches reported inside the aligned HSP.
@@ -6446,6 +6451,10 @@ pub struct PrimerSpecificityTargetAssessment {
 pub struct PrimerSpecificityAmplicon {
     pub kind: PrimerSpecificityAmpliconKind,
     pub subject_id: String,
+    /// Descriptive identity from the prepared reference. Transcript subject
+    /// identity remains authoritative for intended/unintended classification.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_annotation: Option<BlastSubjectAnnotation>,
     pub left_role: PrimerSpecificityPrimerRole,
     pub left_hit_index: usize,
     pub right_role: PrimerSpecificityPrimerRole,
@@ -6456,12 +6465,23 @@ pub struct PrimerSpecificityAmplicon {
     pub combined_mismatches: usize,
     pub max_three_prime_mismatches: usize,
     pub terminal_policy_pass: bool,
+    /// True when the product lies inside the ordinary assay/readiness ceiling.
+    #[serde(default = "primer_specificity_bool_is_true")]
+    pub within_readiness_amplicon_range: bool,
+    /// Product is outside the readiness ceiling but remains inside the broader
+    /// exploratory product window.
+    #[serde(default)]
+    pub long_product_warning: bool,
     pub intended: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intended_reason: Option<String>,
     pub specificity_failure: bool,
     #[serde(default)]
     pub failure_reasons: Vec<String>,
+}
+
+fn primer_specificity_bool_is_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -6596,7 +6616,29 @@ pub struct PrimerSpecificitySummary {
     pub intended_amplicon_count: usize,
     pub unintended_amplicon_count: usize,
     pub failing_unintended_amplicon_count: usize,
+    pub long_product_warning_count: usize,
     pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Deterministic accounting for detail omitted from a compact specificity report.
+pub struct PrimerSpecificityReportCompaction {
+    pub detail_mode: PrimerSpecificityReportDetailMode,
+    pub raw_forward_hit_count: usize,
+    pub retained_forward_hit_count: usize,
+    pub raw_reverse_hit_count: usize,
+    pub retained_reverse_hit_count: usize,
+    pub raw_amplicon_count: usize,
+    pub retained_amplicon_count: usize,
+    pub pairing_candidate_comparison_count: usize,
+}
+
+fn primer_specificity_legacy_full_compaction() -> PrimerSpecificityReportCompaction {
+    PrimerSpecificityReportCompaction {
+        detail_mode: PrimerSpecificityReportDetailMode::Full,
+        ..PrimerSpecificityReportCompaction::default()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -6655,6 +6697,10 @@ pub struct PrimerSpecificityReport {
     pub reverse_hits: Vec<PrimerSpecificityPrimerHit>,
     #[serde(default)]
     pub amplicons: Vec<PrimerSpecificityAmplicon>,
+    #[serde(default = "primer_specificity_legacy_full_compaction")]
+    pub compaction: PrimerSpecificityReportCompaction,
+    #[serde(default)]
+    pub raw_detail_artifacts: Vec<ComputationalArtifactExternalInput>,
     #[serde(default)]
     pub search_completeness: PrimerSpecificitySearchCompleteness,
     #[serde(default)]
@@ -6854,6 +6900,9 @@ pub struct TranscriptAssayPanelSpecificityExecutionManifest {
 pub enum TranscriptAssayPanelSpecificityAcceptanceStatus {
     Pass,
     SpecificityFail,
+    /// Every external command completed, but at least one assay lacked enough
+    /// intended-target geometry for a biological verdict.
+    NotAssessed,
     #[default]
     Incomplete,
 }
@@ -6863,6 +6912,7 @@ impl TranscriptAssayPanelSpecificityAcceptanceStatus {
         match self {
             Self::Pass => "pass",
             Self::SpecificityFail => "specificity_fail",
+            Self::NotAssessed => "not_assessed",
             Self::Incomplete => "incomplete",
         }
     }
@@ -6906,6 +6956,12 @@ pub struct TranscriptAssayPanelSpecificityAcceptance {
     pub passing_assay_ids: Vec<String>,
     #[serde(default)]
     pub failing_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub not_assessed_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub incomplete_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub execution_failed_assay_ids: Vec<String>,
     #[serde(default)]
     pub assessments: Vec<TranscriptAssayGenomicSpecificityAssessment>,
     #[serde(default)]
@@ -8708,6 +8764,11 @@ pub struct TranscriptAssayPanelReport {
     pub run_id: Option<String>,
     pub source_seq_id: String,
     pub source_feature_id: usize,
+    /// Genome anchor captured when the panel was designed. Legacy reports
+    /// deserialize without it and may resolve current project metadata only as
+    /// a fallback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_genome_anchor: Option<SequenceGenomeAnchorSummary>,
     pub group_label: String,
     pub strand: String,
     #[serde(default)]
