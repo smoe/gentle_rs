@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 26 | 606 | 0 |
-| gentle_cli | 378 | 279 | 0 |
-| MCP | 78 | 434 | 48 |
-| JS | 78 | 420 | 51 |
-| Lua | 77 | 421 | 51 |
+| GUI | 28 | 606 | 0 |
+| gentle_cli | 380 | 279 | 0 |
+| MCP | 80 | 434 | 48 |
+| JS | 78 | 422 | 51 |
+| Lua | 77 | 423 | 51 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -32,6 +32,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | features edit-location | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features create | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | features delete | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| features split | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| features merge | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | capabilities | glossary-command | shell-only | prominent | prominent | prominent | prominent | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | state-summary | glossary-command | shell-only | prominent | prominent | n/a | n/a | n/a | JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | facts graph | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
