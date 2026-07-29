@@ -484,6 +484,7 @@ impl GentleEngine {
         &self,
         forward: &str,
         reverse: &str,
+        cdna_assay: &CdnaAssayTestReport,
         request: Option<&ExternalPrimerPairSpecificityRequest>,
     ) -> ExternalPrimerPairSpecificityAssessment {
         let Some(request) = request else {
@@ -494,16 +495,20 @@ impl GentleEngine {
                 report: None,
             };
         };
-        match self.assess_primer_pair_specificity(
-            None,
-            None,
-            None,
-            Some(forward),
-            Some(reverse),
+        let intended_target = self.primer_specificity_intended_target_from_cdna_assay(
+            cdna_assay,
+            "external_primer_pair_computed_cdna_assay",
+        );
+        match self.assess_explicit_primer_pair_specificity_with_target(
+            forward,
+            reverse,
+            Some(&cdna_assay.source_seq_id),
+            intended_target,
             &request.target_genome_id,
             request.policy.clone(),
             request.catalog_path.as_deref(),
             request.cache_dir.as_deref(),
+            "The assessed pair came from a provenance-bearing external import; GENtle-derived cDNA target geometry is used, while provider claims remain provenance only.",
         ) {
             Ok(report) => ExternalPrimerPairSpecificityAssessment {
                 status: if !report.search_completeness.complete {
@@ -700,6 +705,7 @@ impl GentleEngine {
             let specificity = self.external_primer_specificity_assessment(
                 &forward,
                 &reverse,
+                &cdna_assay,
                 request.specificity.as_ref(),
             );
             let mut artifacts = ExternalPrimerPairArtifacts::default();
@@ -749,7 +755,7 @@ impl GentleEngine {
             let mut warnings = cdna_assay.warnings.clone();
             if specificity.status == "error" {
                 warnings.push(format!(
-                    "Whole-genome specificity failed to execute: {}",
+                    "Prepared-target specificity failed to execute: {}",
                     specificity.reason
                 ));
             }
@@ -775,7 +781,7 @@ impl GentleEngine {
         let mut warnings = vec![];
         if request.specificity.is_none() {
             warnings.push(
-                "Whole-genome specificity was not run; imported source claims were retained as provenance and do not imply a pass."
+                "Prepared-target specificity was not run; imported source claims were retained as provenance and do not imply a pass."
                     .to_string(),
             );
         }

@@ -8440,6 +8440,8 @@ fn primer_specificity_test_hit(
         identity_percent: 100.0,
         alignment_length_bp: end_1based.saturating_sub(start_1based).saturating_add(1),
         mismatches,
+        unaligned_query_bases: 0,
+        effective_mismatches: mismatches,
         gap_opens: 0,
         query_start_1based: 1,
         query_end_1based: end_1based.saturating_sub(start_1based).saturating_add(1),
@@ -8537,6 +8539,7 @@ fn primer_specificity_pairs_forward_reverse_and_same_primer_warning_products() {
             ..PrimerSpecificityIntendedTarget::default()
         },
         &policy,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
     );
     let intended = amplicons
         .iter()
@@ -8597,6 +8600,7 @@ fn primer_specificity_pairs_minus_strand_targets_without_role_order_assumptions(
             ..PrimerSpecificityIntendedTarget::default()
         },
         &policy,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
     );
     let intended = amplicons
         .iter()
@@ -8628,6 +8632,11 @@ fn primer_specificity_uses_per_hsp_query_coordinates_not_aggregated_qcovs() {
         GentleEngine::primer_specificity_hsp_query_coverage_fraction(20, &hit),
         0.4
     );
+    assert_eq!(
+        GentleEngine::primer_specificity_effective_mismatch_count(20, &hit),
+        12,
+        "the twelve primer bases outside this HSP must count as effective mismatches"
+    );
     let mut reverse_query_coordinates = hit;
     reverse_query_coordinates.query_start = 12;
     reverse_query_coordinates.query_end = 5;
@@ -8637,6 +8646,252 @@ fn primer_specificity_uses_per_hsp_query_coordinates_not_aggregated_qcovs() {
             &reverse_query_coordinates,
         ),
         0.4
+    );
+    reverse_query_coordinates.mismatches = 1;
+    assert_eq!(
+        GentleEngine::primer_specificity_effective_mismatch_count(20, &reverse_query_coordinates),
+        13
+    );
+}
+
+#[test]
+fn primer_specificity_transcript_set_accepts_every_declared_transcript_product() {
+    let policy = PrimerSpecificityPolicy::default();
+    let mut forward_hits = vec![];
+    let mut reverse_hits = vec![];
+    let mut expected_products = vec![];
+    for (index, transcript_id) in ["TX1", "TX2"].into_iter().enumerate() {
+        forward_hits.push(primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Forward,
+            index,
+            transcript_id,
+            10,
+            29,
+            "+",
+            0,
+        ));
+        reverse_hits.push(primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Reverse,
+            index,
+            transcript_id,
+            80,
+            99,
+            "-",
+            0,
+        ));
+        expected_products.push(PrimerSpecificityExpectedProduct {
+            target_space: crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna
+                .as_str()
+                .to_string(),
+            subject_id: transcript_id.to_string(),
+            expected_product_range: Some(PrimerSpecificitySubjectRange {
+                start_1based: 10,
+                end_1based: 99,
+            }),
+            source_transcript_id: Some(transcript_id.to_string()),
+        });
+    }
+    let target = PrimerSpecificityIntendedTarget {
+        model: PrimerSpecificityIntendedTargetModel::TranscriptSet,
+        expected_products,
+        genomic_target_geometry_known: true,
+        contiguous_genomic_product_expected: true,
+        source: "synthetic_multi_transcript_assay".to_string(),
+        ..PrimerSpecificityIntendedTarget::default()
+    };
+    let mut amplicons = GentleEngine::primer_specificity_collect_amplicons_for_hits(
+        &forward_hits,
+        &reverse_hits,
+        &policy,
+    );
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &target,
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna,
+    );
+    let summary = GentleEngine::primer_specificity_summary(
+        &forward_hits,
+        &reverse_hits,
+        &amplicons,
+        &target,
+        crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna,
+        true,
+    );
+    assert!(summary.specificity_pass);
+    assert_eq!(summary.intended_amplicon_count, 2);
+    assert_eq!(summary.unintended_amplicon_count, 0);
+
+    let mut incomplete_amplicons = GentleEngine::primer_specificity_collect_amplicons_for_hits(
+        &forward_hits[..1],
+        &reverse_hits[..1],
+        &policy,
+    );
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut incomplete_amplicons,
+        &target,
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna,
+    );
+    let incomplete = GentleEngine::primer_specificity_summary(
+        &forward_hits[..1],
+        &reverse_hits[..1],
+        &incomplete_amplicons,
+        &target,
+        crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna,
+        true,
+    );
+    assert!(
+        !incomplete.specificity_pass,
+        "a complete search missing one declared transcript product must fail"
+    );
+}
+
+#[test]
+fn primer_specificity_derives_transcript_and_genomic_targets_from_cdna_assay() {
+    let mut engine = cdna_assay_nonspecific_test_engine();
+    engine.state_mut().metadata.insert(
+        PROVENANCE_METADATA_KEY.to_string(),
+        serde_json::json!({
+            GENOME_EXTRACTIONS_METADATA_KEY: [
+                {
+                    "seq_id": "cdna_nonspecific",
+                    "genome_id": "SyntheticGenome",
+                    "chromosome": "chr7",
+                    "start_1based": 1001,
+                    "end_1based": 1072,
+                    "anchor_strand": "+",
+                    "anchor_verified": true,
+                    "recorded_at_unix_ms": 1
+                }
+            ]
+        }),
+    );
+    let assay = engine
+        .test_cdna_pcr_assay(
+            "cdna_nonspecific",
+            0,
+            "AAACCC",
+            "CCCAAA",
+            None,
+            Some(10),
+            Some(80),
+            None,
+            Some(4),
+        )
+        .expect("computed multi-transcript cDNA assay");
+    let target = engine
+        .primer_specificity_intended_target_from_cdna_assay(&assay, "synthetic_external_pair");
+    assert_eq!(
+        target.model,
+        PrimerSpecificityIntendedTargetModel::TranscriptSet
+    );
+    assert!(target.genomic_target_geometry_known);
+    assert!(
+        target
+            .expected_products
+            .iter()
+            .any(|expected| expected.target_space == "genomic_dna")
+    );
+    assert_eq!(
+        target
+            .expected_products
+            .iter()
+            .filter(|expected| expected.target_space == "transcriptome_cdna")
+            .map(|expected| expected.subject_id.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["TX_LONG", "TX_SHORT"])
+    );
+
+    let genomic_expected = target
+        .expected_products
+        .iter()
+        .filter(|expected| expected.target_space == "genomic_dna")
+        .collect::<Vec<_>>();
+    assert_eq!(genomic_expected.len(), 2);
+    let forward_sites = genomic_expected
+        .iter()
+        .map(|expected| {
+            let range = expected
+                .expected_product_range
+                .as_ref()
+                .expect("derived genomic product range");
+            (
+                expected.subject_id.clone(),
+                range.start_1based,
+                range.start_1based.saturating_add(5),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    let reverse_sites = genomic_expected
+        .iter()
+        .map(|expected| {
+            let range = expected
+                .expected_product_range
+                .as_ref()
+                .expect("derived genomic product range");
+            (
+                expected.subject_id.clone(),
+                range.end_1based.saturating_sub(5),
+                range.end_1based,
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(forward_sites.len(), 1);
+    assert_eq!(reverse_sites.len(), 2);
+    let forward_hits = forward_sites
+        .into_iter()
+        .enumerate()
+        .map(|(hit_index, (subject_id, start_1based, end_1based))| {
+            primer_specificity_test_hit(
+                PrimerSpecificityPrimerRole::Forward,
+                hit_index,
+                &subject_id,
+                start_1based,
+                end_1based,
+                "+",
+                0,
+            )
+        })
+        .collect::<Vec<_>>();
+    let reverse_hits = reverse_sites
+        .into_iter()
+        .enumerate()
+        .map(|(hit_index, (subject_id, start_1based, end_1based))| {
+            primer_specificity_test_hit(
+                PrimerSpecificityPrimerRole::Reverse,
+                hit_index,
+                &subject_id,
+                start_1based,
+                end_1based,
+                "-",
+                0,
+            )
+        })
+        .collect::<Vec<_>>();
+    let policy = PrimerSpecificityPolicy::default();
+    let mut amplicons = GentleEngine::primer_specificity_collect_amplicons_for_hits(
+        &forward_hits,
+        &reverse_hits,
+        &policy,
+    );
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &target,
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+    );
+    assert!(
+        GentleEngine::primer_specificity_summary(
+            &forward_hits,
+            &reverse_hits,
+            &amplicons,
+            &target,
+            crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+            true,
+        )
+        .specificity_pass,
+        "a complete clean search against derived imported-pair geometry can pass"
     );
 }
 
@@ -8688,6 +8943,7 @@ fn primer_specificity_empty_amplicon_set_is_a_non_panicking_no_hit_result() {
             ..PrimerSpecificityIntendedTarget::default()
         },
         &PrimerSpecificityPolicy::default(),
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
     );
     assert!(amplicons.is_empty());
 }
@@ -8729,7 +8985,12 @@ fn primer_specificity_intended_genomic_product_uses_coordinates_not_cdna_length(
         source: "synthetic_intron_containing_target".to_string(),
         ..PrimerSpecificityIntendedTarget::default()
     };
-    GentleEngine::primer_specificity_finalize_amplicons(&mut amplicons, &target, &policy);
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &target,
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+    );
     let intended = amplicons
         .iter()
         .find(|amplicon| amplicon.intended)
@@ -8752,7 +9013,12 @@ fn junction_primer_can_pass_genomic_carryover_screen_without_intended_product() 
         ..PrimerSpecificityIntendedTarget::default()
     };
     let mut amplicons = vec![];
-    GentleEngine::primer_specificity_finalize_amplicons(&mut amplicons, &target, &policy);
+    GentleEngine::primer_specificity_finalize_amplicons(
+        &mut amplicons,
+        &target,
+        &policy,
+        crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+    );
     let summary = GentleEngine::primer_specificity_summary(
         &[],
         &[],
@@ -10227,28 +10493,35 @@ fn transcript_assay_specificity_execution_manifest(
                         &assay.handoff.intended_target.reverse_binding_ranges
                     }
                 };
-                if target_ranges.len() == 1 {
-                    let range = &target_ranges[0];
-                    let (subject_start, subject_end) = match command.role {
-                        PrimerSpecificityPrimerRole::Forward => {
-                            (range.start_1based, range.end_1based)
-                        }
-                        PrimerSpecificityPrimerRole::Reverse => {
-                            (range.end_1based, range.start_1based)
-                        }
-                    };
-                    format!(
-                        "{}\tchr1\t100\t{}\t0\t0\t1\t{}\t{}\t{}\t1e-20\t80\t100\n",
-                        command.query_label,
-                        command.query_length_bp,
-                        command.query_length_bp,
-                        subject_start,
-                        subject_end,
-                    )
+                let has_contiguous_expected_product = assay
+                    .handoff
+                    .intended_target
+                    .expected_products
+                    .iter()
+                    .any(|product| product.target_space == "genomic_dna");
+                target_ranges
+                    .iter()
+                    .filter(|_| has_contiguous_expected_product || target_ranges.len() == 1)
+                    .map(|range| {
+                        let (subject_start, subject_end) = match command.role {
+                            PrimerSpecificityPrimerRole::Forward => {
+                                (range.start_1based, range.end_1based)
+                            }
+                            PrimerSpecificityPrimerRole::Reverse => {
+                                (range.end_1based, range.start_1based)
+                            }
+                        };
+                        format!(
+                            "{}\tchr1\t100\t{}\t0\t0\t1\t{}\t{}\t{}\t1e-20\t80\t100\n",
+                            command.query_label,
+                            command.query_length_bp,
+                            command.query_length_bp,
+                            subject_start,
+                            subject_end,
+                        )
+                    })
+                    .collect::<String>()
                     .into_bytes()
-                } else {
-                    vec![]
-                }
             } else {
                 vec![]
             };
@@ -10346,6 +10619,29 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
     );
 
     let mut engine = transcript_qpcr_panel_test_engine();
+    let panel_source_len = engine
+        .state()
+        .sequences
+        .get("panel_src")
+        .expect("panel source sequence")
+        .len();
+    engine.state_mut().metadata.insert(
+        PROVENANCE_METADATA_KEY.to_string(),
+        serde_json::json!({
+            GENOME_EXTRACTIONS_METADATA_KEY: [
+                {
+                    "seq_id": "panel_src",
+                    "genome_id": "ToyGenome",
+                    "chromosome": "chr1",
+                    "start_1based": 1,
+                    "end_1based": panel_source_len,
+                    "anchor_strand": "+",
+                    "anchor_verified": true,
+                    "recorded_at_unix_ms": 1
+                }
+            ]
+        }),
+    );
     engine
         .apply(Operation::PrepareGenome {
             genome_id: "ToyGenome".to_string(),
@@ -10405,6 +10701,40 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
     assert_eq!(pass_handoff.assays.len(), pass_handoff.selected_assay_count);
     assert_eq!(pass_handoff.policy_schema, PRIMER_SPECIFICITY_POLICY_SCHEMA);
     assert!(Path::new(&pass_handoff.execution_manifest_template_path).is_file());
+    let planned_panel = engine
+        .get_transcript_assay_panel_report("panel_external_pass")
+        .expect("planned source panel");
+    for planned_assay in &pass_handoff.assays {
+        let selected_assay = planned_panel
+            .selected_assays
+            .iter()
+            .find(|assay| assay.assay_id == planned_assay.assay_id)
+            .expect("planned selected assay");
+        let intended_group_ids = selected_assay
+            .single_product_equivalence_group_ids
+            .iter()
+            .collect::<BTreeSet<_>>();
+        let expected_transcript_ids = planned_panel
+            .equivalence_groups
+            .iter()
+            .filter(|group| intended_group_ids.contains(&group.equivalence_group_id))
+            .flat_map(|group| group.members.iter())
+            .map(|member| member.transcript_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let planned_transcript_ids = planned_assay
+            .handoff
+            .intended_target
+            .expected_products
+            .iter()
+            .filter(|product| product.target_space == "transcriptome_cdna")
+            .map(|product| product.subject_id.as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            planned_assay.handoff.intended_target.model,
+            PrimerSpecificityIntendedTargetModel::TranscriptSet
+        );
+        assert_eq!(planned_transcript_ids, expected_transcript_ids);
+    }
     let pass_manifest = transcript_assay_specificity_execution_manifest(&pass_handoff, true);
     let pass_finalize = execute_shell_command(
         &mut engine,
@@ -10423,7 +10753,9 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
     .expect("parse aggregate acceptance");
     assert_eq!(
         pass.status,
-        TranscriptAssayPanelSpecificityAcceptanceStatus::Pass
+        TranscriptAssayPanelSpecificityAcceptanceStatus::Pass,
+        "{}",
+        serde_json::to_string_pretty(&pass).expect("serialize failed panel acceptance")
     );
     assert!(pass.accepted);
     assert_eq!(pass.assessed_assay_count, pass.expected_assay_count);
@@ -10444,6 +10776,40 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
     assert!(persisted_pass.selected_assays.iter().all(|assay| {
         assay.primer_pair_summary.whole_genome_specificity_status == "external_blast_pass"
     }));
+    let genomic_only_readiness = engine
+        .apply(Operation::BuildExperimentalAssayHandoff {
+            panel_report_id: "panel_external_pass".to_string(),
+            policy: ExperimentalAssayReadinessPolicy::default(),
+            variant_evidence_paths: vec![],
+            order_form_id: None,
+            path: None,
+            order_table_path: None,
+        })
+        .expect("build readiness handoff from genomic-only specificity evidence")
+        .experimental_assay_handoff
+        .expect("genomic-only readiness handoff");
+    for card in &genomic_only_readiness.cards {
+        assert_eq!(
+            card.gate_outcomes
+                .iter()
+                .find(|gate| gate.gate == "genomic_carryover")
+                .map(|gate| gate.status),
+            Some(ExperimentalAssayGateStatus::Pass)
+        );
+        assert_eq!(
+            card.gate_outcomes
+                .iter()
+                .find(|gate| gate.gate == "transcriptome_specificity")
+                .map(|gate| gate.status),
+            Some(ExperimentalAssayGateStatus::NotEvaluated)
+        );
+        assert!(
+            card.blockers
+                .iter()
+                .any(|blocker| blocker == "transcriptome_specificity"),
+            "genomic specificity alone must not make an RT-PCR/qPCR assay order-ready"
+        );
+    }
 
     let fail_handoff = engine
         .prepare_transcript_assay_panel_specificity_handoff(
@@ -10472,8 +10838,39 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
     let persisted_fail = engine
         .get_transcript_assay_panel_report("panel_external_fail")
         .expect("persisted biologically failing panel");
-    assert!(persisted_fail.specificity_acceptance.is_none());
-    assert!(persisted_fail.genomic_specificity_assessments.is_empty());
+    assert_eq!(
+        persisted_fail
+            .specificity_acceptance
+            .as_ref()
+            .map(|acceptance| acceptance.status),
+        Some(TranscriptAssayPanelSpecificityAcceptanceStatus::SpecificityFail)
+    );
+    assert_eq!(
+        persisted_fail.genomic_specificity_assessments.len(),
+        specificity_fail.expected_assay_count
+    );
+    let persisted_failing_assay_ids = persisted_fail
+        .genomic_specificity_assessments
+        .iter()
+        .filter(|assessment| assessment.status == "external_blast_fail")
+        .map(|assessment| assessment.assay_id.as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        persisted_failing_assay_ids,
+        specificity_fail
+            .failing_assay_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>()
+    );
+    assert!(!persisted_failing_assay_ids.is_empty());
+    assert!(
+        persisted_fail
+            .genomic_specificity_assessments
+            .iter()
+            .any(|assessment| assessment.status == "external_blast_pass"),
+        "an empty complete genomic search remains a pass for the junction-spanning assay"
+    );
 
     let mut tampered_handoff = fail_handoff.clone();
     tampered_handoff.assays[0]
@@ -10682,6 +11079,8 @@ fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gate
     );
     assert!(handoff.policy.require_critical_qc_pass);
     assert!(handoff.policy.require_specificity_pass);
+    assert!(handoff.policy.require_genomic_carryover_pass);
+    assert!(handoff.policy.require_transcriptome_specificity_pass);
     assert!(!handoff.policy.require_assay_test);
     assert!(!handoff.policy.require_variant_evaluation);
 
@@ -10715,20 +11114,31 @@ fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gate
                 && oligo.sequence_sha256.starts_with("sha256:")
                 && oligo.tube_id.starts_with("O-")
         }));
-        let specificity = card
+        let genomic_carryover = card
             .gate_outcomes
             .iter()
-            .find(|gate| gate.gate == "whole_genome_specificity")
-            .expect("specificity gate");
-        assert!(specificity.required);
+            .find(|gate| gate.gate == "genomic_carryover")
+            .expect("genomic carryover gate");
+        assert!(genomic_carryover.required);
         assert_eq!(
-            specificity.status,
+            genomic_carryover.status,
+            ExperimentalAssayGateStatus::NotEvaluated
+        );
+        assert!(card.blockers.iter().any(|code| code == "genomic_carryover"));
+        let transcriptome_specificity = card
+            .gate_outcomes
+            .iter()
+            .find(|gate| gate.gate == "transcriptome_specificity")
+            .expect("transcriptome specificity gate");
+        assert!(transcriptome_specificity.required);
+        assert_eq!(
+            transcriptome_specificity.status,
             ExperimentalAssayGateStatus::NotEvaluated
         );
         assert!(
             card.blockers
                 .iter()
-                .any(|code| code == "whole_genome_specificity")
+                .any(|code| code == "transcriptome_specificity")
         );
         let variants = card
             .gate_outcomes

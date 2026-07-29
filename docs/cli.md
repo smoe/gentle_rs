@@ -3046,9 +3046,13 @@ Shared shell command:
       - GENtle recomputes cDNA products, transcript maps, genomic carryover, oligo
         QC, Tm, GC, and pair delta-Tm. Source targeting/validation claims never
         establish transcript coverage or specificity
-      - whole-genome specificity is `not_run` unless a prepared target genome is
-        requested. `--materialize-products` makes the import state-changing and,
-        with `--artifact-output-dir`, writes the corresponding product gel
+      - specificity is `not_run` unless a prepared target is requested. For a
+        requested run, GENtle derives intended transcript products from its
+        computed cDNA assay and projects genomic geometry only from a
+        provenance-bearing project genome anchor; provider claims never supply
+        missing geometry.
+        `--materialize-products` makes the import state-changing and, with
+        `--artifact-output-dir`, writes the corresponding product gel
     - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
@@ -3534,7 +3538,9 @@ Shared shell command:
         status. An unproven search can never produce a specificity pass
       - per-hit primer coverage is calculated from that HSP's inclusive
         `qstart..qend` span and primer length; BLAST's subject-aggregated
-        `qcovs` value is retained only in raw BLAST provenance
+        `qcovs` value is retained only in raw BLAST provenance. Query bases
+        outside a partial HSP count as effective mismatches together with
+        aligned mismatches when products are ranked and screened
       - inward-facing products are paired by subject coordinates and strands,
         independently of whether the forward-role primer is the leftmost hit;
         minus-strand intended products are therefore treated symmetrically
@@ -3542,6 +3548,9 @@ Shared shell command:
         genomic interval, never by equality to a cDNA amplicon length;
         junction-spanning primers may therefore have no contiguous intended
         genomic product
+      - transcript-aware assays use a transcript-set intended target. Every
+        declared transcript may contribute one expected product, so a clean
+        assay targeting many isoforms is not forced into a one-product model
       - wrapped BLAST subject identifiers are normalized against the prepared
         FASTA index, repeated warnings are aggregated, and genomic-DNA versus
         transcriptome/cDNA assessments remain separate in the report
@@ -3585,9 +3594,11 @@ Shared shell command:
         `incomplete`
       - finalization binds the current panel, assay ids/ranks, annealing
         sequences, policy, prepared genome/BLAST database, handoff schema, and
-        output identities. Only a complete all-assay `pass` is attached to the
-        persisted panel, in one atomic update; `specificity_fail` and
-        `incomplete` leave it unchanged
+        output identities. Only a complete all-assay result is accepted, but
+        every provenance-valid per-assay report is persisted by assay and
+        target kind. Thus `specificity_fail`, `incomplete`, and `not_run`
+        remain distinguishable and genomic plus transcriptome evidence can
+        coexist
     - cDNA PCR/qPCR assay test notes
       (`primers test-cdna-pcr` / `primers test-cdna-qpcr` /
       `primers test-cdna-qpcr-fasta`):
@@ -3783,7 +3794,9 @@ Shared shell command:
         shared cDNA assay test for each pair and links it by canonical `pair_id`
         plus instance-specific `assay_test_id`
       - the default policy requires critical oligo QC, annotation provenance,
-        and completed whole-genome specificity. Missing variant evidence is
+        and separate passing `genomic_carryover` and
+        `transcriptome_specificity` gates. RT-PCR/qPCR therefore cannot become
+        order-ready from genomic evidence alone. Missing variant evidence is
         shown as `not_evaluated` but is optional unless the supplied policy
         requires it. Evaluated failures remain visible blockers
       - `--policy` accepts inline JSON or `@FILE`; `--variant-evidence` may be

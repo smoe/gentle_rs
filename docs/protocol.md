@@ -7529,8 +7529,8 @@ Operation progress/cancellation semantics:
 - For saved `PrimerDesignReport` pairs, the recorded
   `non_annealing_5prime_tail_bp` is removed before BLAST. Full oligos and tails
   remain in report provenance.
-- Target scope in v1:
-  - prepared reference genomes only
+- Target scope in v2:
+  - prepared genomic-DNA or transcriptome-cDNA BLAST indexes
   - runs through GENtle's existing BLAST index/preflight machinery
   - local `blastn-short` is used with short-query settings; GENtle validates
     the database sequence count through `blastdbcmd` and sets
@@ -7565,26 +7565,34 @@ Operation progress/cancellation semantics:
   - includes BLAST binary preflight, per-primer BLAST invocation provenance,
     BLAST database content identity, input primers, policy, aggregated
     warnings, primer hits, candidate amplicons, and a summary badge
-  - primer hits report identity, coverage, total mismatches, exact 3' terminal
-    mismatch count where prepared subject sequence can be fetched, strand, and
-    1-based subject coordinates; wrapped BLAST identifiers such as
+  - primer hits report identity, coverage, aligned-HSP mismatches, unaligned
+    query bases, their sum as `effective_mismatches`, exact 3' terminal mismatch
+    count where prepared subject sequence can be fetched, strand, and 1-based
+    subject coordinates; wrapped BLAST identifiers such as
     `gb|KI270750.1|` are normalized against the prepared FASTA index while the
     raw identifier remains available
   - `query_coverage_fraction` is computed independently for every HSP from its
     inclusive `qstart..qend` span divided by primer length; BLAST `qcovs`
-    cannot promote a short HSP because that field is aggregated per subject
+    cannot promote a short HSP because that field is aggregated per subject.
+    Unaligned query bases count as effective mismatches when candidate products
+    are ranked and screened
   - candidate amplicons include forward/reverse products plus Primer-BLAST-style
     forward/forward and reverse/reverse warning products. Genomic left/right
     ordering is derived from subject strand and coordinates rather than primer
     role, so minus-strand targets are paired without swapping assay roles
+  - `intended_target.model = transcript_set` supports assays intended to
+    amplify multiple transcripts. `expected_products[]` records each intended
+    subject and optional exact product range in its `genomic_dna` or
+    `transcriptome_cdna` target space; a transcriptome pass requires exactly
+    one compatible product for every declared transcript
   - intended genomic products are resolved only from an explicit prepared-FASTA
-    subject and genomic binding interval; cDNA amplicon length is retained as
-    provenance but is never used to identify a genomic product
+    subject and computed genomic binding interval; cDNA amplicon length is
+    retained as provenance but is never used to identify a genomic product
   - a junction-spanning RT-PCR primer may legitimately have no contiguous
     intended genomic product; in a genomic-DNA database that case is evaluated
     as carryover/off-target evidence rather than forced into an invented target
-  - unintended compatible products fail when their combined mismatches remain
-    below `min_total_mismatches_to_unintended_target`
+  - unintended compatible products fail when their combined effective
+    mismatches remain below `min_total_mismatches_to_unintended_target`
   - `intended_target`, `genomic_specificity`, and
     `transcriptome_specificity` keep genomic-DNA carryover/off-target evidence
     separate from whole-transcriptome/cDNA cross-amplification. Only the
@@ -7686,9 +7694,12 @@ Whole-panel external specificity acceptance:
   process evidence was complete but at least one assay failed GENtle's
   biological policy. `incomplete` covers failed/missing/duplicate execution,
   stale panel or primer state, altered handoffs, and provenance mismatch.
-- Only `pass` sets `accepted = true` and atomically attaches all assay reports
-  plus the acceptance object to the persisted panel. The other states do not
-  partially attach reports. An optional `--path` writes the same acceptance
+- Only `pass` sets `accepted = true`. Every provenance-valid assay assessment
+  produced during finalization is retained on the persisted panel, including
+  explicit `specificity_fail` or `incomplete` evidence, keyed by assay and
+  BLAST target kind. This lets readiness distinguish failed/incomplete evidence
+  from a search that was never run while preserving genomic and transcriptome
+  assessments side by side. An optional `--path` writes the same acceptance
   object returned by the shell command.
 - NCBI e-PCR is not part of this contract. A future provider-neutral
   Primer-BLAST evidence importer may supplement, but must not weaken, the
@@ -8279,8 +8290,13 @@ Primer-design shell command family (implemented):
     `vendor_claims_used_as_biological_evidence` is always false
   - specificity is explicitly `not_run` without
     `--specificity-target-genome`; vendor claims cannot turn that state into a
-    pass. Product materialization and gel rendering remain opt-in because they
-    create first-class project products
+    pass. When specificity is requested, GENtle derives the intended
+    transcript set and product ranges from its computed cDNA assay, then
+    projects genomic target geometry only when the project sequence has a
+    provenance-bearing genome anchor. A complete search can therefore pass on
+    computed geometry, but never on provider claims. Product materialization
+    and gel rendering remain opt-in because they create first-class project
+    products
 - `primers test-cdna-pcr` and `primers test-cdna-qpcr` are non-mutating assay
   checks over transcript-derived cDNA templates and return
   `gentle.cdna_assay_test_report.v1`; `--path` persists that same report and
@@ -8526,8 +8542,10 @@ Primer-design shell command family (implemented):
     backward-compatible report/display identities. `tube_id` is a short human
     label and is not the machine join key.
   - each card embeds the exact policy schema/version and every gate outcome.
-    The shipped v1 default requires critical oligo QC, whole-genome specificity,
-    and annotation provenance. The automatically generated cDNA assay test and
+    The shipped v1 default requires critical oligo QC, annotation provenance,
+    a `genomic_carryover` pass, and a separate `transcriptome_specificity`
+    pass. RT-PCR and qPCR cards therefore cannot become order-ready from a
+    genomic search alone. The automatically generated cDNA assay test and
     optional `gentle.primer_variant_evidence.v1` are surfaced but absence alone
     is non-blocking; an evaluated failure remains a blocker. A linked order
     form retains its existing duplicate-review gate.

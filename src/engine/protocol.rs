@@ -5754,8 +5754,8 @@ pub struct ExternalPrimerOligoAssessment {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
-/// Whole-genome specificity outcome for one imported pair. `not_run` remains
-/// distinct from a pass.
+/// Prepared-target specificity outcome for one imported pair. `not_run`
+/// remains distinct from a pass.
 pub struct ExternalPrimerPairSpecificityAssessment {
     pub status: String,
     pub reason: String,
@@ -5809,7 +5809,8 @@ pub struct ExternalPrimerPairAssessment {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
-/// Optional prepared-genome specificity request applied to every unique pair.
+/// Optional prepared BLAST-target specificity request applied to every unique
+/// pair.
 pub struct ExternalPrimerPairSpecificityRequest {
     pub target_genome_id: String,
     #[serde(default)]
@@ -6334,7 +6335,14 @@ pub struct PrimerSpecificityPrimerHit {
     pub subject_id: String,
     pub identity_percent: f64,
     pub alignment_length_bp: usize,
+    /// Mismatches reported inside the aligned HSP.
     pub mismatches: usize,
+    /// Primer query bases outside this HSP.
+    #[serde(default)]
+    pub unaligned_query_bases: usize,
+    /// Aligned mismatches plus unaligned query bases.
+    #[serde(default)]
+    pub effective_mismatches: usize,
     pub gap_opens: usize,
     pub query_start_1based: usize,
     pub query_end_1based: usize,
@@ -6361,6 +6369,8 @@ pub enum PrimerSpecificityIntendedTargetModel {
     Unknown,
     GenomicInterval,
     JunctionSpanning,
+    /// One assay is intended to amplify a declared set of transcript subjects.
+    TranscriptSet,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -6369,6 +6379,19 @@ pub enum PrimerSpecificityIntendedTargetModel {
 pub struct PrimerSpecificitySubjectRange {
     pub start_1based: usize,
     pub end_1based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One expected product in a specific BLAST target space.
+pub struct PrimerSpecificityExpectedProduct {
+    /// `genomic_dna` or `transcriptome_cdna`.
+    pub target_space: String,
+    pub subject_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_product_range: Option<PrimerSpecificitySubjectRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_transcript_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -6383,6 +6406,13 @@ pub struct PrimerSpecificityIntendedTarget {
     pub reverse_binding_ranges: Vec<PrimerSpecificitySubjectRange>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_product_range: Option<PrimerSpecificitySubjectRange>,
+    /// Target-space-specific expected products. The legacy singular subject
+    /// and product range above remain populated when the projection is unique.
+    #[serde(default)]
+    pub expected_products: Vec<PrimerSpecificityExpectedProduct>,
+    /// Whether GENtle resolved enough source geometry to decide if the intended
+    /// transcript product should exist contiguously in genomic DNA.
+    pub genomic_target_geometry_known: bool,
     pub contiguous_genomic_product_expected: bool,
     pub source: String,
     #[serde(default)]
@@ -8786,7 +8816,10 @@ pub struct ExperimentalAssayReadinessPolicy {
     pub schema: String,
     pub policy_version: String,
     pub require_critical_qc_pass: bool,
+    /// Backward-compatible master switch for both specificity dimensions.
     pub require_specificity_pass: bool,
+    pub require_genomic_carryover_pass: bool,
+    pub require_transcriptome_specificity_pass: bool,
     pub require_annotation_provenance: bool,
     pub require_assay_test: bool,
     pub require_variant_evaluation: bool,
@@ -8804,6 +8837,8 @@ impl Default for ExperimentalAssayReadinessPolicy {
             policy_version: "1".to_string(),
             require_critical_qc_pass: true,
             require_specificity_pass: true,
+            require_genomic_carryover_pass: true,
+            require_transcriptome_specificity_pass: true,
             require_annotation_provenance: true,
             require_assay_test: false,
             require_variant_evaluation: false,

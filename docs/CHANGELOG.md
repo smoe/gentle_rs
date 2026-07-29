@@ -12,6 +12,13 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-07-29
+
+- Extended primer-specificity v2 with transcript-set intended products,
+  GENtle-derived target geometry for imported pairs, effective mismatches for
+  partial HSPs, and independent genomic-carryover and transcriptome-specificity
+  readiness gates that retain failed or incomplete evidence.
+
 ## 2026-07-28
 
 - Added engine-owned `gentle.feature_record_curation.v1` Create/Delete

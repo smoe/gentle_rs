@@ -51819,6 +51819,11 @@ fn execute_primers_command(
                             "Invalid transcript assay panel specificity execution manifest: {error}"
                         )
                     })?;
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
             let acceptance = engine
                 .finalize_transcript_assay_panel_specificity_handoff(
                     handoff_path,
@@ -51826,8 +51831,13 @@ fn execute_primers_command(
                     path.as_deref(),
                 )
                 .map_err(|error| error.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
             Ok(ShellRunResult {
-                state_changed: acceptance.accepted,
+                state_changed: before != after,
                 output: json!({
                     "schema": "gentle.transcript_assay_panel_specificity_finalize_command.v1",
                     "acceptance": acceptance,
