@@ -1,5 +1,51 @@
 use super::*;
 
+const PROBE_REGION_DEPENDENCY_PROBE_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(60);
+const PROBE_REGION_DEPENDENCY_POLL_INTERVAL: std::time::Duration =
+    std::time::Duration::from_millis(25);
+const PROBE_REGION_OLIGO_REQUIRED_R_PACKAGES: [&str; 5] =
+    ["oligo", "limma", "Biobase", "DBI", "RSQLite"];
+const PROBE_REGION_AFFY_REQUIRED_R_PACKAGES: [&str; 3] = ["affy", "limma", "Biobase"];
+const PROBE_REGION_R_PACKAGE_PROBE_EXPRESSION: &str = r#"
+args <- commandArgs(trailingOnly = TRUE)
+library_count <- suppressWarnings(as.integer(args[[1]]))
+if (is.na(library_count) || library_count < 0) quit(status = 2)
+library_paths <- if (library_count > 0) args[seq_len(library_count) + 1] else character()
+package_start <- library_count + 2
+packages <- if (package_start <= length(args)) args[package_start:length(args)] else character()
+existing_library_paths <- library_paths[dir.exists(library_paths)]
+if (length(existing_library_paths) > 0) {
+  .libPaths(unique(c(normalizePath(existing_library_paths, winslash = "/", mustWork = TRUE), .libPaths())))
+}
+for (path in .libPaths()) cat("LIBPATH\t", path, "\n", sep = "")
+for (package in packages) {
+  location <- suppressWarnings(system.file(package = package))
+  if (!nzchar(location)) {
+    cat("PACKAGE\t", package, "\tMISSING\n", sep = "")
+  } else {
+    version <- tryCatch(
+      as.character(utils::packageVersion(package)),
+      error = function(error) paste0("ERROR:", conditionMessage(error))
+    )
+    cat("PACKAGE\t", package, "\t", version, "\n", sep = "")
+  }
+}
+"#;
+
+#[derive(Debug)]
+enum ProbeRegionBoundedCommandError {
+    Spawn(String),
+    Poll(String),
+    TimedOut { elapsed_ms: u128 },
+}
+
+#[derive(Default)]
+struct ProbeRegionRPackageProbe {
+    dependencies: Vec<ProbeRegionDependencyCheck>,
+    library_paths_checked: Vec<String>,
+}
+
 impl GentleEngine {
     pub fn plan_probe_regions(&self, request: ProbeRegionRequest) -> ProbeRegionPlan {
         let mut request = Self::normalize_probe_region_request(request);
@@ -16,6 +62,7 @@ impl GentleEngine {
             &mut warnings,
             &mut errors,
         );
+        Self::probe_region_apply_effective_r_library_paths(&mut request, &mut warnings);
         if request.cel_paths.is_empty() && request.dataset.is_none() {
             errors.push(
                 "arrays probe-regions requires at least one --cel path or a --dataset id"
@@ -126,48 +173,48 @@ impl GentleEngine {
         let rscript_available = dependencies
             .iter()
             .any(|row| row.name == "Rscript" && row.status == "present");
-        dependencies.push(Self::probe_region_r_package_dependency(
-            "oligo",
-            normalization != "none",
-            rscript_available,
-        ));
-        dependencies.push(Self::probe_region_r_package_dependency(
-            "limma",
-            normalization != "none",
-            rscript_available,
-        ));
-        if platform
+        let legacy_affy_backend = platform
             .backend_kinds
             .iter()
             .any(|backend| backend == "r_affy_cdf")
-        {
-            dependencies.push(Self::probe_region_r_package_dependency(
-                "affy",
-                normalization != "none",
-                rscript_available,
-            ));
+            && !platform
+                .backend_kinds
+                .iter()
+                .any(|backend| backend == "r_oligo");
+        let annotation_library_usable = request
+            .annotation_library_path
+            .as_deref()
+            .is_some_and(|path| Path::new(path).exists());
+        let mut r_packages = BTreeMap::<String, bool>::new();
+        let packages_required = normalization != "none";
+        if legacy_affy_backend {
+            for package in PROBE_REGION_AFFY_REQUIRED_R_PACKAGES {
+                r_packages.insert(package.to_string(), packages_required);
+            }
+            if let Some(package) = platform.cdf_package.as_deref() {
+                r_packages.insert(package.to_string(), packages_required);
+            }
+            if !annotation_library_usable && platform.annotation_package.is_some() {
+                r_packages.insert("AnnotationDbi".to_string(), packages_required);
+                if let Some(package) = platform.annotation_package.as_deref() {
+                    r_packages.insert(package.to_string(), packages_required);
+                }
+            }
+        } else {
+            for package in PROBE_REGION_OLIGO_REQUIRED_R_PACKAGES {
+                r_packages.insert(package.to_string(), packages_required);
+            }
+            if let Some(package) = platform.bioconductor_package.as_deref() {
+                r_packages.insert(package.to_string(), packages_required);
+            }
         }
-        if let Some(package) = platform.bioconductor_package.as_deref() {
-            dependencies.push(Self::probe_region_r_package_dependency(
-                package,
-                request.annotation_library_path.is_none(),
-                rscript_available,
-            ));
-        }
-        if let Some(package) = platform.cdf_package.as_deref() {
-            dependencies.push(Self::probe_region_r_package_dependency(
-                package,
-                request.annotation_library_path.is_none(),
-                rscript_available,
-            ));
-        }
-        if let Some(package) = platform.annotation_package.as_deref() {
-            dependencies.push(Self::probe_region_r_package_dependency(
-                package,
-                false,
-                rscript_available,
-            ));
-        }
+        let r_package_probe = Self::probe_region_r_package_dependencies(
+            &r_packages.into_iter().collect::<Vec<_>>(),
+            rscript_available,
+            &request.r_library_paths,
+        );
+        dependencies.extend(r_package_probe.dependencies);
+        let r_library_paths_checked = r_package_probe.library_paths_checked;
 
         let annotation_source =
             Self::probe_region_annotation_source(&request, &platform, &dependencies);
@@ -256,6 +303,7 @@ impl GentleEngine {
             "normalization".to_string(),
             "annotation source path or Bioconductor package".to_string(),
             "platform".to_string(),
+            "R library paths and package versions".to_string(),
         ];
         if request.metadata_path.is_some() {
             cache_compatibility_keys.push("metadata path/size/mtime".to_string());
@@ -289,6 +337,7 @@ impl GentleEngine {
             annotation_source,
             platform,
             dependencies,
+            r_library_paths_checked,
             backend_candidates,
             contrasts,
             output_dir_status: output_status,
@@ -666,6 +715,9 @@ impl GentleEngine {
             "tool_version_checks": plan.dependencies,
             "r_version": inspection.r_version,
             "package_versions": inspection.package_versions,
+            "r_library_paths_requested": plan.request.r_library_paths,
+            "r_library_paths_checked": inspection.r_library_paths_checked,
+            "preflight_r_library_paths_checked": plan.r_library_paths_checked,
             "analysis_method_version": inspection.analysis_method_version,
             "input_fingerprints": input_fingerprints,
             "output_fingerprints": output_fingerprints,
@@ -708,6 +760,7 @@ impl GentleEngine {
         request.platform = Self::probe_region_trim_option(request.platform);
         request.annotation_library_path =
             Self::probe_region_trim_option(request.annotation_library_path);
+        request.r_library_paths = Self::probe_region_dedupe_nonempty(&request.r_library_paths);
         request.condition_column = Self::probe_region_trim_option(request.condition_column);
         request.sample_column = Self::probe_region_trim_option(request.sample_column);
         request.block_column = Self::probe_region_trim_option(request.block_column);
@@ -715,6 +768,54 @@ impl GentleEngine {
         request.output_dir = Self::probe_region_trim_option(request.output_dir);
         request.cache_dir = Self::probe_region_trim_option(request.cache_dir);
         request
+    }
+
+    pub(super) fn probe_region_apply_effective_r_library_paths(
+        request: &mut ProbeRegionRequest,
+        warnings: &mut Vec<String>,
+    ) {
+        let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        if request.r_library_paths.is_empty() {
+            let workspace_library = current_dir.join(".r-lib");
+            if workspace_library.is_dir() {
+                let path = workspace_library
+                    .canonicalize()
+                    .unwrap_or(workspace_library)
+                    .to_string_lossy()
+                    .to_string();
+                request.r_library_paths.push(path.clone());
+                warnings.push(format!(
+                    "Using auto-detected workspace R library '{path}'. The generated helper command passes it explicitly; use --r-library-path PATH to select a different agent, user, or system-visible library."
+                ));
+            }
+            return;
+        }
+
+        request.r_library_paths = request
+            .r_library_paths
+            .iter()
+            .map(|path| {
+                let path = PathBuf::from(path);
+                let absolute = if path.is_absolute() {
+                    path
+                } else {
+                    current_dir.join(path)
+                };
+                absolute
+                    .canonicalize()
+                    .unwrap_or(absolute)
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect();
+        request.r_library_paths = Self::probe_region_dedupe_nonempty(&request.r_library_paths);
+        for path in &request.r_library_paths {
+            if !Path::new(path).is_dir() {
+                warnings.push(format!(
+                    "Requested R library path '{path}' is not a directory. Package checks will still inspect R's default library paths; verify --r-library-path if results differ from the environment where packages were installed."
+                ));
+            }
+        }
     }
 
     pub(super) fn probe_region_has_selector(request: &ProbeRegionRequest) -> bool {
@@ -1856,9 +1957,6 @@ impl GentleEngine {
         normalization: &str,
     ) -> Vec<ProbeRegionBackendCandidate> {
         let rscript_present = Self::probe_region_dependency_present(dependencies, "Rscript");
-        let oligo_present = Self::probe_region_dependency_present(dependencies, "oligo");
-        let affy_present = Self::probe_region_dependency_present(dependencies, "affy");
-        let limma_present = Self::probe_region_dependency_present(dependencies, "limma");
         let apt_present =
             Self::probe_region_dependency_present(dependencies, "apt-probeset-summarize");
         let platform_package_present = platform
@@ -1889,21 +1987,31 @@ impl GentleEngine {
         if !rscript_present {
             r_missing.push("Rscript command".to_string());
         }
-        if !oligo_present && normalization != "none" {
-            r_missing.push("R package oligo".to_string());
-        }
-        if !limma_present && normalization != "none" {
-            r_missing.push("R package limma".to_string());
+        if normalization != "none" {
+            for package in PROBE_REGION_OLIGO_REQUIRED_R_PACKAGES {
+                if let Some(problem) =
+                    Self::probe_region_dependency_problem(dependencies, package, "R package")
+                {
+                    r_missing.push(problem);
+                }
+            }
         }
         if platform.bioconductor_package.is_none() {
             r_missing.push("known Bioconductor platform package mapping".to_string());
-        } else if !platform_package_present {
+        } else if !platform_package_present
+            && let Some(package) = platform.bioconductor_package.as_deref()
+        {
             r_missing.push(
-                platform
-                    .bioconductor_package
-                    .clone()
-                    .unwrap_or_else(|| "Bioconductor platform package".to_string()),
+                Self::probe_region_dependency_problem(
+                    dependencies,
+                    package,
+                    "Bioconductor platform package",
+                )
+                .unwrap_or_else(|| package.to_string()),
             );
+        }
+        if !Path::new(PROBE_REGION_OLIGO_HELPER).is_file() {
+            r_missing.push(PROBE_REGION_OLIGO_HELPER.to_string());
         }
 
         let mut apt_missing = Vec::new();
@@ -1936,20 +2044,39 @@ impl GentleEngine {
         if !Path::new(PROBE_REGION_AFFY_HELPER).is_file() {
             affy_missing.push(PROBE_REGION_AFFY_HELPER.to_string());
         }
-        if !affy_present && normalization != "none" {
-            affy_missing.push("R package affy".to_string());
+        if normalization != "none" {
+            for package in PROBE_REGION_AFFY_REQUIRED_R_PACKAGES {
+                if let Some(problem) =
+                    Self::probe_region_dependency_problem(dependencies, package, "R package")
+                {
+                    affy_missing.push(problem);
+                }
+            }
         }
-        if !limma_present && normalization != "none" {
-            affy_missing.push("R package limma".to_string());
+        if let Some(cdf_package) = platform.cdf_package.as_deref() {
+            if let Some(problem) =
+                Self::probe_region_dependency_problem(dependencies, cdf_package, "CDF package")
+            {
+                affy_missing.push(problem);
+            }
+        } else {
+            affy_missing.push("CDF package or explicit CDF name".to_string());
         }
-        if platform.cdf_package.is_none() && !annotation_path_usable {
-            affy_missing
-                .push("CDF package or user-supplied CDF annotation-library path".to_string());
-        } else if let Some(cdf_package) = platform.cdf_package.as_deref()
-            && !Self::probe_region_dependency_present(dependencies, cdf_package)
-            && !annotation_path_usable
+        if !annotation_path_usable
+            && let Some(annotation_package) = platform.annotation_package.as_deref()
         {
-            affy_missing.push(cdf_package.to_string());
+            if let Some(problem) =
+                Self::probe_region_dependency_problem(dependencies, "AnnotationDbi", "R package")
+            {
+                affy_missing.push(problem);
+            }
+            if let Some(problem) = Self::probe_region_dependency_problem(
+                dependencies,
+                annotation_package,
+                "annotation package",
+            ) {
+                affy_missing.push(problem);
+            }
         }
         if request.cel_paths.is_empty() {
             affy_missing.push("explicit CEL file paths".to_string());
@@ -1968,8 +2095,9 @@ impl GentleEngine {
                         "Rscript command".to_string(),
                         "R package affy".to_string(),
                         "R package limma".to_string(),
+                        "R package Biobase".to_string(),
                         PROBE_REGION_AFFY_HELPER.to_string(),
-                        "CDF package or user-supplied CDF file".to_string(),
+                        "CDF package or explicit CDF name".to_string(),
                         "normalization=rma".to_string(),
                         "explicit CEL file paths".to_string(),
                     ],
@@ -2012,7 +2140,11 @@ impl GentleEngine {
                     "Rscript command".to_string(),
                     "R package oligo".to_string(),
                     "R package limma".to_string(),
+                    "R package Biobase".to_string(),
+                    "R package DBI".to_string(),
+                    "R package RSQLite".to_string(),
                     "Bioconductor platform package".to_string(),
+                    PROBE_REGION_OLIGO_HELPER.to_string(),
                     "normalization=rma".to_string(),
                 ],
                 missing: r_missing,
@@ -2183,6 +2315,10 @@ impl GentleEngine {
             return None;
         }
         let mut args = vec!["Rscript".to_string(), PROBE_REGION_OLIGO_HELPER.to_string()];
+        for path in &request.r_library_paths {
+            args.push("--r-library-path".to_string());
+            args.push(path.clone());
+        }
         for cel in &request.cel_paths {
             args.push("--cel".to_string());
             args.push(cel.clone());
@@ -2254,6 +2390,10 @@ impl GentleEngine {
             return None;
         }
         let mut args = vec!["Rscript".to_string(), PROBE_REGION_AFFY_HELPER.to_string()];
+        for path in &request.r_library_paths {
+            args.push("--r-library-path".to_string());
+            args.push(path.clone());
+        }
         for cel in &request.cel_paths {
             args.push("--cel".to_string());
             args.push(cel.clone());
@@ -2278,7 +2418,12 @@ impl GentleEngine {
             args.push("--cdf-package".to_string());
             args.push(cdf_package.clone());
         }
-        if let Some(annotation_package) = &platform.annotation_package {
+        if annotation_source
+            .path
+            .as_ref()
+            .is_none_or(|path| !path.exists)
+            && let Some(annotation_package) = &platform.annotation_package
+        {
             args.push("--annotation-package".to_string());
             args.push(annotation_package.clone());
         }
@@ -2338,15 +2483,112 @@ impl GentleEngine {
             .any(|row| row.name == name && row.status == "present")
     }
 
+    fn probe_region_dependency_problem(
+        dependencies: &[ProbeRegionDependencyCheck],
+        name: &str,
+        label: &str,
+    ) -> Option<String> {
+        let dependency = dependencies.iter().find(|row| row.name == name);
+        if dependency.is_some_and(|row| row.status == "present") {
+            return None;
+        }
+        Some(match dependency {
+            Some(row) => {
+                let detail = row
+                    .detail
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|detail| !detail.is_empty())
+                    .map(|detail| format!(": {detail}"))
+                    .unwrap_or_default();
+                format!("{label} {name} [{}]{detail}", row.status)
+            }
+            None => format!("{label} {name} [not_checked]"),
+        })
+    }
+
+    fn probe_region_bounded_command_output(
+        program: &str,
+        args: &[String],
+        timeout: std::time::Duration,
+    ) -> Result<std::process::Output, ProbeRegionBoundedCommandError> {
+        let mut child = Command::new(program)
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| ProbeRegionBoundedCommandError::Spawn(error.to_string()))?;
+        let Some(stdout) = child.stdout.take() else {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(ProbeRegionBoundedCommandError::Poll(
+                "could not capture stdout".to_string(),
+            ));
+        };
+        let Some(stderr) = child.stderr.take() else {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(ProbeRegionBoundedCommandError::Poll(
+                "could not capture stderr".to_string(),
+            ));
+        };
+        let stdout_reader = std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let mut reader = BufReader::new(stdout);
+            let _ = reader.read_to_end(&mut bytes);
+            bytes
+        });
+        let stderr_reader = std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let mut reader = BufReader::new(stderr);
+            let _ = reader.read_to_end(&mut bytes);
+            bytes
+        });
+        let started = Instant::now();
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break Ok(status),
+                Ok(None) if started.elapsed() >= timeout => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break Err(ProbeRegionBoundedCommandError::TimedOut {
+                        elapsed_ms: started.elapsed().as_millis(),
+                    });
+                }
+                Ok(None) => std::thread::sleep(PROBE_REGION_DEPENDENCY_POLL_INTERVAL),
+                Err(error) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break Err(ProbeRegionBoundedCommandError::Poll(error.to_string()));
+                }
+            }
+        };
+        let stdout = stdout_reader.join().unwrap_or_default();
+        let stderr = stderr_reader.join().unwrap_or_default();
+        status.map(|status| std::process::Output {
+            status,
+            stdout,
+            stderr,
+        })
+    }
+
     pub(super) fn probe_region_command_dependency(
         name: &str,
         kind: &str,
         required: bool,
         version_args: &[&str],
     ) -> ProbeRegionDependencyCheck {
-        match Command::new(name).args(version_args).output() {
+        let args = version_args
+            .iter()
+            .map(|arg| (*arg).to_string())
+            .collect::<Vec<_>>();
+        match Self::probe_region_bounded_command_output(
+            name,
+            &args,
+            PROBE_REGION_DEPENDENCY_PROBE_TIMEOUT,
+        ) {
             Ok(output) => {
-                let text = if output.stderr.is_empty() {
+                let text = if !output.stdout.is_empty() {
                     String::from_utf8_lossy(&output.stdout).to_string()
                 } else {
                     String::from_utf8_lossy(&output.stderr).to_string()
@@ -2373,81 +2615,400 @@ impl GentleEngine {
                     },
                 }
             }
-            Err(e) => ProbeRegionDependencyCheck {
+            Err(ProbeRegionBoundedCommandError::Spawn(error)) => ProbeRegionDependencyCheck {
                 name: name.to_string(),
                 kind: kind.to_string(),
                 required,
                 status: "missing".to_string(),
                 version: None,
-                detail: Some(e.to_string()),
+                detail: Some(error),
+            },
+            Err(ProbeRegionBoundedCommandError::TimedOut { elapsed_ms }) => {
+                ProbeRegionDependencyCheck {
+                    name: name.to_string(),
+                    kind: kind.to_string(),
+                    required,
+                    status: "timed_out".to_string(),
+                    version: None,
+                    detail: Some(format!(
+                        "{name} dependency probe timed out after {elapsed_ms} ms"
+                    )),
+                }
+            }
+            Err(ProbeRegionBoundedCommandError::Poll(error)) => ProbeRegionDependencyCheck {
+                name: name.to_string(),
+                kind: kind.to_string(),
+                required,
+                status: "probe_failed".to_string(),
+                version: None,
+                detail: Some(format!(
+                    "Could not monitor {name} dependency probe: {error}"
+                )),
             },
         }
     }
 
-    pub(super) fn probe_region_r_package_dependency(
-        package: &str,
-        required: bool,
+    fn probe_region_r_package_probe_args(
+        packages: &[(String, bool)],
+        r_library_paths: &[String],
+    ) -> Vec<String> {
+        let mut args = vec![
+            "--vanilla".to_string(),
+            "-e".to_string(),
+            PROBE_REGION_R_PACKAGE_PROBE_EXPRESSION.to_string(),
+            r_library_paths.len().to_string(),
+        ];
+        args.extend(r_library_paths.iter().cloned());
+        args.extend(packages.iter().map(|(package, _)| package.clone()));
+        args
+    }
+
+    fn probe_region_r_library_diagnostic(
+        requested_paths: &[String],
+        checked_paths: &[String],
+    ) -> String {
+        let requested = if requested_paths.is_empty() {
+            "(none)".to_string()
+        } else {
+            requested_paths.join(", ")
+        };
+        let checked = if checked_paths.is_empty() {
+            "R did not report any library paths".to_string()
+        } else {
+            checked_paths.join(", ")
+        };
+        format!(
+            "Requested R library paths: {requested}. Effective R library paths checked: {checked}. Check --r-library-path PATH if this differs from the environment where the packages were installed."
+        )
+    }
+
+    fn probe_region_r_package_dependencies(
+        packages: &[(String, bool)],
         rscript_available: bool,
-    ) -> ProbeRegionDependencyCheck {
-        if !rscript_available {
-            return ProbeRegionDependencyCheck {
-                name: package.to_string(),
-                kind: "r_package".to_string(),
-                required,
-                status: "unchecked".to_string(),
-                version: None,
-                detail: Some(
-                    "Rscript was not available, so the R package check was skipped".to_string(),
-                ),
+        r_library_paths: &[String],
+    ) -> ProbeRegionRPackageProbe {
+        Self::probe_region_r_package_dependencies_with_program(
+            packages,
+            rscript_available,
+            r_library_paths,
+            "Rscript",
+            PROBE_REGION_DEPENDENCY_PROBE_TIMEOUT,
+        )
+    }
+
+    fn probe_region_r_package_dependencies_with_program(
+        packages: &[(String, bool)],
+        rscript_available: bool,
+        r_library_paths: &[String],
+        rscript_program: &str,
+        timeout: std::time::Duration,
+    ) -> ProbeRegionRPackageProbe {
+        if packages.is_empty() {
+            return ProbeRegionRPackageProbe {
+                dependencies: Vec::new(),
+                library_paths_checked: Vec::new(),
             };
         }
-        let expression = format!(
-            "if (requireNamespace({:?}, quietly = TRUE)) {{ cat(as.character(utils::packageVersion({:?}))); quit(status = 0) }} else quit(status = 1)",
-            package, package
-        );
-        match Command::new("Rscript").args(["-e", &expression]).output() {
-            Ok(output) if output.status.success() => {
-                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                ProbeRegionDependencyCheck {
-                    name: package.to_string(),
-                    kind: "r_package".to_string(),
-                    required,
-                    status: "present".to_string(),
-                    version: (!version.is_empty()).then_some(version),
-                    detail: None,
+        if !rscript_available {
+            let diagnostic = Self::probe_region_r_library_diagnostic(r_library_paths, &[]);
+            return ProbeRegionRPackageProbe {
+                dependencies: packages
+                    .iter()
+                    .map(|(package, required)| ProbeRegionDependencyCheck {
+                        name: package.clone(),
+                        kind: "r_package".to_string(),
+                        required: *required,
+                        status: "unchecked".to_string(),
+                        version: None,
+                        detail: Some(format!(
+                            "Rscript was not available, so the R package check was skipped. {diagnostic}"
+                        )),
+                    })
+                    .collect(),
+                library_paths_checked: Vec::new(),
+            };
+        }
+        let args = Self::probe_region_r_package_probe_args(packages, r_library_paths);
+        let output = Self::probe_region_bounded_command_output(rscript_program, &args, timeout);
+        let mut checked_paths = Vec::new();
+        let mut versions = BTreeMap::<String, String>::new();
+        let mut package_errors = BTreeMap::<String, String>::new();
+
+        if let Ok(output) = &output {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let fields = line.splitn(3, '\t').collect::<Vec<_>>();
+                match fields.as_slice() {
+                    ["LIBPATH", path] if !path.trim().is_empty() => {
+                        checked_paths.push(path.trim().to_string());
+                    }
+                    ["PACKAGE", package, value]
+                        if output.status.success() && !package.trim().is_empty() =>
+                    {
+                        let package = package.trim().to_string();
+                        let value = value.trim();
+                        if value == "MISSING" {
+                            package_errors.insert(package, "missing".to_string());
+                        } else if let Some(error) = value.strip_prefix("ERROR:") {
+                            package_errors.insert(
+                                package,
+                                format!("version lookup failed: {}", error.trim()),
+                            );
+                        } else if !value.is_empty() {
+                            versions.insert(package, value.to_string());
+                        }
+                    }
+                    _ => {}
                 }
             }
-            Ok(output) => ProbeRegionDependencyCheck {
-                name: package.to_string(),
-                kind: "r_package".to_string(),
-                required,
-                status: "missing".to_string(),
-                version: None,
-                detail: Some(format!(
-                    "R package check exited with status {}",
-                    output.status
-                )),
-            },
-            Err(e) => ProbeRegionDependencyCheck {
-                name: package.to_string(),
-                kind: "r_package".to_string(),
-                required,
-                status: "missing".to_string(),
-                version: None,
-                detail: Some(e.to_string()),
-            },
+        }
+        checked_paths = Self::probe_region_dedupe_nonempty(&checked_paths);
+        let diagnostic = Self::probe_region_r_library_diagnostic(r_library_paths, &checked_paths);
+        let shared_failure = match &output {
+            Ok(output) if output.status.success() => None,
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                Some((
+                    "probe_failed",
+                    if stderr.is_empty() {
+                        format!("R package probe exited with status {}", output.status)
+                    } else {
+                        format!(
+                            "R package probe exited with status {}: {stderr}",
+                            output.status
+                        )
+                    },
+                ))
+            }
+            Err(ProbeRegionBoundedCommandError::Spawn(error)) => Some((
+                "probe_failed",
+                format!("Could not start R package probe: {error}"),
+            )),
+            Err(ProbeRegionBoundedCommandError::Poll(error)) => Some((
+                "probe_failed",
+                format!("Could not monitor R package probe: {error}"),
+            )),
+            Err(ProbeRegionBoundedCommandError::TimedOut { elapsed_ms }) => Some((
+                "timed_out",
+                format!("R package probe timed out after {elapsed_ms} ms"),
+            )),
+        };
+        let dependencies = packages
+            .iter()
+            .map(|(package, required)| {
+                if let Some((status, detail)) = &shared_failure {
+                    return ProbeRegionDependencyCheck {
+                        name: package.clone(),
+                        kind: "r_package".to_string(),
+                        required: *required,
+                        status: (*status).to_string(),
+                        version: None,
+                        detail: Some(format!("{detail}. {diagnostic}")),
+                    };
+                }
+                if let Some(version) = versions.get(package) {
+                    return ProbeRegionDependencyCheck {
+                        name: package.clone(),
+                        kind: "r_package".to_string(),
+                        required: *required,
+                        status: "present".to_string(),
+                        version: Some(version.clone()),
+                        detail: None,
+                    };
+                }
+                let reason = package_errors
+                    .get(package)
+                    .cloned()
+                    .unwrap_or_else(|| "probe returned no result for this package".to_string());
+                ProbeRegionDependencyCheck {
+                    name: package.clone(),
+                    kind: "r_package".to_string(),
+                    required: *required,
+                    status: if reason == "missing" {
+                        "missing".to_string()
+                    } else {
+                        "probe_failed".to_string()
+                    },
+                    version: None,
+                    detail: Some(format!("R package '{package}': {reason}. {diagnostic}")),
+                }
+            })
+            .collect();
+
+        ProbeRegionRPackageProbe {
+            dependencies,
+            library_paths_checked: checked_paths,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::{PROBE_REGION_AFFY_REQUIRED_R_PACKAGES, PROBE_REGION_OLIGO_REQUIRED_R_PACKAGES};
+    use crate::engine::GentleEngine;
+    use std::collections::BTreeSet;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    #[cfg(unix)]
+    fn write_fake_rscript(dir: &std::path::Path, body: &str) -> std::path::PathBuf {
+        let path = dir.join("Rscript");
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write fake Rscript");
+        let mut permissions = std::fs::metadata(&path)
+            .expect("fake Rscript metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&path, permissions).expect("enable fake Rscript");
+        path
+    }
+
+    fn declared_r_packages(script: &str) -> BTreeSet<String> {
+        let line = script
+            .lines()
+            .find(|line| line.trim_start().starts_with("required_packages <- c("))
+            .expect("required_packages declaration");
+        let mut packages = BTreeSet::new();
+        let mut rest = line;
+        while let Some(start) = rest.find('"') {
+            rest = &rest[start + 1..];
+            let end = rest.find('"').expect("closing package quote");
+            packages.insert(rest[..end].to_string());
+            rest = &rest[end + 1..];
+        }
+        packages
+    }
+
+    #[test]
+    fn probe_region_r_package_contract_matches_standalone_helpers() {
+        let oligo = declared_r_packages(include_str!("../../../../scripts/probe_regions_oligo.R"));
+        assert_eq!(
+            oligo,
+            PROBE_REGION_OLIGO_REQUIRED_R_PACKAGES
+                .iter()
+                .map(|package| (*package).to_string())
+                .collect()
+        );
+        let affy = declared_r_packages(include_str!("../../../../scripts/probe_regions_affy.R"));
+        assert_eq!(
+            affy,
+            PROBE_REGION_AFFY_REQUIRED_R_PACKAGES
+                .iter()
+                .map(|package| (*package).to_string())
+                .collect()
+        );
+    }
+
+    #[test]
+    fn probe_region_r_package_probe_passes_count_as_first_trailing_argument() {
+        let packages = vec![("oligo".to_string(), true)];
+        let args = GentleEngine::probe_region_r_package_probe_args(
+            &packages,
+            &["/tmp/agent-r-library".to_string()],
+        );
+
+        assert_eq!(args[0], "--vanilla");
+        assert_eq!(args[1], "-e");
+        assert_eq!(args[3], "1");
+        assert_eq!(args[4], "/tmp/agent-r-library");
+        assert_eq!(args[5], "oligo");
+        assert!(!args.iter().any(|arg| arg == "--args"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn probe_region_r_package_probe_preserves_versions_and_library_paths() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let explicit_library = dir.path().join("agent-r-library");
+        std::fs::create_dir(&explicit_library).expect("create explicit library");
+        let rscript = write_fake_rscript(
+            dir.path(),
+            &format!(
+                "printf 'LIBPATH\\t{}\\nPACKAGE\\toligo\\t1.72.0\\nPACKAGE\\tBiobase\\t2.68.0\\n'",
+                explicit_library.to_string_lossy()
+            ),
+        );
+        let packages = vec![("oligo".to_string(), true), ("Biobase".to_string(), true)];
+        let probe = GentleEngine::probe_region_r_package_dependencies_with_program(
+            &packages,
+            true,
+            &[explicit_library.to_string_lossy().to_string()],
+            &rscript.to_string_lossy(),
+            std::time::Duration::from_secs(1),
+        );
+
+        assert_eq!(
+            probe
+                .dependencies
+                .iter()
+                .map(|row| (
+                    row.name.as_str(),
+                    row.status.as_str(),
+                    row.version.as_deref()
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                ("oligo", "present", Some("1.72.0")),
+                ("Biobase", "present", Some("2.68.0")),
+            ]
+        );
+        assert!(
+            probe
+                .library_paths_checked
+                .contains(&explicit_library.to_string_lossy().to_string())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn probe_region_r_package_missing_error_names_checked_library_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let explicit_library = dir.path().join("sandbox-r-library");
+        std::fs::create_dir(&explicit_library).expect("create explicit library");
+        let rscript = write_fake_rscript(
+            dir.path(),
+            &format!(
+                "printf 'LIBPATH\\t{}\\nPACKAGE\\toligo\\tMISSING\\n'",
+                explicit_library.to_string_lossy()
+            ),
+        );
+        let probe = GentleEngine::probe_region_r_package_dependencies_with_program(
+            &[("oligo".to_string(), true)],
+            true,
+            &[explicit_library.to_string_lossy().to_string()],
+            &rscript.to_string_lossy(),
+            std::time::Duration::from_secs(1),
+        );
+        let dependency = &probe.dependencies[0];
+
+        assert_eq!(dependency.status, "missing");
+        let detail = dependency.detail.as_deref().expect("missing detail");
+        assert!(detail.contains(&explicit_library.to_string_lossy().to_string()));
+        assert!(detail.contains("Check --r-library-path PATH"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn probe_region_r_package_probe_is_bounded() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let rscript = write_fake_rscript(dir.path(), "while :; do :; done");
+        let started = std::time::Instant::now();
+        let probe = GentleEngine::probe_region_r_package_dependencies_with_program(
+            &[("oligo".to_string(), true)],
+            true,
+            &[],
+            &rscript.to_string_lossy(),
+            std::time::Duration::from_millis(50),
+        );
+
+        assert_eq!(probe.dependencies[0].status, "timed_out");
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    }
+
     #[test]
     fn probe_region_vendor_support_file_status_accepts_browser_download_filename() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join("browser_name.zip"), b"zip").expect("write alias");
 
-        let status = crate::engine::GentleEngine::probe_region_vendor_support_file_status(
+        let status = GentleEngine::probe_region_vendor_support_file_status(
             dir.path(),
             "canonical_name.zip",
             &["browser_name.zip"],
@@ -2469,7 +3030,7 @@ mod tests {
     #[test]
     fn probe_region_vendor_support_file_status_reports_canonical_when_absent() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let status = crate::engine::GentleEngine::probe_region_vendor_support_file_status(
+        let status = GentleEngine::probe_region_vendor_support_file_status(
             dir.path(),
             "canonical_name.zip",
             &["browser_name.zip"],

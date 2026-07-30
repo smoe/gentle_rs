@@ -1939,6 +1939,7 @@ pub enum ShellCommand {
         probeset_ids: Vec<String>,
         platform: Option<String>,
         annotation_library_path: Option<String>,
+        r_library_paths: Vec<String>,
         condition_column: Option<String>,
         sample_column: Option<String>,
         block_column: Option<String>,
@@ -13132,6 +13133,7 @@ pub(crate) fn arrays_shell_command_to_line(cmd: &ShellCommand) -> Option<String>
             probeset_ids,
             platform,
             annotation_library_path,
+            r_library_paths,
             condition_column,
             sample_column,
             block_column,
@@ -13173,6 +13175,9 @@ pub(crate) fn arrays_shell_command_to_line(cmd: &ShellCommand) -> Option<String>
             }
             if let Some(annotation_library_path) = annotation_library_path {
                 push_option(&mut tokens, "--annotation-library", annotation_library_path);
+            }
+            for r_library_path in r_library_paths {
+                push_option(&mut tokens, "--r-library-path", r_library_path);
             }
             if let Some(condition_column) = condition_column {
                 push_option(&mut tokens, "--condition-column", condition_column);
@@ -38868,6 +38873,7 @@ fn parse_arrays_probe_regions_command(tokens: &[String]) -> Result<ShellCommand,
     let mut probeset_ids = Vec::new();
     let mut platform: Option<String> = None;
     let mut annotation_library_path: Option<String> = None;
+    let mut r_library_paths = Vec::new();
     let mut condition_column: Option<String> = None;
     let mut sample_column: Option<String> = None;
     let mut block_column: Option<String> = None;
@@ -38976,6 +38982,14 @@ fn parse_arrays_probe_regions_command(tokens: &[String]) -> Result<ShellCommand,
                 }
                 annotation_library_path = Some(value);
             }
+            "--r-library-path" | "--r-lib" => {
+                let option = tokens[idx].clone();
+                let value = parse_option_path(tokens, &mut idx, &option, "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err(format!("{option} must not be empty"));
+                }
+                r_library_paths.push(value);
+            }
             "--condition-column" => {
                 let value = parse_option_path(
                     tokens,
@@ -39056,6 +39070,7 @@ fn parse_arrays_probe_regions_command(tokens: &[String]) -> Result<ShellCommand,
         probeset_ids,
         platform,
         annotation_library_path,
+        r_library_paths,
         condition_column,
         sample_column,
         block_column,
@@ -50133,6 +50148,7 @@ fn execute_reference_and_track_command(
             probeset_ids,
             platform,
             annotation_library_path,
+            r_library_paths,
             condition_column,
             sample_column,
             block_column,
@@ -50153,6 +50169,7 @@ fn execute_reference_and_track_command(
                 probeset_ids: probeset_ids.clone(),
                 platform: platform.clone(),
                 annotation_library_path: annotation_library_path.clone(),
+                r_library_paths: r_library_paths.clone(),
                 condition_column: condition_column.clone(),
                 sample_column: sample_column.clone(),
                 block_column: block_column.clone(),

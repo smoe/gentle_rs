@@ -94,6 +94,8 @@ impl GentleEngine {
         let mut normalization = None;
         let mut r_version = None;
         let mut package_versions = BTreeMap::new();
+        let mut r_library_paths_requested = Vec::new();
+        let mut r_library_paths_checked = Vec::new();
         let mut analysis_method_version = None;
         let mut input_fingerprints = Vec::new();
         let mut coordinate_system = None;
@@ -151,6 +153,10 @@ impl GentleEngine {
                     r_version = Self::probe_region_json_string(&value, "r_version");
                     package_versions =
                         Self::probe_region_json_string_map(&value, "package_versions");
+                    r_library_paths_requested =
+                        Self::probe_region_json_string_array(&value, "r_library_paths_requested");
+                    r_library_paths_checked =
+                        Self::probe_region_json_string_array(&value, "r_library_paths_checked");
                     analysis_method_version =
                         Self::probe_region_json_string(&value, "analysis_method_version");
                     input_fingerprints =
@@ -255,6 +261,8 @@ impl GentleEngine {
             normalization,
             r_version,
             package_versions,
+            r_library_paths_requested,
+            r_library_paths_checked,
             analysis_method_version,
             input_fingerprints,
             coordinate_system,

@@ -8317,7 +8317,7 @@ fn parse_arrays_microarray_track_commands() {
 #[test]
 fn parse_arrays_probe_regions_command() {
     let cmd = parse_shell_line(
-        "arrays probe-regions --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --genes TP73,FUS --locus chr1:100-200 --transcript-cluster-id TC010 --probeset-ids PSR1,PSR2 --platform Clariom_D_Human --annotation-library libdir --condition-column condition --sample-column file --block-column batch --paired-by-replicate-suffix --plot --normalization rma --output analysis/probe_regions --cache-dir analysis/cache --dry-run",
+        "arrays probe-regions --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --genes TP73,FUS --locus chr1:100-200 --transcript-cluster-id TC010 --probeset-ids PSR1,PSR2 --platform Clariom_D_Human --annotation-library libdir --r-library-path .r-lib --r-library-path /opt/R/site-library --condition-column condition --sample-column file --block-column batch --paired-by-replicate-suffix --plot --normalization rma --output analysis/probe_regions --cache-dir analysis/cache --dry-run",
     )
     .expect("parse probe-regions");
     match cmd {
@@ -8331,6 +8331,7 @@ fn parse_arrays_probe_regions_command() {
             probeset_ids,
             platform,
             annotation_library_path,
+            r_library_paths,
             condition_column,
             sample_column,
             block_column,
@@ -8356,6 +8357,10 @@ fn parse_arrays_probe_regions_command() {
             assert_eq!(probeset_ids, vec!["PSR1".to_string(), "PSR2".to_string()]);
             assert_eq!(platform.as_deref(), Some("Clariom_D_Human"));
             assert_eq!(annotation_library_path.as_deref(), Some("libdir"));
+            assert_eq!(
+                r_library_paths,
+                vec![".r-lib".to_string(), "/opt/R/site-library".to_string()]
+            );
             assert_eq!(condition_column.as_deref(), Some("condition"));
             assert_eq!(sample_column.as_deref(), Some("file"));
             assert_eq!(block_column.as_deref(), Some("batch"));
@@ -8517,6 +8522,7 @@ fn assert_arrays_probe_region_command_eq(
                 probeset_ids,
                 platform,
                 annotation_library_path,
+                r_library_paths,
                 condition_column,
                 sample_column,
                 block_column,
@@ -8537,6 +8543,7 @@ fn assert_arrays_probe_region_command_eq(
                 probeset_ids: expected_probeset_ids,
                 platform: expected_platform,
                 annotation_library_path: expected_annotation_library_path,
+                r_library_paths: expected_r_library_paths,
                 condition_column: expected_condition_column,
                 sample_column: expected_sample_column,
                 block_column: expected_block_column,
@@ -8564,6 +8571,10 @@ fn assert_arrays_probe_region_command_eq(
             assert_eq!(platform, expected_platform, "rendered line: {line}");
             assert_eq!(
                 annotation_library_path, expected_annotation_library_path,
+                "rendered line: {line}"
+            );
+            assert_eq!(
+                r_library_paths, expected_r_library_paths,
                 "rendered line: {line}"
             );
             assert_eq!(
@@ -8645,6 +8656,7 @@ fn arrays_probe_region_shell_lines_round_trip() {
             probeset_ids: vec!["PSR1".to_string(), "PSR2".to_string()],
             platform: Some("Clariom D Human".to_string()),
             annotation_library_path: Some("annotation libraries/NetAffx".to_string()),
+            r_library_paths: vec!["R libraries/agent".to_string()],
             condition_column: Some("condition".to_string()),
             sample_column: Some("file name".to_string()),
             block_column: Some("batch".to_string()),
@@ -8665,6 +8677,7 @@ fn arrays_probe_region_shell_lines_round_trip() {
             probeset_ids: vec![],
             platform: Some("Clariom_D_Human".to_string()),
             annotation_library_path: None,
+            r_library_paths: vec![],
             condition_column: None,
             sample_column: None,
             block_column: None,
@@ -8776,6 +8789,7 @@ fn execute_arrays_probe_regions_returns_plan() {
             probeset_ids: vec![],
             platform: Some("Clariom_D_Human".to_string()),
             annotation_library_path: Some(annotation_dir.to_string_lossy().to_string()),
+            r_library_paths: vec![],
             condition_column: Some("condition".to_string()),
             sample_column: Some("file".to_string()),
             block_column: Some("batch".to_string()),
@@ -8866,10 +8880,16 @@ fn execute_arrays_probe_regions_rma_suggests_oligo_helper_command() {
     let cel = temp.path().join("sample1.CEL");
     let metadata = temp.path().join("samples.tsv");
     let annotation_dir = temp.path().join("annotation");
+    let r_library_dir = temp.path().join("agent_r_library");
     let output_dir = temp.path().join("out");
     fs::write(&cel, "synthetic CEL placeholder\n").expect("write cel");
     fs::write(&metadata, "file\tcondition\nsample1.CEL\tAdGFP\n").expect("write metadata");
     fs::create_dir(&annotation_dir).expect("annotation dir");
+    fs::create_dir(&r_library_dir).expect("R library dir");
+    let canonical_r_library_dir = fs::canonicalize(&r_library_dir)
+        .expect("canonical R library dir")
+        .to_string_lossy()
+        .to_string();
 
     let mut engine = GentleEngine::default();
     let run = execute_shell_command(
@@ -8884,6 +8904,7 @@ fn execute_arrays_probe_regions_rma_suggests_oligo_helper_command() {
             probeset_ids: vec![],
             platform: Some("Clariom_D_Human".to_string()),
             annotation_library_path: Some(annotation_dir.to_string_lossy().to_string()),
+            r_library_paths: vec![r_library_dir.to_string_lossy().to_string()],
             condition_column: Some("condition".to_string()),
             sample_column: Some("file".to_string()),
             block_column: None,
@@ -8904,6 +8925,7 @@ fn execute_arrays_probe_regions_rma_suggests_oligo_helper_command() {
     assert!(command.contains("--normalization rma"));
     assert!(command.contains("--platform-package pd.clariom.d.human"));
     assert!(command.contains("--gene PATZ1"));
+    assert!(command.contains(&format!("--r-library-path {}", canonical_r_library_dir)));
 
     let plan_path = run.output["plan_path"]
         .as_str()
@@ -8925,6 +8947,10 @@ fn execute_arrays_probe_regions_rma_suggests_oligo_helper_command() {
     assert_eq!(
         persisted.backend_candidates[0].suggested_command.as_deref(),
         Some(command)
+    );
+    assert_eq!(
+        persisted.request.r_library_paths,
+        vec![canonical_r_library_dir]
     );
     assert!(
         persisted
@@ -9016,6 +9042,7 @@ fn execute_arrays_probe_regions_reports_clariom_vendor_support_paths() {
             probeset_ids: vec![],
             platform: Some("Clariom_D_Human".to_string()),
             annotation_library_path: None,
+            r_library_paths: vec![],
             condition_column: None,
             sample_column: None,
             block_column: None,
@@ -9078,6 +9105,7 @@ fn execute_arrays_probe_regions_discovers_publication_dataset_files() {
             probeset_ids: vec![],
             platform: Some("Clariom_D_Human".to_string()),
             annotation_library_path: None,
+            r_library_paths: vec![],
             condition_column: None,
             sample_column: None,
             block_column: None,
@@ -9214,6 +9242,8 @@ fn write_probe_region_output_fixture(out: &Path) {
     "limma": "3.66.0",
     "pd.clariom.d.human": "3.14.1"
   },
+  "r_library_paths_requested": ["/workspace/.r-lib"],
+  "r_library_paths_checked": ["/workspace/.r-lib", "/usr/lib/R/library"],
   "analysis_method_version": "probe_regions_oligo_rma_v1",
   "platform_package": "pd.clariom.d.human",
   "coordinate_system": "hg38",
@@ -9276,6 +9306,14 @@ fn execute_arrays_inspect_probe_region_output_summarizes_helper_outputs() {
     assert_eq!(
         run.output["inspection"]["package_versions"]["oligo"].as_str(),
         Some("1.74.0")
+    );
+    assert_eq!(
+        run.output["inspection"]["r_library_paths_requested"][0].as_str(),
+        Some("/workspace/.r-lib")
+    );
+    assert_eq!(
+        run.output["inspection"]["r_library_paths_checked"][1].as_str(),
+        Some("/usr/lib/R/library")
     );
     assert_eq!(
         run.output["inspection"]["analysis_method_version"].as_str(),

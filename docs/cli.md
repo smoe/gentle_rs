@@ -2085,7 +2085,7 @@ cargo run --bin gentle_cli -- tracks import-vcf grch38_tp53 data/variants/sample
 cargo run --bin gentle_cli -- arrays inspect-microarray-track data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json
 cargo run --bin gentle_cli -- arrays inspect-microarray-track test_files/fixtures/microarray_tracks/clariomd.tp73_vendor_subset.manifest.json
 cargo run --bin gentle_cli -- arrays project-microarray-track grch38_tp73 data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json --contrasts AdTAp73alpha-AdGFP,AdTAp73beta-AdGFP --level probeset --max-features 5000 --clear-existing
-cargo run --bin gentle_cli -- arrays probe-regions --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --gene TP73 --platform Clariom_D_Human --annotation-library path/to/NetAffx_or_APT_library --condition-column condition --sample-column file --normalization rma --plot --output analysis/probe_regions --dry-run
+cargo run --bin gentle_cli -- arrays probe-regions --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --gene TP73 --platform Clariom_D_Human --annotation-library path/to/NetAffx_or_APT_library --r-library-path .r-lib --condition-column condition --sample-column file --normalization rma --plot --output analysis/probe_regions --dry-run
 cargo run --bin gentle_cli -- arrays probe-regions --dataset E-MTAB-14704 --gene PATZ1 --gene FUS --gene MDM2 --paired-by-replicate-suffix --platform Clariom_D_Human --plot --dry-run
 cargo run --bin gentle_cli -- arrays probe-regions --dataset E-MTAB-14704 --gene TP73 --platform Clariom_D_Human --dry-run
 cargo run --bin gentle_cli -- arrays inspect-probe-region-output analysis/probe_regions
@@ -2888,7 +2888,7 @@ Shared shell command:
     - `arrays render-probe-region-evidence-svg REPORT.json OUTPUT.svg`
     - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR [--contrasts CSV] [--level probe_region|pm_probe] [--min-abs-logfc N] [--max-features N] [--clear-existing]`
     - `arrays interpret-probe-region-evidence SEQ_ID [--gene LABEL] [--level all|probe_region|pm_probe] [--min-abs-logfc N] [--path FILE]`
-    - `arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]`
+    - `arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--r-library-path PATH ...] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]`
     - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
     - `macros instance-list`
     - `macros instance-show MACRO_INSTANCE_ID`
@@ -5006,7 +5006,7 @@ Tutorial companion:
     transcript-cluster RMA matrices, probeset-level RMA matrices when
     supported by the platform design package, limma contrasts, and first-pass
     probeset heterogeneity tables for splice-variant triage.
-- `Rscript scripts/probe_regions_oligo.R --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --platform-package pd.clariom.d.human --coordinate-system hg38 --genome-build GRCh38 --output analysis/probe_regions`
+- `Rscript scripts/probe_regions_oligo.R --r-library-path .r-lib --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --platform-package pd.clariom.d.human --coordinate-system hg38 --genome-build GRCh38 --output analysis/probe_regions`
   - Generic external R/oligo backend helper for the `arrays probe-regions`
     preflight contract.
   - Currently supports `--normalization rma`; other normalization modes remain
@@ -5015,6 +5015,12 @@ Tutorial companion:
     `--allow-all-features` is used intentionally.
   - Requires R/Bioconductor packages `oligo`, `limma`, `Biobase`, `DBI`,
     `RSQLite`, and the platform design package such as `pd.clariom.d.human`.
+  - `--r-library-path PATH` is repeatable. It prepends explicit agent-local,
+    user, or system package roots to R's `.libPaths()` for both preflight and
+    execution. With no explicit flag, an existing workspace `.r-lib` remains
+    the compatibility default. Missing-package errors print every effective
+    library path and ask the user to check this flag when the result differs
+    from the R environment in which packages were installed.
   - Writes `region_intensity_chrom_order.csv`, expression/feature TSVs,
     limma contrast TSVs when metadata defines conditions, a normalized matrix
     manifest, provenance JSON, and `sessionInfo.txt`. Supplying
@@ -6933,6 +6939,15 @@ Notes:
   With `--output DIR`, the preflight also writes `DIR/plan.json`, a pretty
   versioned copy of the same `gentle.probe_region_plan.v1` report returned on
   stdout.
+  Repeat `--r-library-path PATH` to make an agent sandbox, user library, or
+  system package tree explicit. The normalized request records those paths,
+  `r_library_paths_checked` records R's complete effective search path, and
+  every generated R helper command receives the same values. The preflight
+  checks all direct helper dependencies in one bounded R process without
+  attaching package namespaces and reports their exact versions. A timeout or
+  probe failure is distinct from a missing or unchecked package; each
+  diagnostic names the paths inspected and tells the user to verify
+  `--r-library-path` if the result conflicts with their interactive R session.
   With `--dataset E-MTAB-14704`, the preflight resolves the publication
   resource's declared local CEL paths and any locally present SDRF metadata, then
   reports missing raw files as ordinary file-status errors.
@@ -6946,8 +6961,8 @@ Notes:
   Legacy 3' IVT arrays such as HG-U133 / Mouse 430 / Rat 230 families are
   recognized as provisional CDF-backed platforms; their `r_affy_cdf` candidate
   renders an explicit `scripts/probe_regions_affy.R` command when CEL inputs
-  are present, while readiness still depends on local R/`affy`, `limma`, CDF,
-  and annotation resources.
+  are present, while readiness still depends on local R/`affy`, `limma`,
+  `Biobase`, CDF, and annotation resources.
 - `arrays run-probe-region-backend PLAN.json --allow-external-execution`
   (or `arrays run-probe-region-backend --plan PLAN.json --allow-external-execution`)
   reads a persisted `gentle.probe_region_plan.v1`, checks the recorded

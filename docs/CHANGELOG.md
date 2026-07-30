@@ -28,6 +28,11 @@ understand what changed.
   weights on the amino-acid residue-mass model. All routes now add one terminal
   water per chain and reject ambiguous residues instead of silently producing
   a zero-mass estimate.
+- Made probe-region R readiness use the same explicit, repeatable
+  `--r-library-path` contract as the generated oligo/affy helpers. Preflight now
+  batches and bounds direct package/version checks, records effective
+  `.libPaths()`, and names those paths in diagnostics when sandbox, user, and
+  system R installations disagree.
 - Added report-owned biological-context registries for resolved gene sets and
   portable collection-operation reports. Promoter derivation and gene-set
   primer-specificity mapping now require a homogeneous context matching the

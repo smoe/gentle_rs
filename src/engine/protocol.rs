@@ -4667,6 +4667,8 @@ pub struct ProbeRegionRequest {
     pub platform: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub annotation_library_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub r_library_paths: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub condition_column: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4842,6 +4844,8 @@ pub struct ProbeRegionPlan {
     pub annotation_source: ProbeRegionAnnotationSourcePlan,
     pub platform: ProbeRegionPlatformPlan,
     pub dependencies: Vec<ProbeRegionDependencyCheck>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub r_library_paths_checked: Vec<String>,
     pub backend_candidates: Vec<ProbeRegionBackendCandidate>,
     pub contrasts: Vec<ProbeRegionContrastPlan>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4935,6 +4939,10 @@ pub struct ProbeRegionOutputInspection {
     pub r_version: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub package_versions: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub r_library_paths_requested: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub r_library_paths_checked: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub analysis_method_version: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

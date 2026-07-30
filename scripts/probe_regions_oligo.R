@@ -16,6 +16,7 @@ usage <- function(status = 0) {
     "    (--gene SYMBOL | --locus CHR:START-END | --transcript-cluster-id ID | --probeset-id ID ...)\n",
     "    [--metadata samples.tsv] [--sample-column NAME] [--condition-column NAME] [--block-column NAME]\n",
     "    [--platform-package pd.clariom.d.human] [--normalization rma]\n",
+    "    [--r-library-path PATH ...]\n",
     "    [--coordinate-system hg38] [--genome-build GRCh38]\n",
     "    [--target probeset|transcript_cluster] [--contrast A-B] --output DIR [--cache-dir DIR]\n",
     "\n",
@@ -35,6 +36,7 @@ empty_args <- function() {
     block_column = "",
     platform_package = Sys.getenv("GENTLE_PROBE_REGION_PD_PACKAGE", "pd.clariom.d.human"),
     platform_name = Sys.getenv("GENTLE_PROBE_REGION_PLATFORM", "Clariom_D_Human"),
+    r_library_paths = character(),
     coordinate_system = Sys.getenv("GENTLE_PROBE_REGION_COORDINATE_SYSTEM", ""),
     genome_build = Sys.getenv("GENTLE_PROBE_REGION_GENOME_BUILD", ""),
     normalization = "rma",
@@ -94,6 +96,9 @@ parse_args <- function(argv) {
       i <- i + 2
     } else if (flag == "--platform-name") {
       out$platform_name <- take_value(argv, i, flag)
+      i <- i + 2
+    } else if (flag == "--r-library-path" || flag == "--r-lib") {
+      out$r_library_paths <- c(out$r_library_paths, take_value(argv, i, flag))
       i <- i + 2
     } else if (flag == "--coordinate-system") {
       out$coordinate_system <- take_value(argv, i, flag)
@@ -158,15 +163,26 @@ parse_args <- function(argv) {
   out$loci <- unique(out$loci[nzchar(out$loci)])
   out$transcript_cluster_ids <- unique(out$transcript_cluster_ids[nzchar(out$transcript_cluster_ids)])
   out$probeset_ids <- unique(out$probeset_ids[nzchar(out$probeset_ids)])
+  out$r_library_paths <- unique(out$r_library_paths[nzchar(out$r_library_paths)])
   out
 }
 
 args <- parse_args(commandArgs(trailingOnly = TRUE))
 
-workspace_r_lib <- file.path(getwd(), ".r-lib")
-if (dir.exists(workspace_r_lib)) {
-  .libPaths(c(normalizePath(workspace_r_lib), .libPaths()))
+if (length(args$r_library_paths) == 0) {
+  workspace_r_lib <- file.path(getwd(), ".r-lib")
+  if (dir.exists(workspace_r_lib)) {
+    args$r_library_paths <- normalizePath(workspace_r_lib, winslash = "/", mustWork = TRUE)
+  }
 }
+existing_r_library_paths <- args$r_library_paths[dir.exists(args$r_library_paths)]
+if (length(existing_r_library_paths) > 0) {
+  .libPaths(unique(c(
+    normalizePath(existing_r_library_paths, winslash = "/", mustWork = TRUE),
+    .libPaths()
+  )))
+}
+r_library_paths_checked <- .libPaths()
 
 required_packages <- c("oligo", "limma", "Biobase", "DBI", "RSQLite")
 missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
@@ -177,8 +193,12 @@ if (length(missing_packages) > 0) {
   stop(
     "Missing R/Bioconductor package(s): ", paste(unique(missing_packages), collapse = ", "), "\n",
     "Install outside GENtle, for example: if (!requireNamespace('BiocManager', quietly=TRUE)) ",
-    "install.packages('BiocManager'); BiocManager::install(c('oligo','limma','",
-    args$platform_package, "'))",
+    "install.packages('BiocManager'); BiocManager::install(c('",
+    paste(unique(missing_packages), collapse = "','"), "'))\n",
+    "Requested R library paths: ",
+    if (length(args$r_library_paths) == 0) "(none)" else paste(args$r_library_paths, collapse = ", "),
+    "\nEffective R library paths checked: ", paste(r_library_paths_checked, collapse = ", "), "\n",
+    "Check --r-library-path PATH if this differs from the environment where the packages were installed.",
     call. = FALSE
   )
 }
@@ -674,6 +694,8 @@ provenance_lines <- c(
   paste0("  \"command\": ", json_string(paste(commandArgs(FALSE), collapse = " ")), ","),
   paste0("  \"r_version\": ", json_string(R.version.string), ","),
   paste0("  \"package_versions\": ", json_named_string_object(package_versions), ","),
+  paste0("  \"r_library_paths_requested\": ", json_array(args$r_library_paths), ","),
+  paste0("  \"r_library_paths_checked\": ", json_array(.libPaths()), ","),
   paste0("  \"analysis_method_version\": ", json_string(analysis_method_version), ","),
   paste0("  \"platform_package\": ", json_string(args$platform_package), ","),
   paste0("  \"coordinate_system\": ", json_string(args$coordinate_system), ","),

@@ -3316,7 +3316,12 @@ The `Help` menu now includes:
   `arrays probe-regions` as a read-only preflight for arbitrary CEL files or
   publication-resource datasets. The JSON plan reports CEL, metadata,
   condition-contrast, annotation/library, platform, backend-candidate, local
-  dependency, output, and cache-readiness checks. The `r_oligo` candidate
+  dependency, output, and cache-readiness checks. Users can add repeatable
+  `--r-library-path PATH` flags in that shared command surface when packages
+  live in an agent sandbox, user library, or system-specific tree. The plan
+  reports both the requested roots and R's effective library paths; dependency
+  errors repeat those paths and ask the user to verify the flag when GENtle's
+  result differs from an interactive R session. The `r_oligo` candidate
   advertises the generic `scripts/probe_regions_oligo.R` helper and includes
   an advisory command for explicit RMA/CEL requests; the panel can run that
   selected backend only through the shared

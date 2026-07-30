@@ -1517,24 +1517,33 @@ Behavior notes:
   package `pd.clariom.d.human`.
 - `scripts/probe_regions_oligo.R` is the generic R/oligo backend helper for
   `arrays probe-regions`; it consumes explicit CEL paths, optional TSV/CSV/SDRF
-  metadata, selectors, and a platform design package, then writes
+  metadata, selectors, a platform design package, and repeatable
+  `--r-library-path PATH` values, then writes
   chromosome-ordered intensity CSVs plus expression/feature TSVs, limma
   contrast TSVs, provenance JSON, and a normalized matrix manifest. It
   currently supports `--normalization rma`; the Rust preflight emits an advisory
   command only for compatible explicit CEL requests, and users still run it
   explicitly. The helper records `r_version`, exact `package_versions`,
-  `analysis_method_version`, and input fingerprints in provenance.
+  requested and effective R library paths, `analysis_method_version`, and input
+  fingerprints in provenance.
   `arrays inspect-probe-region-output` exposes these fields through the existing
   `gentle.probe_region_output_inspection.v1` contract. GENtle reports missing
-  R/Bioconductor dependencies but never installs them. A direct R invocation
+  R/Bioconductor dependencies but never installs them. The `r_oligo` contract
+  checks the helper's direct packages `oligo`, `limma`, `Biobase`, `DBI`, and
+  `RSQLite`, plus the selected platform package, in one bounded, non-loading R
+  probe and records every detected package version. If an agent-local package
+  installation and a system installation disagree, the diagnostic lists the
+  exact R library paths checked and explicitly asks the user to verify
+  `--r-library-path PATH`. A direct R invocation
   records input path, size, and modification time; execution through
   `arrays run-probe-region-backend` enriches the finalized provenance with
   Rust-computed SHA-256 input fingerprints.
 - `scripts/probe_regions_affy.R` is the matching explicit R/`affy` helper for
   legacy 3' IVT/CDF arrays. It consumes explicit CEL paths, a local CDF package
   or CDF name, optional metadata, optional Bioconductor annotation package, and
-  optional user-supplied probeset coordinate table, then writes the same
-  helper-output contract. A CDF supplies probe grouping for RMA; genome
+  optional user-supplied probeset coordinate table, accepts the same repeatable
+  R-library-path flag, and writes the same helper-output contract including
+  package versions and effective library paths. A CDF supplies probe grouping for RMA; genome
   placement for region displays still requires local annotation coordinates.
 - Affymetrix/Thermo Fisher platform knowledge for `arrays probe-regions` is
   now a resource specification:
@@ -2836,12 +2845,23 @@ Microarray track projection notes:
   size/mtime-derived cache keys, parsed metadata previews, default condition
   contrasts, annotation/library readiness, explicit output/cache path status,
   backend-candidate readiness, normalized platform hints, planned outputs, and
-  local dependency checks. The `r_oligo` backend candidate includes the
+  local dependency checks. Repeatable `--r-library-path PATH` values select
+  additional R library roots for both preflight and the generated helper
+  command. When no value is supplied, an existing workspace `.r-lib` is
+  retained as a backward-compatible default; the resolved path is made explicit
+  in the normalized request. The report separates
+  `request.r_library_paths` from `r_library_paths_checked`, which also includes
+  R's effective `.libPaths()`. Command and package probes are bounded to avoid a
+  hung `Rscript` blocking preflight; `timed_out`, `probe_failed`, `missing`, and
+  `unchecked` remain distinct dependency states. The `r_oligo` backend candidate includes the
   `scripts/probe_regions_oligo.R` helper path and, for explicit RMA/CEL
   requests, a suggested command. Legacy 3' IVT/CDF registry entries expose an
   `r_affy_cdf` candidate with the `scripts/probe_regions_affy.R` helper path;
-  readiness depends on local R/`affy`, `limma`, CDF, CEL, and annotation
-  resources. The `affymetrix_power_tools` candidate
+  readiness depends on local R/`affy`, `limma`, `Biobase`, CDF, CEL, and
+  annotation resources. Package probes use `system.file()` and
+  `packageVersion()` without attaching namespaces, while the helper remains
+  authoritative for executable runtime loading. The
+  `affymetrix_power_tools` candidate
   recognizes user-supplied APT library directories/files containing at least
   PGF and CLF files, includes an optional MPS/meta-probesets file when present,
   and reports an explicit `apt-probeset-summarize -a rma-sketch ...` command
