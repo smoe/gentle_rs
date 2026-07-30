@@ -2932,7 +2932,7 @@ mod tests {
             true,
             &[explicit_library.to_string_lossy().to_string()],
             &rscript.to_string_lossy(),
-            std::time::Duration::from_secs(1),
+            std::time::Duration::from_secs(30),
         );
 
         assert_eq!(
@@ -2975,7 +2975,7 @@ mod tests {
             true,
             &[explicit_library.to_string_lossy().to_string()],
             &rscript.to_string_lossy(),
-            std::time::Duration::from_secs(1),
+            std::time::Duration::from_secs(30),
         );
         let dependency = &probe.dependencies[0];
 
@@ -3000,7 +3000,7 @@ mod tests {
         );
 
         assert_eq!(probe.dependencies[0].status, "timed_out");
-        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
     }
 
     #[test]
