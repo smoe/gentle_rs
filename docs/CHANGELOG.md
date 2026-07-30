@@ -27,7 +27,8 @@ understand what changed.
 - Unified protein-gel, peptide-gel, 2D-gel, and isoform-evidence molecular
   weights on the amino-acid residue-mass model. All routes now add one terminal
   water per chain and reject ambiguous residues instead of silently producing
-  a zero-mass estimate.
+  a zero-mass estimate; gel errors consistently identify empty sequences or
+  list the ambiguous/unsupported residues.
 - Made probe-region R readiness use the same explicit, repeatable
   `--r-library-path` contract as the generated oligo/affy helpers. Preflight now
   batches and bounds direct package/version checks, records effective

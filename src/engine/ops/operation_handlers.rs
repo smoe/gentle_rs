@@ -2123,6 +2123,36 @@ impl GentleEngine {
             .map(|value| value as f32)
     }
 
+    fn require_protein_molecular_weight_kda(
+        sequence: &str,
+        subject: &str,
+    ) -> Result<f32, EngineError> {
+        let estimate = AMINO_ACIDS.protein_molecular_weight_kda(sequence);
+        if let Some(value) = estimate.molecular_weight_kda {
+            return Ok(value as f32);
+        }
+        let reason = if !estimate.unknown_residues.is_empty() {
+            format!(
+                "ambiguous or unsupported amino-acid residue(s): {}",
+                estimate
+                    .unknown_residues
+                    .iter()
+                    .map(char::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        } else if estimate.residue_count == 0 {
+            "sequence contains no supported amino-acid residues".to_string()
+        } else {
+            "molecular-weight estimate is unavailable".to_string()
+        };
+        Err(EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not estimate molecular weight for {subject}: {reason}"),
+            cause_chain: vec![],
+        })
+    }
+
     fn estimate_protein_isoelectric_point(sequence: &str) -> Option<f32> {
         AMINO_ACIDS.protein_isoelectric_point(sequence)
     }
@@ -5119,16 +5149,10 @@ impl GentleEngine {
                 });
             }
             let sequence = protein.get_forward_string();
-            let molecular_weight_kda = Self::estimate_protein_molecular_weight_kda(&sequence)
-                .ok_or_else(|| EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "Could not estimate molecular weight for protein '{}'",
-                        row.protein_seq_id
-                    ),
-
-                    cause_chain: vec![],
-                })?;
+            let molecular_weight_kda = Self::require_protein_molecular_weight_kda(
+                &sequence,
+                &format!("protein '{}'", row.protein_seq_id),
+            )?;
             let (name, detail) = Self::protein_derivation_gel_label(row, protein);
             samples.push(ProteinGelSample {
                 name,
@@ -27326,16 +27350,10 @@ impl GentleEngine {
                             } else {
                                 peptide.sequence.clone()
                             };
-                            let molecular_weight_kda =
-                                Self::estimate_protein_molecular_weight_kda(&peptide.sequence)
-                                    .ok_or_else(|| EngineError {
-                                        code: ErrorCode::InvalidInput,
-                                        message: format!(
-                                            "Could not estimate molecular weight for peptide {}",
-                                            peptide.peptide_index
-                                        ),
-                                        cause_chain: vec![],
-                                    })?;
+                            let molecular_weight_kda = Self::require_protein_molecular_weight_kda(
+                                &peptide.sequence,
+                                &format!("peptide {}", peptide.peptide_index),
+                            )?;
                             Ok(ProteinGelSample {
                                 name: format!("p{}", peptide.peptide_index),
                                 detail: Some(format!(
@@ -27435,18 +27453,10 @@ impl GentleEngine {
                             });
                         }
                         let sequence = protein.get_forward_string();
-                        let molecular_weight_kda = Self::estimate_protein_molecular_weight_kda(
+                        let molecular_weight_kda = Self::require_protein_molecular_weight_kda(
                             &sequence,
-                        )
-                        .ok_or_else(|| EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "Could not estimate molecular weight for protein '{}'",
-                                row.protein_seq_id
-                            ),
-
-                            cause_chain: vec![],
-                        })?;
+                            &format!("protein '{}'", row.protein_seq_id),
+                        )?;
                         let isoelectric_point = Self::estimate_protein_isoelectric_point(&sequence)
                             .filter(|pi| pi.is_finite() && *pi > 0.0)
                             .ok_or_else(|| EngineError {
@@ -38703,6 +38713,20 @@ mod molecular_weight_tests {
         assert_eq!(
             GentleEngine::estimate_protein_molecular_weight_kda("MAX"),
             None
+        );
+        let ambiguous =
+            GentleEngine::require_protein_molecular_weight_kda("MXZ", "protein 'demo'")
+                .expect_err("ambiguous protein mass should be rejected");
+        assert_eq!(ambiguous.code, ErrorCode::InvalidInput);
+        assert_eq!(
+            ambiguous.message,
+            "Could not estimate molecular weight for protein 'demo': ambiguous or unsupported amino-acid residue(s): X, Z"
+        );
+        let empty = GentleEngine::require_protein_molecular_weight_kda("***", "peptide 2")
+            .expect_err("empty peptide mass should be rejected");
+        assert_eq!(
+            empty.message,
+            "Could not estimate molecular weight for peptide 2: sequence contains no supported amino-acid residues"
         );
     }
 }
