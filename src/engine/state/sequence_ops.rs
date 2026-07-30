@@ -5947,6 +5947,257 @@ impl GentleEngine {
         record
     }
 
+    fn primer_design_score_term(
+        term: &str,
+        raw_value: f64,
+        weight: f64,
+        detail: impl Into<String>,
+    ) -> PrimerDesignScoreTerm {
+        PrimerDesignScoreTerm {
+            term: term.to_string(),
+            raw_value,
+            weight,
+            contribution: raw_value * weight,
+            detail: detail.into(),
+        }
+    }
+
+    fn primer_design_score_terms(
+        forward: &PrimerDesignPrimerRecord,
+        reverse: &PrimerDesignPrimerRecord,
+        forward_metrics: PrimerHeuristicMetrics,
+        reverse_metrics: PrimerHeuristicMetrics,
+        dimer_metrics: PrimerPairDimerMetrics,
+        target_amplicon_bp: usize,
+        amplicon_length_bp: usize,
+        tm_delta_c: f64,
+    ) -> Vec<PrimerDesignScoreTerm> {
+        let primer_length_preference_points =
+            Self::preferred_primer_length_penalty(forward.anneal_length_bp)
+                + Self::preferred_primer_length_penalty(reverse.anneal_length_bp);
+        let extra_anneal_hits =
+            forward.anneal_hits.saturating_sub(1) + reverse.anneal_hits.saturating_sub(1);
+        let homopolymer_excess_bp = forward_metrics
+            .longest_homopolymer_run_bp
+            .saturating_sub(PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP)
+            + reverse_metrics
+                .longest_homopolymer_run_bp
+                .saturating_sub(PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP);
+        let self_complementarity_excess_bp = forward_metrics
+            .self_complementary_run_bp
+            .saturating_sub(PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP)
+            + reverse_metrics
+                .self_complementary_run_bp
+                .saturating_sub(PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP);
+        let pair_complementarity_excess_bp = dimer_metrics
+            .max_complementary_run_bp
+            .saturating_sub(PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP);
+        let pair_3prime_complementarity_excess_bp = dimer_metrics
+            .max_3prime_complementary_run_bp
+            .saturating_sub(PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP);
+        let gc_clamp_count = usize::from(forward_metrics.three_prime_gc_clamp)
+            + usize::from(reverse_metrics.three_prime_gc_clamp);
+
+        vec![
+            Self::primer_design_score_term(
+                "baseline",
+                1.0,
+                1000.0,
+                "Fixed baseline for the GENtle primer-pair ranking model.",
+            ),
+            Self::primer_design_score_term(
+                "tm_delta",
+                tm_delta_c,
+                -20.0,
+                "Absolute forward/reverse melting-temperature difference in degrees Celsius.",
+            ),
+            Self::primer_design_score_term(
+                "amplicon_length_fit",
+                amplicon_length_bp.abs_diff(target_amplicon_bp) as f64,
+                -0.1,
+                format!(
+                    "Absolute distance from the configured midpoint target of {target_amplicon_bp} bp."
+                ),
+            ),
+            Self::primer_design_score_term(
+                "extra_anneal_hits",
+                extra_anneal_hits as f64,
+                -10.0,
+                "Template-local annealing hits beyond one per primer.",
+            ),
+            Self::primer_design_score_term(
+                "primer_length_preference",
+                primer_length_preference_points,
+                -6.0,
+                format!(
+                    "Length-preference points outside {PRIMER_PREFERRED_MIN_LENGTH_BP}..={PRIMER_PREFERRED_MAX_LENGTH_BP} annealing bases."
+                ),
+            ),
+            Self::primer_design_score_term(
+                "homopolymer_excess",
+                homopolymer_excess_bp as f64,
+                -10.0,
+                format!(
+                    "Combined homopolymer-run excess above {PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP} bp."
+                ),
+            ),
+            Self::primer_design_score_term(
+                "self_complementarity_excess",
+                self_complementarity_excess_bp as f64,
+                -12.0,
+                format!(
+                    "Combined self-complementary-run excess above {PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP} bp."
+                ),
+            ),
+            Self::primer_design_score_term(
+                "pair_complementarity_excess",
+                pair_complementarity_excess_bp as f64,
+                -20.0,
+                format!(
+                    "Pair-complementary-run excess above {PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP} bp."
+                ),
+            ),
+            Self::primer_design_score_term(
+                "pair_three_prime_complementarity_excess",
+                pair_3prime_complementarity_excess_bp as f64,
+                -35.0,
+                format!(
+                    "Pair 3-prime complementary-run excess above {PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP} bp."
+                ),
+            ),
+            Self::primer_design_score_term(
+                "three_prime_gc_clamp_balance",
+                gc_clamp_count as f64 - 1.0,
+                16.0,
+                "Balance around one 3-prime GC clamp across the two primers.",
+            ),
+        ]
+    }
+
+    fn primer_design_near_miss_order(
+        left: &PrimerDesignRejectedCandidate,
+        right: &PrimerDesignRejectedCandidate,
+    ) -> Ordering {
+        match (left.score, right.score) {
+            (Some(left_score), Some(right_score)) => right_score.total_cmp(&left_score),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        }
+        .then(left.forward.start_0based.cmp(&right.forward.start_0based))
+        .then(left.reverse.start_0based.cmp(&right.reverse.start_0based))
+        .then(
+            left.amplicon_end_0based_exclusive
+                .saturating_sub(left.amplicon_start_0based)
+                .cmp(
+                    &right
+                        .amplicon_end_0based_exclusive
+                        .saturating_sub(right.amplicon_start_0based),
+                ),
+        )
+        .then(left.forward.sequence.cmp(&right.forward.sequence))
+        .then(left.reverse.sequence.cmp(&right.reverse.sequence))
+        .then(left.reasons.cmp(&right.reasons))
+        .then(left.failed_checks.cmp(&right.failed_checks))
+    }
+
+    fn retain_primer_design_near_miss(
+        collector: &mut PrimerDesignNearMissCollector,
+        candidate: PrimerDesignRejectedCandidate,
+    ) {
+        if collector.effective_limit == 0 {
+            return;
+        }
+        collector.eligible_candidate_count = collector.eligible_candidate_count.saturating_add(1);
+        if collector.rows.len() < collector.effective_limit {
+            collector.rows.push(candidate);
+            return;
+        }
+
+        let mut worst_index = 0usize;
+        for index in 1..collector.rows.len() {
+            collector.candidate_comparison_count =
+                collector.candidate_comparison_count.saturating_add(1);
+            if Self::primer_design_near_miss_order(
+                &collector.rows[index],
+                &collector.rows[worst_index],
+            ) == Ordering::Greater
+            {
+                worst_index = index;
+            }
+        }
+        collector.candidate_comparison_count =
+            collector.candidate_comparison_count.saturating_add(1);
+        if Self::primer_design_near_miss_order(&candidate, &collector.rows[worst_index])
+            == Ordering::Less
+        {
+            collector.rows[worst_index] = candidate;
+        }
+    }
+
+    fn finish_primer_design_near_miss_capture(
+        mut collector: PrimerDesignNearMissCollector,
+        status: PrimerPairCharacterizationStatus,
+        reason: impl Into<String>,
+    ) -> (
+        Vec<PrimerDesignRejectedCandidate>,
+        PrimerDesignNearMissCapture,
+    ) {
+        collector.rows.sort_by(Self::primer_design_near_miss_order);
+        let retained_candidate_count = collector.rows.len();
+        let capture = PrimerDesignNearMissCapture {
+            status,
+            scope: "evaluated_pair_candidates".to_string(),
+            reason: reason.into(),
+            requested_limit: collector.requested_limit,
+            effective_limit: collector.effective_limit,
+            eligible_candidate_count: collector.eligible_candidate_count,
+            retained_candidate_count,
+            omitted_candidate_count: collector
+                .eligible_candidate_count
+                .saturating_sub(retained_candidate_count),
+            candidate_comparison_count: collector.candidate_comparison_count,
+        };
+        (collector.rows, capture)
+    }
+
+    fn primer_record_from_design_candidate(
+        candidate: &PrimerDesignCandidate,
+    ) -> PrimerDesignPrimerRecord {
+        Self::annotate_primer_record_heuristics(
+            PrimerDesignPrimerRecord {
+                sequence: candidate.sequence.clone(),
+                start_0based: candidate.start_0based,
+                end_0based_exclusive: candidate.end_0based_exclusive,
+                tm_c: candidate.tm_c,
+                gc_fraction: candidate.gc_fraction,
+                anneal_hits: candidate.anneal_hits,
+                ..PrimerDesignPrimerRecord::default()
+            },
+            candidate
+                .end_0based_exclusive
+                .saturating_sub(candidate.start_0based),
+        )
+    }
+
+    fn rejected_primer_design_candidate_from_pair(
+        pair: &PrimerDesignPairRecord,
+        reason: PrimerDesignRejectionReason,
+        failed_checks: Vec<String>,
+        detail: impl Into<String>,
+    ) -> PrimerDesignRejectedCandidate {
+        PrimerDesignRejectedCandidate {
+            forward: pair.forward.clone(),
+            reverse: pair.reverse.clone(),
+            amplicon_start_0based: pair.amplicon_start_0based,
+            amplicon_end_0based_exclusive: pair.amplicon_end_0based_exclusive,
+            score: Some(pair.score),
+            reasons: vec![reason],
+            failed_checks,
+            detail: detail.into(),
+        }
+    }
+
     pub(super) fn sort_and_rank_primer_design_pairs(
         pairs: &mut Vec<PrimerDesignPairRecord>,
         max_pairs: usize,
@@ -6028,6 +6279,25 @@ impl GentleEngine {
             - secondary_penalty
             - dimer_penalty
             + gc_clamp_bonus;
+        let score_terms = Self::primer_design_score_terms(
+            &forward,
+            &reverse,
+            forward_metrics,
+            reverse_metrics,
+            dimer_metrics,
+            target_amplicon_bp,
+            amplicon_length_bp,
+            tm_delta_c,
+        );
+        let decomposed_score = score_terms
+            .iter()
+            .map(|term| term.contribution)
+            .sum::<f64>();
+        debug_assert!(
+            (score - decomposed_score).abs()
+                <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * score.abs().max(1.0),
+            "primer-design score decomposition drifted from the ranking score"
+        );
         let forward_secondary_ok = forward_metrics.longest_homopolymer_run_bp
             <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
             && forward_metrics.self_complementary_run_bp
@@ -6043,6 +6313,7 @@ impl GentleEngine {
         Some(PrimerDesignPairRecord {
             rank: 0,
             score,
+            score_terms,
             forward,
             reverse,
             amplicon_start_0based: amplicon_start,
@@ -6127,40 +6398,65 @@ impl GentleEngine {
         roi_end_0based: usize,
         constraints: &NormalizedPrimerPairConstraints,
     ) -> bool {
+        Self::primer_pair_constraint_failures(
+            template,
+            pair,
+            roi_start_0based,
+            roi_end_0based,
+            constraints,
+        )
+        .is_empty()
+    }
+
+    fn primer_pair_constraint_failures(
+        template: &[u8],
+        pair: &PrimerDesignPairRecord,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        constraints: &NormalizedPrimerPairConstraints,
+    ) -> Vec<String> {
+        let mut failures = Vec::new();
         if constraints.require_roi_flanking {
             let flanking = pair.forward.end_0based_exclusive <= roi_start_0based
                 && pair.reverse.start_0based >= roi_end_0based;
             if !flanking {
-                return false;
+                failures.push("roi_not_flanked".to_string());
             }
         }
         if let Some(expected_start) = constraints.fixed_amplicon_start_0based
             && pair.amplicon_start_0based != expected_start
         {
-            return false;
+            failures.push(format!(
+                "fixed_amplicon_start_mismatch:expected={expected_start}:observed={}",
+                pair.amplicon_start_0based
+            ));
         }
         if let Some(expected_end) = constraints.fixed_amplicon_end_0based_exclusive
             && pair.amplicon_end_0based_exclusive != expected_end
         {
-            return false;
+            failures.push(format!(
+                "fixed_amplicon_end_mismatch:expected={expected_end}:observed={}",
+                pair.amplicon_end_0based_exclusive
+            ));
         }
         if pair.amplicon_end_0based_exclusive > template.len()
             || pair.amplicon_start_0based >= pair.amplicon_end_0based_exclusive
         {
-            return false;
+            failures.push("invalid_amplicon_geometry".to_string());
+            return failures;
         }
         let amplicon = &template[pair.amplicon_start_0based..pair.amplicon_end_0based_exclusive];
         for motif in &constraints.required_amplicon_motifs {
             if !Self::contains_iupac_pattern(amplicon, motif.as_bytes()) {
-                return false;
+                failures.push(format!("required_amplicon_motif_absent:{motif}"));
             }
         }
         for motif in &constraints.forbidden_amplicon_motifs {
             if Self::contains_iupac_pattern(amplicon, motif.as_bytes()) {
-                return false;
+                failures.push(format!("forbidden_amplicon_motif_present:{motif}"));
             }
         }
-        true
+        failures
     }
 
     pub(super) fn primer_pair_heuristic_advisories(pair: &PrimerDesignPairRecord) -> Vec<String> {
@@ -6300,13 +6596,94 @@ impl GentleEngine {
         max_amplicon_bp: usize,
         max_tm_delta_c: f64,
         max_pairs: usize,
-        candidate_pair_filter: Option<
-            &dyn Fn(&PrimerDesignCandidate, &PrimerDesignCandidate) -> bool,
-        >,
+        candidate_pair_filter: Option<PrimerDesignCandidatePairFilter<'_>>,
         progress_context: Option<&PrimerDesignProgressContext<'_>>,
         on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
     ) -> Result<(Vec<PrimerDesignPairRecord>, PrimerDesignRejectionSummary), EngineError> {
+        let outcome = Self::design_primer_pairs_internal_core_with_filter_and_capture(
+            template_bytes,
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            forward_sequence_constraints,
+            reverse,
+            reverse_sequence_constraints,
+            pair_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_pairs,
+            candidate_pair_filter,
+            0,
+            progress_context,
+            on_progress,
+        )?;
+        Ok((outcome.pairs, outcome.rejection_summary))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn design_primer_pairs_internal_core_with_capture(
+        template_bytes: &[u8],
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+        near_miss_limit: usize,
+        progress_context: Option<&PrimerDesignProgressContext<'_>>,
+        on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
+    ) -> Result<PrimerDesignPairSearchOutcome, EngineError> {
+        Self::design_primer_pairs_internal_core_with_filter_and_capture(
+            template_bytes,
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            forward_sequence_constraints,
+            reverse,
+            reverse_sequence_constraints,
+            pair_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_pairs,
+            None,
+            near_miss_limit,
+            progress_context,
+            on_progress,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn design_primer_pairs_internal_core_with_filter_and_capture(
+        template_bytes: &[u8],
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+        candidate_pair_filter: Option<PrimerDesignCandidatePairFilter<'_>>,
+        near_miss_limit: usize,
+        progress_context: Option<&PrimerDesignProgressContext<'_>>,
+        on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
+    ) -> Result<PrimerDesignPairSearchOutcome, EngineError> {
         let mut rejection_summary = PrimerDesignRejectionSummary::default();
+        let mut near_miss_collector = PrimerDesignNearMissCollector {
+            requested_limit: near_miss_limit,
+            effective_limit: near_miss_limit.min(PRIMER_DESIGN_MAX_REJECTED_NEAR_MISS_LIMIT),
+            ..PrimerDesignNearMissCollector::default()
+        };
         let forward_candidates = Self::generate_primer_side_candidates(
             template_bytes,
             forward,
@@ -6406,15 +6783,51 @@ impl GentleEngine {
                 }
                 pair_evaluations = pair_evaluations.saturating_add(1);
                 let amplicon_length_bp = rev.end_0based_exclusive.saturating_sub(fwd.start_0based);
-                if rev.start_0based < fwd.end_0based_exclusive
-                    || amplicon_length_bp < min_amplicon_bp
-                    || amplicon_length_bp > max_amplicon_bp
-                    || fwd.start_0based > roi_start_0based
-                    || rev.end_0based_exclusive < roi_end_0based
-                    || (fwd.tm_c - rev.tm_c).abs() > max_tm_delta_c
+                let mut geometry_failures = Vec::new();
+                if rev.start_0based < fwd.end_0based_exclusive {
+                    geometry_failures.push("primer_footprints_overlap".to_string());
+                }
+                if amplicon_length_bp < min_amplicon_bp {
+                    geometry_failures.push(format!(
+                        "amplicon_below_min:observed={amplicon_length_bp}:min={min_amplicon_bp}"
+                    ));
+                }
+                if amplicon_length_bp > max_amplicon_bp {
+                    geometry_failures.push(format!(
+                        "amplicon_above_max:observed={amplicon_length_bp}:max={max_amplicon_bp}"
+                    ));
+                }
+                if fwd.start_0based > roi_start_0based || rev.end_0based_exclusive < roi_end_0based
                 {
+                    geometry_failures.push("roi_not_covered".to_string());
+                }
+                let tm_delta_c = (fwd.tm_c - rev.tm_c).abs();
+                if tm_delta_c > max_tm_delta_c {
+                    geometry_failures.push(format!(
+                        "tm_delta_above_max:observed={tm_delta_c:.6}:max={max_tm_delta_c:.6}"
+                    ));
+                }
+                if !geometry_failures.is_empty() {
                     rejection_summary.amplicon_or_roi_failure =
                         rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                    if near_miss_collector.effective_limit > 0 {
+                        Self::retain_primer_design_near_miss(
+                            &mut near_miss_collector,
+                            PrimerDesignRejectedCandidate {
+                                forward: Self::primer_record_from_design_candidate(fwd),
+                                reverse: Self::primer_record_from_design_candidate(rev),
+                                amplicon_start_0based: fwd.start_0based,
+                                amplicon_end_0based_exclusive: rev.end_0based_exclusive,
+                                score: None,
+                                reasons: vec![PrimerDesignRejectionReason::AmpliconOrRoiFailure],
+                                detail: format!(
+                                    "Evaluated pair failed geometry or ROI requirements: {}.",
+                                    geometry_failures.join(", ")
+                                ),
+                                failed_checks: geometry_failures,
+                            },
+                        );
+                    }
                     continue;
                 }
                 let Some(pair) = Self::build_primer_design_pair_record(
@@ -6445,6 +6858,26 @@ impl GentleEngine {
                 ) else {
                     rejection_summary.amplicon_or_roi_failure =
                         rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                    if near_miss_collector.effective_limit > 0 {
+                        let failed_checks = vec!["pair_record_unavailable".to_string()];
+                        Self::retain_primer_design_near_miss(
+                            &mut near_miss_collector,
+                            PrimerDesignRejectedCandidate {
+                                forward: Self::primer_record_from_design_candidate(fwd),
+                                reverse: Self::primer_record_from_design_candidate(rev),
+                                amplicon_start_0based: fwd.start_0based,
+                                amplicon_end_0based_exclusive: rev.end_0based_exclusive,
+                                score: None,
+                                reasons: vec![
+                                    PrimerDesignRejectionReason::AmpliconOrRoiFailure,
+                                ],
+                                failed_checks,
+                                detail:
+                                    "Evaluated pair could not form non-overlapping amplicon geometry."
+                                        .to_string(),
+                            },
+                        );
+                    }
                     if pair_evaluations.is_multiple_of(pair_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
@@ -6476,6 +6909,25 @@ impl GentleEngine {
                 {
                     rejection_summary.amplicon_or_roi_failure =
                         rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                    let mut failed_checks = Vec::new();
+                    if !pair.rule_flags.amplicon_size_in_range {
+                        failed_checks.push("amplicon_size_out_of_range".to_string());
+                    }
+                    if !pair.rule_flags.roi_covered {
+                        failed_checks.push("roi_not_covered".to_string());
+                    }
+                    if !pair.rule_flags.tm_delta_in_range {
+                        failed_checks.push("tm_delta_out_of_range".to_string());
+                    }
+                    Self::retain_primer_design_near_miss(
+                        &mut near_miss_collector,
+                        Self::rejected_primer_design_candidate_from_pair(
+                            &pair,
+                            PrimerDesignRejectionReason::AmpliconOrRoiFailure,
+                            failed_checks,
+                            "Evaluated pair failed one or more amplicon, ROI, or melting-temperature requirements.",
+                        ),
+                    );
                     if pair_evaluations.is_multiple_of(pair_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
@@ -6501,15 +6953,28 @@ impl GentleEngine {
                     }
                     continue;
                 }
-                if !Self::primer_pair_matches_constraints(
+                let pair_constraint_failures = Self::primer_pair_constraint_failures(
                     template_bytes,
                     &pair,
                     roi_start_0based,
                     roi_end_0based,
                     pair_constraints,
-                ) {
+                );
+                if !pair_constraint_failures.is_empty() {
                     rejection_summary.pair_constraint_failure =
                         rejection_summary.pair_constraint_failure.saturating_add(1);
+                    Self::retain_primer_design_near_miss(
+                        &mut near_miss_collector,
+                        Self::rejected_primer_design_candidate_from_pair(
+                            &pair,
+                            PrimerDesignRejectionReason::PairConstraintFailure,
+                            pair_constraint_failures.clone(),
+                            format!(
+                                "Evaluated pair failed configured pair constraints: {}.",
+                                pair_constraint_failures.join(", ")
+                            ),
+                        ),
+                    );
                     if pair_evaluations.is_multiple_of(pair_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
@@ -6595,7 +7060,37 @@ impl GentleEngine {
             None,
             None,
         )?;
-        Ok((pairs, rejection_summary))
+        let capture_status = if near_miss_collector.effective_limit == 0 {
+            PrimerPairCharacterizationStatus::NotRun
+        } else if pair_evaluation_limited {
+            PrimerPairCharacterizationStatus::Incomplete
+        } else {
+            PrimerPairCharacterizationStatus::Pass
+        };
+        let capture_reason = if near_miss_collector.effective_limit == 0 {
+            "Rejected pair-level near-miss retention was disabled by the design request."
+                .to_string()
+        } else if pair_evaluation_limited {
+            format!(
+                "Retained a bounded deterministic subset of evaluated pair-level rejections, but {} pair combinations were not evaluated; single-primer rejection classes remain aggregate-only.",
+                rejection_summary.pair_evaluation_limit_skipped
+            )
+        } else {
+            "Retained a bounded deterministic subset of evaluated pair-level rejections; single-primer rejection classes remain aggregate-only."
+                .to_string()
+        };
+        let (rejected_near_misses, near_miss_capture) =
+            Self::finish_primer_design_near_miss_capture(
+                near_miss_collector,
+                capture_status,
+                capture_reason,
+            );
+        Ok(PrimerDesignPairSearchOutcome {
+            pairs,
+            rejection_summary,
+            rejected_near_misses,
+            near_miss_capture,
+        })
     }
 
     #[allow(dead_code)]
@@ -7202,6 +7697,103 @@ impl GentleEngine {
         ),
         EngineError,
     > {
+        let (outcome, version, explain, input) =
+            Self::design_primer_pairs_primer3_with_options_and_capture(
+                template_seq,
+                roi_start_0based,
+                roi_end_0based,
+                forward,
+                forward_sequence_constraints,
+                reverse,
+                reverse_sequence_constraints,
+                pair_constraints,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                max_tm_delta_c,
+                max_pairs,
+                primer3_executable,
+                options,
+                0,
+            )?;
+        Ok((
+            outcome.pairs,
+            outcome.rejection_summary,
+            version,
+            explain,
+            input,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn design_primer_pairs_primer3_with_capture(
+        template_seq: &str,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+        primer3_executable: &str,
+        near_miss_limit: usize,
+    ) -> Result<
+        (
+            PrimerDesignPairSearchOutcome,
+            Option<String>,
+            Option<String>,
+            String,
+        ),
+        EngineError,
+    > {
+        Self::design_primer_pairs_primer3_with_options_and_capture(
+            template_seq,
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            forward_sequence_constraints,
+            reverse,
+            reverse_sequence_constraints,
+            pair_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_pairs,
+            primer3_executable,
+            &Primer3PairDesignOptions::default(),
+            near_miss_limit,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn design_primer_pairs_primer3_with_options_and_capture(
+        template_seq: &str,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+        primer3_executable: &str,
+        options: &Primer3PairDesignOptions,
+        near_miss_limit: usize,
+    ) -> Result<
+        (
+            PrimerDesignPairSearchOutcome,
+            Option<String>,
+            Option<String>,
+            String,
+        ),
+        EngineError,
+    > {
         let template_bytes = template_seq.as_bytes();
         let template_len = template_bytes.len();
         let target_len = roi_end_0based.saturating_sub(roi_start_0based);
@@ -7323,6 +7915,11 @@ impl GentleEngine {
             .and_then(|raw| raw.parse::<usize>().ok())
             .unwrap_or(0);
         let mut rejection_summary = PrimerDesignRejectionSummary::default();
+        let mut near_miss_collector = PrimerDesignNearMissCollector {
+            requested_limit: near_miss_limit,
+            effective_limit: near_miss_limit.min(PRIMER_DESIGN_MAX_REJECTED_NEAR_MISS_LIMIT),
+            ..PrimerDesignNearMissCollector::default()
+        };
         let mut pairs: Vec<PrimerDesignPairRecord> = vec![];
         let target_amplicon_bp = (min_amplicon_bp + max_amplicon_bp) / 2;
 
@@ -7514,25 +8111,79 @@ impl GentleEngine {
             {
                 rejection_summary.amplicon_or_roi_failure =
                     rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                let mut failed_checks = Vec::new();
+                if !pair.rule_flags.amplicon_size_in_range {
+                    failed_checks.push("amplicon_size_out_of_range".to_string());
+                }
+                if !pair.rule_flags.roi_covered {
+                    failed_checks.push("roi_not_covered".to_string());
+                }
+                if !pair.rule_flags.tm_delta_in_range {
+                    failed_checks.push("tm_delta_out_of_range".to_string());
+                }
+                Self::retain_primer_design_near_miss(
+                    &mut near_miss_collector,
+                    Self::rejected_primer_design_candidate_from_pair(
+                        &pair,
+                        PrimerDesignRejectionReason::AmpliconOrRoiFailure,
+                        failed_checks,
+                        "Primer3-returned pair failed GENtle amplicon, ROI, or melting-temperature requirements.",
+                    ),
+                );
                 continue;
             }
-            if !Self::primer_pair_matches_constraints(
+            let pair_constraint_failures = Self::primer_pair_constraint_failures(
                 template_bytes,
                 &pair,
                 roi_start_0based,
                 roi_end_0based,
                 pair_constraints,
-            ) {
+            );
+            if !pair_constraint_failures.is_empty() {
                 rejection_summary.pair_constraint_failure =
                     rejection_summary.pair_constraint_failure.saturating_add(1);
+                Self::retain_primer_design_near_miss(
+                    &mut near_miss_collector,
+                    Self::rejected_primer_design_candidate_from_pair(
+                        &pair,
+                        PrimerDesignRejectionReason::PairConstraintFailure,
+                        pair_constraint_failures.clone(),
+                        format!(
+                            "Primer3-returned pair failed configured GENtle pair constraints: {}.",
+                            pair_constraint_failures.join(", ")
+                        ),
+                    ),
+                );
                 continue;
             }
             pairs.push(pair);
         }
         Self::sort_and_rank_primer_design_pairs(&mut pairs, max_pairs);
+        let capture_status = if near_miss_collector.effective_limit == 0 {
+            PrimerPairCharacterizationStatus::NotRun
+        } else {
+            PrimerPairCharacterizationStatus::Incomplete
+        };
+        let capture_reason = if near_miss_collector.effective_limit == 0 {
+            "Rejected pair-level near-miss retention was disabled by the design request."
+                .to_string()
+        } else {
+            "Retained a bounded deterministic subset of Primer3-returned pairs rejected by GENtle post-filters; Primer3-internal and single-primer rejections remain aggregate-only."
+                .to_string()
+        };
+        let (rejected_near_misses, near_miss_capture) =
+            Self::finish_primer_design_near_miss_capture(
+                near_miss_collector,
+                capture_status,
+                capture_reason,
+            );
         Ok((
-            pairs,
-            rejection_summary,
+            PrimerDesignPairSearchOutcome {
+                pairs,
+                rejection_summary,
+                rejected_near_misses,
+                near_miss_capture,
+            },
             Self::probe_primer3_version(primer3_executable),
             primer3_explain,
             input,
@@ -7692,5 +8343,126 @@ mod tests {
         assert!(description.contains("500"));
         assert!(description.contains("high-fidelity"));
         assert!(description.contains("fall back"));
+    }
+
+    #[test]
+    fn primer_pair_score_terms_reconstruct_the_existing_rank_score() {
+        let pair = GentleEngine::build_primer_design_pair_record(
+            PrimerDesignPrimerRecord {
+                sequence: "ATGCGTACGTAGCTAGCTAA".to_string(),
+                start_0based: 4,
+                end_0based_exclusive: 24,
+                tm_c: 61.2,
+                gc_fraction: 0.45,
+                anneal_hits: 1,
+                ..PrimerDesignPrimerRecord::default()
+            },
+            PrimerDesignPrimerRecord {
+                sequence: "CGATCGTACGATCGTAGCTA".to_string(),
+                start_0based: 82,
+                end_0based_exclusive: 102,
+                tm_c: 60.1,
+                gc_fraction: 0.5,
+                anneal_hits: 2,
+                ..PrimerDesignPrimerRecord::default()
+            },
+            40,
+            70,
+            60,
+            120,
+            4.0,
+            90,
+        )
+        .expect("valid pair");
+
+        assert_eq!(pair.score_terms.first().unwrap().term, "baseline");
+        assert!(pair.score_terms.iter().all(|term| {
+            (term.contribution - term.raw_value * term.weight).abs()
+                <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * term.contribution.abs().max(1.0)
+        }));
+        let reconstructed = pair
+            .score_terms
+            .iter()
+            .map(|term| term.contribution)
+            .sum::<f64>();
+        assert!(
+            (pair.score - reconstructed).abs()
+                <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * pair.score.abs().max(1.0)
+        );
+    }
+
+    #[test]
+    fn rejected_near_miss_retention_is_bounded_and_input_order_independent() {
+        fn candidate(score: f64, start: usize) -> PrimerDesignRejectedCandidate {
+            PrimerDesignRejectedCandidate {
+                forward: PrimerDesignPrimerRecord {
+                    sequence: format!("F{start}"),
+                    start_0based: start,
+                    end_0based_exclusive: start + 20,
+                    ..PrimerDesignPrimerRecord::default()
+                },
+                reverse: PrimerDesignPrimerRecord {
+                    sequence: format!("R{start}"),
+                    start_0based: start + 80,
+                    end_0based_exclusive: start + 100,
+                    ..PrimerDesignPrimerRecord::default()
+                },
+                amplicon_start_0based: start,
+                amplicon_end_0based_exclusive: start + 100,
+                score: Some(score),
+                reasons: vec![PrimerDesignRejectionReason::PairConstraintFailure],
+                failed_checks: vec!["synthetic_constraint".to_string()],
+                detail: "Synthetic evaluated rejection.".to_string(),
+            }
+        }
+
+        let rows = vec![
+            candidate(10.0, 10),
+            candidate(40.0, 40),
+            candidate(30.0, 30),
+            candidate(20.0, 20),
+        ];
+        let collect = |input: Vec<PrimerDesignRejectedCandidate>| {
+            let mut collector = PrimerDesignNearMissCollector {
+                requested_limit: 2,
+                effective_limit: 2,
+                ..PrimerDesignNearMissCollector::default()
+            };
+            for row in input {
+                GentleEngine::retain_primer_design_near_miss(&mut collector, row);
+            }
+            GentleEngine::finish_primer_design_near_miss_capture(
+                collector,
+                PrimerPairCharacterizationStatus::Pass,
+                "complete synthetic capture",
+            )
+        };
+
+        let (forward_rows, forward_capture) = collect(rows.clone());
+        let (reverse_rows, reverse_capture) = collect(rows.into_iter().rev().collect());
+        assert_eq!(
+            serde_json::to_value(&forward_rows).unwrap(),
+            serde_json::to_value(&reverse_rows).unwrap()
+        );
+        assert_eq!(
+            forward_rows
+                .iter()
+                .map(|row| row.score.unwrap())
+                .collect::<Vec<_>>(),
+            vec![40.0, 30.0]
+        );
+        assert_eq!(forward_capture.eligible_candidate_count, 4);
+        assert_eq!(forward_capture.retained_candidate_count, 2);
+        assert_eq!(forward_capture.omitted_candidate_count, 2);
+        assert!(
+            forward_capture.candidate_comparison_count
+                <= forward_capture
+                    .eligible_candidate_count
+                    .saturating_mul(forward_capture.effective_limit)
+        );
+        assert_eq!(
+            forward_capture.candidate_comparison_count,
+            reverse_capture.candidate_comparison_count
+        );
     }
 }

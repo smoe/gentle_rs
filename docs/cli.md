@@ -3114,7 +3114,9 @@ Shared shell command:
     - `primers show-report REPORT_ID`
       - accepts either kind; design reports include `simple_pcr_pairs` with
         per-pair left/right distance from the core ROI, overlap flags, and
-        flanking labels for quick CLI inspection
+        flanking labels for quick CLI inspection. The full design report also
+        exposes additive score terms, bounded evaluated rejection rows,
+        capture completeness/accounting, and its construct-reasoning graph id.
     - `primers export-report REPORT_ID OUTPUT.json`
       - exports either a primer-design report or a persisted
         primer-specificity artifact without rerunning BLAST
@@ -3502,6 +3504,20 @@ Shared shell command:
       - `pair_constraints` is optional and supports:
         `require_roi_flanking`, amplicon motif filters, and fixed amplicon
         start/end coordinates.
+      - `pair_constraints.rejected_near_miss_limit` controls deterministic
+        evaluated pair-level rejection retention (`null`/omitted = `20`,
+        `0` = disabled, maximum `100`). This does not change candidate
+        selection, rank, or score. It applies to primer-pair and
+        insertion-primer design; qPCR design rejects a non-null value rather
+        than silently ignoring it.
+      - retained pairs from both the internal and Primer3 proposal paths use
+        the same additive `gentle_primer_pair_rank_v1` score decomposition.
+        Primer3 near-miss capture is explicitly `incomplete`: GENtle can retain
+        only Primer3-returned pairs that its post-filters reject, not Primer3's
+        hidden internal rejection space.
+      - every design report links a report-content-fingerprinted
+        construct-reasoning graph. Its bounded rejected intervals reach the
+        existing linear-map overlay as non-verdict `ContextEvidence`.
     - Primer ROI seed helper notes (`primers seed-from-feature` / `primers seed-from-splicing`):
       - returns non-mutating schema `gentle.primer_seed_request.v1`
       - includes `template`, source metadata, `roi_start_0based`,

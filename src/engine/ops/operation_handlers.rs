@@ -21876,6 +21876,15 @@ impl GentleEngine {
         transcript_targeting: Option<QpcrTranscriptTargeting>,
         report_id: Option<String>,
     ) -> Result<(), EngineError> {
+        if pair_constraints.rejected_near_miss_limit.is_some() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "pair_constraints.rejected_near_miss_limit is supported by DesignPrimerPairs and DesignInsertionPrimerPairs, not DesignQpcrAssays"
+                        .to_string(),
+                cause_chain: vec![],
+            });
+        }
         let dna = self
             .state
             .sequences
@@ -22193,6 +22202,7 @@ impl GentleEngine {
             let pair_like = PrimerDesignPairRecord {
                 rank: top_assay.rank,
                 score: top_assay.score,
+                score_terms: vec![],
                 forward: top_assay.forward.clone(),
                 reverse: top_assay.reverse.clone(),
                 amplicon_start_0based: top_assay.amplicon_start_0based,
@@ -22238,6 +22248,206 @@ impl GentleEngine {
             ));
         }
         Ok(())
+    }
+
+    fn build_primer_design_selection_reasoning_graph(
+        &self,
+        report: &PrimerDesignReport,
+        dna: &DNAsequence,
+    ) -> Result<ConstructReasoningGraph, EngineError> {
+        let report_token = Self::normalize_id_token(&report.report_id);
+        let objective = Self::normalize_construct_objective(ConstructObjective {
+            objective_id: format!("primer_pair_selection_{report_token}"),
+            title: format!("Primer-pair selection for {}", report.report_id),
+            goal: format!(
+                "Explain retained primer-pair ranks and bounded evaluated rejections for template '{}'",
+                report.template
+            ),
+            intended_tasks: Some(vec![ConstructReasoningRiskTask::Pcr]),
+            notes: vec![
+                "Selection provenance describes deterministic ranking and configured constraint checks; it is not experimental validation of primer performance."
+                    .to_string(),
+            ],
+            ..ConstructObjective::default()
+        });
+        let mut input_fingerprint = Self::construct_reasoning_input_fingerprint(dna, &objective)?;
+        input_fingerprint.source_artifact_kind = Some("primer_design_report".to_string());
+        input_fingerprint.source_artifact_id = Some(report.report_id.clone());
+        input_fingerprint.source_artifact_sha256 =
+            Some(Self::primer_design_report_content_sha256(report)?);
+
+        let provenance_refs = [
+            Some(format!("primer_design_report:{}", report.report_id)),
+            report
+                .op_id
+                .as_ref()
+                .map(|value| format!("operation:{value}")),
+            report.run_id.as_ref().map(|value| format!("run:{value}")),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+        let template_len = dna.len();
+        let evidence = report
+            .rejected_near_misses
+            .iter()
+            .enumerate()
+            .map(|(index, candidate)| {
+                let reason_token = candidate
+                    .reasons
+                    .first()
+                    .map(|reason| reason.as_str())
+                    .unwrap_or("unclassified");
+                let start_0based = candidate.amplicon_start_0based.min(template_len);
+                let end_0based_exclusive = candidate
+                    .amplicon_end_0based_exclusive
+                    .min(template_len)
+                    .max(start_0based);
+                let mut context_tags = vec![
+                    "primer_design".to_string(),
+                    "rejected_near_miss".to_string(),
+                ];
+                context_tags.extend(
+                    candidate
+                        .reasons
+                        .iter()
+                        .map(|reason| reason.as_str().to_string()),
+                );
+                DesignEvidence {
+                    evidence_id: format!(
+                        "primer_near_miss_{:03}_{}",
+                        index + 1,
+                        reason_token
+                    ),
+                    seq_id: report.template.clone(),
+                    scope: EvidenceScope::SequenceSpan,
+                    start_0based,
+                    end_0based_exclusive,
+                    role: ConstructRole::Other,
+                    evidence_class: EvidenceClass::ContextEvidence,
+                    label: format!(
+                        "Rejected primer-pair near miss {}",
+                        index.saturating_add(1)
+                    ),
+                    rationale: format!(
+                        "{} This row is one bounded evaluated rejection, not an exhaustive account of all rejected candidates.",
+                        candidate.detail
+                    ),
+                    score: candidate.score,
+                    context_tags,
+                    provenance_kind: "primer_design_report".to_string(),
+                    provenance_refs: provenance_refs.clone(),
+                    editable_status: EditableStatus::Draft,
+                    notes: candidate.failed_checks.clone(),
+                    ..DesignEvidence::default()
+                }
+            })
+            .collect::<Vec<_>>();
+        let evidence_ids = evidence
+            .iter()
+            .map(|row| row.evidence_id.clone())
+            .collect::<Vec<_>>();
+
+        let mut decisions = report
+            .pairs
+            .iter()
+            .enumerate()
+            .map(|(index, pair)| {
+                let rank = if pair.rank == 0 { index + 1 } else { pair.rank };
+                DesignDecisionNode {
+                    decision_id: format!("retain_primer_pair_r{rank:03}"),
+                    decision_type: "primer_pair_selection".to_string(),
+                    method: DecisionMethod::WeightedRule,
+                    title: format!("Retain primer pair rank {rank}"),
+                    rationale: format!(
+                        "Retained at rank {rank} under additive score model '{}' ({}); compared near-miss evidence is bounded as recorded in the source report.",
+                        report.score_model, report.score_direction
+                    ),
+                    input_evidence_ids: evidence_ids.clone(),
+                    parameters_json: json!({
+                        "report_schema": report.schema,
+                        "report_id": report.report_id,
+                        "op_id": report.op_id,
+                        "run_id": report.run_id,
+                        "pair_rank": rank,
+                        "pair_score": pair.score,
+                        "score_model": report.score_model,
+                        "score_direction": report.score_direction,
+                        "score_terms": pair.score_terms,
+                        "pair_content_sha256": Self::primer_specificity_pair_content_sha256(
+                            &pair.forward.sequence,
+                            &pair.reverse.sequence,
+                        ),
+                        "pair_content_fingerprint_algorithm":
+                            PRIMER_DESIGN_PAIR_CONTENT_FINGERPRINT_ALGORITHM,
+                        "near_miss_capture": report.near_miss_capture,
+                        "pair_constraints": report.pair_constraints,
+                        "effective_constraints": {
+                            "roi_start_0based": report.roi_start_0based,
+                            "roi_end_0based_exclusive": report.roi_end_0based,
+                            "min_amplicon_bp": report.min_amplicon_bp,
+                            "max_amplicon_bp": report.max_amplicon_bp,
+                            "max_tm_delta_c": report.max_tm_delta_c,
+                            "max_pairs": report.max_pairs,
+                        },
+                    }),
+                    editable_status: EditableStatus::Draft,
+                    ..DesignDecisionNode::default()
+                }
+            })
+            .collect::<Vec<_>>();
+        if decisions.is_empty() {
+            decisions.push(DesignDecisionNode {
+                decision_id: "no_primer_pair_retained".to_string(),
+                decision_type: "primer_pair_selection".to_string(),
+                method: DecisionMethod::WeightedRule,
+                title: "No primer pair retained".to_string(),
+                rationale:
+                    "No evaluated pair satisfied all configured requirements; bounded rejected near misses remain non-exhaustive context."
+                        .to_string(),
+                input_evidence_ids: evidence_ids,
+                parameters_json: json!({
+                    "report_schema": report.schema,
+                    "report_id": report.report_id,
+                    "op_id": report.op_id,
+                    "run_id": report.run_id,
+                    "score_model": report.score_model,
+                    "near_miss_capture": report.near_miss_capture,
+                    "rejection_summary": report.rejection_summary,
+                    "pair_constraints": report.pair_constraints,
+                    "effective_constraints": {
+                        "roi_start_0based": report.roi_start_0based,
+                        "roi_end_0based_exclusive": report.roi_end_0based,
+                        "min_amplicon_bp": report.min_amplicon_bp,
+                        "max_amplicon_bp": report.max_amplicon_bp,
+                        "max_tm_delta_c": report.max_tm_delta_c,
+                        "max_pairs": report.max_pairs,
+                    },
+                }),
+                editable_status: EditableStatus::Draft,
+                ..DesignDecisionNode::default()
+            });
+        }
+
+        Ok(ConstructReasoningGraph {
+            graph_id: report
+                .construct_reasoning_graph_id
+                .clone()
+                .unwrap_or_else(|| format!("primer_design_reasoning_{report_token}")),
+            seq_id: report.template.clone(),
+            op_id: report.op_id.clone(),
+            run_id: report.run_id.clone(),
+            objective,
+            generated_at_unix_ms: report.generated_at_unix_ms,
+            input_fingerprint: Some(input_fingerprint),
+            evidence,
+            decisions,
+            notes: vec![
+                "This graph explains GENtle's selected ranks against a bounded set of evaluated pair-level rejections. Aggregate rejection counts may include single-primer failures and unevaluated combinations that cannot be drawn as pair intervals."
+                    .to_string(),
+            ],
+            ..ConstructReasoningGraph::default()
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -22342,6 +22552,18 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        let near_miss_limit = pair_constraints
+            .rejected_near_miss_limit
+            .unwrap_or(PRIMER_DESIGN_DEFAULT_REJECTED_NEAR_MISS_LIMIT);
+        if near_miss_limit > PRIMER_DESIGN_MAX_REJECTED_NEAR_MISS_LIMIT {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "pair_constraints.rejected_near_miss_limit ({near_miss_limit}) must be <= {PRIMER_DESIGN_MAX_REJECTED_NEAR_MISS_LIMIT}"
+                ),
+                cause_chain: vec![],
+            });
+        }
 
         Self::validate_primer_design_side_constraints("forward", &forward)?;
         Self::validate_primer_design_side_constraints("reverse", &reverse)?;
@@ -22428,7 +22650,7 @@ impl GentleEngine {
             requested: requested_backend.as_str().to_string(),
             ..PrimerDesignBackendInfo::default()
         };
-        let (pairs, rejection_summary) = match requested_backend {
+        let search_outcome = match requested_backend {
             PrimerDesignBackend::Internal => {
                 backend.used = PrimerDesignBackend::Internal.as_str().to_string();
                 let progress_context = PrimerDesignProgressContext {
@@ -22443,7 +22665,7 @@ impl GentleEngine {
                 let mut emit_internal = |progress: PrimerDesignProgress| {
                     on_progress(OperationProgress::PrimerDesign(progress))
                 };
-                Self::design_primer_pairs_internal_core(
+                Self::design_primer_pairs_internal_core_with_capture(
                     template_bytes,
                     roi_start_0based,
                     roi_end_0based,
@@ -22456,6 +22678,7 @@ impl GentleEngine {
                     max_amplicon_bp,
                     max_tm_delta_c,
                     max_pairs,
+                    near_miss_limit,
                     Some(&progress_context),
                     &mut emit_internal,
                 )?
@@ -22490,8 +22713,8 @@ impl GentleEngine {
                         done: false,
                     },
                 )?;
-                let (pairs, rejection_summary, version, explain, request_boulder_io) =
-                    Self::design_primer_pairs_primer3(
+                let (outcome, version, explain, request_boulder_io) =
+                    Self::design_primer_pairs_primer3_with_capture(
                         &template_seq,
                         roi_start_0based,
                         roi_end_0based,
@@ -22505,6 +22728,7 @@ impl GentleEngine {
                         max_tm_delta_c,
                         max_pairs,
                         primer3_executable,
+                        near_miss_limit,
                     )?;
                 backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
                 backend.primer3_executable = Some(primer3_executable.to_string());
@@ -22519,7 +22743,7 @@ impl GentleEngine {
                         backend_requested: requested_backend.as_str().to_string(),
                         backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
                         stage: "complete".to_string(),
-                        detail: format!("Primer3 returned {} primer pair(s)", pairs.len()),
+                        detail: format!("Primer3 returned {} primer pair(s)", outcome.pairs.len()),
                         roi_start_0based,
                         roi_end_0based_exclusive: roi_end_0based,
                         forward_candidate_count: None,
@@ -22529,7 +22753,7 @@ impl GentleEngine {
                         pair_evaluated: None,
                         pair_evaluation_limit: None,
                         pair_evaluation_limited: None,
-                        accepted_pair_count: Some(pairs.len()),
+                        accepted_pair_count: Some(outcome.pairs.len()),
                         assay_candidate_combinations: None,
                         assays_evaluated: None,
                         accepted_assay_count: None,
@@ -22537,7 +22761,7 @@ impl GentleEngine {
                         done: true,
                     },
                 )?;
-                (pairs, rejection_summary)
+                outcome
             }
             PrimerDesignBackend::Auto => {
                 Self::emit_operation_primer_design_progress(
@@ -22569,7 +22793,7 @@ impl GentleEngine {
                         done: false,
                     },
                 )?;
-                match Self::design_primer_pairs_primer3(
+                match Self::design_primer_pairs_primer3_with_capture(
                     &template_seq,
                     roi_start_0based,
                     roi_end_0based,
@@ -22583,8 +22807,9 @@ impl GentleEngine {
                     max_tm_delta_c,
                     max_pairs,
                     primer3_executable,
+                    near_miss_limit,
                 ) {
-                    Ok((pairs, rejection_summary, version, explain, request_boulder_io)) => {
+                    Ok((outcome, version, explain, request_boulder_io)) => {
                         backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
                         backend.primer3_executable = Some(primer3_executable.to_string());
                         backend.primer3_version = version;
@@ -22598,7 +22823,10 @@ impl GentleEngine {
                                 backend_requested: requested_backend.as_str().to_string(),
                                 backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
                                 stage: "complete".to_string(),
-                                detail: format!("Primer3 returned {} primer pair(s)", pairs.len()),
+                                detail: format!(
+                                    "Primer3 returned {} primer pair(s)",
+                                    outcome.pairs.len()
+                                ),
                                 roi_start_0based,
                                 roi_end_0based_exclusive: roi_end_0based,
                                 forward_candidate_count: None,
@@ -22608,7 +22836,7 @@ impl GentleEngine {
                                 pair_evaluated: None,
                                 pair_evaluation_limit: None,
                                 pair_evaluation_limited: None,
-                                accepted_pair_count: Some(pairs.len()),
+                                accepted_pair_count: Some(outcome.pairs.len()),
                                 assay_candidate_combinations: None,
                                 assays_evaluated: None,
                                 accepted_assay_count: None,
@@ -22616,7 +22844,7 @@ impl GentleEngine {
                                 done: true,
                             },
                         )?;
-                        (pairs, rejection_summary)
+                        outcome
                     }
                     Err(err) => {
                         backend.used = PrimerDesignBackend::Internal.as_str().to_string();
@@ -22664,7 +22892,7 @@ impl GentleEngine {
                         let mut emit_internal = |progress: PrimerDesignProgress| {
                             on_progress(OperationProgress::PrimerDesign(progress))
                         };
-                        Self::design_primer_pairs_internal_core(
+                        Self::design_primer_pairs_internal_core_with_capture(
                             template_bytes,
                             roi_start_0based,
                             roi_end_0based,
@@ -22677,6 +22905,7 @@ impl GentleEngine {
                             max_amplicon_bp,
                             max_tm_delta_c,
                             max_pairs,
+                            near_miss_limit,
                             Some(&progress_context),
                             &mut emit_internal,
                         )?
@@ -22684,11 +22913,34 @@ impl GentleEngine {
                 }
             }
         };
+        let PrimerDesignPairSearchOutcome {
+            pairs,
+            rejection_summary,
+            rejected_near_misses,
+            near_miss_capture,
+        } = search_outcome;
 
         let insertion_context = insertion_intent.as_ref().map(|insertion| {
             Self::build_primer_insertion_context_report(&template_seq, insertion, &pairs)
         });
         let report_id = Self::render_primer_design_report_id(report_id, &template);
+        let construct_reasoning_graph_id = format!(
+            "primer_design_reasoning_{}",
+            Self::normalize_id_token(&report_id)
+        );
+        let (score_decomposition_status, score_decomposition_reason) = if pairs.is_empty() {
+            (
+                PrimerPairCharacterizationStatus::NotRun,
+                "No primer pair was retained, so there is no selected ranking score to decompose."
+                    .to_string(),
+            )
+        } else {
+            (
+                PrimerPairCharacterizationStatus::Pass,
+                "Every retained pair uses GENtle's shared additive ranking model; Primer3 candidate generation does not change score meaning."
+                    .to_string(),
+            )
+        };
         let report = PrimerDesignReport {
             schema: PRIMER_DESIGN_REPORT_SCHEMA.to_string(),
             report_id: report_id.clone(),
@@ -22708,7 +22960,14 @@ impl GentleEngine {
             pair_count: pairs.len(),
             pairs,
             rejection_summary,
+            score_decomposition_status,
+            score_decomposition_reason,
+            score_model: PRIMER_DESIGN_SCORE_MODEL.to_string(),
+            score_direction: PRIMER_DESIGN_SCORE_DIRECTION.to_string(),
+            rejected_near_misses,
+            near_miss_capture: Some(near_miss_capture),
             backend,
+            construct_reasoning_graph_id: Some(construct_reasoning_graph_id),
             insertion_context,
         };
         if report.rejection_summary.pair_evaluation_limit_skipped > 0 {
@@ -22717,18 +22976,40 @@ impl GentleEngine {
                 report.rejection_summary.pair_evaluation_limit_skipped
             ));
         }
+        if let Some(capture) = report
+            .near_miss_capture
+            .as_ref()
+            .filter(|capture| capture.omitted_candidate_count > 0)
+        {
+            result.warnings.push(format!(
+                "Primer-design report '{}' retained {} of {} eligible evaluated pair-level near misses (limit={}); aggregate rejection counts remain authoritative",
+                report.report_id,
+                capture.retained_candidate_count,
+                capture.eligible_candidate_count,
+                capture.effective_limit
+            ));
+        }
+        let reasoning_graph = self.build_primer_design_selection_reasoning_graph(&report, &dna)?;
         let mut store = self.read_primer_design_store();
         let replaced = store
             .reports
             .insert(report.report_id.clone(), report.clone())
             .is_some();
         self.write_primer_design_store(store)?;
+        let reasoning_graph = self.upsert_construct_reasoning_graph(reasoning_graph)?;
+        result.construct_reasoning_graph = Some(Box::new(reasoning_graph.clone()));
         result.messages.push(format!(
             "{} primer-design report '{}' for template '{}' (pairs={})",
             if replaced { "Updated" } else { "Created" },
             report.report_id,
             report.template,
             report.pair_count
+        ));
+        result.messages.push(format!(
+            "Stored primer-selection reasoning graph '{}' with {} decision node(s) and {} bounded rejected-candidate interval(s)",
+            reasoning_graph.graph_id,
+            reasoning_graph.decisions.len(),
+            reasoning_graph.annotation_candidates.len()
         ));
         if let Some(context) = report.insertion_context.as_ref() {
             result.messages.push(format!(

@@ -770,6 +770,7 @@ impl MainAreaDna {
                 &pair.fixed_amplicon_end_0based_exclusive,
                 "pair_constraints.fixed_amplicon_end_0based_exclusive",
             )?,
+            rejected_near_miss_limit: None,
         })
     }
 

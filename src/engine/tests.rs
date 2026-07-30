@@ -7522,6 +7522,307 @@ fn test_design_primer_pairs_persists_report() {
     assert_eq!(summary.backend_used, "internal");
 }
 
+fn primer_selection_provenance_operation(
+    report_id: &str,
+    rejected_near_miss_limit: usize,
+) -> Operation {
+    Operation::DesignPrimerPairs {
+        template: "primer_provenance_tpl".to_string(),
+        roi_start_0based: 40,
+        roi_end_0based: 80,
+        forward: PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            start_0based: Some(0),
+            end_0based: Some(40),
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1_000,
+            ..PrimerDesignSideConstraint::default()
+        },
+        reverse: PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            start_0based: Some(80),
+            end_0based: Some(120),
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1_000,
+            ..PrimerDesignSideConstraint::default()
+        },
+        pair_constraints: PrimerDesignPairConstraint {
+            fixed_amplicon_start_0based: Some(5),
+            fixed_amplicon_end_0based_exclusive: Some(110),
+            rejected_near_miss_limit: Some(rejected_near_miss_limit),
+            ..PrimerDesignPairConstraint::default()
+        },
+        min_amplicon_bp: 40,
+        max_amplicon_bp: 150,
+        max_tm_delta_c: Some(100.0),
+        max_pairs: Some(10),
+        report_id: Some(report_id.to_string()),
+    }
+}
+
+fn primer_selection_provenance_engine() -> GentleEngine {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "primer_provenance_tpl".to_string(),
+        seq(
+            "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
+#[test]
+fn primer_selection_provenance_is_bounded_visible_and_report_fingerprinted() {
+    let mut without_capture = primer_selection_provenance_engine();
+    without_capture
+        .apply(primer_selection_provenance_operation(
+            "primer_provenance_disabled",
+            0,
+        ))
+        .expect("primer design without rejected-candidate capture");
+    let without_capture_report = without_capture
+        .get_primer_design_report("primer_provenance_disabled")
+        .expect("report without capture");
+    assert!(without_capture_report.rejected_near_misses.is_empty());
+    assert_eq!(
+        without_capture_report
+            .near_miss_capture
+            .as_ref()
+            .expect("disabled capture metadata")
+            .status,
+        PrimerPairCharacterizationStatus::NotRun
+    );
+
+    let mut engine = primer_selection_provenance_engine();
+    let result = engine
+        .apply(primer_selection_provenance_operation(
+            "primer_provenance_captured",
+            5,
+        ))
+        .expect("primer design with rejected-candidate capture");
+    let report = engine
+        .get_primer_design_report("primer_provenance_captured")
+        .expect("captured report");
+
+    assert!(!report.pairs.is_empty());
+    assert_eq!(
+        serde_json::to_value(&report.pairs).unwrap(),
+        serde_json::to_value(&without_capture_report.pairs).unwrap(),
+        "near-miss capture must not affect selected pair ranks or scores"
+    );
+    assert_eq!(
+        report.score_decomposition_status,
+        PrimerPairCharacterizationStatus::Pass
+    );
+    assert_eq!(report.score_model, PRIMER_DESIGN_SCORE_MODEL);
+    assert_eq!(report.score_direction, PRIMER_DESIGN_SCORE_DIRECTION);
+    assert!(report.pairs.iter().all(|pair| {
+        let sum = pair
+            .score_terms
+            .iter()
+            .map(|term| term.contribution)
+            .sum::<f64>();
+        !pair.score_terms.is_empty()
+            && (pair.score - sum).abs()
+                <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * pair.score.abs().max(1.0)
+    }));
+
+    let capture = report.near_miss_capture.as_ref().expect("capture metadata");
+    assert_eq!(capture.status, PrimerPairCharacterizationStatus::Pass);
+    assert_eq!(capture.effective_limit, 5);
+    assert_eq!(capture.retained_candidate_count, 5);
+    assert!(capture.eligible_candidate_count > capture.retained_candidate_count);
+    assert_eq!(
+        capture.omitted_candidate_count,
+        capture
+            .eligible_candidate_count
+            .saturating_sub(capture.retained_candidate_count)
+    );
+    assert!(
+        capture.candidate_comparison_count
+            <= capture
+                .eligible_candidate_count
+                .saturating_mul(capture.effective_limit)
+    );
+    assert_eq!(report.rejected_near_misses.len(), 5);
+    assert!(
+        report
+            .rejected_near_misses
+            .iter()
+            .all(|row| !row.reasons.is_empty())
+    );
+    for reason in [
+        PrimerDesignRejectionReason::OutOfWindow,
+        PrimerDesignRejectionReason::GcOrTmOutOfBounds,
+        PrimerDesignRejectionReason::NonUniqueAnneal,
+        PrimerDesignRejectionReason::AmpliconOrRoiFailure,
+        PrimerDesignRejectionReason::PrimerConstraintFailure,
+        PrimerDesignRejectionReason::PairConstraintFailure,
+        PrimerDesignRejectionReason::PairEvaluationLimitSkipped,
+    ] {
+        let retained_for_reason = report
+            .rejected_near_misses
+            .iter()
+            .filter(|row| row.reasons.contains(&reason))
+            .count();
+        assert!(
+            report.rejection_summary.count_for_reason(reason) >= retained_for_reason,
+            "retained rows cannot exceed the authoritative rejection census"
+        );
+    }
+
+    let graph = result
+        .construct_reasoning_graph
+        .as_deref()
+        .expect("operation result reasoning graph");
+    assert_eq!(
+        report.construct_reasoning_graph_id.as_deref(),
+        Some(graph.graph_id.as_str())
+    );
+    assert_eq!(graph.decisions.len(), report.pairs.len());
+    assert!(graph.decisions.iter().all(|decision| {
+        decision.parameters_json["report_id"].as_str() == Some(report.report_id.as_str())
+            && decision.parameters_json["op_id"].as_str() == Some(result.op_id.as_str())
+            && decision.parameters_json["run_id"].as_str() == Some("interactive")
+            && decision.input_evidence_ids.len() == graph.evidence.len()
+    }));
+    assert!(graph.evidence.iter().all(|evidence| {
+        evidence.evidence_class == EvidenceClass::ContextEvidence
+            && evidence
+                .provenance_refs
+                .iter()
+                .any(|reference| reference == "primer_design_report:primer_provenance_captured")
+    }));
+    assert_eq!(
+        graph.annotation_candidates.len(),
+        report.rejected_near_misses.len()
+    );
+    let overlay = crate::dna_display::ConstructReasoningOverlay::from_graph(graph);
+    assert_eq!(overlay.evidence.len(), report.rejected_near_misses.len());
+    assert!(overlay.evidence.iter().all(|row| {
+        row.context_tags
+            .iter()
+            .any(|tag| tag == "rejected_near_miss")
+    }));
+    assert_eq!(
+        engine
+            .construct_reasoning_graph_snapshot_status(graph)
+            .freshness,
+        ConstructReasoningGraphFreshness::Current
+    );
+    let refreshed = engine
+        .refresh_construct_reasoning_graph_for_seq_id("primer_provenance_tpl")
+        .expect("current report-bound graph refreshes without changing graph family");
+    assert_eq!(refreshed.graph_id, graph.graph_id);
+    assert_eq!(refreshed.evidence, graph.evidence);
+    assert_eq!(refreshed.decisions, graph.decisions);
+
+    let mut store = engine.read_primer_design_store();
+    store
+        .reports
+        .get_mut("primer_provenance_captured")
+        .expect("mutable source report")
+        .pairs[0]
+        .score += 0.25;
+    engine
+        .write_primer_design_store(store)
+        .expect("mutate source report");
+    let stale = engine.construct_reasoning_graph_snapshot_status(graph);
+    assert_eq!(stale.freshness, ConstructReasoningGraphFreshness::Stale);
+    assert!(
+        stale
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("primer-design report") && reason.contains("changed"))
+    );
+    let refresh_error = engine
+        .refresh_construct_reasoning_graph_for_seq_id("primer_provenance_tpl")
+        .expect_err("stale report-bound graph must not become a generic graph");
+    assert!(refresh_error.message.contains("rerun DesignPrimerPairs"));
+}
+
+#[test]
+fn old_primer_design_report_payload_defaults_selection_provenance_fields() {
+    let old_payload = json!({
+        "schema": PRIMER_DESIGN_REPORT_SCHEMA,
+        "report_id": "legacy_primer_report",
+        "template": "legacy_template",
+        "pair_count": 0,
+        "pairs": [],
+        "rejection_summary": {}
+    });
+    let report: PrimerDesignReport =
+        serde_json::from_value(old_payload).expect("deserialize legacy report");
+    assert_eq!(
+        report.score_decomposition_status,
+        PrimerPairCharacterizationStatus::NotRun
+    );
+    assert!(report.score_decomposition_reason.is_empty());
+    assert!(report.score_model.is_empty());
+    assert!(report.score_direction.is_empty());
+    assert!(report.rejected_near_misses.is_empty());
+    assert!(report.near_miss_capture.is_none());
+    assert!(report.construct_reasoning_graph_id.is_none());
+
+    let serialized = serde_json::to_value(report).expect("serialize legacy report");
+    for absent in [
+        "score_decomposition_status",
+        "score_decomposition_reason",
+        "score_model",
+        "score_direction",
+        "rejected_near_misses",
+        "near_miss_capture",
+        "construct_reasoning_graph_id",
+    ] {
+        assert!(
+            serialized.get(absent).is_none(),
+            "default additive field '{absent}' should stay absent"
+        );
+    }
+}
+
+#[test]
+fn qpcr_design_rejects_primer_report_near_miss_capture_option() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("qpcr_near_miss_tpl".to_string(), seq(&"ACGT".repeat(40)));
+    let mut engine = GentleEngine::from_state(state);
+    let error = engine
+        .apply(Operation::DesignQpcrAssays {
+            template: "qpcr_near_miss_tpl".to_string(),
+            roi_start_0based: 40,
+            roi_end_0based: 80,
+            forward: PrimerDesignSideConstraint::default(),
+            reverse: PrimerDesignSideConstraint::default(),
+            probe: PrimerDesignSideConstraint::default(),
+            pair_constraints: PrimerDesignPairConstraint {
+                rejected_near_miss_limit: Some(5),
+                ..PrimerDesignPairConstraint::default()
+            },
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 120,
+            max_tm_delta_c: None,
+            max_probe_tm_delta_c: None,
+            max_assays: None,
+            transcript_targeting: None,
+            report_id: Some("unsupported_qpcr_near_miss".to_string()),
+        })
+        .expect_err("qPCR report does not carry primer-pair near misses");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("not DesignQpcrAssays"));
+}
+
 #[test]
 fn test_prepare_restriction_cloning_pcr_handoff_creates_extended_artifacts_and_preserves_anneal_len()
  {
@@ -15076,6 +15377,18 @@ fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
         .expect("primer3 zero-pair report");
     assert_eq!(report.backend.used, "primer3");
     assert_eq!(report.pair_count, 0);
+    assert_eq!(
+        report.score_decomposition_status,
+        PrimerPairCharacterizationStatus::NotRun
+    );
+    assert!(report.score_decomposition_reason.contains("No primer pair"));
+    let capture = report
+        .near_miss_capture
+        .as_ref()
+        .expect("Primer3 capture completeness");
+    assert_eq!(capture.status, PrimerPairCharacterizationStatus::Incomplete);
+    assert!(capture.reason.contains("Primer3-internal"));
+    assert!(report.rejected_near_misses.is_empty());
     assert!(
         report
             .backend
@@ -16055,6 +16368,7 @@ fn test_design_primer_pairs_enforces_pair_constraints() {
         forbidden_amplicon_motifs: vec![],
         fixed_amplicon_start_0based: Some(pair.amplicon_start_0based),
         fixed_amplicon_end_0based_exclusive: Some(pair.amplicon_end_0based_exclusive),
+        rejected_near_miss_limit: None,
     };
     engine
         .apply(Operation::DesignPrimerPairs {
@@ -16089,6 +16403,7 @@ fn test_design_primer_pairs_enforces_pair_constraints() {
                 forbidden_amplicon_motifs: vec![motif],
                 fixed_amplicon_start_0based: None,
                 fixed_amplicon_end_0based_exclusive: None,
+                rejected_near_miss_limit: None,
             },
             min_amplicon_bp: 40,
             max_amplicon_bp: 150,

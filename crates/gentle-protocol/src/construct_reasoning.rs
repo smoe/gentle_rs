@@ -1133,6 +1133,12 @@ pub struct ConstructReasoningInputFingerprint {
     pub sequence_snapshot_sha256: String,
     pub objective_sha256: String,
     pub rule_set_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_artifact_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_artifact_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_artifact_sha256: Option<String>,
 }
 
 impl Default for ConstructReasoningInputFingerprint {
@@ -1142,6 +1148,9 @@ impl Default for ConstructReasoningInputFingerprint {
             sequence_snapshot_sha256: String::new(),
             objective_sha256: String::new(),
             rule_set_version: String::new(),
+            source_artifact_kind: None,
+            source_artifact_id: None,
+            source_artifact_sha256: None,
         }
     }
 }

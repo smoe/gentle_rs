@@ -89,12 +89,18 @@ Shipped baseline:
   rows without conflating transcript intent with genomic geometry
 - project facts, CLI report inspection/export, and GUI lineage expose and
   reopen the same persisted specificity artifact
+- primer-design reports retain exact additive score terms plus a configurable,
+  hard-bounded deterministic subset of evaluated pair-level rejections without
+  changing selection, rank, or score
+- each primer-design report links a content-fingerprinted construct-reasoning
+  graph whose weighted selection decisions cite report/op/run provenance and
+  whose bounded rejected intervals reach the existing linear overlay as
+  non-verdict context evidence
+- capture completeness remains explicit: internal search ceilings and
+  Primer3-hidden rejection space are never represented as evaluated rows
 
 Expected next step:
 
-- retain score decomposition and bounded rejected near-miss candidates in
-  primer-design reports, then connect their selection narrative/evidence and
-  excluded intervals to the existing construct-reasoning graph family
 - treat multiplex cross-dimer/cross-product characterization as a separate
   panel-level artifact rather than widening the one-pair specificity schema
 

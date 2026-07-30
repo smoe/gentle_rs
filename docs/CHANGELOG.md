@@ -38,6 +38,10 @@ understand what changed.
   executes the shared `collections run primer-specificity` route in a detached
   background snapshot, and keeps member execution outcomes distinct from child
   reports' biological specificity verdicts.
+- Added primer-selection provenance to `gentle.primer_design_report.v1`:
+  exact additive score terms, bounded deterministic evaluated near misses with
+  explicit capture completeness, and report-fingerprinted construct-reasoning
+  decisions whose rejected intervals reuse the existing linear-map overlay.
 - Added engine-owned collection `map` execution for primer specificity through
   `AssessPrimerPairSpecificityCollection` and
   `collections run primer-specificity`. Persisted gene sets use explicit

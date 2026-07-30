@@ -7113,10 +7113,15 @@ Construct reasoning graph foundation (implemented first slice):
   - graph-level optional `input_fingerprint`:
     - SHA-256 identities for the complete source sequence/feature snapshot and
       normalized objective plus an explicit reasoning rule-set version
+    - optional `source_artifact_kind`, `source_artifact_id`, and
+      `source_artifact_sha256` bind a graph to the exact computational report
+      it explains; primer-selection graphs currently use
+      `source_artifact_kind = primer_design_report`
     - live readers report `current`, `stale`, or `unknown` freshness with
       reasons; older graphs without a fingerprint remain readable as `unknown`
-    - changed sequence/features, changed objective, or changed rule version
-      makes a fingerprinted graph stale until it is explicitly refreshed
+    - changed sequence/features, changed objective, changed rule version, or a
+      changed/missing recognized source artifact makes a fingerprinted graph
+      stale until it is explicitly refreshed
   - fact-level `task_severities[]`:
     - compact rule-based task interpretation for repeat/similarity facts
     - each row separates intrinsic evidence concern from objective priority:
@@ -7578,7 +7583,8 @@ Operation progress/cancellation semantics:
       "required_amplicon_motifs": [],
       "forbidden_amplicon_motifs": [],
       "fixed_amplicon_start_0based": null,
-      "fixed_amplicon_end_0based_exclusive": null
+      "fixed_amplicon_end_0based_exclusive": null,
+      "rejected_near_miss_limit": null
     },
     "min_amplicon_bp": 120,
     "max_amplicon_bp": 1200,
@@ -7595,7 +7601,15 @@ Operation progress/cancellation semantics:
   - `max_pairs` default: `200`
   - `report_id` default: auto-generated deterministic-safe id stem
   - `pair_constraints` default:
-    `{"require_roi_flanking":false,"required_amplicon_motifs":[],"forbidden_amplicon_motifs":[],"fixed_amplicon_start_0based":null,"fixed_amplicon_end_0based_exclusive":null}`
+    `{"require_roi_flanking":false,"required_amplicon_motifs":[],"forbidden_amplicon_motifs":[],"fixed_amplicon_start_0based":null,"fixed_amplicon_end_0based_exclusive":null,"rejected_near_miss_limit":null}`
+  - `pair_constraints.rejected_near_miss_limit` retains a bounded,
+    deterministic subset of evaluated pair-level rejections:
+    - omitted/`null`: `20`
+    - `0`: disabled
+    - maximum: `100`
+    - supported by `DesignPrimerPairs` and `DesignInsertionPrimerPairs`;
+      `DesignQpcrAssays` rejects a non-null value because its separate qPCR
+      report does not yet carry pair-selection near misses
 - Side constraints (`forward`, `reverse`, and qPCR `probe`) accept optional
   sequence-level filters:
   - `non_annealing_5prime_tail` (added to the final oligo but excluded from
@@ -7608,6 +7622,9 @@ Operation progress/cancellation semantics:
   - 3' GC clamp preference (`G/C` at terminal 3' base)
   - secondary-structure risk penalty (homopolymer and self-complementary runs)
   - primer-dimer risk penalty (global and 3'-anchored complementary runs)
+  - both backends rank retained pairs with the same GENtle additive model
+    `gentle_primer_pair_rank_v1`; Primer3 proposes candidates but does not
+    replace the report's GENtle score
 
 - Report schema:
   - `gentle.primer_design_report.v1`
@@ -7635,6 +7652,18 @@ Operation progress/cancellation semantics:
       - `primer_pair_complementary_run_bp`
       - `primer_pair_3prime_complementary_run_bp`
     - rule-pass flags and aggregate score
+    - `score_terms[]`, whose `raw_value * weight = contribution` rows sum to
+      the existing score; stable terms cover baseline, Tm delta, amplicon
+      length fit, extra anneal hits, primer-length preference, homopolymer and
+      self-complementarity excess, pair/global and pair/3'-end
+      complementarity excess, and 3' GC-clamp balance
+  - report-level score interpretation:
+    - `score_decomposition_status`, `score_decomposition_reason`
+    - `score_model = gentle_primer_pair_rank_v1`
+    - `score_direction = higher_is_better`
+    - status is `pass` when retained pairs carry exact terms and `not_run`
+      when no pair was retained
+    - no residual or backend-specific contribution is fabricated
   - optional rejection summary buckets (for explainability):
     - out-of-window
     - GC/Tm out of bounds
@@ -7642,6 +7671,33 @@ Operation progress/cancellation semantics:
     - primer sequence-constraint failure
     - pair constraint failure
     - amplicon-size or ROI-coverage failure
+    - pair-evaluation-limit skipped count
+  - bounded selection provenance:
+    - `rejected_near_misses[]` contains only evaluated pair-shaped candidates,
+      ordered by score (scored before unscored) and stable coordinates/sequence
+      tie-breaks
+    - each row carries the shared `PrimerDesignRejectionReason` census
+      vocabulary in `reasons[]`, exact `failed_checks[]`, coordinates,
+      sequences, and score when available
+    - `near_miss_capture` records status, scope, requested/effective limit,
+      eligible/retained/omitted rows, and deterministic comparison work
+    - internal capture is `incomplete` if the pair-evaluation ceiling was
+      reached; single-primer rejection buckets remain aggregate-only
+    - Primer3 capture is always `incomplete` when enabled because only
+      Primer3-returned pairs rejected by GENtle post-filters are inspectable;
+      Primer3-internal and single-primer rejections remain aggregate-only
+  - construct-reasoning projection:
+    - `construct_reasoning_graph_id` links the report to one persisted
+      `gentle.construct_reasoning_graph.v1`
+    - selected pairs become weighted-rule decision nodes; bounded rejected
+      pair intervals become `ContextEvidence` with report/op/run provenance
+    - the graph fingerprint binds the exact primer-design report content, so
+      report drift makes graph freshness stale
+    - generic construct-graph refresh never rewrites this report-bound graph;
+      a stale selection graph is refreshed by rerunning `DesignPrimerPairs`
+    - existing `ConstructReasoningOverlay::from_graph()` projects those
+      evidence rows into the linear DNA map; no separate primer-exclusion track
+      or GUI-local scoring is used
   - mutating artifact materialization per accepted pair:
     - one forward-primer sequence (`..._fwd`)
     - one reverse-primer sequence (`..._rev`)

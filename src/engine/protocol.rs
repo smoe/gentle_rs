@@ -5554,6 +5554,10 @@ pub struct PrimerDesignPairConstraint {
     pub forbidden_amplicon_motifs: Vec<String>,
     pub fixed_amplicon_start_0based: Option<usize>,
     pub fixed_amplicon_end_0based_exclusive: Option<usize>,
+    /// Maximum evaluated pair-level rejection rows retained for selection
+    /// provenance. `None` uses the engine default; `Some(0)` disables capture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rejected_near_miss_limit: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5611,11 +5615,27 @@ pub struct PrimerDesignPairRuleFlags {
     pub reverse_three_prime_gc_clamp: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One exact additive term in GENtle's primer-pair ranking score.
+///
+/// `contribution` equals `raw_value * weight`; contributions, including the
+/// explicit baseline, sum to the enclosing pair's existing `score`.
+pub struct PrimerDesignScoreTerm {
+    pub term: String,
+    pub raw_value: f64,
+    pub weight: f64,
+    pub contribution: f64,
+    pub detail: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct PrimerDesignPairRecord {
     pub rank: usize,
     pub score: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub score_terms: Vec<PrimerDesignScoreTerm>,
     pub forward: PrimerDesignPrimerRecord,
     pub reverse: PrimerDesignPrimerRecord,
     pub amplicon_start_0based: usize,
@@ -6575,6 +6595,10 @@ impl PrimerPairCharacterizationStatus {
             Self::NotRun => "not_run",
         }
     }
+
+    pub fn is_not_run(value: &Self) -> bool {
+        *value == Self::NotRun
+    }
 }
 
 pub const PRIMER_DESIGN_PAIR_CONTENT_FINGERPRINT_ALGORITHM: &str =
@@ -7191,6 +7215,88 @@ pub struct PrimerDesignRejectionSummary {
     pub pair_evaluation_limit_skipped: usize,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Stable rejection-census vocabulary.
+///
+/// The legacy census intentionally mixes single-primer counts, evaluated-pair
+/// counts, and skipped-combination counts. Pair-level near misses only use the
+/// pair-valued variants; skipped combinations are never represented as
+/// evaluated candidates.
+pub enum PrimerDesignRejectionReason {
+    OutOfWindow,
+    GcOrTmOutOfBounds,
+    NonUniqueAnneal,
+    #[default]
+    AmpliconOrRoiFailure,
+    PrimerConstraintFailure,
+    PairConstraintFailure,
+    PairEvaluationLimitSkipped,
+}
+
+impl PrimerDesignRejectionReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OutOfWindow => "out_of_window",
+            Self::GcOrTmOutOfBounds => "gc_or_tm_out_of_bounds",
+            Self::NonUniqueAnneal => "non_unique_anneal",
+            Self::AmpliconOrRoiFailure => "amplicon_or_roi_failure",
+            Self::PrimerConstraintFailure => "primer_constraint_failure",
+            Self::PairConstraintFailure => "pair_constraint_failure",
+            Self::PairEvaluationLimitSkipped => "pair_evaluation_limit_skipped",
+        }
+    }
+}
+
+impl PrimerDesignRejectionSummary {
+    pub fn count_for_reason(&self, reason: PrimerDesignRejectionReason) -> usize {
+        match reason {
+            PrimerDesignRejectionReason::OutOfWindow => self.out_of_window,
+            PrimerDesignRejectionReason::GcOrTmOutOfBounds => self.gc_or_tm_out_of_bounds,
+            PrimerDesignRejectionReason::NonUniqueAnneal => self.non_unique_anneal,
+            PrimerDesignRejectionReason::AmpliconOrRoiFailure => self.amplicon_or_roi_failure,
+            PrimerDesignRejectionReason::PrimerConstraintFailure => self.primer_constraint_failure,
+            PrimerDesignRejectionReason::PairConstraintFailure => self.pair_constraint_failure,
+            PrimerDesignRejectionReason::PairEvaluationLimitSkipped => {
+                self.pair_evaluation_limit_skipped
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One bounded, evaluated primer-pair candidate rejected before report
+/// selection. Single-primer census failures and unevaluated combinations are
+/// deliberately not promoted into this pair-shaped record.
+pub struct PrimerDesignRejectedCandidate {
+    pub forward: PrimerDesignPrimerRecord,
+    pub reverse: PrimerDesignPrimerRecord,
+    pub amplicon_start_0based: usize,
+    pub amplicon_end_0based_exclusive: usize,
+    pub score: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasons: Vec<PrimerDesignRejectionReason>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed_checks: Vec<String>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Completeness and bounded-work accounting for rejected pair retention.
+pub struct PrimerDesignNearMissCapture {
+    pub status: PrimerPairCharacterizationStatus,
+    pub scope: String,
+    pub reason: String,
+    pub requested_limit: usize,
+    pub effective_limit: usize,
+    pub eligible_candidate_count: usize,
+    pub retained_candidate_count: usize,
+    pub omitted_candidate_count: usize,
+    pub candidate_comparison_count: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct PrimerDesignReport {
@@ -7217,8 +7323,25 @@ pub struct PrimerDesignReport {
     pub pairs: Vec<PrimerDesignPairRecord>,
     #[serde(default)]
     pub rejection_summary: PrimerDesignRejectionSummary,
+    #[serde(
+        default,
+        skip_serializing_if = "PrimerPairCharacterizationStatus::is_not_run"
+    )]
+    pub score_decomposition_status: PrimerPairCharacterizationStatus,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub score_decomposition_reason: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub score_model: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub score_direction: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rejected_near_misses: Vec<PrimerDesignRejectedCandidate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub near_miss_capture: Option<PrimerDesignNearMissCapture>,
     #[serde(default)]
     pub backend: PrimerDesignBackendInfo,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub construct_reasoning_graph_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub insertion_context: Option<PrimerInsertionContextReport>,
 }
