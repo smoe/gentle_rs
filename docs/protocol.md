@@ -1544,7 +1544,14 @@ Behavior notes:
   `--r-library-path PATH`. A direct R invocation
   records input path, size, and modification time; execution through
   `arrays run-probe-region-backend` enriches the finalized provenance with
-  Rust-computed SHA-256 input fingerprints.
+  Rust-computed SHA-256 input fingerprints. The selected pdInfo package is
+  installed outside GENtle and normally bundles its own
+  `extdata/<package-name>.sqlite` database. The helper resolves that
+  package-specific database, accepts a differently named file only when it is
+  the sole package-local SQLite candidate, and refuses probeset output when no
+  unambiguous database is available. Transcript-cluster-only output may
+  continue from `netaffxTranscript.rda`, but emits an explicit warning instead
+  of silently implying that probeset coordinates were loaded.
 - `scripts/probe_regions_affy.R` is the matching explicit R/`affy` helper for
   legacy 3' IVT/CDF arrays. It consumes explicit CEL paths, a local CDF package
   or CDF name, optional metadata, optional Bioconductor annotation package, and

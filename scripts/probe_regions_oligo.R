@@ -406,7 +406,55 @@ first_gene_symbol <- function(geneassignment) {
   }, character(1))
 }
 
-load_platform_annotations <- function(pd_package) {
+resolve_platform_sqlite <- function(pd_package, require_probeset = FALSE) {
+  extdata_path <- system.file("extdata", package = pd_package)
+  expected_name <- paste0(pd_package, ".sqlite")
+  expected_path <- if (nzchar(extdata_path)) file.path(extdata_path, expected_name) else ""
+  if (nzchar(expected_path) && file.exists(expected_path)) {
+    return(expected_path)
+  }
+
+  sqlite_candidates <- if (nzchar(extdata_path) && dir.exists(extdata_path)) {
+    sort(list.files(extdata_path, pattern = "\\.sqlite$", full.names = TRUE))
+  } else {
+    character()
+  }
+  if (length(sqlite_candidates) == 1) {
+    warning(
+      "Platform design package '", pd_package, "' did not contain expected database '",
+      expected_name, "'; using its sole SQLite database '",
+      basename(sqlite_candidates[[1]]), "'.",
+      call. = FALSE
+    )
+    return(sqlite_candidates[[1]])
+  }
+
+  reason <- if (!nzchar(extdata_path) || !dir.exists(extdata_path)) {
+    "its extdata directory could not be resolved"
+  } else if (length(sqlite_candidates) == 0) {
+    paste0("no SQLite database was found in '", extdata_path, "'")
+  } else {
+    paste0(
+      "expected database '", expected_name, "' was absent and multiple SQLite databases were found in '",
+      extdata_path, "': ", paste(basename(sqlite_candidates), collapse = ", ")
+    )
+  }
+  diagnostic <- paste0(
+    "Platform design package '", pd_package,
+    "' cannot provide probeset coordinate annotations because ", reason, "."
+  )
+  if (isTRUE(require_probeset)) {
+    stop(diagnostic, call. = FALSE)
+  }
+  warning(
+    diagnostic,
+    " Continuing because only transcript-cluster output was requested.",
+    call. = FALSE
+  )
+  ""
+}
+
+load_platform_annotations <- function(pd_package, require_probeset = FALSE) {
   annotations <- list(transcript = NULL, probeset = NULL)
   transcript_path <- system.file("extdata", "netaffxTranscript.rda", package = pd_package)
   if (nzchar(transcript_path) && file.exists(transcript_path)) {
@@ -421,7 +469,7 @@ load_platform_annotations <- function(pd_package) {
       annotations$transcript <- transcript[, c("feature_id", setdiff(names(transcript), "feature_id")), drop = FALSE]
     }
   }
-  sqlite_path <- system.file("extdata", "pd.clariom.d.human.sqlite", package = pd_package)
+  sqlite_path <- resolve_platform_sqlite(pd_package, require_probeset = require_probeset)
   if (nzchar(sqlite_path) && file.exists(sqlite_path)) {
     con <- DBI::dbConnect(RSQLite::SQLite(), sqlite_path)
     on.exit(DBI::dbDisconnect(con), add = TRUE)
@@ -622,11 +670,14 @@ if (length(args$contrasts) == 0) {
 
 cel_files <- sample_table$cel_path
 names(cel_files) <- sample_table$sample_id
+annotations <- load_platform_annotations(
+  args$platform_package,
+  require_probeset = "probeset" %in% args$targets
+)
 message("Reading ", length(cel_files), " CEL file(s) with platform package ", args$platform_package)
 raw <- oligo::read.celfiles(cel_files, pkgname = args$platform_package)
 Biobase::sampleNames(raw) <- sample_table$sample_id
 Biobase::pData(raw) <- sample_table[Biobase::sampleNames(raw), , drop = FALSE]
-annotations <- load_platform_annotations(args$platform_package)
 
 artifact_paths <- c(file.path(args$output, "sample_table.tsv"))
 region_written <- FALSE

@@ -3328,7 +3328,11 @@ The `Help` menu now includes:
   `arrays run-probe-region-backend PLAN.json --allow-external-execution`
   capability after the user enables the external R/APT confirmation checkbox.
   Missing preflight dependencies stop before R/APT is launched, and GENtle
-  still does not download or install packages.
+  still does not download or install packages. For `r_oligo`, the externally
+  installed platform package normally bundles its own SQLite annotation
+  database. A probeset run stops rather than emitting coordinate-empty output
+  if that package-local database cannot be resolved unambiguously;
+  transcript-cluster-only output instead continues with a visible warning.
 - For `Clariom_D_Human`, the same preflight lists the local Thermo Fisher
   na36 hg38 support ZIP paths under
   `annotation_source.vendor_support_files[]`; these login-walled files are

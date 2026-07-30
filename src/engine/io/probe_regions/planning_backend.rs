@@ -2916,6 +2916,43 @@ mod tests {
     }
 
     #[test]
+    fn probe_region_oligo_resolves_selected_platform_sqlite_before_reading_cel_files() {
+        let script = include_str!("../../../../scripts/probe_regions_oligo.R");
+        assert!(
+            script.contains("expected_name <- paste0(pd_package, \".sqlite\")"),
+            "the selected pdInfo package must determine the expected SQLite filename"
+        );
+        assert!(
+            script.contains("length(sqlite_candidates) == 1"),
+            "one unambiguous package-local SQLite fallback should remain usable"
+        );
+        assert!(
+            script.contains("if (isTRUE(require_probeset))"),
+            "missing probeset annotations must fail when probeset output was requested"
+        );
+        assert!(
+            script.contains("require_probeset = \"probeset\" %in% args$targets"),
+            "the requested output targets must control whether annotations are mandatory"
+        );
+        assert!(
+            !script.contains(
+                "system.file(\"extdata\", \"pd.clariom.d.human.sqlite\", package = pd_package)"
+            ),
+            "the generic helper must not hard-code the Clariom D Human database"
+        );
+        let annotation_check = script
+            .find("annotations <- load_platform_annotations(")
+            .expect("platform annotation preflight");
+        let cel_read = script
+            .find("raw <- oligo::read.celfiles(")
+            .expect("oligo CEL reader");
+        assert!(
+            annotation_check < cel_read,
+            "annotation failure should occur before CEL loading and normalization"
+        );
+    }
+
+    #[test]
     fn probe_region_r_package_probe_passes_count_as_first_trailing_argument() {
         let packages = vec![("oligo".to_string(), true)];
         let args = GentleEngine::probe_region_r_package_probe_args(

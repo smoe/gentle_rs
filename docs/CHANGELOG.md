@@ -12,6 +12,14 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
 understand what changed.
 
+## 2026-07-31
+
+- Fixed generic `r_oligo` platform annotation discovery: the helper now
+  resolves the selected pdInfo package's bundled SQLite database instead of
+  hard-coding Clariom D Human, allows only an unambiguous package-local
+  fallback, and refuses probeset runs that would otherwise emit coordinate
+  columns without annotations.
+
 ## 2026-07-30
 
 - Added `rna-reads verify-dexseq` and

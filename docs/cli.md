@@ -5039,6 +5039,11 @@ Tutorial companion:
     `--allow-all-features` is used intentionally.
   - Requires R/Bioconductor packages `oligo`, `limma`, `Biobase`, `DBI`,
     `RSQLite`, and the platform design package such as `pd.clariom.d.human`.
+    The platform package is installed externally and normally contains its own
+    `extdata/<package-name>.sqlite`; this database is not a separate GENtle
+    input. Probeset output stops with a diagnostic if the selected package has
+    no unambiguous SQLite database. Transcript-cluster-only output can continue
+    from `netaffxTranscript.rda` with an explicit warning.
   - `--r-library-path PATH` is repeatable. It prepends explicit agent-local,
     user, or system package roots to R's `.libPaths()` for both preflight and
     execution. With no explicit flag, an existing workspace `.r-lib` remains
