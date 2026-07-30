@@ -6121,6 +6121,23 @@ fn command_palette_includes_external_services_entry() {
 }
 
 #[test]
+fn gene_set_inspector_is_discoverable_and_registered_as_an_open_window() {
+    let mut app = GENtleApp::default();
+    let entries = app.collect_command_palette_entries();
+    assert!(entries.iter().any(|entry| {
+        entry.title == "Gene Set Inspector"
+            && matches!(entry.action, CommandPaletteAction::OpenGeneSetInspector)
+    }));
+
+    app.gene_set_inspector.show_panel = true;
+    let windows = app.collect_open_window_entries();
+    assert!(windows.iter().any(|entry| {
+        entry.viewport_id == GENtleApp::gene_set_inspector_viewport_id()
+            && entry.title == "Gene Set Inspector"
+    }));
+}
+
+#[test]
 fn command_palette_includes_new_sequence_entries() {
     let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();

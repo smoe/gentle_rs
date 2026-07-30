@@ -185,6 +185,14 @@ Tests:
 
 ### Phase 3: gene-set collection inspector
 
+- Landed first consumer: `Genome > Gene Set Inspector...` reads existing
+  persisted gene-set resolutions, exposes explicit member-to-primer-report
+  bindings, and runs `collections run primer-specificity` through the shared
+  shell/engine path. It reports member execution separately from biological
+  specificity and never guesses a binding from the member symbol.
+- Still open in this phase: source authoring/resolution controls for catalog
+  groups, explicit members, external mappings, neighbors, and deterministic
+  random sets.
 - Add a GUI inspector for existing gene-set operations:
   - source kind: catalog group, explicit members, external mapping, neighbors,
     deterministic random
@@ -318,23 +326,21 @@ Tests:
 
 ## Release-Oriented First Slice
 
-Current status: the engine-owned collection subject/report baseline and the
-first `map` consumer, primer specificity, are implemented. The shared
-`collections run primer-specificity` route requires auditable
-member-to-primer-report bindings for logical gene sets. The Phase 3 inspector
-and Phase 5 launcher remain open and must expose those bindings explicitly
-before adding a prominent GUI action.
+Current status: the engine-owned collection subject/report baseline, the first
+`map` consumer, and its binding-aware GUI inspector are implemented. The shared
+`collections run primer-specificity` route and `Genome > Gene Set
+Inspector...` both require auditable member-to-primer-report bindings for
+logical gene sets. Broader Phase 3 source authoring and the generic Phase 5
+launcher remain open.
 
-The smallest useful implementation PR after this plan should be:
+The next smallest implementation slice after the binding-aware inspector is:
 
-1. Add collection lifting inventory metadata for the three gene-set operations
-   and one existing arrangement/pool operation.
-2. Add GUI helper code that converts a gene-set resolve form into
+1. Add GUI helper code that converts a gene-set resolve form into
    `Operation::ResolveGeneSet`.
-3. Add tests proving that the GUI helper and shared shell parser produce the
+2. Add tests proving that the GUI helper and shared shell parser produce the
    same operation payload for one catalog-group source and one explicit-members
    source.
-4. Keep display minimal: status, warnings, resolved/unresolved member table,
+3. Keep display minimal: status, warnings, resolved/unresolved member table,
    and JSON export.
 
 This slice avoids broad collection launchers while proving the core parity

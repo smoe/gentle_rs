@@ -440,12 +440,19 @@ The project main window (lineage page) supports two views:
   the GUI should collect the collection operand, show per-member and aggregate
   readiness/errors/results, and call the same named operation or shell route
   that CLI/MCP/agent surfaces can invoke.
-- Primer specificity collection mapping is currently reachable from the GUI
-  Shell as `collections run primer-specificity`. A dedicated "Run specificity
-  on gene set" control remains part of the planned gene-set inspector: that UI
-  must expose the required member-to-primer-report bindings and must not infer
-  an assay from a gene symbol. Until that inspector exists, GENtle does not
-  present a misleading one-click control with hidden binding choices.
+- `Genome > Gene Set Inspector...` exposes the first binding-aware collection
+  action, primer specificity:
+  - select one persisted gene-set resolution
+  - bind every logical member to one exact persisted primer-design report
+  - choose a one-based pair rank and a prepared local BLAST target
+  - run the shared `collections run primer-specificity` route in a background
+    engine snapshot
+  - inspect per-member execution outcomes separately from each child
+    specificity report's biological pass/fail verdict
+- The inspector never infers an assay from a gene symbol. Missing bindings,
+  unavailable pair ranks, stale detached results, and member-level execution
+  failures remain explicit. The portable collection report can be copied as
+  JSON, and persisted child reports can be opened in PCR Designer.
 - Detailed implementation plan:
   [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
 - Operations offered for a collection should expose the engine-declared lifting

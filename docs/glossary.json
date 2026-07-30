@@ -3558,7 +3558,8 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
-            "cli-direct"
+            "cli-direct",
+            "gui-menu"
          ],
          "path": "collections run primer-specificity",
          "summary": "Map GENtle's existing local-BLAST primer specificity assessment over project sequences or a persisted gene-set resolution, retaining per-member failures and produced report IDs.",

@@ -178,6 +178,12 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: Some(UiIntentTarget::SequencingConfirmation),
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "collections run primer-specificity",
+        menu_path: "Genome > Gene Set Inspector...",
+        palette_title: "Gene Set Inspector",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "mirna scan-target",
         menu_path: "Patterns > microRNA Target Scan...",
         palette_title: "microRNA Target Scan",
@@ -231,6 +237,11 @@ impl GENtleApp {
         if viewport_id == Self::external_services_viewport_id() {
             return Some(Self::embedded_window_layer_from_window_id(
                 Self::hosted_external_services_window_id(),
+            ));
+        }
+        if viewport_id == Self::gene_set_inspector_viewport_id() {
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::hosted_gene_set_inspector_window_id(),
             ));
         }
         if viewport_id == Self::history_viewport_id() {
@@ -351,6 +362,7 @@ impl GENtleApp {
         }
         self.show_command_palette_dialog.hash(&mut hasher);
         self.external_services_ui.show_panel.hash(&mut hasher);
+        self.gene_set_inspector.show_panel.hash(&mut hasher);
         self.evidence_preparation_panel.show_panel.hash(&mut hasher);
         self.history_ui.show_panel.hash(&mut hasher);
         self.show_jobs_panel.hash(&mut hasher);
@@ -448,6 +460,16 @@ impl GENtleApp {
                 viewport_id: Self::external_services_viewport_id(),
                 title: "External Services".to_string(),
                 detail: "Provider catalog, preflight, and quote handoff workspace".to_string(),
+            });
+        }
+        if self.gene_set_inspector.show_panel {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::gene_set_inspector_viewport_id(),
+                ),
+                viewport_id: Self::gene_set_inspector_viewport_id(),
+                title: "Gene Set Inspector".to_string(),
+                detail: "Explicit gene-to-primer binding and collection specificity".to_string(),
             });
         }
         if self.evidence_preparation_panel.show_panel {
@@ -920,6 +942,8 @@ impl GENtleApp {
             self.command_palette_focus_query = true;
         } else if viewport_id == Self::external_services_viewport_id() {
             self.external_services_ui.show_panel = true;
+        } else if viewport_id == Self::gene_set_inspector_viewport_id() {
+            self.gene_set_inspector.show_panel = true;
         } else if viewport_id == Self::history_viewport_id() {
             self.history_ui.show_panel = true;
         } else if viewport_id == Self::prepare_genome_viewport_id() {

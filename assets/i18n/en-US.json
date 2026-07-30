@@ -152,6 +152,7 @@
   "menu.patterns": "Patterns",
   "menu.services": "Services",
   "menu.genome.prepare_reference": "Prepare Reference Genome...",
+  "menu.genome.gene_set_inspector": "Gene Set Inspector...",
   "menu.genome.prepared_references": "Prepared References...",
   "menu.genome.clear_caches": "Clear Caches...",
   "menu.genome.retrieve_genomic": "Retrieve Genomic Sequence...",

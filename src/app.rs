@@ -101,6 +101,9 @@ mod rack_workspace_ui;
 #[path = "app/gibson_ui.rs"]
 mod gibson_ui;
 
+#[path = "app/gene_set_ui.rs"]
+mod gene_set_ui;
+
 use std::{
     collections::hash_map::DefaultHasher,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -1030,6 +1033,7 @@ pub struct GENtleApp {
     command_palette_selected: usize,
     command_palette_focus_query: bool,
     external_services_ui: ExternalServicesUiState,
+    gene_set_inspector: gene_set_ui::GeneSetInspectorUiState,
     clawbio_panel: clawbio_ui::ClawBioPanelState,
     mirna_panel: mirna_ui::MirnaTargetScanPanelState,
     evidence_preparation_panel: evidence_preparation_ui::EvidencePreparationPanelState,
@@ -1304,6 +1308,7 @@ enum BackgroundJobKind {
     TrackImport,
     OpenTutorialProject,
     AgentAssist,
+    PrimerSpecificityCollection,
 }
 
 impl BackgroundJobKind {
@@ -1314,6 +1319,7 @@ impl BackgroundJobKind {
             Self::TrackImport => "TrackImport",
             Self::OpenTutorialProject => "OpenTutorialProject",
             Self::AgentAssist => "AgentAssist",
+            Self::PrimerSpecificityCollection => "PrimerSpecificityCollection",
         }
     }
 
@@ -2412,6 +2418,7 @@ enum CommandPaletteAction {
     OpenGenbank,
     OpenConfiguration,
     OpenExternalServices,
+    OpenGeneSetInspector,
     OpenGibson,
     OpenMirnaTargetScan,
     OpenEvidencePreparation,
@@ -2854,6 +2861,7 @@ impl Default for GENtleApp {
             command_palette_selected: 0,
             command_palette_focus_query: false,
             external_services_ui: ExternalServicesUiState::default(),
+            gene_set_inspector: gene_set_ui::GeneSetInspectorUiState::default(),
             clawbio_panel: clawbio_ui::ClawBioPanelState::default(),
             mirna_panel: mirna_ui::MirnaTargetScanPanelState::default(),
             evidence_preparation_panel:
@@ -3086,6 +3094,17 @@ impl GENtleApp {
         egui::Id::new((
             "hosted_external_services_window",
             Self::external_services_viewport_id(),
+        ))
+    }
+
+    fn gene_set_inspector_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Gene Set Inspector Viewport")
+    }
+
+    fn hosted_gene_set_inspector_window_id() -> egui::Id {
+        egui::Id::new((
+            "hosted_gene_set_inspector_window",
+            Self::gene_set_inspector_viewport_id(),
         ))
     }
 
@@ -4683,6 +4702,7 @@ Error: `{err}`"
         let mut track_import = 0usize;
         let mut tutorial = 0usize;
         let mut agent = 0usize;
+        let mut primer_specificity_collection = 0usize;
         let mut origin_counts: BTreeMap<String, usize> = BTreeMap::new();
         let mut min_snapshot_id = u64::MAX;
         let mut max_snapshot_id = 0u64;
@@ -4695,6 +4715,9 @@ Error: `{err}`"
                 BackgroundJobKind::TrackImport => track_import += 1,
                 BackgroundJobKind::OpenTutorialProject => tutorial += 1,
                 BackgroundJobKind::AgentAssist => agent += 1,
+                BackgroundJobKind::PrimerSpecificityCollection => {
+                    primer_specificity_collection += 1
+                }
             }
             let origin = if snapshot.origin.trim().is_empty() {
                 "-".to_string()
@@ -4727,13 +4750,14 @@ Error: `{err}`"
             }
         }
         format!(
-            "{} match(es) · kinds: PrepareGenome={} BlastGenome={} TrackImport={} OpenTutorialProject={} AgentAssist={} · origins: {} · ids #{}..#{} · captured_at {}..{}",
+            "{} match(es) · kinds: PrepareGenome={} BlastGenome={} TrackImport={} OpenTutorialProject={} AgentAssist={} PrimerSpecificityCollection={} · origins: {} · ids #{}..#{} · captured_at {}..{}",
             snapshots.len(),
             prepare,
             blast,
             track_import,
             tutorial,
             agent,
+            primer_specificity_collection,
             if origin_preview.is_empty() {
                 "-".to_string()
             } else {
@@ -5188,6 +5212,7 @@ Error: `{err}`"
             || self.jaspar_background_task.is_some()
             || self.tutorial_project_task.is_some()
             || self.agent_task.is_some()
+            || self.has_active_gene_set_specificity_task()
     }
 
     fn refresh_sequence_windows_for_seq_ids(&mut self, seq_ids: &[String]) -> usize {
@@ -5373,6 +5398,16 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenExternalServices,
             },
             CommandPaletteEntry {
+                title: "Gene Set Inspector".to_string(),
+                detail:
+                    "Bind resolved gene-set members to exact primer reports and run shared collection specificity"
+                        .to_string(),
+                keywords:
+                    "gene set collection primer specificity binding blast assay inspector"
+                        .to_string(),
+                action: CommandPaletteAction::OpenGeneSetInspector,
+            },
+            CommandPaletteEntry {
                 title: "Gibson".to_string(),
                 detail: "Plan one destination-first Gibson assembly with cartoon preview."
                     .to_string(),
@@ -5498,6 +5533,7 @@ Error: `{err}`"
             CommandPaletteAction::OpenGenbank => self.open_genbank_dialog(),
             CommandPaletteAction::OpenConfiguration => self.open_configuration_dialog(),
             CommandPaletteAction::OpenExternalServices => self.open_external_services_dialog(),
+            CommandPaletteAction::OpenGeneSetInspector => self.open_gene_set_inspector_dialog(),
             CommandPaletteAction::OpenGibson => self.open_gibson_dialog(),
             CommandPaletteAction::OpenMirnaTargetScan => self.open_mirna_target_scan_dialog(),
             CommandPaletteAction::OpenEvidencePreparation => {
@@ -16295,6 +16331,16 @@ Error: `{err}`"
                     self.open_genome_bed_track_dialog();
                     ui.close();
                 }
+                if ui
+                    .button(self.tr("menu.genome.gene_set_inspector"))
+                    .on_hover_text(
+                        "Inspect persisted gene sets, bind exact primer reports, and run collection specificity",
+                    )
+                    .clicked()
+                {
+                    self.open_gene_set_inspector_dialog();
+                    ui.close();
+                }
                 ui.separator();
                 if ui
                     .button(self.tr("menu.genome.prepare_helper"))
@@ -22454,6 +22500,8 @@ Error: `{err}`"
                 self.render_agent_status_message(ui, &self.agent_status, false);
             }
 
+            self.render_gene_set_specificity_background_job(ui);
+
             ui.separator();
             ui.strong("Recent job events");
             egui::ScrollArea::vertical()
@@ -24728,6 +24776,7 @@ impl GENtleApp {
             self.poll_agent_assistant_task(ctx);
             self.poll_agent_model_discovery_task(ctx);
             self.poll_clawbio_task(ctx);
+            self.poll_gene_set_specificity_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
             self.sync_open_windows_if_display_changed(ctx);
             self.refresh_root_frame_presentation_caches();
@@ -24786,6 +24835,7 @@ impl GENtleApp {
                 self.render_routine_assistant_dialog(ctx);
                 self.render_agent_assistant_dialog(ctx);
                 self.render_external_services_dialog(ctx);
+                self.render_gene_set_inspector_dialog(ctx);
                 self.render_clawbio_dialog(ctx);
                 self.render_mirna_target_scan_dialog(ctx);
                 self.render_evidence_preparation_dialog(ctx);

@@ -14,6 +14,11 @@ understand what changed.
 
 ## 2026-07-30
 
+- Added `Genome > Gene Set Inspector...` as the first prominent collection GUI
+  consumer. It requires explicit persisted gene-to-primer-report bindings,
+  executes the shared `collections run primer-specificity` route in a detached
+  background snapshot, and keeps member execution outcomes distinct from child
+  reports' biological specificity verdicts.
 - Added engine-owned collection `map` execution for primer specificity through
   `AssessPrimerPairSpecificityCollection` and
   `collections run primer-specificity`. Persisted gene sets use explicit
