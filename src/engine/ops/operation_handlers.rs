@@ -2116,11 +2116,11 @@ impl GentleEngine {
         }
     }
 
-    fn estimate_protein_molecular_weight_kda(sequence: &str) -> f32 {
+    fn estimate_protein_molecular_weight_kda(sequence: &str) -> Option<f32> {
         AMINO_ACIDS
             .protein_molecular_weight_kda(sequence)
             .molecular_weight_kda
-            .unwrap_or(0.0) as f32
+            .map(|value| value as f32)
     }
 
     fn estimate_protein_isoelectric_point(sequence: &str) -> Option<f32> {
@@ -5119,9 +5119,8 @@ impl GentleEngine {
                 });
             }
             let sequence = protein.get_forward_string();
-            let molecular_weight_kda = Self::estimate_protein_molecular_weight_kda(&sequence);
-            if molecular_weight_kda <= 0.0 {
-                return Err(EngineError {
+            let molecular_weight_kda = Self::estimate_protein_molecular_weight_kda(&sequence)
+                .ok_or_else(|| EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!(
                         "Could not estimate molecular weight for protein '{}'",
@@ -5129,8 +5128,7 @@ impl GentleEngine {
                     ),
 
                     cause_chain: vec![],
-                });
-            }
+                })?;
             let (name, detail) = Self::protein_derivation_gel_label(row, protein);
             samples.push(ProteinGelSample {
                 name,
@@ -27047,7 +27045,17 @@ impl GentleEngine {
                             } else {
                                 peptide.sequence.clone()
                             };
-                            ProteinGelSample {
+                            let molecular_weight_kda =
+                                Self::estimate_protein_molecular_weight_kda(&peptide.sequence)
+                                    .ok_or_else(|| EngineError {
+                                        code: ErrorCode::InvalidInput,
+                                        message: format!(
+                                            "Could not estimate molecular weight for peptide {}",
+                                            peptide.peptide_index
+                                        ),
+                                        cause_chain: vec![],
+                                    })?;
+                            Ok(ProteinGelSample {
                                 name: format!("p{}", peptide.peptide_index),
                                 detail: Some(format!(
                                     "{}..{} aa, {} aa, {}",
@@ -27056,12 +27064,10 @@ impl GentleEngine {
                                     peptide.length_aa,
                                     preview
                                 )),
-                                molecular_weight_kda: Self::estimate_protein_molecular_weight_kda(
-                                    &peptide.sequence,
-                                ),
-                            }
+                                molecular_weight_kda,
+                            })
                         })
-                        .collect::<Vec<_>>();
+                        .collect::<Result<Vec<_>, EngineError>>()?;
                     let requested_ladders: &[String] = ladders.as_deref().unwrap_or(&[]);
                     let layout = build_protein_gel_layout(&samples, requested_ladders, notes)
                         .map_err(|message| EngineError {
@@ -27148,19 +27154,18 @@ impl GentleEngine {
                             });
                         }
                         let sequence = protein.get_forward_string();
-                        let molecular_weight_kda =
-                            Self::estimate_protein_molecular_weight_kda(&sequence);
-                        if molecular_weight_kda <= 0.0 {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "Could not estimate molecular weight for protein '{}'",
-                                    row.protein_seq_id
-                                ),
+                        let molecular_weight_kda = Self::estimate_protein_molecular_weight_kda(
+                            &sequence,
+                        )
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Could not estimate molecular weight for protein '{}'",
+                                row.protein_seq_id
+                            ),
 
-                                cause_chain: vec![],
-                            });
-                        }
+                            cause_chain: vec![],
+                        })?;
                         let isoelectric_point = Self::estimate_protein_isoelectric_point(&sequence)
                             .filter(|pi| pi.is_finite() && *pi > 0.0)
                             .ok_or_else(|| EngineError {
@@ -38401,5 +38406,22 @@ impl GentleEngine {
         self.add_container_from_result(&op_for_containers, &result);
 
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod molecular_weight_tests {
+    use super::*;
+
+    #[test]
+    fn protein_gel_mass_uses_shared_residue_model_and_rejects_ambiguity() {
+        let observed = GentleEngine::estimate_protein_molecular_weight_kda("A")
+            .expect("alanine molecular weight");
+        let expected = ((71.0788_f64 + 18.015_28_f64) / 1_000.0) as f32;
+        assert!((observed - expected).abs() < 1e-6);
+        assert_eq!(
+            GentleEngine::estimate_protein_molecular_weight_kda("MAX"),
+            None
+        );
     }
 }

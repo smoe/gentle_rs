@@ -14,6 +14,10 @@ understand what changed.
 
 ## 2026-07-30
 
+- Unified protein-gel, peptide-gel, 2D-gel, and isoform-evidence molecular
+  weights on the amino-acid residue-mass model. All routes now add one terminal
+  water per chain and reject ambiguous residues instead of silently producing
+  a zero-mass estimate.
 - Added report-owned biological-context registries for resolved gene sets and
   portable collection-operation reports. Promoter derivation and gene-set
   primer-specificity mapping now require a homogeneous context matching the
