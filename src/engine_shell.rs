@@ -5389,8 +5389,9 @@ fn parse_ortholog_ambiguity_policy(
         "" => Err(format!("{context} --ambiguity-policy must not be empty")),
         "reject" | "error" | "strict" => Ok(OrthologAmbiguityPolicy::Reject),
         "first" | "first_match" | "allow_first" => Ok(OrthologAmbiguityPolicy::First),
+        "preserve" => Ok(OrthologAmbiguityPolicy::Preserve),
         other => Err(format!(
-            "Invalid --ambiguity-policy '{other}' for {context}; expected reject or first"
+            "Invalid --ambiguity-policy '{other}' for {context}; expected reject, first, or preserve"
         )),
     }
 }
@@ -18356,11 +18357,7 @@ fn pool_artifact_descriptor_with_readiness(
     })
 }
 
-fn primer_specificity_report_descriptor(
-    id: &str,
-    description: &str,
-    args: Vec<Value>,
-) -> Value {
+fn primer_specificity_report_descriptor(id: &str, description: &str, args: Vec<Value>) -> Value {
     json!({
         "id": id,
         "kind": "operation",
@@ -26448,6 +26445,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--anchor-gene", "required": true, "subject_kind": "other", "detail": "anchor gene query"}),
                 json!({"name": "--orthologs", "required": true, "subject_kind": "other", "detail": "ortholog resource path"}),
                 json!({"name": "--target-species|--target-genome|--transcript", "required": false, "subject_kind": "other", "detail": "target species/genome/transcript selectors"}),
+                json!({"name": "--ambiguity-policy", "required": false, "subject_kind": "other", "detail": "reject, first, or preserve; preserve retains structured candidates without selecting one"}),
             ],
         ),
         optional_artifact_resource_report_descriptor(

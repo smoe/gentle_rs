@@ -14,6 +14,10 @@ understand what changed.
 
 ## 2026-07-30
 
+- Added `ambiguity_policy=preserve` for offline ortholog promoter resolution.
+  It leaves ambiguous targets unresolved while retaining ordered, structured
+  mapping candidates with portable context and provider evidence; existing
+  `reject` and `first` behavior is unchanged.
 - Bound the existing offline ortholog resource and promoter-cohort reports to
   portable biological-context registries. Orthology type/confidence now use
   open typed vocabularies that preserve provider-specific legacy strings;

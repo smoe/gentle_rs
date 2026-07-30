@@ -5839,6 +5839,89 @@ fn resolve_ortholog_promoter_cohort_reports_ambiguity_unless_policy_allows_first
             .contains("Ambiguous local ortholog mapping")
     );
     assert_eq!(rejected.unresolved_rows[0].candidates.len(), 2);
+    assert!(rejected.unresolved_rows[0].candidate_mappings.is_empty());
+
+    let preserved = engine
+        .resolve_ortholog_promoter_cohort(
+            "Homo sapiens",
+            "HumanToy",
+            "ENSG_TP73",
+            &["Mus musculus".to_string()],
+            &target_genome_ids,
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Preserve,
+            GeneSetCohortRelationship::Unspecified,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("preserve ambiguity policy retains candidates");
+    assert_eq!(preserved.resolved_promoter_count, 1);
+    assert_eq!(preserved.unresolved_count, 1);
+    let preserved_target = &preserved.unresolved_rows[0];
+    assert!(
+        preserved_target
+            .reason
+            .contains("ambiguity_policy=preserve")
+    );
+    assert_eq!(preserved_target.candidates.len(), 2);
+    assert_eq!(preserved_target.candidate_mappings.len(), 2);
+    assert_eq!(
+        preserved_target
+            .candidate_mappings
+            .iter()
+            .map(|candidate| candidate.candidate_rank)
+            .collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    assert_eq!(
+        preserved_target.candidate_mappings[0]
+            .target_gene_symbol
+            .as_deref(),
+        Some("Trp73")
+    );
+    assert_eq!(
+        preserved_target.candidate_mappings[1]
+            .target_gene_symbol
+            .as_deref(),
+        Some("Trp73b")
+    );
+    assert_eq!(
+        preserved_target.candidate_mappings[0]
+            .orthology_type
+            .as_ref()
+            .and_then(OrthologyType::cardinality),
+        Some(OrthologyCardinality::OneToOne)
+    );
+    assert_eq!(
+        preserved_target.candidate_mappings[1]
+            .orthology_type
+            .as_ref()
+            .and_then(OrthologyType::cardinality),
+        Some(OrthologyCardinality::OneToMany)
+    );
+    assert_eq!(
+        preserved_target.candidate_mappings[1].source.as_deref(),
+        Some("synthetic ambiguous row")
+    );
+    assert_eq!(
+        preserved_target.candidate_mappings[1].evidence,
+        vec!["synthetic_one2many".to_string()]
+    );
+    for candidate in &preserved_target.candidate_mappings {
+        assert_eq!(candidate.target_genome_id.as_deref(), Some("MouseToy"));
+        for context_id in [
+            candidate.source_context_id.as_deref(),
+            candidate.target_context_id.as_deref(),
+        ] {
+            preserved
+                .biological_contexts
+                .context(context_id.expect("candidate context id"))
+                .expect("candidate context copied into report");
+        }
+    }
 
     let first = engine
         .resolve_ortholog_promoter_cohort(

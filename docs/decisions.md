@@ -363,6 +363,8 @@ recognizes canonical cardinality/confidence values while preserving unknown
 provider-specific text exactly. Legacy symbol-only rows remain accepted, but a
 matching symbol is never treated as relationship or functional-equivalence
 evidence. The shipped `reject` and deterministic warning-bearing `first`
-ambiguity policies remain unchanged. A generic relation hierarchy, paralog
-contract, or representation-preserving ambiguity mode requires a concrete
-resolver/consumer and is not inferred from this ortholog retrofit.
+ambiguity policies remain unchanged. The additive `preserve` policy leaves an
+ambiguous target unresolved while carrying every ordered candidate mapping and
+its portable context/provenance; candidates do not become resolved cohort
+members. A generic relation hierarchy or paralog contract still requires a
+concrete resolver/consumer and is not inferred from the ortholog contract.

@@ -5284,7 +5284,7 @@ Tutorial companion:
     and live Ensembl ortholog/paralog retrieval is not implemented.
   - Draft members are included with explicit warnings; recipes that used
     `.status // "included"` may miss those warnings.
-- `orthologs resolve-promoter-cohort --anchor-species SPECIES --anchor-genome GENOME_ID --anchor-gene QUERY --target-species SPECIES [--target-species SPECIES ...] [--target-genome SPECIES=GENOME_ID] [--transcript SPECIES=TRANSCRIPT_ID] --orthologs ORTHOLOG_RESOURCE.json [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--ambiguity-policy reject|first] [--catalog GENOMES.json] [--cache-dir PATH] [--path OUTPUT.json]`
+- `orthologs resolve-promoter-cohort --anchor-species SPECIES --anchor-genome GENOME_ID --anchor-gene QUERY --target-species SPECIES [--target-species SPECIES ...] [--target-genome SPECIES=GENOME_ID] [--transcript SPECIES=TRANSCRIPT_ID] --orthologs ORTHOLOG_RESOURCE.json [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--ambiguity-policy reject|first|preserve] [--catalog GENOMES.json] [--cache-dir PATH] [--path OUTPUT.json]`
   - Runs engine `ResolveOrthologPromoterCohort`.
   - Uses a local `gentle.ortholog_resource.v1` mapping table only; no live
     Ensembl or orthology API call is made.
@@ -5293,6 +5293,9 @@ Tutorial companion:
     honored for matching.
   - Ambiguous target mappings are unresolved by default. `--ambiguity-policy
     first` chooses the stable first candidate and records a warning.
+    `--ambiguity-policy preserve` keeps the target unresolved and emits
+    ordered, structured `candidate_mappings[]` for review; it never promotes
+    all candidates into the resolved promoter cohort.
   - Optional `--relationship` records an expected cross-species association
     without deriving evidence flags until a comparison is run.
   - Returns portable schema `gentle.ortholog_promoter_cohort.v1`.

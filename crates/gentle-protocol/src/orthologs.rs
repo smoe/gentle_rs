@@ -226,6 +226,7 @@ pub enum OrthologAmbiguityPolicy {
     #[default]
     Reject,
     First,
+    Preserve,
 }
 
 impl OrthologAmbiguityPolicy {
@@ -233,6 +234,7 @@ impl OrthologAmbiguityPolicy {
         match self {
             Self::Reject => "reject",
             Self::First => "first",
+            Self::Preserve => "preserve",
         }
     }
 }
@@ -367,6 +369,36 @@ pub struct OrthologPromoterCohortRequest {
     pub relationship: GeneSetCohortRelationship,
 }
 
+/// One ordered mapping candidate retained for an unresolved ambiguous target.
+///
+/// Candidate rows preserve declared identity and evidence without treating the
+/// mapping as selected or resolving it into a promoter-cohort member.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct OrthologAmbiguityCandidate {
+    pub candidate_rank: usize,
+    pub candidate_label: String,
+    pub target_species: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_genome_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_context_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_context_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_gene_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_gene_symbol: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orthology_type: Option<OrthologyType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<OrthologConfidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub evidence: Vec<String>,
+}
+
 /// One unresolved species/gene row from ortholog promoter resolution.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
@@ -381,6 +413,8 @@ pub struct OrthologUnresolvedRow {
     pub reason: String,
     #[serde(default)]
     pub candidates: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidate_mappings: Vec<OrthologAmbiguityCandidate>,
 }
 
 /// One promoter window resolved for an anchor or target ortholog.
@@ -699,6 +733,72 @@ mod tests {
     }
 
     #[test]
+    fn preserve_ambiguity_policy_and_candidate_mapping_round_trip() {
+        let unresolved: OrthologUnresolvedRow = serde_json::from_value(serde_json::json!({
+            "species": "Mus musculus",
+            "reason": "ambiguous",
+            "candidate_mappings": [{
+                "candidate_rank": 1,
+                "candidate_label": "Mus musculus:Trp73:ENSMUSG_TRP73:one_to_one",
+                "target_species": "Mus musculus",
+                "target_genome_id": "GRCm39",
+                "source_context_id": "human",
+                "target_context_id": "mouse",
+                "target_gene_id": "ENSMUSG_TRP73",
+                "target_gene_symbol": "Trp73",
+                "orthology_type": "one_to_one",
+                "confidence": "provider_reviewed",
+                "source": "curated provider",
+                "evidence": ["provider_assertion"]
+            }]
+        }))
+        .expect("deserialize preserved ambiguity");
+        assert_eq!(unresolved.candidate_mappings.len(), 1);
+        assert_eq!(
+            unresolved.candidate_mappings[0]
+                .orthology_type
+                .as_ref()
+                .and_then(OrthologyType::cardinality),
+            Some(OrthologyCardinality::OneToOne)
+        );
+        assert_eq!(
+            unresolved.candidate_mappings[0].confidence.as_deref(),
+            Some("provider_reviewed")
+        );
+
+        let policy = OrthologAmbiguityPolicy::Preserve;
+        assert_eq!(policy.as_str(), "preserve");
+        assert_eq!(
+            serde_json::to_value(policy).expect("serialize policy"),
+            "preserve"
+        );
+        assert_eq!(
+            serde_json::from_value::<OrthologAmbiguityPolicy>(serde_json::json!("preserve"))
+                .expect("deserialize policy"),
+            OrthologAmbiguityPolicy::Preserve
+        );
+        let serialized = serde_json::to_value(unresolved).expect("serialize preserved ambiguity");
+        assert_eq!(
+            serialized["candidate_mappings"][0]["confidence"],
+            "provider_reviewed"
+        );
+
+        let legacy: OrthologUnresolvedRow = serde_json::from_value(serde_json::json!({
+            "species": "Mus musculus",
+            "reason": "ambiguous",
+            "candidates": ["Trp73", "Trp73b"]
+        }))
+        .expect("deserialize legacy unresolved row");
+        assert!(legacy.candidate_mappings.is_empty());
+        assert!(
+            serde_json::to_value(legacy)
+                .expect("serialize legacy unresolved row")
+                .get("candidate_mappings")
+                .is_none()
+        );
+    }
+
+    #[test]
     fn old_promoter_cohort_defaults_new_optional_rows() {
         let report: OrthologPromoterCohortReport = serde_json::from_value(serde_json::json!({
             "schema": ORTHOLOG_PROMOTER_COHORT_SCHEMA,
@@ -721,6 +821,7 @@ mod tests {
         assert_eq!(report.relationship, GeneSetCohortRelationship::Unspecified);
         assert!(report.relationship_flags.is_empty());
         assert!(report.rows.is_empty());
+        assert!(report.unresolved_rows.is_empty());
         assert!(report.warnings.is_empty());
         assert!(report.biological_contexts.contexts.is_empty());
     }

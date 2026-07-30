@@ -338,8 +338,6 @@ wet-lab conclusions or unconfirmed mutations.
   provenance, biological-context compatibility, multiple-testing correction,
   unresolved-member accounting, and no causal-regulation claim inferred from
   enrichment alone.
-- Add a representation-preserving ortholog ambiguity mode only as an explicit
-  behavioral extension alongside the existing `reject`/`first` policies.
 - Add paralog mapping/resolution only with a concrete engine consumer,
   preserving relationship provenance and one-to-many ambiguity without
   inferring functional equivalence from matching symbols.

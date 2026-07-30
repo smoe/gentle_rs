@@ -6545,8 +6545,7 @@ fn parse_collections_run_primer_specificity_for_gene_set_and_project_sequences()
     .expect("parse gene-set collection specificity");
     match gene_set {
         ShellCommand::CollectionsRunPrimerSpecificity {
-            collection_subject:
-                CollectionSubjectRef::GeneSetResolution { report_id },
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
             member_bindings,
             pair_rank,
             pair_index,
@@ -31971,6 +31970,23 @@ fn parse_orthologs_resolve_promoter_cohort_and_comparison() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+
+    let preserve = parse_shell_line(
+        r#"orthologs resolve-promoter-cohort --anchor-species human --anchor-genome HumanToy --anchor-gene TP73 --target-species mouse --orthologs orthologs.json --ambiguity-policy preserve"#,
+    )
+    .expect("parse representation-preserving ambiguity policy");
+    assert!(matches!(
+        preserve,
+        ShellCommand::OrthologsResolvePromoterCohort {
+            ambiguity_policy: OrthologAmbiguityPolicy::Preserve,
+            ..
+        }
+    ));
+    let invalid_policy = parse_shell_line(
+        r#"orthologs resolve-promoter-cohort --anchor-species human --anchor-genome HumanToy --anchor-gene TP73 --target-species mouse --orthologs orthologs.json --ambiguity-policy guess"#,
+    )
+    .expect_err("reject unknown ambiguity policy");
+    assert!(invalid_policy.contains("expected reject, first, or preserve"));
 
     let compare = parse_shell_line(
         r#"orthologs promoter-comparison --cohort cohort.json --motif TP73 --motifs SP1,BACH2 --score-kind llr_background_tail_log10 --allow-negative --relationship anti-co-regulated --expression-json '{"gene_label":"TP73","condition":"case","value":7.5,"unit":"TPM"}' --source-label rna_demo --cutrun-dataset-id cutrun_demo --path comparison.json"#,

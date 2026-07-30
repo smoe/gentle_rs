@@ -120,12 +120,13 @@ pub use isoform_evidence::{
 };
 pub use orthologs::{
     ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA,
-    OrthologAmbiguityPolicy, OrthologConfidence, OrthologConfidenceLevel, OrthologCutRunSupportRow,
-    OrthologCutRunSupportStatus, OrthologExpressionAssignment, OrthologMappingRow,
-    OrthologPairwiseTfbsSimilarity, OrthologPromoterCohortReport, OrthologPromoterCohortRequest,
-    OrthologPromoterComparisonReport, OrthologPromoterRole, OrthologPromoterRow, OrthologResource,
-    OrthologSequenceSimilarityRow, OrthologSpeciesAlias, OrthologTfbsPeakSummary,
-    OrthologTfbsSummaryRow, OrthologUnresolvedRow, OrthologyCardinality, OrthologyType,
+    OrthologAmbiguityCandidate, OrthologAmbiguityPolicy, OrthologConfidence,
+    OrthologConfidenceLevel, OrthologCutRunSupportRow, OrthologCutRunSupportStatus,
+    OrthologExpressionAssignment, OrthologMappingRow, OrthologPairwiseTfbsSimilarity,
+    OrthologPromoterCohortReport, OrthologPromoterCohortRequest, OrthologPromoterComparisonReport,
+    OrthologPromoterRole, OrthologPromoterRow, OrthologResource, OrthologSequenceSimilarityRow,
+    OrthologSpeciesAlias, OrthologTfbsPeakSummary, OrthologTfbsSummaryRow, OrthologUnresolvedRow,
+    OrthologyCardinality, OrthologyType,
 };
 pub use reporter::{
     PortBindingStatus, REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA,

@@ -515,15 +515,20 @@ Behavior notes:
   species/genome pair.
 - Species aliases are normalized for matching. Ambiguous target mappings are
   unresolved by default; `ambiguity_policy=first` chooses the stable first
-  candidate and records a warning. This shipped behavior is unchanged; a
-  future representation-preserving ambiguity mode would be a separate
-  behavioral contract.
+  candidate and records a warning. `ambiguity_policy=preserve` also leaves the
+  target unresolved, but adds ordered `candidate_mappings[]` rows carrying
+  each candidate's gene identity, genome/context references, orthology
+  type/confidence, provider source, and evidence. Preserved candidates are not
+  inserted into the resolved promoter `rows[]`, so downstream comparison does
+  not silently treat alternatives as accepted cohort members. The shipped
+  `reject` and `first` behavior remains unchanged.
 - Resolved rows carry species, genome id, gene id/symbol, transcript id,
   strand, TSS, promoter span, transcription-aligned promoter sequence, and
   orthology evidence/provenance. They also refer to a context copied into the
   cohort report; target rows retain the mapping's oriented source/target
   context references. Unresolved rows make missing or ambiguous mappings
-  explicit.
+  explicit, and preserved ambiguity candidates refer only to contexts copied
+  into the same portable report.
 - Symbol-only mappings remain supported for legacy/local resources. A symbol
   is a lookup key, not evidence of orthology or functional equivalence; those
   claims remain bound to the row's declared type, source, and evidence.
