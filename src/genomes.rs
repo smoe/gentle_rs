@@ -13562,11 +13562,18 @@ mod tests {
             &blastn,
             "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastn: fake 1.0'; exit 0; fi\nexit 0\n",
         );
-        let _makeblastdb =
-            EnvVarGuard::set(MAKEBLASTDB_ENV_BIN, makeblastdb.to_string_lossy().as_ref());
-        let _blastdbcmd =
-            EnvVarGuard::set(BLASTDBCMD_ENV_BIN, blastdbcmd.to_string_lossy().as_ref());
-        let _blastn = EnvVarGuard::set(BLASTN_ENV_BIN, blastn.to_string_lossy().as_ref());
+        let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            makeblastdb.to_string_lossy().as_ref(),
+        );
+        let _blastdbcmd = crate::tool_overrides::ScopedToolOverrideGuard::set(
+            BLASTDBCMD_ENV_BIN,
+            blastdbcmd.to_string_lossy().as_ref(),
+        );
+        let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
+            BLASTN_ENV_BIN,
+            blastn.to_string_lossy().as_ref(),
+        );
 
         let catalog =
             GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();

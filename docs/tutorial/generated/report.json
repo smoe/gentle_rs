@@ -58,7 +58,7 @@
   ],
   "file_checksums": {
     "README.md": "28a4e5376843419159dcc5727cefa863e130b3e30814cfa9d815570a4805bf81",
-    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "192366db4be8257527c7322d91b988fd9c11ac4c11a57ae14b85d75f3902de90",
+    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "6ecbc1eaaa030927178b3475ce88ebe9a62b304ff5e1d6712ebd317e82636aa4",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "f324456edd43ceb5f6c0f263e085844cddb27da1a454b40b63a68e8d69bc9a0e",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "cd022dd682970b1ac77006f069f2b6e14bf7c0294281d7a6f3d71762711ceacc",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_comparison.json": "78182421a58c7dddb1d1ac1b93d5de534b501cb4dce1396d4c9d9c6c28d59daa",
@@ -78,7 +78,7 @@
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json": "156c17628fc41a44a1ac79f26b4c5a543926fc75f2dcd96c45ef5b70f1927534",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg": "07c5d73fb9ba597570fd9af6e9774326679ba6fabcadc0dddba218c619965d3b",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json": "f617e02aa17848b0a9771aa0ed97df6d9a21442e655515ff1063302d4ca2e57d",
-    "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort.json": "ae81a7c03b9ee3b99ca3e85602b267c1e5eb943f7aadfc7206edb455519eac57",
+    "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort.json": "b84af3c393237a514d231f81043998abd1fb79f11a125f066cd7bee135d67d41",
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort_comparison.json": "82ab37feab9f0902b75744da4d7647e97a75d627befd297146c13a60b83a82f5",
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_cohort.json": "616f182b828046229b9e05a148e92f30000a6ac4f64522ef11ae8bbd08e87213",
     "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_comparison.json": "0e5922346b0a6d1f44269487ddcadddb43647f65d43d3ceeccb18acf7073454b",

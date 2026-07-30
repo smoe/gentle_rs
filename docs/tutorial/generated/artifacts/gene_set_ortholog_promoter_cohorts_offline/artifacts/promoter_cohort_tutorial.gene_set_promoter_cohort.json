@@ -10,6 +10,8 @@
   "gene_set_resolution": {
     "schema": "gentle.gene_set_resolution.v1",
     "generated_at_unix_ms": 0,
+    "op_id": "op-3",
+    "run_id": "example_gene_set_ortholog_promoter_cohorts_offline",
     "request": {
       "source_kind": "catalog_group",
       "query": "tutorial_p73_promoter_cohort"
@@ -119,5 +121,122 @@
   ],
   "relationship_flags": [],
   "unresolved_members": [],
-  "warnings": []
+  "warnings": [],
+  "collection_operation": {
+    "schema": "gentle.collection_operation.v1",
+    "report_id": "collection_operation:op-3",
+    "op_id": "op-3",
+    "run_id": "example_gene_set_ortholog_promoter_cohorts_offline",
+    "generated_at_unix_ms": 0,
+    "capability_source": "engine_operation",
+    "capability_name": "BuildGeneSetPromoterCohort",
+    "collection_subject": {
+      "source_kind": "gene_set_resolution",
+      "report_id": "op-3"
+    },
+    "lifting_mode": "derive",
+    "lift_policy": {
+      "subject_kind": "gene_set_resolution",
+      "support": {
+        "status": "supported",
+        "mode": "derive",
+        "result_payload_kind": "gentle.gene_set_promoter_cohort.v1"
+      }
+    },
+    "fingerprint_algorithm": "sha256_canonical_collection_members_v1",
+    "collection_membership_fingerprint_sha256": "sha256:688ab4ea34e34f3133342bf8c2a94eec0dcf47855726236fbc9299fe45d02038",
+    "dry_run": false,
+    "applied": true,
+    "per_member_status": [
+      {
+        "member": {
+          "stable_member_id": "gene_id:ensg_tutorial_tp73",
+          "gene_symbol": "TP73",
+          "gene_id": "ENSG_TUTORIAL_TP73",
+          "ordering_index": 0,
+          "source_provenance": [
+            {
+              "source_kind": "catalog_group",
+              "source_id": "tutorial_p73_promoter_cohort",
+              "source_path": "./docs/examples/assets/promoter_cohort_tutorial_gene_groups.json",
+              "note": "synthetic tutorial member with a GC-rich promoter patch"
+            }
+          ]
+        },
+        "outcome": "succeeded",
+        "produced_report_ids": [
+          "op-3"
+        ]
+      },
+      {
+        "member": {
+          "stable_member_id": "promoter_window:gene_id:ensg_tutorial_tp73:TX_HUMAN_TP73:1:111-161",
+          "gene_symbol": "TP73",
+          "gene_id": "ENSG_TUTORIAL_TP73",
+          "parent_member_id": "gene_id:ensg_tutorial_tp73",
+          "source_provenance": [
+            {
+              "source_kind": "catalog_group",
+              "source_id": "tutorial_p73_promoter_cohort",
+              "source_path": "./docs/examples/assets/promoter_cohort_tutorial_gene_groups.json",
+              "note": "synthetic tutorial member with a GC-rich promoter patch"
+            }
+          ]
+        },
+        "outcome": "succeeded",
+        "produced_report_ids": [
+          "op-3"
+        ]
+      },
+      {
+        "member": {
+          "stable_member_id": "gene_id:ensg_tutorial_tp73d",
+          "gene_symbol": "TP73D",
+          "gene_id": "ENSG_TUTORIAL_TP73D",
+          "ordering_index": 1,
+          "source_provenance": [
+            {
+              "source_kind": "catalog_group",
+              "source_id": "tutorial_p73_promoter_cohort",
+              "source_path": "./docs/examples/assets/promoter_cohort_tutorial_gene_groups.json",
+              "note": "synthetic tutorial member with a deliberately divergent promoter"
+            }
+          ]
+        },
+        "outcome": "succeeded",
+        "produced_report_ids": [
+          "op-3"
+        ]
+      },
+      {
+        "member": {
+          "stable_member_id": "promoter_window:gene_id:ensg_tutorial_tp73d:TX_HUMAN_TP73D:1:111-161",
+          "gene_symbol": "TP73D",
+          "gene_id": "ENSG_TUTORIAL_TP73D",
+          "parent_member_id": "gene_id:ensg_tutorial_tp73d",
+          "source_provenance": [
+            {
+              "source_kind": "catalog_group",
+              "source_id": "tutorial_p73_promoter_cohort",
+              "source_path": "./docs/examples/assets/promoter_cohort_tutorial_gene_groups.json",
+              "note": "synthetic tutorial member with a deliberately divergent promoter"
+            }
+          ]
+        },
+        "outcome": "succeeded",
+        "produced_report_ids": [
+          "op-3"
+        ]
+      }
+    ],
+    "aggregate_warnings": [],
+    "provenance": [
+      {
+        "source_kind": "catalog_group",
+        "source_id": "tutorial_p73_promoter_cohort",
+        "source_label": "Tutorial p73 promoter cohort",
+        "source_path": "./docs/examples/assets/promoter_cohort_tutorial_gene_groups.json"
+      }
+    ]
+  }
 }

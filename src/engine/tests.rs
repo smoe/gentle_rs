@@ -5409,6 +5409,14 @@ fn build_gene_set_promoter_cohort_emits_persisted_collection_lift_report() {
     assert_eq!(generic.capability_name, "BuildGeneSetPromoterCohort");
     assert_eq!(generic.lifting_mode, CollectionLiftingMode::Derive);
     assert_eq!(
+        cohort.gene_set_resolution.op_id.as_deref(),
+        cohort.op_id.as_deref()
+    );
+    assert_eq!(
+        cohort.gene_set_resolution.run_id.as_deref(),
+        cohort.run_id.as_deref()
+    );
+    assert_eq!(
         generic.fingerprint_algorithm,
         COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM
     );
@@ -5461,6 +5469,11 @@ fn build_gene_set_promoter_cohort_emits_persisted_collection_lift_report() {
         CollectionSubjectRef::GeneSetResolution { report_id } => report_id,
         other => panic!("expected gene-set resolution subject, got {other:?}"),
     };
+    assert_eq!(
+        Some(subject_report_id.as_str()),
+        cohort.gene_set_resolution.op_id.as_deref(),
+        "collection subject should use the persisted source operation id"
+    );
     assert!(persisted_resolutions.iter().any(|resolution| {
         GentleEngine::gene_set_resolution_artifact_id(resolution) == *subject_report_id
     }));
