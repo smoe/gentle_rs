@@ -50,9 +50,6 @@ understand what changed.
   ordered qualifiers. Both use per-feature plus annotation-state locks and
   normal undo/redo, while ambiguous topology or metadata reconciliation is
   rejected.
-
-## 2026-07-29
-
 - Extended primer-specificity v2 with transcript-set intended products,
   GENtle-derived target geometry for imported pairs, effective mismatches for
   partial HSPs, and independent genomic-carryover and transcriptome-specificity
