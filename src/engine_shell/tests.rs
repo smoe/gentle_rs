@@ -468,6 +468,9 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "gene-sets promoter-cohort" => {
             Some("gene-sets promoter-cohort ToyGenome --group yamanaka_factors")
         }
+        "collections run primer-specificity" => Some(
+            "collections run primer-specificity --seq-ids demo --pair-rank 1 --target-genome demo",
+        ),
         "seq-confirm run" => Some("seq-confirm run expected --reads read1"),
         "seq-primer suggest" => Some("seq-primer suggest expected --primers primer1"),
         "rna-reads allele-hash-screen" => Some(
@@ -530,6 +533,7 @@ fn skip_glossary_flag_parse(path: &str, flag: &str) -> bool {
                     "gene-sets promoter-cohort",
                     "--resolution" | "--gene-set-resolution"
                 )
+                | ("collections run primer-specificity", "--pair-index")
                 | (
                     "features tfbs-score-tracks-svg",
                     "--end" | "--output" | "--sequence-text" | "--start"

@@ -37580,7 +37580,7 @@ fn test_build_lineage_svg_graph_projects_gene_set_artifacts() {
         .clone()
         .expect("gene-set resolution");
 
-    engine
+    let promoter_result = engine
         .apply(Operation::BuildGeneSetPromoterCohort {
             genome_id: "ToyGenome".to_string(),
             source: None,
@@ -37596,12 +37596,38 @@ fn test_build_lineage_svg_graph_projects_gene_set_artifacts() {
             path: None,
         })
         .expect("build lineage promoter cohort");
+    let promoter_cohort = promoter_result
+        .gene_set_promoter_cohort
+        .as_ref()
+        .expect("promoter cohort report");
+    assert_eq!(
+        promoter_cohort.gene_set_resolution.op_id,
+        resolution.op_id,
+        "derivation must retain the persisted source report identity"
+    );
+    assert_ne!(
+        promoter_cohort.gene_set_resolution.op_id.as_deref(),
+        Some(promoter_result.op_id.as_str()),
+        "the derived operation must not replace an existing source report identity"
+    );
 
     let (nodes, edges) = build_lineage_svg_graph(engine.state(), engine.operation_log());
+    let source_gene_set_node_id = format!(
+        "gene_set:{}",
+        GentleEngine::gene_set_resolution_artifact_id(&resolution)
+    );
     let gene_set_node = nodes
         .iter()
-        .find(|node| node.kind == LineageSvgNodeKind::GeneSet)
+        .find(|node| node.node_id == source_gene_set_node_id)
         .expect("gene-set lineage node");
+    assert_eq!(
+        nodes
+            .iter()
+            .filter(|node| node.kind == LineageSvgNodeKind::GeneSet)
+            .count(),
+        1,
+        "one persisted gene set must project to one lineage node"
+    );
     assert_ne!(gene_set_node.kind, LineageSvgNodeKind::Sequence);
     assert_eq!(gene_set_node.title, "Lineage panel");
     assert!(gene_set_node.subtitle.contains("members=2"));
@@ -37636,7 +37662,7 @@ fn test_build_lineage_svg_graph_projects_gene_set_artifacts() {
     let (reloaded_nodes, reloaded_edges) = build_lineage_svg_graph(&reloaded_state, &[]);
     let reloaded_gene_set_node = reloaded_nodes
         .iter()
-        .find(|node| node.kind == LineageSvgNodeKind::GeneSet)
+        .find(|node| node.node_id == source_gene_set_node_id)
         .expect("reloaded gene-set node");
     assert_eq!(reloaded_gene_set_node.title, "Lineage panel");
     assert!(reloaded_edges.iter().any(|edge| {

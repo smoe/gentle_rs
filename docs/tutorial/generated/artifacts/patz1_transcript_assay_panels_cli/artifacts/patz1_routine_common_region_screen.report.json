@@ -102,6 +102,78 @@
       "primer_pair": {
         "rank": 1,
         "score": 989.1643788740628,
+        "score_terms": [
+          {
+            "term": "baseline",
+            "raw_value": 1.0,
+            "weight": 1000.0,
+            "contribution": 1000.0,
+            "detail": "Fixed baseline for the GENtle primer-pair ranking model."
+          },
+          {
+            "term": "tm_delta",
+            "raw_value": 0.26178105629686144,
+            "weight": -20.0,
+            "contribution": -5.235621125937229,
+            "detail": "Absolute forward/reverse melting-temperature difference in degrees Celsius."
+          },
+          {
+            "term": "amplicon_length_fit",
+            "raw_value": 36.0,
+            "weight": -0.1,
+            "contribution": -3.6,
+            "detail": "Absolute distance from the configured midpoint target of 75 bp."
+          },
+          {
+            "term": "extra_anneal_hits",
+            "raw_value": 0.0,
+            "weight": -10.0,
+            "contribution": -0.0,
+            "detail": "Template-local annealing hits beyond one per primer."
+          },
+          {
+            "term": "primer_length_preference",
+            "raw_value": 3.0,
+            "weight": -6.0,
+            "contribution": -18.0,
+            "detail": "Length-preference points outside 20..=30 annealing bases."
+          },
+          {
+            "term": "homopolymer_excess",
+            "raw_value": 0.0,
+            "weight": -10.0,
+            "contribution": -0.0,
+            "detail": "Combined homopolymer-run excess above 4 bp."
+          },
+          {
+            "term": "self_complementarity_excess",
+            "raw_value": 0.0,
+            "weight": -12.0,
+            "contribution": -0.0,
+            "detail": "Combined self-complementary-run excess above 6 bp."
+          },
+          {
+            "term": "pair_complementarity_excess",
+            "raw_value": 0.0,
+            "weight": -20.0,
+            "contribution": -0.0,
+            "detail": "Pair-complementary-run excess above 6 bp."
+          },
+          {
+            "term": "pair_three_prime_complementarity_excess",
+            "raw_value": 0.0,
+            "weight": -35.0,
+            "contribution": -0.0,
+            "detail": "Pair 3-prime complementary-run excess above 3 bp."
+          },
+          {
+            "term": "three_prime_gc_clamp_balance",
+            "raw_value": 1.0,
+            "weight": 16.0,
+            "contribution": 16.0,
+            "detail": "Balance around one 3-prime GC clamp across the two primers."
+          }
+        ],
         "forward": {
           "sequence": "ATCCGATCAGGTACGCTAAC",
           "start_0based": 41,

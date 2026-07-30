@@ -1026,7 +1026,10 @@ Implemented collection-lifting baseline:
   copy of the source `contexts[]` registry and `default_context_id`.
 - Domain reports that embed their source resolution by value, such as
   `GeneSetPromoterCohortReport`, inherit the registry through that embedded
-  resolution and do not duplicate a second domain-level registry.
+  resolution and do not duplicate a second domain-level registry. Derivation
+  preserves an existing source resolution `op_id` / `run_id`; only an
+  anonymous inline resolution receives the deriving operation's identity when
+  it is first persisted.
 - Derived members are additional `per_member_status` rows. Their
   `parent_member_id` points to the source member, while
   `produced_report_ids` links both source and descendants to the domain report.

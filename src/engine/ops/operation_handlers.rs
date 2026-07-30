@@ -30713,8 +30713,20 @@ impl GentleEngine {
                     )?;
                     report.op_id = Some(result.op_id.clone());
                     report.run_id = Some(run_id.to_string());
-                    report.gene_set_resolution.op_id = Some(result.op_id.clone());
-                    report.gene_set_resolution.run_id = Some(run_id.to_string());
+                    let source_resolution_has_identity = report
+                        .gene_set_resolution
+                        .op_id
+                        .as_deref()
+                        .is_some_and(|value| !value.trim().is_empty())
+                        || report
+                            .gene_set_resolution
+                            .run_id
+                            .as_deref()
+                            .is_some_and(|value| !value.trim().is_empty());
+                    if !source_resolution_has_identity {
+                        report.gene_set_resolution.op_id = Some(result.op_id.clone());
+                        report.gene_set_resolution.run_id = Some(run_id.to_string());
+                    }
                     let promoter_cohort_report_id =
                         Self::gene_set_promoter_cohort_artifact_id(&report);
                     let collection_operation =

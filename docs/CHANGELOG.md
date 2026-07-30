@@ -14,6 +14,10 @@ understand what changed.
 
 ## 2026-07-31
 
+- Preserved an existing gene-set resolution's operation/run identity when
+  deriving a promoter cohort, preventing one logical source set from appearing
+  as duplicate lineage nodes. Anonymous inline resolutions still receive a
+  stable identity when first persisted.
 - Fixed generic `r_oligo` platform annotation discovery: the helper now
   resolves the selected pdInfo package's bundled SQLite database instead of
   hard-coding Clariom D Human, allows only an unambiguous package-local
