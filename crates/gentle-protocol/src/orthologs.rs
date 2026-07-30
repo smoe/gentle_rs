@@ -777,6 +777,11 @@ mod tests {
                 .expect("deserialize policy"),
             OrthologAmbiguityPolicy::Preserve
         );
+        assert!(
+            serde_json::from_value::<OrthologAmbiguityPolicy>(serde_json::json!("future_policy"))
+                .is_err(),
+            "operation-control policies are closed and must not silently default"
+        );
         let serialized = serde_json::to_value(unresolved).expect("serialize preserved ambiguity");
         assert_eq!(
             serialized["candidate_mappings"][0]["confidence"],

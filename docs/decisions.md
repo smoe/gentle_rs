@@ -366,5 +366,16 @@ evidence. The shipped `reject` and deterministic warning-bearing `first`
 ambiguity policies remain unchanged. The additive `preserve` policy leaves an
 ambiguous target unresolved while carrying every ordered candidate mapping and
 its portable context/provenance; candidates do not become resolved cohort
-members. A generic relation hierarchy or paralog contract still requires a
-concrete resolver/consumer and is not inferred from the ortholog contract.
+members.
+
+Unlike provider-owned orthology type and confidence text, ambiguity policy is
+a closed GENtle operation-control vocabulary. The v1 report schema is retained
+because `preserve` is opt-in and does not change the meaning or wire shape of
+existing `reject` and `first` reports. Readers must reject an unknown policy
+rather than silently defaulting it; consequently, a pre-`preserve` v1 reader
+cannot consume a report that explicitly requested `preserve`. Candidate ranks
+and labels are presentation references within one report, not durable
+cross-run identities.
+
+A generic relation hierarchy or paralog contract still requires a concrete
+resolver/consumer and is not inferred from the ortholog contract.

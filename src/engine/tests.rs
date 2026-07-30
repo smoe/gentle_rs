@@ -5906,6 +5906,11 @@ fn resolve_ortholog_promoter_cohort_reports_ambiguity_unless_policy_allows_first
         preserved_target.candidate_mappings[1].source.as_deref(),
         Some("synthetic ambiguous row")
     );
+    assert!(
+        preserved_target.candidate_mappings[1]
+            .candidate_label
+            .contains("source=synthetic ambiguous row")
+    );
     assert_eq!(
         preserved_target.candidate_mappings[1].evidence,
         vec!["synthetic_one2many".to_string()]
@@ -5921,6 +5926,45 @@ fn resolve_ortholog_promoter_cohort_reports_ambiguity_unless_policy_allows_first
                 .context(context_id.expect("candidate context id"))
                 .expect("candidate context copied into report");
         }
+    }
+
+    let preserved_without_target_genome = engine
+        .resolve_ortholog_promoter_cohort(
+            "Homo sapiens",
+            "HumanToy",
+            "ENSG_TP73",
+            &["Mus musculus".to_string()],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Preserve,
+            GeneSetCohortRelationship::Unspecified,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("preserve ambiguity without inventing a target genome");
+    let unresolved_without_target_genome = &preserved_without_target_genome.unresolved_rows[0];
+    assert!(
+        preserved_without_target_genome
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("do not claim a genome identity"))
+    );
+    for candidate in &unresolved_without_target_genome.candidate_mappings {
+        assert_eq!(candidate.target_genome_id, None);
+        let target_context = preserved_without_target_genome
+            .biological_contexts
+            .context(
+                candidate
+                    .target_context_id
+                    .as_deref()
+                    .expect("candidate target context id"),
+            )
+            .expect("candidate target context");
+        assert_eq!(target_context.organism.as_deref(), Some("Mus musculus"));
+        assert_eq!(target_context.genome_id, None);
     }
 
     let first = engine

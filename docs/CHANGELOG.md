@@ -14,6 +14,10 @@ understand what changed.
 
 ## 2026-07-30
 
+- Hardened preserved ortholog ambiguity reports: species-only mappings now
+  retain organism context without fabricating a genome id, candidate labels
+  expose provider source when available, and the closed-policy v1
+  compatibility boundary is explicit.
 - Added `ambiguity_policy=preserve` for offline ortholog promoter resolution.
   It leaves ambiguous targets unresolved while retaining ordered, structured
   mapping candidates with portable context and provider evidence; existing

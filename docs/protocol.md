@@ -512,7 +512,8 @@ Behavior notes:
   `genome_id` must agree with the row and request; conflicts fail before
   prepared-genome catalog access. When a legacy row has no context ids, the
   resolver creates deterministic report-local contexts from the requested
-  species/genome pair.
+  species/genome pair. A preserved mapping with only a species declaration
+  receives an organism-only context and does not fabricate a `genome_id`.
 - Species aliases are normalized for matching. Ambiguous target mappings are
   unresolved by default; `ambiguity_policy=first` chooses the stable first
   candidate and records a warning. `ambiguity_policy=preserve` also leaves the
@@ -521,7 +522,13 @@ Behavior notes:
   type/confidence, provider source, and evidence. Preserved candidates are not
   inserted into the resolved promoter `rows[]`, so downstream comparison does
   not silently treat alternatives as accepted cohort members. The shipped
-  `reject` and `first` behavior remains unchanged.
+  `reject` and `first` behavior remains unchanged. Candidate labels include
+  provider source text when available, but labels and ranks are local to one
+  report and must not be persisted as stable candidate identities. Ambiguity
+  policy is a closed operation-control enum: unknown values are rejected
+  rather than defaulted. The additive `preserve` value remains in v1 because
+  it is opt-in and does not alter existing policy meanings; older v1 readers
+  cannot read reports that explicitly select it.
 - Resolved rows carry species, genome id, gene id/symbol, transcript id,
   strand, TSS, promoter span, transcription-aligned promoter sequence, and
   orthology evidence/provenance. They also refer to a context copied into the

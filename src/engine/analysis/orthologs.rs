@@ -193,11 +193,16 @@ impl GentleEngine {
         Ok(())
     }
 
-    fn ortholog_runtime_context_id(species: &str, genome_id: &str) -> String {
+    fn ortholog_runtime_context_id(species: &str, genome_id: Option<&str>) -> String {
+        let genome_key = genome_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(Self::ortholog_gene_key)
+            .unwrap_or_else(|| "unspecified_genome".to_string());
         format!(
             "ortholog_{}_{}",
             Self::ortholog_species_key(species),
-            Self::ortholog_gene_key(genome_id)
+            genome_key
         )
     }
 
@@ -206,14 +211,16 @@ impl GentleEngine {
         resource: &OrthologResource,
         explicit_context_id: Option<&str>,
         species: &str,
-        genome_id: &str,
+        genome_id: Option<&str>,
     ) -> Result<String, EngineError> {
-        Self::validate_ortholog_context_genome(
-            resource,
-            explicit_context_id,
-            genome_id,
-            "mapping",
-        )?;
+        if let Some(genome_id) = genome_id {
+            Self::validate_ortholog_context_genome(
+                resource,
+                explicit_context_id,
+                genome_id,
+                "mapping",
+            )?;
+        }
         let context_id = explicit_context_id
             .map(str::to_string)
             .unwrap_or_else(|| Self::ortholog_runtime_context_id(species, genome_id));
@@ -240,7 +247,7 @@ impl GentleEngine {
             context.organism = Some(species.to_string());
         }
         if context.genome_id.is_none() {
-            context.genome_id = Some(genome_id.to_string());
+            context.genome_id = genome_id.map(str::to_string);
         }
 
         if let Some(existing) = report_contexts
@@ -340,7 +347,7 @@ impl GentleEngine {
         None
     }
 
-    fn ortholog_candidate_label(candidate: &OrientedOrthologMapping) -> String {
+    fn ortholog_candidate_sort_key(candidate: &OrientedOrthologMapping) -> String {
         let id = candidate
             .target_gene_id
             .as_deref()
@@ -362,23 +369,30 @@ impl GentleEngine {
         )
     }
 
+    fn ortholog_candidate_label(candidate: &OrientedOrthologMapping) -> String {
+        let base = Self::ortholog_candidate_sort_key(candidate);
+        candidate
+            .source
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|source| format!("{base}:source={source}"))
+            .unwrap_or(base)
+    }
+
     fn ortholog_candidate_target_genome_id(
         resource: &OrthologResource,
         candidate: &OrientedOrthologMapping,
         requested_target_genome_id: Option<&str>,
-    ) -> (String, bool) {
+    ) -> Option<String> {
         if let Some(genome_id) = requested_target_genome_id {
-            return (genome_id.to_string(), false);
+            return Some(genome_id.to_string());
         }
-        if let Some(genome_id) = candidate
+        candidate
             .target_context_id
             .as_deref()
             .and_then(|context_id| resource.biological_contexts.context(context_id).ok())
             .and_then(|context| context.genome_id.clone())
-        {
-            return (genome_id, false);
-        }
-        (candidate.target_species.clone(), true)
     }
 
     fn lookup_ortholog_species_map_value(
@@ -626,7 +640,7 @@ impl GentleEngine {
             &resource,
             anchor_explicit_context_id,
             &anchor_species,
-            trimmed_anchor_genome_id,
+            Some(trimmed_anchor_genome_id),
         )?;
         let effective_catalog_path =
             genome_catalog_path.unwrap_or(crate::genomes::default_catalog_discovery_token(false));
@@ -679,7 +693,8 @@ impl GentleEngine {
                 })
                 .collect::<Vec<_>>();
             candidates.sort_by(|left, right| {
-                Self::ortholog_candidate_label(left).cmp(&Self::ortholog_candidate_label(right))
+                Self::ortholog_candidate_sort_key(left)
+                    .cmp(&Self::ortholog_candidate_sort_key(right))
             });
             if candidates.len() > 1 && ambiguity_policy == OrthologAmbiguityPolicy::Preserve {
                 let labels = candidates
@@ -689,36 +704,37 @@ impl GentleEngine {
                 let mut candidate_mappings = Vec::with_capacity(candidates.len());
                 let mut candidate_context_ids = BTreeSet::new();
                 let mut candidate_genome_ids = BTreeSet::new();
-                let mut used_species_as_genome_id = false;
+                let mut missing_target_genome_id = false;
                 for (candidate_index, candidate) in candidates.iter().enumerate() {
-                    let (target_genome_id, used_species_fallback) =
-                        Self::ortholog_candidate_target_genome_id(
-                            &resource,
-                            candidate,
-                            requested_target_genome_id.as_deref(),
-                        );
-                    used_species_as_genome_id |= used_species_fallback;
+                    let target_genome_id = Self::ortholog_candidate_target_genome_id(
+                        &resource,
+                        candidate,
+                        requested_target_genome_id.as_deref(),
+                    );
+                    missing_target_genome_id |= target_genome_id.is_none();
                     let source_context_id = Self::register_ortholog_report_context(
                         &mut biological_contexts,
                         &resource,
                         candidate.source_context_id.as_deref(),
                         &anchor_species,
-                        trimmed_anchor_genome_id,
+                        Some(trimmed_anchor_genome_id),
                     )?;
                     let target_context_id = Self::register_ortholog_report_context(
                         &mut biological_contexts,
                         &resource,
                         candidate.target_context_id.as_deref(),
                         &candidate.target_species,
-                        &target_genome_id,
+                        target_genome_id.as_deref(),
                     )?;
                     candidate_context_ids.insert(target_context_id.clone());
-                    candidate_genome_ids.insert(target_genome_id.clone());
+                    if let Some(target_genome_id) = target_genome_id.as_ref() {
+                        candidate_genome_ids.insert(target_genome_id.clone());
+                    }
                     candidate_mappings.push(OrthologAmbiguityCandidate {
                         candidate_rank: candidate_index + 1,
                         candidate_label: labels[candidate_index].clone(),
                         target_species: candidate.target_species.clone(),
-                        target_genome_id: Some(target_genome_id),
+                        target_genome_id,
                         source_context_id: Some(source_context_id),
                         target_context_id: Some(target_context_id),
                         target_gene_id: candidate.target_gene_id.clone(),
@@ -729,9 +745,9 @@ impl GentleEngine {
                         evidence: candidate.evidence.clone(),
                     });
                 }
-                if used_species_as_genome_id {
+                if missing_target_genome_id {
                     warnings.push(format!(
-                        "No target genome id or context genome was provided for ambiguous species '{}'; preserved candidate mappings use the species label as genome id",
+                        "No target genome id or context genome was provided for ambiguous species '{}'; preserved candidate mappings do not claim a genome identity",
                         canonical_target_species
                     ));
                 }
@@ -823,12 +839,15 @@ impl GentleEngine {
                     continue;
                 }
             };
-            let (target_genome_id, used_species_as_genome_id) =
-                Self::ortholog_candidate_target_genome_id(
-                    &resource,
-                    &candidate,
-                    requested_target_genome_id.as_deref(),
-                );
+            let declared_target_genome_id = Self::ortholog_candidate_target_genome_id(
+                &resource,
+                &candidate,
+                requested_target_genome_id.as_deref(),
+            );
+            let used_species_as_genome_id = declared_target_genome_id.is_none();
+            let target_genome_id = declared_target_genome_id
+                .clone()
+                .unwrap_or_else(|| candidate.target_species.clone());
             if used_species_as_genome_id {
                 warnings.push(format!(
                     "No target genome id provided for species '{}'; using species label as genome id",
@@ -840,14 +859,14 @@ impl GentleEngine {
                 &resource,
                 candidate.source_context_id.as_deref(),
                 &anchor_species,
-                trimmed_anchor_genome_id,
+                Some(trimmed_anchor_genome_id),
             )?;
             let target_context_id = Self::register_ortholog_report_context(
                 &mut biological_contexts,
                 &resource,
                 candidate.target_context_id.as_deref(),
                 &candidate.target_species,
-                &target_genome_id,
+                declared_target_genome_id.as_deref(),
             )?;
             candidate.source_context_id = Some(source_relation_context_id);
             candidate.target_context_id = Some(target_context_id.clone());
