@@ -6,7 +6,8 @@
 //! action.
 
 use crate::{
-    ArrangementId, CapabilitySource, ContainerId, EngineError, GeneSetProvenanceRow, SeqId,
+    ArrangementId, BiologicalContext, BiologicalContextRegistry, BiologicalContextResolutionError,
+    CapabilitySource, ContainerId, EngineError, GeneSetProvenanceRow, SeqId,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -86,6 +87,9 @@ pub struct CollectionMemberRef {
     pub gene_symbol: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_id: Option<String>,
+    /// Optional row in the containing report's biological-context registry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_id: Option<String>,
     /// Required for semantically ordered subjects such as arrangements.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ordering_index: Option<usize>,
@@ -108,6 +112,21 @@ pub enum CollectionLiftingMode {
     Derive,
 }
 
+/// Biological-context behavior reviewed for one lifted operation.
+///
+/// `NotReviewed` is deliberately fail-closed for context-sensitive consumers:
+/// absence of a declaration never means that mixed contexts are safe.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CollectionContextRequirement {
+    #[default]
+    NotReviewed,
+    ContextAgnostic,
+    Homogeneous,
+    Partitionable,
+    ExplicitCrossContext,
+}
+
 /// Stable outcome vocabulary for one source or derived member.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -128,6 +147,53 @@ pub enum CollectionLiftRejectionReason {
     RequiresPhysicalPool,
     RequiresMaterializedMembers,
     UnsupportedSubjectKind,
+    MissingBiologicalContext,
+    MixedBiologicalContext,
+}
+
+impl CollectionLiftRejectionReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SingleSequenceOnly => "single_sequence_only",
+            Self::IncompatibleMemberTypes => "incompatible_member_types",
+            Self::RequiresPhysicalPool => "requires_physical_pool",
+            Self::RequiresMaterializedMembers => "requires_materialized_members",
+            Self::UnsupportedSubjectKind => "unsupported_subject_kind",
+            Self::MissingBiologicalContext => "missing_biological_context",
+            Self::MixedBiologicalContext => "mixed_biological_context",
+        }
+    }
+}
+
+/// Typed runtime failure while validating a collection's biological contexts.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CollectionContextValidationError {
+    pub reason: CollectionLiftRejectionReason,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member_id: Option<String>,
+    pub detail: String,
+}
+
+impl std::fmt::Display for CollectionContextValidationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{}: {}",
+            self.reason.as_str(),
+            self.detail.as_str()
+        )
+    }
+}
+
+impl std::error::Error for CollectionContextValidationError {}
+
+impl From<CollectionContextValidationError> for EngineError {
+    fn from(error: CollectionContextValidationError) -> Self {
+        EngineError::invalid_input(error.to_string()).with_cause(format!(
+            "collection_lift_rejection_reason={}",
+            error.reason.as_str()
+        ))
+    }
 }
 
 /// Supported lifting behavior or an explicit typed rejection.
@@ -168,6 +234,10 @@ impl CollectionLiftSupport {
 pub struct CollectionSubjectLiftPolicy {
     pub subject_kind: CollectionSubjectKind,
     pub support: CollectionLiftSupport,
+    /// Reviewed behavior for biological context; undeclared legacy rows fail
+    /// closed as `NotReviewed`.
+    #[serde(default)]
+    pub context_requirement: CollectionContextRequirement,
 }
 
 /// Curated collection policy attached to a named capability.
@@ -216,6 +286,8 @@ pub struct CollectionOperationReport {
     pub lift_policy: CollectionSubjectLiftPolicy,
     pub fingerprint_algorithm: String,
     pub collection_membership_fingerprint_sha256: String,
+    #[serde(flatten)]
+    pub biological_contexts: BiologicalContextRegistry,
     pub dry_run: bool,
     pub applied: bool,
     #[serde(default)]
@@ -241,6 +313,7 @@ impl Default for CollectionOperationReport {
             lift_policy: CollectionSubjectLiftPolicy::default(),
             fingerprint_algorithm: String::new(),
             collection_membership_fingerprint_sha256: String::new(),
+            biological_contexts: BiologicalContextRegistry::default(),
             dry_run: false,
             applied: false,
             per_member_status: vec![],
@@ -298,9 +371,101 @@ pub fn canonical_collection_membership_json(
     .to_string()
 }
 
+/// Require every member to resolve to one semantically identical context.
+pub fn homogeneous_collection_biological_context(
+    registry: &BiologicalContextRegistry,
+    members: &[CollectionMemberRef],
+) -> Result<BiologicalContext, CollectionContextValidationError> {
+    let mut homogeneous: Option<BiologicalContext> = None;
+    for member in members {
+        let context = registry
+            .resolve(member.context_id.as_deref(), None)
+            .map_err(|error| CollectionContextValidationError {
+                reason: if matches!(
+                    error,
+                    BiologicalContextResolutionError::ConflictingField { .. }
+                ) {
+                    CollectionLiftRejectionReason::MixedBiologicalContext
+                } else {
+                    CollectionLiftRejectionReason::MissingBiologicalContext
+                },
+                member_id: Some(member.stable_member_id.clone()),
+                detail: error.to_string(),
+            })?
+            .ok_or_else(|| CollectionContextValidationError {
+                reason: CollectionLiftRejectionReason::MissingBiologicalContext,
+                member_id: Some(member.stable_member_id.clone()),
+                detail: format!(
+                    "collection member '{}' has no resolvable biological context",
+                    member.stable_member_id
+                ),
+            })?;
+        if let Some(expected) = homogeneous.as_ref() {
+            if !expected.semantically_matches(&context) {
+                return Err(CollectionContextValidationError {
+                    reason: CollectionLiftRejectionReason::MixedBiologicalContext,
+                    member_id: Some(member.stable_member_id.clone()),
+                    detail: format!(
+                        "collection member '{}' resolves to context '{}', which differs from context '{}'",
+                        member.stable_member_id, context.context_id, expected.context_id
+                    ),
+                });
+            }
+        } else {
+            homogeneous = Some(context);
+        }
+    }
+    homogeneous.ok_or_else(|| CollectionContextValidationError {
+        reason: CollectionLiftRejectionReason::MissingBiologicalContext,
+        member_id: None,
+        detail: "collection has no members with a resolvable biological context".to_string(),
+    })
+}
+
+/// Require a homogeneous collection context to name the operation's target
+/// genome catalog entry exactly.
+pub fn validate_collection_context_target_genome(
+    context: &BiologicalContext,
+    target_genome_id: &str,
+) -> Result<(), CollectionContextValidationError> {
+    let target_genome_id = target_genome_id.trim();
+    let context_genome_id = context
+        .genome_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| CollectionContextValidationError {
+            reason: CollectionLiftRejectionReason::MissingBiologicalContext,
+            member_id: None,
+            detail: format!(
+                "biological context '{}' does not identify a GENtle genome catalog entry",
+                context.context_id
+            ),
+        })?;
+    if context_genome_id != target_genome_id {
+        return Err(CollectionContextValidationError {
+            reason: CollectionLiftRejectionReason::MixedBiologicalContext,
+            member_id: None,
+            detail: format!(
+                "biological context '{}' targets genome '{}', but the operation requested '{}'",
+                context.context_id, context_genome_id, target_genome_id
+            ),
+        });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn context(context_id: &str, genome_id: &str) -> BiologicalContext {
+        BiologicalContext {
+            context_id: context_id.to_string(),
+            genome_id: Some(genome_id.to_string()),
+            ..BiologicalContext::default()
+        }
+    }
 
     #[test]
     fn canonical_membership_is_set_like_except_for_arrangements() {
@@ -356,6 +521,7 @@ mod tests {
                     mode: CollectionLiftingMode::Derive,
                     result_payload_kind: "gentle.gene_set_promoter_cohort.v1".to_string(),
                 },
+                context_requirement: CollectionContextRequirement::Homogeneous,
             },
             fingerprint_algorithm: COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM.to_string(),
             collection_membership_fingerprint_sha256: "sha256:test".to_string(),
@@ -377,5 +543,116 @@ mod tests {
         let decoded: CollectionOperationReport =
             serde_json::from_str(&encoded).expect("deserialize collection report");
         assert_eq!(decoded, report);
+    }
+
+    #[test]
+    fn homogeneous_context_validation_accepts_default_and_explicit_equivalents() {
+        let registry = BiologicalContextRegistry {
+            contexts: vec![context("human", "GRCh38"), context("human_alias", "GRCh38")],
+            default_context_id: Some("human".to_string()),
+        };
+        let members = vec![
+            CollectionMemberRef {
+                stable_member_id: "gene:A".to_string(),
+                ..CollectionMemberRef::default()
+            },
+            CollectionMemberRef {
+                stable_member_id: "gene:B".to_string(),
+                context_id: Some("human_alias".to_string()),
+                ..CollectionMemberRef::default()
+            },
+        ];
+
+        let resolved = homogeneous_collection_biological_context(&registry, &members)
+            .expect("homogeneous contexts");
+        assert_eq!(resolved.genome_id.as_deref(), Some("GRCh38"));
+    }
+
+    #[test]
+    fn homogeneous_context_validation_reports_missing_and_mixed_contexts() {
+        let missing = homogeneous_collection_biological_context(
+            &BiologicalContextRegistry::default(),
+            &[CollectionMemberRef {
+                stable_member_id: "gene:A".to_string(),
+                ..CollectionMemberRef::default()
+            }],
+        )
+        .expect_err("missing context must fail");
+        assert_eq!(
+            missing.reason,
+            CollectionLiftRejectionReason::MissingBiologicalContext
+        );
+        assert_eq!(missing.member_id.as_deref(), Some("gene:A"));
+
+        let registry = BiologicalContextRegistry {
+            contexts: vec![context("human", "GRCh38"), context("mouse", "GRCm39")],
+            default_context_id: Some("human".to_string()),
+        };
+        let mixed = homogeneous_collection_biological_context(
+            &registry,
+            &[
+                CollectionMemberRef {
+                    stable_member_id: "gene:A".to_string(),
+                    context_id: Some("human".to_string()),
+                    ..CollectionMemberRef::default()
+                },
+                CollectionMemberRef {
+                    stable_member_id: "gene:B".to_string(),
+                    context_id: Some("mouse".to_string()),
+                    ..CollectionMemberRef::default()
+                },
+            ],
+        )
+        .expect_err("mixed contexts must fail");
+        assert_eq!(
+            mixed.reason,
+            CollectionLiftRejectionReason::MixedBiologicalContext
+        );
+        assert_eq!(mixed.member_id.as_deref(), Some("gene:B"));
+    }
+
+    #[test]
+    fn legacy_lift_policy_defaults_to_not_reviewed_context_behavior() {
+        let policy: CollectionSubjectLiftPolicy = serde_json::from_value(serde_json::json!({
+            "subject_kind": "gene_set_resolution",
+            "support": {
+                "status": "supported",
+                "mode": "map",
+                "result_payload_kind": "gentle.example.v1"
+            }
+        }))
+        .expect("deserialize legacy policy");
+
+        assert_eq!(
+            policy.context_requirement,
+            CollectionContextRequirement::NotReviewed
+        );
+    }
+
+    #[test]
+    fn collection_context_target_genome_validation_is_fail_closed() {
+        validate_collection_context_target_genome(&context("human", "GRCh38"), "GRCh38")
+            .expect("matching target genome");
+
+        let missing = validate_collection_context_target_genome(
+            &BiologicalContext {
+                context_id: "human".to_string(),
+                ..BiologicalContext::default()
+            },
+            "GRCh38",
+        )
+        .expect_err("missing genome must fail");
+        assert_eq!(
+            missing.reason,
+            CollectionLiftRejectionReason::MissingBiologicalContext
+        );
+
+        let mixed =
+            validate_collection_context_target_genome(&context("mouse", "GRCm39"), "GRCh38")
+                .expect_err("mismatching genome must fail");
+        assert_eq!(
+            mixed.reason,
+            CollectionLiftRejectionReason::MixedBiologicalContext
+        );
     }
 }

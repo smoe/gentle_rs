@@ -336,3 +336,14 @@ misclassified as permanent policy rejection. Generic collection reports carry
 typed member outcomes/errors and links to produced domain reports. Membership
 locks are set-like except for explicitly ordered subjects such as
 arrangements, whose numeric member order is part of the fingerprint.
+
+Collection members bind biological interpretation through a report-owned
+context registry. Context-sensitive policies are fail-closed: an undeclared
+policy is `not_reviewed`, while reviewed consumers may require one homogeneous
+context and reject missing, conflicting, or target-mismatched contexts before
+coordinate lookup, sequence search, or other biological work. Generic portable
+collection reports copy the registry because their source may otherwise be
+available only by report id; domain reports embedding the source resolution do
+not create a second registry. The canonical collection membership fingerprint
+continues to lock membership/order only and must not be interpreted as a
+context or biological-input fingerprint.

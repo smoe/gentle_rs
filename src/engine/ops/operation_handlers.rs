@@ -11172,6 +11172,7 @@ impl GentleEngine {
             CollectionSubjectRef,
             Vec<CollectionMemberRef>,
             Vec<GeneSetProvenanceRow>,
+            BiologicalContextRegistry,
         ),
         EngineError,
     > {
@@ -11205,6 +11206,7 @@ impl GentleEngine {
                     CollectionSubjectRef::ProjectSequences { seq_ids },
                     members,
                     vec![],
+                    BiologicalContextRegistry::default(),
                 ))
             }
             CollectionSubjectRef::GeneSetResolution { report_id } => {
@@ -11228,6 +11230,7 @@ impl GentleEngine {
                         stable_member_id: member.dedup_key.clone(),
                         gene_symbol: Some(member.symbol.clone()),
                         gene_id: member.gene_id.clone(),
+                        context_id: member.context_id.clone(),
                         ordering_index: Some(index),
                         source_provenance: member.provenance.clone(),
                         ..CollectionMemberRef::default()
@@ -11239,6 +11242,7 @@ impl GentleEngine {
                     },
                     members,
                     resolution.provenance,
+                    resolution.biological_contexts,
                 ))
             }
             CollectionSubjectRef::Container { .. } | CollectionSubjectRef::Arrangement { .. } => {
@@ -11416,8 +11420,30 @@ impl GentleEngine {
             });
         }
 
-        let (collection_subject, members, provenance) =
+        let (collection_subject, members, provenance, biological_contexts) =
             self.primer_specificity_collection_subject_members(&collection_subject)?;
+        match lift_policy.context_requirement {
+            CollectionContextRequirement::NotReviewed => {
+                return Err(EngineError::internal(
+                    "AssessPrimerPairSpecificity collection lifting has not reviewed biological-context behavior",
+                ));
+            }
+            CollectionContextRequirement::ContextAgnostic => {}
+            CollectionContextRequirement::Homogeneous => {
+                let context =
+                    homogeneous_collection_biological_context(&biological_contexts, &members)
+                        .map_err(EngineError::from)?;
+                validate_collection_context_target_genome(&context, target_genome_id)
+                    .map_err(EngineError::from)?;
+            }
+            CollectionContextRequirement::Partitionable
+            | CollectionContextRequirement::ExplicitCrossContext => {
+                return Err(EngineError::internal(format!(
+                    "AssessPrimerPairSpecificity does not implement the declared {:?} biological-context behavior",
+                    lift_policy.context_requirement
+                )));
+            }
+        }
         let bindings = Self::primer_specificity_collection_binding_map(member_bindings)?;
         let member_ids = members
             .iter()
@@ -11531,6 +11557,12 @@ impl GentleEngine {
                 cache_dir,
             ) {
                 Ok(report) => {
+                    if report.target_genome_id != target_genome_id {
+                        return Err(EngineError::internal(format!(
+                            "Primer-specificity child report '{}' targets genome '{}', expected '{}'",
+                            report.report_id, report.target_genome_id, target_genome_id
+                        )));
+                    }
                     let produced_report_id = report.report_id.clone();
                     aggregate_warnings.extend(
                         report.warnings.iter().map(|warning| {
@@ -11591,6 +11623,7 @@ impl GentleEngine {
             lift_policy,
             fingerprint_algorithm: COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM.to_string(),
             collection_membership_fingerprint_sha256: membership_fingerprint,
+            biological_contexts,
             dry_run: false,
             applied: true,
             per_member_status,

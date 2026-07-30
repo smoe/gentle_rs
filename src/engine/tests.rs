@@ -5431,6 +5431,19 @@ fn build_gene_set_promoter_cohort_emits_persisted_collection_lift_report() {
     );
     assert!(generic.applied);
     assert!(!generic.dry_run);
+    assert_eq!(
+        generic.lift_policy.context_requirement,
+        CollectionContextRequirement::Homogeneous
+    );
+    assert_eq!(
+        generic.biological_contexts,
+        cohort.gene_set_resolution.biological_contexts,
+        "the generic report needs its own portable copy of the source registry"
+    );
+    assert_eq!(
+        generic.biological_contexts.default_context_id.as_deref(),
+        Some(DEFAULT_BIOLOGICAL_CONTEXT_ID)
+    );
 
     let source_rows = generic
         .per_member_status
@@ -5448,6 +5461,10 @@ fn build_gene_set_promoter_cohort_emits_persisted_collection_lift_report() {
         row.outcome == CollectionMemberOutcome::Succeeded
             && row.member.gene_symbol.is_some()
             && row.produced_report_ids.len() == 1
+            && generic
+                .biological_contexts
+                .resolve(row.member.context_id.as_deref(), None)
+                .is_ok_and(|context| context.is_some())
     }));
     assert!(derived_rows.iter().all(|row| {
         row.outcome == CollectionMemberOutcome::Succeeded
@@ -5456,6 +5473,10 @@ fn build_gene_set_promoter_cohort_emits_persisted_collection_lift_report() {
                     == Some(source.member.stable_member_id.as_str())
             })
             && row.produced_report_ids == source_rows[0].produced_report_ids
+            && generic
+                .biological_contexts
+                .resolve(row.member.context_id.as_deref(), None)
+                .is_ok_and(|context| context.is_some())
     }));
 
     let persisted = GentleEngine::gene_set_promoter_cohort_artifacts_from_state(engine.state());
@@ -5481,6 +5502,85 @@ fn build_gene_set_promoter_cohort_emits_persisted_collection_lift_report() {
     assert!(persisted_resolutions.iter().any(|resolution| {
         GentleEngine::gene_set_resolution_artifact_id(resolution) == *subject_report_id
     }));
+}
+
+#[test]
+fn build_gene_set_promoter_cohort_rejects_missing_and_mixed_contexts_before_lookup() {
+    let engine = GentleEngine::new();
+    let member = |dedup_key: &str, context_id: Option<&str>| GeneSetResolvedMember {
+        dedup_key: dedup_key.to_string(),
+        symbol: dedup_key.to_string(),
+        context_id: context_id.map(str::to_string),
+        ..GeneSetResolvedMember::default()
+    };
+    let missing = GeneSetResolutionReport {
+        resolved_member_count: 1,
+        resolved_members: vec![member("GENE_A", None)],
+        ..GeneSetResolutionReport::default()
+    };
+    let error = engine
+        .build_gene_set_promoter_cohort(
+            "ToyGenome",
+            missing,
+            GeneSetCohortRelationship::Manual,
+            100,
+            20,
+            Some("does-not-need-to-exist.json"),
+            None,
+        )
+        .expect_err("missing context must fail before catalog lookup");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("missing_biological_context"));
+    assert!(
+        error
+            .cause_chain
+            .iter()
+            .any(|cause| cause.contains("missing_biological_context"))
+    );
+
+    let mixed = GeneSetResolutionReport {
+        genome_id: Some("ToyGenome".to_string()),
+        biological_contexts: BiologicalContextRegistry {
+            contexts: vec![
+                BiologicalContext {
+                    context_id: "toy".to_string(),
+                    genome_id: Some("ToyGenome".to_string()),
+                    ..BiologicalContext::default()
+                },
+                BiologicalContext {
+                    context_id: "other".to_string(),
+                    genome_id: Some("OtherGenome".to_string()),
+                    ..BiologicalContext::default()
+                },
+            ],
+            default_context_id: Some("toy".to_string()),
+        },
+        resolved_member_count: 2,
+        resolved_members: vec![
+            member("GENE_A", Some("toy")),
+            member("GENE_B", Some("other")),
+        ],
+        ..GeneSetResolutionReport::default()
+    };
+    let error = engine
+        .build_gene_set_promoter_cohort(
+            "ToyGenome",
+            mixed,
+            GeneSetCohortRelationship::Manual,
+            100,
+            20,
+            Some("does-not-need-to-exist.json"),
+            None,
+        )
+        .expect_err("mixed context must fail before catalog lookup");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("mixed_biological_context"));
+    assert!(
+        error
+            .cause_chain
+            .iter()
+            .any(|cause| cause.contains("mixed_biological_context"))
+    );
 }
 
 #[test]
@@ -8663,6 +8763,84 @@ fn primer_specificity_parity_projection(report: &PrimerSpecificityReport) -> ser
     })
 }
 
+#[test]
+fn gene_set_primer_specificity_rejects_missing_or_mismatched_context_before_member_resolution() {
+    let mut engine = GentleEngine::new();
+    let resolution = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 1,
+        op_id: Some("missing_context_fixture".to_string()),
+        resolved_member_count: 1,
+        resolved_members: vec![GeneSetResolvedMember {
+            dedup_key: "gene_id:GENE_A".to_string(),
+            symbol: "GENEA".to_string(),
+            gene_id: Some("GENE_A".to_string()),
+            ..GeneSetResolvedMember::default()
+        }],
+        ..GeneSetResolutionReport::default()
+    };
+    let report_id = GentleEngine::gene_set_resolution_artifact_id(&resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(resolution)
+        .expect("persist legacy context-free report");
+
+    let error = engine
+        .apply(Operation::AssessPrimerPairSpecificityCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings: vec![],
+            pair_rank: Some(1),
+            pair_index: None,
+            target_genome_id: "ToyGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some("does-not-need-to-exist.json".to_string()),
+            cache_dir: None,
+            path: None,
+        })
+        .expect_err("missing context must fail before member binding or BLAST");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("missing_biological_context"));
+    assert!(
+        error
+            .cause_chain
+            .iter()
+            .any(|cause| cause.contains("missing_biological_context"))
+    );
+
+    let mismatched = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 2,
+        op_id: Some("mismatched_context_fixture".to_string()),
+        genome_id: Some("ToyGenome".to_string()),
+        resolved_member_count: 1,
+        resolved_members: vec![GeneSetResolvedMember {
+            dedup_key: "gene_id:GENE_A".to_string(),
+            symbol: "GENEA".to_string(),
+            gene_id: Some("GENE_A".to_string()),
+            ..GeneSetResolvedMember::default()
+        }],
+        ..GeneSetResolutionReport::default()
+    };
+    let report_id = GentleEngine::gene_set_resolution_artifact_id(&mismatched);
+    engine
+        .upsert_gene_set_resolution_artifact(mismatched)
+        .expect("persist mismatched-context report");
+    let error = engine
+        .apply(Operation::AssessPrimerPairSpecificityCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings: vec![],
+            pair_rank: Some(1),
+            pair_index: None,
+            target_genome_id: "OtherGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some("does-not-need-to-exist.json".to_string()),
+            cache_dir: None,
+            path: None,
+        })
+        .expect_err("target-genome mismatch must fail before member binding or BLAST");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("mixed_biological_context"));
+}
+
 #[cfg(unix)]
 #[test]
 fn collection_primer_specificity_matches_direct_per_member_assessment() {
@@ -8846,6 +9024,14 @@ fn collection_primer_specificity_matches_direct_per_member_assessment() {
         .expect("collection specificity report");
     assert_eq!(collection.lifting_mode, CollectionLiftingMode::Map);
     assert_eq!(collection.capability_name, "AssessPrimerPairSpecificity");
+    assert_eq!(
+        collection.lift_policy.context_requirement,
+        CollectionContextRequirement::Homogeneous
+    );
+    assert_eq!(
+        collection.biological_contexts,
+        resolution.biological_contexts
+    );
     assert_eq!(collection.per_member_status.len(), 2);
     assert!(collection.per_member_status.iter().all(|row| {
         row.outcome == CollectionMemberOutcome::Succeeded
@@ -8855,6 +9041,14 @@ fn collection_primer_specificity_matches_direct_per_member_assessment() {
                 source.source_kind == "primer_design_report_binding"
                     && source.note.as_deref().is_some_and(|note| note.contains("explicit"))
             })
+            && collection
+                .biological_contexts
+                .resolve(row.member.context_id.as_deref(), None)
+                .is_ok_and(|context| {
+                    context.is_some_and(|context| {
+                        context.genome_id.as_deref() == Some("ToyGenome")
+                    })
+                })
     }));
 
     for row in &collection.per_member_status {
@@ -8934,6 +9128,46 @@ fn collection_primer_specificity_matches_direct_per_member_assessment() {
             })
     }));
     assert_eq!(missing_bindings.aggregate_warnings.len(), 2);
+
+    let mut mixed_resolution = resolution;
+    mixed_resolution.op_id = Some("mixed_context_fixture".to_string());
+    mixed_resolution
+        .biological_contexts
+        .contexts
+        .push(BiologicalContext {
+            context_id: "other_genome".to_string(),
+            genome_id: Some("OtherGenome".to_string()),
+            ..BiologicalContext::default()
+        });
+    mixed_resolution.resolved_members[1].context_id = Some("other_genome".to_string());
+    let mixed_resolution_id =
+        GentleEngine::gene_set_resolution_artifact_id(&mixed_resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(mixed_resolution)
+        .expect("persist mixed-context fixture");
+    let specificity_report_count = engine.list_primer_specificity_reports().len();
+    let error = engine
+        .apply(Operation::AssessPrimerPairSpecificityCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution {
+                report_id: mixed_resolution_id,
+            },
+            member_bindings: vec![],
+            pair_rank: Some(1),
+            pair_index: None,
+            target_genome_id: "ToyGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            path: None,
+        })
+        .expect_err("mixed contexts must fail before member or BLAST work");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("mixed_biological_context"));
+    assert_eq!(
+        engine.list_primer_specificity_reports().len(),
+        specificity_report_count,
+        "context rejection must not persist partial child reports"
+    );
 }
 
 #[test]

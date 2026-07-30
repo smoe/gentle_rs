@@ -824,6 +824,34 @@ Resolution notes:
   may silently drop or miss draft-member warnings; the engine now reports draft
   members explicitly in gene-set resolution warnings.
 
+Biological-context binding:
+
+- `gentle.gene_set_resolution.v1` owns a `contexts[]` registry plus an optional
+  `default_context_id`. Each context can identify organism, taxon, GENtle
+  genome-catalog entry, assembly accession, annotation source/release, and
+  symbol namespace.
+- A resolved member may select a registry row through `context_id`. Effective
+  context resolution uses member context, then report default, then legacy
+  report-level `genome_id`/organism/taxon/namespace fields. Lower-precedence
+  fields may fill missing values but may not contradict an already selected
+  context.
+- Existing V1 reports remain readable. When they contain legacy report-level
+  context fields, GENtle promotes those fields into one deterministic default
+  registry row when the report is produced, stored, or read.
+- Context-sensitive collection consumers must explicitly declare
+  `context_requirement="homogeneous"` in the lift-policy registry. An absent
+  declaration deserializes as `not_reviewed`, never as permission to treat
+  mixed contexts as safe.
+- The complete declarative vocabulary is `not_reviewed`, `context_agnostic`,
+  `homogeneous`, `partitionable`, and `explicit_cross_context`. This slice
+  implements the first two current behaviors (`context_agnostic` and
+  `homogeneous`); partitioning and explicit cross-context comparison require
+  their own consumers and are not inferred automatically.
+- Promoter derivation and gene-set primer-specificity mapping require one
+  resolvable homogeneous context whose `genome_id` equals the requested target
+  genome. They reject before coordinate lookup or BLAST with
+  `missing_biological_context` or `mixed_biological_context` otherwise.
+
 Retrieval producer metadata:
 
 - `gentle.gene_set_resolution.v1` carries additive, defaulted metadata for
@@ -947,7 +975,10 @@ Implemented collection-lifting baseline:
 - `gentle.collection_lift_policy_registry.v1` is loaded from
   `docs/collection_lift_policies.json`. Each curated row is keyed by capability
   source/name and collection subject kind. It declares either one supported
-  lifting mode and result payload kind, or a typed rejection reason.
+  lifting mode and result payload kind, or a typed rejection reason. The
+  additive `context_requirement` field is `not_reviewed` by default and can
+  require a homogeneous biological context for coordinate- or
+  reference-sensitive operations.
 - Capability descriptors project their applicable `collection_lift_policies`;
   adapters should consume that field rather than inventing local collection
   behavior.
@@ -957,7 +988,12 @@ Implemented collection-lifting baseline:
 - `gentle.collection_operation.v1` records the selected subject, capability,
   lifting mode, policy, source-membership lock, per-member outcomes and typed
   errors, produced report ids, warnings, and provenance. `dry_run` and
-  `applied` distinguish previews from committed operations.
+  `applied` distinguish previews from committed operations. Because this report
+  may outlive or be transported without its source report, it owns a portable
+  copy of the source `contexts[]` registry and `default_context_id`.
+- Domain reports that embed their source resolution by value, such as
+  `GeneSetPromoterCohortReport`, inherit the registry through that embedded
+  resolution and do not duplicate a second domain-level registry.
 - Derived members are additional `per_member_status` rows. Their
   `parent_member_id` points to the source member, while
   `produced_report_ids` links both source and descendants to the domain report.
@@ -1001,6 +1037,11 @@ JSON projection of the source members:
 
 This deliberately avoids lexicographic position ordering (`10` before `2`) and
 ensures that swapping two arrangement lanes changes the membership lock.
+The membership fingerprint intentionally covers membership and ordering only.
+Two collections with the same stable member ids but different assemblies or
+annotation releases therefore have the same membership fingerprint. Consumers
+must inspect the biological-context registry; the membership digest must not be
+used as a proxy for identical biological input.
 
 ## Stateless sequence-scan contract
 

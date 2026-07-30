@@ -335,7 +335,13 @@ wet-lab conclusions or unconfirmed mutations.
   [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
 - Gene-set enrichment analysis over resolved logical sets, with an explicit
   background universe, identifier namespace/mapping audit, ontology and cache
-  provenance, multiple-testing correction, unresolved-member accounting, and
-  no causal-regulation claim inferred from enrichment alone.
+  provenance, biological-context compatibility, multiple-testing correction,
+  unresolved-member accounting, and no causal-regulation claim inferred from
+  enrichment alone.
+- Relation-aware cross-species collections built above the biological-context
+  registry: explicit ortholog/paralog assertions, relationship provenance,
+  one-to-one/one-to-many ambiguity, and functional-equivalence evidence remain
+  separate from context identity rather than being inferred from matching gene
+  symbols.
 - Full glossary/help-generation inversion so `docs/glossary.json` becomes a
   generated or validated projection of engine/protocol-side descriptors.

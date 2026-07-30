@@ -5,6 +5,7 @@
 //! The first extracted slice is intentionally small: stable identifier aliases,
 //! shared analysis enums, and the portable engine error payload.
 
+pub mod biological_context;
 pub mod collection_subjects;
 pub mod construct_reasoning;
 pub mod dna_ladder;
@@ -25,13 +26,19 @@ use std::{
     sync::LazyLock,
 };
 
+pub use biological_context::{
+    BiologicalContext, BiologicalContextRegistry, BiologicalContextResolutionError,
+    DEFAULT_BIOLOGICAL_CONTEXT_ID, LEGACY_BIOLOGICAL_CONTEXT_ID,
+};
 pub use collection_subjects::{
     COLLECTION_LIFT_POLICY_REGISTRY_SCHEMA, COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM,
     COLLECTION_OPERATION_REPORT_SCHEMA, CollectionCapabilityLiftPolicy,
-    CollectionLiftPolicyRegistry, CollectionLiftRejectionReason, CollectionLiftSupport,
-    CollectionLiftingMode, CollectionMemberOutcome, CollectionMemberRef, CollectionMemberStatusRow,
+    CollectionContextRequirement, CollectionContextValidationError, CollectionLiftPolicyRegistry,
+    CollectionLiftRejectionReason, CollectionLiftSupport, CollectionLiftingMode,
+    CollectionMemberOutcome, CollectionMemberRef, CollectionMemberStatusRow,
     CollectionOperationReport, CollectionSubjectKind, CollectionSubjectLiftPolicy,
     CollectionSubjectRef, canonical_collection_membership_json,
+    homogeneous_collection_biological_context, validate_collection_context_target_genome,
 };
 pub use construct_reasoning::{
     ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_SUMMARY_SCHEMA,

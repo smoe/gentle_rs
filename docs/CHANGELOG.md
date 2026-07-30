@@ -14,6 +14,11 @@ understand what changed.
 
 ## 2026-07-30
 
+- Added report-owned biological-context registries for resolved gene sets and
+  portable collection-operation reports. Promoter derivation and gene-set
+  primer-specificity mapping now require a homogeneous context matching the
+  requested genome and reject missing or mixed contexts before coordinate or
+  BLAST work, while legacy report-level context fields remain readable.
 - Added `Genome > Gene Set Inspector...` as the first prominent collection GUI
   consumer. It requires explicit persisted gene-to-primer-report bindings,
   executes the shared `collections run primer-specificity` route in a detached

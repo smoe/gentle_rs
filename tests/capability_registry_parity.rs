@@ -1,9 +1,10 @@
 use gentle::{app::gui_prominent_glossary_entries, engine::GentleEngine};
 use gentle_protocol::{
     AdapterSurfacing, CapabilityAdapter, CapabilityDescriptor, CapabilityMutation,
-    CapabilitySource, CollectionLiftRejectionReason, CollectionLiftSupport, CollectionLiftingMode,
-    CollectionSubjectKind, capability_parity_adapters, capability_registry,
-    collection_lift_policy, collection_lift_policy_registry, shell_alias_registry,
+    CapabilitySource, CollectionContextRequirement, CollectionLiftRejectionReason,
+    CollectionLiftSupport, CollectionLiftingMode, CollectionSubjectKind,
+    capability_parity_adapters, capability_registry, collection_lift_policy,
+    collection_lift_policy_registry, shell_alias_registry,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -284,10 +285,7 @@ fn collection_lift_policies_attach_only_to_existing_capabilities() {
             CapabilitySource::EngineOperation,
             "AssessPrimerPairSpecificity",
         ),
-        (
-            CapabilitySource::GlossaryCommand,
-            "primers specificity",
-        ),
+        (CapabilitySource::GlossaryCommand, "primers specificity"),
         (
             CapabilitySource::GlossaryCommand,
             "collections run primer-specificity",
@@ -307,7 +305,35 @@ fn collection_lift_policies_attach_only_to_existing_capabilities() {
                     ..
                 }
             ));
+            assert_eq!(
+                policy.context_requirement,
+                if subject_kind == CollectionSubjectKind::GeneSetResolution {
+                    CollectionContextRequirement::Homogeneous
+                } else {
+                    CollectionContextRequirement::ContextAgnostic
+                }
+            );
         }
+    }
+
+    for (source, name) in [
+        (
+            CapabilitySource::EngineOperation,
+            "BuildGeneSetPromoterCohort",
+        ),
+        (
+            CapabilitySource::GlossaryCommand,
+            "gene-sets promoter-cohort",
+        ),
+    ] {
+        let policy = collection_lift_policy(source, name, CollectionSubjectKind::GeneSetResolution)
+            .unwrap_or_else(|| {
+                panic!("missing promoter collection policy for {source:?} `{name}`")
+            });
+        assert_eq!(
+            policy.context_requirement,
+            CollectionContextRequirement::Homogeneous
+        );
     }
 }
 

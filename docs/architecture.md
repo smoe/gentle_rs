@@ -80,6 +80,12 @@ Sequence collection subject rule (target model):
   explicit members, local external mappings, genomic neighborhoods, or
   deterministic samples into auditable member rows. They are not a separate GUI
   object class with private behavior.
+- Portable collection members refer to report-owned biological-context rows
+  rather than duplicating assembly/annotation metadata on every member.
+  Coordinate- or reference-sensitive lifted operations must declare whether
+  they require a homogeneous context and reject missing or mixed contexts
+  before biological work begins. A membership-only fingerprint is never a
+  substitute for comparing those contexts.
 - Existing collection-like concepts keep their own semantics:
   - logical sets preserve membership and provenance without implying physical
     mixing

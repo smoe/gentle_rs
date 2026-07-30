@@ -320,6 +320,7 @@ impl GentleEngine {
             dedup_key: row.dedup_key.clone(),
             symbol: row.symbol.clone(),
             gene_id: row.record.gene_id.clone(),
+            context_id: None,
             aliases: vec![],
             chromosome: Some(row.record.chromosome.clone()),
             start_1based: Some(row.record.start_1based),
@@ -2587,6 +2588,9 @@ impl GentleEngine {
         report.organism = selection.metadata.organism.clone();
         report.taxon_id = selection.metadata.taxon_id.clone();
         report.symbol_namespace = selection.metadata.symbol_namespace.clone();
+        report
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
         let cache_id = selection
             .metadata
             .cache_id
@@ -2748,6 +2752,9 @@ impl GentleEngine {
         report.organism = selection.metadata.organism.clone();
         report.taxon_id = selection.metadata.taxon_id.clone();
         report.symbol_namespace = selection.metadata.symbol_namespace.clone();
+        report
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
         let cache_id =
             selection.metadata.cache_id.clone().unwrap_or_else(|| {
                 Self::gene_set_ontology_assignment_fallback_cache_id(cache_path)
@@ -2955,6 +2962,9 @@ impl GentleEngine {
         report.organism = selection.metadata.organism.clone();
         report.taxon_id = selection.metadata.taxon_id.clone();
         report.symbol_namespace = selection.metadata.symbol_namespace.clone();
+        report
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
         let cache_id = selection
             .metadata
             .cache_id
@@ -3234,7 +3244,7 @@ impl GentleEngine {
         };
 
         Self::gene_set_sort_members(&mut resolved_members);
-        Ok(GeneSetResolutionReport {
+        let mut report = GeneSetResolutionReport {
             schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
             generated_at_unix_ms: Self::now_unix_ms(),
             op_id: None,
@@ -3259,19 +3269,59 @@ impl GentleEngine {
             unresolved_members,
             warnings,
             provenance,
-        })
+            ..GeneSetResolutionReport::default()
+        };
+        report
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
+        Ok(report)
     }
 
     pub(crate) fn build_gene_set_promoter_cohort(
         &self,
         genome_id: &str,
-        resolution: GeneSetResolutionReport,
+        mut resolution: GeneSetResolutionReport,
         relationship: GeneSetCohortRelationship,
         upstream_bp: usize,
         downstream_bp: usize,
         genome_catalog_path: Option<&str>,
         cache_dir: Option<&str>,
     ) -> Result<GeneSetPromoterCohortReport, EngineError> {
+        resolution
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
+        let lift_policy = collection_lift_policy(
+            CapabilitySource::EngineOperation,
+            "BuildGeneSetPromoterCohort",
+            CollectionSubjectKind::GeneSetResolution,
+        )
+        .ok_or_else(|| {
+            EngineError::internal(
+                "BuildGeneSetPromoterCohort has no gene-set collection lift policy",
+            )
+        })?;
+        if lift_policy.context_requirement != CollectionContextRequirement::Homogeneous {
+            return Err(EngineError::internal(
+                "BuildGeneSetPromoterCohort must declare a homogeneous biological-context requirement",
+            ));
+        }
+        let context_members = resolution
+            .resolved_members
+            .iter()
+            .map(|member| CollectionMemberRef {
+                stable_member_id: member.dedup_key.clone(),
+                context_id: member.context_id.clone(),
+                ..CollectionMemberRef::default()
+            })
+            .collect::<Vec<_>>();
+        let biological_context = homogeneous_collection_biological_context(
+            &resolution.biological_contexts,
+            &context_members,
+        )
+        .map_err(EngineError::from)?;
+        validate_collection_context_target_genome(&biological_context, genome_id)
+            .map_err(EngineError::from)?;
+
         let effective_catalog_path =
             genome_catalog_path.unwrap_or(crate::genomes::default_catalog_discovery_token(false));
         let (catalog, _) = Self::open_reference_genome_catalog(Some(effective_catalog_path))?;
@@ -3388,6 +3438,7 @@ impl GentleEngine {
                 stable_member_id: member.dedup_key.clone(),
                 gene_symbol: Some(member.symbol.clone()),
                 gene_id: member.gene_id.clone(),
+                context_id: member.context_id.clone(),
                 source_provenance: member.provenance.clone(),
                 ..CollectionMemberRef::default()
             })
@@ -3486,6 +3537,7 @@ impl GentleEngine {
                         stable_member_id,
                         gene_symbol: Some(resolved_member.symbol.clone()),
                         gene_id: window.gene_id.clone(),
+                        context_id: source_member.context_id.clone(),
                         parent_member_id: Some(source_member.stable_member_id.clone()),
                         source_provenance: resolved_member.provenance.clone(),
                         ..CollectionMemberRef::default()
@@ -3512,6 +3564,7 @@ impl GentleEngine {
             lift_policy,
             fingerprint_algorithm: COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM.to_string(),
             collection_membership_fingerprint_sha256: fingerprint,
+            biological_contexts: report.gene_set_resolution.biological_contexts.clone(),
             dry_run: false,
             applied: true,
             per_member_status,
@@ -3615,8 +3668,11 @@ impl GentleEngine {
 
     pub(crate) fn upsert_gene_set_resolution_artifact(
         &mut self,
-        report: GeneSetResolutionReport,
+        mut report: GeneSetResolutionReport,
     ) -> Result<(), EngineError> {
+        report
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
         let mut store = self.read_gene_set_artifact_store();
         store
             .resolutions
@@ -3639,7 +3695,7 @@ impl GentleEngine {
         let store = self.read_gene_set_artifact_store();
         let prefixed =
             (!requested.starts_with("resolution:")).then(|| format!("resolution:{requested}"));
-        store
+        let mut report = store
             .resolutions
             .get(requested)
             .or_else(|| {
@@ -3661,7 +3717,11 @@ impl GentleEngine {
                         .join(", ")
                 ),
                 cause_chain: vec![],
-            })
+            })?;
+        report
+            .ensure_default_biological_context()
+            .map_err(|error| EngineError::invalid_input(error.to_string()))?;
+        Ok(report)
     }
 
     pub(crate) fn upsert_gene_set_promoter_cohort_artifact(
@@ -3694,6 +3754,10 @@ impl GentleEngine {
         )
         .resolutions
         .into_values()
+        .map(|mut report| {
+            let _ = report.ensure_default_biological_context();
+            report
+        })
         .collect()
     }
 

@@ -7,6 +7,7 @@
       "subjects": [
         {
           "subject_kind": "gene_set_resolution",
+          "context_requirement": "homogeneous",
           "support": {
             "status": "supported",
             "mode": "derive",
@@ -21,6 +22,7 @@
       "subjects": [
         {
           "subject_kind": "gene_set_resolution",
+          "context_requirement": "homogeneous",
           "support": {
             "status": "supported",
             "mode": "derive",
@@ -35,6 +37,7 @@
       "subjects": [
         {
           "subject_kind": "project_sequences",
+          "context_requirement": "context_agnostic",
           "support": {
             "status": "supported",
             "mode": "map",
@@ -43,6 +46,7 @@
         },
         {
           "subject_kind": "gene_set_resolution",
+          "context_requirement": "homogeneous",
           "support": {
             "status": "supported",
             "mode": "map",
@@ -57,6 +61,7 @@
       "subjects": [
         {
           "subject_kind": "project_sequences",
+          "context_requirement": "context_agnostic",
           "support": {
             "status": "supported",
             "mode": "map",
@@ -65,6 +70,7 @@
         },
         {
           "subject_kind": "gene_set_resolution",
+          "context_requirement": "homogeneous",
           "support": {
             "status": "supported",
             "mode": "map",
@@ -79,6 +85,7 @@
       "subjects": [
         {
           "subject_kind": "project_sequences",
+          "context_requirement": "context_agnostic",
           "support": {
             "status": "supported",
             "mode": "map",
@@ -87,6 +94,7 @@
         },
         {
           "subject_kind": "gene_set_resolution",
+          "context_requirement": "homogeneous",
           "support": {
             "status": "supported",
             "mode": "map",

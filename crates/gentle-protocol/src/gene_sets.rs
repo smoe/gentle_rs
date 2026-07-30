@@ -4,7 +4,10 @@
 //! groups, explicit user members, local ontology mappings, prepared-genome
 //! neighborhoods, or deterministic random samples into auditable gene rows.
 
-use crate::CollectionOperationReport;
+use crate::{
+    BiologicalContext, BiologicalContextRegistry, BiologicalContextResolutionError,
+    CollectionOperationReport, LEGACY_BIOLOGICAL_CONTEXT_ID,
+};
 use serde::{Deserialize, Serialize};
 
 /// Report schema for resolving a gene set into concrete member rows.
@@ -227,6 +230,9 @@ pub struct GeneSetResolvedMember {
     pub symbol: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_id: Option<String>,
+    /// Optional report-owned context row; absence inherits the report default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_id: Option<String>,
     #[serde(default)]
     pub aliases: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -293,6 +299,9 @@ pub struct GeneSetResolutionReport {
     pub taxon_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub symbol_namespace: Option<String>,
+    /// Portable context rows and default used by all resolved members.
+    #[serde(flatten)]
+    pub biological_contexts: BiologicalContextRegistry,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_group_catalog_label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -318,6 +327,42 @@ pub struct GeneSetResolutionReport {
     pub warnings: Vec<String>,
     #[serde(default)]
     pub provenance: Vec<GeneSetProvenanceRow>,
+}
+
+impl GeneSetResolutionReport {
+    /// Legacy report-level biological fields as one fallback context.
+    pub fn legacy_biological_context(&self) -> BiologicalContext {
+        BiologicalContext {
+            context_id: LEGACY_BIOLOGICAL_CONTEXT_ID.to_string(),
+            organism: self.organism.clone(),
+            taxon_id: self.taxon_id.clone(),
+            genome_id: self.genome_id.clone(),
+            symbol_namespace: self.symbol_namespace.clone(),
+            ..BiologicalContext::default()
+        }
+    }
+
+    /// Promote legacy report-level fields into the owned context registry.
+    pub fn ensure_default_biological_context(
+        &mut self,
+    ) -> Result<(), BiologicalContextResolutionError> {
+        let legacy_context = self.legacy_biological_context();
+        self.biological_contexts
+            .ensure_default_from_legacy(&legacy_context)
+    }
+
+    /// Resolve one member's effective context through member, default, and
+    /// legacy report-level precedence.
+    pub fn effective_biological_context(
+        &self,
+        member: &GeneSetResolvedMember,
+    ) -> Result<Option<BiologicalContext>, BiologicalContextResolutionError> {
+        let legacy_context = self.legacy_biological_context();
+        self.biological_contexts.resolve(
+            member.context_id.as_deref(),
+            (!legacy_context.is_empty()).then_some(&legacy_context),
+        )
+    }
 }
 
 /// One promoter window derived for a resolved gene-set member.
@@ -500,6 +545,47 @@ mod tests {
         assert!(report.producer.is_none());
         assert!(report.query_metadata.is_none());
         assert!(report.co_regulated_metadata.is_none());
+        assert!(report.biological_contexts.contexts.is_empty());
+        assert!(report.biological_contexts.default_context_id.is_none());
+    }
+
+    #[test]
+    fn legacy_resolution_fields_promote_to_a_default_member_context() {
+        let mut report: GeneSetResolutionReport = serde_json::from_value(serde_json::json!({
+            "schema": GENE_SET_RESOLUTION_SCHEMA,
+            "generated_at_unix_ms": 1,
+            "request": {"source_kind": "explicit_members", "members": ["TP73"]},
+            "genome_id": "Human GRCh38 Ensembl 116",
+            "organism": "Homo sapiens",
+            "taxon_id": "9606",
+            "symbol_namespace": "HGNC",
+            "requested_member_count": 1,
+            "resolved_member_count": 1,
+            "unresolved_member_count": 0,
+            "resolved_members": [{
+                "dedup_key": "gene_id:ENSG00000078900",
+                "symbol": "TP73"
+            }]
+        }))
+        .expect("deserialize legacy report");
+
+        report
+            .ensure_default_biological_context()
+            .expect("promote legacy fields");
+        let context = report
+            .effective_biological_context(&report.resolved_members[0])
+            .expect("resolve context")
+            .expect("effective context");
+        assert_eq!(
+            report.biological_contexts.default_context_id.as_deref(),
+            Some(crate::DEFAULT_BIOLOGICAL_CONTEXT_ID)
+        );
+        assert_eq!(
+            context.genome_id.as_deref(),
+            Some("Human GRCh38 Ensembl 116")
+        );
+        assert_eq!(context.taxon_id.as_deref(), Some("9606"));
+        assert_eq!(context.symbol_namespace.as_deref(), Some("HGNC"));
     }
 
     #[test]
