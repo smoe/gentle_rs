@@ -11820,6 +11820,7 @@ Error: `{err}`"
                 rna_read_target_quality_export: None,
                 rna_read_batch_map_report: None,
                 rna_read_isoform_preflight: None,
+                rna_read_dexseq_verification: None,
                 tfbs_region_summary: None,
                 tfbs_score_tracks: None,
                 tfbs_track_similarity: None,

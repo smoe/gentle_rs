@@ -3116,6 +3116,15 @@ pub enum ShellCommand {
         selected_record_indices: Vec<usize>,
         subset_spec: Option<String>,
     },
+    RnaReadsVerifyDexseq {
+        report_id: String,
+        gff_path: String,
+        counts_path: String,
+        selection: RnaReadHitSelection,
+        selected_record_indices: Vec<usize>,
+        subset_spec: Option<String>,
+        r_library_paths: Vec<String>,
+    },
     RnaReadsExportScoreDensitySvg {
         report_id: String,
         path: String,
@@ -12614,6 +12623,24 @@ impl ShellCommand {
                 selection.as_str(),
                 selected_record_indices.len(),
                 subset_spec.as_deref().unwrap_or("none")
+            ),
+            Self::RnaReadsVerifyDexseq {
+                report_id,
+                gff_path,
+                counts_path,
+                selection,
+                selected_record_indices,
+                subset_spec,
+                r_library_paths,
+            } => format!(
+                "verify RNA-read DEXSeq exports from '{}' via GFF '{}' and counts '{}' (selection={}, selected_record_indices={}, subset_spec={}, r_library_paths={})",
+                report_id,
+                gff_path,
+                counts_path,
+                selection.as_str(),
+                selected_record_indices.len(),
+                subset_spec.as_deref().unwrap_or("none"),
+                r_library_paths.len(),
             ),
             Self::RnaReadsExportScoreDensitySvg {
                 report_id,
@@ -23627,6 +23654,41 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "external two-column DEXSeq/HTSeq count-table path",
             "Export selected exonic-part counts from one RNA-read interpretation report as a DEXSeq-compatible HTSeq table.",
         ),
+        json!({
+            "id": "rna-reads verify-dexseq",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted RNA-read interpretation report id"},
+                {"name": "GFF_PATH", "required": true, "subject_kind": "other", "detail": "external DEXSeq flattened-annotation GFF output path"},
+                {"name": "COUNTS_PATH", "required": true, "subject_kind": "other", "detail": "external two-column DEXSeq/HTSeq count-table output path"},
+                {"name": "R_LIBRARY_PATHS", "required": false, "subject_kind": "other", "detail": "optional repeatable R library search paths"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "GFF_PATH"},
+                    "effect_kind": "external_handoff"
+                },
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "COUNTS_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+                ]
+            },
+            "description": "Export one matched DEXSeq input pair, preflight R/DEXSeq, and verify the pair with DEXSeqDataSetFromHTSeq when dependencies are available.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("rna-reads verify-dexseq")
+        }),
         report_export_operation_descriptor(
             "rna-reads export-score-density-svg",
             "rna_read",
@@ -23820,6 +23882,41 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "external two-column DEXSeq/HTSeq count-table path carried by the operation payload",
             "Export selected exonic-part counts from one persisted RNA-read report as a DEXSeq-compatible HTSeq table.",
         ),
+        json!({
+            "id": "VerifyRnaReadDexseqExports",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted RNA-read interpretation report id carried by the operation payload"},
+                {"name": "GFF_PATH", "required": true, "subject_kind": "other", "detail": "external DEXSeq flattened-annotation GFF output path carried by the operation payload"},
+                {"name": "COUNTS_PATH", "required": true, "subject_kind": "other", "detail": "external two-column DEXSeq/HTSeq count-table output path carried by the operation payload"},
+                {"name": "R_LIBRARY_PATHS", "required": false, "subject_kind": "other", "detail": "optional R library search paths carried by the operation payload"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "GFF_PATH"},
+                    "effect_kind": "external_handoff"
+                },
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "COUNTS_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+                ]
+            },
+            "description": "Export one matched DEXSeq input pair and verify it with DEXSeqDataSetFromHTSeq when local R dependencies are available.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("VerifyRnaReadDexseqExports")
+        }),
         report_export_operation_descriptor(
             "ExportRnaReadScoreDensitySvg",
             "rna_read",
@@ -27447,6 +27544,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "rna-reads export-abundance-tsv"
         | "rna-reads export-dexseq-annotation-gff"
         | "rna-reads export-dexseq-counts-tsv"
+        | "rna-reads verify-dexseq"
         | "rna-reads export-score-density-svg"
         | "rna-reads export-alignments-tsv"
         | "rna-reads export-isoform-triage-tsv"
@@ -27686,6 +27784,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "ExportRnaReadExonAbundanceTsv"
         | "ExportRnaReadDexseqAnnotationGff"
         | "ExportRnaReadDexseqCountsTsv"
+        | "VerifyRnaReadDexseqExports"
         | "ExportRnaReadScoreDensitySvg"
         | "ExportRnaReadAlignmentsTsv"
         | "ExportRnaReadIsoformTriageTsv"
@@ -57578,6 +57677,33 @@ fn execute_rna_reads_command(
                 })?,
             })
         }
+        ShellCommand::RnaReadsVerifyDexseq {
+            report_id,
+            gff_path,
+            counts_path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+            r_library_paths,
+        } => {
+            let verification = engine
+                .verify_rna_read_dexseq_exports(
+                    report_id,
+                    gff_path,
+                    counts_path,
+                    *selection,
+                    selected_record_indices,
+                    subset_spec.as_deref(),
+                    r_library_paths,
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(verification).map_err(|e| {
+                    format!("Could not serialize RNA-read DEXSeq verification: {e}")
+                })?,
+            })
+        }
         ShellCommand::RnaReadsExportScoreDensitySvg {
             report_id,
             path,
@@ -58985,6 +59111,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::RnaReadsExportExonAbundanceTsv { .. }
             | ShellCommand::RnaReadsExportDexseqAnnotationGff { .. }
             | ShellCommand::RnaReadsExportDexseqCountsTsv { .. }
+            | ShellCommand::RnaReadsVerifyDexseq { .. }
             | ShellCommand::RnaReadsExportScoreDensitySvg { .. }
             | ShellCommand::RnaReadsExportAlignmentsTsv { .. }
             | ShellCommand::RnaReadsExportIsoformTriageTsv { .. }
@@ -60604,6 +60731,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsExportExonAbundanceTsv { .. }
         | ShellCommand::RnaReadsExportDexseqAnnotationGff { .. }
         | ShellCommand::RnaReadsExportDexseqCountsTsv { .. }
+        | ShellCommand::RnaReadsVerifyDexseq { .. }
         | ShellCommand::RnaReadsExportScoreDensitySvg { .. }
         | ShellCommand::RnaReadsExportAlignmentsTsv { .. }
         | ShellCommand::RnaReadsExportIsoformTriageTsv { .. }

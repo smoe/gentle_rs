@@ -778,6 +778,7 @@ const RNA_READ_DEXSEQ_ANNOTATION_GFF_EXPORT_SCHEMA: &str =
     "gentle.rna_read_dexseq_annotation_gff_export.v1";
 const RNA_READ_DEXSEQ_COUNTS_TSV_EXPORT_SCHEMA: &str =
     "gentle.rna_read_dexseq_counts_tsv_export.v1";
+const RNA_READ_DEXSEQ_VERIFICATION_SCHEMA: &str = "gentle.rna_read_dexseq_verification.v1";
 const RNA_READ_GENE_SUPPORT_SUMMARY_SCHEMA: &str = "gentle.rna_read_gene_support_summary.v1";
 const RNA_READ_GENE_SUPPORT_AUDIT_SCHEMA: &str = "gentle.rna_read_gene_support_audit.v1";
 const RNA_READ_TARGET_QUALITY_COMPARISON_BUNDLE_SCHEMA: &str =
@@ -5182,6 +5183,19 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         subset_spec: Option<String>,
     },
+    VerifyRnaReadDexseqExports {
+        report_id: String,
+        gff_path: String,
+        counts_path: String,
+        #[serde(default)]
+        selection: RnaReadHitSelection,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subset_spec: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        r_library_paths: Vec<String>,
+    },
     ExportRnaReadScoreDensitySvg {
         report_id: String,
         path: String,
@@ -9171,6 +9185,7 @@ impl GentleEngine {
                 | Operation::ExportRnaReadExonAbundanceTsv { .. }
                 | Operation::ExportRnaReadDexseqAnnotationGff { .. }
                 | Operation::ExportRnaReadDexseqCountsTsv { .. }
+                | Operation::VerifyRnaReadDexseqExports { .. }
                 | Operation::ExportRnaReadScoreDensitySvg { .. }
                 | Operation::ExportRnaReadAlignmentsTsv { .. }
                 | Operation::ExportRnaReadIsoformTriageTsv { .. }

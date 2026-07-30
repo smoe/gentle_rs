@@ -13692,6 +13692,74 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 subset_spec,
             })
         }
+        "verify-dexseq" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "rna-reads verify-dexseq requires REPORT_ID OUTPUT.gff OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT] [--r-library-path PATH ...]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let gff_path = tokens[3].clone();
+            let counts_path = tokens[4].clone();
+            let mut selection = RnaReadHitSelection::All;
+            let mut selected_record_indices: Vec<usize> = vec![];
+            let mut subset_spec: Option<String> = None;
+            let mut r_library_paths: Vec<String> = vec![];
+            let mut idx = 5usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads verify-dexseq",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads verify-dexseq",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
+                    "--subset-spec" => {
+                        subset_spec = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--subset-spec",
+                            "rna-reads verify-dexseq",
+                        )?);
+                    }
+                    "--r-library-path" => {
+                        r_library_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--r-library-path",
+                            "rna-reads verify-dexseq",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads verify-dexseq"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsVerifyDexseq {
+                report_id,
+                gff_path,
+                counts_path,
+                selection,
+                selected_record_indices,
+                subset_spec,
+                r_library_paths,
+            })
+        }
         "export-score-density-svg" => {
             if tokens.len() < 4 {
                 return Err(

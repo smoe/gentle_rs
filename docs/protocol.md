@@ -10299,6 +10299,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-dexseq-annotation-gff REPORT_ID OUTPUT.gff`
   - `rna-reads export-dexseq-counts-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
+  - `rna-reads verify-dexseq REPORT_ID OUTPUT.gff OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT] [--r-library-path PATH ...]`
   - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]`
   - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
@@ -10535,6 +10536,16 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - special-row diagnostics are independently observed and may overlap
   - use the per-sample count files and shared flattened GFF with
     `DEXSeqDataSetFromHTSeq(countfiles, sampleData, design, flattenedfile)`
+- `VerifyRnaReadDexseqExports` / `rna-reads verify-dexseq` call both existing
+  exporters, then preflight `Rscript` and the Bioconductor `DEXSeq` package
+  without installing anything. When both are present, the bounded
+  `scripts/rna_read_dexseq_verify.R` helper constructs a real
+  `DEXSeqDataSetFromHTSeq()` from the two files. Result schema
+  `gentle.rna_read_dexseq_verification.v1` carries both export summaries,
+  dependency rows, requested/effective R library paths, the reproducible
+  verifier command, `verifier_status`, and an optional `DEXSEQ_OK` stdout
+  summary. Missing dependencies and timeouts remain structured inspection
+  outcomes rather than being mistaken for an accepted DEXSeq pair.
 - cDNA/direct-RNA normalization controls in `seed_filter`:
   - `cdna_poly_t_flip_enabled` (default `true`)
   - `poly_t_prefix_min_bp` (default `18`): minimum T support used by the

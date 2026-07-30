@@ -42321,6 +42321,292 @@ fn test_export_rna_read_exon_abundance_skips_intra_exon_bin_edges() {
     assert!(!abundance_text.contains("\ttransition\t\t13\t15\t"));
 }
 
+fn rna_read_dexseq_verification_test_engine() -> GentleEngine {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "dexseq_verification_test".to_string(),
+            seq_id: "dexseq_verification_seq".to_string(),
+            exonic_part_bins: vec![
+                RnaReadExonicPartBin {
+                    global_ordinal: 1,
+                    gene_id: "GENE1".to_string(),
+                    exonic_part_number: 1,
+                    start_1based: 10,
+                    end_1based: 20,
+                    strand: "+".to_string(),
+                    transcripts: vec!["TX1".to_string()],
+                    constitutive: true,
+                },
+                RnaReadExonicPartBin {
+                    global_ordinal: 2,
+                    gene_id: "GENE1".to_string(),
+                    exonic_part_number: 2,
+                    start_1based: 30,
+                    end_1based: 40,
+                    strand: "+".to_string(),
+                    transcripts: vec!["TX1".to_string()],
+                    constitutive: true,
+                },
+            ],
+            hits: vec![RnaReadInterpretationHit {
+                record_index: 0,
+                header_id: "read_both_parts".to_string(),
+                passed_seed_filter: true,
+                exon_path: "1:2".to_string(),
+                best_mapping: Some(RnaReadMappingHit::default()),
+                ..RnaReadInterpretationHit::default()
+            }],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("persist synthetic DEXSeq verification report");
+    engine
+}
+
+#[cfg(unix)]
+fn write_fake_dexseq_rscript(dir: &Path, body: &str) -> PathBuf {
+    let path = dir.join("Rscript");
+    fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write fake DEXSeq Rscript");
+    let mut permissions = fs::metadata(&path)
+        .expect("fake DEXSeq Rscript metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&path, permissions).expect("enable fake DEXSeq Rscript");
+    path
+}
+
+fn declared_r_packages(script: &str) -> BTreeSet<String> {
+    let line = script
+        .lines()
+        .find(|line| line.trim_start().starts_with("required_packages <- c("))
+        .expect("required_packages declaration");
+    let mut packages = BTreeSet::new();
+    let mut rest = line;
+    while let Some(start) = rest.find('"') {
+        rest = &rest[start + 1..];
+        let end = rest.find('"').expect("closing package quote");
+        packages.insert(rest[..end].to_string());
+        rest = &rest[end + 1..];
+    }
+    packages
+}
+
+#[test]
+fn test_rna_read_dexseq_verifier_r_package_contract_matches_helper() {
+    let declared = declared_r_packages(include_str!("../../scripts/rna_read_dexseq_verify.R"));
+    assert_eq!(
+        declared,
+        crate::engine::rna_reads::RNA_READ_DEXSEQ_VERIFY_REQUIRED_R_PACKAGES
+            .iter()
+            .map(|package| (*package).to_string())
+            .collect()
+    );
+}
+
+#[test]
+fn test_rna_read_dexseq_verification_operation_round_trips() {
+    let operation = Operation::VerifyRnaReadDexseqExports {
+        report_id: "reads".to_string(),
+        gff_path: "out.gff".to_string(),
+        counts_path: "out.tsv".to_string(),
+        selection: RnaReadHitSelection::Aligned,
+        selected_record_indices: vec![3, 5],
+        subset_spec: Some("reviewed subset".to_string()),
+        r_library_paths: vec![".r-lib".to_string(), "/opt/R/library".to_string()],
+    };
+    let encoded = serde_json::to_value(&operation).expect("serialize DEXSeq verification op");
+    let decoded: Operation =
+        serde_json::from_value(encoded).expect("deserialize DEXSeq verification op");
+
+    assert!(matches!(
+        decoded,
+        Operation::VerifyRnaReadDexseqExports {
+            report_id,
+            gff_path,
+            counts_path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+            r_library_paths,
+        } if report_id == "reads"
+            && gff_path == "out.gff"
+            && counts_path == "out.tsv"
+            && selection == RnaReadHitSelection::Aligned
+            && selected_record_indices == vec![3, 5]
+            && subset_spec.as_deref() == Some("reviewed subset")
+            && r_library_paths == vec![".r-lib", "/opt/R/library"]
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn test_rna_read_dexseq_verifier_uses_fake_rscript_and_returns_summary() {
+    let engine = rna_read_dexseq_verification_test_engine();
+    let td = tempdir().expect("tempdir");
+    let r_library = td.path().join("r-library");
+    fs::create_dir(&r_library).expect("create R library");
+    let rscript = write_fake_dexseq_rscript(
+        td.path(),
+        &format!(
+            "if [ \"$1\" = \"--version\" ]; then\n  echo 'Rscript (R) version 4.4.1'\nelif [ \"$1\" = \"--vanilla\" ]; then\n  printf 'LIBPATH\\t{}\\nPACKAGE\\tDEXSeq\\t1.52.0\\n'\nelse\n  echo 'DEXSEQ_OK genes=1 exonic_parts=2 total_counts=2'\nfi",
+            r_library.display()
+        ),
+    );
+    let gff_path = td.path().join("verified.gff");
+    let counts_path = td.path().join("verified.tsv");
+
+    let verification = engine
+        .verify_rna_read_dexseq_exports_with_program(
+            "dexseq_verification_test",
+            gff_path.to_str().expect("GFF path"),
+            counts_path.to_str().expect("counts path"),
+            RnaReadHitSelection::All,
+            &[],
+            Some("all synthetic reads"),
+            &[r_library.display().to_string()],
+            rscript.to_str().expect("Rscript path"),
+            Duration::from_secs(10),
+            Duration::from_secs(10),
+        )
+        .expect("verify DEXSeq exports");
+
+    assert_eq!(
+        verification.schema,
+        "gentle.rna_read_dexseq_verification.v1"
+    );
+    assert_eq!(verification.verifier_status, "verified");
+    assert_eq!(
+        verification.verifier_stdout_summary.as_deref(),
+        Some("DEXSEQ_OK genes=1 exonic_parts=2 total_counts=2")
+    );
+    assert_eq!(
+        verification
+            .dependency_checks
+            .iter()
+            .map(|row| (row.name.as_str(), row.status.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("Rscript", "present"), ("DEXSeq", "present")]
+    );
+    assert!(
+        verification
+            .command
+            .contains("Rscript scripts/rna_read_dexseq_verify.R")
+    );
+    assert!(
+        verification
+            .command
+            .contains(&r_library.display().to_string())
+    );
+    assert!(gff_path.is_file());
+    assert!(counts_path.is_file());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_rna_read_dexseq_verifier_reports_missing_package_without_running_helper() {
+    let engine = rna_read_dexseq_verification_test_engine();
+    let td = tempdir().expect("tempdir");
+    let rscript = write_fake_dexseq_rscript(
+        td.path(),
+        "if [ \"$1\" = \"--version\" ]; then\n  echo 'Rscript (R) version 4.4.1'\nelif [ \"$1\" = \"--vanilla\" ]; then\n  printf 'PACKAGE\\tDEXSeq\\tMISSING\\n'\nelse\n  echo 'verifier must not run' >&2\n  exit 97\nfi",
+    );
+
+    let verification = engine
+        .verify_rna_read_dexseq_exports_with_program(
+            "dexseq_verification_test",
+            td.path().join("missing.gff").to_str().expect("GFF path"),
+            td.path().join("missing.tsv").to_str().expect("counts path"),
+            RnaReadHitSelection::All,
+            &[],
+            None,
+            &[],
+            rscript.to_str().expect("Rscript path"),
+            Duration::from_secs(10),
+            Duration::from_secs(10),
+        )
+        .expect("inspect missing DEXSeq dependency");
+
+    assert_eq!(verification.verifier_status, "dependency_missing");
+    let dexseq = verification
+        .dependency_checks
+        .iter()
+        .find(|row| row.name == "DEXSeq")
+        .expect("DEXSeq dependency row");
+    assert_eq!(dexseq.status, "missing");
+    assert!(verification.verifier_stdout_summary.is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_rna_read_dexseq_verifier_execution_is_bounded() {
+    let engine = rna_read_dexseq_verification_test_engine();
+    let td = tempdir().expect("tempdir");
+    let rscript = write_fake_dexseq_rscript(
+        td.path(),
+        "if [ \"$1\" = \"--version\" ]; then\n  echo 'Rscript (R) version 4.4.1'\nelif [ \"$1\" = \"--vanilla\" ]; then\n  printf 'PACKAGE\\tDEXSeq\\t1.52.0\\n'\nelse\n  while :; do :; done\nfi",
+    );
+
+    let verification = engine
+        .verify_rna_read_dexseq_exports_with_program(
+            "dexseq_verification_test",
+            td.path().join("timeout.gff").to_str().expect("GFF path"),
+            td.path().join("timeout.tsv").to_str().expect("counts path"),
+            RnaReadHitSelection::All,
+            &[],
+            None,
+            &[],
+            rscript.to_str().expect("Rscript path"),
+            Duration::from_secs(10),
+            Duration::from_millis(250),
+        )
+        .expect("bound DEXSeq verifier");
+
+    assert_eq!(verification.verifier_status, "verification_timed_out");
+    assert!(
+        verification
+            .dependency_checks
+            .iter()
+            .all(|row| row.status == "present")
+    );
+    assert!(
+        verification
+            .command
+            .contains("Rscript scripts/rna_read_dexseq_verify.R")
+    );
+    assert!(
+        verification
+            .verifier_detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("timed out"))
+    );
+}
+
+#[test]
+#[ignore = "requires a local R installation with the Bioconductor DEXSeq package"]
+fn test_rna_read_dexseq_verifier_with_real_rscript() {
+    let engine = rna_read_dexseq_verification_test_engine();
+    let td = tempdir().expect("tempdir");
+    let verification = engine
+        .verify_rna_read_dexseq_exports(
+            "dexseq_verification_test",
+            td.path().join("real.gff").to_str().expect("GFF path"),
+            td.path().join("real.tsv").to_str().expect("counts path"),
+            RnaReadHitSelection::All,
+            &[],
+            Some("all synthetic reads"),
+            &[],
+        )
+        .expect("run real DEXSeq verification");
+
+    assert_eq!(
+        verification.verifier_status,
+        "verified",
+        "{}",
+        verification.verifier_detail.as_deref().unwrap_or_default()
+    );
+}
+
 #[test]
 fn test_rna_read_dexseq_exports_share_partition_join_keys_and_counts() {
     let mut state = ProjectState::default();

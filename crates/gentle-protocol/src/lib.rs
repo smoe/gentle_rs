@@ -5357,6 +5357,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportRnaReadExonAbundanceTsv",
     "ExportRnaReadDexseqAnnotationGff",
     "ExportRnaReadDexseqCountsTsv",
+    "VerifyRnaReadDexseqExports",
     "ExportRnaReadScoreDensitySvg",
     "ExportRnaReadAlignmentsTsv",
     "ExportRnaReadAlignmentDotplotSvg",

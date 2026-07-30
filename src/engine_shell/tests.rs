@@ -38708,6 +38708,29 @@ fn parse_rna_reads_commands() {
                 && subset_spec.as_deref() == Some("filtered_tp53")
     ));
 
+    let verify_dexseq = parse_shell_line(
+        "rna-reads verify-dexseq tp73_reads dexseq.gff dexseq.tsv --selection aligned --record-indices 6,8 --subset-spec filtered_tp53 --r-library-path .r-lib --r-library-path /opt/R/library",
+    )
+    .expect("parse rna-reads verify-dexseq");
+    assert!(matches!(
+        verify_dexseq,
+        ShellCommand::RnaReadsVerifyDexseq {
+            report_id,
+            gff_path,
+            counts_path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+            r_library_paths,
+        } if report_id == "tp73_reads"
+            && gff_path == "dexseq.gff"
+            && counts_path == "dexseq.tsv"
+            && selection == RnaReadHitSelection::Aligned
+            && selected_record_indices == vec![6, 8]
+            && subset_spec.as_deref() == Some("filtered_tp53")
+            && r_library_paths == vec![".r-lib", "/opt/R/library"]
+    ));
+
     let export_score_density = parse_shell_line(
         "rna-reads export-score-density-svg tp73_reads score_density.svg --scale linear --variant composite_seed_gate",
     )

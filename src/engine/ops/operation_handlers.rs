@@ -26959,6 +26959,7 @@ impl GentleEngine {
             rna_read_target_quality_export: None,
             rna_read_batch_map_report: None,
             rna_read_isoform_preflight: None,
+            rna_read_dexseq_verification: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
@@ -36589,6 +36590,44 @@ impl GentleEngine {
                         export.exonic_part_count,
                         selected_record_indices.len()
                     ));
+                }
+                Operation::VerifyRnaReadDexseqExports {
+                    report_id,
+                    gff_path,
+                    counts_path,
+                    selection,
+                    selected_record_indices,
+                    subset_spec,
+                    r_library_paths,
+                } => {
+                    let verification = self.verify_rna_read_dexseq_exports(
+                        &report_id,
+                        &gff_path,
+                        &counts_path,
+                        selection,
+                        &selected_record_indices,
+                        subset_spec.as_deref(),
+                        &r_library_paths,
+                    )?;
+                    result.messages.push(format!(
+                        "Verified RNA-read DEXSeq exports '{}' (status={}, GFF='{}', counts='{}')",
+                        verification.report_id,
+                        verification.verifier_status,
+                        verification.annotation_export.path,
+                        verification.counts_export.path,
+                    ));
+                    if verification.verifier_status != "verified" {
+                        result.warnings.push(format!(
+                            "DEXSeq verification status is '{}'{}",
+                            verification.verifier_status,
+                            verification
+                                .verifier_detail
+                                .as_deref()
+                                .map(|detail| format!(": {detail}"))
+                                .unwrap_or_default(),
+                        ));
+                    }
+                    result.rna_read_dexseq_verification = Some(verification);
                 }
                 Operation::ExportRnaReadScoreDensitySvg {
                     report_id,

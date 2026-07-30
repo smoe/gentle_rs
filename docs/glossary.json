@@ -4928,6 +4928,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "VerifyRnaReadDexseqExports"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads verify-dexseq",
+         "summary": "Export a matched DEXSeq GFF/count pair and verify it with the real DEXSeqDataSetFromHTSeq contract when local R dependencies are present.",
+         "usage": "rna-reads verify-dexseq REPORT_ID OUTPUT.gff OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT] [--r-library-path PATH ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "ExportRnaReadScoreDensitySvg"
          ],
          "interfaces": [

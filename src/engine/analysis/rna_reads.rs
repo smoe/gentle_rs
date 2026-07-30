@@ -16,6 +16,9 @@ use std::fmt::Write as _;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const RNA_READ_TARGET_QUERY_COVERAGE_BIN_COUNT: usize = 101;
+pub(crate) const RNA_READ_DEXSEQ_VERIFY_HELPER: &str = "scripts/rna_read_dexseq_verify.R";
+pub(crate) const RNA_READ_DEXSEQ_VERIFY_REQUIRED_R_PACKAGES: [&str; 1] = ["DEXSeq"];
+const RNA_READ_DEXSEQ_VERIFY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
 #[derive(Debug, Clone, Default)]
 struct RnaReadConcatemerTranscriptCatalogSummary {
@@ -5835,6 +5838,228 @@ impl GentleEngine {
             lowaqual_count,
             notaligned_count,
         })
+    }
+
+    pub fn verify_rna_read_dexseq_exports(
+        &self,
+        report_id: &str,
+        gff_path: &str,
+        counts_path: &str,
+        selection: RnaReadHitSelection,
+        selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
+        r_library_paths: &[String],
+    ) -> Result<RnaReadDexseqVerification, EngineError> {
+        self.verify_rna_read_dexseq_exports_with_program(
+            report_id,
+            gff_path,
+            counts_path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+            r_library_paths,
+            "Rscript",
+            RNA_READ_DEXSEQ_VERIFY_TIMEOUT,
+            RNA_READ_DEXSEQ_VERIFY_TIMEOUT,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn verify_rna_read_dexseq_exports_with_program(
+        &self,
+        report_id: &str,
+        gff_path: &str,
+        counts_path: &str,
+        selection: RnaReadHitSelection,
+        selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
+        r_library_paths: &[String],
+        rscript_program: &str,
+        preflight_timeout: std::time::Duration,
+        verifier_timeout: std::time::Duration,
+    ) -> Result<RnaReadDexseqVerification, EngineError> {
+        let annotation_export = self.export_rna_read_dexseq_annotation_gff(report_id, gff_path)?;
+        let counts_export = self.export_rna_read_dexseq_counts_tsv(
+            report_id,
+            counts_path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+        )?;
+
+        let mut seen_library_paths = BTreeSet::new();
+        let r_library_paths_requested = r_library_paths
+            .iter()
+            .map(|path| path.trim())
+            .filter(|path| !path.is_empty())
+            .filter(|path| seen_library_paths.insert((*path).to_string()))
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let rscript_dependency = Self::probe_region_command_dependency_with_program(
+            "Rscript",
+            rscript_program,
+            "command",
+            true,
+            &["--version"],
+            preflight_timeout,
+        );
+        let rscript_available = rscript_dependency.status == "present";
+        let packages = RNA_READ_DEXSEQ_VERIFY_REQUIRED_R_PACKAGES
+            .iter()
+            .map(|package| ((*package).to_string(), true))
+            .collect::<Vec<_>>();
+        let package_probe = Self::probe_region_r_package_dependencies_with_program(
+            &packages,
+            rscript_available,
+            &r_library_paths_requested,
+            rscript_program,
+            preflight_timeout,
+        );
+        let mut dependency_checks = vec![rscript_dependency];
+        dependency_checks.extend(package_probe.dependencies);
+
+        let mut command_tokens = vec![
+            "Rscript".to_string(),
+            RNA_READ_DEXSEQ_VERIFY_HELPER.to_string(),
+            annotation_export.path.clone(),
+            counts_export.path.clone(),
+        ];
+        command_tokens.extend(r_library_paths_requested.iter().cloned());
+        let command = command_tokens
+            .iter()
+            .map(|token| Self::rna_read_batch_shell_quote(token))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let base_result = RnaReadDexseqVerification {
+            schema: RNA_READ_DEXSEQ_VERIFICATION_SCHEMA.to_string(),
+            report_id: report_id.to_string(),
+            annotation_export,
+            counts_export,
+            dependency_checks,
+            r_library_paths_requested,
+            r_library_paths_checked: package_probe.library_paths_checked,
+            command,
+            verifier_status: String::new(),
+            verifier_stdout_summary: None,
+            verifier_detail: None,
+        };
+
+        if base_result
+            .dependency_checks
+            .iter()
+            .any(|row| row.required && row.status != "present")
+        {
+            let mut result = base_result;
+            result.verifier_status = if result
+                .dependency_checks
+                .iter()
+                .any(|row| row.status == "timed_out")
+            {
+                "dependency_timed_out".to_string()
+            } else if result
+                .dependency_checks
+                .iter()
+                .any(|row| matches!(row.status.as_str(), "missing" | "unchecked"))
+            {
+                "dependency_missing".to_string()
+            } else {
+                "dependency_probe_failed".to_string()
+            };
+            result.verifier_detail = Some(
+                result
+                    .dependency_checks
+                    .iter()
+                    .filter(|row| row.required && row.status != "present")
+                    .map(|row| {
+                        let detail = row
+                            .detail
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|detail| !detail.is_empty())
+                            .map(|detail| format!(": {detail}"))
+                            .unwrap_or_default();
+                        format!("{} [{}]{}", row.name, row.status, detail)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            );
+            return Ok(result);
+        }
+
+        let args = command_tokens[1..].to_vec();
+        let verifier_output = Self::probe_region_bounded_command_output(
+            rscript_program,
+            &args,
+            verifier_timeout,
+        );
+        let mut result = base_result;
+        match verifier_output {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let summary = stdout
+                    .lines()
+                    .map(str::trim)
+                    .find(|line| line.starts_with("DEXSEQ_OK "))
+                    .map(str::to_string);
+                if output.status.success() {
+                    if let Some(summary) = summary {
+                        result.verifier_status = "verified".to_string();
+                        result.verifier_stdout_summary = Some(summary);
+                    } else {
+                        result.verifier_status = "verification_failed".to_string();
+                        result.verifier_detail = Some(
+                            "DEXSeq verifier exited successfully without a DEXSEQ_OK summary"
+                                .to_string(),
+                        );
+                    }
+                } else {
+                    result.verifier_status = "verification_failed".to_string();
+                    result.verifier_detail = stdout
+                        .lines()
+                        .chain(stderr.lines())
+                        .map(str::trim)
+                        .find(|line| line.starts_with("DEXSEQ_FAIL ") || !line.is_empty())
+                        .map(str::to_string)
+                        .or_else(|| {
+                            Some(format!(
+                                "DEXSeq verifier exited with status {}",
+                                output.status
+                            ))
+                        });
+                }
+            }
+            Err(
+                crate::engine::probe_regions::planning_backend::ProbeRegionBoundedCommandError::TimedOut {
+                    elapsed_ms,
+                },
+            ) => {
+                result.verifier_status = "verification_timed_out".to_string();
+                result.verifier_detail = Some(format!(
+                    "DEXSeq verifier timed out after {elapsed_ms} ms"
+                ));
+            }
+            Err(
+                crate::engine::probe_regions::planning_backend::ProbeRegionBoundedCommandError::Spawn {
+                    message,
+                    ..
+                },
+            ) => {
+                result.verifier_status = "verification_failed".to_string();
+                result.verifier_detail =
+                    Some(format!("Could not start DEXSeq verifier: {message}"));
+            }
+            Err(
+                crate::engine::probe_regions::planning_backend::ProbeRegionBoundedCommandError::Poll(
+                    error,
+                ),
+            ) => {
+                result.verifier_status = "verification_failed".to_string();
+                result.verifier_detail =
+                    Some(format!("Could not monitor DEXSeq verifier: {error}"));
+            }
+        }
+        Ok(result)
     }
 
     pub(super) fn derive_score_density_bins_from_report(
@@ -14088,6 +14313,7 @@ impl GentleEngine {
             rna_read_target_quality_export: None,
             rna_read_batch_map_report: None,
             rna_read_isoform_preflight: None,
+            rna_read_dexseq_verification: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
@@ -14207,6 +14433,7 @@ impl GentleEngine {
             rna_read_target_quality_export: None,
             rna_read_batch_map_report: None,
             rna_read_isoform_preflight: None,
+            rna_read_dexseq_verification: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,

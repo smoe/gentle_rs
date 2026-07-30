@@ -251,7 +251,7 @@ mod inspection;
 #[path = "probe_regions/interpretation.rs"]
 mod interpretation;
 #[path = "probe_regions/planning_backend.rs"]
-mod planning_backend;
+pub(crate) mod planning_backend;
 #[path = "probe_regions/projection.rs"]
 mod projection;
 #[path = "probe_regions/render_output_svg.rs"]

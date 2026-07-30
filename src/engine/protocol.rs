@@ -4540,6 +4540,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_isoform_preflight: Option<RnaReadIsoformPreflightReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_read_dexseq_verification: Option<RnaReadDexseqVerification>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_region_summary: Option<TfbsRegionSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
@@ -4754,6 +4756,32 @@ pub struct ProbeRegionPlatformPlan {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staging_directory: Option<String>,
     pub confidence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Result of exporting and checking one matched DEXSeq GFF/count-file pair.
+///
+/// The dependency rows are inspection evidence, while `verifier_status`
+/// records whether the real `DEXSeqDataSetFromHTSeq()` construction ran and
+/// accepted the pair. GENtle never installs missing R packages.
+pub struct RnaReadDexseqVerification {
+    pub schema: String,
+    pub report_id: String,
+    pub annotation_export: RnaReadDexseqAnnotationGffExport,
+    pub counts_export: RnaReadDexseqCountsTsvExport,
+    #[serde(default)]
+    pub dependency_checks: Vec<ProbeRegionDependencyCheck>,
+    #[serde(default)]
+    pub r_library_paths_requested: Vec<String>,
+    #[serde(default)]
+    pub r_library_paths_checked: Vec<String>,
+    pub command: String,
+    pub verifier_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verifier_stdout_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verifier_detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]

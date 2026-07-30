@@ -579,6 +579,7 @@ an agent has selected a deterministic operation.
 - `rna-reads show-alignment`
 - `rna-reads show-report`
 - `rna-reads summarize-gene-support`
+- `rna-reads verify-dexseq`
 - `routines compare`
 - `routines explain`
 - `routines list`

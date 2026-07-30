@@ -14,6 +14,11 @@ understand what changed.
 
 ## 2026-07-30
 
+- Added `rna-reads verify-dexseq` and
+  `gentle.rna_read_dexseq_verification.v1`: GENtle now exports a matched
+  flattened GFF/count pair, performs bounded non-downloading R/DEXSeq
+  preflight, and can prove the pair loads through the real
+  `DEXSeqDataSetFromHTSeq()` contract.
 - Hardened preserved ortholog ambiguity reports: species-only mappings now
   retain organism context without fabricating a genome id, candidate labels
   expose provider source when available, and the closed-policy v1

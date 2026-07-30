@@ -810,6 +810,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads export-abundance-tsv`
   - `rna-reads export-dexseq-annotation-gff`
   - `rna-reads export-dexseq-counts-tsv`
+  - `rna-reads verify-dexseq`
   - `rna-reads export-score-density-svg`
   - `rna-reads export-alignments-tsv`
   - `rna-reads export-isoform-triage-tsv`
@@ -823,6 +824,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   `ExportRnaReadTargetQuality`,
   `ExportRnaReadExonPathsTsv`, `ExportRnaReadExonAbundanceTsv`,
   `ExportRnaReadDexseqAnnotationGff`, `ExportRnaReadDexseqCountsTsv`,
+  `VerifyRnaReadDexseqExports`,
   `ExportRnaReadScoreDensitySvg`,
   `ExportRnaReadAlignmentsTsv`, `ExportRnaReadIsoformTriageTsv`, and
   `ExportRnaReadAlignmentDotplotSvg`, plus
@@ -2310,6 +2312,7 @@ Shared shell command:
         `rna-reads export-abundance-tsv`,
         `rna-reads export-dexseq-annotation-gff`,
         `rna-reads export-dexseq-counts-tsv`,
+        `rna-reads verify-dexseq`,
         `rna-reads export-score-density-svg`,
         `rna-reads export-alignments-tsv`,
         `rna-reads export-isoform-triage-tsv`, and
@@ -2323,6 +2326,7 @@ Shared shell command:
         `ExportRnaReadHitsFasta`, `ExportRnaReadTargetQuality`,
         `ExportRnaReadExonPathsTsv`, `ExportRnaReadExonAbundanceTsv`,
         `ExportRnaReadDexseqAnnotationGff`, `ExportRnaReadDexseqCountsTsv`,
+        `VerifyRnaReadDexseqExports`,
         `ExportRnaReadScoreDensitySvg`, `ExportRnaReadAlignmentsTsv`,
         `ExportRnaReadIsoformTriageTsv`, and
         `ExportRnaReadAlignmentDotplotSvg` expose the same model for
@@ -3191,6 +3195,7 @@ Shared shell command:
     - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-dexseq-annotation-gff REPORT_ID OUTPUT.gff`
     - `rna-reads export-dexseq-counts-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
+    - `rna-reads verify-dexseq REPORT_ID OUTPUT.gff OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT] [--r-library-path PATH ...]`
     - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]`
     - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-isoform-triage-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT] [--min-identity F] [--min-query-coverage F] [--min-confirmed-transition-fraction F] [--max-secondary-mappings N]`
@@ -3371,6 +3376,11 @@ Shared shell command:
         export time
       - pass the per-sample count files and shared GFF to R as
         `DEXSeqDataSetFromHTSeq(countfiles, sampleData, design, flattenedfile)`
+      - `rna-reads verify-dexseq` writes both artifacts and constructs a real
+        `DEXSeqDataSetFromHTSeq()` with two pseudo-samples to verify that the
+        GFF and count keys join. It never installs R packages; its JSON result
+        reports `Rscript`/`DEXSeq` readiness, effective R library paths, the
+        generated command, and a `DEXSEQ_OK` summary when verification runs.
     - `rna-reads export-isoform-triage-tsv` writes a conservative read-level
       TSV with bins `known_isoform_confirmed`, `known_isoform_ambiguous`,
       `gene_supported_no_isoform_call`, and `off_target_or_bad_seed`; recurrent
