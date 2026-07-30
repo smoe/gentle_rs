@@ -1398,6 +1398,8 @@ pub struct MainAreaDna {
     pcr_paint_last_drag_start_text: String,
     pcr_paint_last_drag_end_text: String,
     qpcr_design_ui: QpcrDesignOpsUiState,
+    cached_primer_design_report: Option<Arc<PrimerDesignReport>>,
+    cached_qpcr_design_report: Option<Arc<QpcrDesignReport>>,
     transcript_assay_panel_ui: TranscriptAssayPanelUiState,
     cached_transcript_assay_panel_report: Option<Arc<TranscriptAssayPanelReport>>,
     cached_experimental_assay_handoff: Option<Arc<ExperimentalAssayHandoffReport>>,
@@ -2174,6 +2176,8 @@ impl MainAreaDna {
             pcr_paint_last_drag_start_text: String::new(),
             pcr_paint_last_drag_end_text: String::new(),
             qpcr_design_ui: QpcrDesignOpsUiState::default(),
+            cached_primer_design_report: None,
+            cached_qpcr_design_report: None,
             transcript_assay_panel_ui: TranscriptAssayPanelUiState::default(),
             cached_transcript_assay_panel_report: None,
             cached_experimental_assay_handoff: None,
@@ -20072,6 +20076,8 @@ impl MainAreaDna {
                 })
                 .unwrap_or_else(|| (Instant::now(), None, None));
             self.primer_design_task = None;
+            self.cached_primer_design_report = None;
+            self.cached_qpcr_design_report = None;
             match done {
                 Ok(PrimerDesignTaskCompletion::Single(result)) => {
                     let transcript_panel_report = result.transcript_assay_panel.as_deref().cloned();
@@ -23868,6 +23874,8 @@ impl MainAreaDna {
         self.pcr_paint_last_drag_start_text.clear();
         self.pcr_paint_last_drag_end_text.clear();
         self.qpcr_design_ui = s.qpcr_design_ui;
+        self.cached_primer_design_report = None;
+        self.cached_qpcr_design_report = None;
         self.transcript_assay_panel_ui = s.transcript_assay_panel_ui;
         self.cached_transcript_assay_panel_report = None;
         self.cached_experimental_assay_handoff = None;

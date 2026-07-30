@@ -5,6 +5,9 @@
 //! as the orchestration parent.
 
 use super::*;
+use crate::engine::{
+    PrimerDesignNearMissCapture, PrimerDesignScoreTerm, PrimerPairCharacterizationStatus,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -1504,6 +1507,7 @@ impl MainAreaDna {
             self.op_status = "Primer report_id is empty".to_string();
             return;
         }
+        self.cached_primer_design_report = None;
         let report = match self.load_primer_design_report(report_id) {
             Ok(report) => report,
             Err(message) => {
@@ -1724,17 +1728,24 @@ impl MainAreaDna {
     }
 
     pub(super) fn load_primer_design_report(
-        &self,
+        &mut self,
         report_id: &str,
-    ) -> Result<PrimerDesignReport, String> {
+    ) -> Result<Arc<PrimerDesignReport>, String> {
         let report_id = report_id.trim();
         if report_id.is_empty() {
             return Err("Primer report_id is empty".to_string());
         }
+        if let Some(report) = self
+            .cached_primer_design_report
+            .as_ref()
+            .filter(|report| report.report_id == report_id)
+        {
+            return Ok(Arc::clone(report));
+        }
         let Some(engine) = self.engine.clone() else {
             return Err("No engine attached".to_string());
         };
-        engine
+        let report = engine
             .read()
             .expect("Engine lock poisoned")
             .get_primer_design_report(report_id)
@@ -1743,25 +1754,38 @@ impl MainAreaDna {
                     "Could not load primer report '{report_id}': {}",
                     err.message
                 )
-            })
+            })?;
+        let report = Arc::new(report);
+        self.cached_primer_design_report = Some(Arc::clone(&report));
+        Ok(report)
     }
 
     pub(super) fn load_qpcr_design_report(
-        &self,
+        &mut self,
         report_id: &str,
-    ) -> Result<QpcrDesignReport, String> {
+    ) -> Result<Arc<QpcrDesignReport>, String> {
         let report_id = report_id.trim();
         if report_id.is_empty() {
             return Err("qPCR report_id is empty".to_string());
         }
+        if let Some(report) = self
+            .cached_qpcr_design_report
+            .as_ref()
+            .filter(|report| report.report_id == report_id)
+        {
+            return Ok(Arc::clone(report));
+        }
         let Some(engine) = self.engine.clone() else {
             return Err("No engine attached".to_string());
         };
-        engine
+        let report = engine
             .read()
             .expect("Engine lock poisoned")
             .get_qpcr_design_report(report_id)
-            .map_err(|err| format!("Could not load qPCR report '{report_id}': {}", err.message))
+            .map_err(|err| format!("Could not load qPCR report '{report_id}': {}", err.message))?;
+        let report = Arc::new(report);
+        self.cached_qpcr_design_report = Some(Arc::clone(&report));
+        Ok(report)
     }
 
     pub(super) fn selected_qpcr_assay_rank_1based_for_report(
@@ -2546,6 +2570,81 @@ impl MainAreaDna {
         self.save_engine_ops_state();
     }
 
+    fn render_primer_selection_score_provenance(
+        ui: &mut egui::Ui,
+        grid_id: &str,
+        status: PrimerPairCharacterizationStatus,
+        reason: &str,
+        model: &str,
+        direction: &str,
+        score_terms: &[PrimerDesignScoreTerm],
+        near_miss_capture: Option<&PrimerDesignNearMissCapture>,
+        excluded_region_analysis_status: Option<PrimerPairCharacterizationStatus>,
+        excluded_region_analysis_reason: &str,
+    ) {
+        ui.small(format!(
+            "Selection score: status={} model={} direction={}",
+            status.as_str(),
+            if model.trim().is_empty() {
+                "unrecorded"
+            } else {
+                model
+            },
+            if direction.trim().is_empty() {
+                "unrecorded"
+            } else {
+                direction
+            }
+        ));
+        if !reason.trim().is_empty() {
+            ui.small(reason);
+        }
+        if !score_terms.is_empty() {
+            ui.collapsing("Selected score decomposition", |ui| {
+                egui::Grid::new(grid_id)
+                    .striped(true)
+                    .num_columns(4)
+                    .show(ui, |ui| {
+                        ui.strong("term");
+                        ui.strong("raw");
+                        ui.strong("weight");
+                        ui.strong("contribution");
+                        ui.end_row();
+                        for term in score_terms {
+                            ui.label(&term.term).on_hover_text(&term.detail);
+                            ui.monospace(format!("{:.4}", term.raw_value));
+                            ui.monospace(format!("{:.4}", term.weight));
+                            ui.monospace(format!("{:.4}", term.contribution));
+                            ui.end_row();
+                        }
+                    });
+            });
+        }
+        if let Some(capture) = near_miss_capture {
+            ui.small(format!(
+                "Near misses: status={} retained={}/{} omitted={} limit={} scope={}",
+                capture.status.as_str(),
+                capture.retained_candidate_count,
+                capture.eligible_candidate_count,
+                capture.omitted_candidate_count,
+                capture.effective_limit,
+                capture.scope
+            ));
+            if !capture.reason.trim().is_empty() {
+                ui.small(&capture.reason);
+            }
+        }
+        if let Some(status) = excluded_region_analysis_status {
+            ui.small(format!(
+                "Excluded-region analysis: status={}",
+                status.as_str()
+            ));
+            if !excluded_region_analysis_reason.trim().is_empty() {
+                ui.small(excluded_region_analysis_reason);
+            }
+        }
+    }
+
     pub(super) fn render_primer_design_report_preview(&mut self, ui: &mut egui::Ui) {
         let report_id = self.primer_design_ui.report_id.trim().to_string();
         if report_id.is_empty() {
@@ -2559,6 +2658,17 @@ impl MainAreaDna {
                 return;
             }
         };
+        let selected_rank = self
+            .primer_design_ui
+            .specificity_pair_rank_1based
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .filter(|rank| report.pairs.iter().any(|pair| pair.rank == *rank))
+            .or_else(|| report.pairs.first().map(|pair| pair.rank));
+        let selected_pair =
+            selected_rank.and_then(|rank| report.pairs.iter().find(|pair| pair.rank == rank));
+        let prior_selected_rank = self.primer_design_ui.specificity_pair_rank_1based.clone();
         ui.group(|ui| {
             ui.label("Primer report preview");
             ui.small(format!(
@@ -2572,6 +2682,52 @@ impl MainAreaDna {
                 report.backend.requested,
                 report.backend.used
             ));
+            ui.horizontal(|ui| {
+                if let Some(graph_id) = report.construct_reasoning_graph_id.as_deref()
+                    && ui.button("Open selection reasoning").clicked()
+                {
+                    self.focus_construct_reasoning_graph(graph_id);
+                }
+            });
+            Self::render_primer_selection_score_provenance(
+                ui,
+                "primer_report_score_terms_grid",
+                report.score_decomposition_status,
+                &report.score_decomposition_reason,
+                &report.score_model,
+                &report.score_direction,
+                selected_pair
+                    .map(|pair| pair.score_terms.as_slice())
+                    .unwrap_or(&[]),
+                report.near_miss_capture.as_ref(),
+                report.excluded_region_analysis_status,
+                &report.excluded_region_analysis_reason,
+            );
+            if !report.rejected_near_misses.is_empty() {
+                ui.collapsing("Rejected pair near misses", |ui| {
+                    for (index, candidate) in report.rejected_near_misses.iter().take(5).enumerate()
+                    {
+                        let reasons = candidate
+                            .reasons
+                            .iter()
+                            .map(|reason| reason.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        ui.small(format!(
+                            "{}. {}..{} score={} reasons={}",
+                            index + 1,
+                            candidate.amplicon_start_0based,
+                            candidate.amplicon_end_0based_exclusive,
+                            candidate
+                                .score
+                                .map(|score| format!("{score:.3}"))
+                                .unwrap_or_else(|| "not_scored".to_string()),
+                            reasons
+                        ))
+                        .on_hover_text(&candidate.detail);
+                    }
+                });
+            }
             if report.pairs.is_empty() {
                 ui.colored_label(
                     egui::Color32::from_rgb(180, 83, 9),
@@ -2607,7 +2763,16 @@ impl MainAreaDna {
                     ui.end_row();
                     for pair in report.pairs.iter().take(5) {
                         let geometry = report.pair_core_geometry(pair);
-                        ui.monospace(format!("{}", pair.rank));
+                        if ui
+                            .selectable_label(
+                                Some(pair.rank) == selected_rank,
+                                format!("{}", pair.rank),
+                            )
+                            .clicked()
+                        {
+                            self.primer_design_ui.specificity_pair_rank_1based =
+                                pair.rank.to_string();
+                        }
                         ui.monospace(format!(
                             "{}..{}",
                             pair.amplicon_start_0based, pair.amplicon_end_0based_exclusive
@@ -2638,6 +2803,9 @@ impl MainAreaDna {
                 ));
             }
         });
+        if self.primer_design_ui.specificity_pair_rank_1based != prior_selected_rank {
+            self.save_engine_ops_state();
+        }
     }
 
     pub(super) fn render_qpcr_design_report_preview(&mut self, ui: &mut egui::Ui) {
@@ -2677,6 +2845,52 @@ impl MainAreaDna {
                 report.backend.requested,
                 report.backend.used
             ));
+            ui.horizontal(|ui| {
+                if let Some(graph_id) = report.construct_reasoning_graph_id.as_deref()
+                    && ui.button("Open selection reasoning").clicked()
+                {
+                    self.focus_construct_reasoning_graph(graph_id);
+                }
+            });
+            Self::render_primer_selection_score_provenance(
+                ui,
+                "qpcr_report_score_terms_grid",
+                report.score_decomposition_status,
+                &report.score_decomposition_reason,
+                &report.score_model,
+                &report.score_direction,
+                selected_assay
+                    .map(|assay| assay.score_terms.as_slice())
+                    .unwrap_or(&[]),
+                report.near_miss_capture.as_ref(),
+                report.excluded_region_analysis_status,
+                &report.excluded_region_analysis_reason,
+            );
+            if !report.rejected_near_misses.is_empty() {
+                ui.collapsing("Rejected qPCR-assay near misses", |ui| {
+                    for (index, candidate) in report.rejected_near_misses.iter().take(5).enumerate()
+                    {
+                        let reasons = candidate
+                            .reasons
+                            .iter()
+                            .map(|reason| reason.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        ui.small(format!(
+                            "{}. {}..{} score={} reasons={}",
+                            index + 1,
+                            candidate.amplicon_start_0based,
+                            candidate.amplicon_end_0based_exclusive,
+                            candidate
+                                .score
+                                .map(|score| format!("{score:.3}"))
+                                .unwrap_or_else(|| "not_scored".to_string()),
+                            reasons
+                        ))
+                        .on_hover_text(&candidate.detail);
+                    }
+                });
+            }
             if let Some(targeting_summary) = Self::qpcr_report_targeting_summary(&report) {
                 ui.small(format!("Transcript targeting: {targeting_summary}"));
             }
@@ -2880,10 +3094,11 @@ impl MainAreaDna {
     }
 
     pub(super) fn render_live_qpcr_cartoon_preview(&mut self, ui: &mut egui::Ui) {
+        let report_id = self.qpcr_design_ui.report_id.clone();
         ui.group(|ui| {
             ui.label("Live qPCR cartoon geometry");
             let geometry = self
-                .load_qpcr_design_report(&self.qpcr_design_ui.report_id)
+                .load_qpcr_design_report(&report_id)
                 .ok()
                 .and_then(|report| {
                     let selected_rank = self.selected_qpcr_assay_rank_1based_for_report(&report);
@@ -2938,7 +3153,8 @@ impl MainAreaDna {
         ui: &mut egui::Ui,
         template: &str,
     ) {
-        let report = match self.load_primer_design_report(&self.primer_design_ui.report_id) {
+        let report_id = self.primer_design_ui.report_id.clone();
+        let report = match self.load_primer_design_report(&report_id) {
             Ok(report) => report,
             Err(message) => {
                 ui.group(|ui| {
@@ -3781,6 +3997,7 @@ impl MainAreaDna {
             self.op_status = "qPCR report_id is empty".to_string();
             return;
         }
+        self.cached_qpcr_design_report = None;
         let report = match self.load_qpcr_design_report(report_id) {
             Ok(report) => report,
             Err(message) => {

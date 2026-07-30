@@ -8257,6 +8257,51 @@ impl GentleEngine {
         ),
         EngineError,
     > {
+        let (outcome, backend, warnings) = self.run_qpcr_generation_with_backend_and_capture(
+            progress_seq_id,
+            template_seq,
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            forward_sequence_constraints,
+            reverse,
+            reverse_sequence_constraints,
+            probe,
+            probe_sequence_constraints,
+            pair_constraints_normalized,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_probe_tm_delta_c,
+            max_assays,
+            0,
+            on_progress,
+        )?;
+        Ok((outcome.assays, outcome.rejection_summary, backend, warnings))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_qpcr_generation_with_backend_and_capture(
+        &self,
+        progress_seq_id: &str,
+        template_seq: &str,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        probe: &PrimerDesignSideConstraint,
+        probe_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints_normalized: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_probe_tm_delta_c: f64,
+        max_assays: usize,
+        near_miss_limit: usize,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<(QpcrAssaySearchOutcome, PrimerDesignBackendInfo, Vec<String>), EngineError> {
         let template_bytes = template_seq.as_bytes();
         let pair_generation_limit = max_assays.saturating_mul(25).clamp(max_assays, 5000);
         let requested_backend = self.state.parameters.primer_design_backend;
@@ -8485,7 +8530,7 @@ impl GentleEngine {
         };
         let mut emit_qpcr_progress =
             |progress: PrimerDesignProgress| on_progress(OperationProgress::PrimerDesign(progress));
-        let (assays, rejection_summary) = Self::design_qpcr_assays_from_pairs_core(
+        let mut outcome = Self::design_qpcr_assays_from_pairs_core_with_capture(
             template_bytes,
             roi_start_0based,
             roi_end_0based,
@@ -8495,10 +8540,33 @@ impl GentleEngine {
             max_assays,
             pair_candidates,
             pair_rejections,
+            near_miss_limit,
             Some(&qpcr_progress_context),
             &mut emit_qpcr_progress,
         )?;
-        Ok((assays, rejection_summary, backend, warnings))
+        if near_miss_limit > 0 {
+            if backend.used == PrimerDesignBackend::Primer3.as_str() {
+                outcome.near_miss_capture.status = PrimerPairCharacterizationStatus::Incomplete;
+                outcome.near_miss_capture.reason =
+                    "Captured a bounded deterministic subset of GENtle-evaluated pair/probe assay rejections. Primer3-internal rejected primer pairs and probe candidate-generation failures remain aggregate-only."
+                        .to_string();
+            } else if outcome
+                .rejection_summary
+                .primer_pair
+                .pair_evaluation_limit_skipped
+                > 0
+            {
+                outcome.near_miss_capture.status = PrimerPairCharacterizationStatus::Incomplete;
+                outcome.near_miss_capture.reason = format!(
+                    "Captured a bounded deterministic subset of evaluated pair/probe assay rejections, but the internal primer-pair evaluation limit skipped {} pair combination(s). Probe candidate-generation failures remain aggregate-only.",
+                    outcome
+                        .rejection_summary
+                        .primer_pair
+                        .pair_evaluation_limit_skipped
+                );
+            }
+        }
+        Ok((outcome, backend, warnings))
     }
 
     fn build_qpcr_transcript_assay_context(
@@ -21900,15 +21968,6 @@ impl GentleEngine {
         transcript_targeting: Option<QpcrTranscriptTargeting>,
         report_id: Option<String>,
     ) -> Result<(), EngineError> {
-        if pair_constraints.rejected_near_miss_limit.is_some() {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message:
-                    "pair_constraints.rejected_near_miss_limit is supported by DesignPrimerPairs and DesignInsertionPrimerPairs, not DesignQpcrAssays"
-                        .to_string(),
-                cause_chain: vec![],
-            });
-        }
         let dna = self
             .state
             .sequences
@@ -21998,6 +22057,18 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "DesignQpcrAssays max_assays must be >= 1".to_string(),
 
+                cause_chain: vec![],
+            });
+        }
+        let near_miss_limit = pair_constraints
+            .rejected_near_miss_limit
+            .unwrap_or(PRIMER_DESIGN_DEFAULT_REJECTED_NEAR_MISS_LIMIT);
+        if near_miss_limit > PRIMER_DESIGN_MAX_REJECTED_NEAR_MISS_LIMIT {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "pair_constraints.rejected_near_miss_limit ({near_miss_limit}) must be <= {PRIMER_DESIGN_MAX_REJECTED_NEAR_MISS_LIMIT}"
+                ),
                 cause_chain: vec![],
             });
         }
@@ -22106,54 +22177,96 @@ impl GentleEngine {
                 cause_chain: vec![],});
         }
 
-        let (assays, rejection_summary, backend, transcript_targeting_result, backend_warnings) =
-            if let Some(targeting) = transcript_targeting.clone() {
-                let (assays, rejection_summary, backend, targeting_result, warnings) = self
-                    .design_transcript_aware_qpcr_assays(
-                        &dna,
-                        &template,
-                        &forward,
-                        &reverse,
-                        &probe,
-                        &pair_constraints_normalized,
-                        min_amplicon_bp,
-                        max_amplicon_bp,
-                        max_tm_delta_c,
-                        max_probe_tm_delta_c,
-                        max_assays,
-                        &targeting,
-                        on_progress,
-                    )?;
-                (
-                    assays,
-                    rejection_summary,
-                    backend,
-                    Some(targeting_result),
-                    warnings,
-                )
+        let (
+            assays,
+            rejection_summary,
+            backend,
+            transcript_targeting_result,
+            backend_warnings,
+            rejected_near_misses,
+            near_miss_capture,
+        ) = if let Some(targeting) = transcript_targeting.clone() {
+            let (assays, rejection_summary, backend, targeting_result, warnings) = self
+                .design_transcript_aware_qpcr_assays(
+                    &dna,
+                    &template,
+                    &forward,
+                    &reverse,
+                    &probe,
+                    &pair_constraints_normalized,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_tm_delta_c,
+                    max_probe_tm_delta_c,
+                    max_assays,
+                    &targeting,
+                    on_progress,
+                )?;
+            let capture_status = if near_miss_limit == 0 {
+                PrimerPairCharacterizationStatus::NotRun
             } else {
-                let (assays, rejection_summary, backend, warnings) = self
-                    .run_qpcr_generation_with_backend(
-                        &template,
-                        &template_seq,
-                        roi_start_0based,
-                        roi_end_0based,
-                        &forward,
-                        &forward_sequence_constraints,
-                        &reverse,
-                        &reverse_sequence_constraints,
-                        &probe,
-                        &probe_sequence_constraints,
-                        &pair_constraints_normalized,
-                        min_amplicon_bp,
-                        max_amplicon_bp,
-                        max_tm_delta_c,
-                        max_probe_tm_delta_c,
-                        max_assays,
-                        on_progress,
-                    )?;
-                (assays, rejection_summary, backend, None, warnings)
+                PrimerPairCharacterizationStatus::Incomplete
             };
+            let capture_reason = if near_miss_limit == 0 {
+                "Rejected qPCR near-miss capture was disabled by a zero limit.".to_string()
+            } else {
+                "Transcript-aware qPCR design aggregates multiple transcript-local searches; rejected assay coordinates are not projected back to the source sequence in this slice. Aggregate rejection counts remain available, and retained assays still carry exact score terms."
+                        .to_string()
+            };
+            (
+                assays,
+                rejection_summary,
+                backend,
+                Some(targeting_result),
+                warnings,
+                vec![],
+                PrimerDesignNearMissCapture {
+                    status: capture_status,
+                    scope: "transcript_local_pair_probe_assay_candidates".to_string(),
+                    reason: capture_reason,
+                    requested_limit: near_miss_limit,
+                    effective_limit: near_miss_limit
+                        .min(PRIMER_DESIGN_MAX_REJECTED_NEAR_MISS_LIMIT),
+                    ..PrimerDesignNearMissCapture::default()
+                },
+            )
+        } else {
+            let (outcome, backend, warnings) = self.run_qpcr_generation_with_backend_and_capture(
+                &template,
+                &template_seq,
+                roi_start_0based,
+                roi_end_0based,
+                &forward,
+                &forward_sequence_constraints,
+                &reverse,
+                &reverse_sequence_constraints,
+                &probe,
+                &probe_sequence_constraints,
+                &pair_constraints_normalized,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                max_tm_delta_c,
+                max_probe_tm_delta_c,
+                max_assays,
+                near_miss_limit,
+                on_progress,
+            )?;
+            let QpcrAssaySearchOutcome {
+                assays,
+                rejection_summary,
+                rejected_near_misses,
+                near_miss_capture,
+            } = outcome;
+            (
+                assays,
+                rejection_summary,
+                backend,
+                None,
+                warnings,
+                rejected_near_misses,
+                near_miss_capture,
+            )
+        };
         result.warnings.extend(backend_warnings);
 
         let (best_assay_probe_placement, best_assay_summary) =
@@ -22164,6 +22277,23 @@ impl GentleEngine {
                 transcript_targeting_result.as_ref(),
             );
         let report_id = Self::render_primer_design_report_id(report_id, &template);
+        let construct_reasoning_graph_id = format!(
+            "qpcr_design_reasoning_{}",
+            Self::normalize_id_token(&report_id)
+        );
+        let (score_decomposition_status, score_decomposition_reason) = if assays.is_empty() {
+            (
+                PrimerPairCharacterizationStatus::NotRun,
+                "No qPCR assay was retained, so there is no selected ranking score to decompose."
+                    .to_string(),
+            )
+        } else {
+            (
+                PrimerPairCharacterizationStatus::Pass,
+                "Every retained assay uses GENtle's shared additive qPCR ranking model; Primer3 candidate generation does not change score meaning."
+                    .to_string(),
+            )
+        };
         let report = QpcrDesignReport {
             schema: QPCR_DESIGN_REPORT_SCHEMA.to_string(),
             report_id: report_id.clone(),
@@ -22189,7 +22319,18 @@ impl GentleEngine {
             best_assay_summary,
             assays,
             rejection_summary,
+            score_decomposition_status,
+            score_decomposition_reason,
+            score_model: QPCR_ASSAY_SCORE_MODEL.to_string(),
+            score_direction: PRIMER_DESIGN_SCORE_DIRECTION.to_string(),
+            rejected_near_misses,
+            near_miss_capture: Some(near_miss_capture),
+            excluded_region_analysis_status: Some(PrimerPairCharacterizationStatus::NotRun),
+            excluded_region_analysis_reason:
+                "This selector did not consult region-level repeat, common-variant, low-complexity, or paralogue evidence; no excluded-region intervals were inferred."
+                    .to_string(),
             backend,
+            construct_reasoning_graph_id: Some(construct_reasoning_graph_id),
         };
         if report
             .rejection_summary
@@ -22205,18 +22346,40 @@ impl GentleEngine {
                     .pair_evaluation_limit_skipped
             ));
         }
+        if let Some(capture) = report
+            .near_miss_capture
+            .as_ref()
+            .filter(|capture| capture.omitted_candidate_count > 0)
+        {
+            result.warnings.push(format!(
+                "qPCR-design report '{}' retained {} of {} eligible evaluated assay-level near misses (limit={}); aggregate rejection counts remain authoritative",
+                report.report_id,
+                capture.retained_candidate_count,
+                capture.eligible_candidate_count,
+                capture.effective_limit
+            ));
+        }
+        let reasoning_graph = self.build_qpcr_design_selection_reasoning_graph(&report, &dna)?;
         let mut store = self.read_primer_design_store();
         let replaced = store
             .qpcr_reports
             .insert(report.report_id.clone(), report.clone())
             .is_some();
         self.write_primer_design_store(store)?;
+        let reasoning_graph = self.upsert_construct_reasoning_graph(reasoning_graph)?;
+        result.construct_reasoning_graph = Some(Box::new(reasoning_graph.clone()));
         result.messages.push(format!(
             "{} qPCR-design report '{}' for template '{}' (assays={})",
             if replaced { "Updated" } else { "Created" },
             report.report_id,
             report.template,
             report.assay_count
+        ));
+        result.messages.push(format!(
+            "Stored qPCR-selection reasoning graph '{}' with {} decision node(s) and {} bounded rejected-assay interval(s)",
+            reasoning_graph.graph_id,
+            reasoning_graph.decisions.len(),
+            reasoning_graph.annotation_candidates.len()
         ));
         if let Some(top_assay) = report.assays.first() {
             let dimer_metrics = Self::compute_primer_pair_dimer_metrics(
@@ -22272,6 +22435,203 @@ impl GentleEngine {
             ));
         }
         Ok(())
+    }
+
+    fn build_qpcr_design_selection_reasoning_graph(
+        &self,
+        report: &QpcrDesignReport,
+        dna: &DNAsequence,
+    ) -> Result<ConstructReasoningGraph, EngineError> {
+        let report_token = Self::normalize_id_token(&report.report_id);
+        let objective = Self::normalize_construct_objective(ConstructObjective {
+            objective_id: format!("qpcr_assay_selection_{report_token}"),
+            title: format!("qPCR-assay selection for {}", report.report_id),
+            goal: format!(
+                "Explain retained qPCR assay ranks and bounded evaluated rejections for template '{}'",
+                report.template
+            ),
+            intended_tasks: Some(vec![ConstructReasoningRiskTask::Pcr]),
+            notes: vec![
+                "Selection provenance describes deterministic ranking and configured constraint checks; it is not experimental validation of assay performance."
+                    .to_string(),
+            ],
+            ..ConstructObjective::default()
+        });
+        let mut input_fingerprint = Self::construct_reasoning_input_fingerprint(dna, &objective)?;
+        input_fingerprint.source_artifact_kind = Some("qpcr_design_report".to_string());
+        input_fingerprint.source_artifact_id = Some(report.report_id.clone());
+        input_fingerprint.source_artifact_sha256 =
+            Some(Self::qpcr_design_report_content_sha256(report)?);
+
+        let provenance_refs = [
+            Some(format!("qpcr_design_report:{}", report.report_id)),
+            report
+                .op_id
+                .as_ref()
+                .map(|value| format!("operation:{value}")),
+            report.run_id.as_ref().map(|value| format!("run:{value}")),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+        let template_len = dna.len();
+        let evidence = report
+            .rejected_near_misses
+            .iter()
+            .enumerate()
+            .map(|(index, candidate)| {
+                let reason_token = candidate
+                    .reasons
+                    .first()
+                    .map(|reason| reason.as_str())
+                    .unwrap_or("unclassified");
+                let start_0based = candidate.amplicon_start_0based.min(template_len);
+                let end_0based_exclusive = candidate
+                    .amplicon_end_0based_exclusive
+                    .min(template_len)
+                    .max(start_0based);
+                let mut context_tags = vec![
+                    "qpcr_design".to_string(),
+                    "rejected_near_miss".to_string(),
+                ];
+                context_tags.extend(
+                    candidate
+                        .reasons
+                        .iter()
+                        .map(|reason| reason.as_str().to_string()),
+                );
+                DesignEvidence {
+                    evidence_id: format!(
+                        "qpcr_near_miss_{:03}_{}",
+                        index + 1,
+                        reason_token
+                    ),
+                    seq_id: report.template.clone(),
+                    scope: EvidenceScope::SequenceSpan,
+                    start_0based,
+                    end_0based_exclusive,
+                    role: ConstructRole::Other,
+                    evidence_class: EvidenceClass::ContextEvidence,
+                    label: format!("Rejected qPCR-assay near miss {}", index + 1),
+                    rationale: format!(
+                        "{} This row is one bounded evaluated rejection, not an exhaustive account of all rejected candidates.",
+                        candidate.detail
+                    ),
+                    score: candidate.score,
+                    context_tags,
+                    provenance_kind: "qpcr_design_report".to_string(),
+                    provenance_refs: provenance_refs.clone(),
+                    editable_status: EditableStatus::Draft,
+                    notes: candidate.failed_checks.clone(),
+                    ..DesignEvidence::default()
+                }
+            })
+            .collect::<Vec<_>>();
+        let evidence_ids = evidence
+            .iter()
+            .map(|row| row.evidence_id.clone())
+            .collect::<Vec<_>>();
+
+        let mut decisions = report
+            .assays
+            .iter()
+            .enumerate()
+            .map(|(index, assay)| {
+                let rank = if assay.rank == 0 { index + 1 } else { assay.rank };
+                DesignDecisionNode {
+                    decision_id: format!("retain_qpcr_assay_r{rank:03}"),
+                    decision_type: "qpcr_assay_selection".to_string(),
+                    method: DecisionMethod::WeightedRule,
+                    title: format!("Retain qPCR assay rank {rank}"),
+                    rationale: format!(
+                        "Retained at rank {rank} under additive score model '{}' ({}); compared near-miss evidence is bounded as recorded in the source report.",
+                        report.score_model, report.score_direction
+                    ),
+                    input_evidence_ids: evidence_ids.clone(),
+                    parameters_json: json!({
+                        "report_schema": report.schema,
+                        "report_id": report.report_id,
+                        "op_id": report.op_id,
+                        "run_id": report.run_id,
+                        "assay_rank": rank,
+                        "assay_score": assay.score,
+                        "score_model": report.score_model,
+                        "score_direction": report.score_direction,
+                        "score_terms": assay.score_terms,
+                        "excluded_region_analysis_status":
+                            report.excluded_region_analysis_status,
+                        "excluded_region_analysis_reason":
+                            report.excluded_region_analysis_reason,
+                        "oligos": {
+                            "forward": assay.forward.sequence,
+                            "reverse": assay.reverse.sequence,
+                            "probe": assay.probe.sequence,
+                        },
+                        "near_miss_capture": report.near_miss_capture,
+                        "pair_constraints": report.pair_constraints,
+                        "effective_constraints": {
+                            "roi_start_0based": report.roi_start_0based,
+                            "roi_end_0based_exclusive": report.roi_end_0based,
+                            "min_amplicon_bp": report.min_amplicon_bp,
+                            "max_amplicon_bp": report.max_amplicon_bp,
+                            "max_tm_delta_c": report.max_tm_delta_c,
+                            "max_probe_tm_delta_c": report.max_probe_tm_delta_c,
+                            "max_assays": report.max_assays,
+                        },
+                    }),
+                    editable_status: EditableStatus::Draft,
+                    ..DesignDecisionNode::default()
+                }
+            })
+            .collect::<Vec<_>>();
+        if decisions.is_empty() {
+            decisions.push(DesignDecisionNode {
+                decision_id: "no_qpcr_assay_retained".to_string(),
+                decision_type: "qpcr_assay_selection".to_string(),
+                method: DecisionMethod::WeightedRule,
+                title: "No qPCR assay retained".to_string(),
+                rationale:
+                    "No evaluated assay satisfied all configured requirements; bounded rejected near misses remain non-exhaustive context."
+                        .to_string(),
+                input_evidence_ids: evidence_ids,
+                parameters_json: json!({
+                    "report_schema": report.schema,
+                    "report_id": report.report_id,
+                    "op_id": report.op_id,
+                    "run_id": report.run_id,
+                    "score_model": report.score_model,
+                    "excluded_region_analysis_status":
+                        report.excluded_region_analysis_status,
+                    "excluded_region_analysis_reason":
+                        report.excluded_region_analysis_reason,
+                    "near_miss_capture": report.near_miss_capture,
+                    "rejection_summary": report.rejection_summary,
+                    "pair_constraints": report.pair_constraints,
+                }),
+                editable_status: EditableStatus::Draft,
+                ..DesignDecisionNode::default()
+            });
+        }
+
+        Ok(ConstructReasoningGraph {
+            graph_id: report
+                .construct_reasoning_graph_id
+                .clone()
+                .unwrap_or_else(|| format!("qpcr_design_reasoning_{report_token}")),
+            seq_id: report.template.clone(),
+            op_id: report.op_id.clone(),
+            run_id: report.run_id.clone(),
+            objective,
+            generated_at_unix_ms: report.generated_at_unix_ms,
+            input_fingerprint: Some(input_fingerprint),
+            evidence,
+            decisions,
+            notes: vec![
+                "This graph explains GENtle's selected ranks against a bounded set of evaluated assay-level rejections. Aggregate primer/probe generation failures and transcript-local rejections without source coordinates cannot be drawn as intervals."
+                    .to_string(),
+            ],
+            ..ConstructReasoningGraph::default()
+        })
     }
 
     fn build_primer_design_selection_reasoning_graph(
@@ -22398,6 +22758,10 @@ impl GentleEngine {
                         "score_model": report.score_model,
                         "score_direction": report.score_direction,
                         "score_terms": pair.score_terms,
+                        "excluded_region_analysis_status":
+                            report.excluded_region_analysis_status,
+                        "excluded_region_analysis_reason":
+                            report.excluded_region_analysis_reason,
                         "pair_content_sha256": Self::primer_specificity_pair_content_sha256(
                             &pair.forward.sequence,
                             &pair.reverse.sequence,
@@ -22436,6 +22800,10 @@ impl GentleEngine {
                     "op_id": report.op_id,
                     "run_id": report.run_id,
                     "score_model": report.score_model,
+                    "excluded_region_analysis_status":
+                        report.excluded_region_analysis_status,
+                    "excluded_region_analysis_reason":
+                        report.excluded_region_analysis_reason,
                     "near_miss_capture": report.near_miss_capture,
                     "rejection_summary": report.rejection_summary,
                     "pair_constraints": report.pair_constraints,
@@ -22990,6 +23358,10 @@ impl GentleEngine {
             score_direction: PRIMER_DESIGN_SCORE_DIRECTION.to_string(),
             rejected_near_misses,
             near_miss_capture: Some(near_miss_capture),
+            excluded_region_analysis_status: Some(PrimerPairCharacterizationStatus::NotRun),
+            excluded_region_analysis_reason:
+                "This selector did not consult region-level repeat, common-variant, low-complexity, or paralogue evidence; no excluded-region intervals were inferred."
+                    .to_string(),
             backend,
             construct_reasoning_graph_id: Some(construct_reasoning_graph_id),
             insertion_context,
