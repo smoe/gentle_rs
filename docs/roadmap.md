@@ -224,12 +224,17 @@ broad crate surgery that is not tied to the selected release story.
   ordinals, exon ranges, junction spans, overlap base counts, and conservative
   geometry score/basis fields plus review-only transcript labels for unique,
   shared, constraining, or absent geometry. Those audited records now feed the
-  read-only `gentle.gene_isoform_evidence.v1` ledger, which composes curated
+  read-only `gentle.gene_isoform_evidence.v2` ledger, which composes curated
   transcript families, RNA-read/cDNA/EST support, expression, probe
-  constraints, selected projected occupancy tracks, and existing qPCR
-  candidates while retaining unknown/not-evaluated states. Future work may add
-  persisted probe/expression report stores; it must not turn overlap into an
-  isoform-validation claim.
+  constraints, selected projected occupancy tracks, existing qPCR candidates,
+  per-source/contrast measurements, annotation-derived protein identities, and
+  rule-based assay-triage tiers while retaining unknown/not-evaluated states.
+  `gentle.gene_transcript_assay_routine.v1` can now join that exported ledger
+  with persisted common-control, junction, and endpoint assay panels by
+  digest, without rerunning them. Future work may add
+  persisted probe/expression report stores and separately sourced
+  antibody-epitope evidence; it must not turn overlap, protein mass, or array
+  intensity into an isoform-validation or antibody-compatibility claim.
 
 ### Reserved For Anze: Repeat/Similarity Inspection Follow-Up
 

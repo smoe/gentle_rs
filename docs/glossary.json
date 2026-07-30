@@ -3509,6 +3509,21 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ComposeGeneTranscriptAssayRoutine"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "mcp",
+            "cli-direct"
+         ],
+         "path": "primers compose-gene-assay-routine",
+         "summary": "Compose one exported gene isoform-evidence ledger and persisted transcript-assay panels into a deterministic, digest-backed experimental review manifest without rerunning design or specificity.",
+         "usage": "primers compose-gene-assay-routine REQUEST_JSON_OR_@FILE [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "BuildExperimentalAssayHandoff"
          ],
          "interfaces": [

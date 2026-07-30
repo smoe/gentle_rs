@@ -3072,6 +3072,32 @@ Shared shell command:
         visible without inventing a universal safe cutoff. A missing primer
         target remains structurally distinct from an indeterminate no-product
         result.
+    - `primers compose-gene-assay-routine REQUEST_JSON_OR_@FILE [--path OUTPUT.json]`
+      - joins one exported isoform-evidence ledger with persisted transcript
+        assay panels into `gentle.gene_transcript_assay_routine.v1`
+      - accepts either the bare `gentle.gene_isoform_evidence.v1|v2` report or
+        the tagged `isoform_evidence` feature-expert JSON returned by the
+        shared inspection route
+      - accepts an optional `expected_isoform_evidence_sha256`; mismatch is a
+        hard error, while missing or stale panel specificity remains visibly
+        unaccepted
+      - this command only composes existing reports and digests. It does not
+        rerun design or specificity and does not change project state
+      - example request:
+        ```json
+        {
+          "label": "PATZ1 common, junction, and endpoint review",
+          "isoform_evidence_path": "analysis/patz1_isoform_evidence.json",
+          "expected_isoform_evidence_sha256": "sha256:<digest>",
+          "transcript_assay_panel_report_ids": [
+            "patz1_common_control",
+            "patz1_junction_sybr",
+            "patz1_endpoint_matrix"
+          ]
+        }
+        ```
+        Save this as `analysis/patz1_assay_routine_request.json`, then run
+        `primers compose-gene-assay-routine @analysis/patz1_assay_routine_request.json --path analysis/patz1_assay_routine.json`.
     - `primers experimental-handoff PANEL_REPORT_ID [--policy JSON_OR_@FILE] [--variant-evidence PATH ...] [--order-form-id ID] [--path OUTPUT.json] [--order-table OUTPUT.tsv]`
     - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
@@ -4978,6 +5004,13 @@ Tutorial companion:
     manifest, provenance JSON, and `sessionInfo.txt`. Supplying
     `--coordinate-system` and `--genome-build` records the coordinate basis
     needed before any later genome-anchored projection can be accepted.
+    Provenance also records the R version, exact versions of `oligo`, `limma`,
+    `Biobase`, `DBI`, `RSQLite`, and the platform package, plus the helper
+    method version and input fingerprints. The script only checks dependencies;
+    it does not install them. A direct R invocation records path, size, and
+    modification time; `arrays run-probe-region-backend` additionally binds
+    those inputs with Rust-computed SHA-256 fingerprints in the finalized
+    provenance.
 - `arrays inspect-probe-region-output analysis/probe_regions`
   - Read-only GENtle inspection of a completed `probe_regions_oligo.R` output
     directory.
@@ -4987,6 +5020,10 @@ Tutorial companion:
     bounded preview rows, row counts, feature counts, coordinate/build
     declarations, declared coordinate projection maps, projection-readiness
     blockers, and required-column problems.
+  - The same inspection includes `r_version`, `package_versions`,
+    `analysis_method_version`, and `input_fingerprints` when newer helper
+    provenance supplies them. Older output directories remain readable with
+    those optional fields absent.
 - `arrays import-apt-probe-region-output apt.summary.tsv annotation.csv analysis/probe_regions --metadata samples.csv --condition-column condition --sample-column file --probe-intensity probe_intensity.tsv --probe-id-column probe_id --platform Clariom_D_Human --normalization rma-sketch --coordinate-system hg38 --genome-build GRCh38`
   - Converts explicit APT summary output plus an explicit annotation/NetAffx
     coordinate table into GENtle's helper-output directory contract. The

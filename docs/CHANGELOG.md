@@ -20,6 +20,14 @@ understand what changed.
   member-to-primer-report bindings, project sequences may resolve one unique
   report, and the aggregate `gentle.collection_operation.v1` keeps execution
   failures separate from each child report's biological verdict.
+- Upgraded the gene isoform evidence ledger to
+  `gentle.gene_isoform_evidence.v2`, retaining every contrast/source
+  measurement without cross-unit magnitude selection, adding typed PSR/JUC
+  provenance, ambiguity-safe protein identity/mass, and rule-based assay
+  recommendation tiers. Added pure-read
+  `gentle.gene_transcript_assay_routine.v1` composition for existing evidence,
+  panel, specificity, and order-table artifacts, plus R/oligo package-version
+  and input-fingerprint inspection without package installation.
 - Added the first engine-owned collection-lifting slice:
   `gentle.collection_lift_policy_registry.v1` capability policies,
   subject-aware canonical membership fingerprints, and portable

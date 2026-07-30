@@ -9944,32 +9944,175 @@ impl GentleEngine {
         classification: &str,
         value: Option<f64>,
         unit: Option<&str>,
+        condition: Option<&str>,
         explanation: &str,
     ) {
-        component.evidence_ids.push(evidence_id.to_string());
+        component.measurements.push(GeneIsoformEvidenceMeasurement {
+            evidence_id: evidence_id.to_string(),
+            status,
+            classification: classification.to_string(),
+            condition: condition.map(str::to_string),
+            value,
+            unit: unit.map(str::to_string),
+            explanation: explanation.to_string(),
+        });
+    }
+
+    fn isoform_evidence_status_priority(status: IsoformEvidenceAssessmentStatus) -> u8 {
+        match status {
+            IsoformEvidenceAssessmentStatus::Observed => 4,
+            IsoformEvidenceAssessmentStatus::Candidate => 3,
+            IsoformEvidenceAssessmentStatus::ConstraintOnly => 2,
+            IsoformEvidenceAssessmentStatus::Unknown => 1,
+            IsoformEvidenceAssessmentStatus::NotEvaluated => 0,
+        }
+    }
+
+    fn isoform_evidence_finalize_component(
+        object_id: &str,
+        dimension: &str,
+        component: &mut GeneIsoformEvidenceComponent,
+        warnings: &mut Vec<String>,
+    ) {
+        if component.measurements.is_empty() {
+            return;
+        }
+        component.measurements.sort_by(|left, right| {
+            left.condition
+                .cmp(&right.condition)
+                .then(left.unit.cmp(&right.unit))
+                .then(left.evidence_id.cmp(&right.evidence_id))
+                .then(left.classification.cmp(&right.classification))
+                .then_with(|| match (left.value, right.value) {
+                    (Some(left), Some(right)) => left.total_cmp(&right),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => std::cmp::Ordering::Equal,
+                })
+        });
+        component.measurements.dedup_by(|left, right| {
+            left.evidence_id == right.evidence_id
+                && left.status == right.status
+                && left.classification == right.classification
+                && left.condition == right.condition
+                && left.unit == right.unit
+                && left.value.map(f64::to_bits) == right.value.map(f64::to_bits)
+                && left.explanation == right.explanation
+        });
+        component.evidence_ids = component
+            .measurements
+            .iter()
+            .map(|measurement| measurement.evidence_id.clone())
+            .collect();
         component.evidence_ids.sort();
         component.evidence_ids.dedup();
-        if component.status == IsoformEvidenceAssessmentStatus::NotEvaluated
-            || component.status == IsoformEvidenceAssessmentStatus::Unknown
-        {
-            component.status = status;
-            component.classification = classification.to_string();
-            component.value = value;
-            component.unit = unit.map(str::to_string);
-            component.explanation = explanation.to_string();
+        component.status = component
+            .measurements
+            .iter()
+            .map(|measurement| measurement.status)
+            .max_by_key(|status| Self::isoform_evidence_status_priority(*status))
+            .unwrap_or(IsoformEvidenceAssessmentStatus::NotEvaluated);
+
+        let classifications = component
+            .measurements
+            .iter()
+            .map(|measurement| measurement.classification.clone())
+            .collect::<BTreeSet<_>>();
+        let units = component
+            .measurements
+            .iter()
+            .filter(|measurement| measurement.value.is_some())
+            .filter_map(|measurement| measurement.unit.clone())
+            .collect::<BTreeSet<_>>();
+        let valued = component
+            .measurements
+            .iter()
+            .filter(|measurement| measurement.value.is_some())
+            .collect::<Vec<_>>();
+
+        component.classification = if units.len() > 1 {
+            "incompatible_measurement_units".to_string()
+        } else if classifications.len() == 1 {
+            classifications.iter().next().cloned().unwrap_or_default()
         } else {
-            if value.is_some_and(|candidate| {
-                component
-                    .value
-                    .is_none_or(|current| candidate.abs() > current.abs())
-            }) {
-                component.value = value;
-                component.unit = unit.map(str::to_string);
-            }
-            if !component.explanation.contains(explanation) {
-                component.explanation.push_str(" ");
-                component.explanation.push_str(explanation);
-            }
+            "multiple_source_measurements".to_string()
+        };
+        component.value = (valued.len() == 1).then(|| valued[0].value).flatten();
+        component.unit = if units.len() == 1 {
+            units.iter().next().cloned()
+        } else {
+            None
+        };
+        let explanations = component
+            .measurements
+            .iter()
+            .map(|measurement| measurement.explanation.clone())
+            .collect::<BTreeSet<_>>();
+        component.explanation = explanations.into_iter().collect::<Vec<_>>().join(" ");
+        if units.len() > 1 {
+            warnings.push(format!(
+                "Evidence component '{dimension}' for '{object_id}' retains incompatible units ({}) as separate measurements; no numeric summary was inferred.",
+                units.into_iter().collect::<Vec<_>>().join(", ")
+            ));
+        }
+    }
+
+    fn isoform_evidence_recommendation(
+        specificity_class: &str,
+        components: &GeneIsoformEvidenceComponents,
+    ) -> GeneIsoformRecommendation {
+        let evaluated = |status| {
+            matches!(
+                status,
+                IsoformEvidenceAssessmentStatus::Observed
+                    | IsoformEvidenceAssessmentStatus::Candidate
+                    | IsoformEvidenceAssessmentStatus::ConstraintOnly
+            )
+        };
+        let recommended_use = match specificity_class {
+            "shared" => "routine_common_region_screen",
+            "family_unique" | "subset_specific" => "isoform_discrimination",
+            _ => "manual_review",
+        }
+        .to_string();
+        let (tier, rule) = if evaluated(components.assayability.status) {
+            (
+                GeneIsoformRecommendationTier::AssayReady,
+                "assayability evidence is available; review specificity and all source measurements before selection",
+            )
+        } else if evaluated(components.responsiveness.status)
+            || evaluated(components.abundance.status)
+        {
+            (
+                GeneIsoformRecommendationTier::EvidencePrioritized,
+                "annotation specificity plus abundance or responsiveness evidence is available; assay design remains required",
+            )
+        } else if evaluated(components.specificity.status) {
+            (
+                GeneIsoformRecommendationTier::AnnotationCandidate,
+                "annotation establishes transcript-family scope, but no experimental prioritization or assay candidate is attached",
+            )
+        } else {
+            (
+                GeneIsoformRecommendationTier::NotEvaluated,
+                "insufficient annotation or evidence is available for rule-based triage",
+            )
+        };
+        let mut evidence_ids = [
+            &components.abundance,
+            &components.responsiveness,
+            &components.assayability,
+        ]
+        .into_iter()
+        .flat_map(|component| component.evidence_ids.iter().cloned())
+        .collect::<Vec<_>>();
+        evidence_ids.sort();
+        evidence_ids.dedup();
+        GeneIsoformRecommendation {
+            tier,
+            recommended_use,
+            rule: rule.to_string(),
+            evidence_ids,
         }
     }
 
@@ -10343,6 +10486,7 @@ impl GentleEngine {
                 family_ids,
                 specificity_class,
                 components: Self::isoform_evidence_components(specificity),
+                recommendation: GeneIsoformRecommendation::default(),
             });
         }
 
@@ -10459,6 +10603,7 @@ impl GentleEngine {
                 family_ids,
                 specificity_class,
                 components: Self::isoform_evidence_components(specificity),
+                recommendation: GeneIsoformRecommendation::default(),
             });
         }
         junctions.sort_by(|a, b| a.junction_id.cmp(&b.junction_id));
@@ -10472,6 +10617,13 @@ impl GentleEngine {
                 message: format!("Sequence '{}' not found", seq_id),
                 cause_chain: vec![],
             })?;
+        let (transcript_metrics, _) = self.gene_locus_transcript_metrics(
+            seq_id,
+            dna,
+            &splicing,
+            anchor.as_ref(),
+            &mut warnings,
+        );
         let occupancy_lanes = self.isoform_evidence_occupancy_lanes(
             dna,
             splicing.region_start_1based,
@@ -10585,6 +10737,7 @@ impl GentleEngine {
                         "dataset_relative_rna_read_support",
                         Some(row.support_fraction),
                         Some("read_fraction"),
+                        None,
                         "Persisted RNA-read support matched this exon geometry.",
                     );
                 }
@@ -10622,6 +10775,7 @@ impl GentleEngine {
                         "dataset_relative_rna_read_support",
                         Some(row.support_fraction),
                         Some("read_fraction"),
+                        None,
                         "Persisted RNA-read support matched this junction geometry.",
                     );
                 }
@@ -10794,6 +10948,12 @@ impl GentleEngine {
             ));
             warnings.extend(report.warnings.clone());
             for row in &report.evidence_rows {
+                let has_junction_edges = row
+                    .transcript_mappings
+                    .iter()
+                    .any(|mapping| !mapping.junction_spans.is_empty());
+                let (probe_class, probe_classification_basis) =
+                    GeneLocusProbeClass::classify(&row.level, &row.feature_id, has_junction_edges);
                 let mut target_ids = Vec::new();
                 for mapping in &row.transcript_mappings {
                     for span in &mapping.junction_spans {
@@ -10859,6 +11019,8 @@ impl GentleEngine {
                     value: row.logfc,
                     unit: row.logfc.map(|_| "logFC".to_string()),
                     condition: row.contrast.clone(),
+                    probe_class: Some(probe_class),
+                    probe_classification_basis: Some(probe_classification_basis),
                     method: "probe-region interpretation geometry mapping".to_string(),
                     notes,
                     ..Default::default()
@@ -10876,6 +11038,7 @@ impl GentleEngine {
                                 "array_logfc_candidate",
                                 Some(logfc),
                                 Some("logFC"),
+                                row.contrast.as_deref(),
                                 "A projected array feature carries a contrast effect; geometry and ambiguity require review.",
                             );
                         }
@@ -10890,6 +11053,7 @@ impl GentleEngine {
                                 "array_logfc_candidate",
                                 Some(logfc),
                                 Some("logFC"),
+                                row.contrast.as_deref(),
                                 "A projected array feature carries a contrast effect; geometry and ambiguity require review.",
                             );
                         }
@@ -10921,60 +11085,67 @@ impl GentleEngine {
             warnings.extend(matrix.warnings.clone());
             let digest = crate::digest_utils::sha256_hex_bytes(&bytes);
             for row in &matrix.rows {
-                let values = row.values.iter().flatten().copied().collect::<Vec<_>>();
-                if values.is_empty() {
-                    continue;
-                }
-                let mean = values.iter().sum::<f64>() / values.len() as f64;
-                let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-                let evidence_id = format!(
-                    "expression:{}:{}",
-                    &digest[..12.min(digest.len())],
-                    row.isoform_id
-                );
-                evidence_items.push(GeneIsoformEvidenceItem {
-                    evidence_id: evidence_id.clone(),
-                    source_kind: IsoformEvidenceSourceKind::Expression,
-                    source_id: path.to_string(),
-                    status: IsoformEvidenceAssessmentStatus::Observed,
-                    family_ids: vec![row.isoform_id.clone()],
-                    value: Some(mean),
-                    unit: Some("input_value".to_string()),
-                    method: "mean of supplied isoform expression values".to_string(),
-                    notes: vec![
-                        format!("sample_count={}; max={max:.6}", values.len()),
-                        "Values are comparable only within the supplied dataset unless its provenance states otherwise."
-                            .to_string(),
-                    ],
-                    ..Default::default()
-                });
-                for exon in exon_families
-                    .iter_mut()
-                    .filter(|exon| exon.family_ids.contains(&row.isoform_id))
+                for (sample_index, (sample_label, value)) in matrix
+                    .sample_labels
+                    .iter()
+                    .zip(row.values.iter())
+                    .enumerate()
                 {
-                    Self::isoform_evidence_attach_component(
-                        &mut exon.components.abundance,
-                        &evidence_id,
-                        IsoformEvidenceAssessmentStatus::Observed,
-                        "dataset_relative_expression",
-                        Some(mean),
-                        Some("input_value"),
-                        "Supplied expression values are associated through the curated isoform family.",
+                    let Some(value) = value else {
+                        continue;
+                    };
+                    let evidence_id = format!(
+                        "expression:{}:{}:{}",
+                        &digest[..12.min(digest.len())],
+                        row.isoform_id,
+                        sample_index + 1
                     );
-                }
-                for junction in junctions
-                    .iter_mut()
-                    .filter(|junction| junction.family_ids.contains(&row.isoform_id))
-                {
-                    Self::isoform_evidence_attach_component(
-                        &mut junction.components.abundance,
-                        &evidence_id,
-                        IsoformEvidenceAssessmentStatus::Observed,
-                        "dataset_relative_expression",
-                        Some(mean),
-                        Some("input_value"),
-                        "Supplied expression values are associated through the curated isoform family.",
-                    );
+                    evidence_items.push(GeneIsoformEvidenceItem {
+                        evidence_id: evidence_id.clone(),
+                        source_kind: IsoformEvidenceSourceKind::Expression,
+                        source_id: path.to_string(),
+                        status: IsoformEvidenceAssessmentStatus::Observed,
+                        family_ids: vec![row.isoform_id.clone()],
+                        value: Some(*value),
+                        unit: Some("input_value".to_string()),
+                        condition: Some(sample_label.clone()),
+                        method: "supplied isoform expression value".to_string(),
+                        notes: vec![
+                            "Values are comparable only within the supplied dataset unless its provenance states otherwise."
+                                .to_string(),
+                        ],
+                        ..Default::default()
+                    });
+                    for exon in exon_families
+                        .iter_mut()
+                        .filter(|exon| exon.family_ids.contains(&row.isoform_id))
+                    {
+                        Self::isoform_evidence_attach_component(
+                            &mut exon.components.abundance,
+                            &evidence_id,
+                            IsoformEvidenceAssessmentStatus::Observed,
+                            "dataset_relative_expression",
+                            Some(*value),
+                            Some("input_value"),
+                            Some(sample_label),
+                            "A supplied expression value is associated through the curated isoform family.",
+                        );
+                    }
+                    for junction in junctions
+                        .iter_mut()
+                        .filter(|junction| junction.family_ids.contains(&row.isoform_id))
+                    {
+                        Self::isoform_evidence_attach_component(
+                            &mut junction.components.abundance,
+                            &evidence_id,
+                            IsoformEvidenceAssessmentStatus::Observed,
+                            "dataset_relative_expression",
+                            Some(*value),
+                            Some("input_value"),
+                            Some(sample_label),
+                            "A supplied expression value is associated through the curated isoform family.",
+                        );
+                    }
                 }
             }
         }
@@ -11079,12 +11250,61 @@ impl GentleEngine {
                         "qpcr_candidate_available",
                         Some(assay.score),
                         Some("design_score"),
+                        None,
                         "An existing qPCR report contains a candidate spanning this junction.",
                     );
                 }
             }
         }
 
+        for exon in &mut exon_families {
+            Self::isoform_evidence_finalize_component(
+                &exon.exon_family_id,
+                "abundance",
+                &mut exon.components.abundance,
+                &mut warnings,
+            );
+            Self::isoform_evidence_finalize_component(
+                &exon.exon_family_id,
+                "responsiveness",
+                &mut exon.components.responsiveness,
+                &mut warnings,
+            );
+            Self::isoform_evidence_finalize_component(
+                &exon.exon_family_id,
+                "assayability",
+                &mut exon.components.assayability,
+                &mut warnings,
+            );
+            exon.recommendation =
+                Self::isoform_evidence_recommendation(&exon.specificity_class, &exon.components);
+        }
+        for junction in &mut junctions {
+            Self::isoform_evidence_finalize_component(
+                &junction.junction_id,
+                "abundance",
+                &mut junction.components.abundance,
+                &mut warnings,
+            );
+            Self::isoform_evidence_finalize_component(
+                &junction.junction_id,
+                "responsiveness",
+                &mut junction.components.responsiveness,
+                &mut warnings,
+            );
+            Self::isoform_evidence_finalize_component(
+                &junction.junction_id,
+                "assayability",
+                &mut junction.components.assayability,
+                &mut warnings,
+            );
+            junction.recommendation = Self::isoform_evidence_recommendation(
+                &junction.specificity_class,
+                &junction.components,
+            );
+        }
+        warnings.sort();
+        warnings.dedup();
         evidence_items.sort_by(|a, b| a.evidence_id.cmp(&b.evidence_id));
         assay_candidates.sort_by(|a, b| {
             a.qpcr_report_id
@@ -11113,6 +11333,7 @@ impl GentleEngine {
             splicing: Some(splicing),
             families,
             transcripts,
+            transcript_metrics,
             exon_families,
             junctions,
             occupancy_lanes,
@@ -11263,6 +11484,10 @@ impl GentleEngine {
             let mut expected_peptide_length_aa = derivation
                 .map(|value| value.protein_length_aa)
                 .filter(|value| *value > 0);
+            let protein_sequence = derivation
+                .map(|value| value.protein_sequence.trim())
+                .filter(|value| !value.is_empty())
+                .filter(|_| !explicitly_noncoding || annotated_cds);
             if explicitly_noncoding && !annotated_cds {
                 cds_ranges.clear();
                 cds_length_bp = 0;
@@ -11273,7 +11498,36 @@ impl GentleEngine {
             let has_stop =
                 annotated_cds && derivation.is_some_and(|value| value.terminal_stop_trimmed);
             let frame_complete = cds_length_bp > 0 && cds_length_bp % 3 == 0;
+            let complete_annotated_cds = annotated_cds && has_start && has_stop && frame_complete;
             let mut flags = Vec::new();
+            let protein_identity_sha256 = protein_sequence
+                .map(|sequence| crate::digest_utils::sha256_prefixed_bytes(sequence.as_bytes()));
+            let mass_estimate =
+                protein_sequence.map(|sequence| AMINO_ACIDS.protein_molecular_weight_kda(sequence));
+            let predicted_molecular_weight_kda = mass_estimate
+                .as_ref()
+                .filter(|_| complete_annotated_cds)
+                .and_then(|estimate| estimate.molecular_weight_kda);
+            let protein_mass_basis = mass_estimate.as_ref().map(|estimate| {
+                if !complete_annotated_cds {
+                    "unavailable_due_to_incomplete_or_unresolved_cds".to_string()
+                } else if estimate.unknown_residues.is_empty() {
+                    "unmodified_residue_mass_sum_plus_terminal_water".to_string()
+                } else {
+                    "unavailable_due_to_ambiguous_or_unsupported_residue".to_string()
+                }
+            });
+            if mass_estimate.is_some() && !complete_annotated_cds {
+                flags.push("protein_mass_unavailable_incomplete_cds".to_string());
+            }
+            if let Some(estimate) = mass_estimate.as_ref()
+                && !estimate.unknown_residues.is_empty()
+            {
+                flags.push(format!(
+                    "protein_mass_unavailable_unknown_residues:{}",
+                    estimate.unknown_residues.iter().collect::<String>()
+                ));
+            }
             if retained_by_geometry || biotype_lower.contains("retained_intron") {
                 flags.push("annotated_retained_intron".to_string());
             }
@@ -11295,7 +11549,7 @@ impl GentleEngine {
             if qualifier_flag("pseudo") || biotype_lower.contains("pseudogene") {
                 flags.push("pseudogene_annotation".to_string());
             }
-            let coding_status = if annotated_cds && has_start && has_stop && frame_complete {
+            let coding_status = if complete_annotated_cds {
                 "complete_cds"
             } else if annotated_cds {
                 "partial_cds"
@@ -11376,6 +11630,9 @@ impl GentleEngine {
                     .sum(),
                 cds_length_bp,
                 expected_peptide_length_aa,
+                protein_identity_sha256,
+                predicted_molecular_weight_kda,
+                protein_mass_basis,
                 coding_status,
                 biotype,
                 cds_ranges_local_1based: cds_ranges,
@@ -11492,39 +11749,7 @@ impl GentleEngine {
         feature_id: &str,
         has_junction_edges: bool,
     ) -> (GeneLocusProbeClass, String) {
-        let raw = raw.trim().to_ascii_lowercase();
-        if raw == "psr" || raw.contains("->psr") || raw.contains("probe_selection_region") {
-            return (
-                GeneLocusProbeClass::Psr,
-                "explicit_probe_type_column".to_string(),
-            );
-        }
-        if raw == "juc" || raw == "junction" || raw.contains("->juc") {
-            return (
-                GeneLocusProbeClass::Juc,
-                "explicit_probe_type_column".to_string(),
-            );
-        }
-        let feature_upper = feature_id.trim().to_ascii_uppercase();
-        if feature_upper.starts_with("PSR") {
-            return (
-                GeneLocusProbeClass::Psr,
-                "clariom_feature_id_prefix".to_string(),
-            );
-        }
-        if feature_upper.starts_with("JUC") {
-            return (
-                GeneLocusProbeClass::Juc,
-                "clariom_feature_id_prefix".to_string(),
-            );
-        }
-        if has_junction_edges {
-            return (
-                GeneLocusProbeClass::Juc,
-                "junction_edge_columns".to_string(),
-            );
-        }
-        (GeneLocusProbeClass::Other, "unclassified".to_string())
+        GeneLocusProbeClass::classify(raw, feature_id, has_junction_edges)
     }
 
     fn gene_locus_probe_contrast(column: &str) -> GeneLocusProbeEffectContrast {
@@ -12471,13 +12696,14 @@ impl GentleEngine {
                     .to_string(),
             );
         }
-        let (transcript_metrics, codon_markers) = self.gene_locus_transcript_metrics(
+        let (_, codon_markers) = self.gene_locus_transcript_metrics(
             seq_id,
             dna,
             splicing,
             anchor.as_ref(),
             &mut warnings,
         );
+        let transcript_metrics = isoform_evidence.transcript_metrics.clone();
         let occupancy_groups = self.gene_locus_occupancy_groups(
             dna,
             local_start,
@@ -12942,5 +13168,48 @@ mod gene_locus_probe_effect_tests {
                 .iter()
                 .any(|warning| warning.contains("skipped 1 row"))
         );
+    }
+
+    #[test]
+    fn isoform_evidence_component_keeps_incompatible_units_separate() {
+        let mut component = GeneIsoformEvidenceComponent::default();
+        GentleEngine::isoform_evidence_attach_component(
+            &mut component,
+            "expression_condition_a",
+            IsoformEvidenceAssessmentStatus::Observed,
+            "expression_measurement",
+            Some(8.0),
+            Some("normalized_expression"),
+            Some("condition_a"),
+            "Synthetic normalized expression.",
+        );
+        GentleEngine::isoform_evidence_attach_component(
+            &mut component,
+            "rna_reads_condition_a",
+            IsoformEvidenceAssessmentStatus::Observed,
+            "rna_read_support",
+            Some(0.7),
+            Some("read_fraction"),
+            Some("condition_a"),
+            "Synthetic RNA-read fraction.",
+        );
+        let mut warnings = Vec::new();
+
+        GentleEngine::isoform_evidence_finalize_component(
+            "JCT:synthetic",
+            "abundance",
+            &mut component,
+            &mut warnings,
+        );
+
+        assert_eq!(component.measurements.len(), 2);
+        assert_eq!(component.classification, "incompatible_measurement_units");
+        assert_eq!(component.value, None);
+        assert_eq!(component.unit, None);
+        assert!(warnings.iter().any(|warning| {
+            warning.contains("JCT:synthetic")
+                && warning.contains("normalized_expression")
+                && warning.contains("read_fraction")
+        }));
     }
 }

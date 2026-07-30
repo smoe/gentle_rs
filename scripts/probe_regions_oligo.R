@@ -7,6 +7,8 @@
 # chromosome-ordered intensity tables that GENtle can ingest or inspect later.
 # It never downloads or installs R/Bioconductor packages.
 
+analysis_method_version <- "probe_regions_oligo_rma_v1"
+
 usage <- function(status = 0) {
   cat(
     "Usage:\n",
@@ -232,6 +234,16 @@ json_array <- function(values) {
   paste0("[", paste(vapply(values, json_string, character(1)), collapse = ", "), "]")
 }
 
+json_named_string_object <- function(values) {
+  if (length(values) == 0) return("{}")
+  entries <- vapply(
+    seq_along(values),
+    function(i) paste0(json_string(names(values)[[i]]), ": ", json_string(values[[i]])),
+    character(1)
+  )
+  paste0("{", paste(entries, collapse = ", "), "}")
+}
+
 json_bool <- function(value) {
   if (isTRUE(value)) "true" else "false"
 }
@@ -247,6 +259,24 @@ file_info_json <- function(path) {
     "\"exists\":", json_bool(exists), ",",
     "\"size_bytes\":", size, ",",
     "\"modified_unix_seconds\":", mtime,
+    "}"
+  )
+}
+
+input_fingerprint_json <- function(path, role) {
+  exists <- file.exists(path)
+  info <- if (exists) file.info(path) else NULL
+  size <- if (exists) as.character(info$size) else "null"
+  mtime <- if (exists) as.character(as.integer(as.POSIXct(info$mtime))) else "null"
+  paste0(
+    "{",
+    "\"path\":", json_string(path), ",",
+    "\"role\":", json_string(role), ",",
+    "\"exists\":", json_bool(exists), ",",
+    "\"is_file\":", json_bool(exists && !isTRUE(info$isdir)), ",",
+    "\"size_bytes\":", size, ",",
+    "\"modified_unix_seconds\":", mtime, ",",
+    "\"sha256\":null",
     "}"
   )
 }
@@ -607,6 +637,15 @@ for (target in args$targets) {
 session_path <- file.path(args$output, "sessionInfo.txt")
 capture.output(utils::sessionInfo(), file = session_path)
 artifact_paths <- c(artifact_paths, session_path)
+runtime_packages <- unique(c(required_packages, args$platform_package))
+package_versions <- setNames(
+  vapply(runtime_packages, function(package) as.character(utils::packageVersion(package)), character(1)),
+  runtime_packages
+)
+input_fingerprints <- c(
+  vapply(cel_files, input_fingerprint_json, character(1), role = "cel"),
+  if (nzchar(args$metadata)) input_fingerprint_json(args$metadata, "metadata") else character()
+)
 
 manifest_path <- file.path(args$output, "normalized_feature_matrix_manifest.json")
 manifest_lines <- c(
@@ -633,11 +672,15 @@ provenance_lines <- c(
   paste0("  \"schema\": ", json_string("gentle.probe_region_backend_provenance.v1"), ","),
   paste0("  \"backend\": ", json_string("r_oligo"), ","),
   paste0("  \"command\": ", json_string(paste(commandArgs(FALSE), collapse = " ")), ","),
+  paste0("  \"r_version\": ", json_string(R.version.string), ","),
+  paste0("  \"package_versions\": ", json_named_string_object(package_versions), ","),
+  paste0("  \"analysis_method_version\": ", json_string(analysis_method_version), ","),
   paste0("  \"platform_package\": ", json_string(args$platform_package), ","),
   paste0("  \"coordinate_system\": ", json_string(args$coordinate_system), ","),
   paste0("  \"genome_build\": ", json_string(args$genome_build), ","),
   paste0("  \"normalization\": ", json_string(args$normalization), ","),
   paste0("  \"output_dir\": ", json_string(args$output), ","),
+  paste0("  \"input_fingerprints\": [", paste(input_fingerprints, collapse = ", "), "],"),
   paste0("  \"artifacts\": ", json_array(artifact_paths)),
   "}"
 )

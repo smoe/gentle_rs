@@ -960,14 +960,17 @@ Feature tree grouping:
   - choose an imported isoform panel and optionally supply annotation-release
     text, persisted RNA-read/qPCR report ids, probe-evidence JSON, cDNA/EST
     resource JSON, an expression TSV, and projected occupancy track names
-  - `Inspect evidence` caches the shared `gentle.gene_isoform_evidence.v1`
+  - `Inspect evidence` caches the shared `gentle.gene_isoform_evidence.v2`
     report for the current splice group; opening a different group clears that
     cached result
   - transcript rows show biological 5'->3' exon order beside genomic-ascending
     order, while junction rows show stable assembly-local ids and
     transcript-oriented donor/acceptor coordinates
   - specificity, abundance, responsiveness, and assayability remain separate;
-    the evidence ledger and provenance can be expanded for audit
+    the evidence ledger and provenance can be expanded for audit. Repeated
+    contrast/source measurements remain individually inspectable; incompatible
+    units are not collapsed. Recommendation tiers are rule-based guidance, not
+    weighted evidence scores
   - selected BED/BigWig occupancy tracks are summarized as source-specific
     lanes and rendered beneath transcript models in the shared SVG with one
     common score scale; `*` selects every projected track in the gene span.

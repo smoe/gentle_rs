@@ -2117,24 +2117,10 @@ impl GentleEngine {
     }
 
     fn estimate_protein_molecular_weight_kda(sequence: &str) -> f32 {
-        const WATER_MASS_DA: f32 = 18.015_28;
-        let residues = sequence
-            .trim()
-            .chars()
-            .filter_map(|aa| {
-                let aa = aa.to_ascii_uppercase();
-                if aa == STOP_CODON {
-                    return None;
-                }
-                Some(AMINO_ACIDS.get(aa).map(|entry| entry.mw).unwrap_or(110.0))
-            })
-            .collect::<Vec<_>>();
-        if residues.is_empty() {
-            return 0.0;
-        }
-        let total_da = residues.iter().sum::<f32>()
-            - WATER_MASS_DA * (residues.len().saturating_sub(1) as f32);
-        (total_da / 1_000.0).max(0.0)
+        AMINO_ACIDS
+            .protein_molecular_weight_kda(sequence)
+            .molecular_weight_kda
+            .unwrap_or(0.0) as f32
     }
 
     fn estimate_protein_isoelectric_point(sequence: &str) -> Option<f32> {
@@ -12497,6 +12483,331 @@ impl GentleEngine {
             })
     }
 
+    fn gene_transcript_assay_routine_panel_role(
+        report: &TranscriptAssayPanelReport,
+    ) -> GeneTranscriptAssayRoutinePanelRole {
+        match report.assay_tier {
+            TranscriptAssayUseTier::RoutineCommonRegionScreen => {
+                GeneTranscriptAssayRoutinePanelRole::CommonControl
+            }
+            TranscriptAssayUseTier::IsoformDiscrimination => {
+                GeneTranscriptAssayRoutinePanelRole::JunctionValidation
+            }
+            TranscriptAssayUseTier::LongRangeStructureDiscovery => {
+                GeneTranscriptAssayRoutinePanelRole::EndpointStructure
+            }
+            TranscriptAssayUseTier::Unspecified => {
+                if report.assay_kind == TranscriptAssayKind::EndpointRtPcr
+                    || report.objective == TranscriptAssayPanelObjective::IsoformEndMatrix
+                {
+                    GeneTranscriptAssayRoutinePanelRole::EndpointStructure
+                } else if report.objective == TranscriptAssayPanelObjective::PanTranscript {
+                    GeneTranscriptAssayRoutinePanelRole::CommonControl
+                } else if report.assay_kind == TranscriptAssayKind::SybrQpcr {
+                    GeneTranscriptAssayRoutinePanelRole::JunctionValidation
+                } else if report.assay_kind == TranscriptAssayKind::TaqmanQpcr {
+                    GeneTranscriptAssayRoutinePanelRole::QuantitativeValidation
+                } else {
+                    GeneTranscriptAssayRoutinePanelRole::Other
+                }
+            }
+        }
+    }
+
+    fn compose_gene_transcript_assay_routine(
+        &self,
+        request: &GeneTranscriptAssayRoutineRequest,
+    ) -> Result<GeneTranscriptAssayRoutineReport, EngineError> {
+        let isoform_path = request.isoform_evidence_path.trim();
+        if isoform_path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Gene transcript-assay routine requires isoform_evidence_path".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let isoform_bytes = std::fs::read(isoform_path).map_err(|error| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not read gene isoform evidence report '{isoform_path}': {error}"
+            ),
+            cause_chain: vec![],
+        })?;
+        let isoform_report: GeneIsoformEvidenceReport =
+            match serde_json::from_slice::<FeatureExpertView>(&isoform_bytes) {
+                Ok(FeatureExpertView::IsoformEvidence(report)) => report,
+                Ok(_) => {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Feature-expert output '{isoform_path}' is not an isoform-evidence view"
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+                Err(view_error) => serde_json::from_slice(&isoform_bytes).map_err(
+                    |report_error| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not parse gene isoform evidence report '{isoform_path}' as a feature-expert view ({view_error}) or bare report ({report_error})"
+                        ),
+                        cause_chain: vec![],
+                    },
+                )?,
+            };
+        if isoform_report.schema.trim().is_empty() || isoform_report.seq_id.trim().is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Gene isoform evidence report '{isoform_path}' is missing its schema or source sequence id"
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let isoform_sha256 = sha256_prefixed_bytes(&isoform_bytes);
+        if let Some(expected) = request
+            .expected_isoform_evidence_sha256
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            && expected != isoform_sha256
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Gene isoform evidence report '{}' has digest '{}' but the composition request expected '{}'",
+                    isoform_path, isoform_sha256, expected
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let mut warnings = isoform_report.warnings.clone();
+        if isoform_report.schema != GENE_ISOFORM_EVIDENCE_SCHEMA
+            && isoform_report.schema != GENE_ISOFORM_EVIDENCE_SCHEMA_V1
+        {
+            warnings.push(format!(
+                "Isoform evidence schema '{}' is not a known GENtle v1/v2 schema; fields were interpreted through the compatible serde contract.",
+                isoform_report.schema
+            ));
+        }
+        if isoform_report.schema == GENE_ISOFORM_EVIDENCE_SCHEMA_V1 {
+            warnings.push(
+                "Legacy isoform evidence v1 lacks authoritative per-contrast component measurements and recommendation tiers; rerun isoform-evidence inspection for v2."
+                    .to_string(),
+            );
+        }
+
+        let mut panel_ids = request
+            .transcript_assay_panel_report_ids
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        panel_ids.sort();
+        panel_ids.dedup();
+        if panel_ids.is_empty() {
+            warnings.push(
+                "No transcript-assay panel report was supplied; the routine contains evidence candidates only."
+                    .to_string(),
+            );
+        }
+
+        let mut assay_panels = Vec::new();
+        let mut order_ready_primers = Vec::new();
+        let mut uncovered_transcript_class_ids = Vec::new();
+        for report_id in panel_ids {
+            let report = self.get_transcript_assay_panel_report(&report_id)?;
+            if report.source_seq_id != isoform_report.seq_id {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Transcript-assay panel '{}' targets sequence '{}', not isoform-evidence sequence '{}'",
+                        report.report_id, report.source_seq_id, isoform_report.seq_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            let report_digest = Self::transcript_assay_panel_specificity_digest(&report)?;
+            let mut specificity_issue_messages = report
+                .specificity_acceptance
+                .as_ref()
+                .into_iter()
+                .flat_map(|acceptance| acceptance.issues.iter())
+                .map(|issue| issue.message.clone())
+                .collect::<Vec<_>>();
+            let specificity_digest_matches = report
+                .specificity_acceptance
+                .as_ref()
+                .is_some_and(|acceptance| acceptance.panel_digest == report_digest);
+            if report.specificity_acceptance.is_some() && !specificity_digest_matches {
+                let message = format!(
+                    "Specificity acceptance attached to panel '{}' does not match its current report digest.",
+                    report.report_id
+                );
+                warnings.push(message.clone());
+                specificity_issue_messages.push(message);
+            }
+            let role = Self::gene_transcript_assay_routine_panel_role(&report);
+            order_ready_primers.extend(report.order_ready_primers.iter().cloned().map(|primer| {
+                GeneTranscriptAssayRoutineOrderPrimer {
+                    source_report_id: report.report_id.clone(),
+                    source_report_digest: report_digest.clone(),
+                    primer,
+                }
+            }));
+            uncovered_transcript_class_ids
+                .extend(report.uncovered_equivalence_group_ids.iter().cloned());
+            assay_panels.push(GeneTranscriptAssayRoutinePanelSummary {
+                role,
+                report_id: report.report_id.clone(),
+                report_schema: report.schema.clone(),
+                report_digest,
+                assay_kind: report.assay_kind,
+                objective: report.objective,
+                assay_tier: report.assay_tier,
+                completion_status: report.completion_status,
+                selected_assay_ids: report
+                    .selected_assays
+                    .iter()
+                    .map(|assay| assay.assay_id.clone())
+                    .collect(),
+                selected_assay_count: report.selected_assays.len(),
+                end_reaction_count: report.end_reactions.len(),
+                band_size_row_count: report.band_size_matrix.len(),
+                junction_evaluation_count: report.junction_evaluations.len(),
+                uncovered_equivalence_group_ids: report.uncovered_equivalence_group_ids.clone(),
+                unresolved_group_pairs: report.unresolved_group_pairs.clone(),
+                specificity_status: report
+                    .specificity_acceptance
+                    .as_ref()
+                    .map(|acceptance| acceptance.status),
+                specificity_accepted: specificity_digest_matches
+                    && report
+                        .specificity_acceptance
+                        .as_ref()
+                        .is_some_and(|acceptance| acceptance.accepted),
+                specificity_issue_messages,
+                warnings: report.warnings.clone(),
+            });
+        }
+        assay_panels.sort_by(|left, right| {
+            (left.role as u8)
+                .cmp(&(right.role as u8))
+                .then(left.report_id.cmp(&right.report_id))
+        });
+        order_ready_primers.sort_by(|left, right| {
+            left.source_report_id
+                .cmp(&right.source_report_id)
+                .then(left.primer.line_id.cmp(&right.primer.line_id))
+        });
+        uncovered_transcript_class_ids.sort();
+        uncovered_transcript_class_ids.dedup();
+
+        let mut recommended_experimental_sequence = Vec::new();
+        if assay_panels
+            .iter()
+            .any(|panel| panel.role == GeneTranscriptAssayRoutinePanelRole::CommonControl)
+        {
+            recommended_experimental_sequence.push(
+                "Run the annotation-defined common-region control first; array evidence may prioritize the region but does not establish commonality."
+                    .to_string(),
+            );
+        }
+        if assay_panels
+            .iter()
+            .any(|panel| panel.role == GeneTranscriptAssayRoutinePanelRole::JunctionValidation)
+        {
+            recommended_experimental_sequence.push(
+                "Run short junction-validation assays to test transcript-family discrimination."
+                    .to_string(),
+            );
+        }
+        if assay_panels
+            .iter()
+            .any(|panel| panel.role == GeneTranscriptAssayRoutinePanelRole::EndpointStructure)
+        {
+            recommended_experimental_sequence.push(
+                "Use endpoint or long-range reactions for structural discovery; gel intensity is only rough or semi-quantitative."
+                    .to_string(),
+            );
+        }
+        if assay_panels.iter().any(|panel| {
+            panel.role == GeneTranscriptAssayRoutinePanelRole::QuantitativeValidation
+        }) {
+            recommended_experimental_sequence.push(
+                "Use short quantitative assays only after reviewing transcript-family scope and assay specificity."
+                    .to_string(),
+            );
+        }
+        if assay_panels.iter().any(|panel| !panel.specificity_accepted) {
+            recommended_experimental_sequence.push(
+                "Complete and review the declared genomic/transcriptome specificity handoffs before treating primers as order-ready."
+                    .to_string(),
+            );
+        }
+        if recommended_experimental_sequence.is_empty() {
+            recommended_experimental_sequence.push(
+                "Review annotation-derived candidates and generate assay panels before wet-lab interpretation."
+                    .to_string(),
+            );
+        }
+
+        let identity = serde_json::to_vec(&json!({
+            "schema": GENE_TRANSCRIPT_ASSAY_ROUTINE_SCHEMA,
+            "label": request.label,
+            "isoform_evidence_sha256": isoform_sha256,
+            "panel_digests": assay_panels
+                .iter()
+                .map(|panel| (&panel.report_id, &panel.report_digest))
+                .collect::<Vec<_>>(),
+        }))
+        .map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not identify gene transcript-assay routine: {error}"),
+            cause_chain: vec![],
+        })?;
+        let identity_sha = sha256_prefixed_bytes(&identity);
+        let routine_id = request
+            .routine_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                format!(
+                    "gene_assay_routine_{}",
+                    identity_sha
+                        .strip_prefix("sha256:")
+                        .unwrap_or(&identity_sha)
+                        .chars()
+                        .take(16)
+                        .collect::<String>()
+                )
+            });
+        warnings.sort();
+        warnings.dedup();
+        Ok(GeneTranscriptAssayRoutineReport {
+            schema: GENE_TRANSCRIPT_ASSAY_ROUTINE_SCHEMA.to_string(),
+            routine_id,
+            label: request.label.trim().to_string(),
+            seq_id: isoform_report.seq_id.clone(),
+            gene_symbol: isoform_report.gene_symbol.clone(),
+            panel_id: isoform_report.panel_id.clone(),
+            annotation_release: isoform_report.annotation_release.clone(),
+            isoform_evidence_schema: isoform_report.schema.clone(),
+            isoform_evidence_path: isoform_path.to_string(),
+            isoform_evidence_sha256: isoform_sha256,
+            transcript_metrics: isoform_report.transcript_metrics.clone(),
+            exon_candidates: isoform_report.exon_families.clone(),
+            junction_candidates: isoform_report.junctions.clone(),
+            assay_panels,
+            order_ready_primers,
+            uncovered_transcript_class_ids,
+            recommended_experimental_sequence,
+            warnings,
+        })
+    }
+
     fn transcript_assay_panel_primer_pair_digest(
         assay_id: &str,
         assay_rank: usize,
@@ -17745,15 +18056,18 @@ impl GentleEngine {
         let mut selection_evidence = vec![];
         let mut warnings = vec![];
         for row in &report.evidence_rows {
-            let junction_like = row.level.eq_ignore_ascii_case("junction")
-                || row.feature_id.to_ascii_uppercase().starts_with("JUC");
-            let psr_like = row.level.eq_ignore_ascii_case("probeset")
-                || row.level.eq_ignore_ascii_case("exon")
-                || row.feature_id.to_ascii_uppercase().starts_with("PSR");
+            let has_junction_edges = row
+                .transcript_mappings
+                .iter()
+                .any(|mapping| !mapping.junction_spans.is_empty());
+            let (probe_class, classification_basis) =
+                GeneLocusProbeClass::classify(&row.level, &row.feature_id, has_junction_edges);
+            let junction_like = probe_class == GeneLocusProbeClass::Juc;
+            let psr_like = probe_class == GeneLocusProbeClass::Psr;
             if !junction_like && !psr_like {
                 warnings.push(format!(
-                    "Probe evidence '{}' has unsupported level '{}'; only JUC/junction and PSR/probeset rows are retained for transcript-panel selection provenance.",
-                    row.evidence_id, row.level
+                    "Probe evidence '{}' has unsupported level '{}' ({classification_basis}); only JUC/junction and PSR/probeset rows are retained for transcript-panel selection provenance.",
+                    row.evidence_id, row.level,
                 ));
                 continue;
             }
@@ -25905,6 +26219,7 @@ impl GentleEngine {
             external_primer_pair_import_report: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
+            gene_transcript_assay_routine: None,
             experimental_assay_handoff: None,
             primer_specificity_handoff: None,
             primer_specificity_report: None,
@@ -32178,6 +32493,42 @@ impl GentleEngine {
                         report_id,
                         path,
                     )?;
+                }
+                Operation::ComposeGeneTranscriptAssayRoutine { request, path } => {
+                    let report = self.compose_gene_transcript_assay_routine(&request)?;
+                    parent_seq_ids.push(report.seq_id.clone());
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let file = File::create(path).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create gene transcript-assay routine report '{path}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                        serde_json::to_writer_pretty(BufWriter::new(file), &report).map_err(
+                            |error| EngineError {
+                                code: ErrorCode::Io,
+                                message: format!(
+                                    "Could not serialize gene transcript-assay routine report '{path}': {error}"
+                                ),
+                                cause_chain: vec![],
+                            },
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote gene transcript-assay routine report to '{path}'"
+                        ));
+                    }
+                    result.messages.push(format!(
+                        "Composed gene transcript-assay routine '{}' from {} assay panel(s) without rerunning design.",
+                        report.routine_id,
+                        report.assay_panels.len()
+                    ));
+                    result.warnings.extend(report.warnings.clone());
+                    result.gene_transcript_assay_routine = Some(Box::new(report));
                 }
                 Operation::BuildExperimentalAssayHandoff {
                     panel_report_id,

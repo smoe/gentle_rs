@@ -92,6 +92,10 @@ impl GentleEngine {
         let mut platform = None;
         let mut platform_package = None;
         let mut normalization = None;
+        let mut r_version = None;
+        let mut package_versions = BTreeMap::new();
+        let mut analysis_method_version = None;
+        let mut input_fingerprints = Vec::new();
         let mut coordinate_system = None;
         let mut genome_build = None;
         let mut coordinate_projections = Vec::new();
@@ -144,6 +148,13 @@ impl GentleEngine {
                     if normalization.is_none() {
                         normalization = Self::probe_region_json_string(&value, "normalization");
                     }
+                    r_version = Self::probe_region_json_string(&value, "r_version");
+                    package_versions =
+                        Self::probe_region_json_string_map(&value, "package_versions");
+                    analysis_method_version =
+                        Self::probe_region_json_string(&value, "analysis_method_version");
+                    input_fingerprints =
+                        Self::probe_region_json_input_fingerprints(&value, "input_fingerprints");
                     if coordinate_system.is_none() {
                         coordinate_system =
                             Self::probe_region_json_string(&value, "coordinate_system");
@@ -242,6 +253,10 @@ impl GentleEngine {
             platform,
             platform_package,
             normalization,
+            r_version,
+            package_versions,
+            analysis_method_version,
+            input_fingerprints,
             coordinate_system,
             genome_build,
             coordinate_projections,

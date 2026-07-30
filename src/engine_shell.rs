@@ -56,15 +56,15 @@ use crate::{
         FeatureRecordSplitRequest, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
         GeneIsoformEvidenceRequest, GeneLocusEvidenceDisplayRequest, GeneSetCohortRelationship,
         GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
-        GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
-        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
-        GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
-        GuidePracticalFilterConfig, InlineSequenceTopology, LabAssistantInstructionsFormat,
-        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus,
-        OligoOrderFormCreateRequest, Operation, OperationProgress, OrthologAmbiguityPolicy,
-        OrthologPromoterCohortReport, PLANNING_CLONING_CONSULTATION_SCHEMA,
-        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
-        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        GeneSetResolutionReport, GeneSetResolutionReviewStatus, GeneTranscriptAssayRoutineRequest,
+        GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource,
+        GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
+        GuideOligoPlateFormat, GuidePracticalFilterConfig, InlineSequenceTopology,
+        LabAssistantInstructionsFormat, LineageMacroInstance, LineageMacroPortBinding,
+        MacroInstanceStatus, OligoOrderFormCreateRequest, Operation, OperationProgress,
+        OrthologAmbiguityPolicy, OrthologPromoterCohortReport,
+        PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
+        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PROTEIN_EXPRESSION_HANDOFF_SCHEMA,
         PROTEIN_EXPRESSION_REQUIREMENTS_SCHEMA, PairwiseAlignmentMode, PlanningCloningConsultation,
         PlanningCloningHelperVectorSummary, PlanningCloningHostProfileSummary,
@@ -2593,6 +2593,10 @@ pub enum ShellCommand {
         operation_json: String,
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
+    },
+    PrimersComposeGeneTranscriptAssayRoutine {
+        request_json: String,
+        path: Option<String>,
     },
     PrimersTestCdnaQpcrFasta {
         cdna_fasta_paths: Vec<String>,
@@ -11457,6 +11461,14 @@ impl ShellCommand {
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                     .unwrap_or("default"),
+            ),
+            Self::PrimersComposeGeneTranscriptAssayRoutine { request_json, path } => format!(
+                "compose gene transcript-assay routine from JSON request (len={}, path={})",
+                request_json.len(),
+                path.as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("none"),
             ),
             Self::PrimersTestCdnaQpcrFasta {
                 cdna_fasta_paths,
@@ -22556,6 +22568,22 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("DesignTranscriptAssayPanel")
         }),
         json!({
+            "id": "ComposeGeneTranscriptAssayRoutine",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "ISOFORM_EVIDENCE_PATH", "required": true, "subject_kind": "other", "detail": "exported gentle.gene_isoform_evidence.v1/v2 JSON path"},
+                {"name": "PANEL_REPORT_IDS", "required": false, "subject_kind": "report", "detail": "persisted transcript assay panel report ids"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Compose an immutable gene-level evidence and assay review manifest without rerunning design or specificity.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ComposeGeneTranscriptAssayRoutine")
+        }),
+        json!({
             "id": "BuildExperimentalAssayHandoff",
             "kind": "operation",
             "mutating": "false",
@@ -22772,6 +22800,22 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Generate and persist an exact-cDNA-equivalence-aware transcript assay panel; require_all is the default coverage policy.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers design-transcript-assay-panel")
+        }),
+        json!({
+            "id": "primers compose-gene-assay-routine",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON", "required": true, "subject_kind": "other", "detail": "GeneTranscriptAssayRoutineRequest JSON or @file"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external JSON output path"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Compose an immutable gene-level evidence and assay review manifest without rerunning design or specificity.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers compose-gene-assay-routine")
         }),
         json!({
             "id": "primers experimental-handoff",
@@ -27283,6 +27327,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "primers design-transcript-assay-panel" | "DesignTranscriptAssayPanel" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
+        "primers compose-gene-assay-routine" | "ComposeGeneTranscriptAssayRoutine" => Some(vec![]),
         "primers experimental-handoff" | "BuildExperimentalAssayHandoff" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "PANEL_REPORT_ID"}, "equals": "transcript_assay_panel"}),
         ]),
@@ -52850,6 +52895,31 @@ fn execute_primers_command(
                 options,
             )
         }
+        ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { request_json, path } => {
+            let payload = parse_json_payload(request_json)?;
+            let request: GeneTranscriptAssayRoutineRequest = serde_json::from_str(&payload)
+                .map_err(|error| {
+                    format!(
+                        "Could not parse gene transcript-assay routine request from '{}': {error}",
+                        request_json
+                    )
+                })?;
+            let result = engine
+                .apply(Operation::ComposeGeneTranscriptAssayRoutine {
+                    request,
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": result.gene_transcript_assay_routine,
+                    "path": path,
+                    "warnings": result.warnings,
+                    "messages": result.messages,
+                }),
+            })
+        }
         ShellCommand::PrimersTestCdnaQpcrFasta {
             cdna_fasta_paths,
             forward_primer,
@@ -58714,6 +58784,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
             | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
             | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
+            | ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { .. }
             | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
             | ShellCommand::PrimersPrepareRestrictionCloning { .. }
             | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }
@@ -60450,6 +60521,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }
         | ShellCommand::PrimersDesignTranscriptAssayPanel { .. }
         | ShellCommand::PrimersDesignTranscriptAssayPanelRequest { .. }
+        | ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { .. }
         | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
         | ShellCommand::PrimersPrepareRestrictionCloning { .. }
         | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }

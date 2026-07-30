@@ -664,6 +664,9 @@ impl GentleEngine {
             "actual_backend_command": report.command,
             "exit_code": report.exit_code,
             "tool_version_checks": plan.dependencies,
+            "r_version": inspection.r_version,
+            "package_versions": inspection.package_versions,
+            "analysis_method_version": inspection.analysis_method_version,
             "input_fingerprints": input_fingerprints,
             "output_fingerprints": output_fingerprints,
             "output_dir": output_dir,
@@ -1040,6 +1043,45 @@ impl GentleEngine {
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                     .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub(super) fn probe_region_json_string_map(
+        value: &serde_json::Value,
+        key: &str,
+    ) -> BTreeMap<String, String> {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_object)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|(name, value)| {
+                        value
+                            .as_str()
+                            .map(str::trim)
+                            .filter(|version| !version.is_empty())
+                            .map(|version| (name.clone(), version.to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub(super) fn probe_region_json_input_fingerprints(
+        value: &serde_json::Value,
+        key: &str,
+    ) -> Vec<ProbeRegionInputFingerprint> {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| {
+                rows.iter()
+                    .filter_map(|row| {
+                        serde_json::from_value::<ProbeRegionInputFingerprint>(row.clone()).ok()
+                    })
                     .collect()
             })
             .unwrap_or_default()
@@ -2360,18 +2402,21 @@ impl GentleEngine {
             };
         }
         let expression = format!(
-            "quit(status = if (requireNamespace({:?}, quietly = TRUE)) 0 else 1)",
-            package
+            "if (requireNamespace({:?}, quietly = TRUE)) {{ cat(as.character(utils::packageVersion({:?}))); quit(status = 0) }} else quit(status = 1)",
+            package, package
         );
         match Command::new("Rscript").args(["-e", &expression]).output() {
-            Ok(output) if output.status.success() => ProbeRegionDependencyCheck {
-                name: package.to_string(),
-                kind: "r_package".to_string(),
-                required,
-                status: "present".to_string(),
-                version: None,
-                detail: None,
-            },
+            Ok(output) if output.status.success() => {
+                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                ProbeRegionDependencyCheck {
+                    name: package.to_string(),
+                    kind: "r_package".to_string(),
+                    required,
+                    status: "present".to_string(),
+                    version: (!version.is_empty()).then_some(version),
+                    detail: None,
+                }
+            }
             Ok(output) => ProbeRegionDependencyCheck {
                 name: package.to_string(),
                 kind: "r_package".to_string(),

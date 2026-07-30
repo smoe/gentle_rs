@@ -69,7 +69,8 @@ pub use gentle_protocol::{
     FeatureRecordSplitRequest, FlexibilityModel, GENE_SET_CO_REGULATED_CACHE_SCHEMA,
     GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
     GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
-    GENE_SET_RESOLUTION_SCHEMA, GeneSetCoRegulatedProducerMetadata, GeneSetCohortRelationship,
+    GENE_SET_RESOLUTION_SCHEMA, GeneIsoformExonFamilyRow, GeneIsoformJunctionRow,
+    GeneLocusTranscriptMetrics, GeneSetCoRegulatedProducerMetadata, GeneSetCohortRelationship,
     GeneSetCohortRelationshipFlag, GeneSetCutRunEvaluationState, GeneSetCutRunMemberSupport,
     GeneSetCutRunRegulatorySupportReport, GeneSetCutRunSupportAggregate, GeneSetProducerFilter,
     GeneSetProducerKind, GeneSetProducerProvenance, GeneSetProducerQueryMetadata,
@@ -4469,6 +4470,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_assay_panel: Option<Box<TranscriptAssayPanelReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_transcript_assay_routine: Option<Box<GeneTranscriptAssayRoutineReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub experimental_assay_handoff: Option<Box<ExperimentalAssayHandoffReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_specificity_handoff: Option<Box<PrimerSpecificityHandoff>>,
@@ -4884,6 +4887,22 @@ pub struct ProbeRegionOutputPreviewRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
+/// Stable identity metadata for one input consumed by a probe-region backend.
+pub struct ProbeRegionInputFingerprint {
+    pub path: String,
+    pub role: String,
+    pub exists: bool,
+    pub is_file: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_unix_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
 /// Read-only inspection of a completed `probe_regions_oligo.R` output folder.
 pub struct ProbeRegionOutputInspection {
     pub schema: String,
@@ -4906,6 +4925,14 @@ pub struct ProbeRegionOutputInspection {
     pub platform_package: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub normalization: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r_version: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub package_versions: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analysis_method_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_fingerprints: Vec<ProbeRegionInputFingerprint>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coordinate_system: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -8857,6 +8884,88 @@ pub struct TranscriptAssayPanelReport {
     #[serde(default)]
     pub provenance: TranscriptAssayPanelProvenance,
     #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Pure-read request joining one exported isoform ledger with persisted assay panels.
+pub struct GeneTranscriptAssayRoutineRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routine_id: Option<String>,
+    pub label: String,
+    pub isoform_evidence_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_isoform_evidence_sha256: Option<String>,
+    pub transcript_assay_panel_report_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneTranscriptAssayRoutinePanelRole {
+    CommonControl,
+    JunctionValidation,
+    EndpointStructure,
+    QuantitativeValidation,
+    #[default]
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GeneTranscriptAssayRoutinePanelSummary {
+    pub role: GeneTranscriptAssayRoutinePanelRole,
+    pub report_id: String,
+    pub report_schema: String,
+    pub report_digest: String,
+    pub assay_kind: TranscriptAssayKind,
+    pub objective: TranscriptAssayPanelObjective,
+    pub assay_tier: TranscriptAssayUseTier,
+    pub completion_status: TranscriptAssayPanelCompletionStatus,
+    pub selected_assay_ids: Vec<String>,
+    pub selected_assay_count: usize,
+    pub end_reaction_count: usize,
+    pub band_size_row_count: usize,
+    pub junction_evaluation_count: usize,
+    pub uncovered_equivalence_group_ids: Vec<String>,
+    pub unresolved_group_pairs: Vec<TranscriptAssayUnresolvedPair>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specificity_status: Option<TranscriptAssayPanelSpecificityAcceptanceStatus>,
+    pub specificity_accepted: bool,
+    pub specificity_issue_messages: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GeneTranscriptAssayRoutineOrderPrimer {
+    pub source_report_id: String,
+    pub source_report_digest: String,
+    pub primer: TranscriptAssayOrderPrimer,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Review manifest joining existing evidence and assay reports without rerunning them.
+pub struct GeneTranscriptAssayRoutineReport {
+    pub schema: String,
+    pub routine_id: String,
+    pub label: String,
+    pub seq_id: String,
+    pub gene_symbol: String,
+    pub panel_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_release: Option<String>,
+    pub isoform_evidence_schema: String,
+    pub isoform_evidence_path: String,
+    pub isoform_evidence_sha256: String,
+    pub transcript_metrics: Vec<GeneLocusTranscriptMetrics>,
+    pub exon_candidates: Vec<GeneIsoformExonFamilyRow>,
+    pub junction_candidates: Vec<GeneIsoformJunctionRow>,
+    pub assay_panels: Vec<GeneTranscriptAssayRoutinePanelSummary>,
+    pub order_ready_primers: Vec<GeneTranscriptAssayRoutineOrderPrimer>,
+    pub uncovered_transcript_class_ids: Vec<String>,
+    pub recommended_experimental_sequence: Vec<String>,
     pub warnings: Vec<String>,
 }
 

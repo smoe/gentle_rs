@@ -8,8 +8,10 @@
 use crate::SplicingExpertView;
 use serde::{Deserialize, Serialize};
 
+/// Legacy machine-readable report produced before per-measurement evidence retention.
+pub const GENE_ISOFORM_EVIDENCE_SCHEMA_V1: &str = "gentle.gene_isoform_evidence.v1";
 /// Machine-readable report produced by the gene isoform evidence inspector.
-pub const GENE_ISOFORM_EVIDENCE_SCHEMA: &str = "gentle.gene_isoform_evidence.v1";
+pub const GENE_ISOFORM_EVIDENCE_SCHEMA: &str = "gentle.gene_isoform_evidence.v2";
 /// Publication-oriented composition of isoform, occupancy, motif, and assay evidence.
 pub const GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA: &str = "gentle.gene_locus_evidence_display.v1";
 /// Declarative grouping and scaling metadata for projected occupancy tracks.
@@ -319,7 +321,7 @@ pub struct GeneLocusCodonMarker {
 }
 
 /// Annotation-derived metrics shown beside one transcript model.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct GeneLocusTranscriptMetrics {
     pub transcript_feature_id: usize,
@@ -328,6 +330,12 @@ pub struct GeneLocusTranscriptMetrics {
     pub cds_length_bp: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_peptide_length_aa: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protein_identity_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub predicted_molecular_weight_kda: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protein_mass_basis: Option<String>,
     pub coding_status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub biotype: Option<String>,
@@ -357,6 +365,40 @@ pub enum GeneLocusProbeClass {
     Juc,
     #[default]
     Other,
+}
+
+impl GeneLocusProbeClass {
+    /// Classify a probe row using explicit type metadata before stable feature-id
+    /// and geometry fallbacks. The returned basis is persisted for inspection.
+    pub fn classify(
+        raw_type_or_level: &str,
+        feature_id: &str,
+        has_junction_edges: bool,
+    ) -> (Self, String) {
+        let raw = raw_type_or_level.trim().to_ascii_lowercase();
+        if raw == "psr"
+            || raw == "probeset"
+            || raw == "exon"
+            || raw.contains("->psr")
+            || raw.contains("probe_selection_region")
+        {
+            return (Self::Psr, "explicit_probe_type_or_level".to_string());
+        }
+        if raw == "juc" || raw == "junction" || raw.contains("->juc") {
+            return (Self::Juc, "explicit_probe_type_or_level".to_string());
+        }
+        let feature_upper = feature_id.trim().to_ascii_uppercase();
+        if feature_upper.starts_with("PSR") {
+            return (Self::Psr, "clariom_feature_id_prefix".to_string());
+        }
+        if feature_upper.starts_with("JUC") {
+            return (Self::Juc, "clariom_feature_id_prefix".to_string());
+        }
+        if has_junction_edges {
+            return (Self::Juc, "junction_edge_columns".to_string());
+        }
+        (Self::Other, "unclassified".to_string())
+    }
 }
 
 /// One ordered contrast column exposed by a probe-effect source table.
@@ -513,9 +555,29 @@ pub struct GeneIsoformEvidenceItem {
     pub unit: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub condition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub probe_class: Option<GeneLocusProbeClass>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub probe_classification_basis: Option<String>,
     pub method: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
+}
+
+/// One source measurement retained without cross-condition or cross-unit collapse.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GeneIsoformEvidenceMeasurement {
+    pub evidence_id: String,
+    pub status: IsoformEvidenceAssessmentStatus,
+    pub classification: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    pub explanation: String,
 }
 
 /// One independently interpretable scoring dimension.
@@ -530,6 +592,8 @@ pub struct GeneIsoformEvidenceComponent {
     pub unit: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub evidence_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub measurements: Vec<GeneIsoformEvidenceMeasurement>,
     pub explanation: String,
 }
 
@@ -541,6 +605,27 @@ pub struct GeneIsoformEvidenceComponents {
     pub abundance: GeneIsoformEvidenceComponent,
     pub responsiveness: GeneIsoformEvidenceComponent,
     pub assayability: GeneIsoformEvidenceComponent,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneIsoformRecommendationTier {
+    AssayReady,
+    EvidencePrioritized,
+    AnnotationCandidate,
+    #[default]
+    NotEvaluated,
+}
+
+/// Rule-based triage guidance. This is deliberately not a weighted evidence score.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneIsoformRecommendation {
+    pub tier: GeneIsoformRecommendationTier,
+    pub recommended_use: String,
+    pub rule: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub evidence_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -587,6 +672,7 @@ pub struct GeneIsoformExonFamilyRow {
     pub family_ids: Vec<String>,
     pub specificity_class: String,
     pub components: GeneIsoformEvidenceComponents,
+    pub recommendation: GeneIsoformRecommendation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -608,6 +694,7 @@ pub struct GeneIsoformJunctionRow {
     pub family_ids: Vec<String>,
     pub specificity_class: String,
     pub components: GeneIsoformEvidenceComponents,
+    pub recommendation: GeneIsoformRecommendation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -664,6 +751,8 @@ pub struct GeneIsoformEvidenceReport {
     pub splicing: Option<SplicingExpertView>,
     pub families: Vec<GeneIsoformFamilyRow>,
     pub transcripts: Vec<GeneIsoformTranscriptRow>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub transcript_metrics: Vec<GeneLocusTranscriptMetrics>,
     pub exon_families: Vec<GeneIsoformExonFamilyRow>,
     pub junctions: Vec<GeneIsoformJunctionRow>,
     pub occupancy_lanes: Vec<GeneIsoformOccupancyLane>,
@@ -756,5 +845,57 @@ mod tests {
         assert!(report.probe_effect_contrasts.is_empty());
         assert!(report.probe_effect_overlays.is_empty());
         assert_eq!(report.probe_effect_shared_abs_max, None);
+    }
+
+    #[test]
+    fn isoform_evidence_v1_payload_defaults_v2_additions() {
+        let report: GeneIsoformEvidenceReport = serde_json::from_value(serde_json::json!({
+            "schema": GENE_ISOFORM_EVIDENCE_SCHEMA_V1,
+            "seq_id": "synthetic",
+            "panel_id": "panel",
+            "exon_families": [{
+                "exon_family_id": "EXF:test",
+                "components": {
+                    "responsiveness": {
+                        "status": "candidate",
+                        "classification": "array_logfc_candidate",
+                        "value": -1.2,
+                        "unit": "logFC"
+                    }
+                }
+            }]
+        }))
+        .expect("deserialize legacy isoform-evidence report");
+        assert!(report.transcript_metrics.is_empty());
+        assert!(
+            report.exon_families[0]
+                .components
+                .responsiveness
+                .measurements
+                .is_empty()
+        );
+        assert_eq!(
+            report.exon_families[0].recommendation.tier,
+            GeneIsoformRecommendationTier::NotEvaluated
+        );
+    }
+
+    #[test]
+    fn probe_classification_prefers_explicit_metadata_then_stable_fallbacks() {
+        assert_eq!(
+            GeneLocusProbeClass::classify("probeset", "JUC_conflict", true),
+            (
+                GeneLocusProbeClass::Psr,
+                "explicit_probe_type_or_level".to_string()
+            )
+        );
+        assert_eq!(
+            GeneLocusProbeClass::classify("", "JUC_demo", false).0,
+            GeneLocusProbeClass::Juc
+        );
+        assert_eq!(
+            GeneLocusProbeClass::classify("", "feature", true).0,
+            GeneLocusProbeClass::Juc
+        );
     }
 }

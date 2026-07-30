@@ -3569,7 +3569,10 @@ fn isoform_evidence_component_label(
         .value
         .map(|value| format!(" {value:+.3}"))
         .unwrap_or_default();
-    format!("{}{}", component.classification, value)
+    let measurements = (component.measurements.len() > 1)
+        .then(|| format!(" [{} values]", component.measurements.len()))
+        .unwrap_or_default();
+    format!("{}{}{}", component.classification, value, measurements)
 }
 
 fn render_isoform_evidence(report: &GeneIsoformEvidenceReport) -> String {
@@ -4337,11 +4340,16 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
                     .expected_peptide_length_aa
                     .map(|value| format!("{value} aa"))
                     .unwrap_or_else(|| "n/a".to_string());
+                let mass = metrics
+                    .predicted_molecular_weight_kda
+                    .map(|value| format!("{value:.1} kDa"))
+                    .unwrap_or_else(|| "mass n/a".to_string());
                 let metrics_text = format!(
-                    "exon {} nt | CDS {} nt | {} | {}{}",
+                    "exon {} nt | CDS {} nt | {} | {} | {}{}",
                     metrics.spliced_exon_length_bp,
                     metrics.cds_length_bp,
                     peptide,
+                    mass,
                     metrics.coding_status,
                     if metrics.flags.is_empty() {
                         String::new()

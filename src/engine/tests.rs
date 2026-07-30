@@ -731,6 +731,10 @@ fn probe_region_output_inspection_v1_deserializes_without_additive_coordinate_fi
     assert_eq!(inspection.coordinate_system, None);
     assert_eq!(inspection.genome_build, None);
     assert!(inspection.coordinate_projections.is_empty());
+    assert_eq!(inspection.r_version, None);
+    assert!(inspection.package_versions.is_empty());
+    assert_eq!(inspection.analysis_method_version, None);
+    assert!(inspection.input_fingerprints.is_empty());
     assert!(!inspection.projection_ready);
 }
 
@@ -20640,6 +20644,34 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
     assert_eq!(report.gene_strand, "-");
     assert_eq!(report.families.len(), 3);
     assert_eq!(report.transcripts.len(), 3);
+    assert_eq!(report.transcript_metrics.len(), 3);
+    let inferred_coding_metrics = report
+        .transcript_metrics
+        .iter()
+        .find(|row| row.transcript_id == "PATZ1-201")
+        .expect("inferred coding transcript metrics");
+    assert!(inferred_coding_metrics.protein_identity_sha256.is_some());
+    assert_eq!(
+        inferred_coding_metrics.predicted_molecular_weight_kda, None,
+        "the fixture has no complete annotated CDS, so inferred ORF mass must remain unavailable"
+    );
+    assert_eq!(
+        inferred_coding_metrics.protein_mass_basis.as_deref(),
+        Some("unavailable_due_to_incomplete_or_unresolved_cds")
+    );
+    assert!(
+        inferred_coding_metrics
+            .flags
+            .iter()
+            .any(|flag| flag == "protein_mass_unavailable_incomplete_cds")
+    );
+    let noncoding_metrics = report
+        .transcript_metrics
+        .iter()
+        .find(|row| row.transcript_id == "PATZ1-202")
+        .expect("noncoding transcript metrics");
+    assert_eq!(noncoding_metrics.protein_identity_sha256, None);
+    assert_eq!(noncoding_metrics.predicted_molecular_weight_kda, None);
     let long = report
         .transcripts
         .iter()
@@ -20660,10 +20692,41 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
         .expect("stable supported junction id");
     assert_eq!(supported_junction.transcript_donor_1based, 31325979);
     assert_eq!(supported_junction.transcript_acceptor_1based, 31325940);
+    assert!(
+        supported_junction
+            .components
+            .abundance
+            .measurements
+            .iter()
+            .any(|measurement| {
+                measurement.classification == "dataset_relative_rna_read_support"
+                    && measurement.value == Some(0.7)
+                    && measurement.unit.as_deref() == Some("read_fraction")
+            })
+    );
     assert_eq!(
         supported_junction.components.abundance.classification,
-        "dataset_relative_rna_read_support"
+        "incompatible_measurement_units"
     );
+    assert_eq!(supported_junction.components.abundance.value, None);
+    assert_eq!(supported_junction.components.abundance.unit, None);
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains(&supported_junction.junction_id)
+            && warning.contains("input_value")
+            && warning.contains("read_fraction")
+    }));
+    let expression_items = report
+        .evidence_items
+        .iter()
+        .filter(|item| item.source_kind == IsoformEvidenceSourceKind::Expression)
+        .collect::<Vec<_>>();
+    assert_eq!(expression_items.len(), 9);
+    assert!(expression_items.iter().any(|item| {
+        item.family_ids == vec!["patz1_long".to_string()]
+            && item.condition.as_deref() == Some("TAp73alpha")
+            && item.value == Some(8.0)
+            && item.unit.as_deref() == Some("input_value")
+    }));
     assert_eq!(
         supported_junction.components.assayability.classification,
         "qpcr_candidate_available"
@@ -20680,6 +20743,8 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
     assert!(report.evidence_items.iter().any(|item| {
         item.source_kind == IsoformEvidenceSourceKind::ArrayProbe
             && item.status == IsoformEvidenceAssessmentStatus::ConstraintOnly
+            && item.probe_class == Some(GeneLocusProbeClass::Juc)
+            && item.probe_classification_basis.as_deref() == Some("explicit_probe_type_or_level")
             && item.condition.as_deref() == Some("synthetic_case_vs_control")
             && item
                 .notes
@@ -20735,6 +20800,96 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
         warning.contains("patz1_wrong_template_qpcr") && warning.contains("another_sequence")
     }));
 
+    let mut multi_contrast: serde_json::Value = serde_json::from_slice(
+        &fs::read(format!("{fixture}/patz1_probe_evidence.json"))
+            .expect("read probe fixture for multi-contrast test"),
+    )
+    .expect("parse probe fixture for multi-contrast test");
+    let rows = multi_contrast["evidence_rows"]
+        .as_array()
+        .expect("probe evidence rows")
+        .clone();
+    let mut second_contrast = rows[0].clone();
+    second_contrast["evidence_id"] = serde_json::json!("JUC2200054820.hg.1.second");
+    second_contrast["contrast"] = serde_json::json!("synthetic_second_vs_control");
+    second_contrast["logfc"] = serde_json::json!(2.4);
+    let mut missing_effect = rows[0].clone();
+    missing_effect["evidence_id"] = serde_json::json!("JUC2200054820.hg.1.missing");
+    missing_effect["contrast"] = serde_json::json!("synthetic_missing_vs_control");
+    missing_effect["logfc"] = serde_json::Value::Null;
+    let ordered_rows = vec![
+        rows[0].clone(),
+        second_contrast.clone(),
+        missing_effect,
+        rows[1].clone(),
+    ];
+    multi_contrast["evidence_rows"] = serde_json::Value::Array(ordered_rows.clone());
+    let ordered_path = temp.path().join("probe_multi_contrast_ordered.json");
+    fs::write(
+        &ordered_path,
+        serde_json::to_vec_pretty(&multi_contrast).expect("serialize multi-contrast fixture"),
+    )
+    .expect("write multi-contrast fixture");
+    multi_contrast["evidence_rows"] =
+        serde_json::Value::Array(ordered_rows.into_iter().rev().collect());
+    let reversed_path = temp.path().join("probe_multi_contrast_reversed.json");
+    fs::write(
+        &reversed_path,
+        serde_json::to_vec_pretty(&multi_contrast).expect("serialize reversed fixture"),
+    )
+    .expect("write reversed fixture");
+
+    let contrast_component = |path: &Path| {
+        let view = engine
+            .inspect_feature_expert(
+                "patz1_isoform_evidence",
+                &FeatureExpertTarget::IsoformEvidence {
+                    request: GeneIsoformEvidenceRequest {
+                        panel_id: "patz1_synthetic_v1".to_string(),
+                        annotation_release: Some("Ensembl116-like synthetic model".to_string()),
+                        probe_evidence_paths: vec![path.to_string_lossy().to_string()],
+                        ..Default::default()
+                    },
+                },
+            )
+            .expect("inspect multi-contrast evidence");
+        let FeatureExpertView::IsoformEvidence(report) = view else {
+            panic!("expected multi-contrast isoform evidence");
+        };
+        report
+            .junctions
+            .iter()
+            .find(|row| row.junction_id == "JCT:GRCh38.p14:31325860-31325979:-")
+            .expect("probe-mapped junction")
+            .components
+            .responsiveness
+            .clone()
+    };
+    let ordered_component = contrast_component(&ordered_path);
+    let reversed_component = contrast_component(&reversed_path);
+    assert_eq!(
+        ordered_component.measurements, reversed_component.measurements,
+        "component measurements must be independent of evidence-row order"
+    );
+    assert_eq!(ordered_component.measurements.len(), 2);
+    assert!(
+        ordered_component
+            .measurements
+            .iter()
+            .all(|measurement| measurement.value != Some(0.0)),
+        "missing effects must remain missing rather than becoming zero"
+    );
+    assert_eq!(
+        ordered_component
+            .measurements
+            .iter()
+            .filter_map(|measurement| measurement.condition.as_deref())
+            .collect::<Vec<_>>(),
+        vec!["synthetic_case_vs_control", "synthetic_second_vs_control"]
+    );
+    assert_eq!(ordered_component.value, None);
+    assert_eq!(ordered_component.unit.as_deref(), Some("logFC"));
+
     let mut wildcard_request = request.clone();
     wildcard_request.occupancy_track_names = vec!["*".to_string()];
     let wildcard_view = engine
@@ -20769,7 +20924,7 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
         )
         .expect("render isoform evidence SVG");
     let svg = fs::read_to_string(svg_path).expect("read rendered SVG");
-    assert!(svg.contains("gentle.gene_isoform_evidence.v1"));
+    assert!(svg.contains(GENE_ISOFORM_EVIDENCE_SCHEMA));
     assert!(svg.contains("PATZ1 isoform evidence"));
     assert!(svg.contains("5' -&gt; 3'") || svg.contains("5' -> 3'"));
     assert!(svg.contains("data-gentle-occupancy-lane"));
@@ -20971,6 +21126,161 @@ fn gene_isoform_evidence_inspector_composes_gene_locus_evidence_for_patz1_minus_
     assert_eq!(locus_svg.matches("data-gentle-assay-junction").count(), 1);
     assert!(locus_svg.contains("Evidence provenance"));
     assert!(locus_svg.contains("data-gentle-provenance-source"));
+}
+
+#[test]
+fn gene_transcript_assay_routine_composes_existing_reports_without_rerunning_them() {
+    let temp = tempdir().expect("routine tempdir");
+    let isoform_path = temp.path().join("isoform_evidence.json");
+    let isoform_report = GeneIsoformEvidenceReport {
+        schema: GENE_ISOFORM_EVIDENCE_SCHEMA.to_string(),
+        seq_id: "synthetic_gene".to_string(),
+        gene_symbol: "GENE1".to_string(),
+        panel_id: "gene1_panel".to_string(),
+        annotation_release: Some("Synthetic release 1".to_string()),
+        exon_families: vec![GeneIsoformExonFamilyRow {
+            exon_family_id: "EXF:synthetic".to_string(),
+            specificity_class: "shared".to_string(),
+            recommendation: GeneIsoformRecommendation {
+                tier: GeneIsoformRecommendationTier::AnnotationCandidate,
+                recommended_use: "routine_common_region_screen".to_string(),
+                rule: "synthetic annotation rule".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let isoform_bytes =
+        serde_json::to_vec_pretty(&isoform_report).expect("serialize isoform evidence");
+    fs::write(&isoform_path, &isoform_bytes).expect("write isoform evidence");
+    let isoform_digest = crate::digest_utils::sha256_prefixed_bytes(&isoform_bytes);
+
+    let panel = TranscriptAssayPanelReport {
+        schema: TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA.to_string(),
+        report_id: "gene1_common_control".to_string(),
+        source_seq_id: "synthetic_gene".to_string(),
+        assay_kind: TranscriptAssayKind::SybrQpcr,
+        objective: TranscriptAssayPanelObjective::PanTranscript,
+        assay_tier: TranscriptAssayUseTier::Unspecified,
+        completion_status: TranscriptAssayPanelCompletionStatus::Complete,
+        selected_assays: vec![TranscriptAssayPanelAssay {
+            assay_id: "assay_common_1".to_string(),
+            rank: 1,
+            assay_kind: TranscriptAssayKind::SybrQpcr,
+            ..Default::default()
+        }],
+        order_ready_primers: vec![TranscriptAssayOrderPrimer {
+            line_id: "primer_common_f".to_string(),
+            assay_id: "assay_common_1".to_string(),
+            assay_rank: 1,
+            name: "GENE1_common_F".to_string(),
+            role: "forward".to_string(),
+            sequence_5_to_3: "ACGTACGTACGTACGTACGT".to_string(),
+            length_nt: 20,
+        }],
+        ..Default::default()
+    };
+    let mut engine = GentleEngine::default();
+    let mut store = engine.read_primer_design_store();
+    store
+        .transcript_assay_panels
+        .insert(panel.report_id.clone(), panel);
+    engine
+        .write_primer_design_store(store)
+        .expect("persist synthetic transcript-assay panel");
+
+    let output_path = temp.path().join("routine.json");
+    let state_before = serde_json::to_value(engine.state()).expect("serialize state before");
+    let result = engine
+        .apply(Operation::ComposeGeneTranscriptAssayRoutine {
+            request: GeneTranscriptAssayRoutineRequest {
+                label: "GENE1 validation routine".to_string(),
+                isoform_evidence_path: isoform_path.to_string_lossy().to_string(),
+                expected_isoform_evidence_sha256: Some(isoform_digest.clone()),
+                transcript_assay_panel_report_ids: vec!["gene1_common_control".to_string()],
+                ..Default::default()
+            },
+            path: Some(output_path.to_string_lossy().to_string()),
+        })
+        .expect("compose gene transcript-assay routine");
+    let state_after = serde_json::to_value(engine.state()).expect("serialize state after");
+    assert_eq!(
+        state_before, state_after,
+        "composition must remain a pure read"
+    );
+    let routine = result
+        .gene_transcript_assay_routine
+        .expect("routine report");
+    assert_eq!(routine.schema, GENE_TRANSCRIPT_ASSAY_ROUTINE_SCHEMA);
+    assert_eq!(routine.isoform_evidence_sha256, isoform_digest);
+    assert_eq!(routine.assay_panels.len(), 1);
+    assert_eq!(
+        routine.assay_panels[0].role,
+        GeneTranscriptAssayRoutinePanelRole::CommonControl
+    );
+    assert_eq!(routine.assay_panels[0].specificity_status, None);
+    assert!(!routine.assay_panels[0].specificity_accepted);
+    assert_eq!(routine.order_ready_primers.len(), 1);
+    assert!(output_path.is_file());
+
+    let wrapped_isoform_path = temp.path().join("isoform_evidence_view.json");
+    let wrapped_isoform_bytes =
+        serde_json::to_vec_pretty(&FeatureExpertView::IsoformEvidence(isoform_report.clone()))
+            .expect("serialize wrapped isoform evidence");
+    fs::write(&wrapped_isoform_path, &wrapped_isoform_bytes)
+        .expect("write wrapped isoform evidence");
+    let wrapped_isoform_digest = crate::digest_utils::sha256_prefixed_bytes(&wrapped_isoform_bytes);
+    let wrapped_result = engine
+        .apply(Operation::ComposeGeneTranscriptAssayRoutine {
+            request: GeneTranscriptAssayRoutineRequest {
+                label: "GENE1 wrapped validation routine".to_string(),
+                isoform_evidence_path: wrapped_isoform_path.to_string_lossy().to_string(),
+                expected_isoform_evidence_sha256: Some(wrapped_isoform_digest.clone()),
+                transcript_assay_panel_report_ids: vec!["gene1_common_control".to_string()],
+                ..Default::default()
+            },
+            path: None,
+        })
+        .expect("compose from wrapped feature-expert isoform evidence");
+    let wrapped_routine = wrapped_result
+        .gene_transcript_assay_routine
+        .expect("wrapped routine report");
+    assert_eq!(
+        wrapped_routine.isoform_evidence_sha256,
+        wrapped_isoform_digest
+    );
+    assert_eq!(wrapped_routine.gene_symbol, "GENE1");
+
+    let error = engine
+        .apply(Operation::ComposeGeneTranscriptAssayRoutine {
+            request: GeneTranscriptAssayRoutineRequest {
+                label: "stale routine".to_string(),
+                isoform_evidence_path: isoform_path.to_string_lossy().to_string(),
+                expected_isoform_evidence_sha256: Some("sha256:stale".to_string()),
+                transcript_assay_panel_report_ids: vec!["gene1_common_control".to_string()],
+                ..Default::default()
+            },
+            path: None,
+        })
+        .expect_err("stale isoform-evidence digest must be rejected");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("expected 'sha256:stale'"));
+
+    let empty_report_path = temp.path().join("empty_report.json");
+    fs::write(&empty_report_path, "{}").expect("write empty report");
+    let error = engine
+        .apply(Operation::ComposeGeneTranscriptAssayRoutine {
+            request: GeneTranscriptAssayRoutineRequest {
+                label: "invalid empty report".to_string(),
+                isoform_evidence_path: empty_report_path.to_string_lossy().to_string(),
+                ..Default::default()
+            },
+            path: None,
+        })
+        .expect_err("default-filled empty JSON must not be accepted as isoform evidence");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("missing its schema or source sequence id"));
 }
 
 #[test]

@@ -7098,6 +7098,17 @@ fn parse_primers_seed_from_feature_and_splicing() {
         ShellCommand::PrimersExportTranscriptAssayPanel { report_id, path }
             if report_id == "panel_v2" && path == "panel.json"
     ));
+    let routine = parse_shell_line(
+        r#"primers compose-gene-assay-routine '{"label":"PATZ1 validation","isoform_evidence_path":"patz1_isoforms.json","expected_isoform_evidence_sha256":"sha256:abc","transcript_assay_panel_report_ids":["common","junction","endpoint"]}' --path routine.json"#,
+    )
+    .expect("parse gene transcript-assay routine");
+    assert!(matches!(
+        routine,
+        ShellCommand::PrimersComposeGeneTranscriptAssayRoutine { request_json, path }
+            if request_json.contains("PATZ1 validation")
+                && request_json.contains("sha256:abc")
+                && path.as_deref() == Some("routine.json")
+    ));
 
     let ordered_cdna = parse_shell_line(
         "primers test-cdna-pcr seq_a 17 --forward AAACCC --reverse CCCAAG --transcript-order antisense_first_exon --map-coordinate-mode genomic_aligned --svg ordered.svg --materialize-products --product-output-prefix cdna_products --product-gel-svg products.gel.svg --product-gel-ladder \"NEB 100bp DNA Ladder\"",
@@ -9198,10 +9209,26 @@ fn write_probe_region_output_fixture(out: &Path) {
         r#"{
   "schema": "gentle.probe_region_backend_provenance.v1",
   "backend": "r_oligo",
+  "r_version": "R version 4.6.0 (synthetic)",
+  "package_versions": {
+    "oligo": "1.74.0",
+    "limma": "3.66.0",
+    "pd.clariom.d.human": "3.14.1"
+  },
+  "analysis_method_version": "probe_regions_oligo_rma_v1",
   "platform_package": "pd.clariom.d.human",
   "coordinate_system": "hg38",
   "genome_build": "GRCh38",
   "normalization": "rma",
+  "input_fingerprints": [{
+    "path": "AdGFP_1.CEL",
+    "role": "cel",
+    "exists": true,
+    "is_file": true,
+    "size_bytes": 123,
+    "modified_unix_seconds": 456,
+    "sha256": "sha256:synthetic"
+  }],
   "artifacts": ["region_intensity_chrom_order.csv"]
 }"#,
     )
@@ -9242,6 +9269,22 @@ fn execute_arrays_inspect_probe_region_output_summarizes_helper_outputs() {
     assert_eq!(
         run.output["inspection"]["backend"].as_str(),
         Some("r_oligo")
+    );
+    assert_eq!(
+        run.output["inspection"]["r_version"].as_str(),
+        Some("R version 4.6.0 (synthetic)")
+    );
+    assert_eq!(
+        run.output["inspection"]["package_versions"]["oligo"].as_str(),
+        Some("1.74.0")
+    );
+    assert_eq!(
+        run.output["inspection"]["analysis_method_version"].as_str(),
+        Some("probe_regions_oligo_rma_v1")
+    );
+    assert_eq!(
+        run.output["inspection"]["input_fingerprints"][0]["sha256"].as_str(),
+        Some("sha256:synthetic")
     );
     assert_eq!(
         run.output["inspection"]["coordinate_system"].as_str(),

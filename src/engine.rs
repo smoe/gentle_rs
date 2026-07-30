@@ -584,18 +584,20 @@ pub use crate::feature_expert::{
     CDNA_EST_EVIDENCE_RESOURCE_SCHEMA, CdnaEstEvidenceKind, CdnaEstEvidenceRecord,
     CdnaEstEvidenceResource, FeatureExpertTarget, FeatureExpertView,
     GENE_ISOFORM_EVIDENCE_INSTRUCTION, GENE_ISOFORM_EVIDENCE_SCHEMA,
-    GENE_LOCUS_EVIDENCE_DISPLAY_INSTRUCTION, GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA,
-    GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA, GeneIsoformAssayCandidate, GeneIsoformEvidenceComponent,
-    GeneIsoformEvidenceComponents, GeneIsoformEvidenceItem, GeneIsoformEvidenceProvenanceSource,
+    GENE_ISOFORM_EVIDENCE_SCHEMA_V1, GENE_LOCUS_EVIDENCE_DISPLAY_INSTRUCTION,
+    GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA, GENE_LOCUS_OCCUPANCY_LAYOUT_SCHEMA,
+    GeneIsoformAssayCandidate, GeneIsoformEvidenceComponent, GeneIsoformEvidenceComponents,
+    GeneIsoformEvidenceItem, GeneIsoformEvidenceMeasurement, GeneIsoformEvidenceProvenanceSource,
     GeneIsoformEvidenceReport, GeneIsoformEvidenceRequest, GeneIsoformExonFamilyRow,
     GeneIsoformFamilyRow, GeneIsoformJunctionRow, GeneIsoformOccupancyInterval,
-    GeneIsoformOccupancyLane, GeneIsoformTranscriptRow, GeneLocusAssayOverlay, GeneLocusCodonKind,
-    GeneLocusCodonMarker, GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest,
-    GeneLocusMotifHit, GeneLocusMotifTrack, GeneLocusOccupancyGroup,
-    GeneLocusOccupancyGroupRequest, GeneLocusOccupancyLane, GeneLocusOccupancyLaneRequest,
-    GeneLocusOccupancyLaneRole, GeneLocusOccupancyLayout, GeneLocusOccupancyScaleMode,
-    GeneLocusProbeClass, GeneLocusProbeEffectContrast, GeneLocusProbeEffectOverlay,
-    GeneLocusProbeEffectValue, GeneLocusTranscriptMetrics, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
+    GeneIsoformOccupancyLane, GeneIsoformRecommendation, GeneIsoformRecommendationTier,
+    GeneIsoformTranscriptRow, GeneLocusAssayOverlay, GeneLocusCodonKind, GeneLocusCodonMarker,
+    GeneLocusEvidenceDisplayReport, GeneLocusEvidenceDisplayRequest, GeneLocusMotifHit,
+    GeneLocusMotifTrack, GeneLocusOccupancyGroup, GeneLocusOccupancyGroupRequest,
+    GeneLocusOccupancyLane, GeneLocusOccupancyLaneRequest, GeneLocusOccupancyLaneRole,
+    GeneLocusOccupancyLayout, GeneLocusOccupancyScaleMode, GeneLocusProbeClass,
+    GeneLocusProbeEffectContrast, GeneLocusProbeEffectOverlay, GeneLocusProbeEffectValue,
+    GeneLocusTranscriptMetrics, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
     IsoformArchitectureCdsAaSegment, IsoformArchitectureExpertView,
     IsoformArchitectureProteinDomain, IsoformArchitectureProteinLane,
     IsoformArchitectureTranscriptLane, IsoformEvidenceAssessmentStatus, IsoformEvidenceSourceKind,
@@ -644,6 +646,7 @@ const TRANSCRIPT_ASSAY_PANEL_SPECIFICITY_ACCEPTANCE_SCHEMA: &str =
     "gentle.transcript_assay_panel_specificity_acceptance.v2";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
 pub const TRANSCRIPT_ASSAY_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_assay_panel.v2";
+pub const GENE_TRANSCRIPT_ASSAY_ROUTINE_SCHEMA: &str = "gentle.gene_transcript_assay_routine.v1";
 pub const PRIMER_PAIR_SUMMARY_SCHEMA: &str = "gentle.primer_pair_summary.v2";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
     "gentle.restriction_cloning_pcr_handoff.v1";
@@ -4252,6 +4255,13 @@ pub enum Operation {
         specificity: Option<TranscriptAssaySpecificityRequest>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         report_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    /// Compose existing isoform evidence and transcript-assay reports without
+    /// rerunning design, specificity, or external analysis.
+    ComposeGeneTranscriptAssayRoutine {
+        request: GeneTranscriptAssayRoutineRequest,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },

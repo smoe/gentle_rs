@@ -1455,7 +1455,14 @@ Behavior notes:
   contrast TSVs, provenance JSON, and a normalized matrix manifest. It
   currently supports `--normalization rma`; the Rust preflight emits an advisory
   command only for compatible explicit CEL requests, and users still run it
-  explicitly.
+  explicitly. The helper records `r_version`, exact `package_versions`,
+  `analysis_method_version`, and input fingerprints in provenance.
+  `arrays inspect-probe-region-output` exposes these fields through the existing
+  `gentle.probe_region_output_inspection.v1` contract. GENtle reports missing
+  R/Bioconductor dependencies but never installs them. A direct R invocation
+  records input path, size, and modification time; execution through
+  `arrays run-probe-region-backend` enriches the finalized provenance with
+  Rust-computed SHA-256 input fingerprints.
 - `scripts/probe_regions_affy.R` is the matching explicit R/`affy` helper for
   legacy 3' IVT/CDF arrays. It consumes explicit CEL paths, a local CDF package
   or CDF name, optional metadata, optional Bioconductor annotation package, and
@@ -3418,8 +3425,11 @@ external coding agent runtime, see:
 - gene isoform evidence inspection reuses the shared feature-expert routes:
   - `inspect-feature-expert SEQ_ID isoform-evidence PANEL_ID [--annotation-release LABEL] [--rna-read-report-id ID]... [--probe-evidence PATH]... [--cdna-est-resource PATH]... [--expression-tsv PATH] [--occupancy-track NAME]... [--qpcr-report-id ID]...`
   - `render-feature-expert-svg SEQ_ID isoform-evidence PANEL_ID [same evidence options] OUTPUT.svg`
-  - the report schema is `gentle.gene_isoform_evidence.v1`; inspection is a
+  - the report schema is `gentle.gene_isoform_evidence.v2`; inspection is a
     pure read and never creates qPCR assays or changes the sequence
+  - legacy `gentle.gene_isoform_evidence.v1` payloads remain readable. Their
+    new per-measurement and recommendation fields default empty and should be
+    regenerated before contrast-aware interpretation
   - `transcripts[]` keeps biological `exon_family_ids_5_to_3` separate from
     `exon_family_ids_genomic_ascending`, which is essential for minus-strand
     genes
@@ -3431,7 +3441,19 @@ external coding agent runtime, see:
     independent components: specificity, dataset-relative abundance,
     contrast-specific responsiveness, and assayability. Missing evidence is
     `unknown` or `not_evaluated`, never numeric zero, and no aggregate utility
-    score is inferred
+    score is inferred. Every abundance/responsiveness/assayability component
+    retains `measurements[]` by evidence id, condition, value, and unit.
+    Multiple measurements are never reduced by maximum magnitude; incompatible
+    units remain separate and produce a warning instead of a numeric summary
+  - `recommendation` is a deterministic rule-based tier (`assay_ready`,
+    `evidence_prioritized`, `annotation_candidate`, or `not_evaluated`) plus
+    recommended use and evidence ids. It is triage guidance, not a weighted
+    biological score
+  - `transcript_metrics[]` records exact annotation-derived protein identity
+    SHA-256 and predicted unmodified molecular weight when a complete,
+    unambiguous translated CDS is available. Ambiguous residues make mass
+    unavailable rather than receiving an average residue mass; predicted mass
+    is not evidence of protein expression or gel separation
   - `evidence_items[]` records typed source, method, provenance, target ids,
     family ids, and one of `observed`, `candidate`, `constraint_only`,
     `not_evaluated`, or `unknown`. Array-probe overlap is always
@@ -3465,7 +3487,7 @@ external coding agent runtime, see:
   - `inspect-feature-expert SEQ_ID gene-locus-evidence PANEL_ID [isoform-evidence options] [--probe-effect-table PATH]... [--probe-effect-contrast TOKEN]... [--probe-effect-coordinate-system ID] [--upstream-bp N] [--downstream-bp N] [--occupancy-layout JSON_OR_@FILE | --occupancy-track NAME ...] [--motif TOKEN]... [--score-kind KIND] [--motif-threshold N] [--motif-top-hits N] [--allow-negative]`
   - `render-feature-expert-svg SEQ_ID gene-locus-evidence PANEL_ID [same options] OUTPUT.svg`
   - the pure-read result schema is `gentle.gene_locus_evidence_display.v1`.
-    It embeds the `gentle.gene_isoform_evidence.v1` ledger and adds
+    It embeds the `gentle.gene_isoform_evidence.v2` ledger and adds
     `transcript_metrics[]`, annotation-backed `codon_markers[]`, optional
     `probe_effect_overlays[]`, grouped `occupancy_groups[]`, continuous
     `motif_tracks[]`, deduplicated junction `assay_overlays[]`, a combined
@@ -8695,6 +8717,28 @@ Primer-design shell command family (implemented):
     project metadata store without changing that store schema. The individual
     report carries the v2 schema above and is available through list/show/export
     shell routes.
+- Gene transcript-assay routine composition:
+  - `primers compose-gene-assay-routine REQUEST_JSON_OR_@FILE [--path OUTPUT.json]`
+    produces `gentle.gene_transcript_assay_routine.v1`
+  - the request names an exported `gentle.gene_isoform_evidence.v1|v2` path,
+    optional expected SHA-256, and persisted transcript-assay panel report ids.
+    The input may be either a bare evidence report or the tagged
+    `FeatureExpertView::IsoformEvidence` JSON emitted by the shared expert
+    inspection path; the digest always covers the original input bytes
+  - composition is a pure read: it does not rerun primer design, cDNA product
+    tests, BLAST, or e-PCR and does not mutate the project
+  - the report carries the isoform-evidence digest, current canonical panel
+    digests, existing specificity acceptance status, uncovered transcript
+    classes, endpoint/junction/common-control roles, order-table rows, and a
+    conservative experimental sequence. Missing specificity is represented by
+    absent status plus `specificity_accepted = false`, never as pass
+  - a supplied expected isoform-evidence digest is checked before composition;
+    specificity acceptance remains bound to the existing panel digest and is
+    rejected as stale when those values differ
+  - antibody/epitope compatibility and scalar evidence weighting are not
+    inferred in v1. Additive antibody evidence requires a separately
+    provenance-backed contract rather than guessing from protein mass or probe
+    intensity
 - Experimental assay handoff schemas:
   - `gentle.experimental_assay_handoff.v1` is a deterministic, read-only
     per-panel package. `BuildExperimentalAssayHandoff` consumes one persisted
