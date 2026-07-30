@@ -347,3 +347,22 @@ available only by report id; domain reports embedding the source resolution do
 not create a second registry. The canonical collection membership fingerprint
 continues to lock membership/order only and must not be interpreted as a
 context or biological-input fingerprint.
+
+## DEC-031: Ortholog Context Binding Extends The Specialized Resource
+
+Status: active
+
+The existing offline `gentle.ortholog_resource.v1` remains the authoritative
+ortholog mapping contract. Optional source/target context ids bind each
+directional endpoint to the resource's biological-context registry, and
+resolved cohort reports copy referenced contexts so they remain portable.
+Explicit organism or genome conflicts fail before genome-catalog work.
+
+Orthology type and confidence are open typed string vocabularies: GENtle
+recognizes canonical cardinality/confidence values while preserving unknown
+provider-specific text exactly. Legacy symbol-only rows remain accepted, but a
+matching symbol is never treated as relationship or functional-equivalence
+evidence. The shipped `reject` and deterministic warning-bearing `first`
+ambiguity policies remain unchanged. A generic relation hierarchy, paralog
+contract, or representation-preserving ambiguity mode requires a concrete
+resolver/consumer and is not inferred from this ortholog retrofit.

@@ -4187,6 +4187,55 @@ fn write_ortholog_test_resource(root: &Path, include_ambiguous_mouse_row: bool) 
     path.to_string_lossy().to_string()
 }
 
+fn write_context_bound_ortholog_test_resource(root: &Path, target_genome_id: &str) -> String {
+    let path = root.join("context_bound_ortholog_resource.json");
+    fs::write(
+        &path,
+        format!(
+            r#"{{
+  "schema": "{}",
+  "id": "tp73_context_bound_orthologs",
+  "contexts": [
+    {{
+      "context_id": "human_context",
+      "organism": "Homo sapiens",
+      "genome_id": "HumanToy",
+      "annotation_source": "synthetic_gtf"
+    }},
+    {{
+      "context_id": "mouse_context",
+      "organism": "Mus musculus",
+      "genome_id": "{}",
+      "annotation_source": "synthetic_gtf"
+    }}
+  ],
+  "species_aliases": [
+    {{"species": "Homo sapiens", "aliases": ["human"]}},
+    {{"species": "Mus musculus", "aliases": ["mouse"]}}
+  ],
+  "rows": [
+    {{
+      "source_species": "Homo sapiens",
+      "source_context_id": "human_context",
+      "source_gene_symbol": "TP73",
+      "target_species": "Mus musculus",
+      "target_context_id": "mouse_context",
+      "target_gene_symbol": "Trp73",
+      "orthology_type": "ortholog_one2one",
+      "confidence": "provider_reviewed",
+      "source": "synthetic context-bound table",
+      "evidence": ["symbol_keyed_mapping_retained"]
+    }}
+  ]
+}}"#,
+            gentle_protocol::ORTHOLOG_RESOURCE_SCHEMA,
+            target_genome_id
+        ),
+    )
+    .expect("write context-bound ortholog resource");
+    path.to_string_lossy().to_string()
+}
+
 fn gene_set_cutrun_promoter_cohort(
     windows: Vec<GeneSetPromoterWindow>,
 ) -> GeneSetPromoterCohortReport {
@@ -5436,8 +5485,7 @@ fn build_gene_set_promoter_cohort_emits_persisted_collection_lift_report() {
         CollectionContextRequirement::Homogeneous
     );
     assert_eq!(
-        generic.biological_contexts,
-        cohort.gene_set_resolution.biological_contexts,
+        generic.biological_contexts, cohort.gene_set_resolution.biological_contexts,
         "the generic report needs its own portable copy of the source registry"
     );
     assert_eq!(
@@ -5632,6 +5680,7 @@ fn resolve_ortholog_promoter_cohort_uses_aliases_and_strand_geometry() {
     assert_eq!(anchor.promoter_end_1based, 1621);
     assert_eq!(anchor.tss_position_0based, 100);
     assert!(anchor.promoter_sequence.is_some());
+    assert!(anchor.context_id.is_some());
 
     let mouse = cohort
         .rows
@@ -5648,6 +5697,111 @@ fn resolve_ortholog_promoter_cohort_uses_aliases_and_strand_geometry() {
     assert_eq!(mouse.orthology_type.as_deref(), Some("one_to_one"));
     assert_eq!(mouse.confidence.as_deref(), Some("high"));
     assert_eq!(mouse.orthology_evidence, vec!["orthology_one2one"]);
+    assert!(mouse.context_id.is_some());
+    assert_eq!(
+        mouse.orthology_source_context_id.as_deref(),
+        anchor.context_id.as_deref()
+    );
+    assert_eq!(
+        mouse.orthology_target_context_id.as_deref(),
+        mouse.context_id.as_deref()
+    );
+    for row in &cohort.rows {
+        cohort
+            .biological_contexts
+            .context(row.context_id.as_deref().expect("resolved row context"))
+            .expect("row context resolves from report registry");
+    }
+}
+
+#[test]
+fn context_bound_ortholog_resource_preserves_symbol_resolution_and_context_provenance() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let catalog_path = prepare_ortholog_test_genomes(root, &mut engine);
+    let resource_path = write_context_bound_ortholog_test_resource(root, "MouseToy");
+    let target_genome_ids = BTreeMap::from([("mouse".to_string(), "MouseToy".to_string())]);
+
+    let cohort = engine
+        .resolve_ortholog_promoter_cohort(
+            "human",
+            "HumanToy",
+            "TP73",
+            &["mouse".to_string()],
+            &target_genome_ids,
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Reject,
+            GeneSetCohortRelationship::Unspecified,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("resolve context-bound symbol mapping");
+
+    assert_eq!(cohort.resolved_promoter_count, 2);
+    assert_eq!(cohort.biological_contexts.contexts.len(), 2);
+    let anchor = cohort
+        .rows
+        .iter()
+        .find(|row| row.role == OrthologPromoterRole::Anchor)
+        .expect("anchor row");
+    let target = cohort
+        .rows
+        .iter()
+        .find(|row| row.role == OrthologPromoterRole::Target)
+        .expect("target row");
+    assert_eq!(anchor.context_id.as_deref(), Some("human_context"));
+    assert_eq!(target.context_id.as_deref(), Some("mouse_context"));
+    assert_eq!(
+        target.orthology_source_context_id.as_deref(),
+        Some("human_context")
+    );
+    assert_eq!(
+        target.orthology_target_context_id.as_deref(),
+        Some("mouse_context")
+    );
+    assert_eq!(target.gene_symbol.as_deref(), Some("Trp73"));
+    assert_eq!(
+        target
+            .orthology_type
+            .as_ref()
+            .and_then(OrthologyType::cardinality),
+        Some(OrthologyCardinality::OneToOne)
+    );
+    assert_eq!(target.confidence.as_deref(), Some("provider_reviewed"));
+}
+
+#[test]
+fn ortholog_context_genome_mismatch_fails_before_catalog_lookup() {
+    let td = tempdir().expect("tempdir");
+    let resource_path = write_context_bound_ortholog_test_resource(td.path(), "WrongMouseGenome");
+    let engine = GentleEngine::new();
+    let target_genome_ids = BTreeMap::from([("mouse".to_string(), "MouseToy".to_string())]);
+
+    let error = engine
+        .resolve_ortholog_promoter_cohort(
+            "human",
+            "HumanToy",
+            "TP73",
+            &["mouse".to_string()],
+            &target_genome_ids,
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Reject,
+            GeneSetCohortRelationship::Unspecified,
+            Some("/catalog/that/does/not/exist.json"),
+            None,
+        )
+        .expect_err("context mismatch must fail before catalog lookup");
+
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("WrongMouseGenome"));
+    assert!(error.message.contains("MouseToy"));
 }
 
 #[test]
@@ -8949,7 +9103,9 @@ fn collection_primer_specificity_matches_direct_per_member_assessment() {
     ];
     let mut store = engine.read_primer_design_store();
     for report in &design_reports {
-        store.reports.insert(report.report_id.clone(), report.clone());
+        store
+            .reports
+            .insert(report.report_id.clone(), report.clone());
     }
     engine
         .write_primer_design_store(store)
@@ -9039,15 +9195,16 @@ fn collection_primer_specificity_matches_direct_per_member_assessment() {
             && row.error.is_none()
             && row.member.source_provenance.iter().any(|source| {
                 source.source_kind == "primer_design_report_binding"
-                    && source.note.as_deref().is_some_and(|note| note.contains("explicit"))
+                    && source
+                        .note
+                        .as_deref()
+                        .is_some_and(|note| note.contains("explicit"))
             })
             && collection
                 .biological_contexts
                 .resolve(row.member.context_id.as_deref(), None)
                 .is_ok_and(|context| {
-                    context.is_some_and(|context| {
-                        context.genome_id.as_deref() == Some("ToyGenome")
-                    })
+                    context.is_some_and(|context| context.genome_id.as_deref() == Some("ToyGenome"))
                 })
     }));
 
@@ -9088,10 +9245,9 @@ fn collection_primer_specificity_matches_direct_per_member_assessment() {
     )
     .expect("auto-resolve one primer report per project sequence")
     .output;
-    let project_sequence_map = serde_json::from_value::<CollectionOperationReport>(
-        project_sequence_map["report"].clone(),
-    )
-    .expect("project-sequence collection report");
+    let project_sequence_map =
+        serde_json::from_value::<CollectionOperationReport>(project_sequence_map["report"].clone())
+            .expect("project-sequence collection report");
     assert!(project_sequence_map.per_member_status.iter().all(|row| {
         row.outcome == CollectionMemberOutcome::Succeeded
             && row.member.source_provenance.iter().any(|source| {
@@ -9140,8 +9296,7 @@ fn collection_primer_specificity_matches_direct_per_member_assessment() {
             ..BiologicalContext::default()
         });
     mixed_resolution.resolved_members[1].context_id = Some("other_genome".to_string());
-    let mixed_resolution_id =
-        GentleEngine::gene_set_resolution_artifact_id(&mixed_resolution);
+    let mixed_resolution_id = GentleEngine::gene_set_resolution_artifact_id(&mixed_resolution);
     engine
         .upsert_gene_set_resolution_artifact(mixed_resolution)
         .expect("persist mixed-context fixture");
@@ -21514,7 +21669,11 @@ fn gene_transcript_assay_routine_composes_existing_reports_without_rerunning_the
         })
         .expect_err("default-filled empty JSON must not be accepted as isoform evidence");
     assert_eq!(error.code, ErrorCode::InvalidInput);
-    assert!(error.message.contains("missing its schema or source sequence id"));
+    assert!(
+        error
+            .message
+            .contains("missing its schema or source sequence id")
+    );
 }
 
 #[test]

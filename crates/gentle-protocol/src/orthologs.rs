@@ -5,9 +5,12 @@
 //! evidence-separated comparison reports for sequence, TFBS, expression, and
 //! CUT&RUN/occupancy signals.
 
-use crate::{GeneSetCohortRelationship, GeneSetCohortRelationshipFlag};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use crate::{
+    BiologicalContextRegistry, BiologicalContextResolutionError, GeneSetCohortRelationship,
+    GeneSetCohortRelationshipFlag,
+};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::{collections::BTreeMap, fmt, ops::Deref};
 
 /// Local offline ortholog mapping resource schema.
 pub const ORTHOLOG_RESOURCE_SCHEMA: &str = "gentle.ortholog_resource.v1";
@@ -15,6 +18,206 @@ pub const ORTHOLOG_RESOURCE_SCHEMA: &str = "gentle.ortholog_resource.v1";
 pub const ORTHOLOG_PROMOTER_COHORT_SCHEMA: &str = "gentle.ortholog_promoter_cohort.v1";
 /// Cross-species promoter comparison report schema.
 pub const ORTHOLOG_PROMOTER_COMPARISON_SCHEMA: &str = "gentle.ortholog_promoter_comparison.v1";
+
+/// Canonical cardinality represented by a recognized orthology-type value.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OrthologyCardinality {
+    OneToOne,
+    OneToMany,
+    ManyToOne,
+    ManyToMany,
+}
+
+impl OrthologyCardinality {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OneToOne => "one_to_one",
+            Self::OneToMany => "one_to_many",
+            Self::ManyToOne => "many_to_one",
+            Self::ManyToMany => "many_to_many",
+        }
+    }
+}
+
+/// Open orthology-type vocabulary that preserves provider-specific legacy text.
+///
+/// Known spellings expose a typed cardinality while unknown values round-trip
+/// unchanged. This keeps existing local resources such as `synthetic_ortholog`
+/// valid instead of treating a new vocabulary as a migration gate.
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct OrthologyType(String);
+
+impl OrthologyType {
+    pub const ONE_TO_ONE: &'static str = "one_to_one";
+    pub const ONE_TO_MANY: &'static str = "one_to_many";
+    pub const MANY_TO_ONE: &'static str = "many_to_one";
+    pub const MANY_TO_MANY: &'static str = "many_to_many";
+
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn cardinality(&self) -> Option<OrthologyCardinality> {
+        match normalized_orthology_token(&self.0).as_str() {
+            "one_to_one" | "one2one" | "ortholog_one_to_one" | "ortholog_one2one" => {
+                Some(OrthologyCardinality::OneToOne)
+            }
+            "one_to_many" | "one2many" | "ortholog_one_to_many" | "ortholog_one2many" => {
+                Some(OrthologyCardinality::OneToMany)
+            }
+            "many_to_one" | "many2one" | "ortholog_many_to_one" | "ortholog_many2one" => {
+                Some(OrthologyCardinality::ManyToOne)
+            }
+            "many_to_many" | "many2many" | "ortholog_many_to_many" | "ortholog_many2many" => {
+                Some(OrthologyCardinality::ManyToMany)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl From<String> for OrthologyType {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<&str> for OrthologyType {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl Deref for OrthologyType {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for OrthologyType {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl Serialize for OrthologyType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for OrthologyType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        String::deserialize(deserializer).map(Self)
+    }
+}
+
+/// Canonical confidence tier represented by a recognized confidence value.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OrthologConfidenceLevel {
+    High,
+    Medium,
+    Low,
+}
+
+impl OrthologConfidenceLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::High => "high",
+            Self::Medium => "medium",
+            Self::Low => "low",
+        }
+    }
+}
+
+/// Open ortholog-confidence vocabulary preserving provider-specific values.
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct OrthologConfidence(String);
+
+impl OrthologConfidence {
+    pub const HIGH: &'static str = "high";
+    pub const MEDIUM: &'static str = "medium";
+    pub const LOW: &'static str = "low";
+
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn level(&self) -> Option<OrthologConfidenceLevel> {
+        match normalized_orthology_token(&self.0).as_str() {
+            "high" => Some(OrthologConfidenceLevel::High),
+            "medium" | "moderate" => Some(OrthologConfidenceLevel::Medium),
+            "low" => Some(OrthologConfidenceLevel::Low),
+            _ => None,
+        }
+    }
+}
+
+impl From<String> for OrthologConfidence {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<&str> for OrthologConfidence {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl Deref for OrthologConfidence {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for OrthologConfidence {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl Serialize for OrthologConfidence {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for OrthologConfidence {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        String::deserialize(deserializer).map(Self)
+    }
+}
+
+fn normalized_orthology_token(value: &str) -> String {
+    value.trim().to_ascii_lowercase().replace(['-', ' '], "_")
+}
 
 /// How to handle multiple local ortholog rows for one anchor/target pair.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -83,18 +286,22 @@ pub struct OrthologSpeciesAlias {
 pub struct OrthologMappingRow {
     pub source_species: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_context_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_gene_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_gene_symbol: Option<String>,
     pub target_species: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_context_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_gene_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_gene_symbol: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub orthology_type: Option<String>,
+    pub orthology_type: Option<OrthologyType>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub confidence: Option<String>,
+    pub confidence: Option<OrthologConfidence>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     #[serde(default)]
@@ -110,12 +317,33 @@ pub struct OrthologResource {
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    #[serde(flatten)]
+    pub biological_contexts: BiologicalContextRegistry,
     #[serde(default)]
     pub species_aliases: Vec<OrthologSpeciesAlias>,
     #[serde(default)]
     pub rows: Vec<OrthologMappingRow>,
     #[serde(default)]
     pub warnings: Vec<String>,
+}
+
+impl OrthologResource {
+    /// Validate the registry and every optional row-level context reference.
+    pub fn validate_context_references(&self) -> Result<(), BiologicalContextResolutionError> {
+        self.biological_contexts.validate()?;
+        for row in &self.rows {
+            for context_id in [
+                row.source_context_id.as_deref(),
+                row.target_context_id.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                self.biological_contexts.context(context_id)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Request echoed into a resolved ortholog promoter cohort.
@@ -145,6 +373,8 @@ pub struct OrthologPromoterCohortRequest {
 pub struct OrthologUnresolvedRow {
     pub species: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub genome_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_query: Option<String>,
@@ -159,6 +389,8 @@ pub struct OrthologUnresolvedRow {
 pub struct OrthologPromoterRow {
     pub species: String,
     pub genome_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_id: Option<String>,
     pub role: OrthologPromoterRole,
     pub gene_query: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -180,9 +412,13 @@ pub struct OrthologPromoterRow {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_sequence: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub orthology_type: Option<String>,
+    pub orthology_type: Option<OrthologyType>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub confidence: Option<String>,
+    pub confidence: Option<OrthologConfidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orthology_source_context_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orthology_target_context_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub orthology_source: Option<String>,
     #[serde(default)]
@@ -204,6 +440,8 @@ pub struct OrthologPromoterCohortReport {
     pub request: OrthologPromoterCohortRequest,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ortholog_resource_label: Option<String>,
+    #[serde(flatten)]
+    pub biological_contexts: BiologicalContextRegistry,
     pub resolved_promoter_count: usize,
     pub unresolved_count: usize,
     #[serde(default)]
@@ -375,7 +613,89 @@ mod tests {
         .expect("deserialize resource");
         assert_eq!(resource.rows.len(), 1);
         assert_eq!(resource.rows[0].confidence.as_deref(), Some("high"));
+        assert_eq!(
+            resource.rows[0]
+                .confidence
+                .as_ref()
+                .and_then(OrthologConfidence::level),
+            Some(OrthologConfidenceLevel::High)
+        );
+        assert_eq!(
+            resource.rows[0]
+                .orthology_type
+                .as_ref()
+                .and_then(OrthologyType::cardinality),
+            Some(OrthologyCardinality::OneToOne)
+        );
         assert_eq!(resource.species_aliases[0].aliases, vec!["human"]);
+    }
+
+    #[test]
+    fn ortholog_open_vocabularies_preserve_provider_specific_legacy_text() {
+        let row: OrthologMappingRow = serde_json::from_value(serde_json::json!({
+            "source_species": "Homo sapiens",
+            "source_gene_symbol": "TP73",
+            "target_species": "Mus musculus",
+            "target_gene_symbol": "Trp73",
+            "orthology_type": "synthetic_ortholog",
+            "confidence": "tutorial"
+        }))
+        .expect("deserialize provider-specific values");
+
+        assert_eq!(row.orthology_type.as_deref(), Some("synthetic_ortholog"));
+        assert_eq!(row.confidence.as_deref(), Some("tutorial"));
+        assert_eq!(
+            row.orthology_type
+                .as_ref()
+                .and_then(OrthologyType::cardinality),
+            None
+        );
+        assert_eq!(
+            row.confidence.as_ref().and_then(OrthologConfidence::level),
+            None
+        );
+        let serialized = serde_json::to_value(row).expect("serialize provider-specific values");
+        assert_eq!(serialized["orthology_type"], "synthetic_ortholog");
+        assert_eq!(serialized["confidence"], "tutorial");
+    }
+
+    #[test]
+    fn ortholog_resource_context_references_are_validated() {
+        let mut resource: OrthologResource = serde_json::from_value(serde_json::json!({
+            "schema": ORTHOLOG_RESOURCE_SCHEMA,
+            "contexts": [
+                {
+                    "context_id": "human",
+                    "organism": "Homo sapiens",
+                    "genome_id": "GRCh38"
+                },
+                {
+                    "context_id": "mouse",
+                    "organism": "Mus musculus",
+                    "genome_id": "GRCm39"
+                }
+            ],
+            "rows": [{
+                "source_species": "Homo sapiens",
+                "source_context_id": "human",
+                "source_gene_symbol": "TP73",
+                "target_species": "Mus musculus",
+                "target_context_id": "mouse",
+                "target_gene_symbol": "Trp73"
+            }]
+        }))
+        .expect("deserialize context-bound resource");
+
+        resource
+            .validate_context_references()
+            .expect("known context references");
+        resource.rows[0].target_context_id = Some("unknown".to_string());
+        assert!(matches!(
+            resource.validate_context_references(),
+            Err(BiologicalContextResolutionError::UnknownContextId {
+                context_id
+            }) if context_id == "unknown"
+        ));
     }
 
     #[test]
@@ -402,6 +722,7 @@ mod tests {
         assert!(report.relationship_flags.is_empty());
         assert!(report.rows.is_empty());
         assert!(report.warnings.is_empty());
+        assert!(report.biological_contexts.contexts.is_empty());
     }
 
     #[test]

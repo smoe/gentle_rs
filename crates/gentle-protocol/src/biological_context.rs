@@ -205,7 +205,8 @@ impl BiologicalContextRegistry {
         self.validate()
     }
 
-    fn context(
+    /// Look up one context by its report-local id.
+    pub fn context(
         &self,
         context_id: &str,
     ) -> Result<&BiologicalContext, BiologicalContextResolutionError> {

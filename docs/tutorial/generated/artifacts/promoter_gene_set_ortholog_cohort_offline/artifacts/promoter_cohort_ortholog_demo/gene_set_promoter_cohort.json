@@ -22,6 +22,13 @@
     },
     "review_status": "unreviewed",
     "genome_id": "HumanPromoterToy",
+    "contexts": [
+      {
+        "context_id": "default",
+        "genome_id": "HumanPromoterToy"
+      }
+    ],
+    "default_context_id": "default",
     "genome_catalog_label": "./docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json",
     "contributing_group_ids": [],
     "requested_member_count": 3,
@@ -164,10 +171,18 @@
         "status": "supported",
         "mode": "derive",
         "result_payload_kind": "gentle.gene_set_promoter_cohort.v1"
-      }
+      },
+      "context_requirement": "homogeneous"
     },
     "fingerprint_algorithm": "sha256_canonical_collection_members_v1",
     "collection_membership_fingerprint_sha256": "sha256:5cd20475be651068a21956a02c5511987e3d498a0377018ab71886fde6272e3a",
+    "contexts": [
+      {
+        "context_id": "default",
+        "genome_id": "HumanPromoterToy"
+      }
+    ],
+    "default_context_id": "default",
     "dry_run": false,
     "applied": true,
     "per_member_status": [

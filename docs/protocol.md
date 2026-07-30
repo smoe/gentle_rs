@@ -494,18 +494,39 @@ Behavior notes:
 - `gentle.ortholog_resource.v1` is a local mapping table with
   `source_species`, source gene id/symbol, `target_species`, target gene
   id/symbol, `orthology_type`, `confidence`, `source`, `evidence[]`, and
-  `species_aliases[]`.
+  `species_aliases[]`. Additive context binding uses a flattened
+  `contexts[]` registry plus optional `source_context_id` and
+  `target_context_id` row references; old resources without those fields
+  remain valid.
+- `orthology_type` and `confidence` remain JSON strings for compatibility but
+  deserialize into open typed vocabularies. Canonical one-to-one, one-to-many,
+  many-to-one, and many-to-many spellings expose typed cardinality, and
+  canonical high/medium/low confidence values expose typed levels. Unknown
+  provider or fixture values round-trip exactly rather than being rejected or
+  silently normalized.
 - `ResolveOrthologPromoterCohort` resolves the anchor gene first, maps each
   target species through the local ortholog table, and derives promoter
   windows with the same prepared-genome promoter/TSS resolver used by
   `genomes extract-promoter`.
+- Explicit context references must exist. Their organism and optional
+  `genome_id` must agree with the row and request; conflicts fail before
+  prepared-genome catalog access. When a legacy row has no context ids, the
+  resolver creates deterministic report-local contexts from the requested
+  species/genome pair.
 - Species aliases are normalized for matching. Ambiguous target mappings are
   unresolved by default; `ambiguity_policy=first` chooses the stable first
-  candidate and records a warning.
+  candidate and records a warning. This shipped behavior is unchanged; a
+  future representation-preserving ambiguity mode would be a separate
+  behavioral contract.
 - Resolved rows carry species, genome id, gene id/symbol, transcript id,
   strand, TSS, promoter span, transcription-aligned promoter sequence, and
-  orthology evidence/provenance. Unresolved rows make missing or ambiguous
-  mappings explicit.
+  orthology evidence/provenance. They also refer to a context copied into the
+  cohort report; target rows retain the mapping's oriented source/target
+  context references. Unresolved rows make missing or ambiguous mappings
+  explicit.
+- Symbol-only mappings remain supported for legacy/local resources. A symbol
+  is a lookup key, not evidence of orthology or functional equivalence; those
+  claims remain bound to the row's declared type, source, and evidence.
 - Ortholog promoter cohort and comparison reports may carry an additive
   `relationship` expectation (`manual`, `co_regulated`,
   `anti_co_regulated`, or `unspecified`) plus non-blocking

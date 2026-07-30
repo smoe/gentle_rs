@@ -97,6 +97,13 @@ Sequence collection subject rule (target model):
     promoter windows, fragments, amplicons, and neighboring loci
   - storage collections preserve physical placement through containers,
     arrangements, racks, and future inventory/freezer views
+- Cross-species ortholog mappings remain a specialized, evidence-bearing
+  contract rather than a generic relationship inferred from matching symbols.
+  Mapping endpoints may cite report-owned biological contexts; context
+  agreement constrains taxon/reference interpretation but does not itself
+  establish orthology, paralogy, or functional equivalence. Provider-specific
+  relationship/confidence values remain preservable even when GENtle cannot
+  classify them into a canonical vocabulary.
 - Any operation that is valid for one stored sequence should declare how it
   lifts over a collection before a prominent GUI affordance is added:
   map per member, combine/pool, compare/align, arrange/place, derive new

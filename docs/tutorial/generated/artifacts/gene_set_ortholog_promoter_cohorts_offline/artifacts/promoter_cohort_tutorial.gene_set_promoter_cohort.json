@@ -18,6 +18,13 @@
     },
     "review_status": "unreviewed",
     "genome_id": "TutorialHumanPromoterToy",
+    "contexts": [
+      {
+        "context_id": "default",
+        "genome_id": "TutorialHumanPromoterToy"
+      }
+    ],
+    "default_context_id": "default",
     "gene_group_catalog_label": "./docs/examples/assets/promoter_cohort_tutorial_gene_groups.json",
     "genome_catalog_label": "./docs/examples/assets/promoter_cohort_tutorial_genomes.json",
     "contributing_group_ids": [
@@ -141,10 +148,18 @@
         "status": "supported",
         "mode": "derive",
         "result_payload_kind": "gentle.gene_set_promoter_cohort.v1"
-      }
+      },
+      "context_requirement": "homogeneous"
     },
     "fingerprint_algorithm": "sha256_canonical_collection_members_v1",
     "collection_membership_fingerprint_sha256": "sha256:688ab4ea34e34f3133342bf8c2a94eec0dcf47855726236fbc9299fe45d02038",
+    "contexts": [
+      {
+        "context_id": "default",
+        "genome_id": "TutorialHumanPromoterToy"
+      }
+    ],
+    "default_context_id": "default",
     "dry_run": false,
     "applied": true,
     "per_member_status": [

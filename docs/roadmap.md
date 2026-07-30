@@ -338,10 +338,10 @@ wet-lab conclusions or unconfirmed mutations.
   provenance, biological-context compatibility, multiple-testing correction,
   unresolved-member accounting, and no causal-regulation claim inferred from
   enrichment alone.
-- Relation-aware cross-species collections built above the biological-context
-  registry: explicit ortholog/paralog assertions, relationship provenance,
-  one-to-one/one-to-many ambiguity, and functional-equivalence evidence remain
-  separate from context identity rather than being inferred from matching gene
-  symbols.
+- Add a representation-preserving ortholog ambiguity mode only as an explicit
+  behavioral extension alongside the existing `reject`/`first` policies.
+- Add paralog mapping/resolution only with a concrete engine consumer,
+  preserving relationship provenance and one-to-many ambiguity without
+  inferring functional equivalence from matching symbols.
 - Full glossary/help-generation inversion so `docs/glossary.json` becomes a
   generated or validated projection of engine/protocol-side descriptors.

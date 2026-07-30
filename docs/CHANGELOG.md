@@ -14,6 +14,12 @@ understand what changed.
 
 ## 2026-07-30
 
+- Bound the existing offline ortholog resource and promoter-cohort reports to
+  portable biological-context registries. Orthology type/confidence now use
+  open typed vocabularies that preserve provider-specific legacy strings;
+  context organism/genome conflicts fail before catalog access, while
+  symbol-only mappings and the existing `reject`/`first` ambiguity behavior
+  remain compatible.
 - Unified protein-gel, peptide-gel, 2D-gel, and isoform-evidence molecular
   weights on the amino-acid residue-mass model. All routes now add one terminal
   water per chain and reject ambiguous residues instead of silently producing

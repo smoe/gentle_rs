@@ -6,22 +6,25 @@
 
 use super::*;
 use gentle_protocol::{
-    GeneSetCohortRelationship, GeneSetCohortRelationshipFlag, ORTHOLOG_PROMOTER_COHORT_SCHEMA,
-    ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA, OrthologCutRunSupportRow,
-    OrthologCutRunSupportStatus, OrthologExpressionAssignment, OrthologMappingRow,
-    OrthologPairwiseTfbsSimilarity, OrthologPromoterCohortReport, OrthologPromoterCohortRequest,
-    OrthologPromoterComparisonReport, OrthologPromoterRole, OrthologPromoterRow, OrthologResource,
-    OrthologSequenceSimilarityRow, OrthologTfbsPeakSummary, OrthologTfbsSummaryRow,
-    OrthologUnresolvedRow,
+    BiologicalContext, BiologicalContextRegistry, GeneSetCohortRelationship,
+    GeneSetCohortRelationshipFlag, ORTHOLOG_PROMOTER_COHORT_SCHEMA,
+    ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA, OrthologConfidence,
+    OrthologCutRunSupportRow, OrthologCutRunSupportStatus, OrthologExpressionAssignment,
+    OrthologMappingRow, OrthologPairwiseTfbsSimilarity, OrthologPromoterCohortReport,
+    OrthologPromoterCohortRequest, OrthologPromoterComparisonReport, OrthologPromoterRole,
+    OrthologPromoterRow, OrthologResource, OrthologSequenceSimilarityRow, OrthologTfbsPeakSummary,
+    OrthologTfbsSummaryRow, OrthologUnresolvedRow, OrthologyType,
 };
 
 #[derive(Debug, Clone)]
 struct OrientedOrthologMapping {
+    source_context_id: Option<String>,
     target_species: String,
+    target_context_id: Option<String>,
     target_gene_id: Option<String>,
     target_gene_symbol: Option<String>,
-    orthology_type: Option<String>,
-    confidence: Option<String>,
+    orthology_type: Option<OrthologyType>,
+    confidence: Option<OrthologConfidence>,
     source: Option<String>,
     evidence: Vec<String>,
 }
@@ -42,6 +45,16 @@ impl GentleEngine {
         if resource.schema.trim().is_empty() {
             resource.schema = ORTHOLOG_RESOURCE_SCHEMA.to_string();
         }
+        resource
+            .validate_context_references()
+            .map_err(|err| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Ortholog resource '{}' has invalid biological-context references: {}",
+                    path, err
+                ),
+                cause_chain: vec![],
+            })?;
         Ok(resource)
     }
 
@@ -90,6 +103,170 @@ impl GentleEngine {
             .unwrap_or_else(|| raw.trim().to_string())
     }
 
+    fn validate_ortholog_resource_context_species(
+        resource: &OrthologResource,
+        aliases: &BTreeMap<String, String>,
+    ) -> Result<(), EngineError> {
+        for (row_index, row) in resource.rows.iter().enumerate() {
+            for (side, species, context_id) in [
+                (
+                    "source",
+                    row.source_species.as_str(),
+                    row.source_context_id.as_deref(),
+                ),
+                (
+                    "target",
+                    row.target_species.as_str(),
+                    row.target_context_id.as_deref(),
+                ),
+            ] {
+                let Some(context_id) = context_id else {
+                    continue;
+                };
+                let context = resource
+                    .biological_contexts
+                    .context(context_id)
+                    .map_err(|err| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Ortholog row {} has invalid {} context '{}': {}",
+                            row_index + 1,
+                            side,
+                            context_id,
+                            err
+                        ),
+                        cause_chain: vec![],
+                    })?;
+                let Some(context_organism) = context.organism.as_deref() else {
+                    continue;
+                };
+                let row_species = Self::ortholog_canonical_species(species, aliases);
+                let context_species = Self::ortholog_canonical_species(context_organism, aliases);
+                if row_species != context_species {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Ortholog row {} {} species '{}' conflicts with biological context '{}' organism '{}'",
+                            row_index + 1,
+                            side,
+                            species,
+                            context_id,
+                            context_organism
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_ortholog_context_genome(
+        resource: &OrthologResource,
+        context_id: Option<&str>,
+        expected_genome_id: &str,
+        role: &str,
+    ) -> Result<(), EngineError> {
+        let Some(context_id) = context_id else {
+            return Ok(());
+        };
+        let context = resource
+            .biological_contexts
+            .context(context_id)
+            .map_err(|err| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Invalid {role} context '{context_id}': {err}"),
+                cause_chain: vec![],
+            })?;
+        if let Some(context_genome_id) = context.genome_id.as_deref()
+            && context_genome_id.trim() != expected_genome_id.trim()
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Ortholog {role} context '{}' declares genome '{}' but the request uses '{}'",
+                    context_id, context_genome_id, expected_genome_id
+                ),
+                cause_chain: vec![],
+            });
+        }
+        Ok(())
+    }
+
+    fn ortholog_runtime_context_id(species: &str, genome_id: &str) -> String {
+        format!(
+            "ortholog_{}_{}",
+            Self::ortholog_species_key(species),
+            Self::ortholog_gene_key(genome_id)
+        )
+    }
+
+    fn register_ortholog_report_context(
+        report_contexts: &mut BiologicalContextRegistry,
+        resource: &OrthologResource,
+        explicit_context_id: Option<&str>,
+        species: &str,
+        genome_id: &str,
+    ) -> Result<String, EngineError> {
+        Self::validate_ortholog_context_genome(
+            resource,
+            explicit_context_id,
+            genome_id,
+            "mapping",
+        )?;
+        let context_id = explicit_context_id
+            .map(str::to_string)
+            .unwrap_or_else(|| Self::ortholog_runtime_context_id(species, genome_id));
+        let mut context = if let Some(explicit_context_id) = explicit_context_id {
+            resource
+                .biological_contexts
+                .context(explicit_context_id)
+                .map_err(|err| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Invalid ortholog biological context '{}': {}",
+                        explicit_context_id, err
+                    ),
+                    cause_chain: vec![],
+                })?
+                .clone()
+        } else {
+            BiologicalContext {
+                context_id: context_id.clone(),
+                ..BiologicalContext::default()
+            }
+        };
+        if context.organism.is_none() {
+            context.organism = Some(species.to_string());
+        }
+        if context.genome_id.is_none() {
+            context.genome_id = Some(genome_id.to_string());
+        }
+
+        if let Some(existing) = report_contexts
+            .contexts
+            .iter()
+            .find(|existing| existing.context_id == context_id)
+        {
+            if !existing.semantically_matches(&context) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Ortholog context id '{}' resolves to conflicting biological contexts",
+                        context_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+        } else {
+            report_contexts.contexts.push(context);
+            report_contexts
+                .contexts
+                .sort_by(|left, right| left.context_id.cmp(&right.context_id));
+        }
+        Ok(context_id)
+    }
+
     fn ortholog_gene_matches(
         query_key: &str,
         gene_id: Option<&str>,
@@ -129,7 +306,9 @@ impl GentleEngine {
             )
         {
             return Some(OrientedOrthologMapping {
+                source_context_id: row.source_context_id.clone(),
                 target_species: target_row_species,
+                target_context_id: row.target_context_id.clone(),
                 target_gene_id: row.target_gene_id.clone(),
                 target_gene_symbol: row.target_gene_symbol.clone(),
                 orthology_type: row.orthology_type.clone(),
@@ -147,7 +326,9 @@ impl GentleEngine {
             )
         {
             return Some(OrientedOrthologMapping {
+                source_context_id: row.target_context_id.clone(),
                 target_species: source_species,
+                target_context_id: row.source_context_id.clone(),
                 target_gene_id: row.source_gene_id.clone(),
                 target_gene_symbol: row.source_gene_symbol.clone(),
                 orthology_type: row.orthology_type.clone(),
@@ -226,6 +407,7 @@ impl GentleEngine {
         catalog: &GenomeCatalog,
         species: &str,
         genome_id: &str,
+        context_id: Option<&str>,
         role: OrthologPromoterRole,
         gene_query: &str,
         transcript_id: Option<&str>,
@@ -304,6 +486,7 @@ impl GentleEngine {
         Ok(OrthologPromoterRow {
             species: species.to_string(),
             genome_id: genome_id.to_string(),
+            context_id: context_id.map(str::to_string),
             role,
             gene_query: resolved.query.clone(),
             gene_symbol,
@@ -322,6 +505,8 @@ impl GentleEngine {
             promoter_sequence: Some(oriented_sequence),
             orthology_type: orthology.and_then(|row| row.orthology_type.clone()),
             confidence: orthology.and_then(|row| row.confidence.clone()),
+            orthology_source_context_id: orthology.and_then(|row| row.source_context_id.clone()),
+            orthology_target_context_id: orthology.and_then(|row| row.target_context_id.clone()),
             orthology_source: orthology.and_then(|row| row.source.clone()),
             orthology_evidence: orthology
                 .map(|row| row.evidence.clone())
@@ -372,7 +557,58 @@ impl GentleEngine {
 
         let resource = Self::load_ortholog_resource(ortholog_resource_path)?;
         let aliases = Self::ortholog_species_alias_map(&resource);
+        Self::validate_ortholog_resource_context_species(&resource, &aliases)?;
         let anchor_species = Self::ortholog_canonical_species(trimmed_anchor_species, &aliases);
+        let mut anchor_context_ids = BTreeSet::new();
+        for raw_target_species in target_species {
+            let canonical_target_species =
+                Self::ortholog_canonical_species(raw_target_species, &aliases);
+            let requested_target_genome_id = Self::lookup_ortholog_species_map_value(
+                target_genome_ids,
+                raw_target_species,
+                &aliases,
+            );
+            for candidate in resource.rows.iter().filter_map(|row| {
+                Self::orient_ortholog_mapping(
+                    row,
+                    &anchor_species,
+                    trimmed_anchor_gene_query,
+                    &canonical_target_species,
+                    &aliases,
+                )
+            }) {
+                if let Some(context_id) = candidate.source_context_id.as_deref() {
+                    anchor_context_ids.insert(context_id.to_string());
+                }
+                Self::validate_ortholog_context_genome(
+                    &resource,
+                    candidate.source_context_id.as_deref(),
+                    trimmed_anchor_genome_id,
+                    "source",
+                )?;
+                if let Some(target_genome_id) = requested_target_genome_id.as_deref() {
+                    Self::validate_ortholog_context_genome(
+                        &resource,
+                        candidate.target_context_id.as_deref(),
+                        target_genome_id,
+                        "target",
+                    )?;
+                }
+            }
+        }
+        let mut biological_contexts = BiologicalContextRegistry::default();
+        let anchor_explicit_context_id = if anchor_context_ids.len() == 1 {
+            anchor_context_ids.first().map(String::as_str)
+        } else {
+            None
+        };
+        let anchor_context_id = Self::register_ortholog_report_context(
+            &mut biological_contexts,
+            &resource,
+            anchor_explicit_context_id,
+            &anchor_species,
+            trimmed_anchor_genome_id,
+        )?;
         let effective_catalog_path =
             genome_catalog_path.unwrap_or(crate::genomes::default_catalog_discovery_token(false));
         let (catalog, _) = Self::open_reference_genome_catalog(Some(effective_catalog_path))?;
@@ -390,6 +626,7 @@ impl GentleEngine {
             &catalog,
             &anchor_species,
             trimmed_anchor_genome_id,
+            Some(&anchor_context_id),
             OrthologPromoterRole::Anchor,
             trimmed_anchor_gene_query,
             anchor_transcript.as_deref(),
@@ -420,7 +657,7 @@ impl GentleEngine {
             candidates.sort_by(|left, right| {
                 Self::ortholog_candidate_label(left).cmp(&Self::ortholog_candidate_label(right))
             });
-            let candidate = match candidates.len() {
+            let mut candidate = match candidates.len() {
                 0 => {
                     let reason = format!(
                         "No local ortholog mapping from '{}' '{}' to '{}'",
@@ -429,6 +666,7 @@ impl GentleEngine {
                     warnings.push(reason.clone());
                     unresolved_rows.push(OrthologUnresolvedRow {
                         species: canonical_target_species,
+                        context_id: None,
                         genome_id: Self::lookup_ortholog_species_map_value(
                             target_genome_ids,
                             raw_target_species,
@@ -471,6 +709,7 @@ impl GentleEngine {
                     warnings.push(reason.clone());
                     unresolved_rows.push(OrthologUnresolvedRow {
                         species: canonical_target_species,
+                        context_id: None,
                         genome_id: Self::lookup_ortholog_species_map_value(
                             target_genome_ids,
                             raw_target_species,
@@ -483,6 +722,46 @@ impl GentleEngine {
                     continue;
                 }
             };
+            let target_genome_id = Self::lookup_ortholog_species_map_value(
+                target_genome_ids,
+                &candidate.target_species,
+                &aliases,
+            )
+            .or_else(|| {
+                candidate
+                    .target_context_id
+                    .as_deref()
+                    .and_then(|context_id| {
+                        resource
+                            .biological_contexts
+                            .context(context_id)
+                            .ok()
+                            .and_then(|context| context.genome_id.clone())
+                    })
+            })
+            .unwrap_or_else(|| {
+                warnings.push(format!(
+                    "No target genome id provided for species '{}'; using species label as genome id",
+                    candidate.target_species
+                ));
+                candidate.target_species.clone()
+            });
+            let source_relation_context_id = Self::register_ortholog_report_context(
+                &mut biological_contexts,
+                &resource,
+                candidate.source_context_id.as_deref(),
+                &anchor_species,
+                trimmed_anchor_genome_id,
+            )?;
+            let target_context_id = Self::register_ortholog_report_context(
+                &mut biological_contexts,
+                &resource,
+                candidate.target_context_id.as_deref(),
+                &candidate.target_species,
+                &target_genome_id,
+            )?;
+            candidate.source_context_id = Some(source_relation_context_id);
+            candidate.target_context_id = Some(target_context_id.clone());
             let Some(gene_query) = Self::ortholog_target_gene_query(&candidate) else {
                 let reason = format!(
                     "Ortholog mapping to '{}' has neither target_gene_id nor target_gene_symbol",
@@ -491,25 +770,14 @@ impl GentleEngine {
                 warnings.push(reason.clone());
                 unresolved_rows.push(OrthologUnresolvedRow {
                     species: candidate.target_species.clone(),
-                    genome_id: None,
+                    context_id: Some(target_context_id),
+                    genome_id: Some(target_genome_id),
                     gene_query: None,
                     reason,
                     candidates: vec![Self::ortholog_candidate_label(&candidate)],
                 });
                 continue;
             };
-            let target_genome_id = Self::lookup_ortholog_species_map_value(
-                target_genome_ids,
-                &candidate.target_species,
-                &aliases,
-            )
-            .unwrap_or_else(|| {
-                warnings.push(format!(
-                    "No target genome id provided for species '{}'; using species label as genome id",
-                    candidate.target_species
-                ));
-                candidate.target_species.clone()
-            });
             let target_transcript = Self::lookup_ortholog_transcript_id(
                 transcript_ids,
                 &candidate.target_species,
@@ -519,6 +787,7 @@ impl GentleEngine {
                 &catalog,
                 &candidate.target_species,
                 &target_genome_id,
+                Some(&target_context_id),
                 OrthologPromoterRole::Target,
                 &gene_query,
                 target_transcript.as_deref(),
@@ -539,6 +808,7 @@ impl GentleEngine {
                     warnings.push(reason.clone());
                     unresolved_rows.push(OrthologUnresolvedRow {
                         species: candidate.target_species.clone(),
+                        context_id: Some(target_context_id),
                         genome_id: Some(target_genome_id),
                         gene_query: Some(gene_query),
                         reason,
@@ -575,6 +845,7 @@ impl GentleEngine {
             generated_at_unix_ms: Self::now_unix_ms(),
             request,
             ortholog_resource_label: resource.label.or(resource.id),
+            biological_contexts,
             resolved_promoter_count: rows.len(),
             unresolved_count: unresolved_rows.len(),
             rows,
