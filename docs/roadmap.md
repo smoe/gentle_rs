@@ -324,8 +324,10 @@ wet-lab conclusions or unconfirmed mutations.
 - Weekly/monthly maintenance chore automation rollout from
   [`maintenance_chore_plan.md`](maintenance_chore_plan.md).
 - Browser/WebAssembly frontend portability after core/headless contracts settle.
-- GUI gene-set/collection operation lifting per
-  [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
+- GUI gene-set inspector and collection launcher per
+  [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md);
+  the shared primer-specificity `map` operation and shell route have landed,
+  while the GUI still needs an explicit member-to-primer-report binding editor.
 - Gene-set enrichment analysis over resolved logical sets, with an explicit
   background universe, identifier namespace/mapping audit, ontology and cache
   provenance, multiple-testing correction, unresolved-member accounting, and

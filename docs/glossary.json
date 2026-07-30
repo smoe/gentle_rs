@@ -3538,6 +3538,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "AssessPrimerPairSpecificityCollection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "collections run primer-specificity",
+         "summary": "Map GENtle's existing local-BLAST primer specificity assessment over project sequences or a persisted gene-set resolution, retaining per-member failures and produced report IDs.",
+         "usage": "collections run primer-specificity [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,...] [--member-report MEMBER_ID=PRIMER_REPORT_ID]... (--pair-rank N | --pair-index N) --target-genome GENOME_ID [--policy JSON_OR_@FILE] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "PreparePrimerPairSpecificityHandoff"
          ],
          "interfaces": [

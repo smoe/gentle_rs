@@ -318,6 +318,13 @@ Tests:
 
 ## Release-Oriented First Slice
 
+Current status: the engine-owned collection subject/report baseline and the
+first `map` consumer, primer specificity, are implemented. The shared
+`collections run primer-specificity` route requires auditable
+member-to-primer-report bindings for logical gene sets. The Phase 3 inspector
+and Phase 5 launcher remain open and must expose those bindings explicitly
+before adding a prominent GUI action.
+
 The smallest useful implementation PR after this plan should be:
 
 1. Add collection lifting inventory metadata for the three gene-set operations

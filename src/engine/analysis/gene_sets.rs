@@ -3624,6 +3624,46 @@ impl GentleEngine {
         self.write_gene_set_artifact_store(store)
     }
 
+    pub(crate) fn get_gene_set_resolution_artifact(
+        &self,
+        report_id: &str,
+    ) -> Result<GeneSetResolutionReport, EngineError> {
+        let requested = report_id.trim();
+        if requested.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Gene-set resolution report id must not be empty".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let store = self.read_gene_set_artifact_store();
+        let prefixed =
+            (!requested.starts_with("resolution:")).then(|| format!("resolution:{requested}"));
+        store
+            .resolutions
+            .get(requested)
+            .or_else(|| {
+                prefixed
+                    .as_deref()
+                    .and_then(|candidate| store.resolutions.get(candidate))
+            })
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Gene-set resolution report '{}' not found; available ids: {}",
+                    requested,
+                    store
+                        .resolutions
+                        .keys()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                cause_chain: vec![],
+            })
+    }
+
     pub(crate) fn upsert_gene_set_promoter_cohort_artifact(
         &mut self,
         report: GeneSetPromoterCohortReport,

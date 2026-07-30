@@ -6535,6 +6535,89 @@ fn parse_primers_specificity_saved_report_and_explicit_pair() {
 }
 
 #[test]
+fn parse_collections_run_primer_specificity_for_gene_set_and_project_sequences() {
+    let gene_set = parse_shell_line(
+        "collections run primer-specificity resolution:cofactors \
+         --member-report gene_id:ensg1=primer_report_1 \
+         --member-report gene_id:ensg2=primer_report_2 \
+         --pair-rank 2 --target-genome GRCh38.p14 --path collection.json",
+    )
+    .expect("parse gene-set collection specificity");
+    match gene_set {
+        ShellCommand::CollectionsRunPrimerSpecificity {
+            collection_subject:
+                CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings,
+            pair_rank,
+            pair_index,
+            target_genome_id,
+            path,
+            ..
+        } => {
+            assert_eq!(report_id, "resolution:cofactors");
+            assert_eq!(
+                member_bindings,
+                vec![
+                    PrimerSpecificityCollectionMemberBinding {
+                        stable_member_id: "gene_id:ensg1".to_string(),
+                        primer_report_id: "primer_report_1".to_string(),
+                    },
+                    PrimerSpecificityCollectionMemberBinding {
+                        stable_member_id: "gene_id:ensg2".to_string(),
+                        primer_report_id: "primer_report_2".to_string(),
+                    },
+                ]
+            );
+            assert_eq!(pair_rank, Some(2));
+            assert_eq!(pair_index, None);
+            assert_eq!(target_genome_id, "GRCh38.p14");
+            assert_eq!(path.as_deref(), Some("collection.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let project_sequences = parse_shell_line(
+        "collections run primer-specificity --seq-ids seq_b,seq_a \
+         --pair-index 0 --target-genome ToyGenome",
+    )
+    .expect("parse project-sequence collection specificity");
+    assert!(matches!(
+        project_sequences,
+        ShellCommand::CollectionsRunPrimerSpecificity {
+            collection_subject: CollectionSubjectRef::ProjectSequences { seq_ids },
+            pair_rank: None,
+            pair_index: Some(0),
+            target_genome_id,
+            ..
+        } if seq_ids == ["seq_b", "seq_a"] && target_genome_id == "ToyGenome"
+    ));
+}
+
+#[test]
+fn parse_collections_run_primer_specificity_rejects_ambiguous_subjects_and_pairs() {
+    let ambiguous_subject = parse_shell_line(
+        "collections run primer-specificity resolution:set \
+         --seq-id seq_a --pair-rank 1 --target-genome ToyGenome",
+    )
+    .expect_err("gene-set and project-sequence subjects are mutually exclusive");
+    assert!(ambiguous_subject.contains("either GENE_SET_REPORT_ID or --seq-ids"));
+
+    let ambiguous_pair = parse_shell_line(
+        "collections run primer-specificity resolution:set \
+         --pair-rank 1 --pair-index 0 --target-genome ToyGenome",
+    )
+    .expect_err("pair rank and pair index are mutually exclusive");
+    assert!(ambiguous_pair.contains("exactly one of --pair-rank N or --pair-index N"));
+
+    let malformed_binding = parse_shell_line(
+        "collections run primer-specificity resolution:set \
+         --member-report missing_separator --pair-rank 1 --target-genome ToyGenome",
+    )
+    .expect_err("member binding requires an explicit member/report separator");
+    assert!(malformed_binding.contains("MEMBER_ID=PRIMER_REPORT_ID"));
+}
+
+#[test]
 fn parse_primers_specificity_plan_and_import() {
     let plan = parse_shell_line(
         "primers specificity-plan --forward ACGTACGTACGTACGTAC --reverse TTTTCCCCAAAAGGGGTT --target-genome GRCh38.p14 --output-dir specificity_run --max-hits-per-primer 75",

@@ -2361,6 +2361,9 @@ impl GentleEngine {
             Operation::AssessPrimerPairSpecificity {
                 target_genome_id, ..
             }
+            | Operation::AssessPrimerPairSpecificityCollection {
+                target_genome_id, ..
+            }
             | Operation::PreparePrimerPairSpecificityHandoff {
                 target_genome_id, ..
             } => {
@@ -2626,6 +2629,9 @@ impl GentleEngine {
             | Operation::ExportGuideProtocolText { path, .. }
             | Operation::ExportPrimerDesignReport { path, .. }
             | Operation::AssessPrimerPairSpecificity {
+                path: Some(path), ..
+            }
+            | Operation::AssessPrimerPairSpecificityCollection {
                 path: Some(path), ..
             }
             | Operation::ImportPrimerPairSpecificityHandoff {

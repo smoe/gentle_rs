@@ -53,6 +53,8 @@ use gentle::{
     service_readiness::service_readiness_status,
 };
 use gentle_protocol::{EngineError, ErrorCode};
+#[cfg(test)]
+use gentle_protocol::CollectionSubjectRef;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -523,6 +525,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "routines",
     "gene-groups",
     "gene-sets",
+    "collections",
     "planning",
     "gibson",
     "panels",
@@ -2209,6 +2212,39 @@ mod tests {
                 target_genome_id,
                 ..
             } if primer_report_id.as_deref() == Some("primer_report_1")
+                && target_genome_id == "GRCh38.p14"
+        ));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_collection_primer_specificity() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "collections".to_string(),
+            "run".to_string(),
+            "primer-specificity".to_string(),
+            "resolution:cofactors".to_string(),
+            "--member-report".to_string(),
+            "gene_id:ensg1=primer_report_1".to_string(),
+            "--pair-rank".to_string(),
+            "1".to_string(),
+            "--target-genome".to_string(),
+            "GRCh38.p14".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1)
+            .expect("parse forwarded collection specificity")
+            .expect("collections is a forwarded shell root");
+        assert!(matches!(
+            parsed,
+            ShellCommand::CollectionsRunPrimerSpecificity {
+                collection_subject:
+                    CollectionSubjectRef::GeneSetResolution { report_id },
+                member_bindings,
+                pair_rank: Some(1),
+                target_genome_id,
+                ..
+            } if report_id == "resolution:cofactors"
+                && member_bindings.len() == 1
                 && target_genome_id == "GRCh38.p14"
         ));
     }

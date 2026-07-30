@@ -6640,6 +6640,20 @@ pub struct PrimerSpecificityReportCompaction {
     pub pairing_candidate_comparison_count: usize,
 }
 
+/// Explicitly binds one collection member to one persisted primer-design report.
+///
+/// Logical gene-set members do not themselves carry a project sequence or
+/// primer report. Collection specificity therefore requires this auditable
+/// binding instead of guessing from a gene symbol. Project-sequence
+/// collections may omit a binding when exactly one stored primer-design report
+/// targets that sequence.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct PrimerSpecificityCollectionMemberBinding {
+    pub stable_member_id: String,
+    pub primer_report_id: String,
+}
+
 fn primer_specificity_legacy_full_compaction() -> PrimerSpecificityReportCompaction {
     PrimerSpecificityReportCompaction {
         detail_mode: PrimerSpecificityReportDetailMode::Full,

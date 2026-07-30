@@ -964,6 +964,26 @@ Implemented collection-lifting baseline:
 - `BuildGeneSetPromoterCohort` is the first proving consumer. Its normal
   promoter-cohort result embeds the generic collection report, and the same
   report is returned in `OpResult.collection_operation`.
+- `AssessPrimerPairSpecificityCollection` is the first `map` consumer. It
+  applies the existing `AssessPrimerPairSpecificity` interpretation separately
+  to each resolved primer-design report, persists successful child reports,
+  and returns their ids through the collection report. The aggregate wrapper
+  does not reimplement hit, amplicon, completeness, or biological pass/fail
+  logic. Its operation JSON is accepted through the normal CLI `op`/workflow,
+  MCP `op`, JavaScript, and Lua paths; `collections run primer-specificity` is
+  the shared-shell convenience form.
+- A logical gene-set member has no inherent primer-assay identity. Its
+  `PrimerSpecificityCollectionMemberBinding` must therefore name the exact
+  `stable_member_id` and persisted `primer_report_id`. Project-sequence
+  collections may resolve that binding automatically only when exactly one
+  primer-design report names the sequence as its template. Missing,
+  ambiguous, mismatched, duplicate, and unknown bindings become typed member
+  or request errors rather than symbol-based guesses.
+- `CollectionMemberOutcome::Succeeded` records successful execution and
+  persistence, not a biological specificity pass. A child report with
+  `summary.status = fail|incomplete|not_assessed` remains a successful
+  collection execution row and contributes an aggregate warning. This keeps
+  infrastructure failures distinct from scientific conclusions.
 - Logical gene sets are explicitly rejected for `ExportPool` and
   `RenderPoolGelSvg` with `requires_physical_pool`; resolving genes never
   silently asserts that their products occupy one tube or gel lane.

@@ -440,6 +440,12 @@ The project main window (lineage page) supports two views:
   the GUI should collect the collection operand, show per-member and aggregate
   readiness/errors/results, and call the same named operation or shell route
   that CLI/MCP/agent surfaces can invoke.
+- Primer specificity collection mapping is currently reachable from the GUI
+  Shell as `collections run primer-specificity`. A dedicated "Run specificity
+  on gene set" control remains part of the planned gene-set inspector: that UI
+  must expose the required member-to-primer-report bindings and must not infer
+  an assay from a gene symbol. Until that inspector exists, GENtle does not
+  present a misleading one-click control with hidden binding choices.
 - Detailed implementation plan:
   [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
 - Operations offered for a collection should expose the engine-declared lifting

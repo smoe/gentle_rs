@@ -31,6 +31,72 @@
     },
     {
       "source": "engine_operation",
+      "name": "AssessPrimerPairSpecificity",
+      "subjects": [
+        {
+          "subject_kind": "project_sequences",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_operation.v1"
+          }
+        },
+        {
+          "subject_kind": "gene_set_resolution",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_operation.v1"
+          }
+        }
+      ]
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers specificity",
+      "subjects": [
+        {
+          "subject_kind": "project_sequences",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_operation.v1"
+          }
+        },
+        {
+          "subject_kind": "gene_set_resolution",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_operation.v1"
+          }
+        }
+      ]
+    },
+    {
+      "source": "glossary_command",
+      "name": "collections run primer-specificity",
+      "subjects": [
+        {
+          "subject_kind": "project_sequences",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_operation.v1"
+          }
+        },
+        {
+          "subject_kind": "gene_set_resolution",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_operation.v1"
+          }
+        }
+      ]
+    },
+    {
+      "source": "engine_operation",
       "name": "ExportPool",
       "subjects": [
         {

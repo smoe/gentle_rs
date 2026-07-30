@@ -5269,6 +5269,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "DesignInsertionPrimerPairs",
     "ExportPrimerDesignReport",
     "AssessPrimerPairSpecificity",
+    "AssessPrimerPairSpecificityCollection",
     "PreparePrimerPairSpecificityHandoff",
     "ImportPrimerPairSpecificityHandoff",
     "PrepareRestrictionCloningPcrHandoff",

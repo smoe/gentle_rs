@@ -1228,6 +1228,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "features split",
             "features merge",
             "primers specificity",
+            "collections run primer-specificity",
             "primers specificity-plan",
             "primers specificity-import",
         ],

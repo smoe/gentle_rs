@@ -7245,6 +7245,156 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
     }
 }
 
+pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    const COMMAND: &str = "collections run primer-specificity";
+    if tokens.len() < 3
+        || tokens.get(1).map(String::as_str) != Some("run")
+        || !matches!(
+            tokens.get(2).map(String::as_str),
+            Some("primer-specificity" | "primer_specificity")
+        )
+    {
+        return Err(
+            "collections requires: run primer-specificity [GENE_SET_REPORT_ID | --seq-ids ID,...] --pair-rank N --target-genome GENOME_ID"
+                .to_string(),
+        );
+    }
+
+    let mut gene_set_report_id: Option<String> = None;
+    let mut seq_ids = Vec::new();
+    let mut member_bindings = Vec::new();
+    let mut pair_rank: Option<usize> = None;
+    let mut pair_index: Option<usize> = None;
+    let mut target_genome_id: Option<String> = None;
+    let mut policy = PrimerSpecificityPolicy::default();
+    let mut catalog_path: Option<String> = None;
+    let mut cache_dir: Option<String> = None;
+    let mut path: Option<String> = None;
+    let mut idx = 3usize;
+    if let Some(value) = tokens.get(idx)
+        && !value.starts_with("--")
+    {
+        gene_set_report_id = Some(value.trim().to_string());
+        idx += 1;
+    }
+
+    while idx < tokens.len() {
+        match tokens[idx].as_str() {
+            "--seq-id" => {
+                let seq_id = parse_option_path(tokens, &mut idx, "--seq-id", COMMAND)?;
+                if seq_id.trim().is_empty() {
+                    return Err("--seq-id must not be empty".to_string());
+                }
+                seq_ids.push(seq_id.trim().to_string());
+            }
+            "--seq-ids" => {
+                let raw = parse_option_path(tokens, &mut idx, "--seq-ids", COMMAND)?;
+                let parsed = raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                if parsed.is_empty() {
+                    return Err("--seq-ids requires at least one non-empty sequence id".to_string());
+                }
+                seq_ids.extend(parsed);
+            }
+            "--member-report" | "--member-binding" => {
+                let flag = tokens[idx].clone();
+                let raw = parse_option_path(tokens, &mut idx, &flag, COMMAND)?;
+                let (member_id, report_id) = raw
+                    .split_once('=')
+                    .ok_or_else(|| format!("{flag} requires MEMBER_ID=PRIMER_REPORT_ID"))?;
+                let member_id = member_id.trim();
+                let report_id = report_id.trim();
+                if member_id.is_empty() || report_id.is_empty() {
+                    return Err(format!(
+                        "{flag} requires non-empty MEMBER_ID=PRIMER_REPORT_ID"
+                    ));
+                }
+                member_bindings.push(PrimerSpecificityCollectionMemberBinding {
+                    stable_member_id: member_id.to_string(),
+                    primer_report_id: report_id.to_string(),
+                });
+            }
+            "--pair-rank" => {
+                let raw = parse_option_path(tokens, &mut idx, "--pair-rank", COMMAND)?;
+                let rank = parse_usize_option_value(&raw, "--pair-rank")?;
+                if rank == 0 {
+                    return Err("--pair-rank must be >= 1".to_string());
+                }
+                pair_rank = Some(rank);
+            }
+            "--pair-index" => {
+                let raw = parse_option_path(tokens, &mut idx, "--pair-index", COMMAND)?;
+                pair_index = Some(parse_usize_option_value(&raw, "--pair-index")?);
+            }
+            "--target-genome" | "--target-genome-id" => {
+                let flag = tokens[idx].clone();
+                target_genome_id = Some(parse_option_path(tokens, &mut idx, &flag, COMMAND)?);
+            }
+            "--policy" => {
+                let raw = parse_option_path(tokens, &mut idx, "--policy", COMMAND)?;
+                policy = parse_required_json_payload::<PrimerSpecificityPolicy>(&raw, "policy")?;
+            }
+            "--catalog" | "--catalog-path" => {
+                let flag = tokens[idx].clone();
+                catalog_path = Some(parse_option_path(tokens, &mut idx, &flag, COMMAND)?);
+            }
+            "--cache-dir" => {
+                cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", COMMAND)?);
+            }
+            "--path" | "--output" => {
+                let flag = tokens[idx].clone();
+                path = Some(parse_option_path(tokens, &mut idx, &flag, COMMAND)?);
+            }
+            other => return Err(format!("Unknown option '{other}' for {COMMAND}")),
+        }
+    }
+
+    if gene_set_report_id.is_some() && !seq_ids.is_empty() {
+        return Err(format!(
+            "{COMMAND} accepts either GENE_SET_REPORT_ID or --seq-ids, not both"
+        ));
+    }
+    let collection_subject = if let Some(report_id) = gene_set_report_id {
+        if report_id.is_empty() {
+            return Err("GENE_SET_REPORT_ID must not be empty".to_string());
+        }
+        CollectionSubjectRef::GeneSetResolution { report_id }
+    } else {
+        if seq_ids.is_empty() {
+            return Err(format!(
+                "{COMMAND} requires GENE_SET_REPORT_ID or --seq-ids ID,..."
+            ));
+        }
+        CollectionSubjectRef::ProjectSequences { seq_ids }
+    };
+    if pair_rank.is_some() == pair_index.is_some() {
+        return Err(format!(
+            "{COMMAND} requires exactly one of --pair-rank N or --pair-index N"
+        ));
+    }
+    let target_genome_id = target_genome_id
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("{COMMAND} requires --target-genome GENOME_ID"))?;
+    policy.specificity_target_genome_id = Some(target_genome_id.clone());
+
+    Ok(ShellCommand::CollectionsRunPrimerSpecificity {
+        collection_subject,
+        member_bindings,
+        pair_rank,
+        pair_index,
+        target_genome_id,
+        policy,
+        catalog_path,
+        cache_dir,
+        path,
+    })
+}
+
 pub(super) fn parse_dotplot_mode(raw: &str) -> Result<DotplotMode, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "self_forward" | "self-forward" | "forward" | "self" => Ok(DotplotMode::SelfForward),

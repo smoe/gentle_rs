@@ -8580,6 +8580,345 @@ fn write_fake_blastdbcmd(path: &Path, sequence_count: u64, total_bases: u64) {
     fs::set_permissions(path, permissions).expect("enable fake blastdbcmd");
 }
 
+fn primer_specificity_collection_test_design_report(
+    report_id: &str,
+    template: &str,
+    forward_sequence: &str,
+    reverse_sequence: &str,
+) -> PrimerDesignReport {
+    let primer = |sequence: &str, start_0based: usize| PrimerDesignPrimerRecord {
+        sequence: sequence.to_string(),
+        start_0based,
+        end_0based_exclusive: start_0based + sequence.len(),
+        length_bp: sequence.len(),
+        anneal_length_bp: sequence.len(),
+        ..PrimerDesignPrimerRecord::default()
+    };
+    PrimerDesignReport {
+        schema: "gentle.primer_design_report.v1".to_string(),
+        report_id: report_id.to_string(),
+        template: template.to_string(),
+        roi_start_0based: 20,
+        roi_end_0based: 80,
+        pair_count: 1,
+        pairs: vec![PrimerDesignPairRecord {
+            rank: 1,
+            forward: primer(forward_sequence, 0),
+            reverse: primer(reverse_sequence, 80),
+            amplicon_start_0based: 0,
+            amplicon_end_0based_exclusive: 80 + reverse_sequence.len(),
+            amplicon_length_bp: 80 + reverse_sequence.len(),
+            ..PrimerDesignPairRecord::default()
+        }],
+        ..PrimerDesignReport::default()
+    }
+}
+
+fn primer_specificity_parity_projection(report: &PrimerSpecificityReport) -> serde_json::Value {
+    serde_json::json!({
+        "schema": report.schema,
+        "report_id": report.report_id,
+        "primary_seq_id": report.primary_seq_id,
+        "related_seq_ids": report.related_seq_ids,
+        "external_inputs": report.external_inputs,
+        "request_summary": report.request_summary,
+        "effective_settings_summary": report.effective_settings_summary,
+        "primer_report_id": report.primer_report_id,
+        "pair_rank": report.pair_rank,
+        "pair_index": report.pair_index,
+        "target_kind": report.target_kind,
+        "target_genome_id": report.target_genome_id,
+        "blast_database": report.blast_database,
+        "intended_target": report.intended_target,
+        "policy": report.policy,
+        "primers": report.primers,
+        "forward_hits": report.forward_hits,
+        "reverse_hits": report.reverse_hits,
+        "amplicons": report.amplicons,
+        "compaction": report.compaction,
+        "search_completeness": report.search_completeness,
+        "summary": report.summary,
+        "genomic_specificity": report.genomic_specificity,
+        "transcriptome_specificity": report.transcriptome_specificity,
+        "design_provenance": report.design_provenance,
+        "characterization_dimensions": report.characterization_dimensions,
+        "warnings": report.warnings,
+    })
+}
+
+#[cfg(unix)]
+#[test]
+fn collection_primer_specificity_matches_direct_per_member_assessment() {
+    let _env_lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let temp = tempdir().expect("temporary collection specificity directory");
+    let root = temp.path();
+    let fasta = root.join("toy.fa");
+    let annotation = root.join("toy.gtf");
+    let cache = root.join("cache");
+    let catalog = root.join("catalog.json");
+    fs::write(&fasta, format!(">chr1\n{}\n", "ACGT".repeat(100)))
+        .expect("write collection specificity FASTA");
+    fs::write(
+        &annotation,
+        concat!(
+            "chr1\ttest\tgene\t1\t150\t.\t+\t.\tgene_id \"GENE_A\"; gene_name \"GENEA\";\n",
+            "chr1\ttest\tgene\t201\t350\t.\t+\t.\tgene_id \"GENE_B\"; gene_name \"GENEB\";\n",
+        ),
+    )
+    .expect("write collection specificity annotation");
+    fs::write(
+        &catalog,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "synthetic collection primer-specificity fixture",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            annotation.display(),
+            cache.display()
+        ),
+    )
+    .expect("write collection specificity catalog");
+
+    let fake_makeblastdb = root.join("fake_makeblastdb.sh");
+    fs::write(
+        &fake_makeblastdb,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'makeblastdb: fake 1.0'; exit 0; fi\nout=''\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = '-out' ]; then out=\"$2\"; shift 2; else shift; fi\ndone\nmkdir -p \"$(dirname \"$out\")\"\nprintf nhr > \"${out}.nhr\"\nprintf nin > \"${out}.nin\"\nprintf nsq > \"${out}.nsq\"\n",
+    )
+    .expect("write fake makeblastdb");
+    let fake_blastn = root.join("fake_blastn.sh");
+    fs::write(
+        &fake_blastn,
+        "#!/bin/sh\nif [ \"$1\" = '-version' ]; then echo 'blastn: fake 1.0'; exit 0; fi\nexit 0\n",
+    )
+    .expect("write fake blastn");
+    let fake_blastdbcmd = root.join("fake_blastdbcmd.sh");
+    write_fake_blastdbcmd(&fake_blastdbcmd, 1, 400);
+    for executable in [&fake_makeblastdb, &fake_blastn] {
+        let mut permissions = fs::metadata(executable)
+            .expect("fake executable metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(executable, permissions).expect("enable fake executable");
+    }
+    let _makeblastdb = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        &fake_makeblastdb.to_string_lossy(),
+    );
+    let _blastn = EnvVarGuard::set(
+        crate::genomes::BLASTN_ENV_BIN,
+        &fake_blastn.to_string_lossy(),
+    );
+    let _blastdbcmd = EnvVarGuard::set(
+        crate::genomes::BLASTDBCMD_ENV_BIN,
+        &fake_blastdbcmd.to_string_lossy(),
+    );
+
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare collection specificity genome");
+    engine
+        .state_mut()
+        .sequences
+        .insert("seq_a".to_string(), seq(&"ACGT".repeat(30)));
+    engine
+        .state_mut()
+        .sequences
+        .insert("seq_b".to_string(), seq(&"TGCA".repeat(30)));
+
+    let design_reports = [
+        primer_specificity_collection_test_design_report(
+            "primer_report_a",
+            "seq_a",
+            "ACGTACGTACGTACGTACGT",
+            "TGCATGCATGCATGCATGCA",
+        ),
+        primer_specificity_collection_test_design_report(
+            "primer_report_b",
+            "seq_b",
+            "AAAACCCCGGGGTTTTACGT",
+            "TTTTGGGGCCCCAAAATGCA",
+        ),
+    ];
+    let mut store = engine.read_primer_design_store();
+    for report in &design_reports {
+        store.reports.insert(report.report_id.clone(), report.clone());
+    }
+    engine
+        .write_primer_design_store(store)
+        .expect("persist collection specificity primer reports");
+
+    let resolution = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExplicitMembers {
+                members: vec!["GENEA".to_string(), "GENEB".to_string()],
+            },
+            Some("ToyGenome"),
+            None,
+            Some(&catalog.to_string_lossy()),
+            None,
+            false,
+            false,
+        )
+        .expect("resolve collection specificity gene set");
+    let resolution_id = GentleEngine::gene_set_resolution_artifact_id(&resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(resolution.clone())
+        .expect("persist collection specificity gene set");
+
+    let policy = PrimerSpecificityPolicy::default();
+    let mut direct_by_design_report = BTreeMap::new();
+    for report in &design_reports {
+        let direct = engine
+            .assess_primer_pair_specificity(
+                Some(&report.report_id),
+                Some(1),
+                None,
+                None,
+                None,
+                "ToyGenome",
+                policy.clone(),
+                Some(&catalog.to_string_lossy()),
+                None,
+            )
+            .expect("run direct primer specificity");
+        direct_by_design_report.insert(report.report_id.clone(), direct);
+    }
+    let bindings = resolution
+        .resolved_members
+        .iter()
+        .map(|member| PrimerSpecificityCollectionMemberBinding {
+            stable_member_id: member.dedup_key.clone(),
+            primer_report_id: match member.symbol.as_str() {
+                "GENEA" => "primer_report_a",
+                "GENEB" => "primer_report_b",
+                other => panic!("unexpected resolved gene-set member {other}"),
+            }
+            .to_string(),
+        })
+        .collect::<Vec<_>>();
+    let result = engine
+        .apply(Operation::AssessPrimerPairSpecificityCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution {
+                report_id: resolution_id,
+            },
+            member_bindings: bindings,
+            pair_rank: Some(1),
+            pair_index: None,
+            target_genome_id: "ToyGenome".to_string(),
+            policy,
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            path: None,
+        })
+        .expect("run collection primer specificity");
+    let collection = result
+        .collection_operation
+        .expect("collection specificity report");
+    assert_eq!(collection.lifting_mode, CollectionLiftingMode::Map);
+    assert_eq!(collection.capability_name, "AssessPrimerPairSpecificity");
+    assert_eq!(collection.per_member_status.len(), 2);
+    assert!(collection.per_member_status.iter().all(|row| {
+        row.outcome == CollectionMemberOutcome::Succeeded
+            && row.produced_report_ids.len() == 1
+            && row.error.is_none()
+            && row.member.source_provenance.iter().any(|source| {
+                source.source_kind == "primer_design_report_binding"
+                    && source.note.as_deref().is_some_and(|note| note.contains("explicit"))
+            })
+    }));
+
+    for row in &collection.per_member_status {
+        let produced_report_id = &row.produced_report_ids[0];
+        let mapped = engine
+            .get_primer_specificity_report(produced_report_id)
+            .expect("persisted mapped specificity report");
+        let design_report_id = mapped
+            .primer_report_id
+            .as_ref()
+            .expect("mapped report cites primer design");
+        let direct = direct_by_design_report
+            .get(design_report_id)
+            .expect("matching direct assessment");
+        assert_eq!(
+            primer_specificity_parity_projection(&mapped),
+            primer_specificity_parity_projection(direct),
+            "collection mapping must preserve the direct specificity result for {design_report_id}"
+        );
+    }
+
+    let project_sequence_map = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CollectionsRunPrimerSpecificity {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec!["seq_b".to_string(), "seq_a".to_string()],
+            },
+            member_bindings: vec![],
+            pair_rank: Some(1),
+            pair_index: None,
+            target_genome_id: "ToyGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            path: None,
+        },
+    )
+    .expect("auto-resolve one primer report per project sequence")
+    .output;
+    let project_sequence_map = serde_json::from_value::<CollectionOperationReport>(
+        project_sequence_map["report"].clone(),
+    )
+    .expect("project-sequence collection report");
+    assert!(project_sequence_map.per_member_status.iter().all(|row| {
+        row.outcome == CollectionMemberOutcome::Succeeded
+            && row.member.source_provenance.iter().any(|source| {
+                source.source_kind == "primer_design_report_binding"
+                    && source
+                        .note
+                        .as_deref()
+                        .is_some_and(|note| note.contains("unique_template_match"))
+            })
+    }));
+
+    let missing_bindings = engine
+        .apply(Operation::AssessPrimerPairSpecificityCollection {
+            collection_subject: collection.collection_subject.clone(),
+            member_bindings: vec![],
+            pair_rank: Some(1),
+            pair_index: None,
+            target_genome_id: "ToyGenome".to_string(),
+            policy: PrimerSpecificityPolicy::default(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+            path: None,
+        })
+        .expect("retain missing gene-set bindings as typed member failures")
+        .collection_operation
+        .expect("failed-member collection report");
+    assert!(missing_bindings.per_member_status.iter().all(|row| {
+        row.outcome == CollectionMemberOutcome::Failed
+            && row.produced_report_ids.is_empty()
+            && row.error.as_ref().is_some_and(|error| {
+                error
+                    .message
+                    .contains("requires an explicit member-to-primer-report binding")
+            })
+    }));
+    assert_eq!(missing_bindings.aggregate_warnings.len(), 2);
+}
+
 #[test]
 fn primer_specificity_pairs_forward_reverse_and_same_primer_warning_products() {
     let policy = PrimerSpecificityPolicy {

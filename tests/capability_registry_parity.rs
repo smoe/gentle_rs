@@ -1,9 +1,9 @@
 use gentle::{app::gui_prominent_glossary_entries, engine::GentleEngine};
 use gentle_protocol::{
     AdapterSurfacing, CapabilityAdapter, CapabilityDescriptor, CapabilityMutation,
-    CapabilitySource, CollectionLiftRejectionReason, CollectionLiftSupport, CollectionSubjectKind,
-    capability_parity_adapters, capability_registry, collection_lift_policy,
-    collection_lift_policy_registry, shell_alias_registry,
+    CapabilitySource, CollectionLiftRejectionReason, CollectionLiftSupport, CollectionLiftingMode,
+    CollectionSubjectKind, capability_parity_adapters, capability_registry,
+    collection_lift_policy, collection_lift_policy_registry, shell_alias_registry,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -277,6 +277,37 @@ fn collection_lift_policies_attach_only_to_existing_capabilities() {
             descriptor.collection_lift_policies, entry.subjects,
             "capability descriptor must expose its collection policies"
         );
+    }
+
+    for (source, name) in [
+        (
+            CapabilitySource::EngineOperation,
+            "AssessPrimerPairSpecificity",
+        ),
+        (
+            CapabilitySource::GlossaryCommand,
+            "primers specificity",
+        ),
+        (
+            CapabilitySource::GlossaryCommand,
+            "collections run primer-specificity",
+        ),
+    ] {
+        for subject_kind in [
+            CollectionSubjectKind::GeneSetResolution,
+            CollectionSubjectKind::ProjectSequences,
+        ] {
+            let policy = collection_lift_policy(source, name, subject_kind).unwrap_or_else(|| {
+                panic!("missing collection specificity policy for {source:?} `{name}`")
+            });
+            assert!(matches!(
+                policy.support,
+                CollectionLiftSupport::Supported {
+                    mode: CollectionLiftingMode::Map,
+                    ..
+                }
+            ));
+        }
     }
 }
 

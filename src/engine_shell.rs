@@ -39,7 +39,7 @@ use crate::{
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm,
-        CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
+        CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CollectionSubjectRef,
         ConstructReasoningInspectionActionKind, CutRunAlignConfig, CutRunCoverageKind,
         CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
         DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
@@ -73,10 +73,11 @@ use crate::{
         PlanningCloningVectorCandidate, PlanningEstimate, PlanningObjective, PlanningProfile,
         PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
         PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
-        PrimerSpecificityCheckMode, PrimerSpecificityPolicy, ProbeRegionRequest, ProjectFact,
-        ProjectFactDomain, ProjectFactGraph, ProjectFactTypeSpec, ProjectState,
-        PromoterArtifactManifestEntry, PromoterCohortKind, PromoterExpressionEvidenceInput,
-        PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
+        PrimerSpecificityCheckMode, PrimerSpecificityCollectionMemberBinding,
+        PrimerSpecificityPolicy, ProbeRegionRequest, ProjectFact, ProjectFactDomain,
+        ProjectFactGraph, ProjectFactTypeSpec, ProjectState, PromoterArtifactManifestEntry,
+        PromoterCohortKind, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
+        PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
         ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
         ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
         ProteinExpressionProductReadiness, ProteinExpressionRequirements,
@@ -2449,6 +2450,17 @@ pub enum ShellCommand {
         pair_index: Option<usize>,
         forward_primer: Option<String>,
         reverse_primer: Option<String>,
+        target_genome_id: String,
+        policy: PrimerSpecificityPolicy,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        path: Option<String>,
+    },
+    CollectionsRunPrimerSpecificity {
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<PrimerSpecificityCollectionMemberBinding>,
+        pair_rank: Option<usize>,
+        pair_index: Option<usize>,
         target_genome_id: String,
         policy: PrimerSpecificityPolicy,
         catalog_path: Option<String>,
@@ -11262,6 +11274,21 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("none"),
             ),
+            Self::CollectionsRunPrimerSpecificity {
+                collection_subject,
+                member_bindings,
+                target_genome_id,
+                path,
+                ..
+            } => format!(
+                "map primer-pair specificity over {:?} collection members against prepared genome '{}' (explicit_bindings={}, path={})",
+                collection_subject.kind(),
+                target_genome_id,
+                member_bindings.len(),
+                path.as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
             Self::PrimersSpecificityPlan {
                 primer_report_id,
                 forward_primer,
@@ -12868,6 +12895,7 @@ impl ShellCommand {
                 | Self::PrimersDesign { .. }
                 | Self::PrimersDesignQpcr { .. }
                 | Self::PrimersSpecificity { .. }
+                | Self::CollectionsRunPrimerSpecificity { .. }
                 | Self::PrimersSpecificityPlan { .. }
                 | Self::PrimersSpecificityImport { .. }
                 | Self::PrimersTranscriptAssaySpecificityPlan { .. }
@@ -19298,6 +19326,27 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "REVERSE_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit reverse primer sequence alternative"}),
                 json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared genomic-DNA or transcriptome-cDNA resource id"}),
                 json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path"}),
+            ],
+        ),
+        primer_specificity_report_descriptor(
+            "AssessPrimerPairSpecificityCollection",
+            "Map the existing primer-pair specificity assessment over a typed project-sequence or persisted gene-set collection and return one aggregate collection report.",
+            vec![
+                json!({"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "other", "detail": "typed project_sequences or gene_set_resolution collection subject"}),
+                json!({"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "report", "detail": "member-id to primer-design-report bindings; required for logical gene-set members and optional for uniquely resolvable project sequences"}),
+                json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared genomic-DNA or transcriptome-cDNA resource id"}),
+                json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate collection-report JSON path"}),
+            ],
+        ),
+        primer_specificity_report_descriptor(
+            "collections run primer-specificity",
+            "Run the shared primer-specificity operation once per bound collection member and return per-member status and produced report ids.",
+            vec![
+                json!({"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"}),
+                json!({"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "project sequence ids; alternative to GENE_SET_REPORT_ID"}),
+                json!({"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "report", "detail": "repeated MEMBER_ID=PRIMER_REPORT_ID bindings"}),
+                json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared genomic-DNA or transcriptome-cDNA resource id"}),
+                json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate collection-report JSON path"}),
             ],
         ),
         pool_artifact_descriptor(
@@ -26310,6 +26359,30 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--threshold", "required": true, "subject_kind": "other", "detail": "score threshold expression"}),
             ],
         ),
+        json!({
+            "id": "BuildGeneSetPromoterCohort",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "reference/helper genome catalog id"},
+                {"name": "SOURCE|RESOLUTION", "required": true, "subject_kind": "other", "detail": "gene-set request or resolved gene-set report"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external promoter-cohort JSON output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "may_on_success",
+                    "description": "Writes the optional external JSON export when OUTPUT_PATH is supplied."
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Build and persist strand-aware promoter windows plus a collection-operation report for a resolved gene set.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("BuildGeneSetPromoterCohort")
+        }),
         optional_artifact_resource_report_descriptor(
             "gene-sets promoter-cohort",
             "optional external gene-set promoter-cohort JSON output path",
@@ -27065,6 +27138,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "BuildRepeatEnvironmentCohort"
         | "features window-cohort-tfbs" => Some(vec![]),
         "AssessPrimerPairSpecificity"
+        | "AssessPrimerPairSpecificityCollection"
+        | "collections run primer-specificity"
         | "PreparePrimerPairSpecificityHandoff"
         | "ImportPrimerPairSpecificityHandoff"
         | "ExportPool"
@@ -40745,6 +40820,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "routines" => parse_routines_command(tokens),
         "orthologs" | "ortholog" => parse_orthologs_command(tokens),
         "gene-sets" | "gene_sets" | "genesets" => parse_gene_sets_command(tokens),
+        "collections" | "collection" => parse_collections_command(tokens),
         "gene-groups" | "gene_groups" | "genegroups" => parse_gene_groups_command(tokens),
         "reporters" => parse_reporters_command(tokens),
         "resources" => {
@@ -52074,6 +52150,52 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::CollectionsRunPrimerSpecificity {
+            collection_subject,
+            member_bindings,
+            pair_rank,
+            pair_index,
+            target_genome_id,
+            policy,
+            catalog_path,
+            cache_dir,
+            path,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::AssessPrimerPairSpecificityCollection {
+                    collection_subject: collection_subject.clone(),
+                    member_bindings: member_bindings.clone(),
+                    pair_rank: *pair_rank,
+                    pair_index: *pair_index,
+                    target_genome_id: target_genome_id.clone(),
+                    policy: policy.clone(),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.collection_operation.clone().ok_or_else(|| {
+                "Collection primer specificity operation returned no collection report".to_string()
+            })?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.collection_primer_specificity_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
+            })
+        }
         ShellCommand::PrimersSpecificityPlan {
             primer_report_id,
             pair_rank,
@@ -58581,6 +58703,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersDesign { .. }
             | ShellCommand::PrimersDesignQpcr { .. }
             | ShellCommand::PrimersSpecificity { .. }
+            | ShellCommand::CollectionsRunPrimerSpecificity { .. }
             | ShellCommand::PrimersSpecificityPlan { .. }
             | ShellCommand::PrimersSpecificityImport { .. }
             | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
@@ -60316,6 +60439,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersDesign { .. }
         | ShellCommand::PrimersDesignQpcr { .. }
         | ShellCommand::PrimersSpecificity { .. }
+        | ShellCommand::CollectionsRunPrimerSpecificity { .. }
         | ShellCommand::PrimersSpecificityPlan { .. }
         | ShellCommand::PrimersSpecificityImport { .. }
         | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }

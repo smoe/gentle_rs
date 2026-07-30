@@ -11178,6 +11178,441 @@ impl GentleEngine {
         )
     }
 
+    fn primer_specificity_collection_subject_members(
+        &self,
+        subject: &CollectionSubjectRef,
+    ) -> Result<
+        (
+            CollectionSubjectRef,
+            Vec<CollectionMemberRef>,
+            Vec<GeneSetProvenanceRow>,
+        ),
+        EngineError,
+    > {
+        match subject {
+            CollectionSubjectRef::ProjectSequences { seq_ids } => {
+                let normalized_ids = seq_ids
+                    .iter()
+                    .map(|seq_id| seq_id.trim())
+                    .filter(|seq_id| !seq_id.is_empty())
+                    .map(str::to_string)
+                    .collect::<BTreeSet<_>>();
+                if normalized_ids.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message:
+                            "Project-sequence primer specificity requires at least one sequence id"
+                                .to_string(),
+                        cause_chain: vec![],
+                    });
+                }
+                let seq_ids = normalized_ids.into_iter().collect::<Vec<_>>();
+                let members = seq_ids
+                    .iter()
+                    .map(|seq_id| CollectionMemberRef {
+                        stable_member_id: seq_id.clone(),
+                        seq_id: Some(seq_id.clone()),
+                        ..CollectionMemberRef::default()
+                    })
+                    .collect();
+                Ok((
+                    CollectionSubjectRef::ProjectSequences { seq_ids },
+                    members,
+                    vec![],
+                ))
+            }
+            CollectionSubjectRef::GeneSetResolution { report_id } => {
+                let resolution = self.get_gene_set_resolution_artifact(report_id)?;
+                if resolution.resolved_members.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Gene-set resolution '{}' contains no resolved members",
+                            report_id.trim()
+                        ),
+                        cause_chain: vec![],
+                    });
+                }
+                let canonical_report_id = Self::gene_set_resolution_artifact_id(&resolution);
+                let members = resolution
+                    .resolved_members
+                    .iter()
+                    .enumerate()
+                    .map(|(index, member)| CollectionMemberRef {
+                        stable_member_id: member.dedup_key.clone(),
+                        gene_symbol: Some(member.symbol.clone()),
+                        gene_id: member.gene_id.clone(),
+                        ordering_index: Some(index),
+                        source_provenance: member.provenance.clone(),
+                        ..CollectionMemberRef::default()
+                    })
+                    .collect();
+                Ok((
+                    CollectionSubjectRef::GeneSetResolution {
+                        report_id: canonical_report_id,
+                    },
+                    members,
+                    resolution.provenance,
+                ))
+            }
+            CollectionSubjectRef::Container { .. } | CollectionSubjectRef::Arrangement { .. } => {
+                Err(EngineError {
+                    code: ErrorCode::Unsupported,
+                    message: format!(
+                        "Primer specificity collection mapping does not support {:?} subjects",
+                        subject.kind()
+                    ),
+                    cause_chain: vec![],
+                })
+            }
+        }
+    }
+
+    fn primer_specificity_collection_binding_map(
+        bindings: Vec<PrimerSpecificityCollectionMemberBinding>,
+    ) -> Result<BTreeMap<String, String>, EngineError> {
+        let mut by_member = BTreeMap::new();
+        let mut bound_reports = BTreeMap::<String, String>::new();
+        for binding in bindings {
+            let stable_member_id = binding.stable_member_id.trim().to_string();
+            let primer_report_id = binding.primer_report_id.trim().to_string();
+            if stable_member_id.is_empty() || primer_report_id.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message:
+                        "Collection primer-report bindings require non-empty stable_member_id and primer_report_id"
+                            .to_string(),
+                    cause_chain: vec![],
+                });
+            }
+            if by_member
+                .insert(stable_member_id.clone(), primer_report_id.clone())
+                .is_some()
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Collection member '{}' has more than one primer-report binding",
+                        stable_member_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            if let Some(previous_member) =
+                bound_reports.insert(primer_report_id.clone(), stable_member_id.clone())
+                && previous_member != stable_member_id
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer-design report '{}' is bound to both '{}' and '{}'; one global specificity run must not be duplicated across collection members",
+                        primer_report_id, previous_member, stable_member_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+        }
+        Ok(by_member)
+    }
+
+    fn resolve_primer_specificity_collection_member_report(
+        &self,
+        member: &CollectionMemberRef,
+        explicit_report_id: Option<&str>,
+    ) -> Result<(String, &'static str), EngineError> {
+        if let Some(report_id) = explicit_report_id {
+            let report = self.get_primer_design_report(report_id)?;
+            if let Some(seq_id) = member.seq_id.as_deref()
+                && report.template != seq_id
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer-design report '{}' targets sequence '{}', not collection member sequence '{}'",
+                        report.report_id, report.template, seq_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            return Ok((report.report_id, "explicit"));
+        }
+
+        let Some(seq_id) = member.seq_id.as_deref() else {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Gene-set member '{}' requires an explicit member-to-primer-report binding",
+                    member.stable_member_id
+                ),
+                cause_chain: vec![],
+            });
+        };
+        if !self.state.sequences.contains_key(seq_id) {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Project sequence '{}' not found", seq_id),
+                cause_chain: vec![],
+            });
+        }
+        let candidates = self
+            .list_primer_design_reports()
+            .into_iter()
+            .filter(|summary| summary.template == seq_id)
+            .map(|summary| summary.report_id)
+            .collect::<Vec<_>>();
+        match candidates.as_slice() {
+            [report_id] => Ok((report_id.clone(), "unique_template_match")),
+            [] => Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No primer-design report targets project sequence '{}'; provide --member-report {}=REPORT_ID",
+                    seq_id, member.stable_member_id
+                ),
+                cause_chain: vec![],
+            }),
+            _ => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Project sequence '{}' has {} primer-design reports ({}); bind one explicitly with --member-report {}=REPORT_ID",
+                    seq_id,
+                    candidates.len(),
+                    candidates.join(", "),
+                    member.stable_member_id
+                ),
+                cause_chain: vec![],
+            }),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn assess_primer_pair_specificity_collection(
+        &mut self,
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<PrimerSpecificityCollectionMemberBinding>,
+        pair_rank: Option<usize>,
+        pair_index: Option<usize>,
+        target_genome_id: &str,
+        policy: PrimerSpecificityPolicy,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        op_id: &str,
+        run_id: &str,
+    ) -> Result<CollectionOperationReport, EngineError> {
+        let subject_kind = collection_subject.kind();
+        let lift_policy = collection_lift_policy(
+            CapabilitySource::EngineOperation,
+            "AssessPrimerPairSpecificity",
+            subject_kind,
+        )
+        .cloned()
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::Unsupported,
+            message: format!(
+                "AssessPrimerPairSpecificity has no collection lift policy for {:?}",
+                subject_kind
+            ),
+            cause_chain: vec![],
+        })?;
+        if !matches!(
+            &lift_policy.support,
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Map,
+                ..
+            }
+        ) {
+            return Err(EngineError {
+                code: ErrorCode::Unsupported,
+                message: format!(
+                    "AssessPrimerPairSpecificity collection lift policy for {:?} does not declare map support",
+                    subject_kind
+                ),
+                cause_chain: vec![],
+            });
+        }
+
+        let (collection_subject, members, provenance) =
+            self.primer_specificity_collection_subject_members(&collection_subject)?;
+        let bindings = Self::primer_specificity_collection_binding_map(member_bindings)?;
+        let member_ids = members
+            .iter()
+            .map(|member| member.stable_member_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let unknown_bindings = bindings
+            .keys()
+            .filter(|member_id| !member_ids.contains(member_id.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !unknown_bindings.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Primer-report bindings reference member ids that are not in the collection: {}",
+                    unknown_bindings.join(", ")
+                ),
+                cause_chain: vec![],
+            });
+        }
+
+        let mut resolved_members = Vec::with_capacity(members.len());
+        let mut used_report_ids = BTreeMap::<String, String>::new();
+        for member in members {
+            let resolved = self.resolve_primer_specificity_collection_member_report(
+                &member,
+                bindings.get(&member.stable_member_id).map(String::as_str),
+            );
+            if let Ok((report_id, _)) = &resolved
+                && let Some(previous_member) =
+                    used_report_ids.insert(report_id.clone(), member.stable_member_id.clone())
+                && previous_member != member.stable_member_id
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer-design report '{}' resolves to both '{}' and '{}'; collection mapping would duplicate one specificity assessment",
+                        report_id, previous_member, member.stable_member_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            resolved_members.push((member, resolved));
+        }
+
+        let canonical_membership = canonical_collection_membership_json(
+            subject_kind,
+            &resolved_members
+                .iter()
+                .map(|(member, _)| member.clone())
+                .collect::<Vec<_>>(),
+        );
+        let membership_fingerprint = sha256_prefixed_str(&canonical_membership);
+        let identity = serde_json::to_string(&json!({
+            "collection_subject": collection_subject,
+            "collection_membership_fingerprint_sha256": membership_fingerprint,
+            "member_bindings": resolved_members.iter().map(|(member, resolved)| json!({
+                "stable_member_id": member.stable_member_id,
+                "primer_report_id": resolved.as_ref().ok().map(|(report_id, _)| report_id),
+            })).collect::<Vec<_>>(),
+            "pair_rank": pair_rank,
+            "pair_index": pair_index,
+            "target_genome_id": target_genome_id,
+            "policy": policy,
+        }))
+        .map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not identify collection primer-specificity report: {error}"),
+            cause_chain: vec![],
+        })?;
+        let report_id = short_sha256_id("collection_primer_specificity", &identity);
+
+        let mut per_member_status = Vec::with_capacity(resolved_members.len());
+        let mut aggregate_warnings = Vec::new();
+        let mut successful_reports = Vec::new();
+        for (mut member, resolved) in resolved_members {
+            let (primer_report_id, resolution_kind) = match resolved {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    aggregate_warnings.push(format!(
+                        "Member '{}': {}",
+                        member.stable_member_id, error.message
+                    ));
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Failed,
+                        error: Some(error),
+                        produced_report_ids: vec![],
+                    });
+                    continue;
+                }
+            };
+            member.source_provenance.push(GeneSetProvenanceRow {
+                source_kind: "primer_design_report_binding".to_string(),
+                source_id: primer_report_id.clone(),
+                source_label: None,
+                source_path: None,
+                note: Some(format!(
+                    "Primer-design report binding resolved by {resolution_kind}"
+                )),
+            });
+            match self.assess_primer_pair_specificity(
+                Some(&primer_report_id),
+                pair_rank,
+                pair_index,
+                None,
+                None,
+                target_genome_id,
+                policy.clone(),
+                catalog_path,
+                cache_dir,
+            ) {
+                Ok(report) => {
+                    let produced_report_id = report.report_id.clone();
+                    aggregate_warnings.extend(
+                        report.warnings.iter().map(|warning| {
+                            format!("Member '{}': {warning}", member.stable_member_id)
+                        }),
+                    );
+                    if !report.summary.specificity_pass {
+                        aggregate_warnings.push(format!(
+                            "Member '{}' completed with biological status '{}'; execution succeeded, but the primer pair did not pass specificity",
+                            member.stable_member_id, report.summary.status
+                        ));
+                    }
+                    successful_reports.push(report);
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Succeeded,
+                        error: None,
+                        produced_report_ids: vec![produced_report_id],
+                    });
+                }
+                Err(error) => {
+                    aggregate_warnings.push(format!(
+                        "Member '{}': {}",
+                        member.stable_member_id, error.message
+                    ));
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Failed,
+                        error: Some(error),
+                        produced_report_ids: vec![],
+                    });
+                }
+            }
+        }
+
+        if !successful_reports.is_empty() {
+            let mut store = self.read_primer_design_store();
+            for report in &mut successful_reports {
+                report.op_id = Some(op_id.to_string());
+                report.run_id = Some(run_id.to_string());
+                store
+                    .primer_specificity_reports
+                    .insert(report.report_id.clone(), report.clone());
+            }
+            self.write_primer_design_store(store)?;
+        }
+
+        Ok(CollectionOperationReport {
+            schema: COLLECTION_OPERATION_REPORT_SCHEMA.to_string(),
+            report_id,
+            op_id: Some(op_id.to_string()),
+            run_id: Some(run_id.to_string()),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            capability_source: CapabilitySource::EngineOperation,
+            capability_name: "AssessPrimerPairSpecificity".to_string(),
+            collection_subject,
+            lifting_mode: CollectionLiftingMode::Map,
+            lift_policy,
+            fingerprint_algorithm: COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM.to_string(),
+            collection_membership_fingerprint_sha256: membership_fingerprint,
+            dry_run: false,
+            applied: true,
+            per_member_status,
+            aggregate_warnings,
+            provenance,
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(super) fn assess_explicit_primer_pair_specificity_with_target(
         &self,
@@ -31237,6 +31672,81 @@ impl GentleEngine {
                     ));
                     result.messages.push(report.summary.summary.clone());
                     result.primer_specificity_report = Some(Box::new(report));
+                }
+                Operation::AssessPrimerPairSpecificityCollection {
+                    collection_subject,
+                    member_bindings,
+                    pair_rank,
+                    pair_index,
+                    target_genome_id,
+                    policy,
+                    catalog_path,
+                    cache_dir,
+                    path,
+                } => {
+                    let report = self.assess_primer_pair_specificity_collection(
+                        collection_subject,
+                        member_bindings,
+                        pair_rank,
+                        pair_index,
+                        &target_genome_id,
+                        policy,
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                        &result.op_id,
+                        run_id,
+                    )?;
+                    parent_seq_ids.extend(report.per_member_status.iter().flat_map(|row| {
+                        row.produced_report_ids.iter().filter_map(|report_id| {
+                            self.get_primer_specificity_report(report_id)
+                                .ok()
+                                .and_then(|child| child.primary_seq_id)
+                        })
+                    }));
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let file = File::create(path).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create collection primer-specificity report '{path}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                        let writer = BufWriter::new(file);
+                        serde_json::to_writer_pretty(writer, &report).map_err(|error| {
+                            EngineError {
+                                code: ErrorCode::Io,
+                                message: format!(
+                                    "Could not serialize collection primer-specificity report '{path}': {error}"
+                                ),
+                                cause_chain: vec![],
+                            }
+                        })?;
+                        result.messages.push(format!(
+                            "Wrote collection primer-specificity report to '{path}'"
+                        ));
+                    }
+                    let succeeded = report
+                        .per_member_status
+                        .iter()
+                        .filter(|row| row.outcome == CollectionMemberOutcome::Succeeded)
+                        .count();
+                    let failed = report
+                        .per_member_status
+                        .iter()
+                        .filter(|row| row.outcome == CollectionMemberOutcome::Failed)
+                        .count();
+                    result.messages.push(format!(
+                        "Mapped primer specificity over {} collection member(s): {} succeeded, {} failed",
+                        report.per_member_status.len(),
+                        succeeded,
+                        failed
+                    ));
+                    result.warnings.extend(report.aggregate_warnings.clone());
+                    result.collection_operation = Some(report);
                 }
                 Operation::PreparePrimerPairSpecificityHandoff {
                     primer_report_id,

@@ -3014,6 +3014,8 @@ Shared shell command:
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
     - `primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
+    - `collections run primer-specificity GENE_SET_REPORT_ID --member-report MEMBER_ID=PRIMER_REPORT_ID ... --pair-rank N --target-genome GENOME_ID [--policy JSON_OR_@FILE] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]`
+    - `collections run primer-specificity --seq-ids SEQ_ID,... (--pair-rank N | --pair-index N) --target-genome GENOME_ID [--member-report MEMBER_ID=PRIMER_REPORT_ID]... [--policy JSON_OR_@FILE] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]`
     - `primers specificity-plan REPORT_ID --pair-rank N --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-plan --forward SEQ --reverse SEQ --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-import HANDOFF.json [--path OUTPUT.json]`
@@ -3513,6 +3515,22 @@ Shared shell command:
       - returns and persists `gentle.primer_specificity_report.v4`; repeated
         assessment of the same biological inputs and policy reuses one stable
         content-derived `report_id`
+      - `collections run primer-specificity` is the engine-owned `map`
+        continuation for a persisted gene-set resolution or a set of project
+        sequences. It calls this same assessment once per resolved primer
+        report and returns `gentle.collection_operation.v1` with typed
+        per-member outcomes and produced specificity-report ids
+      - logical gene-set members require explicit repeated
+        `--member-report MEMBER_ID=PRIMER_REPORT_ID` bindings. A gene symbol
+        does not identify one assay and is never used to guess a report.
+        Project-sequence members may omit a binding only when exactly one
+        stored primer-design report targets that sequence; zero or multiple
+        matches are retained as member failures
+      - a member outcome of `succeeded` means that GENtle completed and
+        persisted the child assessment. The child report may still have
+        `summary.status = fail|incomplete|not_assessed`; those biological
+        verdicts are preserved and summarized as aggregate warnings rather
+        than mislabeled as execution errors
       - the report follows GENtle's computational-artifact contract with
         `op_id`, `run_id`, sequence links, external inputs/database
         fingerprints, request/effective-setting summaries, a reopen hint, and

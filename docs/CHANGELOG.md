@@ -14,6 +14,12 @@ understand what changed.
 
 ## 2026-07-30
 
+- Added engine-owned collection `map` execution for primer specificity through
+  `AssessPrimerPairSpecificityCollection` and
+  `collections run primer-specificity`. Persisted gene sets use explicit
+  member-to-primer-report bindings, project sequences may resolve one unique
+  report, and the aggregate `gentle.collection_operation.v1` keeps execution
+  failures separate from each child report's biological verdict.
 - Added the first engine-owned collection-lifting slice:
   `gentle.collection_lift_policy_registry.v1` capability policies,
   subject-aware canonical membership fingerprints, and portable
