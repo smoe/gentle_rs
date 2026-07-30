@@ -7,10 +7,13 @@
 use super::*;
 use crate::gene_groups::LoadedGeneGroupRecord;
 use gentle_protocol::{
-    GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
+    COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM, COLLECTION_OPERATION_REPORT_SCHEMA,
+    CollectionLiftSupport, CollectionLiftingMode, CollectionMemberOutcome, CollectionMemberRef,
+    CollectionMemberStatusRow, CollectionOperationReport, CollectionSubjectKind,
+    CollectionSubjectRef, GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
     GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GeneGroupMember, GeneSetCoRegulatedProducerMetadata,
     GeneSetProducerFilter, GeneSetProducerKind, GeneSetProducerProvenance,
-    GeneSetProducerQueryMetadata,
+    GeneSetProducerQueryMetadata, canonical_collection_membership_json, collection_lift_policy,
 };
 use serde_json::Value;
 use std::{collections::BTreeSet, path::Path};
@@ -3366,6 +3369,154 @@ impl GentleEngine {
             relationship_flags: vec![],
             unresolved_members,
             warnings,
+            collection_operation: None,
+        })
+    }
+
+    pub(crate) fn build_gene_set_promoter_collection_operation_report(
+        report: &GeneSetPromoterCohortReport,
+        promoter_cohort_report_id: &str,
+        op_id: &str,
+        run_id: &str,
+    ) -> Result<CollectionOperationReport, EngineError> {
+        let source_report_id = Self::gene_set_resolution_artifact_id(&report.gene_set_resolution);
+        let source_members = report
+            .gene_set_resolution
+            .resolved_members
+            .iter()
+            .map(|member| CollectionMemberRef {
+                stable_member_id: member.dedup_key.clone(),
+                gene_symbol: Some(member.symbol.clone()),
+                gene_id: member.gene_id.clone(),
+                source_provenance: member.provenance.clone(),
+                ..CollectionMemberRef::default()
+            })
+            .collect::<Vec<_>>();
+        let canonical_membership = canonical_collection_membership_json(
+            CollectionSubjectKind::GeneSetResolution,
+            &source_members,
+        );
+        let fingerprint = crate::digest_utils::sha256_prefixed_str(&canonical_membership);
+        let lift_policy = collection_lift_policy(
+            CapabilitySource::EngineOperation,
+            "BuildGeneSetPromoterCohort",
+            CollectionSubjectKind::GeneSetResolution,
+        )
+        .cloned()
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::Internal,
+            message: "BuildGeneSetPromoterCohort has no gene-set collection lift policy"
+                .to_string(),
+            cause_chain: vec![],
+        })?;
+        if !matches!(
+            &lift_policy.support,
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Derive,
+                ..
+            }
+        ) {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message:
+                    "BuildGeneSetPromoterCohort collection lift policy must declare derive support"
+                        .to_string(),
+                cause_chain: vec![],
+            });
+        }
+
+        let mut per_member_status = Vec::new();
+        for (source_index, (source_member, resolved_member)) in source_members
+            .iter()
+            .zip(&report.gene_set_resolution.resolved_members)
+            .enumerate()
+        {
+            let derived_windows = report
+                .windows
+                .iter()
+                .filter(|window| window.member_dedup_key == source_member.stable_member_id)
+                .collect::<Vec<_>>();
+            let error = if derived_windows.is_empty() {
+                let detail = report
+                    .unresolved_members
+                    .iter()
+                    .find(|unresolved| {
+                        unresolved.source_id.as_deref()
+                            == Some(source_member.stable_member_id.as_str())
+                    })
+                    .map(|unresolved| unresolved.reason.clone())
+                    .unwrap_or_else(|| {
+                        "No promoter window was derived for this member".to_string()
+                    });
+                Some(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: detail,
+                    cause_chain: vec![],
+                })
+            } else {
+                None
+            };
+            per_member_status.push(CollectionMemberStatusRow {
+                member: CollectionMemberRef {
+                    ordering_index: Some(source_index),
+                    ..source_member.clone()
+                },
+                outcome: if error.is_some() {
+                    CollectionMemberOutcome::Failed
+                } else {
+                    CollectionMemberOutcome::Succeeded
+                },
+                error,
+                produced_report_ids: (!derived_windows.is_empty())
+                    .then(|| vec![promoter_cohort_report_id.to_string()])
+                    .unwrap_or_default(),
+            });
+
+            for window in derived_windows {
+                let stable_member_id = format!(
+                    "promoter_window:{}:{}:{}:{}-{}",
+                    source_member.stable_member_id,
+                    window.transcript_id,
+                    window.occurrence,
+                    window.promoter_start_1based,
+                    window.promoter_end_1based
+                );
+                per_member_status.push(CollectionMemberStatusRow {
+                    member: CollectionMemberRef {
+                        stable_member_id,
+                        gene_symbol: Some(resolved_member.symbol.clone()),
+                        gene_id: window.gene_id.clone(),
+                        parent_member_id: Some(source_member.stable_member_id.clone()),
+                        source_provenance: resolved_member.provenance.clone(),
+                        ..CollectionMemberRef::default()
+                    },
+                    outcome: CollectionMemberOutcome::Succeeded,
+                    error: None,
+                    produced_report_ids: vec![promoter_cohort_report_id.to_string()],
+                });
+            }
+        }
+
+        Ok(CollectionOperationReport {
+            schema: COLLECTION_OPERATION_REPORT_SCHEMA.to_string(),
+            report_id: format!("collection_operation:{promoter_cohort_report_id}"),
+            op_id: Some(op_id.to_string()),
+            run_id: Some(run_id.to_string()),
+            generated_at_unix_ms: report.generated_at_unix_ms,
+            capability_source: CapabilitySource::EngineOperation,
+            capability_name: "BuildGeneSetPromoterCohort".to_string(),
+            collection_subject: CollectionSubjectRef::GeneSetResolution {
+                report_id: source_report_id,
+            },
+            lifting_mode: CollectionLiftingMode::Derive,
+            lift_policy,
+            fingerprint_algorithm: COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM.to_string(),
+            collection_membership_fingerprint_sha256: fingerprint,
+            dry_run: false,
+            applied: true,
+            per_member_status,
+            aggregate_warnings: report.warnings.clone(),
+            provenance: report.gene_set_resolution.provenance.clone(),
         })
     }
 

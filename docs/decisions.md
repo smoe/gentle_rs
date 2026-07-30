@@ -319,3 +319,20 @@ kind and deterministic content fingerprint in addition to its prefix and genome
 label. Replacing database content at the same prefix invalidates a pending
 handoff. Whole-prepare activity state does not override successful
 component-level `blastdbcmd` validation.
+
+## DEC-030: Collection Lifting Is Subject-Specific And Engine-Owned
+
+Status: active
+
+Collection-visible capabilities declare their lifting behavior in the typed
+`gentle.collection_lift_policy_registry.v1` registry. Policies are keyed by
+capability and subject kind because a logical gene set, physical container, and
+ordered arrangement do not have interchangeable semantics. Supported modes are
+`map`, `combine`, `compare`, `arrange`, and `derive`; incompatibility is an
+explicit typed rejection rather than an adapter-local conditional.
+
+Dynamic readiness failures remain operation/fact-graph results and must not be
+misclassified as permanent policy rejection. Generic collection reports carry
+typed member outcomes/errors and links to produced domain reports. Membership
+locks are set-like except for explicitly ordered subjects such as
+arrangements, whose numeric member order is part of the fingerprint.

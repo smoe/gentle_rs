@@ -326,5 +326,9 @@ wet-lab conclusions or unconfirmed mutations.
 - Browser/WebAssembly frontend portability after core/headless contracts settle.
 - GUI gene-set/collection operation lifting per
   [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
+- Gene-set enrichment analysis over resolved logical sets, with an explicit
+  background universe, identifier namespace/mapping audit, ontology and cache
+  provenance, multiple-testing correction, unresolved-member accounting, and
+  no causal-regulation claim inferred from enrichment alone.
 - Full glossary/help-generation inversion so `docs/glossary.json` becomes a
   generated or validated projection of engine/protocol-side descriptors.

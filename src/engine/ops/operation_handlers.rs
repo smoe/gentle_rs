@@ -25487,6 +25487,7 @@ impl GentleEngine {
             cutrun_regulatory_support: None,
             gene_set_resolution: None,
             gene_set_promoter_cohort: None,
+            collection_operation: None,
             gene_set_cutrun_regulatory_support: None,
             ortholog_promoter_cohort: None,
             ortholog_promoter_comparison: None,
@@ -29267,6 +29268,19 @@ impl GentleEngine {
                     )?;
                     report.op_id = Some(result.op_id.clone());
                     report.run_id = Some(run_id.to_string());
+                    let promoter_cohort_report_id =
+                        Self::gene_set_promoter_cohort_artifact_id(&report);
+                    let collection_operation =
+                        Self::build_gene_set_promoter_collection_operation_report(
+                            &report,
+                            &promoter_cohort_report_id,
+                            &result.op_id,
+                            run_id,
+                        )?;
+                    report.collection_operation = Some(Box::new(collection_operation.clone()));
+                    self.upsert_gene_set_resolution_artifact(
+                        report.gene_set_resolution.clone(),
+                    )?;
                     self.upsert_gene_set_promoter_cohort_artifact(report.clone())?;
                     if let Some(path) = path.as_deref() {
                         self.write_pretty_json_file(&report, path, "gene-set promoter cohort")?;
@@ -29280,6 +29294,7 @@ impl GentleEngine {
                         "Built gene-set promoter cohort for '{}' with {} window(s)",
                         genome_id, report.returned_window_count
                     ));
+                    result.collection_operation = Some(collection_operation);
                     result.gene_set_promoter_cohort = Some(report);
                 }
                 Operation::InspectCutRunGeneSetRegulatorySupport {

@@ -942,6 +942,46 @@ Initial high-value lifting expectations:
 | Multiple sequence alignment | `compare` members together and return an alignment report with member order and column correspondence |
 | Rack/freezer/inventory placement | `arrange` into a storage projection from containers/arrangements, without changing logical set identity |
 
+Implemented collection-lifting baseline:
+
+- `gentle.collection_lift_policy_registry.v1` is loaded from
+  `docs/collection_lift_policies.json`. Each curated row is keyed by capability
+  source/name and collection subject kind. It declares either one supported
+  lifting mode and result payload kind, or a typed rejection reason.
+- Capability descriptors project their applicable `collection_lift_policies`;
+  adapters should consume that field rather than inventing local collection
+  behavior.
+- Dynamic readiness remains in the normal fact/precondition and operation
+  error machinery. A temporary missing input is not encoded as a static
+  collection-policy rejection.
+- `gentle.collection_operation.v1` records the selected subject, capability,
+  lifting mode, policy, source-membership lock, per-member outcomes and typed
+  errors, produced report ids, warnings, and provenance. `dry_run` and
+  `applied` distinguish previews from committed operations.
+- Derived members are additional `per_member_status` rows. Their
+  `parent_member_id` points to the source member, while
+  `produced_report_ids` links both source and descendants to the domain report.
+- `BuildGeneSetPromoterCohort` is the first proving consumer. Its normal
+  promoter-cohort result embeds the generic collection report, and the same
+  report is returned in `OpResult.collection_operation`.
+- Logical gene sets are explicitly rejected for `ExportPool` and
+  `RenderPoolGelSvg` with `requires_physical_pool`; resolving genes never
+  silently asserts that their products occupy one tube or gel lane.
+
+Collection membership fingerprints use
+`sha256_canonical_collection_members_v1`. GENtle hashes the UTF-8 canonical
+JSON projection of the source members:
+
+- project sequence selections, containers, and resolved gene sets are set-like;
+  stable member ids are sorted and de-duplicated
+- arrangements are order-bearing; rows are sorted by numeric
+  `ordering_index`, duplicates are retained, and each index travels with its
+  stable member id
+- the subject kind and order semantics are part of the hashed projection
+
+This deliberately avoids lexicographic position ordering (`10` before `2`) and
+ensures that swapping two arrangement lanes changes the membership lock.
+
 ## Stateless sequence-scan contract
 
 Implemented additive contract:

@@ -12,6 +12,16 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
 understand what changed.
 
+## 2026-07-30
+
+- Added the first engine-owned collection-lifting slice:
+  `gentle.collection_lift_policy_registry.v1` capability policies,
+  subject-aware canonical membership fingerprints, and portable
+  `gentle.collection_operation.v1` reports. Gene-set promoter cohorts now link
+  source genes to derived windows through typed per-member rows and persisted
+  report ids, while logical gene sets are explicitly rejected as implicit
+  physical pools or gel lanes.
+
 ## 2026-07-29
 
 - Preserved gene-level identity for prepared transcriptome BLAST resources in

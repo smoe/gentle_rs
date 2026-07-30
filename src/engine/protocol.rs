@@ -24,13 +24,17 @@ pub use gentle_protocol::{
     AnnotationCandidateSummary, AnnotationCandidateWriteback, AttractPwmMappingPolicy,
     AttractRegionClass, AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow,
     AttractSplicingEvidencePolicySummary, AttractSplicingEvidenceSettings,
-    AttractSplicingEvidenceSummaryRow, AttractSplicingEvidenceView, CONSTRUCT_CANDIDATE_SCHEMA,
-    CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA,
-    CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
-    CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
-    CandidateSetOperator, CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, Capabilities,
+    AttractSplicingEvidenceSummaryRow, AttractSplicingEvidenceView,
+    COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM, COLLECTION_OPERATION_REPORT_SCHEMA,
+    CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
+    CONSTRUCT_REASONING_STORE_SCHEMA, CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode,
+    CandidateFeatureStrandRelation, CandidateMacroTemplateParam, CandidateObjectiveDirection,
+    CandidateObjectiveSpec, CandidateSetOperator, CandidateTieBreakPolicy,
+    CandidateWeightedObjectiveTerm, Capabilities, CapabilitySource,
     CdnaAssayMaterializedProductRow, CdnaAssayProductGelBandRow, CdnaAssayProductMaterialization,
-    CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, ConstructCandidate,
+    CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CollectionLiftSupport,
+    CollectionLiftingMode, CollectionMemberOutcome, CollectionMemberRef, CollectionMemberStatusRow,
+    CollectionOperationReport, CollectionSubjectKind, CollectionSubjectRef, ConstructCandidate,
     ConstructObjective, ConstructReasoningGraph, ConstructReasoningGraphFreshness,
     ConstructReasoningStore, ConstructRole, ContainerId, ContainerKind, CutRunAlignConfig,
     CutRunCatalogEntry, CutRunCatalogListEntry, CutRunCoverageKind, CutRunDatasetListReport,
@@ -143,7 +147,7 @@ pub use gentle_protocol::{
     TranslationSpeedProfile, TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
     UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
     UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
-    UniprotFeatureCodingDnaSegment,
+    UniprotFeatureCodingDnaSegment, canonical_collection_membership_json, collection_lift_policy,
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -4500,6 +4504,8 @@ pub struct OpResult {
     pub gene_set_resolution: Option<GeneSetResolutionReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_set_promoter_cohort: Option<GeneSetPromoterCohortReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_operation: Option<CollectionOperationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_set_cutrun_regulatory_support: Option<GeneSetCutRunRegulatorySupportReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

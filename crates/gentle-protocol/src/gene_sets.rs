@@ -4,6 +4,7 @@
 //! groups, explicit user members, local ontology mappings, prepared-genome
 //! neighborhoods, or deterministic random samples into auditable gene rows.
 
+use crate::CollectionOperationReport;
 use serde::{Deserialize, Serialize};
 
 /// Report schema for resolving a gene set into concrete member rows.
@@ -368,6 +369,9 @@ pub struct GeneSetPromoterCohortReport {
     pub unresolved_members: Vec<GeneSetUnresolvedMember>,
     #[serde(default)]
     pub warnings: Vec<String>,
+    /// Generic lifting report that links source genes to derived windows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_operation: Option<Box<CollectionOperationReport>>,
 }
 
 /// Evaluation state for one gene-set member in CUT&RUN support analysis.

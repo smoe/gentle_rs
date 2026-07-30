@@ -11769,6 +11769,7 @@ Error: `{err}`"
                 cutrun_regulatory_support: None,
                 gene_set_resolution: None,
                 gene_set_promoter_cohort: None,
+                collection_operation: None,
                 gene_set_cutrun_regulatory_support: None,
                 ortholog_promoter_cohort: None,
                 ortholog_promoter_comparison: None,

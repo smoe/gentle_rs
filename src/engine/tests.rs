@@ -5359,6 +5359,114 @@ fn build_gene_set_promoter_cohort_uses_default_strand_geometry_and_keeps_unresol
 }
 
 #[test]
+fn build_gene_set_promoter_cohort_emits_persisted_collection_lift_report() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let resolution = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExplicitMembers {
+                members: vec!["NEG1".to_string(), "POS1".to_string()],
+            },
+            Some("ToyGenome"),
+            None,
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect("resolve explicit gene set");
+
+    let result = engine
+        .apply(Operation::BuildGeneSetPromoterCohort {
+            genome_id: "ToyGenome".to_string(),
+            source: None,
+            resolution: Some(Box::new(resolution)),
+            relationship: GeneSetCohortRelationship::Manual,
+            upstream_bp: DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+            downstream_bp: DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+            gene_group_catalog_path: None,
+            genome_catalog_path: Some(genome_catalog_path),
+            cache_dir: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            path: None,
+        })
+        .expect("build promoter cohort operation");
+    let generic = result
+        .collection_operation
+        .expect("generic collection operation report");
+    let cohort = result
+        .gene_set_promoter_cohort
+        .expect("promoter cohort report");
+    assert_eq!(
+        cohort.collection_operation.as_deref(),
+        Some(&generic),
+        "domain report and generic operation result must carry the same collection report"
+    );
+    assert_eq!(generic.schema, COLLECTION_OPERATION_REPORT_SCHEMA);
+    assert_eq!(generic.capability_name, "BuildGeneSetPromoterCohort");
+    assert_eq!(generic.lifting_mode, CollectionLiftingMode::Derive);
+    assert_eq!(
+        generic.fingerprint_algorithm,
+        COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM
+    );
+    assert!(
+        generic
+            .collection_membership_fingerprint_sha256
+            .starts_with("sha256:")
+    );
+    assert!(generic.applied);
+    assert!(!generic.dry_run);
+
+    let source_rows = generic
+        .per_member_status
+        .iter()
+        .filter(|row| row.member.parent_member_id.is_none())
+        .collect::<Vec<_>>();
+    let derived_rows = generic
+        .per_member_status
+        .iter()
+        .filter(|row| row.member.parent_member_id.is_some())
+        .collect::<Vec<_>>();
+    assert_eq!(source_rows.len(), 2);
+    assert_eq!(derived_rows.len(), 2);
+    assert!(source_rows.iter().all(|row| {
+        row.outcome == CollectionMemberOutcome::Succeeded
+            && row.member.gene_symbol.is_some()
+            && row.produced_report_ids.len() == 1
+    }));
+    assert!(derived_rows.iter().all(|row| {
+        row.outcome == CollectionMemberOutcome::Succeeded
+            && source_rows.iter().any(|source| {
+                row.member.parent_member_id.as_deref()
+                    == Some(source.member.stable_member_id.as_str())
+            })
+            && row.produced_report_ids == source_rows[0].produced_report_ids
+    }));
+
+    let persisted = GentleEngine::gene_set_promoter_cohort_artifacts_from_state(engine.state());
+    assert_eq!(persisted.len(), 1);
+    assert_eq!(
+        persisted[0]
+            .collection_operation
+            .as_deref()
+            .map(|report| report.report_id.as_str()),
+        Some(generic.report_id.as_str())
+    );
+    let persisted_resolutions =
+        GentleEngine::gene_set_resolution_artifacts_from_state(engine.state());
+    let subject_report_id = match &generic.collection_subject {
+        CollectionSubjectRef::GeneSetResolution { report_id } => report_id,
+        other => panic!("expected gene-set resolution subject, got {other:?}"),
+    };
+    assert!(persisted_resolutions.iter().any(|resolution| {
+        GentleEngine::gene_set_resolution_artifact_id(resolution) == *subject_report_id
+    }));
+}
+
+#[test]
 fn resolve_ortholog_promoter_cohort_uses_aliases_and_strand_geometry() {
     let td = tempdir().expect("tempdir");
     let root = td.path();

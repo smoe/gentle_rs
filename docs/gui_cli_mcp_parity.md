@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 28 | 606 | 0 |
-| gentle_cli | 380 | 279 | 0 |
-| MCP | 80 | 434 | 48 |
-| JS | 78 | 422 | 51 |
-| Lua | 77 | 423 | 51 |
+| GUI | 28 | 607 | 0 |
+| gentle_cli | 380 | 280 | 0 |
+| MCP | 80 | 435 | 48 |
+| JS | 78 | 423 | 51 |
+| Lua | 77 | 424 | 51 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -584,6 +584,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | ShowCutRunReadReport | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportCutRunReadCoverage | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | InspectCutRunRegulatorySupport | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| BuildGeneSetPromoterCohort | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ImportIsoformPanel | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ImportUniprotSwissProt | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | FetchUniprotSwissProt | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |

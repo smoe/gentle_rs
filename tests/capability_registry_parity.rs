@@ -1,7 +1,9 @@
 use gentle::{app::gui_prominent_glossary_entries, engine::GentleEngine};
 use gentle_protocol::{
     AdapterSurfacing, CapabilityAdapter, CapabilityDescriptor, CapabilityMutation,
-    CapabilitySource, capability_parity_adapters, capability_registry, shell_alias_registry,
+    CapabilitySource, CollectionLiftRejectionReason, CollectionLiftSupport, CollectionSubjectKind,
+    capability_parity_adapters, capability_registry, collection_lift_policy,
+    collection_lift_policy_registry, shell_alias_registry,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -256,6 +258,45 @@ fn command_descriptor<'a>(
                 command.path
             )
         })
+}
+
+#[test]
+fn collection_lift_policies_attach_only_to_existing_capabilities() {
+    let registry = capability_registry();
+    for entry in collection_lift_policy_registry() {
+        let descriptor = registry
+            .iter()
+            .find(|descriptor| descriptor.source == entry.source && descriptor.name == entry.name)
+            .unwrap_or_else(|| {
+                panic!(
+                    "collection lift policy references missing {:?} capability `{}`",
+                    entry.source, entry.name
+                )
+            });
+        assert_eq!(
+            descriptor.collection_lift_policies, entry.subjects,
+            "capability descriptor must expose its collection policies"
+        );
+    }
+}
+
+#[test]
+fn logical_gene_set_is_not_silently_treated_as_a_physical_pool() {
+    for capability_name in ["ExportPool", "RenderPoolGelSvg"] {
+        let policy = collection_lift_policy(
+            CapabilitySource::EngineOperation,
+            capability_name,
+            CollectionSubjectKind::GeneSetResolution,
+        )
+        .unwrap_or_else(|| panic!("missing gene-set rejection for {capability_name}"));
+        assert!(matches!(
+            &policy.support,
+            CollectionLiftSupport::Rejected {
+                reason: CollectionLiftRejectionReason::RequiresPhysicalPool,
+                ..
+            }
+        ));
+    }
 }
 
 fn mcp_tool_names() -> BTreeSet<String> {

@@ -1,0 +1,103 @@
+{
+  "schema": "gentle.collection_lift_policy_registry.v1",
+  "policies": [
+    {
+      "source": "engine_operation",
+      "name": "BuildGeneSetPromoterCohort",
+      "subjects": [
+        {
+          "subject_kind": "gene_set_resolution",
+          "support": {
+            "status": "supported",
+            "mode": "derive",
+            "result_payload_kind": "gentle.gene_set_promoter_cohort.v1"
+          }
+        }
+      ]
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-sets promoter-cohort",
+      "subjects": [
+        {
+          "subject_kind": "gene_set_resolution",
+          "support": {
+            "status": "supported",
+            "mode": "derive",
+            "result_payload_kind": "gentle.gene_set_promoter_cohort.v1"
+          }
+        }
+      ]
+    },
+    {
+      "source": "engine_operation",
+      "name": "ExportPool",
+      "subjects": [
+        {
+          "subject_kind": "gene_set_resolution",
+          "support": {
+            "status": "rejected",
+            "reason": "requires_physical_pool",
+            "detail": "A logical gene set does not imply that its members share one physical sample. Materialize or select containers explicitly before pool export."
+          }
+        }
+      ]
+    },
+    {
+      "source": "glossary_command",
+      "name": "export-pool",
+      "subjects": [
+        {
+          "subject_kind": "gene_set_resolution",
+          "support": {
+            "status": "rejected",
+            "reason": "requires_physical_pool",
+            "detail": "A logical gene set does not imply that its members share one physical sample. Materialize or select containers explicitly before pool export."
+          }
+        }
+      ]
+    },
+    {
+      "source": "engine_operation",
+      "name": "RenderPoolGelSvg",
+      "subjects": [
+        {
+          "subject_kind": "gene_set_resolution",
+          "support": {
+            "status": "rejected",
+            "reason": "requires_physical_pool",
+            "detail": "A logical gene set must first be materialized as explicit containers or an arrangement; it cannot silently become one gel lane."
+          }
+        }
+      ]
+    },
+    {
+      "source": "glossary_command",
+      "name": "render-pool-gel-svg",
+      "subjects": [
+        {
+          "subject_kind": "gene_set_resolution",
+          "support": {
+            "status": "rejected",
+            "reason": "requires_physical_pool",
+            "detail": "A logical gene set must first be materialized as explicit containers or an arrangement; it cannot silently become one gel lane."
+          }
+        }
+      ]
+    },
+    {
+      "source": "engine_operation",
+      "name": "CreateArrangementSerial",
+      "subjects": [
+        {
+          "subject_kind": "gene_set_resolution",
+          "support": {
+            "status": "rejected",
+            "reason": "requires_materialized_members",
+            "detail": "Serial arrangements contain explicit sequence/container members. Resolve how gene-set members become sequence artifacts before arranging them."
+          }
+        }
+      ]
+    }
+  ]
+}
