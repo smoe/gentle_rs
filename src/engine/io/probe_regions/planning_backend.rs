@@ -35,7 +35,10 @@ for (package in packages) {
 
 #[derive(Debug)]
 enum ProbeRegionBoundedCommandError {
-    Spawn(String),
+    Spawn {
+        kind: std::io::ErrorKind,
+        message: String,
+    },
     Poll(String),
     TimedOut { elapsed_ms: u128 },
 }
@@ -2493,16 +2496,7 @@ impl GentleEngine {
             return None;
         }
         Some(match dependency {
-            Some(row) => {
-                let detail = row
-                    .detail
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|detail| !detail.is_empty())
-                    .map(|detail| format!(": {detail}"))
-                    .unwrap_or_default();
-                format!("{label} {name} [{}]{detail}", row.status)
-            }
+            Some(row) => format!("{label} {name} [{}]", row.status),
             None => format!("{label} {name} [not_checked]"),
         })
     }
@@ -2517,7 +2511,10 @@ impl GentleEngine {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|error| ProbeRegionBoundedCommandError::Spawn(error.to_string()))?;
+            .map_err(|error| ProbeRegionBoundedCommandError::Spawn {
+                kind: error.kind(),
+                message: error.to_string(),
+            })?;
         let Some(stdout) = child.stdout.take() else {
             let _ = child.kill();
             let _ = child.wait();
@@ -2615,13 +2612,20 @@ impl GentleEngine {
                     },
                 }
             }
-            Err(ProbeRegionBoundedCommandError::Spawn(error)) => ProbeRegionDependencyCheck {
+            Err(ProbeRegionBoundedCommandError::Spawn {
+                kind: error_kind,
+                message,
+            }) => ProbeRegionDependencyCheck {
                 name: name.to_string(),
                 kind: kind.to_string(),
                 required,
-                status: "missing".to_string(),
+                status: if error_kind == std::io::ErrorKind::NotFound {
+                    "missing".to_string()
+                } else {
+                    "probe_failed".to_string()
+                },
                 version: None,
-                detail: Some(error),
+                detail: Some(message),
             },
             Err(ProbeRegionBoundedCommandError::TimedOut { elapsed_ms }) => {
                 ProbeRegionDependencyCheck {
@@ -2779,9 +2783,9 @@ impl GentleEngine {
                     },
                 ))
             }
-            Err(ProbeRegionBoundedCommandError::Spawn(error)) => Some((
+            Err(ProbeRegionBoundedCommandError::Spawn { message, .. }) => Some((
                 "probe_failed",
-                format!("Could not start R package probe: {error}"),
+                format!("Could not start R package probe: {message}"),
             )),
             Err(ProbeRegionBoundedCommandError::Poll(error)) => Some((
                 "probe_failed",
@@ -2983,6 +2987,14 @@ mod tests {
         let detail = dependency.detail.as_deref().expect("missing detail");
         assert!(detail.contains(&explicit_library.to_string_lossy().to_string()));
         assert!(detail.contains("Check --r-library-path PATH"));
+        let missing_summary = GentleEngine::probe_region_dependency_problem(
+            &probe.dependencies,
+            "oligo",
+            "R package",
+        )
+        .expect("missing dependency summary");
+        assert_eq!(missing_summary, "R package oligo [missing]");
+        assert!(!missing_summary.contains("library paths"));
     }
 
     #[cfg(unix)]
@@ -3000,7 +3012,64 @@ mod tests {
         );
 
         assert_eq!(probe.dependencies[0].status, "timed_out");
+        assert_eq!(
+            GentleEngine::probe_region_dependency_problem(
+                &probe.dependencies,
+                "oligo",
+                "R package",
+            ),
+            Some("R package oligo [timed_out]".to_string())
+        );
         assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    }
+
+    #[test]
+    fn probe_region_missing_command_is_reported_as_missing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing_program = dir.path().join("not-installed");
+        let dependency = GentleEngine::probe_region_command_dependency(
+            &missing_program.to_string_lossy(),
+            "command",
+            true,
+            &["--version"],
+        );
+
+        assert_eq!(dependency.status, "missing");
+        assert!(
+            dependency
+                .detail
+                .as_deref()
+                .is_some_and(|detail| !detail.trim().is_empty())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn probe_region_non_executable_command_is_reported_as_probe_failed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let program = dir.path().join("installed-but-not-executable");
+        std::fs::write(&program, "#!/bin/sh\nprintf 'present\\n'\n")
+            .expect("write non-executable command");
+        let mut permissions = std::fs::metadata(&program)
+            .expect("non-executable command metadata")
+            .permissions();
+        permissions.set_mode(0o644);
+        std::fs::set_permissions(&program, permissions).expect("keep command non-executable");
+
+        let dependency = GentleEngine::probe_region_command_dependency(
+            &program.to_string_lossy(),
+            "command",
+            true,
+            &["--version"],
+        );
+
+        assert_eq!(dependency.status, "probe_failed");
+        assert!(
+            dependency
+                .detail
+                .as_deref()
+                .is_some_and(|detail| !detail.trim().is_empty())
+        );
     }
 
     #[test]
