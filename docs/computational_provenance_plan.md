@@ -1,6 +1,6 @@
 ## Computational Provenance Parity
 
-Last updated: 2026-04-14
+Last updated: 2026-07-30
 
 This note turns GENtle's general provenance principle into a concrete rollout
 plan for persisted computational contributions.
@@ -98,9 +98,21 @@ Shipped baseline:
   non-verdict context evidence
 - capture completeness remains explicit: internal search ceilings and
   Primer3-hidden rejection space are never represented as evaluated rows
+- qPCR reports now carry the same descriptive selection-provenance shape:
+  exact `gentle_qpcr_assay_rank_v1` score terms, bounded evaluated
+  pair/probe near misses, and a report-fingerprinted reasoning graph
+- transcript-aware qPCR capture is explicitly incomplete where rejected
+  transcript-local coordinates cannot be projected back to source sequence
+- the existing PCR Designer caches and displays report-owned score/capture
+  provenance and focuses the linked graph without recomputing biology locally
+- new primer/qPCR reports record unconsulted region-level exclusion analysis as
+  `not_run`; no repeat, variant, or paralogue interval is fabricated
 
 Expected next step:
 
+- add a separately versioned, bounded excluded-region analysis only when the
+  selector actually consumes repeat, common-variant, low-complexity, or
+  paralogue evidence; current graph absence means not run, not checked clear
 - treat multiplex cross-dimer/cross-product characterization as a separate
   panel-level artifact rather than widening the one-pair specificity schema
 

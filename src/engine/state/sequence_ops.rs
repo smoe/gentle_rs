@@ -7150,6 +7150,151 @@ impl GentleEngine {
         }
     }
 
+    fn qpcr_assay_score_terms(
+        pair: &PrimerDesignPairRecord,
+        probe: &PrimerDesignPrimerRecord,
+        probe_offset_penalty_c: f64,
+        probe_midpoint_distance_bp: usize,
+    ) -> Vec<PrimerDesignScoreTerm> {
+        let mut terms = pair.score_terms.clone();
+        terms.push(Self::primer_design_score_term(
+            "probe_tm_offset_from_preferred",
+            probe_offset_penalty_c,
+            -10.0,
+            format!(
+                "Absolute distance from the preferred probe-minus-primer-mean Tm offset of {QPCR_PREFERRED_PROBE_TM_OFFSET_C:.1} C."
+            ),
+        ));
+        terms.push(Self::primer_design_score_term(
+            "probe_amplicon_midpoint_distance",
+            probe_midpoint_distance_bp as f64,
+            -0.05,
+            "Absolute distance between probe and amplicon midpoints in bases.",
+        ));
+
+        let forward_probe = Self::compute_primer_pair_dimer_metrics(
+            pair.forward.sequence.as_bytes(),
+            probe.sequence.as_bytes(),
+        );
+        let reverse_probe = Self::compute_primer_pair_dimer_metrics(
+            pair.reverse.sequence.as_bytes(),
+            probe.sequence.as_bytes(),
+        );
+        terms.push(Self::primer_design_score_term(
+            "probe_self_complementarity_observed",
+            probe.self_complementary_run_bp as f64,
+            0.0,
+            "Observed probe self-complementary run. The v1 qPCR ranking model records but does not weight this diagnostic.",
+        ));
+        terms.push(Self::primer_design_score_term(
+            "probe_primer_complementarity_observed",
+            forward_probe
+                .max_complementary_run_bp
+                .max(reverse_probe.max_complementary_run_bp) as f64,
+            0.0,
+            "Maximum observed probe/primer complementary run. The v1 qPCR ranking model records but does not weight this diagnostic.",
+        ));
+        terms.push(Self::primer_design_score_term(
+            "probe_primer_three_prime_complementarity_observed",
+            forward_probe
+                .max_3prime_complementary_run_bp
+                .max(reverse_probe.max_3prime_complementary_run_bp) as f64,
+            0.0,
+            "Maximum observed 3-prime-anchored probe/primer complementary run. The v1 qPCR ranking model records but does not weight this diagnostic.",
+        ));
+        terms
+    }
+
+    fn qpcr_design_near_miss_order(
+        left: &QpcrDesignRejectedCandidate,
+        right: &QpcrDesignRejectedCandidate,
+    ) -> Ordering {
+        match (left.score, right.score) {
+            (Some(left_score), Some(right_score)) => right_score.total_cmp(&left_score),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        }
+        .then(left.forward.start_0based.cmp(&right.forward.start_0based))
+        .then(left.reverse.start_0based.cmp(&right.reverse.start_0based))
+        .then(
+            left.probe
+                .as_ref()
+                .map(|probe| probe.start_0based)
+                .cmp(&right.probe.as_ref().map(|probe| probe.start_0based)),
+        )
+        .then(left.forward.sequence.cmp(&right.forward.sequence))
+        .then(left.reverse.sequence.cmp(&right.reverse.sequence))
+        .then(
+            left.probe
+                .as_ref()
+                .map(|probe| probe.sequence.as_str())
+                .cmp(&right.probe.as_ref().map(|probe| probe.sequence.as_str())),
+        )
+        .then(left.reasons.cmp(&right.reasons))
+        .then(left.failed_checks.cmp(&right.failed_checks))
+    }
+
+    fn retain_qpcr_design_near_miss(
+        collector: &mut QpcrDesignNearMissCollector,
+        candidate: QpcrDesignRejectedCandidate,
+    ) {
+        if collector.effective_limit == 0 {
+            return;
+        }
+        collector.eligible_candidate_count = collector.eligible_candidate_count.saturating_add(1);
+        if collector.rows.len() < collector.effective_limit {
+            collector.rows.push(candidate);
+            return;
+        }
+
+        let mut worst_index = 0usize;
+        for index in 1..collector.rows.len() {
+            collector.candidate_comparison_count =
+                collector.candidate_comparison_count.saturating_add(1);
+            if Self::qpcr_design_near_miss_order(
+                &collector.rows[index],
+                &collector.rows[worst_index],
+            ) == Ordering::Greater
+            {
+                worst_index = index;
+            }
+        }
+        collector.candidate_comparison_count =
+            collector.candidate_comparison_count.saturating_add(1);
+        if Self::qpcr_design_near_miss_order(&candidate, &collector.rows[worst_index])
+            == Ordering::Less
+        {
+            collector.rows[worst_index] = candidate;
+        }
+    }
+
+    fn finish_qpcr_design_near_miss_capture(
+        mut collector: QpcrDesignNearMissCollector,
+        status: PrimerPairCharacterizationStatus,
+        reason: impl Into<String>,
+    ) -> (
+        Vec<QpcrDesignRejectedCandidate>,
+        PrimerDesignNearMissCapture,
+    ) {
+        collector.rows.sort_by(Self::qpcr_design_near_miss_order);
+        let retained_candidate_count = collector.rows.len();
+        let capture = PrimerDesignNearMissCapture {
+            status,
+            scope: "evaluated_pair_probe_assay_candidates".to_string(),
+            reason: reason.into(),
+            requested_limit: collector.requested_limit,
+            effective_limit: collector.effective_limit,
+            eligible_candidate_count: collector.eligible_candidate_count,
+            retained_candidate_count,
+            omitted_candidate_count: collector
+                .eligible_candidate_count
+                .saturating_sub(retained_candidate_count),
+            candidate_comparison_count: collector.candidate_comparison_count,
+        };
+        (collector.rows, capture)
+    }
+
     #[allow(dead_code)]
     pub(super) fn design_qpcr_assays_from_pairs(
         template_bytes: &[u8],
@@ -7192,9 +7337,46 @@ impl GentleEngine {
         progress_context: Option<&PrimerDesignProgressContext<'_>>,
         on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
     ) -> Result<(Vec<QpcrAssayRecord>, QpcrDesignRejectionSummary), EngineError> {
+        let outcome = Self::design_qpcr_assays_from_pairs_core_with_capture(
+            template_bytes,
+            roi_start_0based,
+            roi_end_0based,
+            probe,
+            probe_sequence_constraints,
+            max_probe_tm_delta_c,
+            max_assays,
+            pairs,
+            pair_rejections,
+            0,
+            progress_context,
+            on_progress,
+        )?;
+        Ok((outcome.assays, outcome.rejection_summary))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn design_qpcr_assays_from_pairs_core_with_capture(
+        template_bytes: &[u8],
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        probe: &PrimerDesignSideConstraint,
+        probe_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        max_probe_tm_delta_c: f64,
+        max_assays: usize,
+        pairs: Vec<PrimerDesignPairRecord>,
+        pair_rejections: PrimerDesignRejectionSummary,
+        near_miss_limit: usize,
+        progress_context: Option<&PrimerDesignProgressContext<'_>>,
+        on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
+    ) -> Result<QpcrAssaySearchOutcome, EngineError> {
         let mut rejection = QpcrDesignRejectionSummary {
             primer_pair: pair_rejections,
             ..QpcrDesignRejectionSummary::default()
+        };
+        let mut near_miss_collector = QpcrDesignNearMissCollector {
+            requested_limit: near_miss_limit,
+            effective_limit: near_miss_limit.min(PRIMER_DESIGN_MAX_REJECTED_NEAR_MISS_LIMIT),
+            ..QpcrDesignNearMissCollector::default()
         };
         let mut probe_candidate_rejections = PrimerDesignRejectionSummary::default();
         let probe_candidates = Self::generate_primer_side_candidates(
@@ -7263,60 +7445,10 @@ impl GentleEngine {
                 let probe_end = probe_candidate.end_0based_exclusive;
                 let probe_inside_amplicon = probe_start >= pair.forward.end_0based_exclusive
                     && probe_end <= pair.reverse.start_0based;
-                if !probe_inside_amplicon {
-                    rejection.probe_or_assay_failure =
-                        rejection.probe_or_assay_failure.saturating_add(1);
-                    if assays_evaluated.is_multiple_of(assay_progress_stride) {
-                        Self::emit_primer_design_progress(
-                            progress_context,
-                            on_progress,
-                            "assay_search",
-                            format!("Evaluated {} assay combination(s)", assays_evaluated),
-                            false,
-                            None,
-                            None,
-                            Some(probe_candidates.len()),
-                            None,
-                            None,
-                            None,
-                            None,
-                            None,
-                            Some(assay_candidate_combinations),
-                            Some(assays_evaluated),
-                            Some(assays.len()),
-                        )?;
-                    }
-                    continue;
-                }
                 let primer_mean_tm_c = (pair.forward.tm_c + pair.reverse.tm_c) / 2.0;
                 let probe_tm_offset_c = probe_candidate.tm_c - primer_mean_tm_c;
                 let probe_tm_delta_c = probe_tm_offset_c.abs();
                 let probe_tm_ok = probe_tm_delta_c <= max_probe_tm_delta_c;
-                if !probe_tm_ok {
-                    rejection.probe_or_assay_failure =
-                        rejection.probe_or_assay_failure.saturating_add(1);
-                    if assays_evaluated.is_multiple_of(assay_progress_stride) {
-                        Self::emit_primer_design_progress(
-                            progress_context,
-                            on_progress,
-                            "assay_search",
-                            format!("Evaluated {} assay combination(s)", assays_evaluated),
-                            false,
-                            None,
-                            None,
-                            Some(probe_candidates.len()),
-                            None,
-                            None,
-                            None,
-                            None,
-                            None,
-                            Some(assay_candidate_combinations),
-                            Some(assays_evaluated),
-                            Some(assays.len()),
-                        )?;
-                    }
-                    continue;
-                }
                 let probe_mid = (probe_start + probe_end) / 2;
                 let probe_mid_penalty = probe_mid.abs_diff(amplicon_mid) as f64;
                 let probe_offset_penalty_c =
@@ -7335,9 +7467,77 @@ impl GentleEngine {
                     },
                     probe_end.saturating_sub(probe_start),
                 );
+                let score_terms = Self::qpcr_assay_score_terms(
+                    &pair,
+                    &probe_record,
+                    probe_offset_penalty_c,
+                    probe_mid_penalty as usize,
+                );
+                let decomposed_score = score_terms
+                    .iter()
+                    .map(|term| term.contribution)
+                    .sum::<f64>();
+                debug_assert!(
+                    (score - decomposed_score).abs()
+                        <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * score.abs().max(1.0),
+                    "qPCR assay score decomposition drifted from the ranking score"
+                );
+
+                let mut failed_checks = Vec::new();
+                if !probe_inside_amplicon {
+                    failed_checks.push("probe_outside_primer_bounded_amplicon".to_string());
+                }
+                if !probe_tm_ok {
+                    failed_checks.push(format!(
+                        "probe_tm_delta_above_max:observed={probe_tm_delta_c:.6}:max={max_probe_tm_delta_c:.6}"
+                    ));
+                }
+                if !failed_checks.is_empty() {
+                    rejection.probe_or_assay_failure =
+                        rejection.probe_or_assay_failure.saturating_add(1);
+                    Self::retain_qpcr_design_near_miss(
+                        &mut near_miss_collector,
+                        QpcrDesignRejectedCandidate {
+                            forward: pair.forward.clone(),
+                            reverse: pair.reverse.clone(),
+                            probe: Some(probe_record),
+                            amplicon_start_0based: pair.amplicon_start_0based,
+                            amplicon_end_0based_exclusive: pair.amplicon_end_0based_exclusive,
+                            score: Some(score),
+                            reasons: vec![QpcrDesignRejectionReason::ProbeOrAssayFailure],
+                            failed_checks: failed_checks.clone(),
+                            detail: format!(
+                                "Evaluated qPCR assay combination failed probe placement or Tm requirements: {}.",
+                                failed_checks.join(", ")
+                            ),
+                        },
+                    );
+                    if assays_evaluated.is_multiple_of(assay_progress_stride) {
+                        Self::emit_primer_design_progress(
+                            progress_context,
+                            on_progress,
+                            "assay_search",
+                            format!("Evaluated {} assay combination(s)", assays_evaluated),
+                            false,
+                            None,
+                            None,
+                            Some(probe_candidates.len()),
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            Some(assay_candidate_combinations),
+                            Some(assays_evaluated),
+                            Some(assays.len()),
+                        )?;
+                    }
+                    continue;
+                }
                 assays.push(QpcrAssayRecord {
                     rank: 0,
                     score,
+                    score_terms,
                     forward: pair.forward.clone(),
                     reverse: pair.reverse.clone(),
                     probe: probe_record,
@@ -7397,7 +7597,28 @@ impl GentleEngine {
             Some(assays_evaluated),
             Some(assays.len()),
         )?;
-        Ok((assays, rejection))
+        let capture_status = if near_miss_collector.effective_limit == 0 {
+            PrimerPairCharacterizationStatus::NotRun
+        } else {
+            PrimerPairCharacterizationStatus::Pass
+        };
+        let capture_reason = if near_miss_collector.effective_limit == 0 {
+            "Rejected qPCR near-miss capture was disabled by a zero limit.".to_string()
+        } else {
+            "Captured a bounded deterministic subset of evaluated primer-pair/probe assay combinations rejected by qPCR placement or Tm checks. Probe candidate-generation failures remain aggregate-only."
+                .to_string()
+        };
+        let (rejected_near_misses, near_miss_capture) = Self::finish_qpcr_design_near_miss_capture(
+            near_miss_collector,
+            capture_status,
+            capture_reason,
+        );
+        Ok(QpcrAssaySearchOutcome {
+            assays,
+            rejection_summary: rejection,
+            rejected_near_misses,
+            near_miss_capture,
+        })
     }
 
     pub(super) fn parse_primer3_coord_pair(
@@ -8460,6 +8681,81 @@ mod tests {
                     .eligible_candidate_count
                     .saturating_mul(forward_capture.effective_limit)
         );
+        assert_eq!(
+            forward_capture.candidate_comparison_count,
+            reverse_capture.candidate_comparison_count
+        );
+    }
+
+    #[test]
+    fn qpcr_rejected_near_miss_retention_is_bounded_and_input_order_independent() {
+        fn candidate(score: f64, start: usize) -> QpcrDesignRejectedCandidate {
+            QpcrDesignRejectedCandidate {
+                forward: PrimerDesignPrimerRecord {
+                    sequence: format!("F{start}"),
+                    start_0based: start,
+                    end_0based_exclusive: start + 20,
+                    ..PrimerDesignPrimerRecord::default()
+                },
+                reverse: PrimerDesignPrimerRecord {
+                    sequence: format!("R{start}"),
+                    start_0based: start + 80,
+                    end_0based_exclusive: start + 100,
+                    ..PrimerDesignPrimerRecord::default()
+                },
+                probe: Some(PrimerDesignPrimerRecord {
+                    sequence: format!("P{start}"),
+                    start_0based: start + 40,
+                    end_0based_exclusive: start + 60,
+                    ..PrimerDesignPrimerRecord::default()
+                }),
+                amplicon_start_0based: start,
+                amplicon_end_0based_exclusive: start + 100,
+                score: Some(score),
+                reasons: vec![QpcrDesignRejectionReason::ProbeOrAssayFailure],
+                failed_checks: vec!["synthetic_probe_constraint".to_string()],
+                detail: "Synthetic evaluated qPCR rejection.".to_string(),
+            }
+        }
+
+        let rows = vec![
+            candidate(10.0, 10),
+            candidate(40.0, 40),
+            candidate(30.0, 30),
+            candidate(20.0, 20),
+        ];
+        let collect = |input: Vec<QpcrDesignRejectedCandidate>| {
+            let mut collector = QpcrDesignNearMissCollector {
+                requested_limit: 2,
+                effective_limit: 2,
+                ..QpcrDesignNearMissCollector::default()
+            };
+            for row in input {
+                GentleEngine::retain_qpcr_design_near_miss(&mut collector, row);
+            }
+            GentleEngine::finish_qpcr_design_near_miss_capture(
+                collector,
+                PrimerPairCharacterizationStatus::Pass,
+                "complete synthetic qPCR capture",
+            )
+        };
+
+        let (forward_rows, forward_capture) = collect(rows.clone());
+        let (reverse_rows, reverse_capture) = collect(rows.into_iter().rev().collect());
+        assert_eq!(
+            serde_json::to_value(&forward_rows).unwrap(),
+            serde_json::to_value(&reverse_rows).unwrap()
+        );
+        assert_eq!(
+            forward_rows
+                .iter()
+                .map(|row| row.score.unwrap())
+                .collect::<Vec<_>>(),
+            vec![40.0, 30.0]
+        );
+        assert_eq!(forward_capture.eligible_candidate_count, 4);
+        assert_eq!(forward_capture.retained_candidate_count, 2);
+        assert_eq!(forward_capture.omitted_candidate_count, 2);
         assert_eq!(
             forward_capture.candidate_comparison_count,
             reverse_capture.candidate_comparison_count

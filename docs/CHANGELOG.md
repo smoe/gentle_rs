@@ -42,6 +42,12 @@ understand what changed.
   exact additive score terms, bounded deterministic evaluated near misses with
   explicit capture completeness, and report-fingerprinted construct-reasoning
   decisions whose rejected intervals reuse the existing linear-map overlay.
+- Extended the same descriptive provenance to
+  `gentle.qpcr_design_report.v1`: exact primer/probe score terms, bounded
+  evaluated assay near misses, report-bound reasoning graphs, and cached
+  score/capture inspection in the existing PCR Designer. Region-level repeat,
+  variant, and paralogue exclusions remain explicitly unconsulted and are
+  recorded as `not_run` rather than implied clear.
 - Added engine-owned collection `map` execution for primer specificity through
   `AssessPrimerPairSpecificityCollection` and
   `collections run primer-specificity`. Persisted gene sets use explicit

@@ -3937,6 +3937,13 @@ Primer pairs form:
     - left/right distance from the core ROI
     - whether the pair cleanly flanks the core
     - Tm delta and rank score
+    - the selected pair's score model/direction and compact additive
+      contribution table
+    - bounded rejected near misses with retained/eligible/omitted capture
+      counts and completeness reason
+    - the report-owned excluded-region analysis status/reason, including an
+      explicit `not_run` when no region-level evidence source was consulted
+    - an action that focuses the report-linked construct-reasoning overlay
 - ROI and amplicon controls:
   - `ROI start`, `ROI end`
     - both accept numeric coordinates and `=` formulas
@@ -4068,6 +4075,10 @@ qPCR form:
   - qPCR mode now also shows:
     - a selectable saved-report assay preview with forward / reverse / probe
       geometry for the top ranked assays
+    - the selected assay's `gentle_qpcr_assay_rank_v1` contribution table,
+      capture completeness, and bounded rejected assay near misses
+    - the report-owned excluded-region analysis status/reason
+    - an action that focuses the report-linked qPCR selection-reasoning graph
     - the currently selected saved assay now drives the live qPCR
       cartoon-geometry summary instead of always using assay rank `#1`
     - when a matching splicing expert view is active on the same template, the
@@ -4081,6 +4092,9 @@ qPCR form:
     - the live qPCR cartoon-geometry summary is still derived from the selected
       saved report when available, or from the current ROI + constraint
       defaults otherwise
+  - primer and qPCR report previews cache the current report revision and
+    invalidate that cache when a design completes, window state is restored,
+    or a report is explicitly reopened.
 - `Transcript panels` is a thin GUI over the shared
   `DesignTranscriptAssayPanel` operation:
   - Splicing Expert's `Design all-transcript panel` action supplies the source

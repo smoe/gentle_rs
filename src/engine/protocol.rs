@@ -7338,6 +7338,10 @@ pub struct PrimerDesignReport {
     pub rejected_near_misses: Vec<PrimerDesignRejectedCandidate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub near_miss_capture: Option<PrimerDesignNearMissCapture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub excluded_region_analysis_status: Option<PrimerPairCharacterizationStatus>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub excluded_region_analysis_reason: String,
     #[serde(default)]
     pub backend: PrimerDesignBackendInfo,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9579,6 +9583,8 @@ pub struct QpcrTranscriptTargetingResult {
 pub struct QpcrAssayRecord {
     pub rank: usize,
     pub score: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub score_terms: Vec<PrimerDesignScoreTerm>,
     pub forward: PrimerDesignPrimerRecord,
     pub reverse: PrimerDesignPrimerRecord,
     pub probe: PrimerDesignPrimerRecord,
@@ -9600,6 +9606,90 @@ pub struct QpcrDesignRejectionSummary {
     pub probe_gc_or_tm_out_of_bounds: usize,
     pub probe_non_unique_anneal: usize,
     pub probe_or_assay_failure: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+/// Stable qPCR rejection vocabulary spanning the nested primer and probe
+/// census buckets.
+pub enum QpcrDesignRejectionReason {
+    PrimerOutOfWindow,
+    PrimerGcOrTmOutOfBounds,
+    PrimerNonUniqueAnneal,
+    PrimerAmpliconOrRoiFailure,
+    PrimerConstraintFailure,
+    PrimerPairConstraintFailure,
+    PrimerPairEvaluationLimitSkipped,
+    ProbeOutOfWindow,
+    ProbeGcOrTmOutOfBounds,
+    ProbeNonUniqueAnneal,
+    #[default]
+    ProbeOrAssayFailure,
+}
+
+impl QpcrDesignRejectionReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PrimerOutOfWindow => "primer_out_of_window",
+            Self::PrimerGcOrTmOutOfBounds => "primer_gc_or_tm_out_of_bounds",
+            Self::PrimerNonUniqueAnneal => "primer_non_unique_anneal",
+            Self::PrimerAmpliconOrRoiFailure => "primer_amplicon_or_roi_failure",
+            Self::PrimerConstraintFailure => "primer_constraint_failure",
+            Self::PrimerPairConstraintFailure => "primer_pair_constraint_failure",
+            Self::PrimerPairEvaluationLimitSkipped => "primer_pair_evaluation_limit_skipped",
+            Self::ProbeOutOfWindow => "probe_out_of_window",
+            Self::ProbeGcOrTmOutOfBounds => "probe_gc_or_tm_out_of_bounds",
+            Self::ProbeNonUniqueAnneal => "probe_non_unique_anneal",
+            Self::ProbeOrAssayFailure => "probe_or_assay_failure",
+        }
+    }
+}
+
+impl QpcrDesignRejectionSummary {
+    pub fn count_for_reason(&self, reason: QpcrDesignRejectionReason) -> usize {
+        match reason {
+            QpcrDesignRejectionReason::PrimerOutOfWindow => self.primer_pair.out_of_window,
+            QpcrDesignRejectionReason::PrimerGcOrTmOutOfBounds => {
+                self.primer_pair.gc_or_tm_out_of_bounds
+            }
+            QpcrDesignRejectionReason::PrimerNonUniqueAnneal => self.primer_pair.non_unique_anneal,
+            QpcrDesignRejectionReason::PrimerAmpliconOrRoiFailure => {
+                self.primer_pair.amplicon_or_roi_failure
+            }
+            QpcrDesignRejectionReason::PrimerConstraintFailure => {
+                self.primer_pair.primer_constraint_failure
+            }
+            QpcrDesignRejectionReason::PrimerPairConstraintFailure => {
+                self.primer_pair.pair_constraint_failure
+            }
+            QpcrDesignRejectionReason::PrimerPairEvaluationLimitSkipped => {
+                self.primer_pair.pair_evaluation_limit_skipped
+            }
+            QpcrDesignRejectionReason::ProbeOutOfWindow => self.probe_out_of_window,
+            QpcrDesignRejectionReason::ProbeGcOrTmOutOfBounds => self.probe_gc_or_tm_out_of_bounds,
+            QpcrDesignRejectionReason::ProbeNonUniqueAnneal => self.probe_non_unique_anneal,
+            QpcrDesignRejectionReason::ProbeOrAssayFailure => self.probe_or_assay_failure,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One evaluated primer-pair/probe combination rejected before qPCR assay
+/// selection. Probe candidate-generation failures remain aggregate-only.
+pub struct QpcrDesignRejectedCandidate {
+    pub forward: PrimerDesignPrimerRecord,
+    pub reverse: PrimerDesignPrimerRecord,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe: Option<PrimerDesignPrimerRecord>,
+    pub amplicon_start_0based: usize,
+    pub amplicon_end_0based_exclusive: usize,
+    pub score: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasons: Vec<QpcrDesignRejectionReason>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed_checks: Vec<String>,
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -9638,8 +9728,29 @@ pub struct QpcrDesignReport {
     pub assays: Vec<QpcrAssayRecord>,
     #[serde(default)]
     pub rejection_summary: QpcrDesignRejectionSummary,
+    #[serde(
+        default,
+        skip_serializing_if = "PrimerPairCharacterizationStatus::is_not_run"
+    )]
+    pub score_decomposition_status: PrimerPairCharacterizationStatus,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub score_decomposition_reason: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub score_model: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub score_direction: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rejected_near_misses: Vec<QpcrDesignRejectedCandidate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub near_miss_capture: Option<PrimerDesignNearMissCapture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub excluded_region_analysis_status: Option<PrimerPairCharacterizationStatus>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub excluded_region_analysis_reason: String,
     #[serde(default)]
     pub backend: PrimerDesignBackendInfo,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub construct_reasoning_graph_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

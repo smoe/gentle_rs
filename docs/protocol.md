@@ -7603,13 +7603,14 @@ Operation progress/cancellation semantics:
   - `pair_constraints` default:
     `{"require_roi_flanking":false,"required_amplicon_motifs":[],"forbidden_amplicon_motifs":[],"fixed_amplicon_start_0based":null,"fixed_amplicon_end_0based_exclusive":null,"rejected_near_miss_limit":null}`
   - `pair_constraints.rejected_near_miss_limit` retains a bounded,
-    deterministic subset of evaluated pair-level rejections:
+    deterministic subset of evaluated rejections:
     - omitted/`null`: `20`
     - `0`: disabled
     - maximum: `100`
-    - supported by `DesignPrimerPairs` and `DesignInsertionPrimerPairs`;
-      `DesignQpcrAssays` rejects a non-null value because its separate qPCR
-      report does not yet carry pair-selection near misses
+    - `DesignPrimerPairs` and `DesignInsertionPrimerPairs` retain pair-level
+      rows
+    - `DesignQpcrAssays` retains evaluated pair/probe assay-level rows; probe
+      candidate-generation failures remain aggregate-only
 - Side constraints (`forward`, `reverse`, and qPCR `probe`) accept optional
   sequence-level filters:
   - `non_annealing_5prime_tail` (added to the final oligo but excluded from
@@ -7693,11 +7694,18 @@ Operation progress/cancellation semantics:
       pair intervals become `ContextEvidence` with report/op/run provenance
     - the graph fingerprint binds the exact primer-design report content, so
       report drift makes graph freshness stale
-    - generic construct-graph refresh never rewrites this report-bound graph;
-      a stale selection graph is refreshed by rerunning `DesignPrimerPairs`
-    - existing `ConstructReasoningOverlay::from_graph()` projects those
-      evidence rows into the linear DNA map; no separate primer-exclusion track
-      or GUI-local scoring is used
+  - region-level biological exclusion sources are not consulted by this
+    selector slice. In particular, no repeat, common-variant, or
+    paralogue-shared interval evidence is emitted, and absence must not be read
+    as checked and clear. Homopolymer diagnostics remain candidate score terms,
+    not a merged excluded-region track.
+    New reports record `excluded_region_analysis_status: not_run` and an
+    explanatory `excluded_region_analysis_reason`; legacy reports omit both.
+  - generic construct-graph refresh never rewrites this report-bound graph; a
+    stale selection graph is refreshed by rerunning `DesignPrimerPairs`.
+  - existing `ConstructReasoningOverlay::from_graph()` projects the evaluated
+    near-miss evidence rows into the linear DNA map; no separate
+    primer-exclusion track or GUI-local scoring is used.
   - mutating artifact materialization per accepted pair:
     - one forward-primer sequence (`..._fwd`)
     - one reverse-primer sequence (`..._rev`)
@@ -8265,6 +8273,34 @@ Simple PCR constraint handoff:
   - `gentle.qpcr_design_report.v1`
   - includes ranked `assays[]` with forward/reverse/probe oligos, amplicon
     window, and rule flags.
+  - each retained assay includes exact additive `score_terms[]` under
+    `score_model = gentle_qpcr_assay_rank_v1` and
+    `score_direction = higher_is_better`:
+    - all inherited primer-pair ranking terms
+    - `probe_tm_offset_from_preferred`, the absolute distance from the
+      preferred probe-minus-primer-mean Tm offset
+    - `probe_amplicon_midpoint_distance`, the absolute probe/amplicon midpoint
+      distance in bases
+    - zero-weight observational terms for probe self-complementarity,
+      probe/primer complementarity, and 3'-anchored probe/primer
+      complementarity; v1 records these diagnostics without changing the
+      established score
+  - `score_decomposition_status` is `pass` when a retained assay has exact
+    terms and `not_run` when no assay was retained.
+  - bounded selection provenance includes:
+    - `rejected_near_misses[]` for evaluated pair/probe combinations rejected
+      by probe placement or Tm checks
+    - `near_miss_capture` with status, scope, requested/effective limit, and
+      eligible/retained/omitted deterministic work counts
+    - a parallel `QpcrDesignRejectionReason` vocabulary with
+      `count_for_reason` reconciliation against the nested primer/probe census
+    - `incomplete` status for Primer3-hidden pair rejection space, internal
+      pair-evaluation truncation, and transcript-local rejections that cannot
+      be projected to source coordinates
+  - `construct_reasoning_graph_id` links the report to a
+    report-content-fingerprinted graph. Retained assays become weighted-rule
+    decisions and bounded coordinate-bearing rejected assays become
+    non-verdict `ContextEvidence`; report drift makes the graph stale.
   - when transcript-aware targeting is active, persisted reports also include:
     - report-level `transcript_targeting`
     - report-level `transcript_targeting_result`
@@ -8291,6 +8327,11 @@ Simple PCR constraint handoff:
     shell/CLI/GUI reopen flows can inspect one compact persisted explanation of
     the current top retained assay without re-deriving it locally.
   - includes qPCR rejection summary with pair-level and probe-level counters.
+  - region-level repeat, variant, and paralogue exclusion evidence remains
+    absent because those sources are not consulted during qPCR selection;
+    absence is `not_run`, never an implied clear result. New reports record
+    `excluded_region_analysis_status: not_run` plus an explanatory
+    `excluded_region_analysis_reason`; legacy reports omit both.
 
 `TestCdnaPcr` / `TestCdnaQpcr` / `TestCdnaQpcrFasta` contract (implemented baseline):
 

@@ -7626,6 +7626,15 @@ fn primer_selection_provenance_is_bounded_visible_and_report_fingerprinted() {
     );
     assert_eq!(report.score_model, PRIMER_DESIGN_SCORE_MODEL);
     assert_eq!(report.score_direction, PRIMER_DESIGN_SCORE_DIRECTION);
+    assert_eq!(
+        report.excluded_region_analysis_status,
+        Some(PrimerPairCharacterizationStatus::NotRun)
+    );
+    assert!(
+        report
+            .excluded_region_analysis_reason
+            .contains("did not consult")
+    );
     assert!(report.pairs.iter().all(|pair| {
         let sum = pair
             .score_terms
@@ -7713,6 +7722,7 @@ fn primer_selection_provenance_is_bounded_visible_and_report_fingerprinted() {
         row.context_tags
             .iter()
             .any(|tag| tag == "rejected_near_miss")
+            && !row.context_tags.iter().any(|tag| tag == "excluded_region")
     }));
     assert_eq!(
         engine
@@ -7772,6 +7782,8 @@ fn old_primer_design_report_payload_defaults_selection_provenance_fields() {
     assert!(report.score_direction.is_empty());
     assert!(report.rejected_near_misses.is_empty());
     assert!(report.near_miss_capture.is_none());
+    assert!(report.excluded_region_analysis_status.is_none());
+    assert!(report.excluded_region_analysis_reason.is_empty());
     assert!(report.construct_reasoning_graph_id.is_none());
 
     let serialized = serde_json::to_value(report).expect("serialize legacy report");
@@ -7782,6 +7794,8 @@ fn old_primer_design_report_payload_defaults_selection_provenance_fields() {
         "score_direction",
         "rejected_near_misses",
         "near_miss_capture",
+        "excluded_region_analysis_status",
+        "excluded_region_analysis_reason",
         "construct_reasoning_graph_id",
     ] {
         assert!(
@@ -7791,36 +7805,284 @@ fn old_primer_design_report_payload_defaults_selection_provenance_fields() {
     }
 }
 
-#[test]
-fn qpcr_design_rejects_primer_report_near_miss_capture_option() {
+fn qpcr_selection_provenance_engine() -> GentleEngine {
     let mut state = ProjectState::default();
-    state
-        .sequences
-        .insert("qpcr_near_miss_tpl".to_string(), seq(&"ACGT".repeat(40)));
+    state.sequences.insert(
+        "qpcr_near_miss_tpl".to_string(),
+        seq(
+            "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+        ),
+    );
     let mut engine = GentleEngine::from_state(state);
-    let error = engine
-        .apply(Operation::DesignQpcrAssays {
-            template: "qpcr_near_miss_tpl".to_string(),
-            roi_start_0based: 40,
-            roi_end_0based: 80,
-            forward: PrimerDesignSideConstraint::default(),
-            reverse: PrimerDesignSideConstraint::default(),
-            probe: PrimerDesignSideConstraint::default(),
-            pair_constraints: PrimerDesignPairConstraint {
-                rejected_near_miss_limit: Some(5),
-                ..PrimerDesignPairConstraint::default()
-            },
-            min_amplicon_bp: 40,
-            max_amplicon_bp: 120,
-            max_tm_delta_c: None,
-            max_probe_tm_delta_c: None,
-            max_assays: None,
-            transcript_targeting: None,
-            report_id: Some("unsupported_qpcr_near_miss".to_string()),
-        })
-        .expect_err("qPCR report does not carry primer-pair near misses");
-    assert_eq!(error.code, ErrorCode::InvalidInput);
-    assert!(error.message.contains("not DesignQpcrAssays"));
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
+fn qpcr_selection_provenance_operation(
+    report_id: &str,
+    rejected_near_miss_limit: usize,
+) -> Operation {
+    let side = PrimerDesignSideConstraint {
+        min_length: 20,
+        max_length: 20,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 1000,
+        ..PrimerDesignSideConstraint::default()
+    };
+    Operation::DesignQpcrAssays {
+        template: "qpcr_near_miss_tpl".to_string(),
+        roi_start_0based: 40,
+        roi_end_0based: 80,
+        forward: PrimerDesignSideConstraint {
+            location_0based: Some(5),
+            ..side.clone()
+        },
+        reverse: PrimerDesignSideConstraint {
+            location_0based: Some(90),
+            ..side.clone()
+        },
+        probe: side,
+        pair_constraints: PrimerDesignPairConstraint {
+            rejected_near_miss_limit: Some(rejected_near_miss_limit),
+            ..PrimerDesignPairConstraint::default()
+        },
+        min_amplicon_bp: 40,
+        max_amplicon_bp: 150,
+        max_tm_delta_c: Some(100.0),
+        max_probe_tm_delta_c: Some(100.0),
+        max_assays: Some(10),
+        transcript_targeting: None,
+        report_id: Some(report_id.to_string()),
+    }
+}
+
+#[test]
+fn qpcr_selection_provenance_is_additive_bounded_and_report_fingerprinted() {
+    let mut without_capture = qpcr_selection_provenance_engine();
+    without_capture
+        .apply(qpcr_selection_provenance_operation(
+            "qpcr_provenance_disabled",
+            0,
+        ))
+        .expect("qPCR design without rejected-candidate capture");
+    let without_capture_report = without_capture
+        .get_qpcr_design_report("qpcr_provenance_disabled")
+        .expect("qPCR report without capture");
+    assert!(without_capture_report.rejected_near_misses.is_empty());
+    assert_eq!(
+        without_capture_report
+            .near_miss_capture
+            .as_ref()
+            .expect("disabled qPCR capture metadata")
+            .status,
+        PrimerPairCharacterizationStatus::NotRun
+    );
+
+    let mut engine = qpcr_selection_provenance_engine();
+    let result = engine
+        .apply(qpcr_selection_provenance_operation(
+            "qpcr_provenance_captured",
+            5,
+        ))
+        .expect("qPCR design with rejected-candidate capture");
+    let report = engine
+        .get_qpcr_design_report("qpcr_provenance_captured")
+        .expect("captured qPCR report");
+
+    assert!(!report.assays.is_empty());
+    assert_eq!(
+        serde_json::to_value(&report.assays).unwrap(),
+        serde_json::to_value(&without_capture_report.assays).unwrap(),
+        "qPCR near-miss capture must not affect selected assay ranks or scores"
+    );
+    assert_eq!(
+        report.score_decomposition_status,
+        PrimerPairCharacterizationStatus::Pass
+    );
+    assert_eq!(report.score_model, QPCR_ASSAY_SCORE_MODEL);
+    assert_eq!(report.score_direction, PRIMER_DESIGN_SCORE_DIRECTION);
+    assert_eq!(
+        report.excluded_region_analysis_status,
+        Some(PrimerPairCharacterizationStatus::NotRun)
+    );
+    assert!(
+        report
+            .excluded_region_analysis_reason
+            .contains("did not consult")
+    );
+    assert!(report.assays.iter().all(|assay| {
+        let sum = assay
+            .score_terms
+            .iter()
+            .map(|term| term.contribution)
+            .sum::<f64>();
+        !assay.score_terms.is_empty()
+            && (assay.score - sum).abs()
+                <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * assay.score.abs().max(1.0)
+    }));
+    for required_term in [
+        "probe_tm_offset_from_preferred",
+        "probe_amplicon_midpoint_distance",
+        "probe_self_complementarity_observed",
+        "probe_primer_complementarity_observed",
+        "probe_primer_three_prime_complementarity_observed",
+    ] {
+        assert!(
+            report.assays[0]
+                .score_terms
+                .iter()
+                .any(|term| term.term == required_term),
+            "missing qPCR score term {required_term}"
+        );
+    }
+    assert!(report.assays[0].score_terms.iter().any(|term| {
+        term.term == "probe_primer_complementarity_observed"
+            && term.weight == 0.0
+            && term.contribution == 0.0
+    }));
+
+    let capture = report
+        .near_miss_capture
+        .as_ref()
+        .expect("qPCR capture metadata");
+    assert_eq!(capture.status, PrimerPairCharacterizationStatus::Pass);
+    assert_eq!(capture.effective_limit, 5);
+    assert_eq!(capture.retained_candidate_count, 5);
+    assert!(capture.eligible_candidate_count > capture.retained_candidate_count);
+    assert_eq!(
+        capture.omitted_candidate_count,
+        capture
+            .eligible_candidate_count
+            .saturating_sub(capture.retained_candidate_count)
+    );
+    assert_eq!(report.rejected_near_misses.len(), 5);
+    for reason in [
+        QpcrDesignRejectionReason::PrimerOutOfWindow,
+        QpcrDesignRejectionReason::PrimerGcOrTmOutOfBounds,
+        QpcrDesignRejectionReason::PrimerNonUniqueAnneal,
+        QpcrDesignRejectionReason::PrimerAmpliconOrRoiFailure,
+        QpcrDesignRejectionReason::PrimerConstraintFailure,
+        QpcrDesignRejectionReason::PrimerPairConstraintFailure,
+        QpcrDesignRejectionReason::PrimerPairEvaluationLimitSkipped,
+        QpcrDesignRejectionReason::ProbeOutOfWindow,
+        QpcrDesignRejectionReason::ProbeGcOrTmOutOfBounds,
+        QpcrDesignRejectionReason::ProbeNonUniqueAnneal,
+        QpcrDesignRejectionReason::ProbeOrAssayFailure,
+    ] {
+        let retained_for_reason = report
+            .rejected_near_misses
+            .iter()
+            .filter(|row| row.reasons.contains(&reason))
+            .count();
+        assert!(
+            report.rejection_summary.count_for_reason(reason) >= retained_for_reason,
+            "retained qPCR rows cannot exceed the authoritative rejection census"
+        );
+    }
+
+    let graph = result
+        .construct_reasoning_graph
+        .as_deref()
+        .expect("qPCR operation result reasoning graph");
+    assert_eq!(
+        report.construct_reasoning_graph_id.as_deref(),
+        Some(graph.graph_id.as_str())
+    );
+    assert_eq!(graph.decisions.len(), report.assays.len());
+    assert_eq!(
+        graph.annotation_candidates.len(),
+        report.rejected_near_misses.len()
+    );
+    let overlay = crate::dna_display::ConstructReasoningOverlay::from_graph(graph);
+    assert_eq!(overlay.evidence.len(), report.rejected_near_misses.len());
+    assert!(overlay.evidence.iter().all(|row| {
+        row.context_tags
+            .iter()
+            .any(|tag| tag == "rejected_near_miss")
+            && !row.context_tags.iter().any(|tag| tag == "excluded_region")
+    }));
+    assert!(graph.decisions.iter().all(|decision| {
+        decision.parameters_json["score_model"].as_str() == Some(QPCR_ASSAY_SCORE_MODEL)
+            && decision.parameters_json["score_terms"].is_array()
+            && decision.parameters_json["excluded_region_analysis_status"].as_str()
+                == Some("not_run")
+    }));
+    assert_eq!(
+        engine
+            .construct_reasoning_graph_snapshot_status(graph)
+            .freshness,
+        ConstructReasoningGraphFreshness::Current
+    );
+
+    let mut store = engine.read_primer_design_store();
+    store
+        .qpcr_reports
+        .get_mut("qpcr_provenance_captured")
+        .expect("mutable qPCR source report")
+        .assays[0]
+        .score += 0.25;
+    engine
+        .write_primer_design_store(store)
+        .expect("mutate qPCR source report");
+    let stale = engine.construct_reasoning_graph_snapshot_status(graph);
+    assert_eq!(stale.freshness, ConstructReasoningGraphFreshness::Stale);
+    assert!(
+        stale
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("qPCR-design report") && reason.contains("changed"))
+    );
+    let refresh_error = engine
+        .refresh_construct_reasoning_graph_for_seq_id("qpcr_near_miss_tpl")
+        .expect_err("stale qPCR report-bound graph must not become a generic graph");
+    assert!(refresh_error.message.contains("DesignQpcrAssays"));
+}
+
+#[test]
+fn old_qpcr_design_report_payload_defaults_selection_provenance_fields() {
+    let old_payload = json!({
+        "schema": QPCR_DESIGN_REPORT_SCHEMA,
+        "report_id": "legacy_qpcr_report",
+        "template": "legacy_template",
+        "assay_count": 0,
+        "assays": [],
+        "rejection_summary": {}
+    });
+    let report: QpcrDesignReport =
+        serde_json::from_value(old_payload).expect("deserialize legacy qPCR report");
+    assert_eq!(
+        report.score_decomposition_status,
+        PrimerPairCharacterizationStatus::NotRun
+    );
+    assert!(report.score_decomposition_reason.is_empty());
+    assert!(report.score_model.is_empty());
+    assert!(report.score_direction.is_empty());
+    assert!(report.rejected_near_misses.is_empty());
+    assert!(report.near_miss_capture.is_none());
+    assert!(report.excluded_region_analysis_status.is_none());
+    assert!(report.excluded_region_analysis_reason.is_empty());
+    assert!(report.construct_reasoning_graph_id.is_none());
+
+    let serialized = serde_json::to_value(report).expect("serialize legacy qPCR report");
+    for absent in [
+        "score_decomposition_status",
+        "score_decomposition_reason",
+        "score_model",
+        "score_direction",
+        "rejected_near_misses",
+        "near_miss_capture",
+        "excluded_region_analysis_status",
+        "excluded_region_analysis_reason",
+        "construct_reasoning_graph_id",
+    ] {
+        assert!(
+            serialized.get(absent).is_none(),
+            "default additive qPCR field '{absent}' should stay absent"
+        );
+    }
 }
 
 #[test]
@@ -13018,6 +13280,26 @@ fn transcript_assay_panel_groups_only_byte_identical_cdna_and_persists_matrix() 
             && assay.probe.is_some()
             && assay.assay.is_some()
     }));
+    assert!(report.selected_assays.iter().all(|selected| {
+        selected.assay.as_ref().is_some_and(|assay| {
+            let score_from_terms = assay
+                .score_terms
+                .iter()
+                .map(|term| term.contribution)
+                .sum::<f64>();
+            !assay.score_terms.is_empty()
+                && (assay.score - score_from_terms).abs()
+                    <= PRIMER_DESIGN_SCORE_SUM_TOLERANCE * assay.score.abs().max(1.0)
+                && assay
+                    .score_terms
+                    .iter()
+                    .any(|term| term.term == "probe_tm_offset_from_preferred")
+                && assay
+                    .score_terms
+                    .iter()
+                    .any(|term| term.term == "probe_amplicon_midpoint_distance")
+        })
+    }));
     assert!(
         report
             .backend_runs
@@ -15188,6 +15470,13 @@ fn test_design_qpcr_assays_transcript_aware_either_falls_back_to_unique_exon_cha
         targeting_result.realized_specificity_evidence,
         Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain)
     );
+    let capture = report
+        .near_miss_capture
+        .as_ref()
+        .expect("transcript-aware qPCR capture metadata");
+    assert_eq!(capture.status, PrimerPairCharacterizationStatus::Incomplete);
+    assert!(capture.reason.contains("transcript-local"));
+    assert!(report.rejected_near_misses.is_empty());
     assert!(!report.assays.is_empty());
     assert!(report.assays.iter().all(|assay| {
         assay.transcript_context.as_ref().is_some_and(|context| {
