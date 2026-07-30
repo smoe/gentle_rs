@@ -2116,13 +2116,6 @@ impl GentleEngine {
         }
     }
 
-    fn estimate_protein_molecular_weight_kda(sequence: &str) -> Option<f32> {
-        AMINO_ACIDS
-            .protein_molecular_weight_kda(sequence)
-            .molecular_weight_kda
-            .map(|value| value as f32)
-    }
-
     fn require_protein_molecular_weight_kda(
         sequence: &str,
         subject: &str,
@@ -39117,14 +39110,10 @@ mod molecular_weight_tests {
 
     #[test]
     fn protein_gel_mass_uses_shared_residue_model_and_rejects_ambiguity() {
-        let observed = GentleEngine::estimate_protein_molecular_weight_kda("A")
+        let observed = GentleEngine::require_protein_molecular_weight_kda("A", "protein 'demo'")
             .expect("alanine molecular weight");
         let expected = ((71.0788_f64 + 18.015_28_f64) / 1_000.0) as f32;
         assert!((observed - expected).abs() < 1e-6);
-        assert_eq!(
-            GentleEngine::estimate_protein_molecular_weight_kda("MAX"),
-            None
-        );
         let ambiguous =
             GentleEngine::require_protein_molecular_weight_kda("MXZ", "protein 'demo'")
                 .expect_err("ambiguous protein mass should be rejected");
@@ -39133,8 +39122,9 @@ mod molecular_weight_tests {
             ambiguous.message,
             "Could not estimate molecular weight for protein 'demo': ambiguous or unsupported amino-acid residue(s): X, Z"
         );
-        let empty = GentleEngine::require_protein_molecular_weight_kda("***", "peptide 2")
-            .expect_err("empty peptide mass should be rejected");
+        let stop_only = STOP_CODON.to_string();
+        let empty = GentleEngine::require_protein_molecular_weight_kda(&stop_only, "peptide 2")
+            .expect_err("stop-only peptide mass should be rejected");
         assert_eq!(
             empty.message,
             "Could not estimate molecular weight for peptide 2: sequence contains no supported amino-acid residues"
