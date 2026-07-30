@@ -2,11 +2,12 @@
   "schema": "gentle.workflow_example.v1",
   "id": "patz1_endpoint_sybr_transcript_assay_panel_offline",
   "title": "PATZ1 practical endpoint and SYBR transcript assay panels (offline)",
-  "summary": "Uses a sequence-diverse synthetic PATZ1 minus-strand locus to design a primer-only first-end x terminal-end RT-PCR matrix, a short Clariom-JUC-directed SYBR panel, and an annotation-confirmed routine common-region screen with separate PSR support. The fixture demonstrates mechanics only and does not provide orderable human PATZ1 primers.",
+  "summary": "Uses a sequence-diverse synthetic PATZ1 minus-strand locus to design a primer-only first-end x terminal-end RT-PCR matrix, a short Clariom-JUC-directed SYBR panel, and an annotation-confirmed routine common-region screen with separate PSR support, then composes those persisted panels with a digest-bound isoform-evidence ledger. The fixture demonstrates mechanics only and does not provide orderable human PATZ1 primers.",
   "test_mode": "always",
   "required_files": [
     "test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_minus_strand.gb",
-    "test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json"
+    "test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json",
+    "test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_isoform_evidence.json"
   ],
   "tags": [
     "primer",
@@ -185,6 +186,21 @@
           "annotation_release": "synthetic Ensembl116-like PATZ1 fixture",
           "report_id": "patz1_routine_common_region_screen",
           "path": "artifacts/patz1_routine_common_region_screen.report.json"
+        }
+      },
+      {
+        "ComposeGeneTranscriptAssayRoutine": {
+          "request": {
+            "label": "Synthetic PATZ1 common-control, junction, and endpoint review",
+            "isoform_evidence_path": "test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_isoform_evidence.json",
+            "expected_isoform_evidence_sha256": "sha256:267a8fc00da8fea653dd440259987b20fc68422554cfed8bbff61809d4eeaaf5",
+            "transcript_assay_panel_report_ids": [
+              "patz1_routine_common_region_screen",
+              "patz1_sybr_juc_panel",
+              "patz1_endpoint_end_matrix"
+            ]
+          },
+          "path": "artifacts/patz1_gene_transcript_assay_routine.report.json"
         }
       }
     ]

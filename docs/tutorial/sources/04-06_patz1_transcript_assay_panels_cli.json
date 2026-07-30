@@ -22,14 +22,15 @@
     "order": 28,
     "example_id": "patz1_endpoint_sybr_transcript_assay_panel_offline",
     "tier": "core",
-    "summary": "Use one synthetic minus-strand PATZ1 locus to generate an endpoint first-end x terminal-end band matrix, a Clariom-JUC-directed primer-only SYBR panel, and an annotation-confirmed routine common-region screen, then inspect and export all persisted reports entirely from the command line.",
-    "narrative": "A multi-transcript PCR experiment has three distinct jobs. Long endpoint RT-PCR can expose transcript families as differently sized first-end x terminal-end products on a gel, although band intensity is only rough or semi-quantitative. Short SYBR assays can test selected exon-exon junctions without requiring an internal hydrolysis probe. A routine common-region assay can provide a practical screen across the intended transcript set. GENtle keeps these jobs in one `gentle.transcript_assay_panel.v2` contract while recording their experimental tier independently from the selection objective.\n\nThis chapter uses a deliberately sequence-diverse, synthetic PATZ1-like locus on the minus strand. It demonstrates exact mature-cDNA equivalence classes, a 10 kb allowed endpoint ceiling, caller-supplied preferred product ranges, oligo-dT reverse-transcription warnings, and distinct synthetic Clariom JUC and PSR evidence. Transcript annotation alone establishes whether a selected amplicon is common; PSR signal remains independent support and cannot manufacture that claim. The fixture does not produce orderable primers for the human PATZ1 locus and does not claim that a missing long product proves isoform absence. The canonical workflow is the deterministic reference; the direct CLI steps extract the same three operation objects and submit them unchanged through `primers design-transcript-assay-panel`.\n\nEach selected assay also records a `primers specificity-plan` follow-up template. Planning creates structured BLAST jobs but does not execute them. For a real complete panel, prepare or import catalogued genomic-DNA and whole-cDNA BLAST resources, then use `primers transcript-assay-specificity-plan` and always call `primers transcript-assay-specificity-finalize` with the scheduler's execution manifest. GENtle distinguishes a completed biological `specificity_fail`, a completed but geometrically `not_assessed` result, and incomplete or failed execution evidence; only `pass` is accepted. Until a handoff is actually executed and finalized, this offline tutorial honestly retains `genomic_confirmation_status: not_run`.",
+    "summary": "Use one synthetic minus-strand PATZ1 locus to generate an endpoint first-end x terminal-end band matrix, a Clariom-JUC-directed primer-only SYBR panel, and an annotation-confirmed routine common-region screen, then compose the persisted reports with a digest-bound isoform-evidence ledger entirely from the command line.",
+    "narrative": "A multi-transcript PCR experiment has three distinct jobs. Long endpoint RT-PCR can expose transcript families as differently sized first-end x terminal-end products on a gel, although band intensity is only rough or semi-quantitative. Short SYBR assays can test selected exon-exon junctions without requiring an internal hydrolysis probe. A routine common-region assay can provide a practical screen across the intended transcript set. GENtle keeps these jobs in one `gentle.transcript_assay_panel.v2` contract while recording their experimental tier independently from the selection objective.\n\nThis chapter uses a deliberately sequence-diverse, synthetic PATZ1-like locus on the minus strand. It demonstrates exact mature-cDNA equivalence classes, a 10 kb allowed endpoint ceiling, caller-supplied preferred product ranges, oligo-dT reverse-transcription warnings, and distinct synthetic Clariom JUC and PSR evidence. Transcript annotation alone establishes whether a selected amplicon is common; PSR signal remains independent support and cannot manufacture that claim. The fixture does not produce orderable primers for the human PATZ1 locus and does not claim that a missing long product proves isoform absence. The canonical workflow is the deterministic reference; the direct CLI steps extract the same three operation objects and submit them unchanged through `primers design-transcript-assay-panel`.\n\nThe final step composes, rather than redesigns, the three persisted panels with a checked `gentle.gene_isoform_evidence.v2` ledger. The resulting `gentle.gene_transcript_assay_routine.v1` report retains panel and evidence digests, assay roles, uncovered transcript classes, candidate order rows, and a conservative experimental sequence. It cannot turn missing specificity into a pass: the synthetic panels remain visibly unaccepted until the declared external checks are completed.\n\nEach selected assay also records a `primers specificity-plan` follow-up template. Planning creates structured BLAST jobs but does not execute them. For a real complete panel, prepare or import catalogued genomic-DNA and whole-cDNA BLAST resources, then use `primers transcript-assay-specificity-plan` and always call `primers transcript-assay-specificity-finalize` with the scheduler's execution manifest. GENtle distinguishes a completed biological `specificity_fail`, a completed but geometrically `not_assessed` result, and incomplete or failed execution evidence; only `pass` is accepted. Until a handoff is actually executed and finalized, this offline tutorial honestly retains `genomic_confirmation_status: not_run`.",
     "use_cases": [
       "You want a command-line-only route for endpoint RT-PCR, SYBR qPCR, or TaqMan-compatible transcript-panel design.",
       "You want a first-end x terminal-end reaction matrix with predicted band sizes across every annotated mature transcript.",
       "You want short primer-only assays directed at required or preferred exon-exon junction evidence.",
       "You want a routine common-region screen whose structural claim comes from transcript annotation while PSR support remains separate.",
       "You need to preserve every shared operation field instead of relying only on convenience flags.",
+      "You want one digest-bound review manifest joining existing common-control, junction-validation, and endpoint reports without rerunning them.",
       "You want an external scheduler to own BLAST process completion while GENtle retains deterministic specificity inputs and interpretation.",
       "You need complete-panel acceptance to distinguish a biological specificity failure from unavailable target geometry or failed external execution.",
       "You want persisted reports that can be listed, shown, exported, or consumed through MCP, JavaScript, Lua, and workflows."
@@ -43,6 +44,8 @@
       "Use primer-only SYBR mode with required junction evidence to mirror the second CLI operation; no probe should be created.",
       "Use the routine common-region tier with a pan-transcript objective to mirror the third CLI operation; compare its annotation evidence, preferred-range classification, PSR/JUC rows, and rejected alternatives.",
       "Inspect the persisted panel rows and export the same report JSON used by the CLI path.",
+      "GENtle does not yet provide a dedicated GUI composer for the compound routine. Use the GUI Shell with `primers compose-gene-assay-routine` and the same JSON request when an in-application handoff is useful; this reaches the shared operation rather than GUI-local logic.",
+      "Inspect the returned routine roles, evidence and panel digests, uncovered classes, and specificity status. Composition is review-only and must not alter the selected sequence or silently rerun a panel.",
       "Inspect the per-assay specificity handoff templates; replace `GENOME_ID` and `OUTPUT_DIR` only when a prepared reference and an external BLAST runner are available."
     ],
     "cli_steps": [
@@ -54,6 +57,8 @@
       "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers design-transcript-assay-panel @/tmp/patz1_sybr.operation.json --backend internal",
       "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers design-transcript-assay-panel @/tmp/patz1_routine.operation.json --backend internal",
       "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers list-transcript-assay-panels && cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_routine_common_region_screen && cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_sybr_juc_panel /tmp/patz1_sybr_juc_panel.export.json",
+      "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers compose-gene-assay-routine '{\"label\":\"Synthetic PATZ1 common-control, junction, and endpoint review\",\"isoform_evidence_path\":\"test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_isoform_evidence.json\",\"expected_isoform_evidence_sha256\":\"sha256:267a8fc00da8fea653dd440259987b20fc68422554cfed8bbff61809d4eeaaf5\",\"transcript_assay_panel_report_ids\":[\"patz1_routine_common_region_screen\",\"patz1_sybr_juc_panel\",\"patz1_endpoint_end_matrix\"]}' --path /tmp/patz1_gene_transcript_assay_routine.report.json",
+      "jq '{schema, isoform_evidence_sha256, roles:[.assay_panels[].role], specificity_accepted:[.assay_panels[].specificity_accepted], experimental_sequence:.recommended_experimental_sequence}' /tmp/patz1_gene_transcript_assay_routine.report.json",
       "jq '.specificity_followups' docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json"
     ],
     "step_expectations": [
@@ -65,6 +70,8 @@
       "The SYBR report is primer-only and includes a selected assay spanning the required synthetic Clariom JUC junction.",
       "The routine report uses `pan_transcript`, records annotation-confirmed common-region evidence, and treats any overlapping PSR row only as independent support.",
       "Both report ids are persisted in the selected state; list/show/export operate without reconstructing or hand-editing the reports.",
+      "The compound routine is a pure read over the exact evidence bytes and persisted panel reports; its three roles are common_control, junction_validation, and endpoint_structure.",
+      "The compound routine keeps every panel's specificity acceptance false in this offline run instead of promoting a planned follow-up to a completed check.",
       "Every selected assay exposes a non-executing `primers specificity-plan` template, and the report honestly retains `genomic_confirmation_status: not_run` in this offline tutorial."
     ],
     "prerequisites": [
@@ -79,6 +86,7 @@
       "Separate BLAST job planning and execution from GENtle's import-time specificity interpretation.",
       "Interpret `pass`, `specificity_fail`, `not_assessed`, and `incomplete` as distinct whole-panel outcomes.",
       "Separate transcript-annotation commonality, PSR support, product-length practicality, and the existing primer score in the selection rationale.",
+      "Compose existing evidence and assay panels into one digest-bound review manifest without rerunning design or specificity.",
       "Persist, list, inspect, and export transcript assay reports from one explicit project state."
     ],
     "concepts": [
@@ -144,6 +152,7 @@
       "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_endpoint_end_matrix /tmp/patz1_endpoint_end_matrix.export.json",
       "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_sybr_juc_panel /tmp/patz1_sybr_juc_panel.export.json",
       "cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers preflight --backend primer3",
+      "jq '.' /tmp/patz1_gene_transcript_assay_routine.report.json",
       "jq '.specificity_followups' docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json",
       "cargo run --bin gentle_examples_docs -- tutorial-check"
     ],
@@ -160,6 +169,8 @@
       "The SYBR report has `assay_kind: sybr_qpcr`, no internal probes, and a non-empty short-junction assay table.",
       "At least one SYBR junction-evaluation row has `source_kind: clariom_juc` and `status: selected_spanning_assay`.",
       "The routine report has `assay_tier: routine_common_region_screen`; selected commonality is annotation-confirmed, and PSR/JUC evidence kinds remain distinct.",
+      "The compound report has `schema: gentle.gene_transcript_assay_routine.v1`, matches the committed isoform-evidence digest, and assigns common-control, junction-validation, and endpoint-structure roles.",
+      "Composition does not rerun assay design or specificity, and all three offline panel summaries retain `specificity_accepted: false`.",
       "Every selected assay has a `specificity-plan` follow-up template, while this offline run leaves genomic confirmation explicitly `not_run`.",
       "The fixture is identified as synthetic and is not presented as an order-ready human PATZ1 design.",
       "The same operation JSON remains callable through workflows, MCP `op`, JavaScript `apply_operation`, and Lua `apply_operation`."

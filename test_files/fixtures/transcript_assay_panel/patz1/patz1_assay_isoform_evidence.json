@@ -1,0 +1,1834 @@
+{
+  "data": {
+    "annotation_release": "synthetic_Ensembl116-like",
+    "assay_candidates": [],
+    "assembly": "PATZ1ASSAY",
+    "chromosome": "PATZ1ASSAY",
+    "coordinate_frame": "genome_anchor",
+    "evidence_items": [
+      {
+        "condition": "AdGFP",
+        "evidence_id": "expression:6d24b485b781:patz1_alt:1",
+        "family_ids": [
+          "patz1_alt"
+        ],
+        "method": "supplied isoform expression value",
+        "notes": [
+          "Values are comparable only within the supplied dataset unless its provenance states otherwise."
+        ],
+        "source_id": "test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv",
+        "source_kind": "expression",
+        "status": "observed",
+        "unit": "input_value",
+        "value": 1.0
+      },
+      {
+        "condition": "TAp73alpha",
+        "evidence_id": "expression:6d24b485b781:patz1_alt:2",
+        "family_ids": [
+          "patz1_alt"
+        ],
+        "method": "supplied isoform expression value",
+        "notes": [
+          "Values are comparable only within the supplied dataset unless its provenance states otherwise."
+        ],
+        "source_id": "test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv",
+        "source_kind": "expression",
+        "status": "observed",
+        "unit": "input_value",
+        "value": 2.0
+      },
+      {
+        "condition": "DNp73beta",
+        "evidence_id": "expression:6d24b485b781:patz1_alt:3",
+        "family_ids": [
+          "patz1_alt"
+        ],
+        "method": "supplied isoform expression value",
+        "notes": [
+          "Values are comparable only within the supplied dataset unless its provenance states otherwise."
+        ],
+        "source_id": "test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv",
+        "source_kind": "expression",
+        "status": "observed",
+        "unit": "input_value",
+        "value": 2.5
+      },
+      {
+        "condition": "AdGFP",
+        "evidence_id": "expression:6d24b485b781:patz1_long:1",
+        "family_ids": [
+          "patz1_long"
+        ],
+        "method": "supplied isoform expression value",
+        "notes": [
+          "Values are comparable only within the supplied dataset unless its provenance states otherwise."
+        ],
+        "source_id": "test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv",
+        "source_kind": "expression",
+        "status": "observed",
+        "unit": "input_value",
+        "value": 4.0
+      },
+      {
+        "condition": "TAp73alpha",
+        "evidence_id": "expression:6d24b485b781:patz1_long:2",
+        "family_ids": [
+          "patz1_long"
+        ],
+        "method": "supplied isoform expression value",
+        "notes": [
+          "Values are comparable only within the supplied dataset unless its provenance states otherwise."
+        ],
+        "source_id": "test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv",
+        "source_kind": "expression",
+        "status": "observed",
+        "unit": "input_value",
+        "value": 8.0
+      },
+      {
+        "condition": "DNp73beta",
+        "evidence_id": "expression:6d24b485b781:patz1_long:3",
+        "family_ids": [
+          "patz1_long"
+        ],
+        "method": "supplied isoform expression value",
+        "notes": [
+          "Values are comparable only within the supplied dataset unless its provenance states otherwise."
+        ],
+        "source_id": "test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv",
+        "source_kind": "expression",
+        "status": "observed",
+        "unit": "input_value",
+        "value": 3.0
+      },
+      {
+        "condition": "AdGFP",
+        "evidence_id": "expression:6d24b485b781:patz1_skip:1",
+        "family_ids": [
+          "patz1_skip"
+        ],
+        "method": "supplied isoform expression value",
+        "notes": [
+          "Values are comparable only within the supplied dataset unless its provenance states otherwise."
+        ],
+        "source_id": "test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv",
+        "source_kind": "expression",
+        "status": "observed",
+        "unit": "input_value",
+        "value": 2.0
+      },
+      {
+        "condition": "TAp73alpha",
+        "evidence_id": "expression:6d24b485b781:patz1_skip:2",
+        "family_ids": [
+          "patz1_skip"
+        ],
+        "method": "supplied isoform expression value",
+        "notes": [
+          "Values are comparable only within the supplied dataset unless its provenance states otherwise."
+        ],
+        "source_id": "test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv",
+        "source_kind": "expression",
+        "status": "observed",
+        "unit": "input_value",
+        "value": 1.5
+      },
+      {
+        "condition": "DNp73beta",
+        "evidence_id": "expression:6d24b485b781:patz1_skip:3",
+        "family_ids": [
+          "patz1_skip"
+        ],
+        "method": "supplied isoform expression value",
+        "notes": [
+          "Values are comparable only within the supplied dataset unless its provenance states otherwise."
+        ],
+        "source_id": "test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv",
+        "source_kind": "expression",
+        "status": "observed",
+        "unit": "input_value",
+        "value": 7.0
+      },
+      {
+        "condition": "synthetic_case_vs_control",
+        "evidence_id": "probe:JUC2200054820.hg.1",
+        "family_ids": [
+          "patz1_skip"
+        ],
+        "method": "probe-region interpretation geometry mapping",
+        "notes": [
+          "Array design/alignment constraint only; overlap does not establish isoform support or validation.",
+          "mapping_status=ambiguous_parent_feature",
+          "parent_mixes_transcript_features",
+          "multi_hit_not_assessed"
+        ],
+        "probe_class": "juc",
+        "probe_classification_basis": "explicit_probe_type_or_level",
+        "source_id": "JUC2200054820.hg.1",
+        "source_kind": "array_probe",
+        "status": "constraint_only",
+        "target_ids": [
+          "EXF:PATZ1ASSAY:31325820-31325859:-",
+          "EXF:PATZ1ASSAY:31325980-31326019:-",
+          "JCT:PATZ1ASSAY:31325860-31325979:-"
+        ],
+        "unit": "logFC",
+        "value": -1.2
+      },
+      {
+        "condition": "synthetic_case_vs_control",
+        "evidence_id": "probe:PSR2200160982.hg.1",
+        "family_ids": [
+          "patz1_long"
+        ],
+        "method": "probe-region interpretation geometry mapping",
+        "notes": [
+          "Array design/alignment constraint only; overlap does not establish isoform support or validation.",
+          "mapping_status=exact_exon_geometry"
+        ],
+        "probe_class": "psr",
+        "probe_classification_basis": "explicit_probe_type_or_level",
+        "source_id": "PSR2200160982.hg.1",
+        "source_kind": "array_probe",
+        "status": "constraint_only",
+        "target_ids": [
+          "EXF:PATZ1ASSAY:31325900-31325939:-"
+        ],
+        "unit": "logFC",
+        "value": 0.8
+      }
+    ],
+    "exon_families": [
+      {
+        "annotation_model_count": 3,
+        "components": {
+          "abundance": {
+            "classification": "dataset_relative_expression",
+            "evidence_ids": [
+              "expression:6d24b485b781:patz1_alt:1",
+              "expression:6d24b485b781:patz1_alt:2",
+              "expression:6d24b485b781:patz1_alt:3",
+              "expression:6d24b485b781:patz1_long:1",
+              "expression:6d24b485b781:patz1_long:2",
+              "expression:6d24b485b781:patz1_long:3",
+              "expression:6d24b485b781:patz1_skip:1",
+              "expression:6d24b485b781:patz1_skip:2",
+              "expression:6d24b485b781:patz1_skip:3"
+            ],
+            "explanation": "A supplied expression value is associated through the curated isoform family.",
+            "measurements": [
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "AdGFP",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:1",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 1.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "AdGFP",
+                "evidence_id": "expression:6d24b485b781:patz1_long:1",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 4.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "AdGFP",
+                "evidence_id": "expression:6d24b485b781:patz1_skip:1",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 2.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "DNp73beta",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:3",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 2.5
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "DNp73beta",
+                "evidence_id": "expression:6d24b485b781:patz1_long:3",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 3.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "DNp73beta",
+                "evidence_id": "expression:6d24b485b781:patz1_skip:3",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 7.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "TAp73alpha",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:2",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 2.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "TAp73alpha",
+                "evidence_id": "expression:6d24b485b781:patz1_long:2",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 8.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "TAp73alpha",
+                "evidence_id": "expression:6d24b485b781:patz1_skip:2",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 1.5
+              }
+            ],
+            "status": "observed",
+            "unit": "input_value"
+          },
+          "assayability": {
+            "classification": "not_evaluated",
+            "explanation": "No assayability evidence source was supplied for this object.",
+            "status": "not_evaluated"
+          },
+          "responsiveness": {
+            "classification": "array_logfc_candidate",
+            "evidence_ids": [
+              "probe:JUC2200054820.hg.1"
+            ],
+            "explanation": "A projected array feature carries a contrast effect; geometry and ambiguity require review.",
+            "measurements": [
+              {
+                "classification": "array_logfc_candidate",
+                "condition": "synthetic_case_vs_control",
+                "evidence_id": "probe:JUC2200054820.hg.1",
+                "explanation": "A projected array feature carries a contrast effect; geometry and ambiguity require review.",
+                "status": "candidate",
+                "unit": "logFC",
+                "value": -1.2
+              }
+            ],
+            "status": "candidate",
+            "unit": "logFC",
+            "value": -1.2
+          },
+          "specificity": {
+            "classification": "shared",
+            "explanation": "Annotation set operation: present in 3 of 3 declared family/families (patz1_alt, patz1_long, patz1_skip).",
+            "status": "observed"
+          }
+        },
+        "coordinate_frame": "genome_anchor",
+        "end_1based": 31325859,
+        "exon_family_id": "EXF:PATZ1ASSAY:31325820-31325859:-",
+        "family_ids": [
+          "patz1_alt",
+          "patz1_long",
+          "patz1_skip"
+        ],
+        "local_end_1based": 60,
+        "local_start_1based": 21,
+        "recommendation": {
+          "evidence_ids": [
+            "expression:6d24b485b781:patz1_alt:1",
+            "expression:6d24b485b781:patz1_alt:2",
+            "expression:6d24b485b781:patz1_alt:3",
+            "expression:6d24b485b781:patz1_long:1",
+            "expression:6d24b485b781:patz1_long:2",
+            "expression:6d24b485b781:patz1_long:3",
+            "expression:6d24b485b781:patz1_skip:1",
+            "expression:6d24b485b781:patz1_skip:2",
+            "expression:6d24b485b781:patz1_skip:3",
+            "probe:JUC2200054820.hg.1"
+          ],
+          "recommended_use": "routine_common_region_screen",
+          "rule": "annotation specificity plus abundance or responsiveness evidence is available; assay design remains required",
+          "tier": "evidence_prioritized"
+        },
+        "specificity_class": "shared",
+        "start_1based": 31325820,
+        "strand": "-",
+        "transcript_ids": [
+          "PATZ1-201",
+          "PATZ1-202",
+          "PATZ1-203"
+        ]
+      },
+      {
+        "annotation_model_count": 1,
+        "components": {
+          "abundance": {
+            "classification": "dataset_relative_expression",
+            "evidence_ids": [
+              "expression:6d24b485b781:patz1_long:1",
+              "expression:6d24b485b781:patz1_long:2",
+              "expression:6d24b485b781:patz1_long:3"
+            ],
+            "explanation": "A supplied expression value is associated through the curated isoform family.",
+            "measurements": [
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "AdGFP",
+                "evidence_id": "expression:6d24b485b781:patz1_long:1",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 4.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "DNp73beta",
+                "evidence_id": "expression:6d24b485b781:patz1_long:3",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 3.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "TAp73alpha",
+                "evidence_id": "expression:6d24b485b781:patz1_long:2",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 8.0
+              }
+            ],
+            "status": "observed",
+            "unit": "input_value"
+          },
+          "assayability": {
+            "classification": "not_evaluated",
+            "explanation": "No assayability evidence source was supplied for this object.",
+            "status": "not_evaluated"
+          },
+          "responsiveness": {
+            "classification": "array_logfc_candidate",
+            "evidence_ids": [
+              "probe:PSR2200160982.hg.1"
+            ],
+            "explanation": "A projected array feature carries a contrast effect; geometry and ambiguity require review.",
+            "measurements": [
+              {
+                "classification": "array_logfc_candidate",
+                "condition": "synthetic_case_vs_control",
+                "evidence_id": "probe:PSR2200160982.hg.1",
+                "explanation": "A projected array feature carries a contrast effect; geometry and ambiguity require review.",
+                "status": "candidate",
+                "unit": "logFC",
+                "value": 0.8
+              }
+            ],
+            "status": "candidate",
+            "unit": "logFC",
+            "value": 0.8
+          },
+          "specificity": {
+            "classification": "family_unique",
+            "explanation": "Annotation set operation: present in 1 of 3 declared family/families (patz1_long).",
+            "status": "observed"
+          }
+        },
+        "coordinate_frame": "genome_anchor",
+        "end_1based": 31325939,
+        "exon_family_id": "EXF:PATZ1ASSAY:31325900-31325939:-",
+        "family_ids": [
+          "patz1_long"
+        ],
+        "local_end_1based": 140,
+        "local_start_1based": 101,
+        "recommendation": {
+          "evidence_ids": [
+            "expression:6d24b485b781:patz1_long:1",
+            "expression:6d24b485b781:patz1_long:2",
+            "expression:6d24b485b781:patz1_long:3",
+            "probe:PSR2200160982.hg.1"
+          ],
+          "recommended_use": "isoform_discrimination",
+          "rule": "annotation specificity plus abundance or responsiveness evidence is available; assay design remains required",
+          "tier": "evidence_prioritized"
+        },
+        "specificity_class": "family_unique",
+        "start_1based": 31325900,
+        "strand": "-",
+        "transcript_ids": [
+          "PATZ1-201"
+        ]
+      },
+      {
+        "annotation_model_count": 1,
+        "components": {
+          "abundance": {
+            "classification": "dataset_relative_expression",
+            "evidence_ids": [
+              "expression:6d24b485b781:patz1_alt:1",
+              "expression:6d24b485b781:patz1_alt:2",
+              "expression:6d24b485b781:patz1_alt:3"
+            ],
+            "explanation": "A supplied expression value is associated through the curated isoform family.",
+            "measurements": [
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "AdGFP",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:1",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 1.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "DNp73beta",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:3",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 2.5
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "TAp73alpha",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:2",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 2.0
+              }
+            ],
+            "status": "observed",
+            "unit": "input_value"
+          },
+          "assayability": {
+            "classification": "not_evaluated",
+            "explanation": "No assayability evidence source was supplied for this object.",
+            "status": "not_evaluated"
+          },
+          "responsiveness": {
+            "classification": "not_evaluated",
+            "explanation": "No responsiveness evidence source was supplied for this object.",
+            "status": "not_evaluated"
+          },
+          "specificity": {
+            "classification": "family_unique",
+            "explanation": "Annotation set operation: present in 1 of 3 declared family/families (patz1_alt).",
+            "status": "observed"
+          }
+        },
+        "coordinate_frame": "genome_anchor",
+        "end_1based": 31325939,
+        "exon_family_id": "EXF:PATZ1ASSAY:31325920-31325939:-",
+        "family_ids": [
+          "patz1_alt"
+        ],
+        "local_end_1based": 140,
+        "local_start_1based": 121,
+        "recommendation": {
+          "evidence_ids": [
+            "expression:6d24b485b781:patz1_alt:1",
+            "expression:6d24b485b781:patz1_alt:2",
+            "expression:6d24b485b781:patz1_alt:3"
+          ],
+          "recommended_use": "isoform_discrimination",
+          "rule": "annotation specificity plus abundance or responsiveness evidence is available; assay design remains required",
+          "tier": "evidence_prioritized"
+        },
+        "specificity_class": "family_unique",
+        "start_1based": 31325920,
+        "strand": "-",
+        "transcript_ids": [
+          "PATZ1-203"
+        ]
+      },
+      {
+        "annotation_model_count": 3,
+        "components": {
+          "abundance": {
+            "classification": "dataset_relative_expression",
+            "evidence_ids": [
+              "expression:6d24b485b781:patz1_alt:1",
+              "expression:6d24b485b781:patz1_alt:2",
+              "expression:6d24b485b781:patz1_alt:3",
+              "expression:6d24b485b781:patz1_long:1",
+              "expression:6d24b485b781:patz1_long:2",
+              "expression:6d24b485b781:patz1_long:3",
+              "expression:6d24b485b781:patz1_skip:1",
+              "expression:6d24b485b781:patz1_skip:2",
+              "expression:6d24b485b781:patz1_skip:3"
+            ],
+            "explanation": "A supplied expression value is associated through the curated isoform family.",
+            "measurements": [
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "AdGFP",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:1",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 1.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "AdGFP",
+                "evidence_id": "expression:6d24b485b781:patz1_long:1",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 4.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "AdGFP",
+                "evidence_id": "expression:6d24b485b781:patz1_skip:1",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 2.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "DNp73beta",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:3",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 2.5
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "DNp73beta",
+                "evidence_id": "expression:6d24b485b781:patz1_long:3",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 3.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "DNp73beta",
+                "evidence_id": "expression:6d24b485b781:patz1_skip:3",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 7.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "TAp73alpha",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:2",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 2.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "TAp73alpha",
+                "evidence_id": "expression:6d24b485b781:patz1_long:2",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 8.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "TAp73alpha",
+                "evidence_id": "expression:6d24b485b781:patz1_skip:2",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 1.5
+              }
+            ],
+            "status": "observed",
+            "unit": "input_value"
+          },
+          "assayability": {
+            "classification": "not_evaluated",
+            "explanation": "No assayability evidence source was supplied for this object.",
+            "status": "not_evaluated"
+          },
+          "responsiveness": {
+            "classification": "array_logfc_candidate",
+            "evidence_ids": [
+              "probe:JUC2200054820.hg.1"
+            ],
+            "explanation": "A projected array feature carries a contrast effect; geometry and ambiguity require review.",
+            "measurements": [
+              {
+                "classification": "array_logfc_candidate",
+                "condition": "synthetic_case_vs_control",
+                "evidence_id": "probe:JUC2200054820.hg.1",
+                "explanation": "A projected array feature carries a contrast effect; geometry and ambiguity require review.",
+                "status": "candidate",
+                "unit": "logFC",
+                "value": -1.2
+              }
+            ],
+            "status": "candidate",
+            "unit": "logFC",
+            "value": -1.2
+          },
+          "specificity": {
+            "classification": "shared",
+            "explanation": "Annotation set operation: present in 3 of 3 declared family/families (patz1_alt, patz1_long, patz1_skip).",
+            "status": "observed"
+          }
+        },
+        "coordinate_frame": "genome_anchor",
+        "end_1based": 31326019,
+        "exon_family_id": "EXF:PATZ1ASSAY:31325980-31326019:-",
+        "family_ids": [
+          "patz1_alt",
+          "patz1_long",
+          "patz1_skip"
+        ],
+        "local_end_1based": 220,
+        "local_start_1based": 181,
+        "recommendation": {
+          "evidence_ids": [
+            "expression:6d24b485b781:patz1_alt:1",
+            "expression:6d24b485b781:patz1_alt:2",
+            "expression:6d24b485b781:patz1_alt:3",
+            "expression:6d24b485b781:patz1_long:1",
+            "expression:6d24b485b781:patz1_long:2",
+            "expression:6d24b485b781:patz1_long:3",
+            "expression:6d24b485b781:patz1_skip:1",
+            "expression:6d24b485b781:patz1_skip:2",
+            "expression:6d24b485b781:patz1_skip:3",
+            "probe:JUC2200054820.hg.1"
+          ],
+          "recommended_use": "routine_common_region_screen",
+          "rule": "annotation specificity plus abundance or responsiveness evidence is available; assay design remains required",
+          "tier": "evidence_prioritized"
+        },
+        "specificity_class": "shared",
+        "start_1based": 31325980,
+        "strand": "-",
+        "transcript_ids": [
+          "PATZ1-201",
+          "PATZ1-202",
+          "PATZ1-203"
+        ]
+      }
+    ],
+    "families": [
+      {
+        "family_id": "patz1_alt",
+        "label": "PATZ1 alternative-exon model",
+        "mapped_transcript_count": 1,
+        "transcript_ids": [
+          "PATZ1-203"
+        ]
+      },
+      {
+        "family_id": "patz1_long",
+        "label": "PATZ1 long-family model",
+        "mapped_transcript_count": 1,
+        "transcript_ids": [
+          "PATZ1-201"
+        ]
+      },
+      {
+        "family_id": "patz1_skip",
+        "label": "PATZ1 exon-skip model",
+        "mapped_transcript_count": 1,
+        "transcript_ids": [
+          "PATZ1-202"
+        ]
+      }
+    ],
+    "gene_strand": "-",
+    "gene_symbol": "PATZ1",
+    "instruction": "Isoform evidence inspector: transcript models and coordinate geometry are annotation-derived; RNA reads, cDNA/EST records, array probes, expression values, projected occupancy tracks, and qPCR assays are shown as separate evidence layers. Missing evidence is unknown. Occupancy is locus-level evidence; spatial overlap alone neither identifies a regulated isoform nor establishes causality.",
+    "junctions": [
+      {
+        "annotation_model_count": 1,
+        "components": {
+          "abundance": {
+            "classification": "dataset_relative_expression",
+            "evidence_ids": [
+              "expression:6d24b485b781:patz1_long:1",
+              "expression:6d24b485b781:patz1_long:2",
+              "expression:6d24b485b781:patz1_long:3"
+            ],
+            "explanation": "A supplied expression value is associated through the curated isoform family.",
+            "measurements": [
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "AdGFP",
+                "evidence_id": "expression:6d24b485b781:patz1_long:1",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 4.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "DNp73beta",
+                "evidence_id": "expression:6d24b485b781:patz1_long:3",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 3.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "TAp73alpha",
+                "evidence_id": "expression:6d24b485b781:patz1_long:2",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 8.0
+              }
+            ],
+            "status": "observed",
+            "unit": "input_value"
+          },
+          "assayability": {
+            "classification": "not_evaluated",
+            "explanation": "No assayability evidence source was supplied for this object.",
+            "status": "not_evaluated"
+          },
+          "responsiveness": {
+            "classification": "not_evaluated",
+            "explanation": "No responsiveness evidence source was supplied for this object.",
+            "status": "not_evaluated"
+          },
+          "specificity": {
+            "classification": "family_unique",
+            "explanation": "Annotation set operation: present in 1 of 3 declared family/families (patz1_long).",
+            "status": "observed"
+          }
+        },
+        "coordinate_frame": "genome_anchor",
+        "family_ids": [
+          "patz1_long"
+        ],
+        "genomic_high_1based": 31325899,
+        "genomic_low_1based": 31325860,
+        "junction_id": "JCT:PATZ1ASSAY:31325860-31325899:-",
+        "local_high_1based": 100,
+        "local_low_1based": 61,
+        "recommendation": {
+          "evidence_ids": [
+            "expression:6d24b485b781:patz1_long:1",
+            "expression:6d24b485b781:patz1_long:2",
+            "expression:6d24b485b781:patz1_long:3"
+          ],
+          "recommended_use": "isoform_discrimination",
+          "rule": "annotation specificity plus abundance or responsiveness evidence is available; assay design remains required",
+          "tier": "evidence_prioritized"
+        },
+        "specificity_class": "family_unique",
+        "strand": "-",
+        "transcript_acceptor_1based": 31325860,
+        "transcript_donor_1based": 31325899,
+        "transcript_ids": [
+          "PATZ1-201"
+        ]
+      },
+      {
+        "annotation_model_count": 1,
+        "components": {
+          "abundance": {
+            "classification": "dataset_relative_expression",
+            "evidence_ids": [
+              "expression:6d24b485b781:patz1_alt:1",
+              "expression:6d24b485b781:patz1_alt:2",
+              "expression:6d24b485b781:patz1_alt:3"
+            ],
+            "explanation": "A supplied expression value is associated through the curated isoform family.",
+            "measurements": [
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "AdGFP",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:1",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 1.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "DNp73beta",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:3",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 2.5
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "TAp73alpha",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:2",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 2.0
+              }
+            ],
+            "status": "observed",
+            "unit": "input_value"
+          },
+          "assayability": {
+            "classification": "not_evaluated",
+            "explanation": "No assayability evidence source was supplied for this object.",
+            "status": "not_evaluated"
+          },
+          "responsiveness": {
+            "classification": "not_evaluated",
+            "explanation": "No responsiveness evidence source was supplied for this object.",
+            "status": "not_evaluated"
+          },
+          "specificity": {
+            "classification": "family_unique",
+            "explanation": "Annotation set operation: present in 1 of 3 declared family/families (patz1_alt).",
+            "status": "observed"
+          }
+        },
+        "coordinate_frame": "genome_anchor",
+        "family_ids": [
+          "patz1_alt"
+        ],
+        "genomic_high_1based": 31325919,
+        "genomic_low_1based": 31325860,
+        "junction_id": "JCT:PATZ1ASSAY:31325860-31325919:-",
+        "local_high_1based": 120,
+        "local_low_1based": 61,
+        "recommendation": {
+          "evidence_ids": [
+            "expression:6d24b485b781:patz1_alt:1",
+            "expression:6d24b485b781:patz1_alt:2",
+            "expression:6d24b485b781:patz1_alt:3"
+          ],
+          "recommended_use": "isoform_discrimination",
+          "rule": "annotation specificity plus abundance or responsiveness evidence is available; assay design remains required",
+          "tier": "evidence_prioritized"
+        },
+        "specificity_class": "family_unique",
+        "strand": "-",
+        "transcript_acceptor_1based": 31325860,
+        "transcript_donor_1based": 31325919,
+        "transcript_ids": [
+          "PATZ1-203"
+        ]
+      },
+      {
+        "annotation_model_count": 1,
+        "components": {
+          "abundance": {
+            "classification": "dataset_relative_expression",
+            "evidence_ids": [
+              "expression:6d24b485b781:patz1_skip:1",
+              "expression:6d24b485b781:patz1_skip:2",
+              "expression:6d24b485b781:patz1_skip:3"
+            ],
+            "explanation": "A supplied expression value is associated through the curated isoform family.",
+            "measurements": [
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "AdGFP",
+                "evidence_id": "expression:6d24b485b781:patz1_skip:1",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 2.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "DNp73beta",
+                "evidence_id": "expression:6d24b485b781:patz1_skip:3",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 7.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "TAp73alpha",
+                "evidence_id": "expression:6d24b485b781:patz1_skip:2",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 1.5
+              }
+            ],
+            "status": "observed",
+            "unit": "input_value"
+          },
+          "assayability": {
+            "classification": "not_evaluated",
+            "explanation": "No assayability evidence source was supplied for this object.",
+            "status": "not_evaluated"
+          },
+          "responsiveness": {
+            "classification": "array_logfc_candidate",
+            "evidence_ids": [
+              "probe:JUC2200054820.hg.1"
+            ],
+            "explanation": "A projected array feature carries a contrast effect; geometry and ambiguity require review.",
+            "measurements": [
+              {
+                "classification": "array_logfc_candidate",
+                "condition": "synthetic_case_vs_control",
+                "evidence_id": "probe:JUC2200054820.hg.1",
+                "explanation": "A projected array feature carries a contrast effect; geometry and ambiguity require review.",
+                "status": "candidate",
+                "unit": "logFC",
+                "value": -1.2
+              }
+            ],
+            "status": "candidate",
+            "unit": "logFC",
+            "value": -1.2
+          },
+          "specificity": {
+            "classification": "family_unique",
+            "explanation": "Annotation set operation: present in 1 of 3 declared family/families (patz1_skip).",
+            "status": "observed"
+          }
+        },
+        "coordinate_frame": "genome_anchor",
+        "family_ids": [
+          "patz1_skip"
+        ],
+        "genomic_high_1based": 31325979,
+        "genomic_low_1based": 31325860,
+        "junction_id": "JCT:PATZ1ASSAY:31325860-31325979:-",
+        "local_high_1based": 180,
+        "local_low_1based": 61,
+        "recommendation": {
+          "evidence_ids": [
+            "expression:6d24b485b781:patz1_skip:1",
+            "expression:6d24b485b781:patz1_skip:2",
+            "expression:6d24b485b781:patz1_skip:3",
+            "probe:JUC2200054820.hg.1"
+          ],
+          "recommended_use": "isoform_discrimination",
+          "rule": "annotation specificity plus abundance or responsiveness evidence is available; assay design remains required",
+          "tier": "evidence_prioritized"
+        },
+        "specificity_class": "family_unique",
+        "strand": "-",
+        "transcript_acceptor_1based": 31325860,
+        "transcript_donor_1based": 31325979,
+        "transcript_ids": [
+          "PATZ1-202"
+        ]
+      },
+      {
+        "annotation_model_count": 2,
+        "components": {
+          "abundance": {
+            "classification": "dataset_relative_expression",
+            "evidence_ids": [
+              "expression:6d24b485b781:patz1_alt:1",
+              "expression:6d24b485b781:patz1_alt:2",
+              "expression:6d24b485b781:patz1_alt:3",
+              "expression:6d24b485b781:patz1_long:1",
+              "expression:6d24b485b781:patz1_long:2",
+              "expression:6d24b485b781:patz1_long:3"
+            ],
+            "explanation": "A supplied expression value is associated through the curated isoform family.",
+            "measurements": [
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "AdGFP",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:1",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 1.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "AdGFP",
+                "evidence_id": "expression:6d24b485b781:patz1_long:1",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 4.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "DNp73beta",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:3",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 2.5
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "DNp73beta",
+                "evidence_id": "expression:6d24b485b781:patz1_long:3",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 3.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "TAp73alpha",
+                "evidence_id": "expression:6d24b485b781:patz1_alt:2",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 2.0
+              },
+              {
+                "classification": "dataset_relative_expression",
+                "condition": "TAp73alpha",
+                "evidence_id": "expression:6d24b485b781:patz1_long:2",
+                "explanation": "A supplied expression value is associated through the curated isoform family.",
+                "status": "observed",
+                "unit": "input_value",
+                "value": 8.0
+              }
+            ],
+            "status": "observed",
+            "unit": "input_value"
+          },
+          "assayability": {
+            "classification": "not_evaluated",
+            "explanation": "No assayability evidence source was supplied for this object.",
+            "status": "not_evaluated"
+          },
+          "responsiveness": {
+            "classification": "not_evaluated",
+            "explanation": "No responsiveness evidence source was supplied for this object.",
+            "status": "not_evaluated"
+          },
+          "specificity": {
+            "classification": "subset_specific",
+            "explanation": "Annotation set operation: present in 2 of 3 declared family/families (patz1_alt, patz1_long).",
+            "status": "observed"
+          }
+        },
+        "coordinate_frame": "genome_anchor",
+        "family_ids": [
+          "patz1_alt",
+          "patz1_long"
+        ],
+        "genomic_high_1based": 31325979,
+        "genomic_low_1based": 31325940,
+        "junction_id": "JCT:PATZ1ASSAY:31325940-31325979:-",
+        "local_high_1based": 180,
+        "local_low_1based": 141,
+        "recommendation": {
+          "evidence_ids": [
+            "expression:6d24b485b781:patz1_alt:1",
+            "expression:6d24b485b781:patz1_alt:2",
+            "expression:6d24b485b781:patz1_alt:3",
+            "expression:6d24b485b781:patz1_long:1",
+            "expression:6d24b485b781:patz1_long:2",
+            "expression:6d24b485b781:patz1_long:3"
+          ],
+          "recommended_use": "isoform_discrimination",
+          "rule": "annotation specificity plus abundance or responsiveness evidence is available; assay design remains required",
+          "tier": "evidence_prioritized"
+        },
+        "specificity_class": "subset_specific",
+        "strand": "-",
+        "transcript_acceptor_1based": 31325940,
+        "transcript_donor_1based": 31325979,
+        "transcript_ids": [
+          "PATZ1-201",
+          "PATZ1-203"
+        ]
+      }
+    ],
+    "occupancy_lanes": [],
+    "panel_id": "patz1_synthetic_v1",
+    "provenance": [
+      {
+        "path": "test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv",
+        "sha256": "sha256:6d24b485b781d0cb0beb9d2fedd4f28f364f7aa51dc274c1d1681a363ca3abc5",
+        "source_id": "test_files/fixtures/isoform_evidence/patz1/patz1_expression.tsv",
+        "source_kind": "isoform_expression_matrix"
+      },
+      {
+        "path": "test_files/fixtures/isoform_evidence/patz1/patz1_isoform_panel.json",
+        "schema": "gentle.isoform_panel_resource.v1",
+        "sha256": "sha256:d7cb725f9c2e6223ba05244c74097b8c859296062ff4cdc955e87369f93d2911",
+        "source_id": "patz1_synthetic_v1",
+        "source_kind": "isoform_panel"
+      },
+      {
+        "path": "test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_probe_evidence.json",
+        "schema": "gentle.probe_region_evidence_interpretation.v2",
+        "sha256": "sha256:9c9aa103002af3a92d24dfa0e8a2607d2ae74f33c73738c7e5434babb8cfaf61",
+        "source_id": "test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_probe_evidence.json",
+        "source_kind": "probe_evidence_report"
+      },
+      {
+        "source_id": "patz1_transcript_assay_demo",
+        "source_kind": "sequence_annotation"
+      }
+    ],
+    "region_end_1based": 31326019,
+    "region_start_1based": 31325820,
+    "schema": "gentle.gene_isoform_evidence.v2",
+    "seq_id": "patz1_transcript_assay_demo",
+    "splicing": {
+      "boundaries": [
+        {
+          "annotation": "Non-canonical splice-site motif pair; may reflect rarer biology, incomplete annotation, or sequence/assembly issues.",
+          "canonical": false,
+          "canonical_pair": false,
+          "motif_2bp": "TC",
+          "motif_class": "other_noncanonical",
+          "paired_motif_signature": "CG-TC",
+          "partner_position_1based": 100,
+          "position_1based": 61,
+          "side": "acceptor",
+          "transcript_feature_id": 2,
+          "transcript_id": "PATZ1-201"
+        },
+        {
+          "annotation": "Non-canonical splice-site motif pair; may reflect rarer biology, incomplete annotation, or sequence/assembly issues.",
+          "canonical": false,
+          "canonical_pair": false,
+          "motif_2bp": "TC",
+          "motif_class": "other_noncanonical",
+          "paired_motif_signature": "TC-TC",
+          "partner_position_1based": 180,
+          "position_1based": 61,
+          "side": "acceptor",
+          "transcript_feature_id": 3,
+          "transcript_id": "PATZ1-202"
+        },
+        {
+          "annotation": "Non-canonical splice-site motif pair; may reflect rarer biology, incomplete annotation, or sequence/assembly issues.",
+          "canonical": false,
+          "canonical_pair": false,
+          "motif_2bp": "TC",
+          "motif_class": "other_noncanonical",
+          "paired_motif_signature": "GT-TC",
+          "partner_position_1based": 120,
+          "position_1based": 61,
+          "side": "acceptor",
+          "transcript_feature_id": 4,
+          "transcript_id": "PATZ1-203"
+        },
+        {
+          "annotation": "Non-canonical splice-site motif pair; may reflect rarer biology, incomplete annotation, or sequence/assembly issues.",
+          "canonical": false,
+          "canonical_pair": false,
+          "motif_2bp": "CG",
+          "motif_class": "other_noncanonical",
+          "paired_motif_signature": "CG-TC",
+          "partner_position_1based": 61,
+          "position_1based": 100,
+          "side": "donor",
+          "transcript_feature_id": 2,
+          "transcript_id": "PATZ1-201"
+        },
+        {
+          "annotation": "Non-canonical splice-site motif pair; may reflect rarer biology, incomplete annotation, or sequence/assembly issues.",
+          "canonical": true,
+          "canonical_pair": false,
+          "motif_2bp": "GT",
+          "motif_class": "other_noncanonical",
+          "paired_motif_signature": "GT-TC",
+          "partner_position_1based": 61,
+          "position_1based": 120,
+          "side": "donor",
+          "transcript_feature_id": 4,
+          "transcript_id": "PATZ1-203"
+        },
+        {
+          "annotation": "Non-canonical splice-site motif pair; may reflect rarer biology, incomplete annotation, or sequence/assembly issues.",
+          "canonical": false,
+          "canonical_pair": false,
+          "motif_2bp": "AA",
+          "motif_class": "other_noncanonical",
+          "paired_motif_signature": "TC-AA",
+          "partner_position_1based": 180,
+          "position_1based": 141,
+          "side": "acceptor",
+          "transcript_feature_id": 2,
+          "transcript_id": "PATZ1-201"
+        },
+        {
+          "annotation": "Non-canonical splice-site motif pair; may reflect rarer biology, incomplete annotation, or sequence/assembly issues.",
+          "canonical": false,
+          "canonical_pair": false,
+          "motif_2bp": "AA",
+          "motif_class": "other_noncanonical",
+          "paired_motif_signature": "TC-AA",
+          "partner_position_1based": 180,
+          "position_1based": 141,
+          "side": "acceptor",
+          "transcript_feature_id": 4,
+          "transcript_id": "PATZ1-203"
+        },
+        {
+          "annotation": "Non-canonical splice-site motif pair; may reflect rarer biology, incomplete annotation, or sequence/assembly issues.",
+          "canonical": false,
+          "canonical_pair": false,
+          "motif_2bp": "TC",
+          "motif_class": "other_noncanonical",
+          "paired_motif_signature": "TC-AA",
+          "partner_position_1based": 141,
+          "position_1based": 180,
+          "side": "donor",
+          "transcript_feature_id": 2,
+          "transcript_id": "PATZ1-201"
+        },
+        {
+          "annotation": "Non-canonical splice-site motif pair; may reflect rarer biology, incomplete annotation, or sequence/assembly issues.",
+          "canonical": false,
+          "canonical_pair": false,
+          "motif_2bp": "TC",
+          "motif_class": "other_noncanonical",
+          "paired_motif_signature": "TC-TC",
+          "partner_position_1based": 61,
+          "position_1based": 180,
+          "side": "donor",
+          "transcript_feature_id": 3,
+          "transcript_id": "PATZ1-202"
+        },
+        {
+          "annotation": "Non-canonical splice-site motif pair; may reflect rarer biology, incomplete annotation, or sequence/assembly issues.",
+          "canonical": false,
+          "canonical_pair": false,
+          "motif_2bp": "TC",
+          "motif_class": "other_noncanonical",
+          "paired_motif_signature": "TC-AA",
+          "partner_position_1based": 141,
+          "position_1based": 180,
+          "side": "donor",
+          "transcript_feature_id": 4,
+          "transcript_id": "PATZ1-203"
+        }
+      ],
+      "events": [
+        {
+          "count": 2,
+          "details": [
+            "101..140 support=1/3",
+            "121..140 support=1/3"
+          ],
+          "event_type": "alternative_exon"
+        },
+        {
+          "count": 0,
+          "details": [],
+          "event_type": "alternative_5prime"
+        },
+        {
+          "count": 1,
+          "details": [
+            "shared end=140 with 2 alternative 3' exon start(s)"
+          ],
+          "event_type": "alternative_3prime"
+        },
+        {
+          "count": 2,
+          "details": [
+            "PATZ1-202 junction 61..180 skips 2 exon(s)"
+          ],
+          "event_type": "exon_skipping"
+        },
+        {
+          "count": 0,
+          "details": [],
+          "event_type": "intron_retention"
+        },
+        {
+          "count": 1,
+          "details": [
+            "101..140 and 121..140 appear mutually exclusive"
+          ],
+          "event_type": "mutually_exclusive_exons"
+        }
+      ],
+      "group_label": "PATZ1",
+      "instruction": "Splicing expert view: one lane per transcript on a shared genomic axis. Exon geometry is coordinate-true (labels never resize exon/intron footprints). Donor/acceptor splice boundaries are marked, junction arcs summarize support across transcripts, and the transcript-vs-exon matrix shows isoform differences.",
+      "intron_signals": [
+        {
+          "acceptor_position_1based": 61,
+          "branchpoint_annotation": "Strong branchpoint-like adenine in the usual 18-40 nt acceptor-proximal window (heuristic, not a splice predictor).",
+          "branchpoint_motif": "CTAAG",
+          "branchpoint_position_1based": 91,
+          "branchpoint_score": 4.300000190734863,
+          "donor_position_1based": 100,
+          "intron_length_bp": 40,
+          "polypyrimidine_annotation": "No clear acceptor-proximal polypyrimidine-rich tract was detected by the current heuristic.",
+          "polypyrimidine_end_1based": null,
+          "polypyrimidine_fraction": 0.0,
+          "polypyrimidine_start_1based": null,
+          "transcript_feature_id": 2,
+          "transcript_id": "PATZ1-201"
+        },
+        {
+          "acceptor_position_1based": 61,
+          "branchpoint_annotation": "Strong branchpoint-like adenine in the usual 18-40 nt acceptor-proximal window (heuristic, not a splice predictor).",
+          "branchpoint_motif": "CTAAG",
+          "branchpoint_position_1based": 91,
+          "branchpoint_score": 4.300000190734863,
+          "donor_position_1based": 120,
+          "intron_length_bp": 60,
+          "polypyrimidine_annotation": "No clear acceptor-proximal polypyrimidine-rich tract was detected by the current heuristic.",
+          "polypyrimidine_end_1based": null,
+          "polypyrimidine_fraction": 0.0,
+          "polypyrimidine_start_1based": null,
+          "transcript_feature_id": 4,
+          "transcript_id": "PATZ1-203"
+        },
+        {
+          "acceptor_position_1based": 61,
+          "branchpoint_annotation": "Strong branchpoint-like adenine in the usual 18-40 nt acceptor-proximal window (heuristic, not a splice predictor).",
+          "branchpoint_motif": "CTAAG",
+          "branchpoint_position_1based": 91,
+          "branchpoint_score": 4.300000190734863,
+          "donor_position_1based": 180,
+          "intron_length_bp": 120,
+          "polypyrimidine_annotation": "No clear acceptor-proximal polypyrimidine-rich tract was detected by the current heuristic.",
+          "polypyrimidine_end_1based": null,
+          "polypyrimidine_fraction": 0.0,
+          "polypyrimidine_start_1based": null,
+          "transcript_feature_id": 3,
+          "transcript_id": "PATZ1-202"
+        },
+        {
+          "acceptor_position_1based": 141,
+          "branchpoint_annotation": "Moderate branchpoint-like adenine in the usual acceptor-proximal window (heuristic only).",
+          "branchpoint_motif": "CGAAT",
+          "branchpoint_position_1based": 176,
+          "branchpoint_score": 4.200000286102295,
+          "donor_position_1based": 180,
+          "intron_length_bp": 40,
+          "polypyrimidine_annotation": "Weak pyrimidine-rich tract near the acceptor; review manually before treating it as strong evidence.",
+          "polypyrimidine_end_1based": 162,
+          "polypyrimidine_fraction": 0.699999988079071,
+          "polypyrimidine_start_1based": 153,
+          "transcript_feature_id": 2,
+          "transcript_id": "PATZ1-201"
+        },
+        {
+          "acceptor_position_1based": 141,
+          "branchpoint_annotation": "Moderate branchpoint-like adenine in the usual acceptor-proximal window (heuristic only).",
+          "branchpoint_motif": "CGAAT",
+          "branchpoint_position_1based": 176,
+          "branchpoint_score": 4.200000286102295,
+          "donor_position_1based": 180,
+          "intron_length_bp": 40,
+          "polypyrimidine_annotation": "Weak pyrimidine-rich tract near the acceptor; review manually before treating it as strong evidence.",
+          "polypyrimidine_end_1based": 162,
+          "polypyrimidine_fraction": 0.699999988079071,
+          "polypyrimidine_start_1based": 153,
+          "transcript_feature_id": 4,
+          "transcript_id": "PATZ1-203"
+        }
+      ],
+      "junctions": [
+        {
+          "acceptor_1based": 100,
+          "donor_1based": 61,
+          "support_transcript_count": 1,
+          "transcript_feature_ids": [
+            2
+          ]
+        },
+        {
+          "acceptor_1based": 120,
+          "donor_1based": 61,
+          "support_transcript_count": 1,
+          "transcript_feature_ids": [
+            4
+          ]
+        },
+        {
+          "acceptor_1based": 180,
+          "donor_1based": 61,
+          "support_transcript_count": 1,
+          "transcript_feature_ids": [
+            3
+          ]
+        },
+        {
+          "acceptor_1based": 180,
+          "donor_1based": 141,
+          "support_transcript_count": 2,
+          "transcript_feature_ids": [
+            2,
+            4
+          ]
+        }
+      ],
+      "matrix_rows": [
+        {
+          "exon_presence": [
+            true,
+            true,
+            false,
+            true
+          ],
+          "label": "PATZ1 synthetic three-exon transcript",
+          "transcript_feature_id": 2,
+          "transcript_id": "PATZ1-201"
+        },
+        {
+          "exon_presence": [
+            true,
+            false,
+            false,
+            true
+          ],
+          "label": "PATZ1 synthetic skipped-middle transcript",
+          "transcript_feature_id": 3,
+          "transcript_id": "PATZ1-202"
+        },
+        {
+          "exon_presence": [
+            true,
+            false,
+            true,
+            true
+          ],
+          "label": "PATZ1 synthetic alternative-middle transcript",
+          "transcript_feature_id": 4,
+          "transcript_id": "PATZ1-203"
+        }
+      ],
+      "region_end_1based": 220,
+      "region_start_1based": 21,
+      "scope": "target_group_target_strand",
+      "seq_id": "patz1_transcript_assay_demo",
+      "strand": "-",
+      "target_feature_id": 2,
+      "transcript_count": 3,
+      "transcripts": [
+        {
+          "exon_cds_phases": [
+            {
+              "end_1based": 60,
+              "left_cds_phase": null,
+              "right_cds_phase": null,
+              "start_1based": 21
+            },
+            {
+              "end_1based": 140,
+              "left_cds_phase": null,
+              "right_cds_phase": null,
+              "start_1based": 101
+            },
+            {
+              "end_1based": 220,
+              "left_cds_phase": null,
+              "right_cds_phase": null,
+              "start_1based": 181
+            }
+          ],
+          "exons": [
+            {
+              "end_1based": 60,
+              "start_1based": 21
+            },
+            {
+              "end_1based": 140,
+              "start_1based": 101
+            },
+            {
+              "end_1based": 220,
+              "start_1based": 181
+            }
+          ],
+          "has_target_feature": true,
+          "introns": [
+            {
+              "end_1based": 100,
+              "start_1based": 61
+            },
+            {
+              "end_1based": 180,
+              "start_1based": 141
+            }
+          ],
+          "label": "PATZ1 synthetic three-exon transcript",
+          "strand": "-",
+          "transcript_feature_id": 2,
+          "transcript_id": "PATZ1-201"
+        },
+        {
+          "exon_cds_phases": [
+            {
+              "end_1based": 60,
+              "left_cds_phase": null,
+              "right_cds_phase": null,
+              "start_1based": 21
+            },
+            {
+              "end_1based": 220,
+              "left_cds_phase": null,
+              "right_cds_phase": null,
+              "start_1based": 181
+            }
+          ],
+          "exons": [
+            {
+              "end_1based": 60,
+              "start_1based": 21
+            },
+            {
+              "end_1based": 220,
+              "start_1based": 181
+            }
+          ],
+          "has_target_feature": false,
+          "introns": [
+            {
+              "end_1based": 180,
+              "start_1based": 61
+            }
+          ],
+          "label": "PATZ1 synthetic skipped-middle transcript",
+          "strand": "-",
+          "transcript_feature_id": 3,
+          "transcript_id": "PATZ1-202"
+        },
+        {
+          "exon_cds_phases": [
+            {
+              "end_1based": 60,
+              "left_cds_phase": null,
+              "right_cds_phase": null,
+              "start_1based": 21
+            },
+            {
+              "end_1based": 140,
+              "left_cds_phase": null,
+              "right_cds_phase": null,
+              "start_1based": 121
+            },
+            {
+              "end_1based": 220,
+              "left_cds_phase": null,
+              "right_cds_phase": null,
+              "start_1based": 181
+            }
+          ],
+          "exons": [
+            {
+              "end_1based": 60,
+              "start_1based": 21
+            },
+            {
+              "end_1based": 140,
+              "start_1based": 121
+            },
+            {
+              "end_1based": 220,
+              "start_1based": 181
+            }
+          ],
+          "has_target_feature": false,
+          "introns": [
+            {
+              "end_1based": 120,
+              "start_1based": 61
+            },
+            {
+              "end_1based": 180,
+              "start_1based": 141
+            }
+          ],
+          "label": "PATZ1 synthetic alternative-middle transcript",
+          "strand": "-",
+          "transcript_feature_id": 4,
+          "transcript_id": "PATZ1-203"
+        }
+      ],
+      "unique_exon_count": 4,
+      "unique_exons": [
+        {
+          "constitutive": true,
+          "end_1based": 60,
+          "start_1based": 21,
+          "support_transcript_count": 3
+        },
+        {
+          "constitutive": false,
+          "end_1based": 140,
+          "start_1based": 101,
+          "support_transcript_count": 1
+        },
+        {
+          "constitutive": false,
+          "end_1based": 140,
+          "start_1based": 121,
+          "support_transcript_count": 1
+        },
+        {
+          "constitutive": true,
+          "end_1based": 220,
+          "start_1based": 181,
+          "support_transcript_count": 3
+        }
+      ]
+    },
+    "transcript_metrics": [
+      {
+        "cds_length_bp": 105,
+        "cds_ranges_local_1based": [
+          [
+            21,
+            60
+          ],
+          [
+            101,
+            140
+          ],
+          [
+            181,
+            205
+          ]
+        ],
+        "coding_status": "inferred_orf",
+        "expected_peptide_length_aa": 35,
+        "flags": [
+          "protein_length_inferred_not_annotated",
+          "protein_mass_unavailable_incomplete_cds"
+        ],
+        "protein_identity_sha256": "sha256:6de420f5abc0df6e5c9b870ec6f28c083b4ff41355bfec5c802c1afcd582786a",
+        "protein_mass_basis": "unavailable_due_to_incomplete_or_unresolved_cds",
+        "spliced_exon_length_bp": 120,
+        "transcript_feature_id": 2,
+        "transcript_id": "PATZ1-201"
+      },
+      {
+        "cds_length_bp": 51,
+        "cds_ranges_local_1based": [
+          [
+            21,
+            60
+          ],
+          [
+            181,
+            191
+          ]
+        ],
+        "coding_status": "inferred_orf",
+        "expected_peptide_length_aa": 17,
+        "flags": [
+          "protein_length_inferred_not_annotated",
+          "protein_mass_unavailable_incomplete_cds"
+        ],
+        "protein_identity_sha256": "sha256:ce4ce53918cff682346a19a9c5e63ecac77f1ef5ae09be5d02ae31e1254c5557",
+        "protein_mass_basis": "unavailable_due_to_incomplete_or_unresolved_cds",
+        "spliced_exon_length_bp": 80,
+        "transcript_feature_id": 3,
+        "transcript_id": "PATZ1-202"
+      },
+      {
+        "cds_length_bp": 72,
+        "cds_ranges_local_1based": [
+          [
+            34,
+            60
+          ],
+          [
+            121,
+            140
+          ],
+          [
+            181,
+            205
+          ]
+        ],
+        "coding_status": "inferred_orf",
+        "expected_peptide_length_aa": 24,
+        "flags": [
+          "protein_length_inferred_not_annotated",
+          "protein_mass_unavailable_incomplete_cds"
+        ],
+        "protein_identity_sha256": "sha256:fc4a5fe80c6f3c987cf592deac61172318c4217718b6d73a311a6a99f8808f7b",
+        "protein_mass_basis": "unavailable_due_to_incomplete_or_unresolved_cds",
+        "spliced_exon_length_bp": 100,
+        "transcript_feature_id": 4,
+        "transcript_id": "PATZ1-203"
+      }
+    ],
+    "transcripts": [
+      {
+        "exon_family_ids_5_to_3": [
+          "EXF:PATZ1ASSAY:31325980-31326019:-",
+          "EXF:PATZ1ASSAY:31325900-31325939:-",
+          "EXF:PATZ1ASSAY:31325820-31325859:-"
+        ],
+        "exon_family_ids_genomic_ascending": [
+          "EXF:PATZ1ASSAY:31325820-31325859:-",
+          "EXF:PATZ1ASSAY:31325900-31325939:-",
+          "EXF:PATZ1ASSAY:31325980-31326019:-"
+        ],
+        "family_ids": [
+          "patz1_long"
+        ],
+        "label": "PATZ1 synthetic three-exon transcript",
+        "strand": "-",
+        "transcript_feature_id": 2,
+        "transcript_id": "PATZ1-201"
+      },
+      {
+        "exon_family_ids_5_to_3": [
+          "EXF:PATZ1ASSAY:31325980-31326019:-",
+          "EXF:PATZ1ASSAY:31325820-31325859:-"
+        ],
+        "exon_family_ids_genomic_ascending": [
+          "EXF:PATZ1ASSAY:31325820-31325859:-",
+          "EXF:PATZ1ASSAY:31325980-31326019:-"
+        ],
+        "family_ids": [
+          "patz1_skip"
+        ],
+        "label": "PATZ1 synthetic skipped-middle transcript",
+        "strand": "-",
+        "transcript_feature_id": 3,
+        "transcript_id": "PATZ1-202"
+      },
+      {
+        "exon_family_ids_5_to_3": [
+          "EXF:PATZ1ASSAY:31325980-31326019:-",
+          "EXF:PATZ1ASSAY:31325920-31325939:-",
+          "EXF:PATZ1ASSAY:31325820-31325859:-"
+        ],
+        "exon_family_ids_genomic_ascending": [
+          "EXF:PATZ1ASSAY:31325820-31325859:-",
+          "EXF:PATZ1ASSAY:31325920-31325939:-",
+          "EXF:PATZ1ASSAY:31325980-31326019:-"
+        ],
+        "family_ids": [
+          "patz1_alt"
+        ],
+        "label": "PATZ1 synthetic alternative-middle transcript",
+        "strand": "-",
+        "transcript_feature_id": 4,
+        "transcript_id": "PATZ1-203"
+      }
+    ],
+    "warnings": [
+      "Panel assembly 'GRCh38.p14' differs from sequence anchor 'PATZ1ASSAY'; review coordinate provenance.",
+      "Synthetic probe evidence; array overlap is not isoform validation."
+    ]
+  },
+  "kind": "isoform_evidence"
+}

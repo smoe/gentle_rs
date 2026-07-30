@@ -30,7 +30,7 @@ PATZ1-201
 <rect data-gentle-cds="PATZ1-201" fill="#1d4ed8" height="10" width="130.82275" x="587.0886" y="157"/>
 <rect data-gentle-cds="PATZ1-201" fill="#1d4ed8" height="10" width="130.82281" x="318.7342" y="157"/>
 <text fill="#475569" font-family="monospace" font-size="8" x="1070" y="166">
-exon 120 nt | CDS 120 nt | 40 aa | inferred_orf | protein_...
+exon 120 nt | CDS 120 nt | 40 aa | mass n/a | inferred_orf...
 </text>
 <text fill="#374151" font-family="monospace" font-size="10" x="34" y="208">
 PATZ1-202
@@ -41,7 +41,7 @@ PATZ1-202
 <rect data-gentle-cds="PATZ1-202" fill="#1d4ed8" height="10" width="124.11389" x="855.44305" y="199"/>
 <rect data-gentle-cds="PATZ1-202" fill="#1d4ed8" height="10" width="130.82281" x="318.7342" y="199"/>
 <text fill="#475569" font-family="monospace" font-size="8" x="1070" y="208">
-exon 80 nt | CDS 78 nt | 26 aa | inferred_orf | protein_le...
+exon 80 nt | CDS 78 nt | 26 aa | mass n/a | inferred_orf |...
 </text>
 <text fill="#374151" font-family="monospace" font-size="10" x="34" y="250">
 PATZ1-203
@@ -54,7 +54,7 @@ PATZ1-203
 <rect data-gentle-cds="PATZ1-203" fill="#1d4ed8" height="10" width="63.73413" x="587.0886" y="241"/>
 <rect data-gentle-cds="PATZ1-203" fill="#1d4ed8" height="10" width="130.82281" x="318.7342" y="241"/>
 <text fill="#475569" font-family="monospace" font-size="8" x="1070" y="250">
-exon 100 nt | CDS 99 nt | 33 aa | inferred_orf | protein_l...
+exon 100 nt | CDS 99 nt | 33 aa | mass n/a | inferred_orf ...
 </text>
 <text fill="#1f2937" font-family="sans-serif" font-size="13" font-weight="bold" x="34" y="308">
 Probe-set effects (raw activity differences; not significance)
@@ -149,10 +149,10 @@ active local JASPAR motif registry; matrix_id=MA0861.2; score_kind=llr_b...
 Warnings / interpretation checks
 </text>
 <text fill="#92400e" font-family="monospace" font-size="9" x="34" y="794">
-warning: cDNA/EST evidence 'cdna_synthetic_wrong_assembly' was not attached because its coordinate provenance differs: assembly 'GRCh37' != 'GRCh38.p14'.
+warning: Synthetic probe evidence; array overlap is not isoform validation.
 </text>
 <text fill="#92400e" font-family="monospace" font-size="9" x="34" y="809">
-warning: Synthetic probe evidence; array overlap is not isoform validation.
+warning: cDNA/EST evidence 'cdna_synthetic_wrong_assembly' was not attached because its coordinate provenance differs: assembly 'GRCh37' != 'GRCh38.p14'.
 </text>
 <text fill="#92400e" font-family="monospace" font-size="9" x="34" y="824">
 warning: Probe-effect overlays are raw activity differences for visualization; they are not formal differential-expression significance or direct isoform support.

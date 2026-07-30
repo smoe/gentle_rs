@@ -2484,6 +2484,15 @@ fn rewrite_example_paths_for_execution(
             }
             continue;
         }
+        if let Operation::ComposeGeneTranscriptAssayRoutine { request, path } = op {
+            request.isoform_evidence_path =
+                resolve_input_path(&request.isoform_evidence_path, repo_root);
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
         if let Operation::ExportDnaLadders { path, .. } = op {
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
@@ -5372,8 +5381,8 @@ pub fn generate_workflow_example_docs(
 mod tests {
     use super::*;
     use crate::engine::{
-        SequenceFeatureQualifierFilter, SequenceFeatureQuery, TranscriptAssayKind,
-        TranscriptAssayPanelCompletionStatus, TranscriptAssayPanelReport,
+        GeneTranscriptAssayRoutineRequest, SequenceFeatureQualifierFilter, SequenceFeatureQuery,
+        TranscriptAssayKind, TranscriptAssayPanelCompletionStatus, TranscriptAssayPanelReport,
     };
     use std::sync::Mutex;
     use std::{collections::BTreeSet, path::Path};
@@ -7082,6 +7091,47 @@ mod tests {
                 assert!(
                     path.starts_with(&display_path(run_dir.path())),
                     "render output path should be rewritten into run dir"
+                );
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rewrite_example_paths_handles_gene_transcript_assay_routine_io() {
+        let example = WorkflowExample {
+            schema: WORKFLOW_EXAMPLE_SCHEMA.to_string(),
+            id: "gene_transcript_assay_routine_path_rewrite_test".to_string(),
+            title: "gene transcript assay routine path rewrite test".to_string(),
+            summary: String::new(),
+            test_mode: ExampleTestMode::Skip,
+            required_files: vec!["fixtures/isoform_evidence.json".to_string()],
+            tags: vec![],
+            workflow: Workflow {
+                run_id: "gene_transcript_assay_routine_path_rewrite_test".to_string(),
+                ops: vec![Operation::ComposeGeneTranscriptAssayRoutine {
+                    request: GeneTranscriptAssayRoutineRequest {
+                        label: "Synthetic routine".to_string(),
+                        isoform_evidence_path: "fixtures/isoform_evidence.json".to_string(),
+                        transcript_assay_panel_report_ids: vec!["panel_a".to_string()],
+                        ..GeneTranscriptAssayRoutineRequest::default()
+                    },
+                    path: Some("artifacts/routine.json".to_string()),
+                }],
+            },
+        };
+        let repo_root = std::env::current_dir().expect("cwd");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let rewritten =
+            rewrite_example_paths_for_execution(&example, repo_root.as_path(), run_dir.path())
+                .expect("rewrite should succeed");
+
+        match &rewritten.workflow.ops[0] {
+            Operation::ComposeGeneTranscriptAssayRoutine { request, path } => {
+                assert!(Path::new(&request.isoform_evidence_path).is_absolute());
+                assert!(
+                    path.as_deref()
+                        .is_some_and(|path| path.starts_with(&display_path(run_dir.path())))
                 );
             }
             other => panic!("unexpected operation: {other:?}"),
