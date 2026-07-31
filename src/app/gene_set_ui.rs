@@ -135,17 +135,14 @@ fn parse_gene_set_member_list(
     Ok(members)
 }
 
-fn parse_optional_positive_usize(value: &str, label: &str) -> Result<Option<usize>, String> {
+fn parse_optional_usize(value: &str, label: &str) -> Result<Option<usize>, String> {
     let value = value.trim();
     if value.is_empty() {
         return Ok(None);
     }
     let parsed = value
         .parse::<usize>()
-        .map_err(|_| format!("{label} must be a positive integer"))?;
-    if parsed == 0 {
-        return Err(format!("{label} must be at least 1"));
-    }
+        .map_err(|_| format!("{label} must be a non-negative integer"))?;
     Ok(Some(parsed))
 }
 
@@ -185,8 +182,8 @@ fn gene_set_resolve_form_to_operation(form: &GeneSetResolveFormState) -> Result<
         GeneSetResolveSourceKind::GenomicNeighbors => {
             let anchor = optional_trimmed(&form.anchor_gene)
                 .ok_or_else(|| "Anchor gene must not be empty".to_string())?;
-            let flank_gene_count = parse_optional_positive_usize(&form.flank_genes, "Flank genes")?;
-            let flank_bp = parse_optional_positive_usize(&form.flank_bp, "Flank bp")?;
+            let flank_gene_count = parse_optional_usize(&form.flank_genes, "Flank genes")?;
+            let flank_bp = parse_optional_usize(&form.flank_bp, "Flank bp")?;
             if flank_gene_count.is_none() && flank_bp.is_none() {
                 return Err("Enter flank genes, flank bp, or both".to_string());
             }
@@ -198,7 +195,7 @@ fn gene_set_resolve_form_to_operation(form: &GeneSetResolveFormState) -> Result<
             }
         }
         GeneSetResolveSourceKind::Random => {
-            let count = parse_optional_positive_usize(&form.random_size, "Sample size")?
+            let count = parse_optional_usize(&form.random_size, "Sample size")?
                 .ok_or_else(|| "Sample size must not be empty".to_string())?;
             let random_seed = match optional_trimmed(&form.random_seed) {
                 Some(value) => value
@@ -1894,6 +1891,20 @@ mod tests {
     }
 
     #[test]
+    fn gene_set_resolve_parity_genomic_neighbors_allows_zero_flanks() {
+        assert_resolve_form_matches_shell(
+            GeneSetResolveFormState {
+                source_kind: GeneSetResolveSourceKind::GenomicNeighbors,
+                anchor_gene: "TP53".to_string(),
+                flank_genes: "0".to_string(),
+                flank_bp: "0".to_string(),
+                ..GeneSetResolveFormState::default()
+            },
+            "gene-sets resolve --neighbors TP53 --flank-genes 0 --flank-bp 0",
+        );
+    }
+
+    #[test]
     fn gene_set_resolve_parity_random() {
         assert_resolve_form_matches_shell(
             GeneSetResolveFormState {
@@ -1916,6 +1927,18 @@ mod tests {
                 ..GeneSetResolveFormState::default()
             },
             "gene-sets resolve --random-size 10",
+        );
+    }
+
+    #[test]
+    fn gene_set_resolve_parity_random_allows_zero_size() {
+        assert_resolve_form_matches_shell(
+            GeneSetResolveFormState {
+                source_kind: GeneSetResolveSourceKind::Random,
+                random_size: "0".to_string(),
+                ..GeneSetResolveFormState::default()
+            },
+            "gene-sets resolve --random-size 0",
         );
     }
 
@@ -1959,11 +1982,11 @@ mod tests {
         assert!(
             gene_set_resolve_form_to_operation(&GeneSetResolveFormState {
                 source_kind: GeneSetResolveSourceKind::Random,
-                random_size: "0".to_string(),
+                random_size: "-1".to_string(),
                 ..GeneSetResolveFormState::default()
             })
-            .expect_err("zero sample")
-            .contains("at least 1")
+            .expect_err("negative sample")
+            .contains("non-negative integer")
         );
     }
 
