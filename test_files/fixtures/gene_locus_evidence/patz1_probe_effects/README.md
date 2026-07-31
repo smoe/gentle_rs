@@ -29,9 +29,12 @@ Gene-level source table:
 `analysis/e_mtab_14704_tp73_microarray/gene_panel_probe_set_activity/paired_gene_level_summary.tsv`
 
 The source tables summarize raw PM-probe activity from SK-MEL-29 cells
-overexpressing DNp73beta, TAp73alpha, or GFP. This fixture is for visualization
-and software tests. It must not be interpreted as a formal differential
-expression model, isoform-support call, or statistical significance result.
+overexpressing DNp73beta, TAp73alpha, or GFP. The compact table retains both
+condition-wise `log2_mean_*` abundance columns and pairwise
+`log2_*_minus_*` activity differences. This fixture is for visualization and
+software tests. It must not be interpreted as PCR-primer binding proof, a
+formal differential-expression model, isoform-support call, or statistical
+significance result.
 
 The source tables themselves are outputs of Glen's local probe-set activity
 analysis and are not yet reproducible from a committed GENtle command. After

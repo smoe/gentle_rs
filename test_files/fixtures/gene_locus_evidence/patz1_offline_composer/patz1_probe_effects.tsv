@@ -1,3 +1,3 @@
-primary_gene	probeset_id	probeset_type	seqname	strand	start	stop	transcript_cluster_id	exon_id	junction_start_edge	junction_stop_edge	pm_probe_count	log2_TAp73alpha_minus_GFP	log2_DNp73beta_minus_GFP
-PATZ1	PSR_SYN_PATZ1_EXON_A	main->psr	chr22	-	31325820	31325859	TC_SYN_PATZ1	EX_SYN_A			6	-0.6899	0.2224
-PATZ1	JUC_SYN_PATZ1_SKIP	main->juc	chr22	-			TC_SYN_PATZ1	EX_SYN_A_to_EX_SYN_B	31325860	31325979	4	-0.2331	-0.0829
+primary_gene	probeset_id	probeset_type	seqname	strand	start	stop	transcript_cluster_id	exon_id	junction_start_edge	junction_stop_edge	pm_probe_count	log2_mean_DNp73beta	log2_mean_GFP	log2_mean_TAp73alpha	log2_TAp73alpha_minus_GFP	log2_DNp73beta_minus_GFP	log2_TAp73alpha_minus_DNp73beta
+PATZ1	PSR_SYN_PATZ1_EXON_A	main->psr	chr22	-	31325820	31325859	TC_SYN_PATZ1	EX_SYN_A			6	8.3671	8.1447	7.4548	-0.6899	0.2224	-0.9123
+PATZ1	JUC_SYN_PATZ1_SKIP	main->juc	chr22	-			TC_SYN_PATZ1	EX_SYN_A_to_EX_SYN_B	31325860	31325979	4	6.4723	6.5552	6.3221	-0.2331	-0.0829	-0.1502

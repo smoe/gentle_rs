@@ -3613,14 +3613,16 @@ external coding agent runtime, see:
     `motif_tracks[]`, deduplicated junction `assay_overlays[]`, a combined
     `provenance[]` inventory, strand-aware locus/flank coordinates, and warnings
   - probe-effect tables are tab-separated and retain PSR intervals and JUC
-    junction-edge geometry as distinct classes. Effect columns follow the
-    `log2_*_minus_*` convention; repeat `--probe-effect-contrast` to select
-    columns by id, display label, or source-column spelling. The explicit
+    junction-edge geometry as distinct classes. Abundance columns follow the
+    `log2_mean_*` convention and differential-activity columns follow
+    `log2_*_minus_*`; repeat `--probe-effect-contrast` to select columns by id,
+    display label, or source-column spelling. The explicit
     `--probe-effect-coordinate-system` must match the open sequence's genome
     anchor before rows are projected. The report carries the original feature
     ids, coordinates, contrast ids, values, PM-probe counts, row provenance,
-    and one shared absolute display scale. These raw activity differences are
-    visualization evidence, not significance estimates or direct isoform support
+    and separate abundance and differential display scales. These values are
+    visualization evidence, not primer-binding proof, significance estimates,
+    or direct isoform support
   - occupancy layout files use `gentle.gene_locus_occupancy_layout.v1`.
     Each group declares `group_id`, label, `scale_mode`
     (`shared_group`, `shared_all`, `independent`, or `fixed`), optional fixed

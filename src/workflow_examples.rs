@@ -5676,11 +5676,13 @@ mod tests {
             "data-gentle-probe-class=\"juc\"",
             "data-gentle-probe-effect-contrast=\"TAp73alpha_minus_GFP\"",
             "data-gentle-probe-effect-contrast=\"DNp73beta_minus_GFP\"",
+            "data-gentle-probe-evidence-lane=\"abundance\"",
+            "data-gentle-probe-evidence-lane=\"differential\"",
             "data-gentle-occupancy-group=\"saos2\"",
             "data-gentle-occupancy-group=\"skmel29\"",
             "data-gentle-motif-track=\"MA0861.2\"",
             "data-gentle-provenance-source",
-            "raw activity differences; not significance",
+            "Clariom evidence: abundance/splice geometry and differential activity",
         ] {
             assert!(svg.contains(marker), "expected SVG marker {marker}");
         }

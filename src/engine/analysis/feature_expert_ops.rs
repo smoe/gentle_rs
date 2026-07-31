@@ -11758,7 +11758,11 @@ impl GentleEngine {
             .strip_prefix("log2_")
             .unwrap_or(column.trim())
             .to_string();
-        let display_label = contrast_id.replace("_minus_", "-").replace('_', " ");
+        let display_label = contrast_id
+            .strip_prefix("mean_")
+            .unwrap_or(&contrast_id)
+            .replace("_minus_", "-")
+            .replace('_', " ");
         GeneLocusProbeEffectContrast {
             contrast_id,
             display_label,
@@ -11931,7 +11935,8 @@ impl GentleEngine {
                 .enumerate()
                 .filter(|(_, header)| {
                     let header = header.trim();
-                    header.starts_with("log2_") && header.contains("_minus_")
+                    header.starts_with("log2_mean_")
+                        || (header.starts_with("log2_") && header.contains("_minus_"))
                 })
                 .map(|(index, header)| (index, Self::gene_locus_probe_contrast(header)))
                 .collect::<Vec<_>>();
@@ -11959,7 +11964,7 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!(
-                        "Probe-effect TSV '{path}' has no selected log2_*_minus_* effect columns"
+                        "Probe-effect TSV '{path}' has no selected log2_mean_* abundance or log2_*_minus_* difference columns"
                     ),
                     cause_chain: vec![],
                 });
@@ -12137,7 +12142,11 @@ impl GentleEngine {
                         display_label: contrast.display_label.clone(),
                         source_column: contrast.source_column.clone(),
                         value,
-                        unit: "log2 activity difference".to_string(),
+                        unit: if contrast.source_column.starts_with("log2_mean_") {
+                            "log2 mean probe-set activity".to_string()
+                        } else {
+                            "log2 probe-set activity difference".to_string()
+                        },
                     });
                 }
                 let transcript_cluster_id = transcript_cluster_idx
@@ -12339,15 +12348,17 @@ impl GentleEngine {
                 .then(left.feature_id.cmp(&right.feature_id))
                 .then(left.source_path.cmp(&right.source_path))
         });
+        contrasts.sort_by_key(|contrast| !contrast.source_column.starts_with("log2_mean_"));
         let shared_abs_max = overlays
             .iter()
             .flat_map(|overlay| overlay.effects.iter())
+            .filter(|effect| effect.source_column.contains("_minus_"))
             .map(|effect| effect.value.abs())
             .filter(|value| value.is_finite())
             .max_by(f64::total_cmp)
             .filter(|value| *value > 0.0);
         warnings.push(
-            "Probe-effect overlays are raw activity differences for visualization; they are not formal differential-expression significance or direct isoform support."
+            "Clariom abundance means and activity differences are descriptive visualization inputs: signal supports assay-region prioritization, while PSR/JUC geometry flags exon or junction structure; neither proves PCR-primer binding, formal differential-expression significance, or isoform identity."
                 .to_string(),
         );
         Ok((contrasts, overlays, shared_abs_max))
@@ -13080,8 +13091,68 @@ mod gene_locus_probe_effect_tests {
         assert!(
             warnings
                 .iter()
-                .any(|warning| warning.contains("raw activity"))
+                .any(|warning| warning.contains("descriptive visualization inputs"))
         );
+    }
+
+    #[test]
+    fn patz1_fixture_exposes_abundance_and_differential_clariom_lanes() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "test_files/fixtures/gene_locus_evidence/patz1_probe_effects/patz1_clariom_probe_effects.tsv",
+        );
+        let request = GeneLocusEvidenceDisplayRequest {
+            probe_effect_table_paths: vec![fixture.to_string_lossy().to_string()],
+            probe_effect_coordinate_system: Some("GRCh38.p14".to_string()),
+            ..Default::default()
+        };
+        let anchor = SequenceGenomeAnchorSummary {
+            seq_id: "patz1_fixture".to_string(),
+            genome_id: "GRCh38.p14".to_string(),
+            chromosome: "chr22".to_string(),
+            start_1based: 31_325_809,
+            end_1based: 31_346_263,
+            strand: Some('+'),
+            anchor_verified: Some(true),
+        };
+        let (contrasts, overlays, differential_abs_max) = GentleEngine::default()
+            .gene_locus_probe_effect_overlays(
+                "PATZ1",
+                "-",
+                1,
+                anchor.end_1based - anchor.start_1based + 1,
+                Some(&anchor),
+                &request,
+                &mut Vec::new(),
+                &mut Vec::new(),
+            )
+            .expect("parse both Clariom evidence classes");
+
+        assert_eq!(contrasts.len(), 6);
+        assert_eq!(
+            contrasts
+                .iter()
+                .filter(|contrast| contrast.source_column.starts_with("log2_mean_"))
+                .count(),
+            3
+        );
+        assert_eq!(
+            contrasts
+                .iter()
+                .filter(|contrast| contrast.source_column.contains("_minus_"))
+                .count(),
+            3
+        );
+        let first = overlays
+            .iter()
+            .find(|overlay| overlay.feature_id == "PSR2200160978.hg.1")
+            .expect("first PATZ1 PSR");
+        assert_eq!(first.effects.len(), 6);
+        assert_eq!(first.effects[0].unit, "log2 mean probe-set activity");
+        assert_eq!(
+            first.effects[3].unit,
+            "log2 probe-set activity difference"
+        );
+        assert_eq!(differential_abs_max, Some(1.4116));
     }
 
     #[test]

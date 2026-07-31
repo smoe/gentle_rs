@@ -24,6 +24,14 @@ understand what changed.
   and the gene roll-up now distinguish preferred, balanced, low-depth, and
   unphased evidence while retaining RNA-report expression depth as labeled
   context rather than a causation or significance claim.
+- Added an in-figure transcript-feature legend to the shared gene-locus SVG
+  renderer, explicitly identifying exon, intron, CDS, annotated start-codon,
+  and annotated stop-codon glyphs.
+- Split Clariom evidence in the shared gene-locus report into separately scaled
+  abundance/splice-geometry and differential-activity lanes. Tables may now
+  supply both `log2_mean_*` and `log2_*_minus_*` columns; the figure retains
+  explicit cautions that array signal prioritizes assay regions but does not
+  prove PCR-primer binding, significance, or isoform identity.
 - Added project-backed and Salmon-aware read sourcing to
   `rna-reads allele-hash-screen`: target-gene accepted reads can flow directly
   from a persisted RNA-read report, Salmon outputs select IDs from explicit

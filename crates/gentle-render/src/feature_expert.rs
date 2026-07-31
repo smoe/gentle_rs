@@ -3,8 +3,9 @@
 use gentle_protocol::{
     FeatureExpertView, GeneIsoformEvidenceReport, GeneLocusCodonKind,
     GeneLocusEvidenceDisplayReport, GeneLocusOccupancyLaneRole, GeneLocusOccupancyScaleMode,
-    GeneLocusProbeClass, IsoformArchitectureExpertView, RestrictionSiteExpertView,
-    SplicingExonSummary, SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
+    GeneLocusProbeClass, GeneLocusProbeEffectContrast, IsoformArchitectureExpertView,
+    RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
+    TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
@@ -4086,6 +4087,19 @@ fn locus_probe_effect_style(value: f64, abs_max: f64) -> (&'static str, f32) {
     }
 }
 
+fn locus_probe_is_abundance(contrast: &GeneLocusProbeEffectContrast) -> bool {
+    contrast.source_column.starts_with("log2_mean_")
+}
+
+fn locus_probe_abundance_style(value: f64, max_value: f64) -> (&'static str, f32) {
+    let opacity = (0.18 + 0.74 * (value.max(0.0) / max_value.max(f64::EPSILON)).min(1.0)) as f32;
+    ("#0f766e", opacity)
+}
+
+fn locus_probe_contrast_short_label(label: &str) -> String {
+    label.replace("alpha", "a").replace("beta", "b")
+}
+
 fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String {
     let width = 1400.0_f32;
     let plot_left = 255.0_f32;
@@ -4106,7 +4120,8 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
     };
     let splicing = report.isoform_evidence.splicing.as_ref();
     let transcript_count = splicing.map(|view| view.transcripts.len()).unwrap_or(0);
-    let assay_top = 132.0_f32;
+    let transcript_legend_height = 42.0_f32;
+    let assay_top = 132.0_f32 + transcript_legend_height;
     let assay_pitch = 23.0_f32;
     let assay_height = if report.assay_overlays.is_empty() {
         0.0
@@ -4121,7 +4136,7 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
     let probe_height = if report.probe_effect_overlays.is_empty() {
         0.0
     } else {
-        42.0 + report.probe_effect_overlays.len() as f32 * probe_pitch
+        58.0 + report.probe_effect_overlays.len() as f32 * probe_pitch
     };
     let occupancy_top = if report.probe_effect_overlays.is_empty() {
         probe_top
@@ -4222,6 +4237,101 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
                 .set("font-family", "monospace")
                 .set("font-size", 9)
                 .set("fill", "#64748b"),
+        )
+        .add(
+            Text::new("Legend (annotation-derived transcript features)")
+                .set("x", 34)
+                .set("y", 128)
+                .set("font-family", "sans-serif")
+                .set("font-size", 10)
+                .set("font-weight", "bold")
+                .set("fill", "#334155")
+                .set("data-gentle-transcript-legend", "title"),
+        )
+        .add(
+            Line::new()
+                .set("x1", 48)
+                .set("x2", 119)
+                .set("y1", 146)
+                .set("y2", 146)
+                .set("stroke", "#94a3b8")
+                .set("stroke-width", 1)
+                .set("data-gentle-transcript-legend", "intron"),
+        )
+        .add(
+            Rectangle::new()
+                .set("x", 71)
+                .set("y", 139)
+                .set("width", 25)
+                .set("height", 14)
+                .set("rx", 1.5)
+                .set("fill", "#dbeafe")
+                .set("stroke", "#2563eb")
+                .set("stroke-width", 1)
+                .set("data-gentle-transcript-legend", "exon"),
+        )
+        .add(
+            Text::new("exon (light blue); intron (line)")
+                .set("x", 126)
+                .set("y", 150)
+                .set("font-family", "sans-serif")
+                .set("font-size", 9)
+                .set("fill", "#475569"),
+        )
+        .add(
+            Rectangle::new()
+                .set("x", 335)
+                .set("y", 141)
+                .set("width", 27)
+                .set("height", 10)
+                .set("fill", "#1d4ed8")
+                .set("data-gentle-transcript-legend", "cds"),
+        )
+        .add(
+            Text::new("coding sequence (CDS)")
+                .set("x", 369)
+                .set("y", 150)
+                .set("font-family", "sans-serif")
+                .set("font-size", 9)
+                .set("fill", "#475569"),
+        )
+        .add(
+            Path::new()
+                .set(
+                    "d",
+                    Data::new()
+                        .move_to((559, 153))
+                        .line_to((554, 141))
+                        .line_to((564, 141))
+                        .close(),
+                )
+                .set("fill", "#16a34a")
+                .set("data-gentle-transcript-legend", "start-codon"),
+        )
+        .add(
+            Text::new("annotated start codon")
+                .set("x", 571)
+                .set("y", 150)
+                .set("font-family", "sans-serif")
+                .set("font-size", 9)
+                .set("fill", "#475569"),
+        )
+        .add(
+            Rectangle::new()
+                .set("x", 748)
+                .set("y", 140)
+                .set("width", 5)
+                .set("height", 12)
+                .set("fill", "#dc2626")
+                .set("data-gentle-transcript-legend", "stop-codon"),
+        )
+        .add(
+            Text::new("annotated stop codon")
+                .set("x", 761)
+                .set("y", 150)
+                .set("font-family", "sans-serif")
+                .set("font-size", 9)
+                .set("fill", "#475569"),
         );
 
     if !report.assay_overlays.is_empty() {
@@ -4404,7 +4514,7 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
 
     if !report.probe_effect_overlays.is_empty() {
         doc = doc.add(
-            Text::new("Probe-set effects (raw activity differences; not significance)")
+            Text::new("Clariom evidence: abundance/splice geometry and differential activity")
                 .set("x", 34)
                 .set("y", probe_top - 14.0)
                 .set("font-family", "sans-serif")
@@ -4414,17 +4524,66 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
         );
         let contrast_count = report.probe_effect_contrasts.len().max(1);
         let effect_cell_width = (width - metrics_left - 20.0) / contrast_count as f32;
+        let abundance_count = report
+            .probe_effect_contrasts
+            .iter()
+            .filter(|contrast| locus_probe_is_abundance(contrast))
+            .count();
+        let differential_count = contrast_count.saturating_sub(abundance_count);
+        if abundance_count > 0 {
+            doc = doc.add(
+                Text::new("A  abundance + splice geometry")
+                    .set(
+                        "x",
+                        metrics_left + abundance_count as f32 * effect_cell_width / 2.0,
+                    )
+                    .set("y", probe_top + 2.0)
+                    .set("font-family", "sans-serif")
+                    .set("font-size", 8)
+                    .set("font-weight", "bold")
+                    .set("fill", "#0f766e")
+                    .set("text-anchor", "middle")
+                    .set("data-gentle-probe-evidence-lane", "abundance"),
+            );
+        }
+        if differential_count > 0 {
+            doc = doc.add(
+                Text::new("B  TP73-OE differences")
+                    .set(
+                        "x",
+                        metrics_left
+                            + abundance_count as f32 * effect_cell_width
+                            + differential_count as f32 * effect_cell_width / 2.0,
+                    )
+                    .set("y", probe_top + 2.0)
+                    .set("font-family", "sans-serif")
+                    .set("font-size", 8)
+                    .set("font-weight", "bold")
+                    .set("fill", "#991b1b")
+                    .set("text-anchor", "middle")
+                    .set("data-gentle-probe-evidence-lane", "differential"),
+            );
+        }
         for (index, contrast) in report.probe_effect_contrasts.iter().enumerate() {
             doc = doc.add(
-                Text::new(isoform_evidence_compact_label(&contrast.display_label, 19))
-                    .set("x", metrics_left + index as f32 * effect_cell_width + 3.0)
-                    .set("y", probe_top + 5.0)
+                Text::new(locus_probe_contrast_short_label(&contrast.display_label))
+                    .set("x", metrics_left + (index as f32 + 0.5) * effect_cell_width)
+                    .set("y", probe_top + 17.0)
                     .set("font-family", "monospace")
-                    .set("font-size", 8)
+                    .set("font-size", 6.5)
                     .set("fill", "#475569")
+                    .set("text-anchor", "middle")
                     .set(
                         "data-gentle-probe-effect-contrast",
                         contrast.contrast_id.as_str(),
+                    )
+                    .set(
+                        "data-gentle-probe-evidence-lane",
+                        if locus_probe_is_abundance(contrast) {
+                            "abundance"
+                        } else {
+                            "differential"
+                        },
                     ),
             );
         }
@@ -4432,8 +4591,18 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
             .probe_effect_shared_abs_max
             .unwrap_or(1.0)
             .max(f64::EPSILON);
+        let abundance_max = report
+            .probe_effect_overlays
+            .iter()
+            .flat_map(|overlay| overlay.effects.iter())
+            .filter(|effect| effect.source_column.starts_with("log2_mean_"))
+            .map(|effect| effect.value)
+            .filter(|value| value.is_finite())
+            .max_by(f64::total_cmp)
+            .unwrap_or(1.0)
+            .max(f64::EPSILON);
         for (index, overlay) in report.probe_effect_overlays.iter().enumerate() {
-            let y = probe_top + 27.0 + index as f32 * probe_pitch;
+            let y = probe_top + 43.0 + index as f32 * probe_pitch;
             let class_label = locus_probe_class_label(overlay.probe_class);
             let class_token = locus_probe_class_token(overlay.probe_class);
             doc = doc.add(
@@ -4511,7 +4680,12 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
                     .iter()
                     .find(|effect| effect.contrast_id == contrast.contrast_id);
                 if let Some(effect) = effect {
-                    let (fill, opacity) = locus_probe_effect_style(effect.value, shared_abs_max);
+                    let is_abundance = locus_probe_is_abundance(contrast);
+                    let (fill, opacity) = if is_abundance {
+                        locus_probe_abundance_style(effect.value, abundance_max)
+                    } else {
+                        locus_probe_effect_style(effect.value, shared_abs_max)
+                    };
                     doc = doc
                         .add(
                             Rectangle::new()
@@ -4530,15 +4704,27 @@ fn render_gene_locus_evidence(report: &GeneLocusEvidenceDisplayReport) -> String
                                     "data-gentle-probe-effect-contrast",
                                     contrast.contrast_id.as_str(),
                                 )
+                                .set(
+                                    "data-gentle-probe-evidence-lane",
+                                    if is_abundance {
+                                        "abundance"
+                                    } else {
+                                        "differential"
+                                    },
+                                )
                                 .set("data-gentle-probe-effect-value", effect.value),
                         )
                         .add(
-                            Text::new(format!("{:+.3}", effect.value))
-                                .set("x", cell_x + 4.0)
-                                .set("y", y + 4.0)
-                                .set("font-family", "monospace")
-                                .set("font-size", 8)
-                                .set("fill", "#111827"),
+                            Text::new(if is_abundance {
+                                format!("{:.2}", effect.value)
+                            } else {
+                                format!("{:+.2}", effect.value)
+                            })
+                            .set("x", cell_x + 4.0)
+                            .set("y", y + 4.0)
+                            .set("font-family", "monospace")
+                            .set("font-size", 8)
+                            .set("fill", "#111827"),
                         );
                 } else {
                     doc = doc
@@ -5465,6 +5651,14 @@ mod tests {
         assert!(svg.contains("data-gentle-codon=\"stop\""));
         assert!(svg.contains("fill=\"#16a34a\""));
         assert!(svg.contains("fill=\"#dc2626\""));
+        assert!(svg.contains("Legend (annotation-derived transcript features)"));
+        assert!(svg.contains("data-gentle-transcript-legend=\"exon\""));
+        assert!(svg.contains("data-gentle-transcript-legend=\"intron\""));
+        assert!(svg.contains("data-gentle-transcript-legend=\"cds\""));
+        assert!(svg.contains("data-gentle-transcript-legend=\"start-codon\""));
+        assert!(svg.contains("data-gentle-transcript-legend=\"stop-codon\""));
+        assert!(svg.contains("annotated start codon"));
+        assert!(svg.contains("annotated stop codon"));
     }
 
     #[test]

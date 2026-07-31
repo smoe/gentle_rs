@@ -96,10 +96,6 @@
                 "probe_effect_table_paths": [
                   "test_files/fixtures/gene_locus_evidence/patz1_offline_composer/patz1_probe_effects.tsv"
                 ],
-                "probe_effect_contrasts": [
-                  "TAp73alpha-GFP",
-                  "DNp73beta-GFP"
-                ],
                 "probe_effect_coordinate_system": "GRCh38.p14",
                 "occupancy_layout": {
                   "schema": "gentle.gene_locus_occupancy_layout.v1",

@@ -57,10 +57,11 @@ test_files/fixtures/gene_locus_evidence/patz1_probe_effects/patz1_clariom_probe_
 ```
 
 It contains 24 Clariom D PSR/JUC rows, 130 underlying PM probes, explicit hg38
-coordinates, and TAp73alpha-GFP/DNp73beta-GFP raw activity differences. The
-fixture README records its public dataset and derived-table provenance. GENtle
-uses this compact table directly; the uncommitted analysis directory is only an
-optional source-level cross-check and is not required by the command or tests.
+coordinates, three condition-wise log2 abundance means, and three pairwise raw
+activity differences. The fixture README records its public dataset and
+derived-table provenance. GENtle uses this compact table directly; the
+uncommitted analysis directory is only an optional source-level cross-check and
+is not required by the command or tests.
 
 ## Offline proof before real data
 
@@ -113,10 +114,14 @@ source paths, score ranges, and explicit non-causal evidence notes.
 
 Probe-effect tables require an explicit coordinate system matching the open
 sequence anchor. Each PSR is drawn once as a locus interval and each JUC once as
-a junction arc, with adjacent zero-centered contrast cells. Missing values stay
-`NA`; genomic coordinates and table-row provenance remain in JSON and SVG
-attributes. The activity differences are descriptive visualization inputs, not
-formal differential-expression statistics or direct support for one isoform.
+a junction arc. `log2_mean_*` columns form an abundance lane with sequential
+scaling; `log2_*_minus_*` columns form a separately scaled, zero-centered
+differential-activity lane. This separation prevents the larger abundance
+values from flattening the contrast colors. Missing values stay `NA`; genomic
+coordinates and table-row provenance remain in JSON and SVG attributes. Array
+signal and PSR/JUC geometry can prioritize assay regions and flag alternative
+structure, but do not prove PCR-primer binding, formal differential-expression
+significance, or isoform identity.
 
 Transcript metrics report spliced exon length, CDS length, expected peptide
 length, coding status, and retained-intron/incomplete flags. Green translation
