@@ -14270,6 +14270,18 @@ fn open_construct_reasoning_dotplot_action_focuses_repeat_region() {
     );
     assert!(view.span_start_0based <= focus_midpoint_0based);
     assert!(view.span_end_0based > focus_midpoint_0based);
+    let citation = view
+        .inspection_provenance
+        .as_ref()
+        .expect("reasoning-guided dotplot citation");
+    assert_eq!(
+        citation.status,
+        crate::engine::DotplotInspectionProvenanceStatus::Pass
+    );
+    assert_eq!(citation.graph_id, graph.graph_id);
+    assert_eq!(citation.action_id, action.action_id);
+    assert_eq!(citation.rationale, action.rationale);
+    assert_eq!(citation.driving_evidence_ids, action.driving_evidence_ids);
 }
 
 #[test]

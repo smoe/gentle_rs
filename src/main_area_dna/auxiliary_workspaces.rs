@@ -1583,6 +1583,13 @@ impl MainAreaDna {
     }
 
     pub(super) fn compute_primary_dotplot(&mut self) {
+        self.compute_primary_dotplot_with_inspection_context(None);
+    }
+
+    pub(super) fn compute_primary_dotplot_with_inspection_context(
+        &mut self,
+        inspection_context: Option<ConstructReasoningDotplotProvenanceContext>,
+    ) {
         let requires_reference = Self::dotplot_mode_requires_reference(self.dotplot_ui.mode);
         let overlay_enabled = self.dotplot_ui.overlay_enabled && requires_reference;
         let word_size = match Self::parse_positive_usize_text(
@@ -1824,6 +1831,29 @@ impl MainAreaDna {
         } else {
             self.dotplot_last_compute_status.clear();
         }
+        let inspection_provenance = inspection_context.as_ref().map(|context| {
+            construct_reasoning_dotplot_inspection_provenance(
+                &context.graph,
+                &context.action,
+                &context.snapshot_status,
+                &context.resolved_request,
+                DotplotInspectionRequestSnapshot {
+                    dotplot_id: store_as.clone(),
+                    seq_id: seq_id.clone(),
+                    reference_seq_id: reference_seq_id.clone(),
+                    span_start_0based,
+                    span_end_0based,
+                    reference_span_start_0based: reference_span_start_0based
+                        .unwrap_or(span_start_0based),
+                    reference_span_end_0based: reference_span_end_0based.unwrap_or(span_end_0based),
+                    mode: self.dotplot_ui.mode,
+                    word_size,
+                    step_bp,
+                    max_mismatches,
+                    tile_bp,
+                },
+            )
+        });
         self.apply_operation_with_feedback(Operation::ComputeDotplot {
             seq_id: seq_id.clone(),
             reference_seq_id: reference_seq_id.clone(),
@@ -1837,6 +1867,7 @@ impl MainAreaDna {
             max_mismatches,
             tile_bp,
             store_as: Some(store_as.clone()),
+            inspection_provenance: inspection_provenance.clone().map(Box::new),
         });
         self.invalidate_dotplot_cache();
         self.ensure_dotplot_cache_current();
@@ -1863,6 +1894,7 @@ impl MainAreaDna {
                 max_mismatches,
                 tile_bp,
                 store_as: Some(store_as),
+                inspection_provenance: inspection_provenance.map(Box::new),
             });
             self.invalidate_dotplot_cache();
             self.ensure_dotplot_cache_current();

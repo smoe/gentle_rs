@@ -3885,6 +3885,7 @@ impl MainAreaDna {
                 max_mismatches,
                 tile_bp,
                 store_as: Some(dotplot_id.clone()),
+                inspection_provenance: None,
             }) {
                 self.op_status = error.message.clone();
                 self.op_error_popup = Some(error.message);

@@ -1211,11 +1211,16 @@ UniProt mapping capability status:
     stores the resulting dotplot payload, and optionally invokes
     `RenderDotplotSvg` for an evidence artifact. The structured response also
     includes the resolved `compute_parameters` block used for the shared
-    operation. A fingerprinted stale graph is rejected until the reasoning
-    build route that created it is rerun, preventing old action ranges from
-    being run against changed sequence/features, objective intent, or reasoning
-    rules. Legacy graphs without fingerprints remain readable with `unknown`
-    freshness.
+    operation. The stored dotplot and its list summary retain `op_id`, `run_id`,
+    and a typed `gentle.dotplot_inspection_provenance_citation.v1` citation to
+    the graph, action, rationale, source facts/annotations/candidates/summaries,
+    driving evidence, fingerprint, and resolved dotplot parameters. A
+    fingerprinted stale graph is rejected until the reasoning build route that
+    created it is rerun, preventing old action ranges from being run against
+    changed sequence/features, objective intent, or reasoning rules. Request or
+    source mismatches persist as `status=fail`; unverifiable legacy snapshots
+    remain `unknown`. Manual dotplots omit the citation rather than recording a
+    failed one.
   - `construct-reasoning set-annotation-status` updates one persisted
     annotation candidate in place and returns:
     - the updated portable graph

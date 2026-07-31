@@ -34149,6 +34149,7 @@ impl GentleEngine {
                     max_mismatches,
                     tile_bp,
                     store_as,
+                    inspection_provenance,
                 } => {
                     let dna = self
                         .state
@@ -34253,6 +34254,23 @@ impl GentleEngine {
                     } else {
                         format!("dotplot_{}", result.op_id)
                     };
+                    let actual_request = DotplotInspectionRequestSnapshot {
+                        dotplot_id: dotplot_id.clone(),
+                        seq_id: seq_id.clone(),
+                        reference_seq_id: reference_seq_id_for_view.clone(),
+                        span_start_0based,
+                        span_end_0based,
+                        reference_span_start_0based,
+                        reference_span_end_0based,
+                        mode,
+                        word_size,
+                        step_bp,
+                        max_mismatches,
+                        tile_bp,
+                    };
+                    let inspection_provenance = inspection_provenance.map(|citation| {
+                        self.verify_dotplot_inspection_provenance(*citation, &actual_request)
+                    });
                     let primary_series = Self::build_dotplot_query_series(
                         format!("{dotplot_id}_series_1"),
                         seq_id.clone(),
@@ -34274,6 +34292,9 @@ impl GentleEngine {
                         seq_id: seq_id.clone(),
                         reference_seq_id: reference_seq_id_for_view.clone(),
                         generated_at_unix_ms: Self::now_unix_ms(),
+                        op_id: Some(result.op_id.clone()),
+                        run_id: Some(run_id.to_string()),
+                        inspection_provenance,
                         span_start_0based: primary_series.span_start_0based,
                         span_end_0based: primary_series.span_end_0based,
                         reference_span_start_0based,
@@ -34534,6 +34555,9 @@ impl GentleEngine {
                         seq_id: primary_series.seq_id.clone(),
                         reference_seq_id: Some(reference_seq_id.clone()),
                         generated_at_unix_ms: Self::now_unix_ms(),
+                        op_id: Some(result.op_id.clone()),
+                        run_id: Some(run_id.to_string()),
+                        inspection_provenance: None,
                         span_start_0based: primary_series.span_start_0based,
                         span_end_0based: primary_series.span_end_0based,
                         reference_span_start_0based,

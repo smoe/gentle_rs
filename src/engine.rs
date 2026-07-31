@@ -107,17 +107,18 @@ pub use gentle_protocol::{
     ConstructReasoningRiskTask, ConstructReasoningSeverity, ConstructReasoningStore,
     ConstructReasoningTaskApplicability, ConstructReasoningTaskApplicabilityBasis,
     ConstructReasoningTaskSeverity, ConstructRole, Container, ContainerId, ContainerKind,
-    ContainerState, DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact, DotplotMode,
-    EditableStatus, EvidenceClass, EvidenceScope, ExonSkipReturnKind, ExonSkipReturnPayload,
-    ExonSkipSelectionCriterion, GelBandLabelLayout, GelBufferModel, GelIsoformMarkerMode,
-    GelLaneLabelLayout, GelRunConditions, GelTopologyForm, HostLifecycleRole, LineageEdge,
-    LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus,
-    NodeId, OpId, OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput,
-    OrthologPromoterCohortReport, OrthologPromoterComparisonReport, PoolGelRenderOptions,
-    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityReportDetailMode,
-    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
-    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-    RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
+    ContainerState, DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact,
+    DotplotInspectionProvenanceCitation, DotplotInspectionProvenanceStatus,
+    DotplotInspectionRequestSnapshot, DotplotMode, EditableStatus, EvidenceClass, EvidenceScope,
+    ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion, GelBandLabelLayout,
+    GelBufferModel, GelIsoformMarkerMode, GelLaneLabelLayout, GelRunConditions, GelTopologyForm,
+    HostLifecycleRole, LineageEdge, LineageGraph, LineageMacroInstance, LineageMacroPortBinding,
+    LineageNode, MacroInstanceStatus, NodeId, OpId, OrthologAmbiguityPolicy,
+    OrthologCutRunNormalizationInput, OrthologPromoterCohortReport,
+    OrthologPromoterComparisonReport, PoolGelRenderOptions, PrimerSpecificityAmpliconCeilingSource,
+    PrimerSpecificityReportDetailMode, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
+    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+    RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
     RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
     ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
 };
@@ -395,6 +396,193 @@ pub fn construct_reasoning_action_dotplot_request(
         span_end_0based,
         store_as,
     })
+}
+
+fn dotplot_inspection_provenance_summary(citation: &DotplotInspectionProvenanceCitation) -> String {
+    match citation.status {
+        DotplotInspectionProvenanceStatus::Pass => format!(
+            "Verified construct-reasoning inspection citation: graph '{}' action '{}'.",
+            citation.graph_id, citation.action_id
+        ),
+        DotplotInspectionProvenanceStatus::Fail => format!(
+            "Construct-reasoning inspection citation failed verification for graph '{}' action '{}': {}",
+            citation.graph_id,
+            citation.action_id,
+            if citation.verification_reasons.is_empty() {
+                if citation.graph_snapshot_reasons.is_empty() {
+                    "reason unavailable".to_string()
+                } else {
+                    citation.graph_snapshot_reasons.join(" ")
+                }
+            } else {
+                citation.verification_reasons.join(" ")
+            }
+        ),
+        DotplotInspectionProvenanceStatus::Unknown => format!(
+            "Construct-reasoning inspection citation recorded for graph '{}' action '{}', but verification is unknown: {}",
+            citation.graph_id,
+            citation.action_id,
+            if citation.graph_snapshot_reasons.is_empty() {
+                "graph snapshot freshness is unknown".to_string()
+            } else {
+                citation.graph_snapshot_reasons.join(" ")
+            }
+        ),
+    }
+}
+
+pub fn construct_reasoning_dotplot_inspection_provenance(
+    graph: &ConstructReasoningGraph,
+    action: &ConstructReasoningInspectionAction,
+    snapshot_status: &ConstructReasoningGraphSnapshotStatus,
+    resolved_action_request: &ConstructReasoningActionDotplotRequest,
+    request: DotplotInspectionRequestSnapshot,
+) -> DotplotInspectionProvenanceCitation {
+    let mut verification_reasons = vec![];
+    let stored_action = graph
+        .inspection_actions
+        .iter()
+        .find(|row| row.action_id == action.action_id);
+    match stored_action {
+        Some(row) if row == action => {}
+        Some(_) => verification_reasons.push(format!(
+            "Inspection action '{}' differs from the graph snapshot.",
+            action.action_id
+        )),
+        None => verification_reasons.push(format!(
+            "Inspection action '{}' is absent from graph '{}'.",
+            action.action_id, graph.graph_id
+        )),
+    }
+    if action.action_kind != ConstructReasoningInspectionActionKind::Dotplot {
+        verification_reasons.push(format!(
+            "Inspection action kind '{}' is not dotplot.",
+            action.action_kind.as_str()
+        ));
+    }
+    if request.seq_id != resolved_action_request.seq_id {
+        verification_reasons.push(format!(
+            "Requested sequence '{}' differs from resolved action sequence '{}'.",
+            request.seq_id, resolved_action_request.seq_id
+        ));
+    }
+    if request.mode != resolved_action_request.mode {
+        verification_reasons.push(format!(
+            "Requested mode '{}' differs from resolved action mode '{}'.",
+            request.mode.as_str(),
+            resolved_action_request.mode.as_str()
+        ));
+    }
+    if request.span_start_0based != resolved_action_request.span_start_0based
+        || request.span_end_0based != resolved_action_request.span_end_0based
+    {
+        verification_reasons.push(format!(
+            "Requested span {}..{} differs from resolved action span {}..{}.",
+            request.span_start_0based,
+            request.span_end_0based,
+            resolved_action_request.span_start_0based,
+            resolved_action_request.span_end_0based
+        ));
+    }
+    for evidence_id in &action.driving_evidence_ids {
+        if !graph
+            .evidence
+            .iter()
+            .any(|row| row.evidence_id == *evidence_id)
+        {
+            verification_reasons.push(format!(
+                "Driving evidence '{}' is absent from graph '{}'.",
+                evidence_id, graph.graph_id
+            ));
+        }
+    }
+    for fact_id in &action.source_fact_ids {
+        if !graph.facts.iter().any(|row| row.fact_id == *fact_id) {
+            verification_reasons.push(format!(
+                "Source fact '{}' is absent from graph '{}'.",
+                fact_id, graph.graph_id
+            ));
+        }
+    }
+    for annotation_id in &action.source_annotation_ids {
+        if !graph
+            .annotation_candidates
+            .iter()
+            .any(|row| row.annotation_id == *annotation_id)
+            && !graph
+                .candidates
+                .iter()
+                .any(|row| row.candidate_id == *annotation_id)
+        {
+            verification_reasons.push(format!(
+                "Source annotation/candidate '{}' is absent from graph '{}'.",
+                annotation_id, graph.graph_id
+            ));
+        }
+    }
+    for summary_id in &action.source_summary_ids {
+        if !graph
+            .annotation_candidate_summaries
+            .iter()
+            .any(|row| row.summary_id == *summary_id)
+        {
+            verification_reasons.push(format!(
+                "Source annotation summary '{}' is absent from graph '{}'.",
+                summary_id, graph.graph_id
+            ));
+        }
+    }
+    verification_reasons.sort();
+    verification_reasons.dedup();
+
+    let source_candidate_ids = action
+        .source_annotation_ids
+        .iter()
+        .filter(|id| {
+            graph
+                .candidates
+                .iter()
+                .any(|candidate| candidate.candidate_id == id.as_str())
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let status = if !verification_reasons.is_empty()
+        || snapshot_status.freshness == ConstructReasoningGraphFreshness::Stale
+    {
+        DotplotInspectionProvenanceStatus::Fail
+    } else if snapshot_status.freshness == ConstructReasoningGraphFreshness::Current {
+        DotplotInspectionProvenanceStatus::Pass
+    } else {
+        DotplotInspectionProvenanceStatus::Unknown
+    };
+    let mut citation = DotplotInspectionProvenanceCitation {
+        status,
+        graph_id: graph.graph_id.clone(),
+        graph_schema: graph.schema.clone(),
+        graph_op_id: graph.op_id.clone(),
+        graph_run_id: graph.run_id.clone(),
+        graph_generated_at_unix_ms: graph.generated_at_unix_ms,
+        graph_input_fingerprint: graph.input_fingerprint.clone(),
+        graph_snapshot_freshness: snapshot_status.freshness,
+        graph_snapshot_reasons: snapshot_status.reasons.clone(),
+        action_id: action.action_id.clone(),
+        action_schema: action.schema.clone(),
+        action_kind: action.action_kind,
+        dotplot_mode: action.mode,
+        action_focus_start_0based: action.focus_start_0based,
+        action_focus_end_0based_exclusive: action.focus_end_0based_exclusive,
+        source_fact_ids: action.source_fact_ids.clone(),
+        source_annotation_ids: action.source_annotation_ids.clone(),
+        source_candidate_ids,
+        source_summary_ids: action.source_summary_ids.clone(),
+        driving_evidence_ids: action.driving_evidence_ids.clone(),
+        rationale: action.rationale.clone(),
+        request,
+        verification_reasons,
+        ..DotplotInspectionProvenanceCitation::default()
+    };
+    citation.summary = dotplot_inspection_provenance_summary(&citation);
+    citation
 }
 
 pub const DEFAULT_HOST_PROFILE_CATALOG_PATH: &str = "assets/host_profiles.json";
@@ -695,6 +883,8 @@ pub const CONSTRUCT_REASONING_GRAPH_SCHEMA: &str =
     gentle_protocol::CONSTRUCT_REASONING_GRAPH_SCHEMA;
 pub const CONSTRUCT_REASONING_STORE_SCHEMA: &str =
     gentle_protocol::CONSTRUCT_REASONING_STORE_SCHEMA;
+pub const DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA: &str =
+    gentle_protocol::DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA;
 pub const CONSTRUCT_REASONING_RULE_SET_VERSION: &str = "gentle.construct_reasoning.rules.v2";
 pub const WORKFLOW_MACRO_TEMPLATES_METADATA_KEY: &str = "workflow_macro_templates";
 const WORKFLOW_MACRO_TEMPLATES_SCHEMA: &str = "gentle.workflow_macro_templates.v1";
@@ -4427,6 +4617,8 @@ pub enum Operation {
         tile_bp: Option<usize>,
         #[serde(default)]
         store_as: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        inspection_provenance: Option<Box<DotplotInspectionProvenanceCitation>>,
     },
     ComputeDotplotOverlay {
         owner_seq_id: SeqId,
@@ -26588,6 +26780,201 @@ impl GentleEngine {
         Ok(out)
     }
 
+    fn verify_dotplot_inspection_provenance(
+        &self,
+        mut citation: DotplotInspectionProvenanceCitation,
+        actual_request: &DotplotInspectionRequestSnapshot,
+    ) -> DotplotInspectionProvenanceCitation {
+        let mut reasons = citation.verification_reasons.clone();
+        if citation.schema != DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA {
+            reasons.push(format!(
+                "Citation schema '{}' does not match expected schema '{}'.",
+                citation.schema, DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA
+            ));
+        }
+        if citation.request != *actual_request {
+            reasons.push(
+                "Cited dotplot request does not match the resolved request that was computed."
+                    .to_string(),
+            );
+        }
+
+        let graph = self
+            .read_construct_reasoning_store()
+            .graphs
+            .get(citation.graph_id.trim())
+            .cloned();
+        if let Some(graph) = graph {
+            if citation.graph_schema != graph.schema {
+                reasons.push(format!(
+                    "Cited graph schema '{}' differs from stored graph schema '{}'.",
+                    citation.graph_schema, graph.schema
+                ));
+            }
+            if citation.graph_op_id != graph.op_id {
+                reasons.push("Cited graph operation id differs from the stored graph.".to_string());
+            }
+            if citation.graph_run_id != graph.run_id {
+                reasons.push("Cited graph run id differs from the stored graph.".to_string());
+            }
+            if citation.graph_generated_at_unix_ms != graph.generated_at_unix_ms {
+                reasons
+                    .push("Cited graph generation time differs from the stored graph.".to_string());
+            }
+            if citation.graph_input_fingerprint != graph.input_fingerprint {
+                reasons.push(
+                    "Cited graph input fingerprint differs from the stored graph.".to_string(),
+                );
+            }
+
+            let snapshot_status = self.construct_reasoning_graph_snapshot_status(&graph);
+            citation.graph_snapshot_freshness = snapshot_status.freshness;
+            citation.graph_snapshot_reasons = snapshot_status.reasons.clone();
+
+            if let Some(action) = graph
+                .inspection_actions
+                .iter()
+                .find(|action| action.action_id == citation.action_id)
+            {
+                if citation.action_schema != action.schema {
+                    reasons.push(format!(
+                        "Cited action schema '{}' differs from stored action schema '{}'.",
+                        citation.action_schema, action.schema
+                    ));
+                }
+                if citation.action_kind != action.action_kind {
+                    reasons.push("Cited action kind differs from the stored action.".to_string());
+                }
+                if citation.dotplot_mode != action.mode {
+                    reasons.push("Cited dotplot mode differs from the stored action.".to_string());
+                }
+                if citation.action_focus_start_0based != action.focus_start_0based
+                    || citation.action_focus_end_0based_exclusive
+                        != action.focus_end_0based_exclusive
+                {
+                    reasons.push(
+                        "Cited action focus differs from the stored action focus.".to_string(),
+                    );
+                }
+                if citation.source_fact_ids != action.source_fact_ids {
+                    reasons
+                        .push("Cited source fact ids differ from the stored action.".to_string());
+                }
+                if citation.source_annotation_ids != action.source_annotation_ids {
+                    reasons.push(
+                        "Cited source annotation ids differ from the stored action.".to_string(),
+                    );
+                }
+                if citation.source_summary_ids != action.source_summary_ids {
+                    reasons.push(
+                        "Cited source summary ids differ from the stored action.".to_string(),
+                    );
+                }
+                if citation.driving_evidence_ids != action.driving_evidence_ids {
+                    reasons.push(
+                        "Cited driving evidence ids differ from the stored action.".to_string(),
+                    );
+                }
+                if citation.rationale != action.rationale {
+                    reasons.push("Cited rationale differs from the stored action.".to_string());
+                }
+
+                let source_candidate_ids = action
+                    .source_annotation_ids
+                    .iter()
+                    .filter(|id| {
+                        graph
+                            .candidates
+                            .iter()
+                            .any(|candidate| candidate.candidate_id == id.as_str())
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if citation.source_candidate_ids != source_candidate_ids {
+                    reasons.push(
+                        "Cited source candidate ids differ from the stored graph/action."
+                            .to_string(),
+                    );
+                }
+
+                if let Some(sequence_len) = self
+                    .state
+                    .sequences
+                    .get(actual_request.seq_id.as_str())
+                    .map(DNAsequence::len)
+                {
+                    match construct_reasoning_action_dotplot_request(
+                        action,
+                        &graph.seq_id,
+                        sequence_len,
+                    ) {
+                        Ok(resolved) => {
+                            if resolved.seq_id != actual_request.seq_id
+                                || resolved.mode != actual_request.mode
+                                || resolved.span_start_0based
+                                    != actual_request.span_start_0based
+                                || resolved.span_end_0based != actual_request.span_end_0based
+                            {
+                                reasons.push(
+                                    "Computed dotplot request differs from the request resolved from the stored action."
+                                        .to_string(),
+                                );
+                            }
+                            let live_validation =
+                                construct_reasoning_dotplot_inspection_provenance(
+                                    &graph,
+                                    action,
+                                    &snapshot_status,
+                                    &resolved,
+                                    actual_request.clone(),
+                                );
+                            reasons.extend(live_validation.verification_reasons);
+                        }
+                        Err(error) => reasons.push(format!(
+                            "Stored action could not be resolved as a dotplot request: {}",
+                            error.message
+                        )),
+                    }
+                } else {
+                    reasons.push(format!(
+                        "Computed sequence '{}' is not loaded for action verification.",
+                        actual_request.seq_id
+                    ));
+                }
+            } else {
+                reasons.push(format!(
+                    "Inspection action '{}' is absent from graph '{}'.",
+                    citation.action_id, graph.graph_id
+                ));
+            }
+        } else {
+            citation.graph_snapshot_freshness = ConstructReasoningGraphFreshness::Unknown;
+            citation.graph_snapshot_reasons = vec![format!(
+                "Construct-reasoning graph '{}' is not stored.",
+                citation.graph_id
+            )];
+            reasons.push(format!(
+                "Construct-reasoning graph '{}' is not stored.",
+                citation.graph_id
+            ));
+        }
+
+        reasons.sort();
+        reasons.dedup();
+        citation.verification_reasons = reasons;
+        citation.status = if !citation.verification_reasons.is_empty()
+            || citation.graph_snapshot_freshness == ConstructReasoningGraphFreshness::Stale
+        {
+            DotplotInspectionProvenanceStatus::Fail
+        } else if citation.graph_snapshot_freshness == ConstructReasoningGraphFreshness::Current {
+            DotplotInspectionProvenanceStatus::Pass
+        } else {
+            DotplotInspectionProvenanceStatus::Unknown
+        };
+        citation.summary = dotplot_inspection_provenance_summary(&citation);
+        citation
+    }
+
     fn resolve_analysis_span(
         seq_len: usize,
         span_start_0based: Option<usize>,
@@ -27287,6 +27674,9 @@ impl GentleEngine {
             seq_id: query_seq_id.trim().to_string(),
             reference_seq_id: Some(reference_seq_id.trim().to_string()),
             generated_at_unix_ms: 0,
+            op_id: None,
+            run_id: None,
+            inspection_provenance: None,
             span_start_0based: primary_series.span_start_0based,
             span_end_0based: primary_series.span_end_0based,
             reference_span_start_0based,
@@ -27424,6 +27814,9 @@ impl GentleEngine {
                 seq_id: view.seq_id.clone(),
                 reference_seq_id: view.reference_seq_id.clone(),
                 generated_at_unix_ms: view.generated_at_unix_ms,
+                op_id: view.op_id.clone(),
+                run_id: view.run_id.clone(),
+                inspection_provenance: view.inspection_provenance.clone(),
                 span_start_0based: view.span_start_0based,
                 span_end_0based: view.span_end_0based,
                 reference_span_start_0based: view.reference_span_start_0based,

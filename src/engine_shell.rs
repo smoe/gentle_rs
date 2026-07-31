@@ -45,9 +45,10 @@ use crate::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
-        DOTPLOT_ANALYSIS_METADATA_KEY, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
-        DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine, EvidenceClass,
-        ExonSkipReturnKind, ExonSkipSelectionCriterion, ExperimentalAssayReadinessPolicy,
+        DOTPLOT_ANALYSIS_METADATA_KEY, DisplayTarget, DotplotInspectionRequestSnapshot,
+        DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayQuerySpec, DotplotOverlayXAxisMode,
+        EditableStatus, Engine, EvidenceClass, ExonSkipReturnKind, ExonSkipSelectionCriterion,
+        ExperimentalAssayReadinessPolicy,
         ExternalPrimerPairImportRequest, ExternalPrimerPairSpecificityRequest, FactAtom, FactBasis,
         FactExpression, FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode,
         FeatureExpertTarget, FeatureExpertView, FeatureLocationEditRequest,
@@ -112,9 +113,10 @@ use crate::{
         UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
-        construct_reasoning_action_dotplot_request, parse_feature_coordinate_term_on_sequence,
-        project_fact_type_specs, resolve_selection_formula_range_0based_on_sequence,
-        split_feature_formula_range_expression,
+        construct_reasoning_action_dotplot_request,
+        construct_reasoning_dotplot_inspection_provenance,
+        parse_feature_coordinate_term_on_sequence, project_fact_type_specs,
+        resolve_selection_formula_range_0based_on_sequence, split_feature_formula_range_expression,
     },
     enzymes::active_restriction_enzymes,
     enzymes::is_type_iis_capable_enzyme_name,
@@ -54785,6 +54787,7 @@ fn execute_sequence_analysis_command(
                     max_mismatches: *max_mismatches,
                     tile_bp: *tile_bp,
                     store_as: dotplot_id.clone(),
+                    inspection_provenance: None,
                 })
                 .map_err(|e| e.to_string())?;
             let after = engine
@@ -56599,7 +56602,27 @@ fn execute_protein_sequence_command(
                     .map_err(|err| err.to_string())?;
             let store_as = dotplot_id
                 .clone()
-                .or_else(|| Some(dotplot_request.store_as.clone()));
+                .unwrap_or_else(|| dotplot_request.store_as.clone());
+            let inspection_provenance = construct_reasoning_dotplot_inspection_provenance(
+                &graph,
+                &action,
+                &snapshot_status,
+                &dotplot_request,
+                DotplotInspectionRequestSnapshot {
+                    dotplot_id: store_as.clone(),
+                    seq_id: dotplot_request.seq_id.clone(),
+                    reference_seq_id: None,
+                    span_start_0based: dotplot_request.span_start_0based,
+                    span_end_0based: dotplot_request.span_end_0based,
+                    reference_span_start_0based: dotplot_request.span_start_0based,
+                    reference_span_end_0based: dotplot_request.span_end_0based,
+                    mode: dotplot_request.mode,
+                    word_size: *word_size,
+                    step_bp: *step_bp,
+                    max_mismatches: *max_mismatches,
+                    tile_bp: *tile_bp,
+                },
+            );
             let before = engine
                 .state()
                 .metadata
@@ -56618,7 +56641,8 @@ fn execute_protein_sequence_command(
                     step_bp: *step_bp,
                     max_mismatches: *max_mismatches,
                     tile_bp: *tile_bp,
-                    store_as,
+                    store_as: Some(store_as),
+                    inspection_provenance: Some(Box::new(inspection_provenance)),
                 })
                 .map_err(|e| e.to_string())?;
             let after = engine

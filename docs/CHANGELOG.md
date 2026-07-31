@@ -14,6 +14,10 @@ understand what changed.
 
 ## 2026-07-31
 
+- Persisted construct-reasoning inspection provenance on stored dotplots:
+  payloads and list summaries now retain operation/run identity plus a verified
+  graph/action/fact/evidence/request citation, while manual absence remains
+  distinct from failed or unknown verification.
 - Preserved an existing gene-set resolution's operation/run identity when
   deriving a promoter cohort, preventing one logical source set from appearing
   as duplicate lineage nodes. Anonymous inline resolutions still receive a

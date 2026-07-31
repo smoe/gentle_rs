@@ -3082,6 +3082,60 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
                 run.output["dotplot"]["span_end_0based"].as_u64(),
                 Some(expected_dotplot_request.span_end_0based as u64)
             );
+            assert_eq!(
+                run.output["dotplot"]["op_id"],
+                run.output["result"]["op_id"]
+            );
+            assert_eq!(
+                run.output["dotplot"]["run_id"].as_str(),
+                Some("interactive")
+            );
+            let citation = &run.output["dotplot"]["inspection_provenance"];
+            assert_eq!(
+                citation["schema"].as_str(),
+                Some("gentle.dotplot_inspection_provenance_citation.v1")
+            );
+            assert_eq!(citation["status"].as_str(), Some("pass"));
+            assert_eq!(citation["graph_id"].as_str(), Some(graph.graph_id.as_str()));
+            assert_eq!(
+                citation["action_id"].as_str(),
+                Some(protocol_action.action_id.as_str())
+            );
+            assert_eq!(
+                citation["rationale"].as_str(),
+                Some(protocol_action.rationale.as_str())
+            );
+            assert_eq!(
+                citation["source_fact_ids"],
+                serde_json::to_value(&protocol_action.source_fact_ids).expect("fact ids")
+            );
+            assert_eq!(
+                citation["driving_evidence_ids"],
+                serde_json::to_value(&protocol_action.driving_evidence_ids)
+                    .expect("driving evidence ids")
+            );
+            let stored = engine
+                .get_dotplot_view("reasoning_action_plot")
+                .expect("stored reasoning-guided dotplot");
+            assert_eq!(
+                stored
+                    .inspection_provenance
+                    .as_ref()
+                    .map(|citation| citation.status),
+                Some(crate::engine::DotplotInspectionProvenanceStatus::Pass)
+            );
+            let listed_summary = engine
+                .list_dotplot_views(Some("seq_reasoning_similarity"))
+                .into_iter()
+                .find(|row| row.dotplot_id == "reasoning_action_plot")
+                .expect("listed reasoning-guided dotplot");
+            assert_eq!(
+                listed_summary
+                    .inspection_provenance
+                    .as_ref()
+                    .map(|citation| citation.action_id.as_str()),
+                Some(protocol_action.action_id.as_str())
+            );
             assert!(run.output["render_result"].is_object());
             assert!(svg_path.exists());
 

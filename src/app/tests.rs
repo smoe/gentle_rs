@@ -14003,6 +14003,7 @@ fn refresh_lineage_cache_includes_dotplot_and_flexibility_analysis_nodes() {
                 max_mismatches: 1,
                 tile_bp: None,
                 store_as: Some("p53_dp".to_string()),
+                inspection_provenance: None,
             })
             .expect("compute dotplot");
         let flex_result = engine
@@ -14995,6 +14996,7 @@ fn refresh_lineage_cache_includes_svg_export_analysis_nodes() {
                 max_mismatches: 1,
                 tile_bp: None,
                 store_as: Some("svg_dp".to_string()),
+                inspection_provenance: None,
             })
             .expect("compute dotplot");
         let render_sequence_result = engine
@@ -15121,6 +15123,7 @@ fn summarize_operation_compute_dotplot_includes_mode_and_spans() {
         max_mismatches: 1,
         tile_bp: Some(500),
         store_as: Some("family_dp".to_string()),
+        inspection_provenance: None,
     };
     let summary = GENtleApp::summarize_operation(&op);
     assert!(summary.contains("Compute dotplot"));

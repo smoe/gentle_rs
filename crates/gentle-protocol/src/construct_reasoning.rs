@@ -22,6 +22,8 @@ pub const CONSTRUCT_REASONING_INSPECTION_ACTION_SCHEMA: &str =
     "gentle.construct_reasoning_inspection_action.v1";
 pub const CONSTRUCT_REASONING_INPUT_FINGERPRINT_SCHEMA: &str =
     "gentle.construct_reasoning_input_fingerprint.v1";
+pub const DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA: &str =
+    "gentle.dotplot_inspection_provenance_citation.v1";
 pub const CONSTRUCT_REASONING_GRAPH_SCHEMA: &str = "gentle.construct_reasoning_graph.v1";
 pub const CONSTRUCT_REASONING_STORE_SCHEMA: &str = "gentle.construct_reasoning_store.v1";
 pub const HOST_PROFILE_CATALOG_SCHEMA: &str = "gentle.host_profile_catalog.v1";
@@ -64,6 +66,10 @@ fn default_construct_reasoning_inspection_action_schema() -> String {
 
 fn default_construct_reasoning_input_fingerprint_schema() -> String {
     CONSTRUCT_REASONING_INPUT_FINGERPRINT_SCHEMA.to_string()
+}
+
+fn default_dotplot_inspection_provenance_citation_schema() -> String {
+    DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA.to_string()
 }
 
 fn default_construct_reasoning_graph_schema() -> String {
@@ -1181,6 +1187,121 @@ impl ConstructReasoningGraphFreshness {
 pub struct ConstructReasoningGraphSnapshotStatus {
     pub freshness: ConstructReasoningGraphFreshness,
     pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Verification state for a dotplot citation back to a reasoning inspection.
+pub enum DotplotInspectionProvenanceStatus {
+    Pass,
+    Fail,
+    #[default]
+    Unknown,
+}
+
+impl DotplotInspectionProvenanceStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::Fail => "fail",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+/// Resolved dotplot options bound into one inspection provenance citation.
+pub struct DotplotInspectionRequestSnapshot {
+    pub dotplot_id: String,
+    pub seq_id: SeqId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_seq_id: Option<SeqId>,
+    pub span_start_0based: usize,
+    pub span_end_0based: usize,
+    pub reference_span_start_0based: usize,
+    pub reference_span_end_0based: usize,
+    pub mode: DotplotMode,
+    pub word_size: usize,
+    pub step_bp: usize,
+    pub max_mismatches: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tile_bp: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// Durable citation from one stored dotplot to the reasoning action that
+/// requested it.
+pub struct DotplotInspectionProvenanceCitation {
+    #[serde(default = "default_dotplot_inspection_provenance_citation_schema")]
+    pub schema: String,
+    pub status: DotplotInspectionProvenanceStatus,
+    pub graph_id: String,
+    pub graph_schema: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_run_id: Option<String>,
+    pub graph_generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_input_fingerprint: Option<ConstructReasoningInputFingerprint>,
+    pub graph_snapshot_freshness: ConstructReasoningGraphFreshness,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub graph_snapshot_reasons: Vec<String>,
+    pub action_id: String,
+    pub action_schema: String,
+    pub action_kind: ConstructReasoningInspectionActionKind,
+    pub dotplot_mode: DotplotMode,
+    pub action_focus_start_0based: usize,
+    pub action_focus_end_0based_exclusive: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_fact_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_annotation_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_candidate_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_summary_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub driving_evidence_ids: Vec<String>,
+    pub rationale: String,
+    pub request: DotplotInspectionRequestSnapshot,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub verification_reasons: Vec<String>,
+    pub summary: String,
+}
+
+impl Default for DotplotInspectionProvenanceCitation {
+    fn default() -> Self {
+        Self {
+            schema: default_dotplot_inspection_provenance_citation_schema(),
+            status: DotplotInspectionProvenanceStatus::Unknown,
+            graph_id: String::new(),
+            graph_schema: String::new(),
+            graph_op_id: None,
+            graph_run_id: None,
+            graph_generated_at_unix_ms: 0,
+            graph_input_fingerprint: None,
+            graph_snapshot_freshness: ConstructReasoningGraphFreshness::Unknown,
+            graph_snapshot_reasons: vec![],
+            action_id: String::new(),
+            action_schema: String::new(),
+            action_kind: ConstructReasoningInspectionActionKind::Dotplot,
+            dotplot_mode: DotplotMode::SelfForward,
+            action_focus_start_0based: 0,
+            action_focus_end_0based_exclusive: 0,
+            source_fact_ids: vec![],
+            source_annotation_ids: vec![],
+            source_candidate_ids: vec![],
+            source_summary_ids: vec![],
+            driving_evidence_ids: vec![],
+            rationale: String::new(),
+            request: DotplotInspectionRequestSnapshot::default(),
+            verification_reasons: vec![],
+            summary: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

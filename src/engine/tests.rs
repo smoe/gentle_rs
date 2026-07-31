@@ -25281,6 +25281,7 @@ fn test_render_dotplot_svg_operation() {
             max_mismatches: 0,
             tile_bp: None,
             store_as: Some("pair_dotplot".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute dotplot");
 
@@ -25427,6 +25428,7 @@ fn test_visual_benchmark_dotplot_context_renders_antisense_and_repeat_lanes() {
             max_mismatches: 0,
             tile_bp: None,
             store_as: Some("visual_context_dotplot".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute visual context dotplot");
 
@@ -36169,6 +36171,7 @@ fn test_compute_dotplot_stores_and_retrieves_view() {
             max_mismatches: 0,
             tile_bp: Some(128),
             store_as: Some("promoter_dotplot".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute dotplot");
     assert!(
@@ -36182,6 +36185,9 @@ fn test_compute_dotplot_stores_and_retrieves_view() {
     let rows = engine.list_dotplot_views(Some("s"));
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].dotplot_id, "promoter_dotplot");
+    assert_eq!(rows[0].op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(rows[0].run_id.as_deref(), Some("interactive"));
+    assert!(rows[0].inspection_provenance.is_none());
     let view = engine
         .get_dotplot_view("promoter_dotplot")
         .expect("dotplot view");
@@ -36189,6 +36195,9 @@ fn test_compute_dotplot_stores_and_retrieves_view() {
     assert_eq!(view.owner_seq_id, "s");
     assert_eq!(view.seq_id, "s");
     assert!(view.reference_seq_id.is_none());
+    assert_eq!(view.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(view.run_id.as_deref(), Some("interactive"));
+    assert!(view.inspection_provenance.is_none());
     assert_eq!(view.word_size, 4);
     assert!(!view.points.is_empty());
     assert_eq!(view.point_count, view.points.len());
@@ -36199,6 +36208,103 @@ fn test_compute_dotplot_stores_and_retrieves_view() {
     assert!(view.boxplot_bin_count > 0);
     assert!(view.boxplot_bins.iter().any(|bin| bin.hit_count > 0));
     assert!(view.reference_annotation.is_none());
+}
+
+#[test]
+fn construct_reasoning_dotplot_request_mismatch_persists_failed_citation() {
+    let sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "reasoning_mismatch".to_string(),
+        DNAsequence::from_sequence(&sequence).expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let graph = engine
+        .build_construct_reasoning_graph("reasoning_mismatch", None, None)
+        .expect("reasoning graph");
+    let action = graph
+        .inspection_actions
+        .first()
+        .cloned()
+        .expect("dotplot inspection action");
+    let snapshot_status = engine.construct_reasoning_graph_snapshot_status(&graph);
+    assert_eq!(
+        snapshot_status.freshness,
+        ConstructReasoningGraphFreshness::Current
+    );
+    let resolved =
+        construct_reasoning_action_dotplot_request(&action, &graph.seq_id, sequence.len())
+            .expect("resolved action request");
+    let citation = construct_reasoning_dotplot_inspection_provenance(
+        &graph,
+        &action,
+        &snapshot_status,
+        &resolved,
+        DotplotInspectionRequestSnapshot {
+            dotplot_id: "reasoning_mismatch_plot".to_string(),
+            seq_id: resolved.seq_id.clone(),
+            reference_seq_id: None,
+            span_start_0based: resolved.span_start_0based,
+            span_end_0based: resolved.span_end_0based,
+            reference_span_start_0based: resolved.span_start_0based,
+            reference_span_end_0based: resolved.span_end_0based,
+            mode: resolved.mode,
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+        },
+    );
+    assert_eq!(citation.status, DotplotInspectionProvenanceStatus::Pass);
+
+    engine
+        .apply(Operation::ComputeDotplot {
+            seq_id: resolved.seq_id,
+            reference_seq_id: None,
+            span_start_0based: Some(resolved.span_start_0based),
+            span_end_0based: Some(resolved.span_end_0based),
+            reference_span_start_0based: None,
+            reference_span_end_0based: None,
+            mode: resolved.mode,
+            word_size: 5,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("reasoning_mismatch_plot".to_string()),
+            inspection_provenance: Some(Box::new(citation)),
+        })
+        .expect("compute dotplot with mismatched cited options");
+
+    let view = engine
+        .get_dotplot_view("reasoning_mismatch_plot")
+        .expect("stored dotplot");
+    let citation = view
+        .inspection_provenance
+        .as_ref()
+        .expect("persisted inspection citation");
+    assert_eq!(citation.status, DotplotInspectionProvenanceStatus::Fail);
+    assert!(citation.verification_reasons.iter().any(|reason| {
+        reason.contains("Cited dotplot request") && reason.contains("resolved request")
+    }));
+    let summary = engine
+        .list_dotplot_views(Some("reasoning_mismatch"))
+        .into_iter()
+        .next()
+        .expect("dotplot summary");
+    assert_eq!(
+        summary
+            .inspection_provenance
+            .as_ref()
+            .map(|citation| citation.status),
+        Some(DotplotInspectionProvenanceStatus::Fail)
+    );
 }
 
 #[test]
@@ -36226,6 +36332,7 @@ fn test_compute_self_dotplot_carries_reference_exon_annotation_when_available() 
             max_mismatches: 0,
             tile_bp: None,
             store_as: Some("annotated_self_dotplot".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute annotated self dotplot");
 
@@ -36300,6 +36407,7 @@ fn test_dotplot_reference_annotation_preserves_antisense_exons_and_repeatmasker_
             max_mismatches: 0,
             tile_bp: None,
             store_as: Some("context_dotplot".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute context dotplot");
 
@@ -36395,6 +36503,7 @@ fn test_compute_pair_dotplot_uses_reference_sequence_span() {
             max_mismatches: 0,
             tile_bp: None,
             store_as: Some("pair_dotplot".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute pair dotplot");
     assert!(
@@ -36890,6 +36999,7 @@ fn test_compute_pair_reverse_complement_maps_expected_antidiagonal_hits() {
             max_mismatches: 0,
             tile_bp: None,
             store_as: Some("pair_revcomp".to_string()),
+            inspection_provenance: None,
         })
         .expect("compute pair reverse-complement dotplot");
 
@@ -36950,6 +37060,7 @@ fn test_compute_dotplot_exact_seed_large_pair_grid_bypasses_pair_eval_guard() {
         max_mismatches: 0,
         tile_bp: None,
         store_as: Some("pair_exact_large".to_string()),
+        inspection_provenance: None,
     });
     assert!(
         result.is_ok(),

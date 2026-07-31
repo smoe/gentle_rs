@@ -55,10 +55,12 @@ pub use construct_reasoning::{
     ConstructReasoningRiskTask, ConstructReasoningSeverity, ConstructReasoningStore,
     ConstructReasoningTaskApplicability, ConstructReasoningTaskApplicabilityBasis,
     ConstructReasoningTaskSeverity, ConstructRole, DESIGN_DECISION_NODE_SCHEMA,
-    DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod, DesignDecisionNode, DesignEvidence,
-    DesignFact, EditableStatus, EvidenceClass, EvidenceScope, HOST_PROFILE_CATALOG_SCHEMA,
-    HelperConstructProfile, HostLifecycleRole, HostProfileCatalog, HostProfileRecord,
-    HostRouteStep, ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage,
+    DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DOTPLOT_INSPECTION_PROVENANCE_CITATION_SCHEMA,
+    DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact,
+    DotplotInspectionProvenanceCitation, DotplotInspectionProvenanceStatus,
+    DotplotInspectionRequestSnapshot, EditableStatus, EvidenceClass, EvidenceScope,
+    HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
+    HostProfileRecord, HostRouteStep, ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage,
     ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
 };
 pub use dna_ladder::{
@@ -4223,6 +4225,12 @@ pub struct DotplotView {
     pub seq_id: String,
     pub reference_seq_id: Option<String>,
     pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inspection_provenance: Option<DotplotInspectionProvenanceCitation>,
     pub span_start_0based: usize,
     pub span_end_0based: usize,
     pub reference_span_start_0based: usize,
@@ -4251,6 +4259,12 @@ pub struct DotplotViewSummary {
     pub seq_id: String,
     pub reference_seq_id: Option<String>,
     pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inspection_provenance: Option<DotplotInspectionProvenanceCitation>,
     pub span_start_0based: usize,
     pub span_end_0based: usize,
     pub reference_span_start_0based: usize,
@@ -9832,11 +9846,36 @@ pub struct RnaReadInterpretationReportSummary {
 #[cfg(test)]
 mod dotplot_and_concatemer_setting_tests {
     use super::{
-        CutRunRegulatoryTfbsConfirmationStatus, CutRunRegulatoryTfbsRow, DotplotMode,
-        DotplotOverlayAnchorExonRef, DotplotOverlayResolvedAnchorSeries, DotplotOverlayXAxisMode,
-        DotplotQuerySeries, DotplotView, RestrictionSiteExpertView,
-        RnaReadConcatemerInspectionSettings, RnaReadMappedIsoformSupportRow,
+        CutRunRegulatoryTfbsConfirmationStatus, CutRunRegulatoryTfbsRow,
+        DotplotInspectionProvenanceCitation, DotplotMode, DotplotOverlayAnchorExonRef,
+        DotplotOverlayResolvedAnchorSeries, DotplotOverlayXAxisMode, DotplotQuerySeries,
+        DotplotView, RestrictionSiteExpertView, RnaReadConcatemerInspectionSettings,
+        RnaReadMappedIsoformSupportRow,
     };
+
+    #[test]
+    fn legacy_dotplot_view_defaults_payload_provenance_to_absent() {
+        let view: DotplotView = serde_json::from_value(serde_json::json!({
+            "schema": "gentle.dotplot_view.v3",
+            "dotplot_id": "legacy_dotplot",
+            "owner_seq_id": "seq1",
+            "seq_id": "seq1",
+            "mode": "self_forward"
+        }))
+        .expect("deserialize legacy dotplot");
+        assert!(view.op_id.is_none());
+        assert!(view.run_id.is_none());
+        assert!(view.inspection_provenance.is_none());
+
+        let serialized = serde_json::to_value(view).expect("serialize legacy dotplot");
+        assert!(serialized.get("op_id").is_none());
+        assert!(serialized.get("run_id").is_none());
+        assert!(serialized.get("inspection_provenance").is_none());
+        assert_eq!(
+            DotplotInspectionProvenanceCitation::default().schema,
+            "gentle.dotplot_inspection_provenance_citation.v1"
+        );
+    }
 
     #[test]
     fn dotplot_overlay_x_axis_bp_alignment_projects_left_and_right_variants() {

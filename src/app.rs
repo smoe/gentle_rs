@@ -23918,6 +23918,7 @@ Error: `{err}`"
                 max_mismatches,
                 tile_bp,
                 store_as,
+                ..
             } => format!(
                 "Compute dotplot: seq_id={}, reference_seq_id={}, mode={}, query_span={}..{}, reference_span={}..{}, word={}, step={}, mismatches={}, tile_bp={}, store_as={}",
                 seq_id,

@@ -9528,7 +9528,7 @@ Sequence-context bundle export contract (implemented baseline):
 Dotplot + flexibility operation contract (implemented baseline):
 
 - Dotplot operation:
-  - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }`
+  - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as?, inspection_provenance? }`
   - `ComputeDotplotOverlay { owner_seq_id, reference_seq_id, reference_span_start_0based?, reference_span_end_0based?, queries[], word_size, step_bp, max_mismatches?, tile_bp?, store_as? }`
   - `mode`: `self_forward | self_reverse_complement | pair_forward | pair_reverse_complement`
   - pair modes require `reference_seq_id` and use the optional
@@ -9540,6 +9540,18 @@ Dotplot + flexibility operation contract (implemented baseline):
   - stores payload schema `gentle.dotplot_view.v3`
   - payload includes:
     - `owner_seq_id`
+    - optional `op_id` / `run_id` identifying the operation that created the
+      stored payload
+    - optional `inspection_provenance`
+      (`gentle.dotplot_inspection_provenance_citation.v1`) when
+      construct reasoning requested the dotplot; it binds graph/action
+      identity and input fingerprint, source facts/annotations/candidates/
+      summaries/evidence, rationale, and the resolved dotplot request
+    - citation status is `pass`, `fail`, or `unknown`: request or stored-source
+      mismatches and stale graph snapshots fail verification, while legacy
+      graph snapshots whose freshness cannot be established remain `unknown`
+    - absence of `inspection_provenance` means manual or otherwise unknown
+      provenance and is distinct from a present citation with `status=fail`
     - shared reference span + seed parameters
     - sparse match points (`points[]`)
     - per-query-bin reference-distribution boxplot summary
@@ -9582,6 +9594,9 @@ Dotplot + flexibility operation contract (implemented baseline):
   - metadata key: `dotplot_analysis`
   - store schema: `gentle.dotplot_analysis_store.v1`
   - both dotplots and flexibility tracks are persisted under this key
+  - `DotplotViewSummary` carries the same optional operation/run identity and
+    inspection citation as the full view for listing and audit without loading
+    sparse match points
 - Shared-shell command family:
   - `dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
   - `dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
