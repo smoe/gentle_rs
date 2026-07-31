@@ -11,6 +11,7 @@
 use super::*;
 use crate::allele_hash_screen::{
     AlleleHashScreenRequest, AlleleReadClassification, AlleleReadSourceOrigin,
+    AllelicExpressionSupportScope, AllelicExpressionWeightBasis, AllelicRepresentationCaveat,
 };
 use crate::attract_motifs::{
     ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
@@ -39484,6 +39485,45 @@ fn test_allele_hash_screen_sources_target_gene_reads_from_rna_report() {
             .reads
             .iter()
             .all(|read| read.source_origins == vec![AlleleReadSourceOrigin::RnaReportTargetMapped])
+    );
+    let expression_support = sourced
+        .rna_report_expression_support
+        .as_ref()
+        .expect("RNA-report expression support");
+    assert_eq!(expression_support.report_id, "fus_aligned_reads");
+    assert_eq!(expression_support.target_gene_retained_read_support, 5);
+    assert_eq!(
+        expression_support
+            .transcript_retained_read_support
+            .get("FUS_TX1"),
+        Some(&5)
+    );
+    let transcript_representation = sourced
+        .transcript_summaries
+        .iter()
+        .find(|summary| summary.transcript_id == "FUS_TX1")
+        .and_then(|summary| summary.representation.as_ref())
+        .expect("FUS_TX1 representation");
+    assert_eq!(
+        transcript_representation.expression_weight.basis,
+        AllelicExpressionWeightBasis::InformativeReadDepthWithRnaReportTranscriptSupport
+    );
+    assert_eq!(
+        transcript_representation
+            .expression_weight
+            .retained_read_support,
+        Some(5)
+    );
+    assert_eq!(
+        transcript_representation
+            .expression_weight
+            .retained_read_support_scope,
+        Some(AllelicExpressionSupportScope::Transcript)
+    );
+    assert!(
+        transcript_representation
+            .caveats
+            .contains(&AllelicRepresentationCaveat::LowRnaReportExpressionSupport)
     );
 }
 

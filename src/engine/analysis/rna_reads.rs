@@ -604,6 +604,14 @@ impl GentleEngine {
                 report_id, request.gene
             ));
         }
+        let expression_summary = self
+            .summarize_rna_read_gene_support(
+                &report_id,
+                std::slice::from_ref(&request.gene),
+                &[],
+                RnaReadGeneSupportCompleteRule::Near,
+            )
+            .map_err(|error| error.to_string())?;
 
         let report = self
             .get_rna_read_report(&report_id)
@@ -613,6 +621,7 @@ impl GentleEngine {
             .into_iter()
             .collect::<HashSet<_>>();
         let mut resolved_reads = Vec::with_capacity(accepted_indices.len());
+        let mut transcript_retained_read_support = BTreeMap::<String, u64>::new();
         for hit in &report.hits {
             if !accepted_indices.contains(&hit.record_index) {
                 continue;
@@ -622,6 +631,12 @@ impl GentleEngine {
                     "RNA-read report '{}' record_index {} has no stored sequence and cannot feed allele-hash-screen",
                     report.report_id, hit.record_index
                 ));
+            }
+            if let Some(mapping) = hit.best_mapping.as_ref() {
+                let count = transcript_retained_read_support
+                    .entry(mapping.transcript_id.clone())
+                    .or_default();
+                *count = count.saturating_add(1);
             }
             resolved_reads.push(crate::allele_hash_screen::AlleleRnaReportReadInput {
                 read_id: hit.header_id.clone(),
@@ -640,6 +655,22 @@ impl GentleEngine {
         }
         request.from_rna_report = Some(report.report_id.clone());
         request.rna_report_reads = resolved_reads;
+        let target_gene_retained_read_support = u64::try_from(
+            expression_summary.all_target.read_count,
+        )
+        .map_err(|_| {
+            format!(
+                "RNA-read report '{}' retained-read support exceeds the allele-screen count range",
+                report.report_id
+            )
+        })?;
+        request.rna_report_expression_support = Some(
+            crate::allele_hash_screen::AlleleRnaReportExpressionSupport {
+                report_id: report.report_id.clone(),
+                target_gene_retained_read_support,
+                transcript_retained_read_support,
+            },
+        );
         crate::allele_hash_screen::run_allele_hash_screen(request)
     }
 

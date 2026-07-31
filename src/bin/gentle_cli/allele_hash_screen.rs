@@ -177,6 +177,39 @@ fn parse_allele_hash_screen_request(
                 )?;
                 idx += 2;
             }
+            "--min-informative-reads" => {
+                request.min_informative_reads = gentle_cli_args::parse_required_value(
+                    args,
+                    idx,
+                    "--min-informative-reads",
+                    "N",
+                    "allele-hash-screen",
+                    Some("allele-hash-screen"),
+                )?;
+                idx += 2;
+            }
+            "--balanced-band-lo" => {
+                request.balanced_band_lo = gentle_cli_args::parse_required_value(
+                    args,
+                    idx,
+                    "--balanced-band-lo",
+                    "F",
+                    "allele-hash-screen",
+                    Some("allele-hash-screen"),
+                )?;
+                idx += 2;
+            }
+            "--balanced-band-hi" => {
+                request.balanced_band_hi = gentle_cli_args::parse_required_value(
+                    args,
+                    idx,
+                    "--balanced-band-hi",
+                    "F",
+                    "allele-hash-screen",
+                    Some("allele-hash-screen"),
+                )?;
+                idx += 2;
+            }
             "--max-inline-read-calls" => {
                 request.max_inline_read_calls = gentle_cli_args::parse_required_value(
                     args,
@@ -232,6 +265,12 @@ mod tests {
             "unmapped_names.txt",
             "--salmon-mappings-sam",
             "mappings.sam",
+            "--min-informative-reads",
+            "12",
+            "--balanced-band-lo",
+            "0.45",
+            "--balanced-band-hi",
+            "0.55",
             "--out",
             "out",
         ]
@@ -246,5 +285,8 @@ mod tests {
             Some("unmapped_names.txt")
         );
         assert_eq!(request.salmon_mappings_sam.as_deref(), Some("mappings.sam"));
+        assert_eq!(request.min_informative_reads, 12);
+        assert!((request.balanced_band_lo - 0.45).abs() < f64::EPSILON);
+        assert!((request.balanced_band_hi - 0.55).abs() < f64::EPSILON);
     }
 }

@@ -21,16 +21,33 @@ use std::{
     path::Path,
 };
 
-pub const ALLELE_HASH_SCREEN_SCHEMA: &str = "gentle.rna_allele_hash_screen.v2";
+pub const ALLELE_HASH_SCREEN_SCHEMA: &str = "gentle.rna_allele_hash_screen.v3";
 #[cfg(test)]
 const ALLELE_HASH_SCREEN_SCHEMA_V1: &str = "gentle.rna_allele_hash_screen.v1";
+#[cfg(test)]
+const ALLELE_HASH_SCREEN_SCHEMA_V2: &str = "gentle.rna_allele_hash_screen.v2";
 const DEFAULT_KMER_LEN: usize = 21;
 const DEFAULT_MIN_UNIQUE_KMER_HITS: u64 = 1;
+const DEFAULT_MIN_INFORMATIVE_READS: u64 = 10;
+const DEFAULT_BALANCED_BAND_LO: f64 = 0.40;
+const DEFAULT_BALANCED_BAND_HI: f64 = 0.60;
 const DEFAULT_MAX_INLINE_READ_CALLS: usize = 10_000;
 const GENE_SYMBOL_TAGS: &[&str] = &["gene_symbol", "gene_name", "symbol", "gene"];
 
 fn default_max_inline_read_calls() -> usize {
     DEFAULT_MAX_INLINE_READ_CALLS
+}
+
+fn default_min_informative_reads() -> u64 {
+    DEFAULT_MIN_INFORMATIVE_READS
+}
+
+fn default_balanced_band_lo() -> f64 {
+    DEFAULT_BALANCED_BAND_LO
+}
+
+fn default_balanced_band_hi() -> f64 {
+    DEFAULT_BALANCED_BAND_HI
 }
 
 /// Request for the standalone allele-aware RNA-read screen.
@@ -59,9 +76,17 @@ pub struct AlleleHashScreenRequest {
     pub salmon_mappings_sam: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rna_report_reads: Vec<AlleleRnaReportReadInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_report_expression_support: Option<AlleleRnaReportExpressionSupport>,
     pub out_dir: String,
     pub kmer_len: usize,
     pub min_unique_kmer_hits: u64,
+    #[serde(default = "default_min_informative_reads")]
+    pub min_informative_reads: u64,
+    #[serde(default = "default_balanced_band_lo")]
+    pub balanced_band_lo: f64,
+    #[serde(default = "default_balanced_band_hi")]
+    pub balanced_band_hi: f64,
     #[serde(default = "default_max_inline_read_calls")]
     pub max_inline_read_calls: usize,
 }
@@ -82,9 +107,13 @@ impl Default for AlleleHashScreenRequest {
             salmon_unmapped_names: None,
             salmon_mappings_sam: None,
             rna_report_reads: Vec::new(),
+            rna_report_expression_support: None,
             out_dir: String::new(),
             kmer_len: DEFAULT_KMER_LEN,
             min_unique_kmer_hits: DEFAULT_MIN_UNIQUE_KMER_HITS,
+            min_informative_reads: DEFAULT_MIN_INFORMATIVE_READS,
+            balanced_band_lo: DEFAULT_BALANCED_BAND_LO,
+            balanced_band_hi: DEFAULT_BALANCED_BAND_HI,
             max_inline_read_calls: DEFAULT_MAX_INLINE_READ_CALLS,
         }
     }
@@ -111,6 +140,10 @@ pub struct AlleleHashScreenReport {
     pub read_calls_truncated: bool,
     #[serde(default)]
     pub phase_blocks: Vec<AllelePhaseBlockSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_representation: Option<AllelicRepresentationAssessment>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_report_expression_support: Option<AlleleRnaReportExpressionSupport>,
     pub output_files: AlleleHashScreenOutputFiles,
     pub haplotype_fastas: Vec<HaplotypeFastaReport>,
     pub transcript_summaries: Vec<AlleleTranscriptSummary>,
@@ -146,6 +179,12 @@ pub struct AlleleHashScreenParams {
     pub salmon_mappings_sam: Option<String>,
     pub kmer_len: usize,
     pub min_unique_kmer_hits: u64,
+    #[serde(default = "default_min_informative_reads")]
+    pub min_informative_reads: u64,
+    #[serde(default = "default_balanced_band_lo")]
+    pub balanced_band_lo: f64,
+    #[serde(default = "default_balanced_band_hi")]
+    pub balanced_band_hi: f64,
     #[serde(default = "default_max_inline_read_calls")]
     pub max_inline_read_calls: usize,
 }
@@ -163,6 +202,102 @@ pub struct AlleleRnaReportReadInput {
     pub sequence: String,
     pub report_id: String,
     pub record_index: usize,
+}
+
+/// Expression-depth context resolved from an existing RNA-read report.
+///
+/// These retained-read counts are contextual abundance evidence only. They do
+/// not replace the allele-informative observations used to make a verdict.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AlleleRnaReportExpressionSupport {
+    pub report_id: String,
+    pub target_gene_retained_read_support: u64,
+    pub transcript_retained_read_support: BTreeMap<String, u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AllelicRepresentationVerdict {
+    Hap1Preferred,
+    Hap2Preferred,
+    Balanced,
+    InconclusiveLowDepth,
+    UnphasedAlleleLevelOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AllelicExpressionWeightBasis {
+    InformativeReadDepthOnly,
+    InformativeReadDepthWithRnaReportGeneSupport,
+    InformativeReadDepthWithRnaReportTranscriptSupport,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AllelicExpressionSupportScope {
+    TargetGene,
+    Transcript,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AllelicExpressionWeight {
+    /// The operative weight: observations informative for the haplotype call.
+    pub value: u64,
+    pub basis: AllelicExpressionWeightBasis,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retained_read_support: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retained_read_support_scope: Option<AllelicExpressionSupportScope>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct AllelicRepresentationThresholds {
+    pub min_informative_reads: u64,
+    pub balanced_band_lo: f64,
+    pub balanced_band_hi: f64,
+}
+
+impl Default for AllelicRepresentationThresholds {
+    fn default() -> Self {
+        Self {
+            min_informative_reads: DEFAULT_MIN_INFORMATIVE_READS,
+            balanced_band_lo: DEFAULT_BALANCED_BAND_LO,
+            balanced_band_hi: DEFAULT_BALANCED_BAND_HI,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AllelicRepresentationCaveat {
+    CoverageBlindSpotsPresent,
+    LowInformativeDepth,
+    LowRnaReportExpressionSupport,
+    Unphased,
+    UnphasedUnitsExcludedFromRollup,
+    BlockLocalPhaseLabelsAggregated,
+}
+
+/// Auditable, threshold-based statement about sequence representation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AllelicRepresentationAssessment {
+    pub verdict: AllelicRepresentationVerdict,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hap1_fraction: Option<f64>,
+    pub informative_read_count: u64,
+    pub expression_weight: AllelicExpressionWeight,
+    pub thresholds: AllelicRepresentationThresholds,
+    #[serde(default)]
+    pub caveats: Vec<AllelicRepresentationCaveat>,
+    #[serde(default)]
+    pub coverage_blind_spots: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binomial_two_sided_p_under_null_0_5: Option<f64>,
+    pub statement: String,
 }
 
 /// Input-basis tags attached to each selected allele-screen observation.
@@ -354,6 +489,8 @@ pub struct AllelePhaseBlockSummary {
     pub reference_reads: u64,
     pub ambiguous_reads: u64,
     pub uninformative_reads: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representation: Option<AllelicRepresentationAssessment>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -373,6 +510,8 @@ pub struct AlleleTranscriptSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub imbalance_ratio_hap1_over_informative: Option<f64>,
     pub coverage_blind_spots: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representation: Option<AllelicRepresentationAssessment>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -395,6 +534,8 @@ pub struct AlleleVariantSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub imbalance_ratio_hap1_over_informative: Option<f64>,
     pub coverage_blind_spots: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representation: Option<AllelicRepresentationAssessment>,
 }
 
 #[derive(Debug, Clone)]
@@ -754,13 +895,6 @@ pub fn run_allele_hash_screen(
     let mut transcript_summaries =
         summarize_transcripts(&transcripts, &variants, &transcript_counts);
     let mut variant_summaries = summarize_variants(&variants, &variant_counts);
-    for summary in &mut transcript_summaries {
-        if summary.informative_reads == 0 {
-            summary
-                .coverage_blind_spots
-                .push("no haplotype-informative reads overlapped this transcript".to_string());
-        }
-    }
     for summary in &mut variant_summaries {
         if summary.informative_reads == 0 {
             summary
@@ -768,7 +902,33 @@ pub fn run_allele_hash_screen(
                 .push("no reads carried haplotype-informative k-mers for this variant".to_string());
         }
     }
-    let phase_blocks = summarize_phase_blocks(&phase_block_indexes, &phase_block_counts);
+    let mut phase_blocks = summarize_phase_blocks(&phase_block_indexes, &phase_block_counts);
+    for summary in &mut transcript_summaries {
+        let block_informative_reads = phase_blocks
+            .iter()
+            .filter(|block| block.transcript_id == summary.transcript_id)
+            .fold(0u64, |sum, block| {
+                sum.saturating_add(block.informative_reads)
+            });
+        if block_informative_reads == 0 {
+            summary
+                .coverage_blind_spots
+                .push("no allele-informative reads overlapped this transcript".to_string());
+        }
+    }
+    let thresholds = AllelicRepresentationThresholds {
+        min_informative_reads: request.min_informative_reads,
+        balanced_band_lo: request.balanced_band_lo,
+        balanced_band_hi: request.balanced_band_hi,
+    };
+    let gene_representation = attach_representation_assessments(
+        &variants,
+        &mut phase_blocks,
+        &mut transcript_summaries,
+        &mut variant_summaries,
+        thresholds,
+        request.rna_report_expression_support.as_ref(),
+    );
     let read_calls_truncated = evidence_observation_count_selected > calls.len() as u64;
     if read_calls_truncated {
         warnings.push(format!(
@@ -810,6 +970,9 @@ pub fn run_allele_hash_screen(
             salmon_mappings_sam: request.salmon_mappings_sam.clone(),
             kmer_len: request.kmer_len,
             min_unique_kmer_hits: request.min_unique_kmer_hits,
+            min_informative_reads: request.min_informative_reads,
+            balanced_band_lo: request.balanced_band_lo,
+            balanced_band_hi: request.balanced_band_hi,
             max_inline_read_calls: request.max_inline_read_calls,
         },
         transcript_count: transcripts.len(),
@@ -821,6 +984,8 @@ pub fn run_allele_hash_screen(
         evidence_observation_count_selected,
         read_calls_truncated,
         phase_blocks,
+        gene_representation: Some(gene_representation),
+        rna_report_expression_support: request.rna_report_expression_support.clone(),
         output_files: output_files.clone(),
         haplotype_fastas: vec![
             HaplotypeFastaReport {
@@ -907,6 +1072,20 @@ fn validate_request(request: &AlleleHashScreenRequest) -> Result<(), String> {
     }
     if request.min_unique_kmer_hits == 0 {
         return Err("Invalid --min-unique-kmer-hits value '0': expected at least 1".to_string());
+    }
+    if request.min_informative_reads == 0 {
+        return Err("Invalid --min-informative-reads value '0': expected at least 1".to_string());
+    }
+    if !request.balanced_band_lo.is_finite()
+        || !request.balanced_band_hi.is_finite()
+        || request.balanced_band_lo < 0.0
+        || request.balanced_band_hi > 1.0
+        || request.balanced_band_lo > request.balanced_band_hi
+    {
+        return Err(format!(
+            "Invalid balanced band [{}, {}]: expected finite 0 <= --balanced-band-lo <= --balanced-band-hi <= 1",
+            request.balanced_band_lo, request.balanced_band_hi
+        ));
     }
     Ok(())
 }
@@ -2080,6 +2259,7 @@ fn summarize_phase_blocks(
                 reference_reads: counts.reference_only_reads,
                 ambiguous_reads: counts.ambiguous_reads,
                 uninformative_reads: counts.uninformative_reads,
+                representation: None,
             }
         })
         .collect()
@@ -2133,6 +2313,7 @@ fn transcript_summary(
         off_target_reads: count.off_target_reads,
         imbalance_ratio_hap1_over_informative: imbalance_ratio(count.hap1_reads, count.hap2_reads),
         coverage_blind_spots: Vec::new(),
+        representation: None,
     }
 }
 
@@ -2153,12 +2334,367 @@ fn variant_summary(variant: &VariantRecord, count: CountSummary) -> AlleleVarian
         ambiguous_reads: count.ambiguous_reads,
         imbalance_ratio_hap1_over_informative: imbalance_ratio(count.hap1_reads, count.hap2_reads),
         coverage_blind_spots: Vec::new(),
+        representation: None,
     }
 }
 
 fn imbalance_ratio(hap1: u64, hap2: u64) -> Option<f64> {
     let total = hap1.saturating_add(hap2);
     (total > 0).then(|| hap1 as f64 / total as f64)
+}
+
+fn attach_representation_assessments(
+    variants: &[VariantRecord],
+    phase_blocks: &mut [AllelePhaseBlockSummary],
+    transcript_summaries: &mut [AlleleTranscriptSummary],
+    variant_summaries: &mut [AlleleVariantSummary],
+    thresholds: AllelicRepresentationThresholds,
+    expression_support: Option<&AlleleRnaReportExpressionSupport>,
+) -> AllelicRepresentationAssessment {
+    for block in phase_blocks.iter_mut() {
+        let phase_known = block.status == AllelePhaseBlockStatus::Phased;
+        let unphased_informative = block.alternate_reads.saturating_add(block.reference_reads);
+        let informative = if phase_known {
+            block.hap1_reads.saturating_add(block.hap2_reads)
+        } else {
+            unphased_informative
+        };
+        let coverage_blind_spots = if block.informative_reads == 0 {
+            vec!["no allele-informative reads overlapped this phase block".to_string()]
+        } else {
+            Vec::new()
+        };
+        block.representation = Some(build_representation_assessment(
+            block.hap1_reads,
+            block.hap2_reads,
+            unphased_informative,
+            phase_known,
+            false,
+            thresholds,
+            expression_weight(informative, expression_support, Some(&block.transcript_id)),
+            coverage_blind_spots,
+        ));
+    }
+
+    for (variant, summary) in variants.iter().zip(variant_summaries.iter_mut()) {
+        let unphased_informative = summary
+            .alternate_reads
+            .saturating_add(summary.reference_only_reads);
+        let informative = if variant.phased {
+            summary.hap1_reads.saturating_add(summary.hap2_reads)
+        } else {
+            unphased_informative
+        };
+        summary.representation = Some(build_representation_assessment(
+            summary.hap1_reads,
+            summary.hap2_reads,
+            unphased_informative,
+            variant.phased,
+            false,
+            thresholds,
+            expression_weight(
+                informative,
+                expression_support,
+                Some(&summary.transcript_id),
+            ),
+            summary.coverage_blind_spots.clone(),
+        ));
+    }
+
+    for summary in transcript_summaries.iter_mut() {
+        let transcript_blocks = phase_blocks
+            .iter()
+            .filter(|block| block.transcript_id == summary.transcript_id)
+            .collect::<Vec<_>>();
+        let phased_blocks = transcript_blocks
+            .iter()
+            .copied()
+            .filter(|block| block.status == AllelePhaseBlockStatus::Phased)
+            .collect::<Vec<_>>();
+        let unphased_units_excluded = transcript_blocks
+            .iter()
+            .any(|block| block.status == AllelePhaseBlockStatus::Unphased)
+            && !phased_blocks.is_empty();
+        let hap1 = phased_blocks
+            .iter()
+            .fold(0u64, |sum, block| sum.saturating_add(block.hap1_reads));
+        let hap2 = phased_blocks
+            .iter()
+            .fold(0u64, |sum, block| sum.saturating_add(block.hap2_reads));
+        let unphased_informative = transcript_blocks
+            .iter()
+            .filter(|block| block.status == AllelePhaseBlockStatus::Unphased)
+            .fold(0u64, |sum, block| {
+                sum.saturating_add(block.alternate_reads)
+                    .saturating_add(block.reference_reads)
+            });
+        let informative = if phased_blocks.is_empty() {
+            unphased_informative
+        } else {
+            hap1.saturating_add(hap2)
+        };
+        let mut representation = build_representation_assessment(
+            hap1,
+            hap2,
+            unphased_informative,
+            !phased_blocks.is_empty(),
+            unphased_units_excluded,
+            thresholds,
+            expression_weight(
+                informative,
+                expression_support,
+                Some(&summary.transcript_id),
+            ),
+            summary.coverage_blind_spots.clone(),
+        );
+        if phased_blocks.len() > 1 {
+            representation
+                .caveats
+                .push(AllelicRepresentationCaveat::BlockLocalPhaseLabelsAggregated);
+        }
+        summary.representation = Some(representation);
+    }
+
+    let phased_blocks = phase_blocks
+        .iter()
+        .filter(|block| block.status == AllelePhaseBlockStatus::Phased)
+        .collect::<Vec<_>>();
+    let unphased_units_excluded = phase_blocks
+        .iter()
+        .any(|block| block.status == AllelePhaseBlockStatus::Unphased)
+        && !phased_blocks.is_empty();
+    let hap1 = phased_blocks
+        .iter()
+        .fold(0u64, |sum, block| sum.saturating_add(block.hap1_reads));
+    let hap2 = phased_blocks
+        .iter()
+        .fold(0u64, |sum, block| sum.saturating_add(block.hap2_reads));
+    let unphased_informative = phase_blocks
+        .iter()
+        .filter(|block| block.status == AllelePhaseBlockStatus::Unphased)
+        .fold(0u64, |sum, block| {
+            sum.saturating_add(block.alternate_reads)
+                .saturating_add(block.reference_reads)
+        });
+    let coverage_blind_spots = transcript_summaries
+        .iter()
+        .flat_map(|summary| {
+            summary
+                .coverage_blind_spots
+                .iter()
+                .map(|blind_spot| format!("{}: {blind_spot}", summary.transcript_id))
+        })
+        .collect::<Vec<_>>();
+    let informative = if phased_blocks.is_empty() {
+        unphased_informative
+    } else {
+        hap1.saturating_add(hap2)
+    };
+    let mut representation = build_representation_assessment(
+        hap1,
+        hap2,
+        unphased_informative,
+        !phased_blocks.is_empty(),
+        unphased_units_excluded,
+        thresholds,
+        expression_weight(informative, expression_support, None),
+        coverage_blind_spots,
+    );
+    if phased_blocks.len() > 1 {
+        representation
+            .caveats
+            .push(AllelicRepresentationCaveat::BlockLocalPhaseLabelsAggregated);
+    }
+    representation
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_representation_assessment(
+    hap1_reads: u64,
+    hap2_reads: u64,
+    unphased_informative_reads: u64,
+    phase_known: bool,
+    unphased_units_excluded: bool,
+    thresholds: AllelicRepresentationThresholds,
+    expression_weight: AllelicExpressionWeight,
+    coverage_blind_spots: Vec<String>,
+) -> AllelicRepresentationAssessment {
+    let phased_informative = hap1_reads.saturating_add(hap2_reads);
+    let informative_read_count = if phase_known {
+        phased_informative
+    } else {
+        unphased_informative_reads
+    };
+    let hap1_fraction = phase_known
+        .then(|| imbalance_ratio(hap1_reads, hap2_reads))
+        .flatten();
+    let verdict = determine_representation_verdict(
+        phase_known,
+        informative_read_count,
+        hap1_fraction,
+        thresholds,
+    );
+    let mut caveats = Vec::new();
+    if !coverage_blind_spots.is_empty() {
+        caveats.push(AllelicRepresentationCaveat::CoverageBlindSpotsPresent);
+    }
+    if verdict == AllelicRepresentationVerdict::InconclusiveLowDepth {
+        caveats.push(AllelicRepresentationCaveat::LowInformativeDepth);
+    }
+    if expression_weight
+        .retained_read_support
+        .is_some_and(|support| support < thresholds.min_informative_reads)
+    {
+        caveats.push(AllelicRepresentationCaveat::LowRnaReportExpressionSupport);
+    }
+    if verdict == AllelicRepresentationVerdict::UnphasedAlleleLevelOnly {
+        caveats.push(AllelicRepresentationCaveat::Unphased);
+    }
+    if unphased_units_excluded {
+        caveats.push(AllelicRepresentationCaveat::UnphasedUnitsExcludedFromRollup);
+    }
+    AllelicRepresentationAssessment {
+        verdict,
+        hap1_fraction,
+        informative_read_count,
+        expression_weight,
+        thresholds,
+        caveats,
+        coverage_blind_spots,
+        binomial_two_sided_p_under_null_0_5: phase_known
+            .then(|| binomial_two_sided_p_under_null_0_5(hap1_reads, hap2_reads))
+            .flatten(),
+        statement: representation_statement(verdict),
+    }
+}
+
+fn determine_representation_verdict(
+    phase_known: bool,
+    informative_read_count: u64,
+    hap1_fraction: Option<f64>,
+    thresholds: AllelicRepresentationThresholds,
+) -> AllelicRepresentationVerdict {
+    if !phase_known {
+        return AllelicRepresentationVerdict::UnphasedAlleleLevelOnly;
+    }
+    if informative_read_count < thresholds.min_informative_reads {
+        return AllelicRepresentationVerdict::InconclusiveLowDepth;
+    }
+    let Some(hap1_fraction) = hap1_fraction else {
+        return AllelicRepresentationVerdict::InconclusiveLowDepth;
+    };
+    if hap1_fraction < thresholds.balanced_band_lo {
+        AllelicRepresentationVerdict::Hap2Preferred
+    } else if hap1_fraction > thresholds.balanced_band_hi {
+        AllelicRepresentationVerdict::Hap1Preferred
+    } else {
+        AllelicRepresentationVerdict::Balanced
+    }
+}
+
+fn expression_weight(
+    informative_read_count: u64,
+    support: Option<&AlleleRnaReportExpressionSupport>,
+    transcript_id: Option<&str>,
+) -> AllelicExpressionWeight {
+    let Some(support) = support else {
+        return AllelicExpressionWeight {
+            value: informative_read_count,
+            basis: AllelicExpressionWeightBasis::InformativeReadDepthOnly,
+            rna_report_id: None,
+            retained_read_support: None,
+            retained_read_support_scope: None,
+        };
+    };
+    if let Some(transcript_id) = transcript_id
+        && let Some(retained_read_support) = transcript_retained_support(support, transcript_id)
+    {
+        return AllelicExpressionWeight {
+            value: informative_read_count,
+            basis: AllelicExpressionWeightBasis::InformativeReadDepthWithRnaReportTranscriptSupport,
+            rna_report_id: Some(support.report_id.clone()),
+            retained_read_support: Some(retained_read_support),
+            retained_read_support_scope: Some(AllelicExpressionSupportScope::Transcript),
+        };
+    }
+    AllelicExpressionWeight {
+        value: informative_read_count,
+        basis: AllelicExpressionWeightBasis::InformativeReadDepthWithRnaReportGeneSupport,
+        rna_report_id: Some(support.report_id.clone()),
+        retained_read_support: Some(support.target_gene_retained_read_support),
+        retained_read_support_scope: Some(AllelicExpressionSupportScope::TargetGene),
+    }
+}
+
+fn transcript_retained_support(
+    support: &AlleleRnaReportExpressionSupport,
+    transcript_id: &str,
+) -> Option<u64> {
+    support
+        .transcript_retained_read_support
+        .get(transcript_id)
+        .copied()
+        .or_else(|| {
+            let wanted = transcript_id
+                .split_once('.')
+                .map_or(transcript_id, |(id, _)| id);
+            support
+                .transcript_retained_read_support
+                .iter()
+                .find(|(candidate, _)| {
+                    candidate
+                        .split_once('.')
+                        .map_or(candidate.as_str(), |(id, _)| id)
+                        == wanted
+                })
+                .map(|(_, count)| *count)
+        })
+}
+
+fn representation_statement(verdict: AllelicRepresentationVerdict) -> String {
+    let finding = match verdict {
+        AllelicRepresentationVerdict::Hap1Preferred => {
+            "Haplotype 1 is preferentially represented among phased, informative sequence observations"
+        }
+        AllelicRepresentationVerdict::Hap2Preferred => {
+            "Haplotype 2 is preferentially represented among phased, informative sequence observations"
+        }
+        AllelicRepresentationVerdict::Balanced => {
+            "Haplotype 1 and haplotype 2 are balanced among phased, informative sequence observations"
+        }
+        AllelicRepresentationVerdict::InconclusiveLowDepth => {
+            "Sequence representation is inconclusive at the configured informative-depth threshold"
+        }
+        AllelicRepresentationVerdict::UnphasedAlleleLevelOnly => {
+            "Evidence is allele-level only because haplotype phase is unavailable"
+        }
+    };
+    format!(
+        "{finding}; this threshold-based screen does not establish biological significance or causation."
+    )
+}
+
+fn binomial_two_sided_p_under_null_0_5(hap1: u64, hap2: u64) -> Option<f64> {
+    let n = hap1.checked_add(hap2)?;
+    if n == 0 {
+        return None;
+    }
+    let tail = hap1.min(hap2);
+    let mut log_probability_at_tail = -(n as f64) * std::f64::consts::LN_2;
+    for i in 1..=tail {
+        log_probability_at_tail += ((n - i + 1) as f64).ln() - (i as f64).ln();
+    }
+    let probability_at_tail = log_probability_at_tail.exp();
+    if probability_at_tail == 0.0 {
+        return Some(0.0);
+    }
+    let mut cumulative = probability_at_tail;
+    let mut probability = probability_at_tail;
+    for i in (1..=tail).rev() {
+        probability *= i as f64 / (n - i + 1) as f64;
+        cumulative += probability;
+    }
+    Some((2.0 * cumulative).min(1.0))
 }
 
 fn empty_classification_counts() -> BTreeMap<String, u64> {
@@ -2430,6 +2966,156 @@ mod tests {
     }
 
     #[test]
+    fn representation_fixture_covers_depth_aware_verdict_paths() {
+        let dir = tempdir().expect("temp dir");
+        let report = run_allele_hash_screen(AlleleHashScreenRequest {
+            gene: "FUS".to_string(),
+            transcript_fasta: fixture_path("representation_transcripts.fa"),
+            variant_table: Some(fixture_path("representation_variants.tsv")),
+            read_files: vec![fixture_path("representation_reads.fastq")],
+            out_dir: dir.path().display().to_string(),
+            kmer_len: 9,
+            min_unique_kmer_hits: 1,
+            ..AlleleHashScreenRequest::default()
+        })
+        .expect("representation screen should run");
+
+        assert_eq!(report.schema, ALLELE_HASH_SCREEN_SCHEMA);
+        assert_eq!(report.phase_mode, AlleleHashPhaseMode::PhasedBlocks);
+        let blocks = report
+            .phase_blocks
+            .iter()
+            .map(|block| (block.transcript_id.as_str(), block))
+            .collect::<BTreeMap<_, _>>();
+        let hap1 = blocks["FUS_REP_TX1"]
+            .representation
+            .as_ref()
+            .expect("hap1 representation");
+        assert_eq!(hap1.informative_read_count, 14);
+        assert_eq!(hap1.verdict, AllelicRepresentationVerdict::Hap1Preferred);
+        assert!(hap1.binomial_two_sided_p_under_null_0_5.is_some());
+
+        let balanced = blocks["FUS_REP_TX2"]
+            .representation
+            .as_ref()
+            .expect("balanced representation");
+        assert_eq!(balanced.informative_read_count, 10);
+        assert_eq!(balanced.verdict, AllelicRepresentationVerdict::Balanced);
+        assert_eq!(balanced.hap1_fraction, Some(0.5));
+
+        let variants = report
+            .variant_summaries
+            .iter()
+            .map(|summary| (summary.variant_id.as_str(), summary))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            variants["FUS_REP_TX1_hap1"]
+                .representation
+                .as_ref()
+                .expect("variant representation")
+                .verdict,
+            AllelicRepresentationVerdict::Hap1Preferred
+        );
+        assert!(
+            report
+                .variant_summaries
+                .iter()
+                .all(|summary| summary.representation.is_some())
+        );
+
+        let low_depth = blocks["FUS_REP_TX3"]
+            .representation
+            .as_ref()
+            .expect("low-depth representation");
+        assert_eq!(low_depth.informative_read_count, 3);
+        assert_eq!(
+            low_depth.verdict,
+            AllelicRepresentationVerdict::InconclusiveLowDepth
+        );
+        assert!(
+            low_depth
+                .caveats
+                .contains(&AllelicRepresentationCaveat::LowInformativeDepth)
+        );
+
+        let transcripts = report
+            .transcript_summaries
+            .iter()
+            .map(|summary| (summary.transcript_id.as_str(), summary))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            transcripts["FUS_REP_TX1"]
+                .representation
+                .as_ref()
+                .expect("transcript representation")
+                .verdict,
+            AllelicRepresentationVerdict::Hap1Preferred
+        );
+        assert_eq!(
+            transcripts["FUS_REP_TX2"]
+                .representation
+                .as_ref()
+                .expect("transcript representation")
+                .verdict,
+            AllelicRepresentationVerdict::Balanced
+        );
+        let blind = transcripts["FUS_REP_TX4"]
+            .representation
+            .as_ref()
+            .expect("blind-spot representation");
+        assert!(
+            blind
+                .caveats
+                .contains(&AllelicRepresentationCaveat::CoverageBlindSpotsPresent)
+        );
+        assert!(!blind.coverage_blind_spots.is_empty());
+
+        let gene = report
+            .gene_representation
+            .as_ref()
+            .expect("gene representation");
+        assert_eq!(gene.informative_read_count, 27);
+        assert_eq!(gene.verdict, AllelicRepresentationVerdict::Hap1Preferred);
+        assert_eq!(gene.expression_weight.value, 27);
+        assert_eq!(
+            gene.expression_weight.basis,
+            AllelicExpressionWeightBasis::InformativeReadDepthOnly
+        );
+        assert!(
+            gene.caveats
+                .contains(&AllelicRepresentationCaveat::BlockLocalPhaseLabelsAggregated)
+        );
+        assert!(
+            gene.statement
+                .contains("does not establish biological significance")
+        );
+    }
+
+    #[test]
+    fn binomial_advisory_does_not_participate_in_verdict_rule() {
+        let thresholds = AllelicRepresentationThresholds::default();
+        let verdict = determine_representation_verdict(true, 14, Some(12.0 / 14.0), thresholds);
+        assert_eq!(
+            determine_representation_verdict(true, 10, Some(0.2), thresholds),
+            AllelicRepresentationVerdict::Hap2Preferred
+        );
+        let mut assessment = build_representation_assessment(
+            12,
+            2,
+            0,
+            true,
+            false,
+            thresholds,
+            expression_weight(14, None, None),
+            Vec::new(),
+        );
+        assert_eq!(assessment.verdict, verdict);
+        assert!(assessment.binomial_two_sided_p_under_null_0_5.is_some());
+        assessment.binomial_two_sided_p_under_null_0_5 = Some(1.0);
+        assert_eq!(assessment.verdict, verdict);
+    }
+
+    #[test]
     fn salmon_selectors_reproduce_fixture_calls_and_provenance() {
         let dir = tempdir().expect("temp dir");
         let report = run_allele_hash_screen(AlleleHashScreenRequest {
@@ -2535,6 +3221,20 @@ mod tests {
         assert!(alternate.alternate_unique_hits > 0);
         assert_eq!(report.phase_blocks.len(), 1);
         assert_eq!(report.phase_blocks[0].alternate_reads, 1);
+        let representation = report.phase_blocks[0]
+            .representation
+            .as_ref()
+            .expect("unphased representation");
+        assert_eq!(
+            representation.verdict,
+            AllelicRepresentationVerdict::UnphasedAlleleLevelOnly
+        );
+        assert!(
+            representation
+                .caveats
+                .contains(&AllelicRepresentationCaveat::Unphased)
+        );
+        assert!(representation.hap1_fraction.is_none());
         assert!(!report.haplotype_fastas[1].inferred);
         assert!(!report.haplotype_fastas[2].inferred);
     }
@@ -2728,10 +3428,60 @@ mod tests {
         }))
         .expect("old request payload");
         assert_eq!(request.max_inline_read_calls, DEFAULT_MAX_INLINE_READ_CALLS);
+        assert_eq!(request.min_informative_reads, DEFAULT_MIN_INFORMATIVE_READS);
+        assert_eq!(request.balanced_band_lo, DEFAULT_BALANCED_BAND_LO);
+        assert_eq!(request.balanced_band_hi, DEFAULT_BALANCED_BAND_HI);
         assert!(request.from_rna_report.is_none());
         assert!(request.salmon_unmapped_names.is_none());
         assert!(request.salmon_mappings_sam.is_none());
         assert!(request.rna_report_reads.is_empty());
+        assert!(request.rna_report_expression_support.is_none());
+    }
+
+    #[test]
+    fn v2_report_payload_deserializes_without_representation_verdicts() {
+        let dir = tempdir().expect("temp dir");
+        let report = run_allele_hash_screen(AlleleHashScreenRequest {
+            gene: "FUS".to_string(),
+            transcript_fasta: fixture_path("fus_transcripts.fa"),
+            variant_table: Some(fixture_path("fus_variants.tsv")),
+            read_files: vec![fixture_path("fus_reads.fastq")],
+            out_dir: dir.path().display().to_string(),
+            kmer_len: 9,
+            min_unique_kmer_hits: 1,
+            ..AlleleHashScreenRequest::default()
+        })
+        .expect("current report");
+        let mut payload = serde_json::to_value(report).expect("serialize current report");
+        strip_v3_report_fields(&mut payload, ALLELE_HASH_SCREEN_SCHEMA_V2);
+
+        let decoded: AlleleHashScreenReport =
+            serde_json::from_value(payload).expect("v2 report remains readable");
+        assert_eq!(decoded.schema, ALLELE_HASH_SCREEN_SCHEMA_V2);
+        assert!(decoded.gene_representation.is_none());
+        assert!(decoded.rna_report_expression_support.is_none());
+        assert!(
+            decoded
+                .phase_blocks
+                .iter()
+                .all(|row| row.representation.is_none())
+        );
+        assert!(
+            decoded
+                .transcript_summaries
+                .iter()
+                .all(|row| row.representation.is_none())
+        );
+        assert!(
+            decoded
+                .variant_summaries
+                .iter()
+                .all(|row| row.representation.is_none())
+        );
+        assert_eq!(
+            decoded.params.min_informative_reads,
+            DEFAULT_MIN_INFORMATIVE_READS
+        );
     }
 
     #[test]
@@ -2749,11 +3499,8 @@ mod tests {
         })
         .expect("current report");
         let mut payload = serde_json::to_value(report).expect("serialize current report");
+        strip_v3_report_fields(&mut payload, ALLELE_HASH_SCREEN_SCHEMA_V1);
         let object = payload.as_object_mut().expect("report object");
-        object.insert(
-            "schema".to_string(),
-            serde_json::Value::String(ALLELE_HASH_SCREEN_SCHEMA_V1.to_string()),
-        );
         object.remove("source_provenance");
         object
             .get_mut("params")
@@ -2785,5 +3532,36 @@ mod tests {
                 .iter()
                 .all(|read| read.source_origins.is_empty())
         );
+    }
+
+    fn strip_v3_report_fields(payload: &mut serde_json::Value, schema: &str) {
+        let object = payload.as_object_mut().expect("report object");
+        object.insert(
+            "schema".to_string(),
+            serde_json::Value::String(schema.to_string()),
+        );
+        object.remove("gene_representation");
+        object.remove("rna_report_expression_support");
+        object
+            .get_mut("params")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("params object")
+            .retain(|key, _| {
+                !matches!(
+                    key.as_str(),
+                    "min_informative_reads" | "balanced_band_lo" | "balanced_band_hi"
+                )
+            });
+        for collection in ["phase_blocks", "transcript_summaries", "variant_summaries"] {
+            for row in object
+                .get_mut(collection)
+                .and_then(serde_json::Value::as_array_mut)
+                .expect("summary rows")
+            {
+                row.as_object_mut()
+                    .expect("summary object")
+                    .remove("representation");
+            }
+        }
     }
 }

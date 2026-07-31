@@ -84,11 +84,16 @@ into the allele-aware evidence screen:
 ```sh
 cargo run --bin gentle_cli -- --project project.gentle.json allele-hash-screen \
   --gene FUS --from-rna-report REPORT_ID --transcript-fasta transcripts.fa \
-  --variant-table variants.tsv --out allele-screen
+  --variant-table variants.tsv --min-informative-reads 10 \
+  --balanced-band-lo 0.40 --balanced-band-hi 0.60 --out allele-screen
 ```
 
 Salmon `unmapped_names` and mapping SAM inputs can select additional cohorts,
 but still require the original FASTA/FASTQ via `--read-file` or `--read-pair`.
+The v3 report adds depth-aware `hap1_preferred`, `hap2_preferred`, `balanced`,
+`inconclusive_low_depth`, or `unphased_allele_level_only` sequence-
+representation verdicts. These are threshold-based evidence summaries, not
+claims of biological significance or causation.
 See the [CLI manual](docs/cli.md) for the complete contract.
 
 Tagged internal releases may provide a macOS DMG or Windows ZIP on the

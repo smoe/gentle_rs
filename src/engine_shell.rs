@@ -3069,6 +3069,9 @@ pub enum ShellCommand {
         out_dir: String,
         kmer_len: usize,
         min_unique_kmer_hits: u64,
+        min_informative_reads: u64,
+        balanced_band_lo: f64,
+        balanced_band_hi: f64,
         max_inline_read_calls: usize,
     },
     RnaReadsMaterializeHits {
@@ -12524,15 +12527,21 @@ impl ShellCommand {
                 out_dir,
                 kmer_len,
                 min_unique_kmer_hits,
+                min_informative_reads,
+                balanced_band_lo,
+                balanced_band_hi,
                 ..
             } => format!(
-                "screen allele-aware RNA-read haplotype support for '{}' (transcripts='{}', variants='{}', reads={}, kmer_len={}, min_unique_kmer_hits={}, out='{}')",
+                "screen allele-aware RNA-read haplotype support for '{}' (transcripts='{}', variants='{}', reads={}, kmer_len={}, min_unique_kmer_hits={}, min_informative_reads={}, balanced_band=[{:.3},{:.3}], out='{}')",
                 gene,
                 transcript_fasta,
                 variant_table.as_deref().unwrap_or("<none>"),
                 read_files.len(),
                 kmer_len,
                 min_unique_kmer_hits,
+                min_informative_reads,
+                balanced_band_lo,
+                balanced_band_hi,
                 out_dir
             ),
             Self::RnaReadsMaterializeHits {
@@ -23554,6 +23563,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--salmon-mappings-sam", "required": false, "subject_kind": "other", "detail": "Salmon mapping SAM used to select reads mapped to target transcripts from explicit read inputs"}),
                 json!({"name": "--kmer-len", "required": false, "subject_kind": "other", "detail": "k-mer length"}),
                 json!({"name": "--min-unique-kmer-hits", "required": false, "subject_kind": "other", "detail": "minimum unique haplotype k-mer hits for a haplotype call"}),
+                json!({"name": "--min-informative-reads", "required": false, "subject_kind": "other", "detail": "minimum phased allele-informative observations for a representation verdict; default 10"}),
+                json!({"name": "--balanced-band-lo", "required": false, "subject_kind": "other", "detail": "inclusive lower hap1-fraction bound for a balanced verdict; default 0.40"}),
+                json!({"name": "--balanced-band-hi", "required": false, "subject_kind": "other", "detail": "inclusive upper hap1-fraction bound for a balanced verdict; default 0.60"}),
                 json!({"name": "--out", "required": true, "subject_kind": "other", "detail": "external allele-hash screen output directory"}),
             ],
             "reads": [],
@@ -57549,6 +57561,9 @@ fn execute_rna_reads_command(
             out_dir,
             kmer_len,
             min_unique_kmer_hits,
+            min_informative_reads,
+            balanced_band_lo,
+            balanced_band_hi,
             max_inline_read_calls,
         } => {
             let report =
@@ -57574,6 +57589,9 @@ fn execute_rna_reads_command(
                     out_dir: out_dir.clone(),
                     kmer_len: *kmer_len,
                     min_unique_kmer_hits: *min_unique_kmer_hits,
+                    min_informative_reads: *min_informative_reads,
+                    balanced_band_lo: *balanced_band_lo,
+                    balanced_band_hi: *balanced_band_hi,
                     max_inline_read_calls: *max_inline_read_calls,
                     ..AlleleHashScreenRequest::default()
                 })?;

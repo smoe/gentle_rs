@@ -19,6 +19,11 @@ understand what changed.
   commits resolutions through detached engine execution, auto-selects current
   results, and exposes resolved/unresolved membership, provenance, warnings,
   and portable JSON before existing collection operations.
+- Added depth-aware, auditable sequence-representation verdicts to
+  `gentle.rna_allele_hash_screen.v3`: phased variant/transcript/block summaries
+  and the gene roll-up now distinguish preferred, balanced, low-depth, and
+  unphased evidence while retaining RNA-report expression depth as labeled
+  context rather than a causation or significance claim.
 - Added project-backed and Salmon-aware read sourcing to
   `rna-reads allele-hash-screen`: target-gene accepted reads can flow directly
   from a persisted RNA-read report, Salmon outputs select IDs from explicit
