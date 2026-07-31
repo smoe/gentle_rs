@@ -5,7 +5,10 @@ use gentle::allele_hash_screen::{
     AlleleHashScreenRequest, AlleleReadPairInput, run_allele_hash_screen,
 };
 
-pub(super) fn handle_allele_hash_screen(args: &[String], cmd_idx: usize) -> Result<(), String> {
+fn parse_allele_hash_screen_request(
+    args: &[String],
+    cmd_idx: usize,
+) -> Result<AlleleHashScreenRequest, String> {
     let mut idx = cmd_idx + 1;
     let mut request = AlleleHashScreenRequest::default();
     while idx < args.len() {
@@ -112,6 +115,36 @@ pub(super) fn handle_allele_hash_screen(args: &[String], cmd_idx: usize) -> Resu
                 )?);
                 idx += 2;
             }
+            "--from-rna-report" => {
+                request.from_rna_report = Some(gentle_cli_args::required_value(
+                    args,
+                    idx,
+                    "--from-rna-report",
+                    "REPORT_ID",
+                    "allele-hash-screen",
+                )?);
+                idx += 2;
+            }
+            "--salmon-unmapped-names" => {
+                request.salmon_unmapped_names = Some(gentle_cli_args::required_value(
+                    args,
+                    idx,
+                    "--salmon-unmapped-names",
+                    "PATH",
+                    "allele-hash-screen",
+                )?);
+                idx += 2;
+            }
+            "--salmon-mappings-sam" => {
+                request.salmon_mappings_sam = Some(gentle_cli_args::required_value(
+                    args,
+                    idx,
+                    "--salmon-mappings-sam",
+                    "PATH",
+                    "allele-hash-screen",
+                )?);
+                idx += 2;
+            }
             "--out" => {
                 request.out_dir = gentle_cli_args::required_value(
                     args,
@@ -158,6 +191,60 @@ pub(super) fn handle_allele_hash_screen(args: &[String], cmd_idx: usize) -> Resu
             other => return Err(format!("Unknown allele-hash-screen option '{other}'")),
         }
     }
-    let report = run_allele_hash_screen(request)?;
+    Ok(request)
+}
+
+pub(super) fn handle_allele_hash_screen(
+    args: &[String],
+    cmd_idx: usize,
+    state_path: &str,
+) -> Result<(), String> {
+    let request = parse_allele_hash_screen_request(args, cmd_idx)?;
+    let report = if request.from_rna_report.is_some() {
+        let engine = GentleEngine::from_state(load_state(state_path)?);
+        engine.run_allele_hash_screen_with_project_sources(request)?
+    } else {
+        run_allele_hash_screen(request)?
+    };
     print_json(&report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_report_and_salmon_source_flags() {
+        let args = [
+            "gentle_cli",
+            "allele-hash-screen",
+            "--gene",
+            "FUS",
+            "--transcript-fasta",
+            "transcripts.fa",
+            "--variant-table",
+            "variants.tsv",
+            "--from-rna-report",
+            "fus_reads",
+            "--read-file",
+            "reads.fastq",
+            "--salmon-unmapped-names",
+            "unmapped_names.txt",
+            "--salmon-mappings-sam",
+            "mappings.sam",
+            "--out",
+            "out",
+        ]
+        .map(str::to_string);
+        let request =
+            parse_allele_hash_screen_request(&args, 1).expect("parse allele source flags");
+
+        assert_eq!(request.from_rna_report.as_deref(), Some("fus_reads"));
+        assert_eq!(request.read_files, vec!["reads.fastq".to_string()]);
+        assert_eq!(
+            request.salmon_unmapped_names.as_deref(),
+            Some("unmapped_names.txt")
+        );
+        assert_eq!(request.salmon_mappings_sam.as_deref(), Some("mappings.sam"));
+    }
 }

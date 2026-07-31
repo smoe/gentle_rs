@@ -575,6 +575,74 @@ impl GentleEngine {
             })
     }
 
+    /// Resolve persisted RNA-report membership before running the shared allele screen.
+    pub fn run_allele_hash_screen_with_project_sources(
+        &self,
+        mut request: crate::allele_hash_screen::AlleleHashScreenRequest,
+    ) -> Result<crate::allele_hash_screen::AlleleHashScreenReport, String> {
+        let Some(report_id) = request.from_rna_report.clone() else {
+            return crate::allele_hash_screen::run_allele_hash_screen(request);
+        };
+        let audit = self
+            .inspect_rna_read_gene_support(
+                &report_id,
+                std::slice::from_ref(&request.gene),
+                &[],
+                RnaReadGeneSupportCompleteRule::Near,
+                RnaReadGeneSupportAuditCohortFilter::Accepted,
+            )
+            .map_err(|error| error.to_string())?;
+        if audit.matched_gene_ids.is_empty() {
+            return Err(format!(
+                "RNA-read report '{}' does not resolve requested gene '{}'",
+                report_id, request.gene
+            ));
+        }
+        if audit.accepted_target_record_indices.is_empty() {
+            return Err(format!(
+                "RNA-read report '{}' contains no aligned retained reads assigned to gene '{}'",
+                report_id, request.gene
+            ));
+        }
+
+        let report = self
+            .get_rna_read_report(&report_id)
+            .map_err(|error| error.to_string())?;
+        let accepted_indices = audit
+            .accepted_target_record_indices
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let mut resolved_reads = Vec::with_capacity(accepted_indices.len());
+        for hit in &report.hits {
+            if !accepted_indices.contains(&hit.record_index) {
+                continue;
+            }
+            if hit.sequence.trim().is_empty() {
+                return Err(format!(
+                    "RNA-read report '{}' record_index {} has no stored sequence and cannot feed allele-hash-screen",
+                    report.report_id, hit.record_index
+                ));
+            }
+            resolved_reads.push(crate::allele_hash_screen::AlleleRnaReportReadInput {
+                read_id: hit.header_id.clone(),
+                sequence: hit.sequence.clone(),
+                report_id: report.report_id.clone(),
+                record_index: hit.record_index,
+            });
+        }
+        if resolved_reads.len() != accepted_indices.len() {
+            return Err(format!(
+                "RNA-read report '{}' resolved {} accepted record indices but only {} stored read rows",
+                report.report_id,
+                accepted_indices.len(),
+                resolved_reads.len()
+            ));
+        }
+        request.from_rna_report = Some(report.report_id.clone());
+        request.rna_report_reads = resolved_reads;
+        crate::allele_hash_screen::run_allele_hash_screen(request)
+    }
+
     pub fn export_rna_read_report(
         &self,
         report_id: &str,

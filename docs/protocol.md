@@ -10330,7 +10330,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
   - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]...`
   - `rna-reads build-transcript-index OUTPUT.json [--kmer-len N] --transcript-fasta PATH [--transcript-fasta PATH ...]`
-  - `rna-reads allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--read-file PATH ...] [--read-pair R1,R2 ...] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--max-inline-read-calls N] --out OUT_DIR`
+  - `rna-reads allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--from-rna-report REPORT_ID] [--read-file PATH ...] [--read-pair R1,R2 ...] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--max-inline-read-calls N] --out OUT_DIR`
   - `rna-reads materialize-hits REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
@@ -10422,9 +10422,9 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       `gentle.rna_read_transcript_catalog_index.v1` payload directly and also
       writes the same JSON to the requested output path
     - `rna-reads allele-hash-screen` returns the full
-      `gentle.rna_allele_hash_screen.v1` payload directly and writes the same
+      `gentle.rna_allele_hash_screen.v2` payload directly and writes the same
       JSON, a read-call TSV, and reference/hap1/hap2 transcript FASTA files
-      under the requested output directory. The deterministic v1 path accepts
+      under the requested output directory. The deterministic path accepts
       an explicit transcript-coordinate variant TSV with columns
       `transcript_id`, `cdna_pos_1based`, `ref`, `alt`, and `genotype`;
       optional columns are `variant_id`/`id` and `phase_set`. Phased
@@ -10438,13 +10438,27 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       (optional `strand`). Only explicit PASS biallelic SNVs are projected;
       `--vcf-sample` is required when the VCF contains multiple samples, and
       every projected reference allele must match the transcript sequence.
+      `--from-rna-report REPORT_ID` resolves the same accepted target-gene
+      cohort as `rna-reads inspect-gene-support`: retained rows must have a
+      `best_mapping` assigned to the requested gene/group, while seed-pass
+      state is provenance rather than an acceptance gate. Their stored
+      sequences are screened directly, so no extracted FASTA/FASTQ is needed
+      for that source. `--salmon-unmapped-names` and
+      `--salmon-mappings-sam` reuse the target-rescue ID parsers to select
+      Salmon-unassigned and target-transcript-mapped IDs from explicit
+      `--read-file`/`--read-pair` sequence inputs. Salmon ID files alone are
+      rejected because they do not provide every selected read sequence.
       Repeated `--read-pair R1,R2` inputs are streamed in lockstep and counted
       as fragments, with an invalid-base boundary preventing cross-mate k-mers.
       Report fields include `schema`, `gene`, `phase_mode`, `params`,
       physical read/fragment/evidence-observation counts, `phase_blocks`,
       `output_files`, `haplotype_fastas`, `transcript_summaries`,
-      `variant_summaries`, `classification_counts`, `reads[]`, and
-      `warnings[]`. `reads[]` is capped by `--max-inline-read-calls` (default
+      `variant_summaries`, `classification_counts`, `source_provenance[]`,
+      `reads[]`, and `warnings[]`. Each read call carries
+      `source_origins[]`; provenance counts can overlap when an explicit read
+      is also selected into a Salmon cohort. Reports using the v1 shape still
+      deserialize with empty source-provenance fields. `reads[]` is capped by
+      `--max-inline-read-calls` (default
       10,000), while the streamed TSV and aggregate counts remain complete.
       Read calls classify evidence as `hap1`, `hap2`, `alternate`,
       `reference_only`, `ambiguous`, `uninformative`, or `off_target` and carry

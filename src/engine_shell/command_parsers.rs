@@ -11137,6 +11137,9 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             let mut read_files = Vec::<String>::new();
             let mut read_pairs = Vec::<(String, String)>::new();
             let mut read_id_allowlist: Option<String> = None;
+            let mut from_rna_report: Option<String> = None;
+            let mut salmon_unmapped_names: Option<String> = None;
+            let mut salmon_mappings_sam: Option<String> = None;
             let mut out_dir: Option<String> = None;
             let mut kmer_len = 21usize;
             let mut min_unique_kmer_hits = 1u64;
@@ -11225,6 +11228,30 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                             "rna-reads allele-hash-screen",
                         )?);
                     }
+                    "--from-rna-report" => {
+                        from_rna_report = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--from-rna-report",
+                            "rna-reads allele-hash-screen",
+                        )?);
+                    }
+                    "--salmon-unmapped-names" => {
+                        salmon_unmapped_names = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--salmon-unmapped-names",
+                            "rna-reads allele-hash-screen",
+                        )?);
+                    }
+                    "--salmon-mappings-sam" => {
+                        salmon_mappings_sam = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--salmon-mappings-sam",
+                            "rna-reads allele-hash-screen",
+                        )?);
+                    }
                     "--out" => {
                         out_dir = Some(parse_option_path(
                             tokens,
@@ -11290,9 +11317,18 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             let out_dir = out_dir
                 .filter(|value| !value.trim().is_empty())
                 .ok_or_else(|| "rna-reads allele-hash-screen requires --out OUT_DIR".to_string())?;
-            if read_files.is_empty() && read_pairs.is_empty() {
+            if (salmon_unmapped_names.is_some() || salmon_mappings_sam.is_some())
+                && read_files.is_empty()
+                && read_pairs.is_empty()
+            {
                 return Err(
-                    "rna-reads allele-hash-screen requires at least one --read-file PATH or --read-pair R1,R2"
+                    "rna-reads allele-hash-screen Salmon selectors require --read-file PATH or --read-pair R1,R2 as a sequence source"
+                        .to_string(),
+                );
+            }
+            if read_files.is_empty() && read_pairs.is_empty() && from_rna_report.is_none() {
+                return Err(
+                    "rna-reads allele-hash-screen requires --from-rna-report REPORT_ID, --read-file PATH, or --read-pair R1,R2"
                         .to_string(),
                 );
             }
@@ -11306,6 +11342,9 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 read_files,
                 read_pairs,
                 read_id_allowlist,
+                from_rna_report,
+                salmon_unmapped_names,
+                salmon_mappings_sam,
                 out_dir,
                 kmer_len,
                 min_unique_kmer_hits,

@@ -9,8 +9,9 @@
 //! call biological significance.
 
 use crate::target_rescue::{
-    canonical_kmers_for_each, open_maybe_gz_reader, read_id_set_from_path, visit_fasta_records,
-    visit_paired_read_records, visit_read_records,
+    canonical_kmers_for_each, normalize_read_id, open_maybe_gz_reader, read_id_set_from_path,
+    target_mapped_read_ids_from_sam, visit_fasta_records, visit_paired_read_records,
+    visit_read_records,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -20,7 +21,9 @@ use std::{
     path::Path,
 };
 
-pub const ALLELE_HASH_SCREEN_SCHEMA: &str = "gentle.rna_allele_hash_screen.v1";
+pub const ALLELE_HASH_SCREEN_SCHEMA: &str = "gentle.rna_allele_hash_screen.v2";
+#[cfg(test)]
+const ALLELE_HASH_SCREEN_SCHEMA_V1: &str = "gentle.rna_allele_hash_screen.v1";
 const DEFAULT_KMER_LEN: usize = 21;
 const DEFAULT_MIN_UNIQUE_KMER_HITS: u64 = 1;
 const DEFAULT_MAX_INLINE_READ_CALLS: usize = 10_000;
@@ -48,6 +51,14 @@ pub struct AlleleHashScreenRequest {
     pub read_pairs: Vec<AlleleReadPairInput>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub read_id_allowlist: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_rna_report: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub salmon_unmapped_names: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub salmon_mappings_sam: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rna_report_reads: Vec<AlleleRnaReportReadInput>,
     pub out_dir: String,
     pub kmer_len: usize,
     pub min_unique_kmer_hits: u64,
@@ -67,6 +78,10 @@ impl Default for AlleleHashScreenRequest {
             read_files: Vec::new(),
             read_pairs: Vec::new(),
             read_id_allowlist: None,
+            from_rna_report: None,
+            salmon_unmapped_names: None,
+            salmon_mappings_sam: None,
+            rna_report_reads: Vec::new(),
             out_dir: String::new(),
             kmer_len: DEFAULT_KMER_LEN,
             min_unique_kmer_hits: DEFAULT_MIN_UNIQUE_KMER_HITS,
@@ -101,6 +116,8 @@ pub struct AlleleHashScreenReport {
     pub transcript_summaries: Vec<AlleleTranscriptSummary>,
     pub variant_summaries: Vec<AlleleVariantSummary>,
     pub classification_counts: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub source_provenance: Vec<AlleleReadSourceProvenance>,
     pub reads: Vec<AlleleReadCall>,
     pub warnings: Vec<String>,
 }
@@ -121,6 +138,12 @@ pub struct AlleleHashScreenParams {
     pub read_pairs: Vec<AlleleReadPairInput>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub read_id_allowlist: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_rna_report: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub salmon_unmapped_names: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub salmon_mappings_sam: Option<String>,
     pub kmer_len: usize,
     pub min_unique_kmer_hits: u64,
     #[serde(default = "default_max_inline_read_calls")]
@@ -131,6 +154,44 @@ pub struct AlleleHashScreenParams {
 pub struct AlleleReadPairInput {
     pub read1: String,
     pub read2: String,
+}
+
+/// One target-gene read resolved from a persisted RNA-read report by the engine.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AlleleRnaReportReadInput {
+    pub read_id: String,
+    pub sequence: String,
+    pub report_id: String,
+    pub record_index: usize,
+}
+
+/// Input-basis tags attached to each selected allele-screen observation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AlleleReadSourceOrigin {
+    ExplicitFile,
+    RnaReportTargetMapped,
+    SalmonUnassigned,
+    SalmonTargetMapped,
+}
+
+impl AlleleReadSourceOrigin {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ExplicitFile => "explicit_file",
+            Self::RnaReportTargetMapped => "rna_report_target_mapped",
+            Self::SalmonUnassigned => "salmon_unassigned",
+            Self::SalmonTargetMapped => "salmon_target_mapped",
+        }
+    }
+}
+
+/// Selected evidence counts by source tag. Counts may overlap across tags.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AlleleReadSourceProvenance {
+    pub origin: AlleleReadSourceOrigin,
+    pub evidence_observation_count: u64,
+    pub input_read_count: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -201,6 +262,8 @@ impl AlleleReadClassification {
 pub struct AlleleReadCall {
     pub read_id: String,
     pub source_file: String,
+    #[serde(default)]
+    pub source_origins: Vec<AlleleReadSourceOrigin>,
     #[serde(default)]
     pub evidence_unit: AlleleEvidenceUnit,
     #[serde(default = "default_input_read_count")]
@@ -480,6 +543,34 @@ pub fn run_allele_hash_screen(
         .as_deref()
         .map(read_id_set_from_path)
         .transpose()?;
+    let salmon_unassigned_ids = request
+        .salmon_unmapped_names
+        .as_deref()
+        .map(read_id_set_from_path)
+        .transpose()?;
+    let target_transcript_ids = transcripts
+        .iter()
+        .flat_map(|transcript| {
+            let unversioned = transcript
+                .id
+                .split_once('.')
+                .map_or(transcript.id.as_str(), |(id, _)| id)
+                .to_string();
+            [transcript.id.clone(), unversioned]
+        })
+        .collect::<HashSet<_>>();
+    let salmon_target_mapped_ids = request
+        .salmon_mappings_sam
+        .as_deref()
+        .map(|path| target_mapped_read_ids_from_sam(path, &target_transcript_ids))
+        .transpose()?;
+    let salmon_selector_active =
+        salmon_unassigned_ids.is_some() || salmon_target_mapped_ids.is_some();
+    let rna_report_read_ids = request
+        .rna_report_reads
+        .iter()
+        .map(|read| normalize_read_id(&read.read_id))
+        .collect::<HashSet<_>>();
     let mut read_count_total = 0u64;
     let mut read_count_selected = 0u64;
     let mut fragment_count_total = 0u64;
@@ -490,6 +581,8 @@ pub fn run_allele_hash_screen(
     let mut variant_counts = BTreeMap::<String, CountSummary>::new();
     let mut phase_block_counts = BTreeMap::<String, CountSummary>::new();
     let mut classification_counts = empty_classification_counts();
+    let mut source_provenance_counts = BTreeMap::<AlleleReadSourceOrigin, (u64, u64)>::new();
+    let mut duplicate_explicit_report_records = 0u64;
     let mut reads_writer = BufWriter::new(File::create(&output_files.reads_tsv).map_err(|e| {
         format!(
             "Could not create read TSV '{}': {e}",
@@ -501,23 +594,36 @@ pub fn run_allele_hash_screen(
         let mut process_record = |record: crate::target_rescue::SequenceRecord,
                                   source_file: &str,
                                   evidence_unit: AlleleEvidenceUnit,
-                                  input_read_count: u8|
+                                  input_read_count: u8,
+                                  mut source_origins: Vec<AlleleReadSourceOrigin>,
+                                  selected_by_source: bool|
          -> Result<(), String> {
             read_count_total = read_count_total.saturating_add(u64::from(input_read_count));
             fragment_count_total = fragment_count_total.saturating_add(1);
+            if !selected_by_source {
+                return Ok(());
+            }
             if let Some(allowlist) = &allowlist
                 && !allowlist.contains(&record.id)
             {
                 return Ok(());
             }
+            source_origins.sort_unstable();
+            source_origins.dedup();
             read_count_selected = read_count_selected.saturating_add(u64::from(input_read_count));
             fragment_count_selected = fragment_count_selected.saturating_add(1);
             evidence_observation_count_selected =
                 evidence_observation_count_selected.saturating_add(1);
+            for origin in &source_origins {
+                let counts = source_provenance_counts.entry(*origin).or_default();
+                counts.0 = counts.0.saturating_add(1);
+                counts.1 = counts.1.saturating_add(u64::from(input_read_count));
+            }
             let call = classify_read(
                 ReadClassificationInput {
                     read_id: record.id,
                     source_file,
+                    source_origins,
                     evidence_unit,
                     input_read_count,
                     sequence: &record.sequence,
@@ -544,15 +650,100 @@ pub fn run_allele_hash_screen(
             }
             Ok(())
         };
+        for report_read in &request.rna_report_reads {
+            let read_id = normalize_read_id(&report_read.read_id);
+            let mut source_origins = vec![AlleleReadSourceOrigin::RnaReportTargetMapped];
+            if salmon_unassigned_ids
+                .as_ref()
+                .is_some_and(|ids| ids.contains(&read_id))
+            {
+                source_origins.push(AlleleReadSourceOrigin::SalmonUnassigned);
+            }
+            if salmon_target_mapped_ids
+                .as_ref()
+                .is_some_and(|ids| ids.contains(&read_id))
+            {
+                source_origins.push(AlleleReadSourceOrigin::SalmonTargetMapped);
+            }
+            let source_file = format!("rna-report:{}", report_read.report_id);
+            process_record(
+                crate::target_rescue::SequenceRecord {
+                    id: read_id,
+                    source_length: report_read.sequence.len(),
+                    sequence: report_read.sequence.clone(),
+                },
+                &source_file,
+                AlleleEvidenceUnit::Read,
+                1,
+                source_origins,
+                true,
+            )?;
+        }
         for read_file in &request.read_files {
             visit_read_records(read_file, |record| {
-                process_record(record, read_file, AlleleEvidenceUnit::Read, 1)
+                if rna_report_read_ids.contains(&record.id) {
+                    duplicate_explicit_report_records =
+                        duplicate_explicit_report_records.saturating_add(1);
+                    return Ok(());
+                }
+                let mut source_origins = vec![AlleleReadSourceOrigin::ExplicitFile];
+                let mut selected_by_source = !salmon_selector_active;
+                if salmon_unassigned_ids
+                    .as_ref()
+                    .is_some_and(|ids| ids.contains(&record.id))
+                {
+                    source_origins.push(AlleleReadSourceOrigin::SalmonUnassigned);
+                    selected_by_source = true;
+                }
+                if salmon_target_mapped_ids
+                    .as_ref()
+                    .is_some_and(|ids| ids.contains(&record.id))
+                {
+                    source_origins.push(AlleleReadSourceOrigin::SalmonTargetMapped);
+                    selected_by_source = true;
+                }
+                process_record(
+                    record,
+                    read_file,
+                    AlleleEvidenceUnit::Read,
+                    1,
+                    source_origins,
+                    selected_by_source,
+                )
             })?;
         }
         for read_pair in &request.read_pairs {
             let source_file = format!("{};{}", read_pair.read1, read_pair.read2);
             visit_paired_read_records(&read_pair.read1, &read_pair.read2, |record| {
-                process_record(record, &source_file, AlleleEvidenceUnit::Fragment, 2)
+                if rna_report_read_ids.contains(&record.id) {
+                    duplicate_explicit_report_records =
+                        duplicate_explicit_report_records.saturating_add(1);
+                    return Ok(());
+                }
+                let mut source_origins = vec![AlleleReadSourceOrigin::ExplicitFile];
+                let mut selected_by_source = !salmon_selector_active;
+                if salmon_unassigned_ids
+                    .as_ref()
+                    .is_some_and(|ids| ids.contains(&record.id))
+                {
+                    source_origins.push(AlleleReadSourceOrigin::SalmonUnassigned);
+                    selected_by_source = true;
+                }
+                if salmon_target_mapped_ids
+                    .as_ref()
+                    .is_some_and(|ids| ids.contains(&record.id))
+                {
+                    source_origins.push(AlleleReadSourceOrigin::SalmonTargetMapped);
+                    selected_by_source = true;
+                }
+                process_record(
+                    record,
+                    &source_file,
+                    AlleleEvidenceUnit::Fragment,
+                    2,
+                    source_origins,
+                    selected_by_source,
+                )
             })?;
         }
     }
@@ -585,6 +776,22 @@ pub fn run_allele_hash_screen(
             request.max_inline_read_calls, output_files.reads_tsv
         ));
     }
+    if duplicate_explicit_report_records > 0 {
+        warnings.push(format!(
+            "Skipped {duplicate_explicit_report_records} explicit read record(s) whose normalized ids were already sourced from RNA-read report '{}'.",
+            request.from_rna_report.as_deref().unwrap_or("unknown")
+        ));
+    }
+    let source_provenance = source_provenance_counts
+        .into_iter()
+        .map(|(origin, (evidence_observation_count, input_read_count))| {
+            AlleleReadSourceProvenance {
+                origin,
+                evidence_observation_count,
+                input_read_count,
+            }
+        })
+        .collect::<Vec<_>>();
     let report = AlleleHashScreenReport {
         schema: ALLELE_HASH_SCREEN_SCHEMA.to_string(),
         gene: request.gene.clone(),
@@ -598,6 +805,9 @@ pub fn run_allele_hash_screen(
             read_files: request.read_files.clone(),
             read_pairs: request.read_pairs.clone(),
             read_id_allowlist: request.read_id_allowlist.clone(),
+            from_rna_report: request.from_rna_report.clone(),
+            salmon_unmapped_names: request.salmon_unmapped_names.clone(),
+            salmon_mappings_sam: request.salmon_mappings_sam.clone(),
             kmer_len: request.kmer_len,
             min_unique_kmer_hits: request.min_unique_kmer_hits,
             max_inline_read_calls: request.max_inline_read_calls,
@@ -635,6 +845,7 @@ pub fn run_allele_hash_screen(
         transcript_summaries,
         variant_summaries,
         classification_counts,
+        source_provenance,
         reads: calls,
         warnings,
     };
@@ -661,9 +872,27 @@ fn validate_request(request: &AlleleHashScreenRequest) -> Result<(), String> {
     if request.vcf.is_some() && request.transcript_map.is_none() {
         return Err("allele-hash-screen --vcf requires --transcript-map PATH".to_string());
     }
-    if request.read_files.is_empty() && request.read_pairs.is_empty() {
+    if request.from_rna_report.is_some() && request.rna_report_reads.is_empty() {
         return Err(
-            "allele-hash-screen requires at least one --read-file PATH or --read-pair R1,R2"
+            "allele-hash-screen --from-rna-report must be resolved through a project-backed engine and contain at least one target-mapped read"
+                .to_string(),
+        );
+    }
+    if (request.salmon_unmapped_names.is_some() || request.salmon_mappings_sam.is_some())
+        && request.read_files.is_empty()
+        && request.read_pairs.is_empty()
+    {
+        return Err(
+            "allele-hash-screen Salmon selectors require at least one --read-file PATH or --read-pair R1,R2 because Salmon name/mapping files do not contain every selected read sequence"
+                .to_string(),
+        );
+    }
+    if request.read_files.is_empty()
+        && request.read_pairs.is_empty()
+        && request.rna_report_reads.is_empty()
+    {
+        return Err(
+            "allele-hash-screen requires --from-rna-report REPORT_ID, --read-file PATH, or --read-pair R1,R2"
                 .to_string(),
         );
     }
@@ -1523,6 +1752,7 @@ fn build_transcript_kmer_indexes(
 struct ReadClassificationInput<'a> {
     read_id: String,
     source_file: &'a str,
+    source_origins: Vec<AlleleReadSourceOrigin>,
     evidence_unit: AlleleEvidenceUnit,
     input_read_count: u8,
     sequence: &'a str,
@@ -1609,6 +1839,7 @@ fn classify_read(
     AlleleReadCall {
         read_id: input.read_id,
         source_file: input.source_file.to_string(),
+        source_origins: input.source_origins,
         evidence_unit: input.evidence_unit,
         input_read_count: input.input_read_count,
         classification,
@@ -2040,7 +2271,7 @@ fn write_haplotype_fasta(
 fn write_read_calls_header(writer: &mut impl Write, path: &str) -> Result<(), String> {
     writeln!(
         writer,
-        "read_id\tsource_file\tevidence_unit\tinput_read_count\tclassification\tread_length\tread_kmer_count\treference_hits\thap1_hits\thap2_hits\thap1_unique_hits\thap2_unique_hits\talternate_unique_hits\treference_only_hits\tmatched_transcripts\tsupporting_variants\tphase_block_calls"
+        "read_id\tsource_file\tsource_origins\tevidence_unit\tinput_read_count\tclassification\tread_length\tread_kmer_count\treference_hits\thap1_hits\thap2_hits\thap1_unique_hits\thap2_unique_hits\talternate_unique_hits\treference_only_hits\tmatched_transcripts\tsupporting_variants\tphase_block_calls"
     )
     .map_err(|e| format!("Could not write read TSV '{path}': {e}"))
 }
@@ -2068,9 +2299,14 @@ fn write_read_call_tsv(
         .join(";");
     writeln!(
         writer,
-        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         tsv_cell(&call.read_id),
         tsv_cell(&call.source_file),
+        call.source_origins
+            .iter()
+            .map(|origin| origin.as_str())
+            .collect::<Vec<_>>()
+            .join(";"),
         match call.evidence_unit {
             AlleleEvidenceUnit::Read => "read",
             AlleleEvidenceUnit::Fragment => "fragment",
@@ -2117,6 +2353,18 @@ mod tests {
             .join(name)
             .display()
             .to_string()
+    }
+
+    fn provenance_count(
+        report: &AlleleHashScreenReport,
+        origin: AlleleReadSourceOrigin,
+    ) -> (u64, u64) {
+        report
+            .source_provenance
+            .iter()
+            .find(|row| row.origin == origin)
+            .map(|row| (row.evidence_observation_count, row.input_read_count))
+            .unwrap_or_default()
     }
 
     #[test]
@@ -2179,6 +2427,70 @@ mod tests {
         assert!(Path::new(&report.output_files.reads_tsv).exists());
         assert!(Path::new(&report.output_files.hap1_fasta).exists());
         assert!(Path::new(&report.output_files.hap2_fasta).exists());
+    }
+
+    #[test]
+    fn salmon_selectors_reproduce_fixture_calls_and_provenance() {
+        let dir = tempdir().expect("temp dir");
+        let report = run_allele_hash_screen(AlleleHashScreenRequest {
+            gene: "FUS".to_string(),
+            transcript_fasta: fixture_path("fus_transcripts.fa"),
+            variant_table: Some(fixture_path("fus_variants.tsv")),
+            read_files: vec![fixture_path("fus_reads.fastq")],
+            salmon_unmapped_names: Some(fixture_path("salmon_unmapped_names.txt")),
+            salmon_mappings_sam: Some(fixture_path("salmon_mappings.sam")),
+            out_dir: dir.path().display().to_string(),
+            kmer_len: 9,
+            min_unique_kmer_hits: 1,
+            ..AlleleHashScreenRequest::default()
+        })
+        .expect("Salmon-sourced allele screen should run");
+
+        assert_eq!(report.read_count_total, 5);
+        assert_eq!(report.read_count_selected, 5);
+        assert_eq!(
+            provenance_count(&report, AlleleReadSourceOrigin::ExplicitFile),
+            (5, 5)
+        );
+        assert_eq!(
+            provenance_count(&report, AlleleReadSourceOrigin::SalmonUnassigned),
+            (4, 4)
+        );
+        assert_eq!(
+            provenance_count(&report, AlleleReadSourceOrigin::SalmonTargetMapped),
+            (1, 1)
+        );
+        let by_id = report
+            .reads
+            .iter()
+            .map(|call| (call.read_id.as_str(), call))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            by_id["fus_hap1_alt_v2"].classification,
+            AlleleReadClassification::Hap1
+        );
+        assert_eq!(
+            by_id["fus_hap2_alt_v1"].classification,
+            AlleleReadClassification::Hap2
+        );
+        assert_eq!(by_id["fus_hap2_alt_v1"].reference_hits, 0);
+        assert!(
+            by_id["fus_hap2_alt_v1"]
+                .source_origins
+                .contains(&AlleleReadSourceOrigin::SalmonUnassigned)
+        );
+        assert_eq!(
+            by_id["fus_shared_region"].classification,
+            AlleleReadClassification::Ambiguous
+        );
+        assert_eq!(
+            by_id["fus_off_target"].classification,
+            AlleleReadClassification::OffTarget
+        );
+        assert_eq!(
+            by_id["fus_short_uninformative"].classification,
+            AlleleReadClassification::Uninformative
+        );
     }
 
     #[test]
@@ -2416,5 +2728,62 @@ mod tests {
         }))
         .expect("old request payload");
         assert_eq!(request.max_inline_read_calls, DEFAULT_MAX_INLINE_READ_CALLS);
+        assert!(request.from_rna_report.is_none());
+        assert!(request.salmon_unmapped_names.is_none());
+        assert!(request.salmon_mappings_sam.is_none());
+        assert!(request.rna_report_reads.is_empty());
+    }
+
+    #[test]
+    fn v1_report_payload_deserializes_without_source_provenance() {
+        let dir = tempdir().expect("temp dir");
+        let report = run_allele_hash_screen(AlleleHashScreenRequest {
+            gene: "FUS".to_string(),
+            transcript_fasta: fixture_path("fus_transcripts.fa"),
+            variant_table: Some(fixture_path("fus_variants.tsv")),
+            read_files: vec![fixture_path("fus_reads.fastq")],
+            out_dir: dir.path().display().to_string(),
+            kmer_len: 9,
+            min_unique_kmer_hits: 1,
+            ..AlleleHashScreenRequest::default()
+        })
+        .expect("current report");
+        let mut payload = serde_json::to_value(report).expect("serialize current report");
+        let object = payload.as_object_mut().expect("report object");
+        object.insert(
+            "schema".to_string(),
+            serde_json::Value::String(ALLELE_HASH_SCREEN_SCHEMA_V1.to_string()),
+        );
+        object.remove("source_provenance");
+        object
+            .get_mut("params")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("params object")
+            .retain(|key, _| {
+                !matches!(
+                    key.as_str(),
+                    "from_rna_report" | "salmon_unmapped_names" | "salmon_mappings_sam"
+                )
+            });
+        for read in object
+            .get_mut("reads")
+            .and_then(serde_json::Value::as_array_mut)
+            .expect("read rows")
+        {
+            read.as_object_mut()
+                .expect("read object")
+                .remove("source_origins");
+        }
+
+        let decoded: AlleleHashScreenReport =
+            serde_json::from_value(payload).expect("v1 report remains readable");
+        assert_eq!(decoded.schema, ALLELE_HASH_SCREEN_SCHEMA_V1);
+        assert!(decoded.source_provenance.is_empty());
+        assert!(
+            decoded
+                .reads
+                .iter()
+                .all(|read| read.source_origins.is_empty())
+        );
     }
 }

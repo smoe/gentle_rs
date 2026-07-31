@@ -9,6 +9,9 @@
 //! - bug-regression coverage that spans multiple extracted engine submodules
 
 use super::*;
+use crate::allele_hash_screen::{
+    AlleleHashScreenRequest, AlleleReadClassification, AlleleReadSourceOrigin,
+};
 use crate::attract_motifs::{
     ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
 };
@@ -39235,6 +39238,121 @@ fn test_summarize_rna_read_gene_support_filters_requested_gene_in_multi_gene_spa
             .messages
             .iter()
             .any(|message| message.contains("accepted_target_reads=3"))
+    );
+}
+
+#[test]
+fn test_allele_hash_screen_sources_target_gene_reads_from_rna_report() {
+    let fixture_dir = PathBuf::from("test_files/fixtures/allele_hash_screen");
+    let read_path = fixture_dir.join("fus_reads.fastq");
+    let mut hits = Vec::<RnaReadInterpretationHit>::new();
+    crate::target_rescue::visit_read_records(
+        read_path.to_str().expect("UTF-8 fixture path"),
+        |record| {
+            let record_index = hits.len();
+            hits.push(RnaReadInterpretationHit {
+                record_index,
+                header_id: record.id,
+                read_length_bp: record.source_length,
+                sequence: record.sequence,
+                passed_seed_filter: true,
+                best_mapping: Some(RnaReadMappingHit {
+                    transcript_feature_id: 0,
+                    transcript_id: "FUS_TX1".to_string(),
+                    transcript_label: "FUS_TX1".to_string(),
+                    strand: "+".to_string(),
+                    target_start_1based: 1,
+                    target_end_1based: record.source_length,
+                    target_start_offset_0based: 0,
+                    target_end_offset_0based_exclusive: record.source_length,
+                    score: 100,
+                    identity_fraction: 1.0,
+                    query_coverage_fraction: 1.0,
+                    ..RnaReadMappingHit::default()
+                }),
+                ..RnaReadInterpretationHit::default()
+            });
+            Ok(())
+        },
+    )
+    .expect("read FUS fixture");
+
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(61)).expect("synthetic FUS anchor");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(0, 61),
+        qualifiers: vec![
+            ("gene".into(), Some("FUS".to_string())),
+            ("transcript_id".into(), Some("FUS_TX1".to_string())),
+            ("label".into(), Some("FUS_TX1".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("fus_anchor".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "fus_aligned_reads".to_string(),
+            seq_id: "fus_anchor".to_string(),
+            seed_feature_id: 0,
+            input_path: read_path.display().to_string(),
+            input_format: RnaReadInputFormat::Fasta,
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            target_gene_ids: vec!["FUS".to_string()],
+            read_count_total: hits.len(),
+            read_count_seed_passed: hits.len(),
+            read_count_aligned: hits.len(),
+            hits,
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("persist FUS RNA-read report");
+
+    let dir = tempdir().expect("temp dir");
+    let request = |out_dir: &Path| AlleleHashScreenRequest {
+        gene: "FUS".to_string(),
+        transcript_fasta: fixture_dir.join("fus_transcripts.fa").display().to_string(),
+        variant_table: Some(fixture_dir.join("fus_variants.tsv").display().to_string()),
+        out_dir: out_dir.display().to_string(),
+        kmer_len: 9,
+        min_unique_kmer_hits: 1,
+        ..AlleleHashScreenRequest::default()
+    };
+    let mut explicit_request = request(&dir.path().join("explicit"));
+    explicit_request.read_files = vec![read_path.display().to_string()];
+    let explicit = crate::allele_hash_screen::run_allele_hash_screen(explicit_request)
+        .expect("explicit fixture baseline");
+    let mut report_request = request(&dir.path().join("report"));
+    report_request.from_rna_report = Some("fus_aligned_reads".to_string());
+    let sourced = engine
+        .run_allele_hash_screen_with_project_sources(report_request)
+        .expect("report-sourced allele screen");
+
+    let classifications = |report: &crate::allele_hash_screen::AlleleHashScreenReport| {
+        report
+            .reads
+            .iter()
+            .map(|read| (read.read_id.clone(), read.classification))
+            .collect::<BTreeMap<_, _>>()
+    };
+    assert_eq!(classifications(&sourced), classifications(&explicit));
+    assert_eq!(
+        classifications(&sourced)["fus_hap2_alt_v1"],
+        AlleleReadClassification::Hap2
+    );
+    assert_eq!(
+        sourced
+            .source_provenance
+            .iter()
+            .find(|row| row.origin == AlleleReadSourceOrigin::RnaReportTargetMapped)
+            .map(|row| row.evidence_observation_count),
+        Some(5)
+    );
+    assert!(
+        sourced
+            .reads
+            .iter()
+            .all(|read| read.source_origins == vec![AlleleReadSourceOrigin::RnaReportTargetMapped])
     );
 }
 

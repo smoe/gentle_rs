@@ -835,13 +835,20 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   `rna-reads allele-hash-screen` and the standalone
   `gentle_cli allele-hash-screen` command run a deterministic, offline
   allele-aware k-mer screen from an explicit transcript FASTA, transcript-
-  coordinate variant table or locally projected reviewed VCF, and FASTA/FASTQ
-  read files. Paired inputs are evaluated as fragments without forming k-mers
-  across the mate boundary. The output is
-  sequence evidence (`gentle.rna_allele_hash_screen.v1`) for haplotype-biased
-  read support; it does not infer functional allelic imbalance. Unphased
-  genotypes remain allele-level evidence, and separate phase sets are reported
-  as separate blocks rather than being combined into a fabricated haplotype.
+  coordinate variant table or locally projected reviewed VCF. Reads may come
+  from explicit FASTA/FASTQ files or directly from the target-gene accepted
+  cohort of a persisted RNA-read report via `--from-rna-report`. Optional
+  `--salmon-unmapped-names` and `--salmon-mappings-sam` inputs select Salmon
+  cohorts from explicit read files; they do not replace those sequence files.
+  Paired inputs are evaluated as fragments without forming k-mers across the
+  mate boundary. The output is sequence evidence
+  (`gentle.rna_allele_hash_screen.v2`) for haplotype-biased read support; it
+  does not infer functional allelic imbalance. Per-read `source_origins[]` and
+  aggregate `source_provenance[]` record the input basis. Provenance tags may
+  overlap, for example an explicit-file read selected as Salmon-unassigned.
+  Existing v1 reports remain deserializable. Unphased genotypes remain
+  allele-level evidence, and separate phase sets are reported as separate
+  blocks rather than being combined into a fabricated haplotype.
   Long runs can opt into live progress with the global `--progress-stderr`
   option before the `rna-reads` command; this keeps the final JSON payload on
   stdout while periodic `progress rna-reads ...` lines are written to stderr.
@@ -3190,7 +3197,7 @@ Shared shell command:
     - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
     - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]...`
     - `rna-reads build-transcript-index OUTPUT.json [--kmer-len N] --transcript-fasta PATH [--transcript-fasta PATH ...]`
-    - `rna-reads allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--read-file PATH ...] [--read-pair R1,R2 ...] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--max-inline-read-calls N] --out OUT_DIR`
+    - `rna-reads allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--from-rna-report REPORT_ID] [--read-file PATH ...] [--read-pair R1,R2 ...] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--max-inline-read-calls N] --out OUT_DIR`
     - `rna-reads materialize-hits REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`

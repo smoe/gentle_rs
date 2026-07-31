@@ -1587,7 +1587,7 @@ fn strip_transcript_version(transcript_id: &str) -> &str {
         .map_or(transcript_id, |(id, _)| id)
 }
 
-fn normalize_read_id(raw: &str) -> String {
+pub(crate) fn normalize_read_id(raw: &str) -> String {
     let first = raw
         .trim()
         .trim_start_matches('@')
@@ -1626,7 +1626,7 @@ pub(crate) fn read_id_set_from_path(path: &str) -> Result<HashSet<String>, Strin
     Ok(ids)
 }
 
-fn target_mapped_read_ids_from_sam(
+pub(crate) fn target_mapped_read_ids_from_sam(
     path: &str,
     target_transcripts: &HashSet<String>,
 ) -> Result<HashSet<String>, String> {

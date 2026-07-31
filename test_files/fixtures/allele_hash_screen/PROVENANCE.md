@@ -16,6 +16,11 @@ Files:
   off-target, and too-short uninformative buckets.
 - `read_allowlist.txt`: includes all committed read ids and exercises the
   allowlist loader.
+- `salmon_unmapped_names.txt`: assigns four fixture reads, including
+  `fus_hap2_alt_v1`, to a synthetic Salmon-unassigned cohort.
+- `salmon_mappings.sam`: assigns the remaining short read to `FUS_TX1`, so the
+  two Salmon selectors together reproduce the complete fixture cohort while
+  still relying on `fus_reads.fastq` for sequences.
 - `generate_fixtures.py`: deterministic regeneration script.
 
 The key regression read is `fus_hap2_alt_v1`: with `k=9`, it is exactly one
@@ -32,4 +37,5 @@ python3 test_files/fixtures/allele_hash_screen/generate_fixtures.py
 Used by:
 
 - `allele_hash_screen::tests::fus_fixture_classifies_haplotype_and_ambiguous_reads`
+- `allele_hash_screen::tests::salmon_selectors_reproduce_fixture_calls_and_provenance`
 - `allele_hash_screen::tests::unphased_variant_labels_report_without_inventing_phase`

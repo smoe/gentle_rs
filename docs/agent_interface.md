@@ -642,6 +642,16 @@ an agent has selected a deterministic operation.
 - `variant promoter-context`
 - `variant reporter-fragments`
 
+For `rna-reads allele-hash-screen`, agents may supply
+`--from-rna-report REPORT_ID` to let the engine resolve target-gene-aligned
+retained rows and their stored sequences through the same gene-support cohort
+logic used by the audit command. Salmon `unmapped_names` and mapping SAM files
+are ID selectors, not complete sequence stores: when either Salmon flag is
+used, the command also requires explicit `--read-file` or `--read-pair`
+inputs. The v2 report exposes overlapping per-read `source_origins[]` and
+aggregate `source_provenance[]` counts so downstream imbalance interpretation
+does not lose its cohort basis.
+
 ### 4) Agent Assistant bridge (`agents ...` and GUI Agent Assistant)
 
 Agent Assistant runs configured external/internal AI systems and can return:

@@ -10,6 +10,10 @@
 //! - CLI-like round trips that should stay in parity with GUI shell mode
 
 use super::*;
+use crate::allele_hash_screen::{
+    ALLELE_HASH_SCREEN_SCHEMA, AlleleHashScreenReport, AlleleReadClassification,
+    AlleleReadSourceOrigin,
+};
 use crate::dna_sequence::DNAsequence;
 use crate::engine::FEATURE_LOCATION_EDIT_SCHEMA_V2;
 use crate::engine::{
@@ -38641,7 +38645,7 @@ fn parse_rna_reads_commands() {
     ));
 
     let allele_hash = parse_shell_line(
-        "rna-reads allele-hash-screen --gene FUS --transcript-fasta tx.fa --variant-table vars.tsv --read-file reads_single.fq --read-pair reads_1.fq,reads_2.fq --read-id-allowlist ids.txt --kmer-len 9 --min-unique-kmer-hits 2 --max-inline-read-calls 250 --out out/allele",
+        "rna-reads allele-hash-screen --gene FUS --transcript-fasta tx.fa --variant-table vars.tsv --read-file reads_single.fq --read-pair reads_1.fq,reads_2.fq --read-id-allowlist ids.txt --from-rna-report fus_reads --salmon-unmapped-names unmapped_names.txt --salmon-mappings-sam mappings.sam --kmer-len 9 --min-unique-kmer-hits 2 --max-inline-read-calls 250 --out out/allele",
     )
     .expect("parse rna-reads allele-hash-screen");
     assert!(matches!(
@@ -38653,6 +38657,9 @@ fn parse_rna_reads_commands() {
             read_files,
             read_pairs,
             read_id_allowlist,
+            from_rna_report,
+            salmon_unmapped_names,
+            salmon_mappings_sam,
             out_dir,
             kmer_len,
             min_unique_kmer_hits,
@@ -38664,11 +38671,36 @@ fn parse_rna_reads_commands() {
             && read_files == vec!["reads_single.fq".to_string()]
             && read_pairs == vec![("reads_1.fq".to_string(), "reads_2.fq".to_string())]
             && read_id_allowlist.as_deref() == Some("ids.txt")
+            && from_rna_report.as_deref() == Some("fus_reads")
+            && salmon_unmapped_names.as_deref() == Some("unmapped_names.txt")
+            && salmon_mappings_sam.as_deref() == Some("mappings.sam")
             && out_dir == "out/allele"
             && kmer_len == 9
             && min_unique_kmer_hits == 2
             && max_inline_read_calls == 250
     ));
+
+    let allele_hash_report_only = parse_shell_line(
+        "rna-reads allele-hash-screen --gene FUS --transcript-fasta tx.fa --variant-table vars.tsv --from-rna-report fus_reads --out out/report-only",
+    )
+    .expect("parse report-only rna-reads allele-hash-screen");
+    assert!(matches!(
+        allele_hash_report_only,
+        ShellCommand::RnaReadsAlleleHashScreen {
+            from_rna_report,
+            read_files,
+            read_pairs,
+            ..
+        } if from_rna_report.as_deref() == Some("fus_reads")
+            && read_files.is_empty()
+            && read_pairs.is_empty()
+    ));
+
+    let salmon_without_sequences = parse_shell_line(
+        "rna-reads allele-hash-screen --gene FUS --transcript-fasta tx.fa --variant-table vars.tsv --salmon-unmapped-names unmapped_names.txt --out out/invalid",
+    )
+    .expect_err("Salmon selectors without read sequences must fail");
+    assert!(salmon_without_sequences.contains("sequence source"));
 
     let allele_hash_vcf = parse_shell_line(
         "rna-reads allele-hash-screen --gene FUS --transcript-fasta tx.fa --vcf reviewed.vcf.gz --transcript-map transcript_map.tsv --vcf-sample ALS_SAMPLE --read-file reads.fq --out out/allele-vcf",
@@ -38959,6 +38991,52 @@ fn parse_rna_reads_commands() {
         align_selected_invalid.contains("Invalid --record-indices value"),
         "unexpected parse error: {align_selected_invalid}"
     );
+}
+
+#[test]
+fn execute_rna_reads_allele_hash_screen_applies_salmon_source_selectors() {
+    let fixture_dir =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("test_files/fixtures/allele_hash_screen");
+    let out_dir = tempdir().expect("temp output");
+    let command = parse_shell_line(&format!(
+        "rna-reads allele-hash-screen --gene FUS --transcript-fasta {} --variant-table {} --read-file {} --salmon-unmapped-names {} --salmon-mappings-sam {} --kmer-len 9 --out {}",
+        fixture_dir.join("fus_transcripts.fa").display(),
+        fixture_dir.join("fus_variants.tsv").display(),
+        fixture_dir.join("fus_reads.fastq").display(),
+        fixture_dir.join("salmon_unmapped_names.txt").display(),
+        fixture_dir.join("salmon_mappings.sam").display(),
+        out_dir.path().display(),
+    ))
+    .expect("parse Salmon-backed allele screen");
+    let mut engine = GentleEngine::default();
+    let run = execute_shell_command(&mut engine, &command).expect("execute allele screen");
+    assert!(!run.state_changed);
+    let report: AlleleHashScreenReport =
+        serde_json::from_value(run.output).expect("typed allele report");
+    assert_eq!(report.schema, ALLELE_HASH_SCREEN_SCHEMA);
+    assert_eq!(
+        report
+            .source_provenance
+            .iter()
+            .find(|row| row.origin == AlleleReadSourceOrigin::SalmonUnassigned)
+            .map(|row| row.evidence_observation_count),
+        Some(4)
+    );
+    assert_eq!(
+        report
+            .source_provenance
+            .iter()
+            .find(|row| row.origin == AlleleReadSourceOrigin::SalmonTargetMapped)
+            .map(|row| row.evidence_observation_count),
+        Some(1)
+    );
+    let anti_bias = report
+        .reads
+        .iter()
+        .find(|read| read.read_id == "fus_hap2_alt_v1")
+        .expect("anti-reference-bias read");
+    assert_eq!(anti_bias.classification, AlleleReadClassification::Hap2);
+    assert_eq!(anti_bias.reference_hits, 0);
 }
 
 #[test]

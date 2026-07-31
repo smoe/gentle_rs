@@ -78,6 +78,19 @@ cargo run --bin gentle_cli -- capabilities
 cargo run --bin gentle
 ```
 
+An existing RNA mapping report can feed its accepted target-gene reads directly
+into the allele-aware evidence screen:
+
+```sh
+cargo run --bin gentle_cli -- --project project.gentle.json allele-hash-screen \
+  --gene FUS --from-rna-report REPORT_ID --transcript-fasta transcripts.fa \
+  --variant-table variants.tsv --out allele-screen
+```
+
+Salmon `unmapped_names` and mapping SAM inputs can select additional cohorts,
+but still require the original FASTA/FASTQ via `--read-file` or `--read-pair`.
+See the [CLI manual](docs/cli.md) for the complete contract.
+
 Tagged internal releases may provide a macOS DMG or Windows ZIP on the
 [releases page](https://github.com/smoe/gentle_rs/releases). Linux users can
 build from source or use the documented container route. See

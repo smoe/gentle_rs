@@ -43,6 +43,24 @@ def main() -> None:
     )
     write("fus_reads.fastq", fastq)
     write("read_allowlist.txt", "".join(f"{read_id}\n" for read_id in reads))
+    write(
+        "salmon_unmapped_names.txt",
+        "".join(
+            f"{read_id} u\n"
+            for read_id in [
+                "fus_hap1_alt_v2",
+                "fus_hap2_alt_v1",
+                "fus_shared_region",
+                "fus_off_target",
+            ]
+        ),
+    )
+    write(
+        "salmon_mappings.sam",
+        "@HD\tVN:1.0\tSO:unsorted\n"
+        f"@SQ\tSN:FUS_TX1\tLN:{len(TX1)}\n"
+        "fus_short_uninformative\t0\tFUS_TX1\t1\t255\t4M\t*\t0\t0\tACGT\t*\n",
+    )
 
 
 if __name__ == "__main__":
