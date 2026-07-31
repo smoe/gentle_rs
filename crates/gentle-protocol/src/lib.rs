@@ -5641,6 +5641,7 @@ const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
     "features split",
     "features merge",
     "primers specificity",
+    "collections run primer-specificity",
     "primers specificity-plan",
     "primers specificity-import",
     "workflow",

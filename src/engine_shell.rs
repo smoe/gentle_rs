@@ -19386,7 +19386,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         ),
         primer_specificity_report_descriptor(
             "collections run primer-specificity",
-            "Run the shared primer-specificity operation once per bound collection member and return per-member status and produced report ids.",
+            "Map GENtle's existing local-BLAST primer specificity assessment over project sequences or a persisted gene-set resolution, retaining per-member failures and produced report IDs.",
             vec![
                 json!({"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"}),
                 json!({"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "project sequence ids; alternative to GENE_SET_REPORT_ID"}),
