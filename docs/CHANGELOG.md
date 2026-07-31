@@ -23,6 +23,16 @@ understand what changed.
   hard-coding Clariom D Human, allows only an unambiguous package-local
   fallback, and refuses probeset runs that would otherwise emit coordinate
   columns without annotations.
+- Completed Promoter design parity for ortholog ambiguity review and export:
+  the GUI now exposes `reject|first|preserve`, renders preserved mapping
+  candidates, and exports cohort/comparison JSON through the shared engine
+  operations.
+- Added an additive, fail-closed normalized CUT&RUN contract to
+  `gentle.ortholog_promoter_comparison.v1`. Quantitative cross-species rows
+  require explicit method, unit, shared reference, provenance, one
+  source-bound value per resolved promoter, and matching selected evidence;
+  otherwise GENtle retains qualitative states and reports `not_comparable`
+  without comparing raw intensity.
 
 ## 2026-07-30
 

@@ -553,6 +553,22 @@ Behavior notes:
   `confirmed`, `nearby`, `motif_only`, `occupancy_only`, or `no_data`.
   Rows without matching provenance are `not_comparable`; raw peak intensity is
   never compared across species by default.
+- `SummarizeOrthologPromoterComparison` accepts an optional additive
+  `cutrun_normalization` record. It must name a normalization method, unit,
+  shared comparison reference, provenance statement, and one unambiguous
+  normalized value for every resolved promoter. Each value identifies its
+  contributing selected CUT&RUN dataset/read-report ids and may add
+  value-specific provenance.
+- The optional `cutrun_quantitative_comparison` report section is
+  `comparable` only when every normalized value matches one resolved promoter,
+  every cited source was selected and evaluated for that species/genome, and
+  all required normalization metadata is present. It then reports neutral
+  pairwise values and `right - left` deltas without inferring activation or
+  conservation.
+- Selected CUT&RUN sources without that complete record produce
+  `cutrun_quantitative_comparison.status=not_comparable` while retaining the
+  qualitative support rows. GENtle does not derive cross-species numbers from
+  BED scores, peak height, signal intensity, fragment counts, or read depth.
 
 ## TFBS score-track similarity contract
 

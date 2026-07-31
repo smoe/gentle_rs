@@ -2137,7 +2137,7 @@
          ],
          "path": "orthologs promoter-comparison",
          "summary": "Compare a resolved ortholog promoter cohort across sequence identity, TFBS score-track similarity, optional expression rows, and explicit CUT&RUN comparability states.",
-         "usage": "orthologs promoter-comparison --cohort COHORT.json --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--score-kind KIND] [--allow-negative] [--relationship manual|co-regulated|anti-co-regulated] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset-id ID] [--cutrun-read-report-id ID] [--path OUTPUT.json]"
+         "usage": "orthologs promoter-comparison --cohort COHORT.json --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--score-kind KIND] [--allow-negative] [--relationship manual|co-regulated|anti-co-regulated] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset-id ID] [--cutrun-read-report-id ID] [--cutrun-normalization-json JSON_OR_@FILE] [--path OUTPUT.json]"
       },
       {
          "aliases": [

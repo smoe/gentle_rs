@@ -317,6 +317,8 @@ impl MainAreaDna {
             ortholog_cache_dir: String::new(),
             ortholog_cutrun_dataset_ids: String::new(),
             ortholog_cutrun_read_report_ids: String::new(),
+            ortholog_cutrun_normalization_json: String::new(),
+            ortholog_ambiguity_policy: OrthologAmbiguityPolicy::Reject,
             ortholog_relationship: GeneSetCohortRelationship::Unspecified,
             cached_ortholog_promoter_cohort: None,
             cached_ortholog_promoter_comparison: None,
@@ -1168,144 +1170,265 @@ impl MainAreaDna {
         }
     }
 
-    pub(super) fn summarize_variant_followup_ortholog_promoter_cohort(&mut self) {
+    pub(super) fn variant_followup_ortholog_promoter_cohort_operation(
+        &self,
+        path: Option<String>,
+    ) -> Result<Operation, String> {
         let anchor_species = self.variant_followup_ui.ortholog_anchor_species.trim();
         if anchor_species.is_empty() {
-            self.op_status = "Ortholog cohort requires an anchor species".to_string();
-            return;
+            return Err("Ortholog cohort requires an anchor species".to_string());
         }
         let anchor_genome_id = self.variant_followup_ui.ortholog_anchor_genome_id.trim();
         if anchor_genome_id.is_empty() {
-            self.op_status = "Ortholog cohort requires an anchor genome id".to_string();
-            return;
+            return Err("Ortholog cohort requires an anchor genome id".to_string());
         }
         let anchor_gene_query =
             Self::variant_followup_optional_text(&self.variant_followup_ui.gene_label)
                 .unwrap_or_else(|| self.variant_followup_ui.variant_label_or_id.clone());
         if anchor_gene_query.trim().is_empty() {
-            self.op_status = "Ortholog cohort requires a gene label/query".to_string();
-            return;
+            return Err("Ortholog cohort requires a gene label/query".to_string());
         }
-        let target_species = match Self::parse_variant_followup_ortholog_list(
+        let target_species = Self::parse_variant_followup_ortholog_list(
             &self.variant_followup_ui.ortholog_target_species,
             "Ortholog target species",
-        ) {
-            Ok(values) => values,
-            Err(err) => {
-                self.op_status = err;
-                return;
-            }
-        };
-        let target_genome_ids = match Self::parse_variant_followup_ortholog_bindings(
+        )?;
+        if target_species.is_empty() {
+            return Err("Ortholog cohort requires at least one target species".to_string());
+        }
+        let target_genome_ids = Self::parse_variant_followup_ortholog_bindings(
             &self.variant_followup_ui.ortholog_target_genome_ids,
-        ) {
-            Ok(values) => values,
-            Err(err) => {
-                self.op_status = err;
-                return;
-            }
-        };
+        )?;
         let ortholog_resource_path = self.variant_followup_ui.ortholog_resource_path.trim();
         if ortholog_resource_path.is_empty() {
-            self.op_status = "Ortholog cohort requires a local ortholog resource path".to_string();
-            return;
+            return Err("Ortholog cohort requires a local ortholog resource path".to_string());
         }
-        let upstream_bp = match Self::parse_positive_usize_text(
+        let upstream_bp = Self::parse_positive_usize_text(
             &self.variant_followup_ui.promoter_upstream_bp,
             "ortholog promoter upstream bp",
-        ) {
-            Ok(value) => value,
-            Err(err) => {
-                self.op_status = err;
-                return;
-            }
-        };
-        let downstream_bp = match Self::parse_positive_usize_text(
+        )?;
+        let downstream_bp = Self::parse_positive_usize_text(
             &self.variant_followup_ui.promoter_downstream_bp,
             "ortholog promoter downstream bp",
-        ) {
-            Ok(value) => value,
-            Err(err) => {
-                self.op_status = err;
-                return;
-            }
-        };
+        )?;
         let mut transcript_ids = BTreeMap::new();
         if let Some(transcript_id) =
             Self::variant_followup_optional_text(&self.variant_followup_ui.transcript_id)
         {
             transcript_ids.insert(anchor_species.to_string(), transcript_id);
         }
-        let result = self.apply_operation_with_feedback_and_result(
-            Operation::ResolveOrthologPromoterCohort {
-                anchor_species: anchor_species.to_string(),
-                anchor_genome_id: anchor_genome_id.to_string(),
-                anchor_gene_query: anchor_gene_query.trim().to_string(),
-                target_species,
-                target_genome_ids,
-                transcript_ids,
-                ortholog_resource_path: ortholog_resource_path.to_string(),
-                upstream_bp,
-                downstream_bp,
-                ambiguity_policy: OrthologAmbiguityPolicy::Reject,
-                relationship: self.variant_followup_ui.ortholog_relationship,
-                genome_catalog_path: Self::variant_followup_optional_trimmed(
-                    &self.variant_followup_ui.ortholog_genome_catalog_path,
-                ),
-                cache_dir: Self::variant_followup_optional_trimmed(
-                    &self.variant_followup_ui.ortholog_cache_dir,
-                ),
-                path: None,
-            },
-        );
+        Ok(Operation::ResolveOrthologPromoterCohort {
+            anchor_species: anchor_species.to_string(),
+            anchor_genome_id: anchor_genome_id.to_string(),
+            anchor_gene_query: anchor_gene_query.trim().to_string(),
+            target_species,
+            target_genome_ids,
+            transcript_ids,
+            ortholog_resource_path: ortholog_resource_path.to_string(),
+            upstream_bp,
+            downstream_bp,
+            ambiguity_policy: self.variant_followup_ui.ortholog_ambiguity_policy,
+            relationship: self.variant_followup_ui.ortholog_relationship,
+            genome_catalog_path: Self::variant_followup_optional_trimmed(
+                &self.variant_followup_ui.ortholog_genome_catalog_path,
+            ),
+            cache_dir: Self::variant_followup_optional_trimmed(
+                &self.variant_followup_ui.ortholog_cache_dir,
+            ),
+            path,
+        })
+    }
+
+    pub(super) fn summarize_variant_followup_ortholog_promoter_cohort(&mut self) {
+        let operation = match self.variant_followup_ortholog_promoter_cohort_operation(None) {
+            Ok(operation) => operation,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
         if let Some(report) = result.and_then(|row| row.ortholog_promoter_cohort) {
             self.variant_followup_ui.cached_ortholog_promoter_comparison = None;
             self.variant_followup_ui.cached_ortholog_promoter_cohort = Some(report);
         }
     }
 
-    pub(super) fn summarize_variant_followup_ortholog_promoter_comparison(&mut self) {
+    fn parse_variant_followup_ortholog_cutrun_normalization(
+        raw: &str,
+    ) -> Result<Option<OrthologCutRunNormalizationInput>, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+        let path_token = trimmed.strip_prefix('@').unwrap_or(trimmed);
+        let json = if Path::new(path_token).is_file() {
+            fs::read_to_string(path_token).map_err(|err| {
+                format!(
+                    "Could not read ortholog CUT&RUN normalization JSON '{}': {}",
+                    path_token, err
+                )
+            })?
+        } else {
+            trimmed.to_string()
+        };
+        serde_json::from_str::<OrthologCutRunNormalizationInput>(&json)
+            .map(Some)
+            .map_err(|err| format!("Invalid ortholog CUT&RUN normalization JSON: {err}"))
+    }
+
+    pub(super) fn variant_followup_ortholog_promoter_comparison_operation(
+        &self,
+        path: Option<String>,
+    ) -> Result<Operation, String> {
         let Some(cohort) = self
             .variant_followup_ui
             .cached_ortholog_promoter_cohort
             .clone()
         else {
-            self.op_status =
-                "Resolve or load an ortholog promoter cohort before comparison".to_string();
-            return;
+            return Err(
+                "Resolve or load an ortholog promoter cohort before comparison".to_string(),
+            );
         };
         let motifs =
             Self::promoter_design_parse_motif_tokens(&self.variant_followup_ui.score_track_motifs);
         if motifs.is_empty() {
-            self.op_status =
-                "Ortholog promoter comparison requires at least one TF motif token".to_string();
-            return;
+            return Err(
+                "Ortholog promoter comparison requires at least one TF motif token".to_string(),
+            );
         }
-        let cutrun_dataset_ids = Self::parse_variant_followup_ortholog_list(
-            &self.variant_followup_ui.ortholog_cutrun_dataset_ids,
-            "CUT&RUN dataset ids",
-        )
-        .unwrap_or_default();
-        let cutrun_read_report_ids = Self::parse_variant_followup_ortholog_list(
-            &self.variant_followup_ui.ortholog_cutrun_read_report_ids,
-            "CUT&RUN read report ids",
-        )
-        .unwrap_or_default();
-        let result = self.apply_operation_with_feedback_and_result(
-            Operation::SummarizeOrthologPromoterComparison {
-                cohort: Some(Box::new(cohort)),
-                cohort_path: None,
-                motifs,
-                score_kind: self.variant_followup_ui.score_track_value_kind,
-                clip_negative: self.variant_followup_ui.score_track_clip_negative,
-                relationship: self.variant_followup_ui.ortholog_relationship,
-                expression_rows: vec![],
-                expression_source_label: None,
-                cutrun_dataset_ids,
-                cutrun_read_report_ids,
-                path: None,
-            },
+        let cutrun_dataset_ids = if self
+            .variant_followup_ui
+            .ortholog_cutrun_dataset_ids
+            .trim()
+            .is_empty()
+        {
+            vec![]
+        } else {
+            Self::parse_variant_followup_ortholog_list(
+                &self.variant_followup_ui.ortholog_cutrun_dataset_ids,
+                "CUT&RUN dataset ids",
+            )?
+        };
+        let cutrun_read_report_ids = if self
+            .variant_followup_ui
+            .ortholog_cutrun_read_report_ids
+            .trim()
+            .is_empty()
+        {
+            vec![]
+        } else {
+            Self::parse_variant_followup_ortholog_list(
+                &self.variant_followup_ui.ortholog_cutrun_read_report_ids,
+                "CUT&RUN read report ids",
+            )?
+        };
+        let cutrun_normalization = Self::parse_variant_followup_ortholog_cutrun_normalization(
+            &self.variant_followup_ui.ortholog_cutrun_normalization_json,
+        )?;
+        Ok(Operation::SummarizeOrthologPromoterComparison {
+            cohort: Some(Box::new(cohort)),
+            cohort_path: None,
+            motifs,
+            score_kind: self.variant_followup_ui.score_track_value_kind,
+            clip_negative: self.variant_followup_ui.score_track_clip_negative,
+            relationship: self.variant_followup_ui.ortholog_relationship,
+            expression_rows: vec![],
+            expression_source_label: None,
+            cutrun_dataset_ids,
+            cutrun_read_report_ids,
+            cutrun_normalization,
+            path,
+        })
+    }
+
+    pub(super) fn summarize_variant_followup_ortholog_promoter_comparison(&mut self) {
+        let operation = match self.variant_followup_ortholog_promoter_comparison_operation(None) {
+            Ok(operation) => operation,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(report) = result.and_then(|row| row.ortholog_promoter_comparison) {
+            self.variant_followup_ui.cached_ortholog_promoter_cohort = Some(report.cohort.clone());
+            self.variant_followup_ui.cached_ortholog_promoter_comparison = Some(report);
+        }
+    }
+
+    fn export_variant_followup_ortholog_promoter_cohort_json(&mut self) {
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_ortholog_promoter_cohort
+            .as_ref()
+        else {
+            self.op_status = "No cached ortholog promoter cohort available for export".to_string();
+            return;
+        };
+        let default_name = format!(
+            "{}_ortholog_promoter_cohort.json",
+            Self::sanitize_export_name_component(
+                &report.request.anchor_gene_query,
+                "ortholog_promoters",
+            )
         );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "Ortholog promoter cohort export canceled".to_string();
+            return;
+        };
+        let operation = match self
+            .variant_followup_ortholog_promoter_cohort_operation(Some(path.display().to_string()))
+        {
+            Ok(operation) => operation,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
+        if let Some(report) = result.and_then(|row| row.ortholog_promoter_cohort) {
+            self.variant_followup_ui.cached_ortholog_promoter_comparison = None;
+            self.variant_followup_ui.cached_ortholog_promoter_cohort = Some(report);
+        }
+    }
+
+    fn export_variant_followup_ortholog_promoter_comparison_json(&mut self) {
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_ortholog_promoter_comparison
+            .as_ref()
+        else {
+            self.op_status =
+                "No cached ortholog promoter comparison available for export".to_string();
+            return;
+        };
+        let default_name = format!(
+            "{}_ortholog_promoter_comparison.json",
+            Self::sanitize_export_name_component(
+                &report.cohort.request.anchor_gene_query,
+                "ortholog_promoters",
+            )
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "Ortholog promoter comparison export canceled".to_string();
+            return;
+        };
+        let operation = match self.variant_followup_ortholog_promoter_comparison_operation(Some(
+            path.display().to_string(),
+        )) {
+            Ok(operation) => operation,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(operation);
         if let Some(report) = result.and_then(|row| row.ortholog_promoter_comparison) {
             self.variant_followup_ui.cached_ortholog_promoter_cohort = Some(report.cohort.clone());
             self.variant_followup_ui.cached_ortholog_promoter_comparison = Some(report);
@@ -4302,6 +4425,52 @@ impl MainAreaDna {
                     ))
                     .color(egui::Color32::from_rgb(180, 83, 9)),
                 );
+                if !unresolved.candidate_mappings.is_empty() {
+                    ui.collapsing(
+                        format!(
+                            "{} preserved candidate mapping(s)",
+                            unresolved.candidate_mappings.len()
+                        ),
+                        |ui| {
+                            egui::Grid::new((
+                                "variant_followup_ortholog_ambiguity_candidates",
+                                unresolved.species.as_str(),
+                            ))
+                            .num_columns(6)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.small(egui::RichText::new("rank").strong());
+                                ui.small(egui::RichText::new("gene").strong());
+                                ui.small(egui::RichText::new("orthology").strong());
+                                ui.small(egui::RichText::new("confidence").strong());
+                                ui.small(egui::RichText::new("source").strong());
+                                ui.small(egui::RichText::new("genome/context").strong());
+                                ui.end_row();
+                                for candidate in &unresolved.candidate_mappings {
+                                    ui.monospace(candidate.candidate_rank.to_string());
+                                    ui.small(
+                                        candidate
+                                            .target_gene_symbol
+                                            .as_deref()
+                                            .or(candidate.target_gene_id.as_deref())
+                                            .unwrap_or("-"),
+                                    )
+                                    .on_hover_text(candidate.candidate_label.as_str());
+                                    ui.small(candidate.orthology_type.as_deref().unwrap_or("-"))
+                                        .on_hover_text(candidate.evidence.join("\n"));
+                                    ui.small(candidate.confidence.as_deref().unwrap_or("-"));
+                                    ui.small(candidate.source.as_deref().unwrap_or("-"));
+                                    ui.small(format!(
+                                        "{} / {}",
+                                        candidate.target_genome_id.as_deref().unwrap_or("-"),
+                                        candidate.target_context_id.as_deref().unwrap_or("-")
+                                    ));
+                                    ui.end_row();
+                                }
+                            });
+                        },
+                    );
+                }
             }
 
             let Some(comparison) = self
@@ -4421,6 +4590,86 @@ impl MainAreaDna {
                                 ui.end_row();
                             }
                         });
+                });
+            }
+            if let Some(quantitative) = comparison.cutrun_quantitative_comparison.as_ref() {
+                ui.collapsing("Quantitative CUT&RUN comparison", |ui| {
+                    let status_color = match quantitative.status {
+                        OrthologCutRunQuantitativeComparisonStatus::Comparable => {
+                            egui::Color32::from_rgb(22, 101, 52)
+                        }
+                        OrthologCutRunQuantitativeComparisonStatus::NotComparable => {
+                            egui::Color32::from_rgb(180, 83, 9)
+                        }
+                    };
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "{}: {}",
+                            quantitative.status.as_str(),
+                            quantitative.detail
+                        ))
+                        .color(status_color),
+                    );
+                    if !quantitative.assignments.is_empty() {
+                        egui::Grid::new("variant_followup_ortholog_cutrun_quantitative_grid")
+                            .num_columns(4)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.small(egui::RichText::new("species").strong());
+                                ui.small(egui::RichText::new("gene").strong());
+                                ui.small(egui::RichText::new("value").strong());
+                                ui.small(egui::RichText::new("sources").strong());
+                                ui.end_row();
+                                for row in &quantitative.assignments {
+                                    ui.small(row.species.as_str());
+                                    ui.small(row.gene_label.as_str());
+                                    ui.monospace(format!(
+                                        "{:.4} {}",
+                                        row.normalized_value,
+                                        quantitative.normalization.unit
+                                    ));
+                                    ui.small(format!(
+                                        "{} dataset(s), {} read report(s)",
+                                        row.contributing_dataset_ids.len(),
+                                        row.contributing_read_report_ids.len()
+                                    ));
+                                    ui.end_row();
+                                }
+                            });
+                    }
+                    if !quantitative.pairwise_comparisons.is_empty() {
+                        ui.add_space(4.0);
+                        egui::Grid::new(
+                            "variant_followup_ortholog_cutrun_quantitative_pairwise_grid",
+                        )
+                        .num_columns(3)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.small(egui::RichText::new("left").strong());
+                            ui.small(egui::RichText::new("right").strong());
+                            ui.small(egui::RichText::new("right - left").strong());
+                            ui.end_row();
+                            for row in &quantitative.pairwise_comparisons {
+                                ui.small(format!(
+                                    "{}: {} ({:.4})",
+                                    row.left_species,
+                                    row.left_gene_label,
+                                    row.left_normalized_value
+                                ));
+                                ui.small(format!(
+                                    "{}: {} ({:.4})",
+                                    row.right_species,
+                                    row.right_gene_label,
+                                    row.right_normalized_value
+                                ));
+                                ui.monospace(format!(
+                                    "{:+.4} {}",
+                                    row.delta_right_minus_left, quantitative.normalization.unit
+                                ));
+                                ui.end_row();
+                            }
+                        });
+                    }
                 });
             }
         });
@@ -5047,6 +5296,35 @@ impl MainAreaDna {
                                 }
                             }
                         });
+                    ui.label("ambiguity");
+                    egui::ComboBox::from_id_salt("promoter_design_ortholog_ambiguity")
+                        .selected_text(
+                            self.variant_followup_ui
+                                .ortholog_ambiguity_policy
+                                .as_str(),
+                        )
+                        .show_ui(ui, |ui| {
+                            for choice in [
+                                OrthologAmbiguityPolicy::Reject,
+                                OrthologAmbiguityPolicy::First,
+                                OrthologAmbiguityPolicy::Preserve,
+                            ] {
+                                if ui
+                                    .selectable_value(
+                                        &mut self
+                                            .variant_followup_ui
+                                            .ortholog_ambiguity_policy,
+                                        choice,
+                                        choice.as_str(),
+                                    )
+                                    .changed()
+                                {
+                                    ortholog_params_changed = true;
+                                }
+                            }
+                        });
+                });
+                ui.horizontal_wrapped(|ui| {
                     ui.label("CUT&RUN datasets");
                     if ui
                         .text_edit_singleline(
@@ -5066,9 +5344,40 @@ impl MainAreaDna {
                         ortholog_params_changed = true;
                     }
                 });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("normalized CUT&RUN JSON");
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .ortholog_cutrun_normalization_json,
+                            )
+                            .desired_width(360.0)
+                            .hint_text("optional JSON object or @file.json"),
+                        )
+                        .changed()
+                    {
+                        ortholog_params_changed = true;
+                    }
+                    if ui
+                        .small_button("Choose...")
+                        .on_hover_text(
+                            "Choose a JSON file containing an explicit normalization method, unit, comparison reference, provenance, and one value per resolved promoter.",
+                        )
+                        .clicked()
+                        && let Some(path) = rfd::FileDialog::new()
+                            .add_filter("JSON", &["json"])
+                            .pick_file()
+                    {
+                        self.variant_followup_ui.ortholog_cutrun_normalization_json =
+                            path.display().to_string();
+                        ortholog_params_changed = true;
+                    }
+                });
                 ui.small(
                     egui::RichText::new(
-                        "Local ortholog resources resolve cross-species promoter windows; any co-regulation expectation is reported as non-blocking evidence triage, not proof.",
+                        "Local ortholog resources resolve cross-species promoter windows. CUT&RUN remains qualitative unless an explicit normalization record supplies provenance-bound values for every resolved promoter.",
                     )
                     .color(egui::Color32::from_rgb(100, 116, 139)),
                 );
@@ -5189,6 +5498,7 @@ impl MainAreaDna {
         }
         if score_track_params_changed {
             self.variant_followup_ui.cached_score_tracks = None;
+            self.variant_followup_ui.cached_ortholog_promoter_comparison = None;
         }
         if similarity_params_changed {
             self.variant_followup_ui.cached_tfbs_track_similarity = None;
@@ -5457,6 +5767,38 @@ impl MainAreaDna {
                 .clicked()
             {
                 self.export_variant_followup_isoform_promoter_comparison_json();
+            }
+            if ui
+                .add_enabled(
+                    engine_available
+                        && self
+                            .variant_followup_ui
+                            .cached_ortholog_promoter_cohort
+                            .is_some(),
+                    egui::Button::new("Export ortholog cohort JSON..."),
+                )
+                .on_hover_text(
+                    "Write the cached ortholog promoter cohort by rerunning the shared resolver with an output path.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_ortholog_promoter_cohort_json();
+            }
+            if ui
+                .add_enabled(
+                    engine_available
+                        && self
+                            .variant_followup_ui
+                            .cached_ortholog_promoter_comparison
+                            .is_some(),
+                    egui::Button::new("Export ortholog comparison JSON..."),
+                )
+                .on_hover_text(
+                    "Write the cached ortholog promoter comparison by rerunning the shared comparison operation with an output path.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_ortholog_promoter_comparison_json();
             }
             let has_candidates = self.variant_followup_ui.cached_candidates.is_some();
             if ui

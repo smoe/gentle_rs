@@ -30906,6 +30906,7 @@ impl GentleEngine {
                     expression_source_label,
                     cutrun_dataset_ids,
                     cutrun_read_report_ids,
+                    cutrun_normalization,
                     path,
                 } => {
                     let cohort = match (cohort, cohort_path.as_deref()) {
@@ -30950,6 +30951,7 @@ impl GentleEngine {
                         expression_source_label.as_deref(),
                         &cutrun_dataset_ids,
                         &cutrun_read_report_ids,
+                        cutrun_normalization.as_ref(),
                     )?;
                     report.op_id = Some(result.op_id.clone());
                     report.run_id = Some(run_id.to_string());

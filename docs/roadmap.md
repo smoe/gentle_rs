@@ -1,8 +1,9 @@
 # GENtle Roadmap
 
-Last session: 2026-07-22 - completed the offline CUT&RUN V1-V3 release proof
-inside the unreleased `v0.1.0-internal.10` TP73 workflow; manual GUI smoke
-remains before the tag
+Last session: 2026-07-31 - completed ortholog Promoter design ambiguity/export
+parity and the fail-closed normalized cross-species CUT&RUN contract; manual
+GUI smoke for the unreleased `v0.1.0-internal.10` release remains before the
+tag
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -311,12 +312,6 @@ wet-lab conclusions or unconfirmed mutations.
 - CUT&RUN controls/replicate comparison, calibrated differential support,
   formal peak calling, and whole-genome read processing beyond the ROI-first
   release scope.
-- Promoter cohort follow-up: normalized/provenanced cross-promoter CUT&RUN
-  peak comparison after the manual/co-regulated/anti-co-regulated and
-  ortholog promoter slices settle.
-- Ortholog promoter follow-up: add a thin Promoter design GUI action and a
-  tiny tutorial/demo chapter around the existing synthetic ortholog engine
-  fixture once the shell workflow has had one review pass.
 - Primer3 parity, virtual PCR/off-target filtering, multiplex tiling, LAMP, and
   allele-specific assay families.
 - First-class global RT-PCR specificity/redesign workflow combining prepared

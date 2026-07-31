@@ -10683,6 +10683,83 @@ fn variant_followup_ortholog_promoter_comparison_runs_shared_op_and_caches_repor
 }
 
 #[test]
+fn variant_followup_ortholog_builders_preserve_policy_export_path_and_normalization() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(120)).expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("ortholog_gui".to_string()), None);
+    area.variant_followup_ui.gene_label = "TP73".to_string();
+    area.variant_followup_ui.ortholog_anchor_species = "Homo sapiens".to_string();
+    area.variant_followup_ui.ortholog_anchor_genome_id = "HumanToy".to_string();
+    area.variant_followup_ui.ortholog_target_species = "Mus musculus".to_string();
+    area.variant_followup_ui.ortholog_target_genome_ids = "Mus musculus=MouseToy".to_string();
+    area.variant_followup_ui.ortholog_resource_path = "orthologs.json".to_string();
+    area.variant_followup_ui.promoter_upstream_bp = "1000".to_string();
+    area.variant_followup_ui.promoter_downstream_bp = "200".to_string();
+    area.variant_followup_ui.ortholog_ambiguity_policy =
+        gentle_protocol::OrthologAmbiguityPolicy::Preserve;
+
+    let cohort_op = area
+        .variant_followup_ortholog_promoter_cohort_operation(Some(
+            "ortholog_cohort.json".to_string(),
+        ))
+        .expect("build cohort operation");
+    match cohort_op {
+        Operation::ResolveOrthologPromoterCohort {
+            ambiguity_policy,
+            path,
+            ..
+        } => {
+            assert_eq!(
+                ambiguity_policy,
+                gentle_protocol::OrthologAmbiguityPolicy::Preserve
+            );
+            assert_eq!(path.as_deref(), Some("ortholog_cohort.json"));
+        }
+        other => panic!("unexpected cohort operation: {other:?}"),
+    }
+
+    area.variant_followup_ui.score_track_motifs = "SP1".to_string();
+    area.variant_followup_ui.ortholog_cutrun_dataset_ids = "human_cutrun, mouse_cutrun".to_string();
+    area.variant_followup_ui.ortholog_cutrun_normalization_json = serde_json::json!({
+        "normalization_method": "spike_in_scaled_cpm",
+        "unit": "normalized_fragments_per_million",
+        "comparison_reference": "shared_batch_1",
+        "provenance": "synthetic GUI operation-builder test",
+        "values": []
+    })
+    .to_string();
+    area.variant_followup_ui.cached_ortholog_promoter_cohort =
+        Some(gentle_protocol::OrthologPromoterCohortReport {
+            schema: gentle_protocol::ORTHOLOG_PROMOTER_COHORT_SCHEMA.to_string(),
+            request: gentle_protocol::OrthologPromoterCohortRequest {
+                anchor_species: "Homo sapiens".to_string(),
+                anchor_genome_id: "HumanToy".to_string(),
+                anchor_gene_query: "TP73".to_string(),
+                ..gentle_protocol::OrthologPromoterCohortRequest::default()
+            },
+            ..gentle_protocol::OrthologPromoterCohortReport::default()
+        });
+
+    let comparison_op = area
+        .variant_followup_ortholog_promoter_comparison_operation(Some(
+            "ortholog_comparison.json".to_string(),
+        ))
+        .expect("build comparison operation");
+    match comparison_op {
+        Operation::SummarizeOrthologPromoterComparison {
+            cutrun_normalization,
+            path,
+            ..
+        } => {
+            let normalization = cutrun_normalization.expect("normalization input");
+            assert_eq!(normalization.normalization_method, "spike_in_scaled_cpm");
+            assert_eq!(normalization.comparison_reference, "shared_batch_1");
+            assert_eq!(path.as_deref(), Some("ortholog_comparison.json"));
+        }
+        other => panic!("unexpected comparison operation: {other:?}"),
+    }
+}
+
+#[test]
 fn splicing_intron_regulatory_rows_merge_cached_attract_hits_with_intron_signals() {
     let view = SplicingExpertView {
         seq_id: "tp73".to_string(),

@@ -112,11 +112,12 @@ pub use gentle_protocol::{
     ExonSkipSelectionCriterion, GelBandLabelLayout, GelBufferModel, GelIsoformMarkerMode,
     GelLaneLabelLayout, GelRunConditions, GelTopologyForm, HostLifecycleRole, LineageEdge,
     LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus,
-    NodeId, OpId, OrthologAmbiguityPolicy, OrthologPromoterCohortReport,
-    OrthologPromoterComparisonReport, PoolGelRenderOptions, PrimerSpecificityAmpliconCeilingSource,
-    PrimerSpecificityReportDetailMode, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
-    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-    RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
+    NodeId, OpId, OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput,
+    OrthologPromoterCohortReport, OrthologPromoterComparisonReport, PoolGelRenderOptions,
+    PrimerSpecificityAmpliconCeilingSource, PrimerSpecificityReportDetailMode,
+    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
+    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+    RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
     RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
     ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
 };
@@ -3709,6 +3710,8 @@ pub enum Operation {
         cutrun_dataset_ids: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         cutrun_read_report_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cutrun_normalization: Option<OrthologCutRunNormalizationInput>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },

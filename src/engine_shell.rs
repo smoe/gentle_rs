@@ -62,7 +62,7 @@ use crate::{
         GuideOligoPlateFormat, GuidePracticalFilterConfig, InlineSequenceTopology,
         LabAssistantInstructionsFormat, LineageMacroInstance, LineageMacroPortBinding,
         MacroInstanceStatus, OligoOrderFormCreateRequest, Operation, OperationProgress,
-        OrthologAmbiguityPolicy, OrthologPromoterCohortReport,
+        OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput, OrthologPromoterCohortReport,
         PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
         PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PROTEIN_EXPRESSION_HANDOFF_SCHEMA,
@@ -1274,6 +1274,7 @@ pub enum ShellCommand {
         expression_source_label: Option<String>,
         cutrun_dataset_ids: Vec<String>,
         cutrun_read_report_ids: Vec<String>,
+        cutrun_normalization: Option<OrthologCutRunNormalizationInput>,
         output: Option<String>,
     },
     ResourcesListPublicationDatasets {
@@ -7937,10 +7938,11 @@ impl ShellCommand {
                 score_kind,
                 clip_negative,
                 relationship,
+                cutrun_normalization,
                 output,
                 ..
             } => format!(
-                "compare ortholog promoters from {} with {} motif(s) (score_kind={}, clip_negative={}, relationship={:?}, output='{}')",
+                "compare ortholog promoters from {} with {} motif(s) (score_kind={}, clip_negative={}, relationship={:?}, normalized_cutrun={}, output='{}')",
                 cohort_path
                     .as_deref()
                     .or_else(|| cohort.as_ref().map(|_| "inline cohort"))
@@ -7949,6 +7951,7 @@ impl ShellCommand {
                 score_kind.as_str(),
                 clip_negative,
                 relationship,
+                cutrun_normalization.is_some(),
                 output.as_deref().unwrap_or("-"),
             ),
             Self::ReportersList {
@@ -26559,6 +26562,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--motif|--motifs", "required": true, "subject_kind": "other", "detail": "motif query tokens"}),
                 json!({"name": "--score-kind|--relationship", "required": false, "subject_kind": "other", "detail": "comparison scoring controls"}),
                 json!({"name": "--expression-json|--cutrun-dataset-id|--cutrun-read-report-id", "required": false, "subject_kind": "other", "detail": "optional supporting evidence"}),
+                json!({"name": "--cutrun-normalization-json", "required": false, "subject_kind": "other", "detail": "explicit normalized CUT&RUN values plus method, unit, shared reference, and provenance; accepts JSON or @FILE"}),
             ],
         ),
         optional_artifact_operation_descriptor(
@@ -37407,6 +37411,7 @@ fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut expression_source_label: Option<String> = None;
             let mut cutrun_dataset_ids: Vec<String> = vec![];
             let mut cutrun_read_report_ids: Vec<String> = vec![];
+            let mut cutrun_normalization: Option<OrthologCutRunNormalizationInput> = None;
             let mut output: Option<String> = None;
             let mut idx = 2usize;
             while idx < tokens.len() {
@@ -37483,6 +37488,20 @@ fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         )?;
                         cutrun_read_report_ids.extend(split_csv_tokens_with_empty_error(&raw)?);
                     }
+                    "--cutrun-normalization-json" | "--cutrun-normalization" => {
+                        let flag = tokens[idx].clone();
+                        if cutrun_normalization.is_some() {
+                            return Err(format!(
+                                "{context} accepts at most one --cutrun-normalization-json value"
+                            ));
+                        }
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        cutrun_normalization = Some(parse_required_json_payload::<
+                            OrthologCutRunNormalizationInput,
+                        >(
+                            &raw, "ortholog CUT&RUN normalization"
+                        )?);
+                    }
                     "--output" | "--path" => {
                         let flag = tokens[idx].clone();
                         output = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
@@ -37518,6 +37537,7 @@ fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 expression_source_label,
                 cutrun_dataset_ids,
                 cutrun_read_report_ids,
+                cutrun_normalization,
                 output,
             })
         }
@@ -47901,6 +47921,7 @@ fn execute_export_import_and_resource_command(
             expression_source_label,
             cutrun_dataset_ids,
             cutrun_read_report_ids,
+            cutrun_normalization,
             output,
         } => {
             let op_result = engine
@@ -47915,6 +47936,7 @@ fn execute_export_import_and_resource_command(
                     expression_source_label: expression_source_label.clone(),
                     cutrun_dataset_ids: cutrun_dataset_ids.clone(),
                     cutrun_read_report_ids: cutrun_read_report_ids.clone(),
+                    cutrun_normalization: cutrun_normalization.clone(),
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;

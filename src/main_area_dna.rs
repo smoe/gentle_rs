@@ -206,7 +206,8 @@ use crate::{
 use eframe::egui::{self, Frame, PointerState, Vec2};
 use gentle_gui::theme;
 use gentle_protocol::{
-    GeneSetCohortRelationship, OrthologAmbiguityPolicy, OrthologCutRunSupportStatus,
+    GeneSetCohortRelationship, OrthologAmbiguityPolicy, OrthologCutRunNormalizationInput,
+    OrthologCutRunQuantitativeComparisonStatus, OrthologCutRunSupportStatus,
     OrthologPromoterCohortReport, OrthologPromoterComparisonReport,
 };
 use serde::{Deserialize, Serialize};
@@ -1846,6 +1847,8 @@ struct VariantFollowupUiState {
     ortholog_cache_dir: String,
     ortholog_cutrun_dataset_ids: String,
     ortholog_cutrun_read_report_ids: String,
+    ortholog_cutrun_normalization_json: String,
+    ortholog_ambiguity_policy: OrthologAmbiguityPolicy,
     ortholog_relationship: GeneSetCohortRelationship,
     tfbs_focus_half_window_bp: String,
     retain_downstream_from_tss_bp: String,
@@ -1924,6 +1927,8 @@ impl Default for VariantFollowupUiState {
             ortholog_cache_dir: String::new(),
             ortholog_cutrun_dataset_ids: String::new(),
             ortholog_cutrun_read_report_ids: String::new(),
+            ortholog_cutrun_normalization_json: String::new(),
+            ortholog_ambiguity_policy: OrthologAmbiguityPolicy::Reject,
             ortholog_relationship: GeneSetCohortRelationship::Unspecified,
             cached_ortholog_promoter_cohort: None,
             cached_ortholog_promoter_comparison: None,

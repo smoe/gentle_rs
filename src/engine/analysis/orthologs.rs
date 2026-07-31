@@ -9,11 +9,14 @@ use gentle_protocol::{
     BiologicalContext, BiologicalContextRegistry, GeneSetCohortRelationship,
     GeneSetCohortRelationshipFlag, ORTHOLOG_PROMOTER_COHORT_SCHEMA,
     ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA, OrthologAmbiguityCandidate,
-    OrthologConfidence, OrthologCutRunSupportRow, OrthologCutRunSupportStatus,
-    OrthologExpressionAssignment, OrthologMappingRow, OrthologPairwiseTfbsSimilarity,
-    OrthologPromoterCohortReport, OrthologPromoterCohortRequest, OrthologPromoterComparisonReport,
-    OrthologPromoterRole, OrthologPromoterRow, OrthologResource, OrthologSequenceSimilarityRow,
-    OrthologTfbsPeakSummary, OrthologTfbsSummaryRow, OrthologUnresolvedRow, OrthologyType,
+    OrthologConfidence, OrthologCutRunNormalizationInput, OrthologCutRunNormalizedAssignment,
+    OrthologCutRunNormalizedValueInput, OrthologCutRunPairwiseQuantitativeComparison,
+    OrthologCutRunQuantitativeComparison, OrthologCutRunQuantitativeComparisonStatus,
+    OrthologCutRunSupportRow, OrthologCutRunSupportStatus, OrthologExpressionAssignment,
+    OrthologMappingRow, OrthologPairwiseTfbsSimilarity, OrthologPromoterCohortReport,
+    OrthologPromoterCohortRequest, OrthologPromoterComparisonReport, OrthologPromoterRole,
+    OrthologPromoterRow, OrthologResource, OrthologSequenceSimilarityRow, OrthologTfbsPeakSummary,
+    OrthologTfbsSummaryRow, OrthologUnresolvedRow, OrthologyType,
 };
 
 #[derive(Debug, Clone)]
@@ -1325,6 +1328,287 @@ impl GentleEngine {
         }
     }
 
+    fn ortholog_cutrun_normalized_value_matches(
+        promoter: &OrthologPromoterRow,
+        value: &OrthologCutRunNormalizedValueInput,
+    ) -> bool {
+        if Self::ortholog_species_key(&promoter.species)
+            != Self::ortholog_species_key(&value.species)
+        {
+            return false;
+        }
+        if let Some(gene_label) = value
+            .gene_label
+            .as_deref()
+            .map(str::trim)
+            .filter(|label| !label.is_empty())
+        {
+            let requested = Self::ortholog_gene_key(gene_label);
+            let gene_matches = [
+                Some(promoter.display_label.as_str()),
+                promoter.gene_symbol.as_deref(),
+                Some(promoter.gene_query.as_str()),
+            ]
+            .into_iter()
+            .flatten()
+            .any(|candidate| Self::ortholog_gene_key(candidate) == requested);
+            if !gene_matches {
+                return false;
+            }
+        }
+        if let Some(transcript_id) = value
+            .transcript_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|transcript_id| !transcript_id.is_empty())
+            && transcript_id != promoter.transcript_id
+        {
+            return false;
+        }
+        true
+    }
+
+    fn summarize_ortholog_cutrun_quantitative_comparison(
+        cohort: &OrthologPromoterCohortReport,
+        cutrun_support: &[OrthologCutRunSupportRow],
+        cutrun_dataset_ids: &[String],
+        cutrun_read_report_ids: &[String],
+        normalization: Option<&OrthologCutRunNormalizationInput>,
+        warnings: &mut Vec<String>,
+    ) -> Option<OrthologCutRunQuantitativeComparison> {
+        let has_selected_sources =
+            !cutrun_dataset_ids.is_empty() || !cutrun_read_report_ids.is_empty();
+        let Some(normalization) = normalization else {
+            if !has_selected_sources {
+                return None;
+            }
+            let detail = "Selected CUT&RUN evidence was interpreted qualitatively only because no explicit normalization metadata and normalized values were supplied. Raw peak scores, signal heights, fragment counts, and read depth were not compared across species.".to_string();
+            warnings.push(detail.clone());
+            return Some(OrthologCutRunQuantitativeComparison {
+                status: OrthologCutRunQuantitativeComparisonStatus::NotComparable,
+                detail,
+                ..OrthologCutRunQuantitativeComparison::default()
+            });
+        };
+
+        let selected_dataset_ids = cutrun_dataset_ids
+            .iter()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>();
+        let selected_read_report_ids = cutrun_read_report_ids
+            .iter()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>();
+        let mut reasons = Vec::<String>::new();
+        for (label, value) in [
+            (
+                "normalization_method",
+                normalization.normalization_method.as_str(),
+            ),
+            ("unit", normalization.unit.as_str()),
+            (
+                "comparison_reference",
+                normalization.comparison_reference.as_str(),
+            ),
+            ("provenance", normalization.provenance.as_str()),
+        ] {
+            if value.trim().is_empty() {
+                reasons.push(format!("normalization metadata field '{label}' is empty"));
+            }
+        }
+        if normalization.values.is_empty() {
+            reasons.push("no normalized promoter values were supplied".to_string());
+        }
+        if cohort.rows.len() < 2 {
+            reasons.push(
+                "at least two resolved promoter rows are required for quantitative comparison"
+                    .to_string(),
+            );
+        }
+
+        for (index, value) in normalization.values.iter().enumerate() {
+            if value.species.trim().is_empty() {
+                reasons.push(format!(
+                    "normalized value {} has an empty species",
+                    index + 1
+                ));
+            }
+            if !value.normalized_value.is_finite() {
+                reasons.push(format!(
+                    "normalized value {} for '{}' is not finite",
+                    index + 1,
+                    value.species
+                ));
+            }
+            if value.contributing_dataset_ids.is_empty()
+                && value.contributing_read_report_ids.is_empty()
+            {
+                reasons.push(format!(
+                    "normalized value {} for '{}' has no contributing dataset or read-report id",
+                    index + 1,
+                    value.species
+                ));
+            }
+            for dataset_id in &value.contributing_dataset_ids {
+                if !selected_dataset_ids.contains(dataset_id.trim()) {
+                    reasons.push(format!(
+                        "normalized value {} references CUT&RUN dataset '{}' that was not selected",
+                        index + 1,
+                        dataset_id
+                    ));
+                }
+            }
+            for report_id in &value.contributing_read_report_ids {
+                if !selected_read_report_ids.contains(report_id.trim()) {
+                    reasons.push(format!(
+                        "normalized value {} references CUT&RUN read report '{}' that was not selected",
+                        index + 1,
+                        report_id
+                    ));
+                }
+            }
+            if !cohort
+                .rows
+                .iter()
+                .any(|promoter| Self::ortholog_cutrun_normalized_value_matches(promoter, value))
+            {
+                reasons.push(format!(
+                    "normalized value {} for species '{}' did not match a resolved promoter row",
+                    index + 1,
+                    value.species
+                ));
+            }
+        }
+
+        let mut assignments = Vec::<OrthologCutRunNormalizedAssignment>::new();
+        for promoter in &cohort.rows {
+            let matches = normalization
+                .values
+                .iter()
+                .filter(|value| Self::ortholog_cutrun_normalized_value_matches(promoter, value))
+                .collect::<Vec<_>>();
+            if matches.is_empty() {
+                reasons.push(format!(
+                    "no normalized value matched '{}' ({})",
+                    promoter.display_label, promoter.species
+                ));
+                continue;
+            }
+            if matches.len() > 1 {
+                reasons.push(format!(
+                    "{} normalized values matched '{}' ({}); one unambiguous value is required",
+                    matches.len(),
+                    promoter.display_label,
+                    promoter.species
+                ));
+                continue;
+            }
+            let value = matches[0];
+            let support = cutrun_support.iter().find(|support| {
+                Self::ortholog_species_key(&support.species)
+                    == Self::ortholog_species_key(&promoter.species)
+                    && Self::ortholog_gene_key(&support.gene_label)
+                        == Self::ortholog_gene_key(&promoter.display_label)
+            });
+            let Some(support) = support else {
+                reasons.push(format!(
+                    "no qualitative CUT&RUN support row was available for '{}' ({})",
+                    promoter.display_label, promoter.species
+                ));
+                continue;
+            };
+            if support.status == OrthologCutRunSupportStatus::NotComparable {
+                reasons.push(format!(
+                    "CUT&RUN provenance did not match '{}' ({})",
+                    promoter.display_label, promoter.species
+                ));
+            }
+            for dataset_id in &value.contributing_dataset_ids {
+                if !support
+                    .contributing_dataset_ids
+                    .iter()
+                    .any(|candidate| candidate.trim() == dataset_id.trim())
+                {
+                    reasons.push(format!(
+                        "dataset '{}' was not evaluated for '{}' ({})",
+                        dataset_id, promoter.display_label, promoter.species
+                    ));
+                }
+            }
+            for report_id in &value.contributing_read_report_ids {
+                if !support
+                    .contributing_read_report_ids
+                    .iter()
+                    .any(|candidate| candidate.trim() == report_id.trim())
+                {
+                    reasons.push(format!(
+                        "read report '{}' was not evaluated for '{}' ({})",
+                        report_id, promoter.display_label, promoter.species
+                    ));
+                }
+            }
+            assignments.push(OrthologCutRunNormalizedAssignment {
+                species: promoter.species.clone(),
+                gene_label: promoter.display_label.clone(),
+                transcript_id: promoter.transcript_id.clone(),
+                normalized_value: value.normalized_value,
+                contributing_dataset_ids: value.contributing_dataset_ids.clone(),
+                contributing_read_report_ids: value.contributing_read_report_ids.clone(),
+                provenance: value.provenance.clone(),
+            });
+        }
+
+        reasons.sort();
+        reasons.dedup();
+        if !reasons.is_empty() {
+            let detail = format!(
+                "Quantitative CUT&RUN comparison was not performed: {}. Qualitative support states remain available; raw cross-species intensity was not compared.",
+                reasons.join("; ")
+            );
+            warnings.push(detail.clone());
+            return Some(OrthologCutRunQuantitativeComparison {
+                status: OrthologCutRunQuantitativeComparisonStatus::NotComparable,
+                normalization: normalization.clone(),
+                assignments,
+                pairwise_comparisons: vec![],
+                detail,
+            });
+        }
+
+        let mut pairwise_comparisons = Vec::new();
+        for left_index in 0..assignments.len() {
+            for right_index in left_index.saturating_add(1)..assignments.len() {
+                let left = &assignments[left_index];
+                let right = &assignments[right_index];
+                let delta = right.normalized_value - left.normalized_value;
+                pairwise_comparisons.push(OrthologCutRunPairwiseQuantitativeComparison {
+                    left_species: left.species.clone(),
+                    right_species: right.species.clone(),
+                    left_gene_label: left.gene_label.clone(),
+                    right_gene_label: right.gene_label.clone(),
+                    left_normalized_value: left.normalized_value,
+                    right_normalized_value: right.normalized_value,
+                    delta_right_minus_left: delta,
+                    absolute_delta: delta.abs(),
+                });
+            }
+        }
+        Some(OrthologCutRunQuantitativeComparison {
+            status: OrthologCutRunQuantitativeComparisonStatus::Comparable,
+            normalization: normalization.clone(),
+            assignments,
+            pairwise_comparisons,
+            detail: format!(
+                "Compared explicitly normalized CUT&RUN values using '{}' in '{}' against shared reference '{}'. Raw source intensities were not compared directly.",
+                normalization.normalization_method,
+                normalization.unit,
+                normalization.comparison_reference
+            ),
+        })
+    }
+
     pub(crate) fn summarize_ortholog_promoter_comparison(
         &self,
         mut cohort: OrthologPromoterCohortReport,
@@ -1336,6 +1620,7 @@ impl GentleEngine {
         expression_source_label: Option<&str>,
         cutrun_dataset_ids: &[String],
         cutrun_read_report_ids: &[String],
+        cutrun_normalization: Option<&OrthologCutRunNormalizationInput>,
     ) -> Result<OrthologPromoterComparisonReport, EngineError> {
         if cohort.rows.is_empty() {
             return Err(EngineError {
@@ -1491,6 +1776,15 @@ impl GentleEngine {
             cutrun_read_report_ids,
             &mut warnings,
         )?;
+        let cutrun_quantitative_comparison =
+            Self::summarize_ortholog_cutrun_quantitative_comparison(
+                &cohort,
+                &cutrun_support,
+                cutrun_dataset_ids,
+                cutrun_read_report_ids,
+                cutrun_normalization,
+                &mut warnings,
+            );
         let mut relationship_flags = Self::ortholog_tfbs_relationship_flags(
             effective_relationship,
             &pairwise_tfbs_similarity,
@@ -1515,11 +1809,140 @@ impl GentleEngine {
             species_specific_tfbs_peaks,
             sequence_similarity,
             cutrun_support,
+            cutrun_quantitative_comparison,
             expression_assignments,
             relationship: effective_relationship,
             relationship_flags,
             warnings,
             ..OrthologPromoterComparisonReport::default()
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn quantitative_test_cohort() -> OrthologPromoterCohortReport {
+        OrthologPromoterCohortReport {
+            resolved_promoter_count: 2,
+            rows: vec![
+                OrthologPromoterRow {
+                    species: "Homo sapiens".to_string(),
+                    display_label: "TP73".to_string(),
+                    gene_query: "TP73".to_string(),
+                    transcript_id: "ENST_TP73".to_string(),
+                    ..OrthologPromoterRow::default()
+                },
+                OrthologPromoterRow {
+                    species: "Mus musculus".to_string(),
+                    display_label: "Trp73".to_string(),
+                    gene_query: "Trp73".to_string(),
+                    transcript_id: "ENSMUST_Trp73".to_string(),
+                    ..OrthologPromoterRow::default()
+                },
+            ],
+            ..OrthologPromoterCohortReport::default()
+        }
+    }
+
+    #[test]
+    fn normalized_cutrun_comparison_requires_complete_provenance_and_matched_sources() {
+        let cohort = quantitative_test_cohort();
+        let support = vec![
+            OrthologCutRunSupportRow {
+                species: "Homo sapiens".to_string(),
+                gene_label: "TP73".to_string(),
+                status: OrthologCutRunSupportStatus::Confirmed,
+                contributing_dataset_ids: vec!["human_cutrun".to_string()],
+                ..OrthologCutRunSupportRow::default()
+            },
+            OrthologCutRunSupportRow {
+                species: "Mus musculus".to_string(),
+                gene_label: "Trp73".to_string(),
+                status: OrthologCutRunSupportStatus::Confirmed,
+                contributing_dataset_ids: vec!["mouse_cutrun".to_string()],
+                ..OrthologCutRunSupportRow::default()
+            },
+        ];
+        let normalization = OrthologCutRunNormalizationInput {
+            normalization_method: "spike_in_scaled_cpm".to_string(),
+            unit: "normalized_fragments_per_million".to_string(),
+            comparison_reference: "shared_batch_1".to_string(),
+            provenance: "synthetic reviewed normalization table".to_string(),
+            values: vec![
+                OrthologCutRunNormalizedValueInput {
+                    species: "Homo sapiens".to_string(),
+                    gene_label: Some("TP73".to_string()),
+                    normalized_value: 4.0,
+                    contributing_dataset_ids: vec!["human_cutrun".to_string()],
+                    ..OrthologCutRunNormalizedValueInput::default()
+                },
+                OrthologCutRunNormalizedValueInput {
+                    species: "Mus musculus".to_string(),
+                    transcript_id: Some("ENSMUST_Trp73".to_string()),
+                    normalized_value: 7.5,
+                    contributing_dataset_ids: vec!["mouse_cutrun".to_string()],
+                    ..OrthologCutRunNormalizedValueInput::default()
+                },
+            ],
+        };
+        let mut warnings = vec![];
+        let comparison = GentleEngine::summarize_ortholog_cutrun_quantitative_comparison(
+            &cohort,
+            &support,
+            &["human_cutrun".to_string(), "mouse_cutrun".to_string()],
+            &[],
+            Some(&normalization),
+            &mut warnings,
+        )
+        .expect("quantitative comparison");
+        assert_eq!(
+            comparison.status,
+            OrthologCutRunQuantitativeComparisonStatus::Comparable
+        );
+        assert_eq!(comparison.assignments.len(), 2);
+        assert_eq!(comparison.pairwise_comparisons.len(), 1);
+        assert_eq!(
+            comparison.pairwise_comparisons[0].delta_right_minus_left,
+            3.5
+        );
+        assert!(warnings.is_empty());
+
+        let mut incomplete = normalization;
+        incomplete.comparison_reference.clear();
+        let rejected = GentleEngine::summarize_ortholog_cutrun_quantitative_comparison(
+            &cohort,
+            &support,
+            &["human_cutrun".to_string(), "mouse_cutrun".to_string()],
+            &[],
+            Some(&incomplete),
+            &mut warnings,
+        )
+        .expect("fail-closed quantitative comparison");
+        assert_eq!(
+            rejected.status,
+            OrthologCutRunQuantitativeComparisonStatus::NotComparable
+        );
+        assert!(rejected.pairwise_comparisons.is_empty());
+        assert!(rejected.detail.contains("comparison_reference"));
+    }
+
+    #[test]
+    fn selected_cutrun_without_normalization_stays_qualitative() {
+        let comparison = GentleEngine::summarize_ortholog_cutrun_quantitative_comparison(
+            &quantitative_test_cohort(),
+            &[],
+            &["human_cutrun".to_string()],
+            &[],
+            None,
+            &mut vec![],
+        )
+        .expect("qualitative-only status");
+        assert_eq!(
+            comparison.status,
+            OrthologCutRunQuantitativeComparisonStatus::NotComparable
+        );
+        assert!(comparison.detail.contains("qualitatively only"));
     }
 }

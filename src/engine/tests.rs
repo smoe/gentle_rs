@@ -6040,6 +6040,7 @@ fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and
             Some("rna_demo"),
             &[],
             &[],
+            None,
         )
         .expect("summarize ortholog comparison");
     assert_eq!(comparison.schema, "gentle.ortholog_promoter_comparison.v1");
@@ -6146,6 +6147,7 @@ fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and
             None,
             &["ortholog_human_sp1".to_string()],
             &[],
+            None,
         )
         .expect("summarize ortholog comparison with CUT&RUN support");
     let human_support = supported
@@ -6168,6 +6170,15 @@ fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and
         mouse_support.status,
         OrthologCutRunSupportStatus::NotComparable
     );
+    let quantitative = supported
+        .cutrun_quantitative_comparison
+        .as_ref()
+        .expect("selected CUT&RUN sources should report quantitative comparability");
+    assert_eq!(
+        quantitative.status,
+        gentle_protocol::OrthologCutRunQuantitativeComparisonStatus::NotComparable
+    );
+    assert!(quantitative.detail.contains("qualitatively only"));
 }
 
 #[test]

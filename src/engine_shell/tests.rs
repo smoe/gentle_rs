@@ -32031,7 +32031,7 @@ fn parse_orthologs_resolve_promoter_cohort_and_comparison() {
     assert!(invalid_policy.contains("expected reject, first, or preserve"));
 
     let compare = parse_shell_line(
-        r#"orthologs promoter-comparison --cohort cohort.json --motif TP73 --motifs SP1,BACH2 --score-kind llr_background_tail_log10 --allow-negative --relationship anti-co-regulated --expression-json '{"gene_label":"TP73","condition":"case","value":7.5,"unit":"TPM"}' --source-label rna_demo --cutrun-dataset-id cutrun_demo --path comparison.json"#,
+        r#"orthologs promoter-comparison --cohort cohort.json --motif TP73 --motifs SP1,BACH2 --score-kind llr_background_tail_log10 --allow-negative --relationship anti-co-regulated --expression-json '{"gene_label":"TP73","condition":"case","value":7.5,"unit":"TPM"}' --source-label rna_demo --cutrun-dataset-id cutrun_demo --cutrun-normalization-json '{"normalization_method":"spike_in_scaled_cpm","unit":"normalized_fragments_per_million","comparison_reference":"batch_1","provenance":"synthetic parser test","values":[]}' --path comparison.json"#,
     )
     .expect("parse ortholog promoter comparison");
     match compare {
@@ -32046,6 +32046,7 @@ fn parse_orthologs_resolve_promoter_cohort_and_comparison() {
             expression_source_label,
             cutrun_dataset_ids,
             cutrun_read_report_ids,
+            cutrun_normalization,
             output,
         } => {
             assert!(cohort.is_none());
@@ -32062,6 +32063,9 @@ fn parse_orthologs_resolve_promoter_cohort_and_comparison() {
             assert_eq!(expression_source_label.as_deref(), Some("rna_demo"));
             assert_eq!(cutrun_dataset_ids, vec!["cutrun_demo".to_string()]);
             assert!(cutrun_read_report_ids.is_empty());
+            let normalization = cutrun_normalization.expect("CUT&RUN normalization input");
+            assert_eq!(normalization.normalization_method, "spike_in_scaled_cpm");
+            assert_eq!(normalization.comparison_reference, "batch_1");
             assert_eq!(output.as_deref(), Some("comparison.json"));
         }
         other => panic!("unexpected command: {other:?}"),

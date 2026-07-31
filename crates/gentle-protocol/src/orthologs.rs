@@ -274,6 +274,105 @@ impl OrthologCutRunSupportStatus {
     }
 }
 
+/// Whether normalized cross-species CUT&RUN values were compared.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OrthologCutRunQuantitativeComparisonStatus {
+    #[default]
+    NotComparable,
+    Comparable,
+}
+
+impl OrthologCutRunQuantitativeComparisonStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotComparable => "not_comparable",
+            Self::Comparable => "comparable",
+        }
+    }
+}
+
+/// One caller-supplied normalized CUT&RUN value for a resolved promoter.
+///
+/// Values are never synthesized from prepared peak scores or read counts.
+/// Source ids and provenance bind each value to the evidence from which the
+/// caller derived it.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct OrthologCutRunNormalizedValueInput {
+    pub species: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    pub normalized_value: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contributing_dataset_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contributing_read_report_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<String>,
+}
+
+/// Explicit normalization contract for quantitative cross-promoter CUT&RUN.
+///
+/// A method, unit, shared comparison reference, and provenance statement are
+/// all required before the engine will compare the supplied values.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct OrthologCutRunNormalizationInput {
+    pub normalization_method: String,
+    pub unit: String,
+    pub comparison_reference: String,
+    pub provenance: String,
+    #[serde(default)]
+    pub values: Vec<OrthologCutRunNormalizedValueInput>,
+}
+
+/// One normalized value assigned to a resolved ortholog promoter row.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct OrthologCutRunNormalizedAssignment {
+    pub species: String,
+    pub gene_label: String,
+    pub transcript_id: String,
+    pub normalized_value: f64,
+    #[serde(default)]
+    pub contributing_dataset_ids: Vec<String>,
+    #[serde(default)]
+    pub contributing_read_report_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<String>,
+}
+
+/// Pairwise difference between two explicitly normalized CUT&RUN values.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct OrthologCutRunPairwiseQuantitativeComparison {
+    pub left_species: String,
+    pub right_species: String,
+    pub left_gene_label: String,
+    pub right_gene_label: String,
+    pub left_normalized_value: f64,
+    pub right_normalized_value: f64,
+    pub delta_right_minus_left: f64,
+    pub absolute_delta: f64,
+}
+
+/// Fail-closed quantitative CUT&RUN comparison carried beside qualitative
+/// motif/occupancy states.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct OrthologCutRunQuantitativeComparison {
+    pub status: OrthologCutRunQuantitativeComparisonStatus,
+    pub normalization: OrthologCutRunNormalizationInput,
+    #[serde(default)]
+    pub assignments: Vec<OrthologCutRunNormalizedAssignment>,
+    #[serde(default)]
+    pub pairwise_comparisons: Vec<OrthologCutRunPairwiseQuantitativeComparison>,
+    pub detail: String,
+}
+
 /// Species alias mapping used by a local ortholog resource.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
@@ -616,6 +715,8 @@ pub struct OrthologPromoterComparisonReport {
     pub sequence_similarity: Vec<OrthologSequenceSimilarityRow>,
     #[serde(default)]
     pub cutrun_support: Vec<OrthologCutRunSupportRow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutrun_quantitative_comparison: Option<OrthologCutRunQuantitativeComparison>,
     #[serde(default)]
     pub expression_assignments: Vec<OrthologExpressionAssignment>,
     #[serde(default)]
@@ -842,5 +943,41 @@ mod tests {
         };
         let value = serde_json::to_value(row).expect("serialize row");
         assert_eq!(value["status"], "motif_only");
+    }
+
+    #[test]
+    fn normalized_cutrun_contract_round_trips_without_changing_old_reports() {
+        let old_report: OrthologPromoterComparisonReport =
+            serde_json::from_value(serde_json::json!({
+                "schema": ORTHOLOG_PROMOTER_COMPARISON_SCHEMA,
+                "cohort": {"schema": ORTHOLOG_PROMOTER_COHORT_SCHEMA}
+            }))
+            .expect("deserialize comparison without normalized CUT&RUN");
+        assert!(old_report.cutrun_quantitative_comparison.is_none());
+
+        let comparison = OrthologCutRunQuantitativeComparison {
+            status: OrthologCutRunQuantitativeComparisonStatus::Comparable,
+            normalization: OrthologCutRunNormalizationInput {
+                normalization_method: "spike_in_scaled_cpm".to_string(),
+                unit: "normalized_fragments_per_million".to_string(),
+                comparison_reference: "shared_batch_1".to_string(),
+                provenance: "synthetic reviewed normalization table".to_string(),
+                values: vec![OrthologCutRunNormalizedValueInput {
+                    species: "Homo sapiens".to_string(),
+                    gene_label: Some("TP73".to_string()),
+                    normalized_value: 4.5,
+                    contributing_read_report_ids: vec!["human_reads".to_string()],
+                    ..OrthologCutRunNormalizedValueInput::default()
+                }],
+            },
+            detail: "Explicit normalized values were comparable.".to_string(),
+            ..OrthologCutRunQuantitativeComparison::default()
+        };
+        let value = serde_json::to_value(comparison).expect("serialize normalized comparison");
+        assert_eq!(value["status"], "comparable");
+        assert_eq!(
+            value["normalization"]["normalization_method"],
+            "spike_in_scaled_cpm"
+        );
     }
 }
