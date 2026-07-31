@@ -819,7 +819,7 @@ const EXPERIMENTAL_ASSAY_HANDOFF_SCHEMA: &str = "gentle.experimental_assay_hando
 const EXPERIMENTAL_ASSAY_CARD_SCHEMA: &str = "gentle.experimental_assay_card.v1";
 const EXPERIMENTAL_ASSAY_READINESS_POLICY_SCHEMA: &str =
     "gentle.experimental_assay_readiness_policy.v1";
-const PRIMER_VARIANT_EVIDENCE_SCHEMA: &str = "gentle.primer_variant_evidence.v1";
+pub const PRIMER_VARIANT_EVIDENCE_SCHEMA: &str = "gentle.primer_variant_evidence.v1";
 const CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA: &str = "gentle.cdna_assay_transcript_map.v1";
 const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
     "gentle.cdna_assay_product_materialization.v1";
@@ -4345,6 +4345,15 @@ pub enum Operation {
         request: ExternalPrimerPairImportRequest,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+    },
+    /// Screen explicit assembly-aware primer/probe geometry against one local
+    /// VCF in a single pass without mutating project state.
+    ScreenPrimerVariants {
+        request: Box<PrimerVariantScreenRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        evidence_dir: Option<String>,
     },
     TestCdnaQpcr {
         seq_id: SeqId,
@@ -9392,6 +9401,7 @@ impl GentleEngine {
                 | Operation::SuggestSequencingPrimers { .. }
                 | Operation::AlignSequences { .. }
                 | Operation::SearchPrimerBank { .. }
+                | Operation::ScreenPrimerVariants { .. }
                 | Operation::TestCdnaPcr { .. }
                 | Operation::TestCdnaQpcr { .. }
                 | Operation::BuildTranscriptQpcrPanel { .. }

@@ -8602,6 +8602,42 @@ PrimerBank lookup and cDNA continuation (implemented):
   explicit species can guide the run but cannot independently validate the
   sequence annotation. The PrimerBank record itself must always be `matched`.
 
+Primer variant screening (implemented):
+
+- `ScreenPrimerVariants { request, path?, evidence_dir? }` is a read-only,
+  engine-owned operation. It screens every declared physical pair against one
+  local VCF/VCF.gz in a single streaming pass; it does not download variant
+  resources or infer genomic coordinates from historical catalog positions.
+- `gentle.primer_variant_screen_request.v1` requires a candidate assembly and
+  explicit current-assembly binding geometry. Each forward, reverse, or probe
+  oligo has one or more 1-based closed genomic segments with strand, oligo
+  offsets, and the expected increasing-reference sequence. Multiple segments
+  represent junction-spanning binding without inventing an intronic span.
+  Optional amplicon segments make non-oligo overlap visible.
+- The variant source is either a direct VCF path plus provenance or a local
+  `gentle.primer_variant_resource_manifest.v1`. A manifest pins source name,
+  release, population, retrieval label, assembly, optional AF INFO key,
+  optional content SHA-256, and contig aliases. Relative VCF paths resolve next
+  to the manifest.
+- The operation verifies request/source/VCF assembly declarations, resolves
+  contigs conservatively, and checks each overlapping VCF REF allele against
+  the declared reference sequence. Incompatible assembly or reference evidence
+  yields `incompatible_reference`; it is never treated as a clear screen.
+- Overlap rows distinguish `primer`, `probe`, and `amplicon_only`, report
+  strand-aware oligo positions and distance from the 3-prime end, and classify
+  SNVs, MNVs, insertions, deletions, and complex alleles. Indels and complex
+  alleles remain conservative overlap evidence without haplotype realignment.
+- Missing or malformed allele frequency is `null`, never zero. With a maximum
+  allowed frequency, unknown AF remains relevant. Probe overlaps follow the
+  requested `relevant`, `report_only`, or `ignore` policy; amplicon-only rows
+  remain descriptive.
+- `gentle.primer_variant_screen.v1` wraps deterministic, source-fingerprinted
+  `gentle.primer_variant_evidence.v1` reports. Identical forward/reverse
+  sequences share one physical `pair_id` only when their binding geometry is
+  identical; all candidate-source rows remain attached. `evidence_dir` writes
+  one directly consumable evidence JSON per pair for
+  `BuildExperimentalAssayHandoff`.
+
 Primer-design shell command family (implemented):
 
 - Shared-shell family:
@@ -8611,6 +8647,7 @@ Primer-design shell command family (implemented):
   - `primers primerbank show PRIMERBANK_ID [--species human|mouse|all] [--html SAVED.html] [--path OUTPUT.json]`
   - `primers primerbank test-cdna SEQ_ID FEATURE_ID PRIMERBANK_ID --species human|mouse [--html SAVED.html] [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--path OUTPUT.json] [--svg OUTPUT.svg]`
   - `primers import-external-pairs INPUT.json|tsv SEQ_ID FEATURE_ID [--format auto|json|tsv] [--report-id ID] [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--specificity-target-genome GENOME_ID] [--specificity-catalog PATH] [--specificity-cache-dir DIR] [--artifact-output-dir DIR] [--materialize-products] [--product-gel-ladder NAME ...] [--path OUTPUT.json]`
+  - `primers screen-variants REQUEST_JSON_OR_@FILE [--path OUTPUT.json] [--evidence-dir DIR]`
   - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
   - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`

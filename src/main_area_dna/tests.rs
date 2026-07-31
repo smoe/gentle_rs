@@ -1097,6 +1097,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         primer_specificity_handoff: None,
         primer_specificity_report: None,
         external_primer_pair_import_report: None,
+        primer_variant_screen: None,
         construct_reasoning_graph: None,
         sequencing_confirmation_report: None,
         sequencing_trace_import_report: Some(SequencingTraceImportReport {
@@ -4930,6 +4931,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             primer_specificity_handoff: None,
             primer_specificity_report: None,
             external_primer_pair_import_report: None,
+            primer_variant_screen: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,

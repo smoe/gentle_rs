@@ -3676,6 +3676,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ScreenPrimerVariants"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers screen-variants",
+         "summary": "Screen explicit assembly-aware primer and probe binding geometry against one local VCF, VCF.gz, or prepared manifest, preserving source attribution and conservative unknown-frequency semantics.",
+         "usage": "primers screen-variants REQUEST_JSON_OR_@FILE [--path OUTPUT.json] [--evidence-dir DIR]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "TestCdnaPcr"
          ],
          "interfaces": [

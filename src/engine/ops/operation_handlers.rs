@@ -26918,6 +26918,7 @@ impl GentleEngine {
             cdna_assay_product_materialization: None,
             primerbank_search_report: None,
             external_primer_pair_import_report: None,
+            primer_variant_screen: None,
             transcript_qpcr_panel: None,
             transcript_assay_panel: None,
             gene_transcript_assay_routine: None,
@@ -33045,6 +33046,101 @@ impl GentleEngine {
                     ));
                     result.warnings.extend(report.warnings.iter().cloned());
                     result.external_primer_pair_import_report = Some(Box::new(report));
+                }
+                Operation::ScreenPrimerVariants {
+                    request,
+                    path,
+                    evidence_dir,
+                } => {
+                    let report = crate::primer_variants::screen_primer_variants(*request).map_err(
+                        |message| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message,
+                            cause_chain: vec![],
+                        },
+                    )?;
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let file = File::create(path).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create primer variant screen report '{path}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                        serde_json::to_writer_pretty(BufWriter::new(file), &report).map_err(
+                            |error| EngineError {
+                                code: ErrorCode::Io,
+                                message: format!(
+                                    "Could not serialize primer variant screen report '{path}': {error}"
+                                ),
+                                cause_chain: vec![],
+                            },
+                        )?;
+                        result
+                            .messages
+                            .push(format!("Wrote primer variant screen report to '{path}'."));
+                    }
+                    if let Some(directory) = evidence_dir
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        fs::create_dir_all(directory).map_err(|error| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create primer variant evidence directory '{directory}': {error}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                        for evidence in &report.evidence_reports {
+                            let evidence_path = Path::new(directory)
+                                .join(format!("{}.primer_variant_evidence.json", evidence.pair_id));
+                            let file =
+                                File::create(&evidence_path).map_err(|error| EngineError {
+                                    code: ErrorCode::Io,
+                                    message: format!(
+                                        "Could not create primer variant evidence '{}': {error}",
+                                        evidence_path.display()
+                                    ),
+                                    cause_chain: vec![],
+                                })?;
+                            serde_json::to_writer_pretty(BufWriter::new(file), evidence).map_err(
+                                |error| EngineError {
+                                    code: ErrorCode::Io,
+                                    message: format!(
+                                        "Could not serialize primer variant evidence '{}': {error}",
+                                        evidence_path.display()
+                                    ),
+                                    cause_chain: vec![],
+                                },
+                            )?;
+                        }
+                        result.messages.push(format!(
+                            "Wrote {} per-pair primer variant evidence report(s) to '{}'.",
+                            report.evidence_reports.len(),
+                            directory
+                        ));
+                    }
+                    result.messages.push(format!(
+                        "Screened {} candidate source row(s) as {} unique physical primer pair(s) across {} VCF record(s).",
+                        report.candidate_count,
+                        report.unique_pair_count,
+                        report.vcf_record_count
+                    ));
+                    result.warnings.extend(report.warnings.iter().cloned());
+                    result.warnings.extend(
+                        report
+                            .evidence_reports
+                            .iter()
+                            .flat_map(|evidence| evidence.warnings.iter().cloned()),
+                    );
+                    result.warnings.sort();
+                    result.warnings.dedup();
+                    result.primer_variant_screen = Some(Box::new(report));
                 }
                 Operation::TestCdnaQpcr {
                     seq_id,

@@ -13672,29 +13672,100 @@ fn experimental_assay_handoff_links_every_selected_pair_and_records_default_gate
     );
 
     let first_pair_id = handoff.cards[0].pair_id.clone();
-    let mut detected_variant = tempfile::NamedTempFile::new().expect("variant evidence fixture");
-    serde_json::to_writer_pretty(
-        &mut detected_variant,
-        &PrimerVariantEvidenceReport {
-            schema: PRIMER_VARIANT_EVIDENCE_SCHEMA.to_string(),
-            evidence_id: "variant_evidence_detected".to_string(),
-            pair_id: first_pair_id.clone(),
-            reference_assembly: "synthetic-assembly".to_string(),
-            source_name: "synthetic variants".to_string(),
-            source_release: "1".to_string(),
-            population: "synthetic".to_string(),
-            retrieval_time: "deterministic-fixture".to_string(),
-            content_sha256: "sha256:synthetic-detected".to_string(),
-            status: PrimerVariantEvidenceStatus::VariantDetected,
-            ..Default::default()
-        },
+    let first_reverse = first_assay.primer_pair.reverse.sequence.clone();
+    let forward_start_1based = 100usize;
+    let forward_end_1based = forward_start_1based + first_forward.len() - 1;
+    let reverse_start_1based = 300usize;
+    let reverse_end_1based = reverse_start_1based + first_reverse.len() - 1;
+    let terminal_reference = first_forward
+        .chars()
+        .last()
+        .expect("non-empty forward primer");
+    let terminal_alternate = if terminal_reference == 'A' { 'C' } else { 'A' };
+    let variant_fixture = tempdir().expect("generated variant evidence fixture");
+    let variant_vcf_path = variant_fixture.path().join("variants.vcf");
+    fs::write(
+        &variant_vcf_path,
+        format!(
+            "##fileformat=VCFv4.2\n##reference=synthetic-assembly\n##contig=<ID=chrSynthetic,length=1000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchrSynthetic\t{forward_end_1based}\trsTerminal\t{terminal_reference}\t{terminal_alternate}\t.\tPASS\tAF=0.2\n"
+        ),
     )
-    .expect("write detected variant evidence fixture");
+    .expect("write synthetic variant VCF");
+    let variant_evidence_dir = variant_fixture.path().join("evidence");
+    let variant_screen = engine
+        .apply(Operation::ScreenPrimerVariants {
+            request: Box::new(PrimerVariantScreenRequest {
+                reference_assembly: "synthetic-assembly".to_string(),
+                source: PrimerVariantSourceInput {
+                    vcf_path: Some(variant_vcf_path.to_string_lossy().to_string()),
+                    reference_assembly: "synthetic-assembly".to_string(),
+                    source_name: "synthetic variants".to_string(),
+                    source_release: "1".to_string(),
+                    population: "synthetic".to_string(),
+                    retrieval_time: "deterministic-fixture".to_string(),
+                    allele_frequency_info_field: Some("AF".to_string()),
+                    ..Default::default()
+                },
+                candidates: vec![PrimerVariantScreenCandidate {
+                    candidate_id: "experimental-handoff-selected-pair".to_string(),
+                    pair_id: Some(first_pair_id.clone()),
+                    source: PrimerVariantCandidateSource {
+                        candidate_id: "experimental-handoff-selected-pair".to_string(),
+                        source_kind: PrimerVariantCandidateSourceKind::DeNovo,
+                        source_id: first_assay.assay_id.clone(),
+                        provider: "GENtle synthetic test".to_string(),
+                        content_sha256: "sha256:synthetic-panel-source".to_string(),
+                        ..Default::default()
+                    },
+                    forward: PrimerVariantScreenOligo {
+                        sequence_5_to_3: first_forward.clone(),
+                        binding_segments: vec![PrimerVariantBindingSegment {
+                            reference_name: "chrSynthetic".to_string(),
+                            start_1based: forward_start_1based,
+                            end_1based: forward_end_1based,
+                            strand: PrimerVariantBindingStrand::Plus,
+                            oligo_start_0based: 0,
+                            oligo_end_0based_exclusive: first_forward.len(),
+                            reference_sequence_5_to_3: first_forward.clone(),
+                        }],
+                    },
+                    reverse: PrimerVariantScreenOligo {
+                        sequence_5_to_3: first_reverse.clone(),
+                        binding_segments: vec![PrimerVariantBindingSegment {
+                            reference_name: "chrSynthetic".to_string(),
+                            start_1based: reverse_start_1based,
+                            end_1based: reverse_end_1based,
+                            strand: PrimerVariantBindingStrand::Minus,
+                            oligo_start_0based: 0,
+                            oligo_end_0based_exclusive: first_reverse.len(),
+                            reference_sequence_5_to_3: GentleEngine::reverse_complement(
+                                &first_reverse,
+                            ),
+                        }],
+                    },
+                    ..Default::default()
+                }],
+                maximum_allowed_frequency: Some(0.01),
+                ..Default::default()
+            }),
+            path: None,
+            evidence_dir: Some(variant_evidence_dir.to_string_lossy().to_string()),
+        })
+        .expect("generate primer variant evidence")
+        .primer_variant_screen
+        .expect("primer variant screen report");
+    assert_eq!(
+        variant_screen.evidence_reports[0].status,
+        PrimerVariantEvidenceStatus::VariantDetected
+    );
+    let detected_variant_path =
+        variant_evidence_dir.join(format!("{first_pair_id}.primer_variant_evidence.json"));
+    assert!(detected_variant_path.is_file());
     let variant_handoff = engine
         .apply(Operation::BuildExperimentalAssayHandoff {
             panel_report_id: panel.report_id.clone(),
             policy: ExperimentalAssayReadinessPolicy::default(),
-            variant_evidence_paths: vec![detected_variant.path().to_string_lossy().to_string()],
+            variant_evidence_paths: vec![detected_variant_path.to_string_lossy().to_string()],
             order_form_id: None,
             path: None,
             order_table_path: None,

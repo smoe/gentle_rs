@@ -474,6 +474,7 @@ an agent has selected a deterministic operation.
 - `primers primerbank search`
 - `primers primerbank show`
 - `primers primerbank test-cdna`
+- `primers screen-variants` (the typed `ScreenPrimerVariants` operation remains available through the generic MCP `op` tool)
 - `primers preflight`
 - `primers prepare-restriction-cloning`
 - `primers restriction-cloning-vector-suggestions`

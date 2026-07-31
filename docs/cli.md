@@ -3076,6 +3076,23 @@ Shared shell command:
         missing geometry.
         `--materialize-products` makes the import state-changing and, with
         `--artifact-output-dir`, writes the corresponding product gel
+    - `primers screen-variants REQUEST_JSON_OR_@FILE [--path OUTPUT.json] [--evidence-dir DIR]`
+      - accepts `gentle.primer_variant_screen_request.v1` with one or more
+        primer pairs, explicit current-assembly binding segments, and either a
+        local VCF/VCF.gz or local variant-resource manifest
+      - scans the VCF once for all physical pairs. Junction-spanning oligos use
+        separate exonic segments; reverse-strand positions and the configurable
+        critical 3-prime window are reported in oligo coordinates
+      - verifies assembly, contig, and overlapping REF alleles. Missing AF is
+        unknown rather than zero, and indels/MNVs remain conservative evidence
+        rather than being silently normalized into a haplotype claim
+      - `--path` writes the aggregate `gentle.primer_variant_screen.v1` report;
+        `--evidence-dir` writes one `gentle.primer_variant_evidence.v1` JSON per
+        pair for direct use with `primers experimental-handoff
+        ... --variant-evidence PATH`
+      - candidate source rows remain provenance only. PrimerBank or commercial
+        catalog presence is not GENtle validation, and this route never
+        downloads dbSNP or another variant resource
     - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`

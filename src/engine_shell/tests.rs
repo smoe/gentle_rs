@@ -6986,6 +6986,24 @@ fn parse_primers_import_external_pairs_with_evaluation_options() {
 }
 
 #[test]
+fn parse_primers_screen_variants_with_artifact_outputs() {
+    let command = parse_shell_line(
+        "primers screen-variants @variant_request.json --path screen.json --evidence-dir evidence",
+    )
+    .expect("parse primer variant screen");
+    assert!(matches!(
+        command,
+        ShellCommand::PrimersScreenVariants {
+            request_json,
+            path,
+            evidence_dir,
+        } if request_json == "@variant_request.json"
+            && path.as_deref() == Some("screen.json")
+            && evidence_dir.as_deref() == Some("evidence")
+    ));
+}
+
+#[test]
 fn parse_primers_seed_from_feature_and_splicing() {
     let feature =
         parse_shell_line("primers seed-from-feature seq_a 7").expect("parse seed-from-feature");
@@ -18612,6 +18630,112 @@ fn execute_primers_import_external_pairs_returns_provenance_and_metrics() {
         Some(1)
     );
     assert!(output_path.is_file());
+}
+
+#[test]
+fn execute_primers_screen_variants_emits_handoff_ready_evidence() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let vcf_path = td.path().join("variants.vcf");
+    std::fs::write(
+        &vcf_path,
+        concat!(
+            "##fileformat=VCFv4.2\n",
+            "##reference=GRCh38\n",
+            "##contig=<ID=chr1,length=1000>\n",
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n",
+            "chr1\t111\trsTerminal\tC\tT\t.\tPASS\tAF=0.2\n"
+        ),
+    )
+    .expect("write variant VCF");
+    let request_path = td.path().join("request.json");
+    std::fs::write(
+        &request_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "schema": "gentle.primer_variant_screen_request.v1",
+            "reference_assembly": "GRCh38",
+            "source": {
+                "vcf_path": vcf_path,
+                "reference_assembly": "GRCh38",
+                "source_name": "synthetic variants",
+                "source_release": "1",
+                "population": "synthetic",
+                "retrieval_time": "deterministic-fixture",
+                "allele_frequency_info_field": "AF"
+            },
+            "candidates": [{
+                "candidate_id": "shell-pair",
+                "source": {
+                    "candidate_id": "shell-pair",
+                    "source_kind": "external",
+                    "source_id": "shell-fixture",
+                    "provider": "synthetic",
+                    "content_sha256": "sha256:synthetic"
+                },
+                "forward": {
+                    "sequence_5_to_3": "AACCGGTTAACC",
+                    "binding_segments": [{
+                        "reference_name": "chr1",
+                        "start_1based": 100,
+                        "end_1based": 111,
+                        "strand": "plus",
+                        "oligo_start_0based": 0,
+                        "oligo_end_0based_exclusive": 12,
+                        "reference_sequence_5_to_3": "AACCGGTTAACC"
+                    }]
+                },
+                "reverse": {
+                    "sequence_5_to_3": "GGAACCTTGGAA",
+                    "binding_segments": [{
+                        "reference_name": "chr1",
+                        "start_1based": 200,
+                        "end_1based": 211,
+                        "strand": "minus",
+                        "oligo_start_0based": 0,
+                        "oligo_end_0based_exclusive": 12,
+                        "reference_sequence_5_to_3": "TTCCAAGGTTCC"
+                    }]
+                }
+            }],
+            "maximum_allowed_frequency": 0.01
+        }))
+        .expect("serialize screen request"),
+    )
+    .expect("write screen request");
+    let output_path = td.path().join("screen.json");
+    let evidence_dir = td.path().join("evidence");
+    let command = parse_shell_line(&format!(
+        "primers screen-variants @{} --path {} --evidence-dir {}",
+        request_path.display(),
+        output_path.display(),
+        evidence_dir.display()
+    ))
+    .expect("parse screen command");
+    let mut engine = GentleEngine::default();
+    let result = execute_shell_command(&mut engine, &command).expect("execute variant screen");
+    assert!(!result.state_changed);
+    assert_eq!(
+        result.output["schema"].as_str(),
+        Some("gentle.primer_variant_screen_command.v1")
+    );
+    assert_eq!(
+        result.output["report"]["evidence_reports"][0]["status"].as_str(),
+        Some("variant_detected")
+    );
+    assert!(output_path.is_file());
+    let evidence_paths = std::fs::read_dir(&evidence_dir)
+        .expect("read evidence directory")
+        .map(|entry| entry.expect("evidence entry").path())
+        .collect::<Vec<_>>();
+    assert_eq!(evidence_paths.len(), 1);
+    let evidence: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&evidence_paths[0]).expect("read generated evidence"),
+    )
+    .expect("parse generated evidence");
+    assert_eq!(
+        evidence["schema"].as_str(),
+        Some("gentle.primer_variant_evidence.v1")
+    );
+    assert_eq!(evidence["overlaps"][0]["critical_three_prime"], true);
 }
 
 #[test]

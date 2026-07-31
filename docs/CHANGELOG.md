@@ -19,6 +19,11 @@ understand what changed.
   from a persisted RNA-read report, Salmon outputs select IDs from explicit
   sequence files, and `gentle.rna_allele_hash_screen.v2` records per-read and
   aggregate source provenance while retaining v1 deserialization.
+- Added offline, assembly-aware primer/probe variation screening through
+  `ScreenPrimerVariants` and `primers screen-variants`: one local VCF pass now
+  emits source-fingerprinted, strand-aware, handoff-ready
+  `gentle.primer_variant_evidence.v1` reports without treating unknown allele
+  frequency or incompatible reference evidence as clear.
 - Linked reasoning-guided dotplots back to their recommending
   construct-reasoning graphs in interactive and exported lineage views;
   lineage details now distinguish verified, failed, unknown, and absent/manual

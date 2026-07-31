@@ -75,10 +75,10 @@ use crate::{
         PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
         PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
         PrimerSpecificityCheckMode, PrimerSpecificityCollectionMemberBinding,
-        PrimerSpecificityPolicy, ProbeRegionRequest, ProjectFact, ProjectFactDomain,
-        ProjectFactGraph, ProjectFactTypeSpec, ProjectState, PromoterArtifactManifestEntry,
-        PromoterCohortKind, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
-        PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
+        PrimerSpecificityPolicy, PrimerVariantScreenRequest, ProbeRegionRequest, ProjectFact,
+        ProjectFactDomain, ProjectFactGraph, ProjectFactTypeSpec, ProjectState,
+        PromoterArtifactManifestEntry, PromoterCohortKind, PromoterExpressionEvidenceInput,
+        PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
         ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
         ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
         ProteinExpressionProductReadiness, ProteinExpressionRequirements,
@@ -2520,6 +2520,11 @@ pub enum ShellCommand {
         materialize_products: bool,
         product_gel_ladders: Vec<String>,
         path: Option<String>,
+    },
+    PrimersScreenVariants {
+        request_json: String,
+        path: Option<String>,
+        evidence_dir: Option<String>,
     },
     PrimersTestCdnaPcr {
         seq_id: String,
@@ -11372,6 +11377,16 @@ impl ShellCommand {
                 specificity_target_genome_id.as_deref().unwrap_or("not_run"),
                 materialize_products,
             ),
+            Self::PrimersScreenVariants {
+                request_json,
+                path,
+                evidence_dir,
+            } => format!(
+                "screen assembly-aware primer binding geometry against a local variant source (request_len={}, path={}, evidence_dir={})",
+                request_json.len(),
+                path.as_deref().unwrap_or("none"),
+                evidence_dir.as_deref().unwrap_or("none"),
+            ),
             Self::PrimersTestCdnaPcr {
                 seq_id,
                 feature_id,
@@ -16636,6 +16651,36 @@ fn external_primer_pair_import_descriptor(id: &str, description: &str) -> Value 
                 {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
             ]
         },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn primer_variant_screen_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "REQUEST_JSON", "required": true, "subject_kind": "other", "detail": "assembly-aware primer/probe geometry plus one local VCF, VCF.gz, or prepared variant-resource manifest"},
+            {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external gentle.primer_variant_screen.v1 JSON path"},
+            {"name": "EVIDENCE_DIR", "required": false, "subject_kind": "other", "detail": "optional directory for one gentle.primer_variant_evidence.v1 JSON report per physical primer pair"}
+        ],
+        "reads": [],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            },
+            {
+                "effect_kind": "may_on_success",
+                "description": "May write one generated primer-variant evidence artifact per physical pair under EVIDENCE_DIR."
+            }
+        ],
+        "precondition_expr": {"all": []},
         "description": description,
         "annotation_status": "fact_annotated",
         "registry": registry_metadata_for_introspection(id)
@@ -22709,6 +22754,14 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "primers import-external-pairs",
             "Import a JSON or TSV external primer-pair batch and evaluate every unique pair without treating source targeting or validation claims as biological evidence.",
         ),
+        primer_variant_screen_descriptor(
+            "ScreenPrimerVariants",
+            "Screen explicit assembly-aware primer and probe binding geometry against one local variant resource, preserving source attribution and conservative frequency semantics.",
+        ),
+        primer_variant_screen_descriptor(
+            "primers screen-variants",
+            "Screen explicit assembly-aware primer and probe binding geometry against one local VCF, VCF.gz, or prepared manifest and optionally emit handoff-ready per-pair evidence.",
+        ),
         cdna_assay_test_descriptor(
             "TestCdnaPcr",
             "Test supplied PCR primers against transcript-derived cDNA templates for one loaded splicing group.",
@@ -27446,6 +27499,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "primers import-external-pairs" | "ImportExternalPrimerPairs" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
+        "primers screen-variants" | "ScreenPrimerVariants" => Some(vec![]),
         "primers list-transcript-assay-panels" => Some(vec![]),
         "primers show-transcript-assay-panel" | "primers export-transcript-assay-panel" => {
             Some(vec![
@@ -52618,6 +52672,38 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersScreenVariants {
+            request_json,
+            path,
+            evidence_dir,
+        } => {
+            let request = parse_required_json_payload::<PrimerVariantScreenRequest>(
+                request_json,
+                "primer variant screen request",
+            )?;
+            let op_result = engine
+                .apply(Operation::ScreenPrimerVariants {
+                    request: Box::new(request),
+                    path: path.clone(),
+                    evidence_dir: evidence_dir.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .primer_variant_screen
+                .as_ref()
+                .map(|report| (**report).clone())
+                .ok_or_else(|| "Primer variant screen operation returned no report".to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_variant_screen_command.v1",
+                    "report": report,
+                    "path": path,
+                    "evidence_dir": evidence_dir,
+                    "result": op_result,
+                }),
+            })
+        }
         ShellCommand::PrimersTestCdnaPcr {
             seq_id,
             feature_id,
@@ -58980,6 +59066,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
             | ShellCommand::PrimersTranscriptAssaySpecificityFinalize { .. }
             | ShellCommand::PrimersImportExternalPairs { .. }
+            | ShellCommand::PrimersScreenVariants { .. }
             | ShellCommand::PrimersTestCdnaPcr { .. }
             | ShellCommand::PrimersTestCdnaQpcr { .. }
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
@@ -60718,6 +60805,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
         | ShellCommand::PrimersTranscriptAssaySpecificityFinalize { .. }
         | ShellCommand::PrimersImportExternalPairs { .. }
+        | ShellCommand::PrimersScreenVariants { .. }
         | ShellCommand::PrimersTestCdnaPcr { .. }
         | ShellCommand::PrimersTestCdnaQpcr { .. }
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }

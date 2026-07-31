@@ -314,10 +314,11 @@ wet-lab conclusions or unconfirmed mutations.
   release scope.
 - Primer3 parity, virtual PCR/off-target filtering, multiplex tiling, LAMP, and
   allele-specific assay families.
-- First-class global RT-PCR specificity/redesign workflow combining prepared
+- First-class global RT-PCR specificity/redesign workflow building on the
+  landed local assembly-aware primer variant screen and combining prepared
   genome and transcriptome searches, intended-product/paralogue policy,
-  junction and variant evidence, Primer3 plus exact-run QC, ranked redesign
-  candidates, and one provenance-bound review bundle.
+  junction evidence, Primer3 plus exact-run QC, ranked redesign candidates,
+  and one provenance-bound review bundle.
 - GuideRNA off-target ranking and macro-template packaging.
 - Cross-tool parity synthesis for Serial Cloner, MacVector, and SnapGene.
 - Post-release hardening backlog that is not tied to the next release scope.
