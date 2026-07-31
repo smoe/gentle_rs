@@ -176,7 +176,7 @@ fn gene_set_resolve_form_to_operation(form: &GeneSetResolveFormState) -> Result<
                 if suffix.is_empty() {
                     return Err("External ID suffix must not be empty".to_string());
                 }
-                format!("{namespace}:{suffix}")
+                raw_id.clone()
             } else {
                 format!("{namespace}:{raw_id}")
             };
@@ -200,11 +200,12 @@ fn gene_set_resolve_form_to_operation(form: &GeneSetResolveFormState) -> Result<
         GeneSetResolveSourceKind::Random => {
             let count = parse_optional_positive_usize(&form.random_size, "Sample size")?
                 .ok_or_else(|| "Sample size must not be empty".to_string())?;
-            let random_seed = form
-                .random_seed
-                .trim()
-                .parse::<u64>()
-                .map_err(|_| "Random seed must be a non-negative integer".to_string())?;
+            let random_seed = match optional_trimmed(&form.random_seed) {
+                Some(value) => value
+                    .parse::<u64>()
+                    .map_err(|_| "Random seed must be a non-negative integer".to_string())?,
+                None => 0,
+            };
             GeneSetRequest::Random {
                 count,
                 random_seed,
@@ -1866,6 +1867,19 @@ mod tests {
     }
 
     #[test]
+    fn gene_set_resolve_parity_external_mapping_preserves_prefixed_id() {
+        assert_resolve_form_matches_shell(
+            GeneSetResolveFormState {
+                source_kind: GeneSetResolveSourceKind::ExternalMapping,
+                external_namespace: "reactome".to_string(),
+                external_id: "Reactome:R-HSA-123".to_string(),
+                ..GeneSetResolveFormState::default()
+            },
+            "gene-sets resolve --external-mapping Reactome:R-HSA-123",
+        );
+    }
+
+    #[test]
     fn gene_set_resolve_parity_genomic_neighbors() {
         assert_resolve_form_matches_shell(
             GeneSetResolveFormState {
@@ -1889,6 +1903,19 @@ mod tests {
                 ..GeneSetResolveFormState::default()
             },
             "gene-sets resolve --random-size 10 --seed 42",
+        );
+    }
+
+    #[test]
+    fn gene_set_resolve_parity_random_uses_shell_default_seed() {
+        assert_resolve_form_matches_shell(
+            GeneSetResolveFormState {
+                source_kind: GeneSetResolveSourceKind::Random,
+                random_size: "10".to_string(),
+                random_seed: String::new(),
+                ..GeneSetResolveFormState::default()
+            },
+            "gene-sets resolve --random-size 10",
         );
     }
 
