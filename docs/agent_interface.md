@@ -649,9 +649,14 @@ retained rows and their stored sequences through the same gene-support cohort
 logic used by the audit command. Salmon `unmapped_names` and mapping SAM files
 are ID selectors, not complete sequence stores: when either Salmon flag is
 used, the command also requires explicit `--read-file` or `--read-pair`
-inputs. The v2 report exposes overlapping per-read `source_origins[]` and
+inputs. The v3 report exposes overlapping per-read `source_origins[]` and
 aggregate `source_provenance[]` counts so downstream imbalance interpretation
-does not lose its cohort basis.
+does not lose its cohort basis. Its representation verdict is threshold-based
+on phased allele-informative depth (`--min-informative-reads` and the balanced
+band flags); report-derived retained-read support is contextual expression
+weight, and the optional binomial value is advisory rather than a significance
+gate. Agents must describe the result as sequence representation, not
+biological significance or causation.
 
 ### 4) Agent Assistant bridge (`agents ...` and GUI Agent Assistant)
 

@@ -11184,6 +11184,9 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             let mut out_dir: Option<String> = None;
             let mut kmer_len = 21usize;
             let mut min_unique_kmer_hits = 1u64;
+            let mut min_informative_reads = 10u64;
+            let mut balanced_band_lo = 0.40f64;
+            let mut balanced_band_hi = 0.60f64;
             let mut max_inline_read_calls = 10_000usize;
             let mut idx = 2usize;
             while idx < tokens.len() {
@@ -11327,6 +11330,45 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                             )
                         })?;
                     }
+                    "--min-informative-reads" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-informative-reads",
+                            "rna-reads allele-hash-screen",
+                        )?;
+                        min_informative_reads = raw.parse::<u64>().map_err(|e| {
+                            format!(
+                                "Invalid --min-informative-reads value '{raw}' for rna-reads allele-hash-screen: {e}"
+                            )
+                        })?;
+                    }
+                    "--balanced-band-lo" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--balanced-band-lo",
+                            "rna-reads allele-hash-screen",
+                        )?;
+                        balanced_band_lo = raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --balanced-band-lo value '{raw}' for rna-reads allele-hash-screen: {e}"
+                            )
+                        })?;
+                    }
+                    "--balanced-band-hi" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--balanced-band-hi",
+                            "rna-reads allele-hash-screen",
+                        )?;
+                        balanced_band_hi = raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --balanced-band-hi value '{raw}' for rna-reads allele-hash-screen: {e}"
+                            )
+                        })?;
+                    }
                     "--max-inline-read-calls" => {
                         let raw = parse_option_path(
                             tokens,
@@ -11389,6 +11431,9 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 out_dir,
                 kmer_len,
                 min_unique_kmer_hits,
+                min_informative_reads,
+                balanced_band_lo,
+                balanced_band_hi,
                 max_inline_read_calls,
             })
         }

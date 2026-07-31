@@ -21,6 +21,12 @@ Files:
 - `salmon_mappings.sam`: assigns the remaining short read to `FUS_TX1`, so the
   two Salmon selectors together reproduce the complete fixture cohort while
   still relying on `fus_reads.fastq` for sequences.
+- `representation_transcripts.fa`, `representation_variants.tsv`, and
+  `representation_reads.fastq`: four synthetic phased transcript units with
+  deterministic 9-mer markers. Their counts encode one adequate-depth hap1
+  preference (12:2), one balanced unit (5:5), one low-depth unit (2:1), and
+  one zero-coverage transcript. The generator asserts that all allele-marker
+  9-mers are distinct and absent from every reference transcript.
 - `generate_fixtures.py`: deterministic regeneration script.
 
 The key regression read is `fus_hap2_alt_v1`: with `k=9`, it is exactly one
@@ -39,3 +45,4 @@ Used by:
 - `allele_hash_screen::tests::fus_fixture_classifies_haplotype_and_ambiguous_reads`
 - `allele_hash_screen::tests::salmon_selectors_reproduce_fixture_calls_and_provenance`
 - `allele_hash_screen::tests::unphased_variant_labels_report_without_inventing_phase`
+- `allele_hash_screen::tests::representation_fixture_covers_depth_aware_verdict_paths`

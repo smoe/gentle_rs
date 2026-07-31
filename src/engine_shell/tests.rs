@@ -38783,7 +38783,7 @@ fn parse_rna_reads_commands() {
     ));
 
     let allele_hash = parse_shell_line(
-        "rna-reads allele-hash-screen --gene FUS --transcript-fasta tx.fa --variant-table vars.tsv --read-file reads_single.fq --read-pair reads_1.fq,reads_2.fq --read-id-allowlist ids.txt --from-rna-report fus_reads --salmon-unmapped-names unmapped_names.txt --salmon-mappings-sam mappings.sam --kmer-len 9 --min-unique-kmer-hits 2 --max-inline-read-calls 250 --out out/allele",
+        "rna-reads allele-hash-screen --gene FUS --transcript-fasta tx.fa --variant-table vars.tsv --read-file reads_single.fq --read-pair reads_1.fq,reads_2.fq --read-id-allowlist ids.txt --from-rna-report fus_reads --salmon-unmapped-names unmapped_names.txt --salmon-mappings-sam mappings.sam --kmer-len 9 --min-unique-kmer-hits 2 --min-informative-reads 12 --balanced-band-lo 0.45 --balanced-band-hi 0.55 --max-inline-read-calls 250 --out out/allele",
     )
     .expect("parse rna-reads allele-hash-screen");
     assert!(matches!(
@@ -38801,6 +38801,9 @@ fn parse_rna_reads_commands() {
             out_dir,
             kmer_len,
             min_unique_kmer_hits,
+            min_informative_reads,
+            balanced_band_lo,
+            balanced_band_hi,
             max_inline_read_calls,
             ..
         } if gene == "FUS"
@@ -38815,6 +38818,9 @@ fn parse_rna_reads_commands() {
             && out_dir == "out/allele"
             && kmer_len == 9
             && min_unique_kmer_hits == 2
+            && min_informative_reads == 12
+            && (balanced_band_lo - 0.45).abs() < f64::EPSILON
+            && (balanced_band_hi - 0.55).abs() < f64::EPSILON
             && max_inline_read_calls == 250
     ));
 

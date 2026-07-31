@@ -10387,7 +10387,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
   - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]...`
   - `rna-reads build-transcript-index OUTPUT.json [--kmer-len N] --transcript-fasta PATH [--transcript-fasta PATH ...]`
-  - `rna-reads allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--from-rna-report REPORT_ID] [--read-file PATH ...] [--read-pair R1,R2 ...] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--max-inline-read-calls N] --out OUT_DIR`
+  - `rna-reads allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--from-rna-report REPORT_ID] [--read-file PATH ...] [--read-pair R1,R2 ...] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--min-informative-reads N] [--balanced-band-lo F] [--balanced-band-hi F] [--max-inline-read-calls N] --out OUT_DIR`
   - `rna-reads materialize-hits REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
@@ -10479,7 +10479,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       `gentle.rna_read_transcript_catalog_index.v1` payload directly and also
       writes the same JSON to the requested output path
     - `rna-reads allele-hash-screen` returns the full
-      `gentle.rna_allele_hash_screen.v2` payload directly and writes the same
+      `gentle.rna_allele_hash_screen.v3` payload directly and writes the same
       JSON, a read-call TSV, and reference/hap1/hap2 transcript FASTA files
       under the requested output directory. The deterministic path accepts
       an explicit transcript-coordinate variant TSV with columns
@@ -10509,6 +10509,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       as fragments, with an invalid-base boundary preventing cross-mate k-mers.
       Report fields include `schema`, `gene`, `phase_mode`, `params`,
       physical read/fragment/evidence-observation counts, `phase_blocks`,
+      `gene_representation`, optional `rna_report_expression_support`,
       `output_files`, `haplotype_fastas`, `transcript_summaries`,
       `variant_summaries`, `classification_counts`, `source_provenance[]`,
       `reads[]`, and `warnings[]`. Each read call carries
@@ -10520,8 +10521,24 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       Read calls classify evidence as `hap1`, `hap2`, `alternate`,
       `reference_only`, `ambiguous`, `uninformative`, or `off_target` and carry
       matched transcript ids, supporting variant ids, and local phase-block
-      calls. The report is sequence evidence only and does not claim
-      biological allelic imbalance.
+      calls. V3 attaches an optional `representation` assessment to every
+      variant, transcript, and phase-block summary and one top-level gene
+      assessment. The assessment records the verdict, hap1 fraction,
+      haplotype-informative count, expression-weight basis, applied thresholds,
+      coverage/phase/depth caveats, and an optional advisory two-sided binomial
+      value under p=0.5. Defaults are 10 informative observations and an
+      inclusive balanced band of 0.40 through 0.60. Unphased units never become
+      haplotype calls; mixed roll-ups exclude them with an explicit caveat.
+      Roll-ups across multiple phased blocks retain the requested aggregate
+      verdict but add `block_local_phase_labels_aggregated`, because block-local
+      labels do not reconstruct a linked gene-wide haplotype.
+      When sourced from an RNA report, retained target-gene/transcript support
+      is attached as expression context while the operative weight remains the
+      screen's own allele-informative depth; support below the configured
+      informative-depth floor adds a non-blocking caveat. V1/v2 payloads
+      deserialize with no invented assessment. The report is sequence evidence
+      only and does not claim biological allelic imbalance, significance, or
+      causation.
     - `rna-reads materialize-hits` returns a
       `gentle.rna_read_hit_materialization.v1` wrapper with:
       - the mutating `result` (`OpResult`) from
