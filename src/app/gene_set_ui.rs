@@ -1,15 +1,16 @@
-//! Binding-aware gene-set collection inspector.
+//! Gene-set source authoring, resolution inspection, and collection operations.
 //!
-//! This GUI is deliberately thin: it selects one persisted gene-set
-//! resolution, requires an explicit primer-report binding for every logical
-//! member, and executes the shared `collections run primer-specificity`
-//! command on a detached engine snapshot.
+//! This GUI is deliberately thin: it constructs the shared `ResolveGeneSet`
+//! operation, inspects persisted portable reports, requires explicit
+//! primer-report bindings, and executes collection specificity through the
+//! shared shell/engine path on detached engine snapshots.
 
 use super::*;
 use crate::{
     engine::{
         CollectionMemberOutcome, CollectionOperationReport, CollectionSubjectRef,
-        GeneSetResolutionReport, GeneSetResolutionReviewStatus, PrimerDesignReportSummary,
+        GeneSetProvenanceRow, GeneSetRequest, GeneSetResolutionReport,
+        GeneSetResolutionReviewStatus, PrimerDesignReportSummary,
         PrimerSpecificityCollectionMemberBinding, PrimerSpecificityPolicy,
     },
     engine_shell::{ShellCommand, execute_shell_command},
@@ -23,6 +24,228 @@ fn gene_set_review_status_label(status: GeneSetResolutionReviewStatus) -> &'stat
         GeneSetResolutionReviewStatus::Draft => "draft",
         GeneSetResolutionReviewStatus::Deprecated => "deprecated",
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum GeneSetInspectorMode {
+    Resolve,
+    #[default]
+    Inspect,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum GeneSetResolveSourceKind {
+    #[default]
+    CatalogGroup,
+    ExplicitMembers,
+    ExternalMapping,
+    GenomicNeighbors,
+    Random,
+}
+
+impl GeneSetResolveSourceKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::CatalogGroup => "Catalog group",
+            Self::ExplicitMembers => "Explicit members",
+            Self::ExternalMapping => "External mapping",
+            Self::GenomicNeighbors => "Genomic neighbors",
+            Self::Random => "Random sampling",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct GeneSetResolveFormState {
+    source_kind: GeneSetResolveSourceKind,
+    group_id: String,
+    members: String,
+    external_namespace: String,
+    external_id: String,
+    anchor_gene: String,
+    flank_genes: String,
+    flank_bp: String,
+    exclude_anchor: bool,
+    random_size: String,
+    random_seed: String,
+    exclude_members: String,
+    genome_id: String,
+    gene_group_catalog_path: String,
+    genome_catalog_path: String,
+    cache_dir: String,
+    allow_draft: bool,
+    allow_deprecated: bool,
+    output_path: String,
+}
+
+impl Default for GeneSetResolveFormState {
+    fn default() -> Self {
+        Self {
+            source_kind: GeneSetResolveSourceKind::CatalogGroup,
+            group_id: String::new(),
+            members: String::new(),
+            external_namespace: "GO".to_string(),
+            external_id: String::new(),
+            anchor_gene: String::new(),
+            flank_genes: "5".to_string(),
+            flank_bp: String::new(),
+            exclude_anchor: false,
+            random_size: "10".to_string(),
+            random_seed: "0".to_string(),
+            exclude_members: String::new(),
+            genome_id: String::new(),
+            gene_group_catalog_path: String::new(),
+            genome_catalog_path: String::new(),
+            cache_dir: String::new(),
+            allow_draft: false,
+            allow_deprecated: false,
+            output_path: String::new(),
+        }
+    }
+}
+
+fn optional_trimmed(value: &str) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
+
+fn parse_gene_set_member_list(
+    value: &str,
+    label: &str,
+    required: bool,
+) -> Result<Vec<String>, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return if required {
+            Err(format!("{label} must not be empty"))
+        } else {
+            Ok(vec![])
+        };
+    }
+    let mut members = Vec::new();
+    for token in value.split(',') {
+        let token = token.trim();
+        if token.is_empty() {
+            return Err(format!(
+                "{label} contains an empty entry; remove double or trailing commas"
+            ));
+        }
+        members.push(token.to_string());
+    }
+    Ok(members)
+}
+
+fn parse_optional_positive_usize(value: &str, label: &str) -> Result<Option<usize>, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    let parsed = value
+        .parse::<usize>()
+        .map_err(|_| format!("{label} must be a positive integer"))?;
+    if parsed == 0 {
+        return Err(format!("{label} must be at least 1"));
+    }
+    Ok(Some(parsed))
+}
+
+fn gene_set_resolve_form_to_operation(form: &GeneSetResolveFormState) -> Result<Operation, String> {
+    let source = match form.source_kind {
+        GeneSetResolveSourceKind::CatalogGroup => GeneSetRequest::CatalogGroup {
+            query: optional_trimmed(&form.group_id)
+                .ok_or_else(|| "Group ID must not be empty".to_string())?,
+        },
+        GeneSetResolveSourceKind::ExplicitMembers => GeneSetRequest::ExplicitMembers {
+            members: parse_gene_set_member_list(&form.members, "Members", true)?,
+        },
+        GeneSetResolveSourceKind::ExternalMapping => {
+            let namespace = optional_trimmed(&form.external_namespace)
+                .ok_or_else(|| "External namespace must not be empty".to_string())?
+                .to_ascii_uppercase();
+            let raw_id = optional_trimmed(&form.external_id)
+                .ok_or_else(|| "External ID must not be empty".to_string())?;
+            let id = if let Some((prefix, suffix)) = raw_id.split_once(':') {
+                if !prefix.trim().eq_ignore_ascii_case(&namespace) {
+                    return Err(format!(
+                        "External ID namespace '{}' does not match selected namespace '{}'",
+                        prefix.trim(),
+                        namespace
+                    ));
+                }
+                let suffix = suffix.trim();
+                if suffix.is_empty() {
+                    return Err("External ID suffix must not be empty".to_string());
+                }
+                format!("{namespace}:{suffix}")
+            } else {
+                format!("{namespace}:{raw_id}")
+            };
+            GeneSetRequest::ExternalMapping { namespace, id }
+        }
+        GeneSetResolveSourceKind::GenomicNeighbors => {
+            let anchor = optional_trimmed(&form.anchor_gene)
+                .ok_or_else(|| "Anchor gene must not be empty".to_string())?;
+            let flank_gene_count = parse_optional_positive_usize(&form.flank_genes, "Flank genes")?;
+            let flank_bp = parse_optional_positive_usize(&form.flank_bp, "Flank bp")?;
+            if flank_gene_count.is_none() && flank_bp.is_none() {
+                return Err("Enter flank genes, flank bp, or both".to_string());
+            }
+            GeneSetRequest::GenomicNeighbors {
+                anchor,
+                flank_gene_count,
+                flank_bp,
+                exclude_anchor: form.exclude_anchor,
+            }
+        }
+        GeneSetResolveSourceKind::Random => {
+            let count = parse_optional_positive_usize(&form.random_size, "Sample size")?
+                .ok_or_else(|| "Sample size must not be empty".to_string())?;
+            let random_seed = form
+                .random_seed
+                .trim()
+                .parse::<u64>()
+                .map_err(|_| "Random seed must be a non-negative integer".to_string())?;
+            GeneSetRequest::Random {
+                count,
+                random_seed,
+                exclude_members: parse_gene_set_member_list(
+                    &form.exclude_members,
+                    "Excluded members",
+                    false,
+                )?,
+            }
+        }
+    };
+    Ok(Operation::ResolveGeneSet {
+        source,
+        genome_id: optional_trimmed(&form.genome_id),
+        gene_group_catalog_path: optional_trimmed(&form.gene_group_catalog_path),
+        genome_catalog_path: optional_trimmed(&form.genome_catalog_path),
+        cache_dir: optional_trimmed(&form.cache_dir),
+        allow_draft: form.allow_draft,
+        allow_deprecated: form.allow_deprecated,
+        path: optional_trimmed(&form.output_path),
+    })
+}
+
+fn gene_set_provenance_summary(rows: &[GeneSetProvenanceRow]) -> String {
+    if rows.is_empty() {
+        return "-".to_string();
+    }
+    rows.iter()
+        .map(|row| {
+            let mut summary = format!("{}:{}", row.source_kind, row.source_id);
+            if let Some(label) = row
+                .source_label
+                .as_deref()
+                .filter(|value| !value.is_empty())
+            {
+                summary.push_str(&format!(" ({label})"));
+            }
+            summary
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 #[derive(Clone, Debug)]
@@ -57,8 +280,15 @@ struct GeneSetSpecificityTask {
     receiver: mpsc::Receiver<Result<GeneSetSpecificityTaskResult, EngineError>>,
 }
 
+struct GeneSetResolveTask {
+    started: Instant,
+    runtime_frame: RuntimeStatusGuard,
+    receiver: mpsc::Receiver<Result<GeneSetResolutionReport, EngineError>>,
+}
+
 pub(super) struct GeneSetInspectorUiState {
     pub(super) show_panel: bool,
+    mode: GeneSetInspectorMode,
     catalog_engine_identity: usize,
     catalog_execution_revision: Option<u64>,
     resolutions: Vec<GeneSetResolutionChoice>,
@@ -70,6 +300,9 @@ pub(super) struct GeneSetInspectorUiState {
     catalog_path: String,
     cache_dir: String,
     status: String,
+    resolve_form: GeneSetResolveFormState,
+    resolve_status: String,
+    resolve_task: Option<GeneSetResolveTask>,
     task: Option<GeneSetSpecificityTask>,
     last_report: Option<CollectionOperationReport>,
     child_reports: BTreeMap<String, PrimerSpecificityChildPresentation>,
@@ -79,6 +312,7 @@ impl Default for GeneSetInspectorUiState {
     fn default() -> Self {
         Self {
             show_panel: false,
+            mode: GeneSetInspectorMode::Inspect,
             catalog_engine_identity: 0,
             catalog_execution_revision: None,
             resolutions: vec![],
@@ -90,6 +324,9 @@ impl Default for GeneSetInspectorUiState {
             catalog_path: String::new(),
             cache_dir: String::new(),
             status: String::new(),
+            resolve_form: GeneSetResolveFormState::default(),
+            resolve_status: String::new(),
+            resolve_task: None,
             task: None,
             last_report: None,
             child_reports: BTreeMap::new(),
@@ -101,7 +338,38 @@ impl GENtleApp {
     pub(super) fn open_gene_set_inspector_dialog(&mut self) {
         let was_open = self.gene_set_inspector.show_panel;
         self.gene_set_inspector.show_panel = true;
+        if self
+            .gene_set_inspector
+            .resolve_form
+            .genome_id
+            .trim()
+            .is_empty()
+        {
+            self.gene_set_inspector.resolve_form.genome_id = self.genome_id.clone();
+        }
+        if self
+            .gene_set_inspector
+            .resolve_form
+            .genome_catalog_path
+            .trim()
+            .is_empty()
+        {
+            self.gene_set_inspector.resolve_form.genome_catalog_path =
+                self.genome_catalog_path.clone();
+        }
+        if self
+            .gene_set_inspector
+            .resolve_form
+            .cache_dir
+            .trim()
+            .is_empty()
+        {
+            self.gene_set_inspector.resolve_form.cache_dir = self.genome_cache_dir.clone();
+        }
         self.refresh_gene_set_inspector_catalog(true);
+        if self.gene_set_inspector.resolutions.is_empty() {
+            self.gene_set_inspector.mode = GeneSetInspectorMode::Resolve;
+        }
         self.mark_window_open_or_focus(Self::gene_set_inspector_viewport_id(), was_open);
     }
 
@@ -159,6 +427,118 @@ impl GENtleApp {
             .resolutions
             .iter()
             .find(|choice| choice.report_id == self.gene_set_inspector.selected_resolution_id)
+    }
+
+    fn start_gene_set_resolution_task(&mut self) {
+        if self.gene_set_inspector.resolve_task.is_some() {
+            self.gene_set_inspector.resolve_status =
+                "Gene-set resolution is already running".to_string();
+            return;
+        }
+        let operation =
+            match gene_set_resolve_form_to_operation(&self.gene_set_inspector.resolve_form) {
+                Ok(operation) => operation,
+                Err(error) => {
+                    self.gene_set_inspector.resolve_status = error;
+                    return;
+                }
+            };
+        let source_label = match &operation {
+            Operation::ResolveGeneSet { source, .. } => source.source_kind_label(),
+            _ => unreachable!("gene-set form constructs ResolveGeneSet"),
+        };
+        let engine = self.engine.clone();
+        let (tx, receiver) = mpsc::channel::<Result<GeneSetResolutionReport, EngineError>>();
+        let runtime_frame = runtime_status_registry().push_with_detail(
+            RuntimeStatusFrameKind::BackgroundJob,
+            "Resolve gene set",
+            Some(format!("source={source_label}")),
+        );
+        runtime_frame.update_phase("running");
+        std::thread::spawn(move || {
+            let result =
+                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
+                    snapshot
+                        .apply(operation)?
+                        .gene_set_resolution
+                        .ok_or_else(|| {
+                            EngineError::new(
+                                ErrorCode::Internal,
+                                "ResolveGeneSet completed without a gene-set resolution report",
+                            )
+                        })
+                });
+            let _ = tx.send(result);
+        });
+        self.gene_set_inspector.resolve_status =
+            format!("Resolving {source_label} source in a detached project snapshot...");
+        self.gene_set_inspector.resolve_task = Some(GeneSetResolveTask {
+            started: Instant::now(),
+            runtime_frame,
+            receiver,
+        });
+    }
+
+    pub(super) fn poll_gene_set_resolution_task(&mut self, ctx: &egui::Context) {
+        let Some(task) = self.gene_set_inspector.resolve_task.as_ref() else {
+            return;
+        };
+        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        let outcome = match task.receiver.try_recv() {
+            Ok(result) => Some(result),
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => Some(Err(EngineError::new(
+                ErrorCode::Io,
+                "Gene-set resolution background worker disconnected",
+            ))),
+        };
+        let Some(outcome) = outcome else {
+            return;
+        };
+        let Some(task) = self.gene_set_inspector.resolve_task.take() else {
+            return;
+        };
+        let elapsed = task.started.elapsed().as_secs_f64();
+        match outcome {
+            Ok(report) => {
+                task.runtime_frame.update_phase("completed");
+                let report_id = GentleEngine::gene_set_resolution_artifact_id(&report);
+                let resolved_count = report.resolved_member_count;
+                let unresolved_count = report.unresolved_member_count;
+                self.refresh_gene_set_inspector_catalog(true);
+                self.gene_set_inspector.selected_resolution_id = report_id.clone();
+                self.gene_set_inspector.last_report = None;
+                self.gene_set_inspector.child_reports.clear();
+                self.reconcile_gene_set_inspector_bindings();
+                self.gene_set_inspector.mode = GeneSetInspectorMode::Inspect;
+                self.gene_set_inspector.resolve_status = format!(
+                    "Resolved and persisted {resolved_count} member(s) in {elapsed:.1}s; {unresolved_count} unresolved."
+                );
+                self.gene_set_inspector.status = format!(
+                    "Selected newly resolved gene set '{report_id}' for inspection and collection operations."
+                );
+            }
+            Err(error) => {
+                let stale = error.message.contains("became stale");
+                if stale {
+                    task.runtime_frame.cancel(error.message.clone());
+                    self.gene_set_inspector.resolve_status = format!(
+                        "Gene-set resolution became stale after {elapsed:.1}s; project state was not changed."
+                    );
+                } else {
+                    task.runtime_frame.fail(error.message.clone());
+                    self.gene_set_inspector.resolve_status = format!(
+                        "Gene-set resolution failed after {elapsed:.1}s: {}",
+                        error.message
+                    );
+                }
+            }
+        }
+        ctx.request_repaint();
+    }
+
+    pub(super) fn has_active_gene_set_resolution_task(&self) -> bool {
+        self.gene_set_inspector.resolve_task.is_some()
     }
 
     fn reconcile_gene_set_inspector_bindings(&mut self) {
@@ -546,6 +926,268 @@ impl GENtleApp {
         }
     }
 
+    fn render_gene_set_resolution_form(&mut self, ui: &mut Ui) {
+        ui.label(
+            "Resolve a catalog group, explicit list, local external mapping, genomic neighborhood, or deterministic random sample through the shared engine operation.",
+        );
+        ui.small(
+            "External mappings use configured local gene-group catalogs; this form does not query an online ontology service.",
+        );
+        ui.separator();
+
+        let mut choose_output_path = false;
+        {
+            let form = &mut self.gene_set_inspector.resolve_form;
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Source kind");
+                egui::ComboBox::from_id_salt("gene_set_resolve_source_kind")
+                    .selected_text(form.source_kind.label())
+                    .width(220.0)
+                    .show_ui(ui, |ui| {
+                        for source_kind in [
+                            GeneSetResolveSourceKind::CatalogGroup,
+                            GeneSetResolveSourceKind::ExplicitMembers,
+                            GeneSetResolveSourceKind::ExternalMapping,
+                            GeneSetResolveSourceKind::GenomicNeighbors,
+                            GeneSetResolveSourceKind::Random,
+                        ] {
+                            ui.selectable_value(
+                                &mut form.source_kind,
+                                source_kind,
+                                source_kind.label(),
+                            );
+                        }
+                    });
+            });
+
+            ui.add_space(4.0);
+            match form.source_kind {
+                GeneSetResolveSourceKind::CatalogGroup => {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Group ID");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut form.group_id)
+                                .desired_width(460.0)
+                                .hint_text("Catalog group ID or alias"),
+                        )
+                        .on_hover_text("Resolve one group from the configured gene-group catalog");
+                    });
+                }
+                GeneSetResolveSourceKind::ExplicitMembers => {
+                    ui.label("Members");
+                    ui.add(
+                        egui::TextEdit::multiline(&mut form.members)
+                            .desired_rows(3)
+                            .desired_width(f32::INFINITY)
+                            .hint_text("TP53, TP73, TP63"),
+                    )
+                    .on_hover_text(
+                        "Comma-separated gene symbols or stable IDs; empty entries are rejected",
+                    );
+                }
+                GeneSetResolveSourceKind::ExternalMapping => {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Namespace");
+                        egui::ComboBox::from_id_salt("gene_set_external_namespace_quick")
+                            .selected_text(if form.external_namespace.trim().is_empty() {
+                                "Choose common namespace"
+                            } else {
+                                form.external_namespace.as_str()
+                            })
+                            .width(170.0)
+                            .show_ui(ui, |ui| {
+                                for namespace in ["GO", "REACTOME", "KEGG"] {
+                                    ui.selectable_value(
+                                        &mut form.external_namespace,
+                                        namespace.to_string(),
+                                        namespace,
+                                    );
+                                }
+                            });
+                        ui.add(
+                            egui::TextEdit::singleline(&mut form.external_namespace)
+                                .desired_width(140.0)
+                                .hint_text("custom namespace"),
+                        )
+                        .on_hover_text(
+                            "Namespace prefix used by the configured local gene-group mapping",
+                        );
+                        ui.label("ID");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut form.external_id)
+                                .desired_width(260.0)
+                                .hint_text("GO:0008152 or 0008152"),
+                        )
+                        .on_hover_text(
+                            "External identifier; an included prefix must match the namespace",
+                        );
+                    });
+                }
+                GeneSetResolveSourceKind::GenomicNeighbors => {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Anchor gene");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut form.anchor_gene)
+                                .desired_width(240.0)
+                                .hint_text("TP53"),
+                        );
+                        ui.label("Flank genes");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut form.flank_genes)
+                                .desired_width(70.0),
+                        )
+                        .on_hover_text("Positive count on each side; leave empty to use bp only");
+                        ui.label("Flank bp");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut form.flank_bp).desired_width(100.0),
+                        )
+                        .on_hover_text(
+                            "Positive genomic distance on each side; leave empty to use gene count only",
+                        );
+                        ui.checkbox(&mut form.exclude_anchor, "Exclude anchor")
+                            .on_hover_text("Omit the anchor gene from the resolved set");
+                    });
+                }
+                GeneSetResolveSourceKind::Random => {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Sample size");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut form.random_size)
+                                .desired_width(80.0),
+                        );
+                        ui.label("Random seed");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut form.random_seed)
+                                .desired_width(120.0),
+                        )
+                        .on_hover_text(
+                            "Non-negative deterministic seed; the same universe and seed reproduce the sample",
+                        );
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Exclude members");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut form.exclude_members)
+                                .desired_width(620.0)
+                                .hint_text("optional comma-separated symbols or IDs"),
+                        );
+                    });
+                }
+            }
+
+            ui.separator();
+            ui.strong("Resolution context");
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Genome ID");
+                ui.add(
+                    egui::TextEdit::singleline(&mut form.genome_id)
+                        .desired_width(360.0)
+                        .hint_text("optional prepared genome ID"),
+                )
+                .on_hover_text(
+                    "Genome used for stable gene resolution, neighborhoods, and random sampling",
+                );
+                ui.checkbox(&mut form.allow_draft, "Allow draft")
+                    .on_hover_text("Allow draft gene-group catalog entries");
+                ui.checkbox(&mut form.allow_deprecated, "Allow deprecated")
+                    .on_hover_text("Allow deprecated gene-group catalog entries");
+            });
+            egui::CollapsingHeader::new("Advanced local paths and JSON output")
+                .default_open(false)
+                .show(ui, |ui| {
+                    egui::Grid::new("gene_set_resolve_advanced_paths")
+                        .num_columns(3)
+                        .spacing([8.0, 5.0])
+                        .show(ui, |ui| {
+                            ui.label("Gene-group catalog");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut form.gene_group_catalog_path)
+                                    .desired_width(560.0)
+                                    .hint_text("empty = configured/default catalog"),
+                            );
+                            ui.end_row();
+                            ui.label("Genome catalog");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut form.genome_catalog_path)
+                                    .desired_width(560.0)
+                                    .hint_text("empty = configured/default catalog"),
+                            );
+                            ui.end_row();
+                            ui.label("Genome cache");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut form.cache_dir)
+                                    .desired_width(560.0)
+                                    .hint_text("empty = configured/default cache"),
+                            );
+                            ui.end_row();
+                            ui.label("Output JSON");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut form.output_path)
+                                    .desired_width(480.0)
+                                    .hint_text("optional report path"),
+                            );
+                            if ui
+                                .button("Choose...")
+                                .on_hover_text(
+                                    "Choose an optional path for the engine-written resolution JSON",
+                                )
+                                .clicked()
+                            {
+                                choose_output_path = true;
+                            }
+                            ui.end_row();
+                        });
+                });
+        }
+        if choose_output_path
+            && let Some(path) = rfd::FileDialog::new()
+                .add_filter("JSON report", &["json"])
+                .set_file_name("gene_set_resolution.json")
+                .save_file()
+        {
+            self.gene_set_inspector.resolve_form.output_path = path.display().to_string();
+        }
+
+        let readiness = gene_set_resolve_form_to_operation(&self.gene_set_inspector.resolve_form);
+        let running = self.gene_set_inspector.resolve_task.is_some();
+        let mut resolve_clicked = false;
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    !running && readiness.is_ok(),
+                    egui::Button::new("Resolve gene set"),
+                )
+                .on_hover_text(
+                    readiness
+                        .as_ref()
+                        .map(|_| {
+                            "Run the shared ResolveGeneSet engine operation in a detached project snapshot"
+                        })
+                        .unwrap_or_else(|error| error.as_str()),
+                )
+                .clicked()
+            {
+                resolve_clicked = true;
+            }
+            if let Some(task) = self.gene_set_inspector.resolve_task.as_ref() {
+                ui.add(egui::Spinner::new());
+                ui.label(format!(
+                    "Resolving ({:.1}s)",
+                    task.started.elapsed().as_secs_f32()
+                ));
+            }
+        });
+        if let Err(error) = &readiness {
+            ui.small(format!("Not ready: {error}"));
+        }
+        if !self.gene_set_inspector.resolve_status.trim().is_empty() {
+            ui.small(self.gene_set_inspector.resolve_status.clone());
+        }
+        if resolve_clicked {
+            self.start_gene_set_resolution_task();
+        }
+    }
+
     fn render_gene_set_inspector_contents(&mut self, ui: &mut Ui) {
         let close_hover = Self::specialist_window_close_hover_text("Gene Set Inspector");
         if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
@@ -553,6 +1195,25 @@ impl GENtleApp {
             return;
         }
         ui.heading("Gene Set Inspector");
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(
+                &mut self.gene_set_inspector.mode,
+                GeneSetInspectorMode::Resolve,
+                "Resolve new set",
+            )
+            .on_hover_text("Author and resolve a new gene set through the shared engine operation");
+            ui.selectable_value(
+                &mut self.gene_set_inspector.mode,
+                GeneSetInspectorMode::Inspect,
+                "Inspect & run",
+            )
+            .on_hover_text("Inspect persisted resolutions and bind them to collection operations");
+        });
+        ui.separator();
+        if self.gene_set_inspector.mode == GeneSetInspectorMode::Resolve {
+            self.render_gene_set_resolution_form(ui);
+            return;
+        }
         ui.label(
             "Bind each logical gene-set member to one exact persisted primer-design report, then run the shared collection Map operation.",
         );
@@ -620,8 +1281,15 @@ impl GENtleApp {
             ui.separator();
             ui.label("No persisted gene-set resolutions are available.");
             ui.small(
-                "Resolve and persist a set with `gene-sets resolve ...` in GUI Shell, CLI, MCP, or another shared adapter, then reload this inspector.",
+                "Create one here or resolve and persist a set with `gene-sets resolve ...` in another shared adapter.",
             );
+            if ui
+                .button("Resolve a new set")
+                .on_hover_text("Switch to the gene-set source authoring form")
+                .clicked()
+            {
+                self.gene_set_inspector.mode = GeneSetInspectorMode::Resolve;
+            }
             if !self.gene_set_inspector.status.trim().is_empty() {
                 ui.separator();
                 ui.small(self.gene_set_inspector.status.clone());
@@ -631,7 +1299,8 @@ impl GENtleApp {
 
         ui.horizontal_wrapped(|ui| {
             ui.small(format!(
-                "review={} | namespace={} | organism={} | resolved={} | unresolved={}",
+                "source={} | review={} | namespace={} | organism={} | resolved={} | unresolved={}",
+                choice.report.request.source_kind_label(),
                 gene_set_review_status_label(choice.report.review_status),
                 choice.report.symbol_namespace.as_deref().unwrap_or("-"),
                 choice.report.organism.as_deref().unwrap_or("-"),
@@ -647,6 +1316,149 @@ impl GENtleApp {
             .show(ui, |ui| {
                 for warning in &choice.report.warnings {
                     ui.small(format!("• {warning}"));
+                }
+            });
+        }
+        if !self.gene_set_inspector.resolve_status.trim().is_empty() {
+            ui.small(self.gene_set_inspector.resolve_status.clone());
+        }
+
+        let resolution_json = serde_json::to_string_pretty(&choice.report).ok();
+        let mut export_resolution = false;
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    resolution_json.is_some(),
+                    egui::Button::new("Copy resolution JSON"),
+                )
+                .on_hover_text("Copy the selected portable GeneSetResolutionReport as JSON")
+                .clicked()
+                && let Some(json) = resolution_json.as_ref()
+            {
+                ui.ctx().copy_text(json.clone());
+            }
+            if ui
+                .add_enabled(
+                    resolution_json.is_some(),
+                    egui::Button::new("Export resolution JSON..."),
+                )
+                .on_hover_text("Write the selected portable resolution report to a JSON file")
+                .clicked()
+            {
+                export_resolution = true;
+            }
+        });
+        if export_resolution
+            && let Some(path) = rfd::FileDialog::new()
+                .add_filter("JSON report", &["json"])
+                .set_file_name("gene_set_resolution.json")
+                .save_file()
+            && let Some(json) = resolution_json.as_ref()
+        {
+            match std::fs::write(&path, format!("{json}\n")) {
+                Ok(()) => {
+                    self.gene_set_inspector.status =
+                        format!("Exported gene-set resolution to '{}'", path.display());
+                }
+                Err(error) => {
+                    self.gene_set_inspector.status = format!(
+                        "Could not export gene-set resolution to '{}': {error}",
+                        path.display()
+                    );
+                }
+            }
+        }
+
+        egui::CollapsingHeader::new(format!(
+            "Resolved members ({})",
+            choice.report.resolved_members.len()
+        ))
+        .default_open(true)
+        .show(ui, |ui| {
+            egui::ScrollArea::both()
+                .id_salt("gene_set_resolution_members")
+                .max_height(220.0)
+                .show(ui, |ui| {
+                    egui::Grid::new("gene_set_resolution_member_grid")
+                        .striped(true)
+                        .spacing([14.0, 5.0])
+                        .show(ui, |ui| {
+                            ui.strong("Stable member ID");
+                            ui.strong("Symbol");
+                            ui.strong("Gene ID");
+                            ui.strong("Member annotation");
+                            ui.strong("Source provenance");
+                            ui.end_row();
+                            for member in &choice.report.resolved_members {
+                                ui.monospace(&member.dedup_key);
+                                ui.label(&member.symbol);
+                                ui.monospace(member.gene_id.as_deref().unwrap_or("-"));
+                                let annotation = match (
+                                    member.member_status.as_deref(),
+                                    member.confidence.as_deref(),
+                                ) {
+                                    (Some(status), Some(confidence)) => {
+                                        format!("{status}; confidence={confidence}")
+                                    }
+                                    (Some(status), None) => status.to_string(),
+                                    (None, Some(confidence)) => {
+                                        format!("confidence={confidence}")
+                                    }
+                                    (None, None) => "-".to_string(),
+                                };
+                                ui.label(annotation).on_hover_text(
+                                    "Member-owned status/confidence metadata; report review state is shown above",
+                                );
+                                ui.label(gene_set_provenance_summary(&member.provenance));
+                                ui.end_row();
+                            }
+                        });
+                });
+        });
+        if !choice.report.unresolved_members.is_empty() {
+            egui::CollapsingHeader::new(format!(
+                "Unresolved members ({})",
+                choice.report.unresolved_members.len()
+            ))
+            .default_open(true)
+            .show(ui, |ui| {
+                egui::Grid::new("gene_set_resolution_unresolved_grid")
+                    .striped(true)
+                    .spacing([14.0, 5.0])
+                    .show(ui, |ui| {
+                        ui.strong("Query");
+                        ui.strong("Reason");
+                        ui.strong("Source");
+                        ui.end_row();
+                        for member in &choice.report.unresolved_members {
+                            ui.monospace(&member.query);
+                            ui.label(&member.reason);
+                            ui.label(match member.source_id.as_deref() {
+                                Some(source_id) => {
+                                    format!("{}:{source_id}", member.source_kind)
+                                }
+                                None => member.source_kind.clone(),
+                            });
+                            ui.end_row();
+                        }
+                    });
+            });
+        }
+        if !choice.report.provenance.is_empty() {
+            egui::CollapsingHeader::new(format!(
+                "Resolution provenance ({})",
+                choice.report.provenance.len()
+            ))
+            .show(ui, |ui| {
+                for row in &choice.report.provenance {
+                    let mut details = gene_set_provenance_summary(std::slice::from_ref(row));
+                    if let Some(path) = row.source_path.as_deref() {
+                        details.push_str(&format!(" | {path}"));
+                    }
+                    if let Some(note) = row.note.as_deref() {
+                        details.push_str(&format!(" | {note}"));
+                    }
+                    ui.small(details);
                 }
             });
         }
@@ -980,6 +1792,185 @@ impl GENtleApp {
 mod tests {
     use super::*;
     use crate::{engine::GeneSetResolvedMember, engine_shell::parse_shell_line};
+
+    fn resolve_operation_from_shell(command: ShellCommand) -> Operation {
+        match command {
+            ShellCommand::GeneSetsResolve {
+                source,
+                genome_id,
+                gene_group_catalog_path,
+                genome_catalog_path,
+                cache_dir,
+                allow_draft,
+                allow_deprecated,
+                output,
+            } => Operation::ResolveGeneSet {
+                source,
+                genome_id,
+                gene_group_catalog_path,
+                genome_catalog_path,
+                cache_dir,
+                allow_draft,
+                allow_deprecated,
+                path: output,
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    fn assert_resolve_form_matches_shell(form: GeneSetResolveFormState, shell_line: &str) {
+        let gui_operation = gene_set_resolve_form_to_operation(&form).expect("GUI operation");
+        let shell_operation = resolve_operation_from_shell(
+            parse_shell_line(shell_line).expect("shared shell parser command"),
+        );
+        assert_eq!(
+            serde_json::to_value(gui_operation).expect("serialize GUI operation"),
+            serde_json::to_value(shell_operation).expect("serialize shell operation")
+        );
+    }
+
+    #[test]
+    fn gene_set_resolve_parity_catalog_group() {
+        assert_resolve_form_matches_shell(
+            GeneSetResolveFormState {
+                group_id: "my_group".to_string(),
+                ..GeneSetResolveFormState::default()
+            },
+            "gene-sets resolve my_group",
+        );
+    }
+
+    #[test]
+    fn gene_set_resolve_parity_explicit_members() {
+        assert_resolve_form_matches_shell(
+            GeneSetResolveFormState {
+                source_kind: GeneSetResolveSourceKind::ExplicitMembers,
+                members: "A, B, C".to_string(),
+                ..GeneSetResolveFormState::default()
+            },
+            "gene-sets resolve --members A,B,C",
+        );
+    }
+
+    #[test]
+    fn gene_set_resolve_parity_external_mapping() {
+        assert_resolve_form_matches_shell(
+            GeneSetResolveFormState {
+                source_kind: GeneSetResolveSourceKind::ExternalMapping,
+                external_namespace: "go".to_string(),
+                external_id: "GO:0008152".to_string(),
+                ..GeneSetResolveFormState::default()
+            },
+            "gene-sets resolve --go GO:0008152",
+        );
+    }
+
+    #[test]
+    fn gene_set_resolve_parity_genomic_neighbors() {
+        assert_resolve_form_matches_shell(
+            GeneSetResolveFormState {
+                source_kind: GeneSetResolveSourceKind::GenomicNeighbors,
+                anchor_gene: "TP53".to_string(),
+                flank_genes: "5".to_string(),
+                flank_bp: String::new(),
+                ..GeneSetResolveFormState::default()
+            },
+            "gene-sets resolve --neighbors TP53 --flank-genes 5",
+        );
+    }
+
+    #[test]
+    fn gene_set_resolve_parity_random() {
+        assert_resolve_form_matches_shell(
+            GeneSetResolveFormState {
+                source_kind: GeneSetResolveSourceKind::Random,
+                random_size: "10".to_string(),
+                random_seed: "42".to_string(),
+                ..GeneSetResolveFormState::default()
+            },
+            "gene-sets resolve --random-size 10 --seed 42",
+        );
+    }
+
+    #[test]
+    fn gene_set_resolve_form_rejects_incomplete_or_invalid_sources() {
+        assert!(
+            gene_set_resolve_form_to_operation(&GeneSetResolveFormState::default())
+                .expect_err("empty group")
+                .contains("Group ID")
+        );
+        assert!(
+            gene_set_resolve_form_to_operation(&GeneSetResolveFormState {
+                source_kind: GeneSetResolveSourceKind::ExplicitMembers,
+                members: "A,,B".to_string(),
+                ..GeneSetResolveFormState::default()
+            })
+            .expect_err("empty member token")
+            .contains("empty entry")
+        );
+        assert!(
+            gene_set_resolve_form_to_operation(&GeneSetResolveFormState {
+                source_kind: GeneSetResolveSourceKind::ExternalMapping,
+                external_namespace: "GO".to_string(),
+                external_id: "KEGG:123".to_string(),
+                ..GeneSetResolveFormState::default()
+            })
+            .expect_err("namespace mismatch")
+            .contains("does not match")
+        );
+        assert!(
+            gene_set_resolve_form_to_operation(&GeneSetResolveFormState {
+                source_kind: GeneSetResolveSourceKind::GenomicNeighbors,
+                anchor_gene: "TP53".to_string(),
+                flank_genes: String::new(),
+                flank_bp: String::new(),
+                ..GeneSetResolveFormState::default()
+            })
+            .expect_err("missing flank")
+            .contains("flank genes")
+        );
+        assert!(
+            gene_set_resolve_form_to_operation(&GeneSetResolveFormState {
+                source_kind: GeneSetResolveSourceKind::Random,
+                random_size: "0".to_string(),
+                ..GeneSetResolveFormState::default()
+            })
+            .expect_err("zero sample")
+            .contains("at least 1")
+        );
+    }
+
+    #[test]
+    fn gene_set_resolve_task_persists_and_selects_exact_report() {
+        let mut app = GENtleApp::default();
+        app.gene_set_inspector.resolve_form = GeneSetResolveFormState {
+            source_kind: GeneSetResolveSourceKind::ExplicitMembers,
+            members: "TP53".to_string(),
+            ..GeneSetResolveFormState::default()
+        };
+        app.start_gene_set_resolution_task();
+        let ctx = egui::Context::default();
+        for _ in 0..200 {
+            app.poll_gene_set_resolution_task(&ctx);
+            if app.gene_set_inspector.resolve_task.is_none() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+
+        assert!(app.gene_set_inspector.resolve_task.is_none());
+        assert_eq!(app.gene_set_inspector.mode, GeneSetInspectorMode::Inspect);
+        let selected = app
+            .selected_gene_set_resolution()
+            .expect("persisted selected resolution");
+        assert_eq!(
+            selected.report.request,
+            GeneSetRequest::ExplicitMembers {
+                members: vec!["TP53".to_string()]
+            }
+        );
+        assert!(app.gene_set_inspector.resolve_status.contains("persisted"));
+    }
 
     fn seeded_app() -> GENtleApp {
         let mut app = GENtleApp::default();

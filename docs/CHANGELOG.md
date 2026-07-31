@@ -14,6 +14,11 @@ understand what changed.
 
 ## 2026-07-31
 
+- Added all five gene-set source kinds to `Genome > Gene Set Inspector...`:
+  the GUI now constructs the same `ResolveGeneSet` payloads as the shell,
+  commits resolutions through detached engine execution, auto-selects current
+  results, and exposes resolved/unresolved membership, provenance, warnings,
+  and portable JSON before existing collection operations.
 - Added project-backed and Salmon-aware read sourcing to
   `rna-reads allele-hash-screen`: target-gene accepted reads can flow directly
   from a persisted RNA-read report, Salmon outputs select IDs from explicit

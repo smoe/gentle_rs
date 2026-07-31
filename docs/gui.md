@@ -440,9 +440,19 @@ The project main window (lineage page) supports two views:
   the GUI should collect the collection operand, show per-member and aggregate
   readiness/errors/results, and call the same named operation or shell route
   that CLI/MCP/agent surfaces can invoke.
-- `Genome > Gene Set Inspector...` exposes the first binding-aware collection
-  action, primer specificity:
-  - select one persisted gene-set resolution
+- `Genome > Gene Set Inspector...` has two shared-engine modes:
+  - `Resolve new set` authors catalog-group, explicit-member, local external
+    mapping, genomic-neighbor, or deterministic-random sources
+  - source-specific validation and shared genome/catalog/cache gates construct
+    the same `ResolveGeneSet` payload as `gene-sets resolve`
+  - resolution runs in a detached engine snapshot, persists through the normal
+    engine operation, and auto-selects the exact new report when its commit is
+    current; stale results do not change project state
+  - `Inspect & run` shows report-level review state, resolved and unresolved
+    members, member-owned status/confidence metadata, warnings, provenance, and
+    portable JSON copy/export
+  - external mappings are resolved from configured local catalogs; opening the
+    form does not perform a live ontology lookup
   - bind every logical member to one exact persisted primer-design report
   - choose a one-based pair rank and a prepared local BLAST target
   - run the shared `collections run primer-specificity` route in a background

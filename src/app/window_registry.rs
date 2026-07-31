@@ -178,6 +178,12 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: Some(UiIntentTarget::SequencingConfirmation),
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "gene-sets resolve",
+        menu_path: "Genome > Gene Set Inspector...",
+        palette_title: "Gene Set Inspector",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "collections run primer-specificity",
         menu_path: "Genome > Gene Set Inspector...",
         palette_title: "Gene Set Inspector",
@@ -469,7 +475,7 @@ impl GENtleApp {
                 ),
                 viewport_id: Self::gene_set_inspector_viewport_id(),
                 title: "Gene Set Inspector".to_string(),
-                detail: "Explicit gene-to-primer binding and collection specificity".to_string(),
+                detail: "Gene-set resolution, audit, and collection operations".to_string(),
             });
         }
         if self.evidence_preparation_panel.show_panel {

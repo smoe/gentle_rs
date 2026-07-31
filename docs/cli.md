@@ -5303,6 +5303,9 @@ Tutorial companion:
   - Resolves an analysis-ready gene-set operand from catalog groups, explicit
     members, local external mappings, same-chromosome neighbors, or
     deterministic random sampling.
+  - The `Resolve new set` mode in `Genome > Gene Set Inspector...` constructs
+    this same engine operation for all five source kinds, persists the report,
+    and exposes resolved/unresolved rows plus provenance and JSON export.
   - `gene-groups resolve` identifies a catalog entry; `gene-sets resolve`
     expands genes, applies curation/member gating, deduplicates resolved
     identities, and records provenance/warnings.

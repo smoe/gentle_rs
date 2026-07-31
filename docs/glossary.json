@@ -2025,6 +2025,7 @@
          ],
          "interfaces": [
             "cli-shell",
+            "gui-menu",
             "gui-shell",
             "cli-direct"
          ],

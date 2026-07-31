@@ -17,7 +17,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 29 | 621 | 0 |
+| GUI | 30 | 620 | 0 |
 | gentle_cli | 391 | 284 | 0 |
 | MCP | 85 | 441 | 52 |
 | JS | 78 | 434 | 55 |
@@ -180,7 +180,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | gene-groups resolve | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>JS: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>Lua: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-groups doctor | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>JS: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>Lua: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-groups draft | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>JS: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>Lua: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| gene-sets resolve | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| gene-sets resolve | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets promoter-cohort | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets produce direct-list | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets produce ontology-assignment | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |

@@ -5212,6 +5212,7 @@ Error: `{err}`"
             || self.jaspar_background_task.is_some()
             || self.tutorial_project_task.is_some()
             || self.agent_task.is_some()
+            || self.has_active_gene_set_resolution_task()
             || self.has_active_gene_set_specificity_task()
     }
 
@@ -24812,6 +24813,7 @@ impl GENtleApp {
             self.poll_agent_assistant_task(ctx);
             self.poll_agent_model_discovery_task(ctx);
             self.poll_clawbio_task(ctx);
+            self.poll_gene_set_resolution_task(ctx);
             self.poll_gene_set_specificity_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
             self.sync_open_windows_if_display_changed(ctx);

@@ -325,9 +325,9 @@ wet-lab conclusions or unconfirmed mutations.
 - Weekly/monthly maintenance chore automation rollout from
   [`maintenance_chore_plan.md`](maintenance_chore_plan.md).
 - Browser/WebAssembly frontend portability after core/headless contracts settle.
-- Expand the landed binding-aware gene-set primer-specificity inspector with
-  source authoring/resolution controls and, later, the curated generic
-  collection launcher described in
+- Expand the landed gene-set source/resolution and binding-aware
+  primer-specificity inspector with the later curated generic collection
+  launcher described in
   [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
 - Gene-set enrichment analysis over resolved logical sets, with an explicit
   background universe, identifier namespace/mapping audit, ontology and cache

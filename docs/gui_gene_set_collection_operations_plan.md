@@ -190,10 +190,12 @@ Tests:
   bindings, and runs `collections run primer-specificity` through the shared
   shell/engine path. It reports member execution separately from biological
   specificity and never guesses a binding from the member symbol.
-- Still open in this phase: source authoring/resolution controls for catalog
-  groups, explicit members, external mappings, neighbors, and deterministic
-  random sets.
-- Add a GUI inspector for existing gene-set operations:
+- Landed source authoring/resolution controls for catalog groups, explicit
+  members, local external mappings, neighbors, and deterministic random sets.
+  The detached result is persisted and selected for the existing collection
+  workflow; resolved/unresolved rows, warnings, provenance, and JSON export are
+  available in the same inspector.
+- The GUI inspector now covers:
   - source kind: catalog group, explicit members, external mapping, neighbors,
     deterministic random
   - genome/catalog inputs
@@ -205,20 +207,21 @@ Tests:
 - Use `ResolveGeneSet` through the shared operation path.
 - Do not duplicate gene-group catalog logic in the GUI.
 
-File targets:
+Implementation files:
 
 - `src/app.rs`
-- `src/app/*_ui.rs` or a new focused `src/app/gene_set_ui.rs`
-- `src/engine_shell.rs`
-- `src/engine_shell/command_parsers.rs`
+- `src/app/gene_set_ui.rs`
+- `src/app/window_registry.rs`
+- `tests/capability_registry_parity.rs`
 - `docs/gui.md`
 - `docs/cli.md`
 
-Tests:
+Landed tests:
 
 - GUI/app helper test that collected form parameters create the same
   `ResolveGeneSet` operation as the shared shell parser
-- shell parser test for each source kind used by the GUI
+- operation-payload parity against the shell parser for every source kind used
+  by the GUI
 - capability/parity test proving the GUI affordance maps to `gene-sets resolve`
   or `ResolveGeneSet`
 

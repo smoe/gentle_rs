@@ -831,6 +831,30 @@ fn transcript_assay_panel_reachability_is_locked_across_adapters() {
 }
 
 #[test]
+fn gene_set_resolve_gui_affordance_is_prominent() {
+    let command = capability_registry()
+        .iter()
+        .find(|descriptor| {
+            descriptor.source == CapabilitySource::GlossaryCommand
+                && descriptor.name == "gene-sets resolve"
+        })
+        .expect("gene-sets resolve glossary command");
+    assert_eq!(
+        command.engine_operations,
+        vec!["ResolveGeneSet".to_string()]
+    );
+    assert_eq!(
+        command.surfacing_for_adapter(CapabilityAdapter::Gui),
+        AdapterSurfacing::Prominent
+    );
+    assert!(gui_prominent_glossary_entries().iter().any(|entry| {
+        entry.glossary_path == "gene-sets resolve"
+            && entry.menu_path == "Genome > Gene Set Inspector..."
+            && entry.palette_title == "Gene Set Inspector"
+    }));
+}
+
+#[test]
 fn prominent_projections_match_user_facing_listings() {
     let mcp_tools = mcp_tool_names();
     let mcp_command_paths = mcp_tool_command_paths();
