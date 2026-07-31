@@ -555,9 +555,12 @@ fn make_test_app_with_open_windows(seq_ids: &[&str]) -> GENtleApp {
     app
 }
 
+// Full-suite CI contention can delay otherwise fast detached workers substantially.
+const APP_BACKGROUND_TASK_TEST_TIMEOUT: Duration = Duration::from_secs(180);
+
 fn wait_for_tutorial_project_task(app: &mut GENtleApp) {
     let ctx = egui::Context::default();
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + APP_BACKGROUND_TASK_TEST_TIMEOUT;
     while app.tutorial_project_task.is_some() && Instant::now() < deadline {
         app.poll_tutorial_project_task(&ctx);
         std::thread::sleep(Duration::from_millis(10));
@@ -11454,7 +11457,7 @@ fn dbsnp_dialog_fetch_extracts_region_and_opens_window() {
         app.dbsnp_status
     );
     let ctx = egui::Context::default();
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + APP_BACKGROUND_TASK_TEST_TIMEOUT;
     while app.dbsnp_fetch_task.is_some() && Instant::now() < deadline {
         app.poll_dbsnp_fetch_task(&ctx);
         std::thread::sleep(Duration::from_millis(10));
