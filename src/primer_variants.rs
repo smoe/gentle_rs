@@ -3,6 +3,8 @@
 //! Candidate geometry is explicit and assembly-aware. The screen never treats
 //! source catalogue claims as validation, never assigns historical coordinates
 //! to a current reference, and scans one local VCF once for all supplied pairs.
+//! Optional frequency-gated rescue records propose new mixed-IUPAC physical
+//! oligos without mutating or validating the original pair.
 
 use crate::{
     digest_utils::{
@@ -10,15 +12,18 @@ use crate::{
         sha256_prefixed_bytes,
     },
     engine::{
-        PRIMER_VARIANT_EVIDENCE_SCHEMA, PRIMER_VARIANT_RESOURCE_MANIFEST_SCHEMA,
-        PRIMER_VARIANT_SCREEN_REQUEST_SCHEMA, PRIMER_VARIANT_SCREEN_SCHEMA,
-        PrimerVariantAmpliconSegment, PrimerVariantBindingSegment, PrimerVariantBindingStrand,
-        PrimerVariantCandidateSource, PrimerVariantEvidenceReport, PrimerVariantEvidenceStatus,
-        PrimerVariantKind, PrimerVariantOverlap, PrimerVariantOverlapKind,
-        PrimerVariantProbeOverlapPolicy, PrimerVariantResourceManifest,
-        PrimerVariantScreenCandidate, PrimerVariantScreenOligo, PrimerVariantScreenReport,
-        PrimerVariantScreenRequest, PrimerVariantSourceInput,
+        PRIMER_VARIANT_DEGENERATE_RESCUE_SCHEMA, PRIMER_VARIANT_EVIDENCE_SCHEMA,
+        PRIMER_VARIANT_RESOURCE_MANIFEST_SCHEMA, PRIMER_VARIANT_SCREEN_REQUEST_SCHEMA,
+        PRIMER_VARIANT_SCREEN_SCHEMA, PrimerVariantAmpliconSegment, PrimerVariantBindingSegment,
+        PrimerVariantBindingStrand, PrimerVariantCandidateSource,
+        PrimerVariantDegenerateRescueAllele, PrimerVariantDegenerateRescueChange,
+        PrimerVariantDegenerateRescueEligibility, PrimerVariantDegenerateRescueSuggestion,
+        PrimerVariantEvidenceReport, PrimerVariantEvidenceStatus, PrimerVariantKind,
+        PrimerVariantOverlap, PrimerVariantOverlapKind, PrimerVariantProbeOverlapPolicy,
+        PrimerVariantResourceManifest, PrimerVariantScreenCandidate, PrimerVariantScreenOligo,
+        PrimerVariantScreenReport, PrimerVariantScreenRequest, PrimerVariantSourceInput,
     },
+    iupac_code::IupacCode,
 };
 use flate2::read::MultiGzDecoder;
 use serde::Serialize;
@@ -38,6 +43,7 @@ struct ResolvedVariantSource {
     population: String,
     retrieval_time: String,
     allele_frequency_info_field: Option<String>,
+    annotation_info_fields: Vec<String>,
     expected_content_sha256: Option<String>,
     contig_aliases: BTreeMap<String, String>,
     manifest_sha256: Option<String>,
@@ -101,6 +107,13 @@ pub fn screen_primer_variants(
     {
         return Err(format!(
             "maximum_allowed_frequency must be between 0 and 1, got {value}"
+        ));
+    }
+    if let Some(value) = request.degenerate_rescue_minimum_frequency
+        && (!(0.0..=1.0).contains(&value) || value == 0.0)
+    {
+        return Err(format!(
+            "degenerate_rescue_minimum_frequency must be greater than 0 and at most 1, got {value}"
         ));
     }
 
@@ -174,6 +187,8 @@ pub fn screen_primer_variants(
                     &mut global_warnings,
                     &record,
                 );
+                let source_annotations =
+                    selected_info_annotations(&record.info, &source.annotation_info_fields);
                 let mut record_overlapped = false;
                 for pair in pairs.values_mut() {
                     let before = pair.overlaps.len();
@@ -184,6 +199,7 @@ pub fn screen_primer_variants(
                         request.maximum_allowed_frequency,
                         request.critical_3prime_bases,
                         request.probe_overlap_policy,
+                        &source_annotations,
                         &source.contig_aliases,
                     );
                     if pair.overlaps.len() > before {
@@ -264,6 +280,17 @@ pub fn screen_primer_variants(
             pair.warnings.extend(global_warnings.iter().cloned());
             pair.warnings.sort();
             pair.warnings.dedup();
+            let degenerate_rescue_suggestions = request
+                .degenerate_rescue_minimum_frequency
+                .and_then(|minimum_frequency| {
+                    build_degenerate_rescue_suggestion(
+                        &mut pair,
+                        minimum_frequency,
+                        request.allow_critical_3prime_degenerate_rescue,
+                    )
+                })
+                .into_iter()
+                .collect();
             let status = if pair.reference_incompatible
                 || pair
                     .overlaps
@@ -308,11 +335,15 @@ pub fn screen_primer_variants(
                 candidate_sources: pair.sources,
                 critical_3prime_bases: request.critical_3prime_bases,
                 probe_overlap_policy: request.probe_overlap_policy,
+                degenerate_rescue_minimum_frequency: request.degenerate_rescue_minimum_frequency,
+                allow_critical_3prime_degenerate_rescue: request
+                    .allow_critical_3prime_degenerate_rescue,
                 screened_reference_names: pair.reference_names.into_iter().collect(),
                 vcf_record_count,
                 overlapping_record_count: pair.overlapping_record_numbers.len(),
                 status,
                 overlaps: pair.overlaps,
+                degenerate_rescue_suggestions,
                 warnings: pair.warnings,
             })
         })
@@ -363,6 +394,10 @@ fn resolve_variant_source(
                 allele_frequency_info_field: normalize_optional_text(
                     input.allele_frequency_info_field.as_deref(),
                 ),
+                annotation_info_fields: normalize_info_fields(
+                    &input.annotation_info_fields,
+                    "source.annotation_info_fields",
+                )?,
                 expected_content_sha256: normalize_optional_text(
                     input.expected_content_sha256.as_deref(),
                 ),
@@ -424,6 +459,22 @@ fn resolve_variant_source(
                 manifest.allele_frequency_info_field.as_deref(),
                 "source.allele_frequency_info_field",
             )?;
+            let manifest_annotation_fields = normalize_info_fields(
+                &manifest.annotation_info_fields,
+                "manifest.annotation_info_fields",
+            )?;
+            let input_annotation_fields = normalize_info_fields(
+                &input.annotation_info_fields,
+                "source.annotation_info_fields",
+            )?;
+            if !input_annotation_fields.is_empty()
+                && input_annotation_fields != manifest_annotation_fields
+            {
+                return Err(format!(
+                    "source.annotation_info_fields {:?} conflicts with manifest value {:?}",
+                    input_annotation_fields, manifest_annotation_fields
+                ));
+            }
             require_matching_optional_override(
                 input.expected_content_sha256.as_deref(),
                 manifest.expected_content_sha256.as_deref(),
@@ -465,6 +516,7 @@ fn resolve_variant_source(
                 allele_frequency_info_field: normalize_optional_text(
                     manifest.allele_frequency_info_field.as_deref(),
                 ),
+                annotation_info_fields: manifest_annotation_fields,
                 expected_content_sha256: normalize_optional_text(
                     manifest.expected_content_sha256.as_deref(),
                 ),
@@ -573,7 +625,7 @@ fn normalize_oligo(
     role: &str,
     oligo: &PrimerVariantScreenOligo,
 ) -> Result<PrimerVariantScreenOligo, String> {
-    let sequence = normalize_dna(&oligo.sequence_5_to_3, &format!("{role} sequence"))?;
+    let sequence = normalize_oligo_sequence(&oligo.sequence_5_to_3, &format!("{role} sequence"))?;
     if oligo.binding_segments.is_empty() {
         return Err(format!(
             "{role} primer requires at least one binding segment"
@@ -635,7 +687,7 @@ fn normalize_binding_segment(
             "{role} binding segment genomic length {genomic_len} differs from oligo span {oligo_len}"
         ));
     }
-    let reference_sequence = normalize_dna(
+    let reference_sequence = normalize_reference_dna(
         &segment.reference_sequence_5_to_3,
         &format!("{role} binding reference sequence"),
     )?;
@@ -651,9 +703,9 @@ fn normalize_binding_segment(
         PrimerVariantBindingStrand::Plus => reference_sequence.clone(),
         PrimerVariantBindingStrand::Minus => reverse_complement(&reference_sequence)?,
     };
-    if aligned_reference != expected_oligo_slice {
+    if !iupac_sequence_accepts_reference(&aligned_reference, expected_oligo_slice) {
         return Err(format!(
-            "{role} sequence does not match its declared {:?}-strand reference segment {}:{}-{}",
+            "{role} sequence is not compatible with its declared {:?}-strand reference segment {}:{}-{}",
             segment.strand, reference_name, segment.start_1based, segment.end_1based
         ));
     }
@@ -673,7 +725,7 @@ fn normalize_amplicon_segment(
 ) -> Result<PrimerVariantAmpliconSegment, String> {
     let reference_name = required_text(&segment.reference_name, "amplicon reference_name")?;
     validate_closed_range(segment.start_1based, segment.end_1based, "amplicon segment")?;
-    let sequence = normalize_dna(
+    let sequence = normalize_reference_dna(
         &segment.reference_sequence_5_to_3,
         "amplicon reference sequence",
     )?;
@@ -699,6 +751,7 @@ fn screen_record_for_pair(
     maximum_allowed_frequency: Option<f64>,
     critical_3prime_bases: usize,
     probe_policy: PrimerVariantProbeOverlapPolicy,
+    source_annotations: &BTreeMap<String, String>,
     aliases: &BTreeMap<String, String>,
 ) {
     let record_end = record
@@ -772,7 +825,10 @@ fn screen_record_for_pair(
                     reference_match: hit.reference_match,
                     source_filter: record.filter.clone(),
                     allele_frequency,
+                    source_annotations: source_annotations.clone(),
                     relevant_under_policy,
+                    degenerate_rescue_eligibility:
+                        PrimerVariantDegenerateRescueEligibility::NotRequested,
                     note: overlap_note(
                         overlap_kind,
                         variant_kind,
@@ -808,6 +864,7 @@ fn screen_record_for_pair(
                 reference_match,
                 source_filter: record.filter.clone(),
                 allele_frequency,
+                source_annotations: source_annotations.clone(),
                 relevant_under_policy: false,
                 note: overlap_note(
                     PrimerVariantOverlapKind::AmpliconOnly,
@@ -820,6 +877,269 @@ fn screen_record_for_pair(
                 ..PrimerVariantOverlap::default()
             });
         }
+    }
+}
+
+#[derive(Debug)]
+struct DegenerateRescueChangeWork {
+    role: String,
+    original_oligo_id: String,
+    oligo_position_1based: usize,
+    original_iupac_base: u8,
+    represented_bases: BTreeSet<u8>,
+    critical_three_prime: bool,
+    contributing_variants: Vec<PrimerVariantDegenerateRescueAllele>,
+}
+
+fn build_degenerate_rescue_suggestion(
+    pair: &mut PairWork,
+    minimum_frequency: f64,
+    allow_critical_three_prime: bool,
+) -> Option<PrimerVariantDegenerateRescueSuggestion> {
+    let forward = pair.forward.clone();
+    let reverse = pair.reverse.clone();
+    let mut changes = BTreeMap::<(String, usize), DegenerateRescueChangeWork>::new();
+
+    for overlap in &mut pair.overlaps {
+        let mut eligibility =
+            degenerate_rescue_eligibility(overlap, minimum_frequency, allow_critical_three_prime);
+        if eligibility != PrimerVariantDegenerateRescueEligibility::Eligible {
+            overlap.degenerate_rescue_eligibility = eligibility;
+            continue;
+        }
+
+        let oligo = match overlap.role.as_str() {
+            "forward" => &forward,
+            "reverse" => &reverse,
+            _ => {
+                overlap.degenerate_rescue_eligibility =
+                    PrimerVariantDegenerateRescueEligibility::NotPrimerOverlap;
+                continue;
+            }
+        };
+        let Some(position_1based) = overlap.oligo_position_1based else {
+            overlap.degenerate_rescue_eligibility =
+                PrimerVariantDegenerateRescueEligibility::IncompatibleReference;
+            continue;
+        };
+        let Some(original_base) = oligo
+            .sequence_5_to_3
+            .as_bytes()
+            .get(position_1based.saturating_sub(1))
+            .copied()
+        else {
+            overlap.degenerate_rescue_eligibility =
+                PrimerVariantDegenerateRescueEligibility::IncompatibleReference;
+            continue;
+        };
+        let Some(strand) = oligo.binding_segments.iter().find_map(|segment| {
+            (position_1based > segment.oligo_start_0based
+                && position_1based <= segment.oligo_end_0based_exclusive)
+                .then_some(segment.strand)
+        }) else {
+            overlap.degenerate_rescue_eligibility =
+                PrimerVariantDegenerateRescueEligibility::IncompatibleReference;
+            continue;
+        };
+        let alternate_base = overlap.alternate_allele.as_bytes()[0];
+        let primer_oriented_alternate = match strand {
+            PrimerVariantBindingStrand::Plus => alternate_base,
+            PrimerVariantBindingStrand::Minus => complement_unambiguous_base(alternate_base)?,
+        };
+        let original_code = IupacCode::from_letter(original_base);
+        if original_code.to_vec().contains(&primer_oriented_alternate) {
+            eligibility = PrimerVariantDegenerateRescueEligibility::AlternateAlreadyRepresented;
+            overlap.degenerate_rescue_eligibility = eligibility;
+            continue;
+        }
+
+        let allele_frequency = overlap.allele_frequency?;
+        let entry = changes
+            .entry((overlap.role.clone(), position_1based))
+            .or_insert_with(|| DegenerateRescueChangeWork {
+                role: overlap.role.clone(),
+                original_oligo_id: overlap.oligo_id.clone(),
+                oligo_position_1based: position_1based,
+                original_iupac_base: original_base,
+                represented_bases: original_code.to_vec().into_iter().collect(),
+                critical_three_prime: overlap.critical_three_prime,
+                contributing_variants: Vec::new(),
+            });
+        entry.represented_bases.insert(primer_oriented_alternate);
+        entry
+            .contributing_variants
+            .push(PrimerVariantDegenerateRescueAllele {
+                variant_id: overlap.variant_id.clone(),
+                reference_allele: overlap.reference_allele.clone(),
+                alternate_allele: overlap.alternate_allele.clone(),
+                primer_oriented_alternate_base: (primer_oriented_alternate as char).to_string(),
+                allele_frequency,
+                source_filter: overlap.source_filter.clone(),
+                source_annotations: overlap.source_annotations.clone(),
+            });
+        overlap.degenerate_rescue_eligibility = eligibility;
+    }
+
+    if changes.is_empty() {
+        return None;
+    }
+
+    let mut adjusted_forward = forward.sequence_5_to_3.as_bytes().to_vec();
+    let mut adjusted_reverse = reverse.sequence_5_to_3.as_bytes().to_vec();
+    let mut report_changes = Vec::with_capacity(changes.len());
+    let mut forward_complexity = 1usize;
+    let mut reverse_complexity = 1usize;
+    let mut complexity_saturated = false;
+    for (_, mut change) in changes {
+        let adjusted_base = bases_to_iupac(&change.represented_bases)?;
+        let sequence = match change.role.as_str() {
+            "forward" => &mut adjusted_forward,
+            "reverse" => &mut adjusted_reverse,
+            _ => continue,
+        };
+        sequence[change.oligo_position_1based - 1] = adjusted_base;
+        let position_complexity = change.represented_bases.len();
+        let complexity = if change.role == "forward" {
+            &mut forward_complexity
+        } else {
+            &mut reverse_complexity
+        };
+        *complexity = complexity
+            .checked_mul(position_complexity)
+            .unwrap_or_else(|| {
+                complexity_saturated = true;
+                usize::MAX
+            });
+        change.contributing_variants.sort_by(|left, right| {
+            left.variant_id
+                .cmp(&right.variant_id)
+                .then(left.alternate_allele.cmp(&right.alternate_allele))
+        });
+        report_changes.push(PrimerVariantDegenerateRescueChange {
+            role: change.role,
+            original_oligo_id: change.original_oligo_id,
+            oligo_position_1based: change.oligo_position_1based,
+            original_iupac_base: (change.original_iupac_base as char).to_string(),
+            adjusted_iupac_base: (adjusted_base as char).to_string(),
+            represented_bases: change
+                .represented_bases
+                .into_iter()
+                .map(|base| (base as char).to_string())
+                .collect(),
+            critical_three_prime: change.critical_three_prime,
+            contributing_variants: change.contributing_variants,
+        });
+    }
+    let pair_complexity = forward_complexity
+        .checked_mul(reverse_complexity)
+        .unwrap_or_else(|| {
+            complexity_saturated = true;
+            usize::MAX
+        });
+    let adjusted_forward = String::from_utf8(adjusted_forward).ok()?;
+    let adjusted_reverse = String::from_utf8(adjusted_reverse).ok()?;
+    let mut warnings = vec![
+        "IUPAC ambiguity codes request a mixed oligo synthesis; they do not represent a genotype call or one heterozygous oligo molecule.".to_string(),
+        "The adjusted pair is a new physical reagent and requires fresh specificity, thermodynamic, and experimental validation.".to_string(),
+        "Splice-related source annotations are retained as context only; this mixed-base proposal does not correct or prove a splicing effect.".to_string(),
+    ];
+    if complexity_saturated {
+        warnings.push(
+            "Mixture complexity exceeded the report's integer range and is shown as the maximum integer value."
+                .to_string(),
+        );
+    }
+
+    Some(PrimerVariantDegenerateRescueSuggestion {
+        schema: PRIMER_VARIANT_DEGENERATE_RESCUE_SCHEMA.to_string(),
+        original_pair_id: pair.pair_id.clone(),
+        adjusted_pair_id: primer_pair_full_id(&adjusted_forward, &adjusted_reverse),
+        original_forward_sequence_5_to_3: forward.sequence_5_to_3,
+        adjusted_forward_sequence_5_to_3: adjusted_forward,
+        original_reverse_sequence_5_to_3: reverse.sequence_5_to_3,
+        adjusted_reverse_sequence_5_to_3: adjusted_reverse,
+        changes: report_changes,
+        forward_mixture_complexity: forward_complexity,
+        reverse_mixture_complexity: reverse_complexity,
+        pair_mixture_complexity: pair_complexity,
+        requires_new_validation: true,
+        warnings,
+    })
+}
+
+fn degenerate_rescue_eligibility(
+    overlap: &PrimerVariantOverlap,
+    minimum_frequency: f64,
+    allow_critical_three_prime: bool,
+) -> PrimerVariantDegenerateRescueEligibility {
+    if overlap.overlap_kind != PrimerVariantOverlapKind::Primer
+        || !matches!(overlap.role.as_str(), "forward" | "reverse")
+    {
+        return PrimerVariantDegenerateRescueEligibility::NotPrimerOverlap;
+    }
+    if overlap.variant_kind != PrimerVariantKind::Snv
+        || overlap.reference_allele.len() != 1
+        || overlap.alternate_allele.len() != 1
+        || !overlap
+            .reference_allele
+            .bytes()
+            .chain(overlap.alternate_allele.bytes())
+            .all(|base| matches!(base, b'A' | b'C' | b'G' | b'T'))
+    {
+        return PrimerVariantDegenerateRescueEligibility::NotSimpleSnv;
+    }
+    if overlap.reference_match != Some(true) {
+        return PrimerVariantDegenerateRescueEligibility::IncompatibleReference;
+    }
+    if !source_filter_passes(&overlap.source_filter) {
+        return PrimerVariantDegenerateRescueEligibility::SourceFiltered;
+    }
+    let Some(frequency) = overlap.allele_frequency else {
+        return PrimerVariantDegenerateRescueEligibility::MissingFrequency;
+    };
+    if frequency < minimum_frequency {
+        return PrimerVariantDegenerateRescueEligibility::BelowMinimumFrequency;
+    }
+    if overlap.critical_three_prime && !allow_critical_three_prime {
+        return PrimerVariantDegenerateRescueEligibility::CriticalThreePrimeExcluded;
+    }
+    PrimerVariantDegenerateRescueEligibility::Eligible
+}
+
+fn source_filter_passes(filter: &str) -> bool {
+    let filter = filter.trim();
+    filter == "." || filter.eq_ignore_ascii_case("PASS")
+}
+
+fn complement_unambiguous_base(base: u8) -> Option<u8> {
+    match base.to_ascii_uppercase() {
+        b'A' => Some(b'T'),
+        b'C' => Some(b'G'),
+        b'G' => Some(b'C'),
+        b'T' => Some(b'A'),
+        _ => None,
+    }
+}
+
+fn bases_to_iupac(bases: &BTreeSet<u8>) -> Option<u8> {
+    let bases = bases.iter().copied().collect::<Vec<_>>();
+    match bases.as_slice() {
+        [b'A'] => Some(b'A'),
+        [b'C'] => Some(b'C'),
+        [b'G'] => Some(b'G'),
+        [b'T'] => Some(b'T'),
+        [b'A', b'G'] => Some(b'R'),
+        [b'C', b'T'] => Some(b'Y'),
+        [b'C', b'G'] => Some(b'S'),
+        [b'A', b'T'] => Some(b'W'),
+        [b'G', b'T'] => Some(b'K'),
+        [b'A', b'C'] => Some(b'M'),
+        [b'A', b'C', b'G'] => Some(b'V'),
+        [b'A', b'C', b'T'] => Some(b'H'),
+        [b'A', b'G', b'T'] => Some(b'D'),
+        [b'C', b'G', b'T'] => Some(b'B'),
+        [b'A', b'C', b'G', b'T'] => Some(b'N'),
+        _ => None,
     }
 }
 
@@ -1064,6 +1384,26 @@ fn allele_frequencies(
         .collect()
 }
 
+fn selected_info_annotations(info: &str, fields: &[String]) -> BTreeMap<String, String> {
+    let mut selected = BTreeMap::new();
+    for requested in fields {
+        if let Some(token) = info.split(';').find(|token| {
+            token
+                .split_once('=')
+                .map(|(key, _)| key)
+                .unwrap_or(*token)
+                .eq_ignore_ascii_case(requested)
+        }) {
+            let value = token
+                .split_once('=')
+                .map(|(_, value)| value)
+                .unwrap_or("true");
+            selected.insert(requested.clone(), value.to_string());
+        }
+    }
+    selected
+}
+
 fn overlap_note(
     overlap_kind: PrimerVariantOverlapKind,
     variant_kind: PrimerVariantKind,
@@ -1142,6 +1482,7 @@ fn fingerprint_request(
         population: &'a str,
         retrieval_time: &'a str,
         allele_frequency_info_field: &'a Option<String>,
+        annotation_info_fields: &'a [String],
         contig_aliases: &'a BTreeMap<String, String>,
         manifest_sha256: &'a Option<String>,
         content_sha256: &'a str,
@@ -1149,6 +1490,8 @@ fn fingerprint_request(
         maximum_allowed_frequency: Option<f64>,
         critical_3prime_bases: usize,
         probe_overlap_policy: PrimerVariantProbeOverlapPolicy,
+        degenerate_rescue_minimum_frequency: Option<f64>,
+        allow_critical_3prime_degenerate_rescue: bool,
     }
     serde_json::to_vec(&Fingerprint {
         schema: PRIMER_VARIANT_SCREEN_REQUEST_SCHEMA,
@@ -1159,6 +1502,7 @@ fn fingerprint_request(
         population: &source.population,
         retrieval_time: &source.retrieval_time,
         allele_frequency_info_field: &source.allele_frequency_info_field,
+        annotation_info_fields: &source.annotation_info_fields,
         contig_aliases: &source.contig_aliases,
         manifest_sha256: &source.manifest_sha256,
         content_sha256,
@@ -1166,6 +1510,8 @@ fn fingerprint_request(
         maximum_allowed_frequency: request.maximum_allowed_frequency,
         critical_3prime_bases: request.critical_3prime_bases,
         probe_overlap_policy: request.probe_overlap_policy,
+        degenerate_rescue_minimum_frequency: request.degenerate_rescue_minimum_frequency,
+        allow_critical_3prime_degenerate_rescue: request.allow_critical_3prime_degenerate_rescue,
     })
     .map(|bytes| sha256_prefixed_bytes(&bytes))
     .map_err(|error| format!("Could not fingerprint primer variant request: {error}"))
@@ -1202,7 +1548,24 @@ fn assembly_matches(left: &str, right: &str) -> bool {
     left.trim().eq_ignore_ascii_case(right.trim())
 }
 
-fn normalize_dna(raw: &str, label: &str) -> Result<String, String> {
+fn normalize_oligo_sequence(raw: &str, label: &str) -> Result<String, String> {
+    let sequence = canonical_oligo_sequence(raw);
+    if sequence.is_empty() {
+        return Err(format!("{label} must not be empty"));
+    }
+    if let Some(base) = sequence
+        .bytes()
+        .find(|base| !IupacCode::is_valid_letter(*base))
+    {
+        return Err(format!(
+            "{label} contains unsupported IUPAC base '{}'",
+            base as char
+        ));
+    }
+    Ok(sequence)
+}
+
+fn normalize_reference_dna(raw: &str, label: &str) -> Result<String, String> {
     let sequence = canonical_oligo_sequence(raw);
     if sequence.is_empty() {
         return Err(format!("{label} must not be empty"));
@@ -1214,6 +1577,18 @@ fn normalize_dna(raw: &str, label: &str) -> Result<String, String> {
         return Err(format!("{label} contains unsupported base '{base}'"));
     }
     Ok(sequence)
+}
+
+fn iupac_sequence_accepts_reference(reference: &str, oligo: &str) -> bool {
+    reference.len() == oligo.len()
+        && reference
+            .bytes()
+            .zip(oligo.bytes())
+            .all(|(reference, oligo)| {
+                let reference = IupacCode::from_letter(reference);
+                let oligo = IupacCode::from_letter(oligo);
+                !reference.is_empty() && !oligo.is_empty() && !reference.subset(oligo).is_empty()
+            })
 }
 
 fn normalize_vcf_allele(raw: &str, field: &str, line_number: usize) -> Result<String, String> {
@@ -1260,6 +1635,26 @@ fn normalize_optional_text(raw: Option<&str>) -> Option<String> {
     raw.map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+fn normalize_info_fields(raw: &[String], label: &str) -> Result<Vec<String>, String> {
+    let mut normalized = Vec::new();
+    let mut seen = BTreeSet::new();
+    for field in raw {
+        let field = field.trim();
+        if field.is_empty()
+            || field
+                .chars()
+                .any(|character| character.is_whitespace() || matches!(character, ';' | '='))
+        {
+            return Err(format!("{label} contains invalid VCF INFO key '{field}'"));
+        }
+        let key = field.to_ascii_uppercase();
+        if seen.insert(key) {
+            normalized.push(field.to_string());
+        }
+    }
+    Ok(normalized)
 }
 
 fn require_matching_override(raw: &str, manifest: &str, field: &str) -> Result<(), String> {
@@ -1673,6 +2068,140 @@ mod tests {
     }
 
     #[test]
+    fn frequent_snvs_produce_strand_aware_iupac_rescue_and_rescreen_cleanly() {
+        let dir = tempdir().expect("temp dir");
+        let vcf = write_vcf(
+            &dir,
+            concat!(
+                "chr1\t104\trsForwardFrequent\tG\tA\t.\tPASS\tAF=0.2;CSQ=splice_region_variant;DB\n",
+                "chr1\t207\trsReverseFrequent\tG\tA\t.\tPASS\tAF=0.3;CSQ=missense_variant;DB\n"
+            ),
+        );
+        let mut screen_request = request(&vcf, vec![standard_candidate("mixed-base-rescue")]);
+        screen_request.degenerate_rescue_minimum_frequency = Some(0.05);
+        screen_request.source.annotation_info_fields = vec!["CSQ".to_string(), "DB".to_string()];
+
+        let report = screen_primer_variants(screen_request).expect("mixed-base rescue screen");
+        let evidence = &report.evidence_reports[0];
+        assert_eq!(evidence.degenerate_rescue_minimum_frequency, Some(0.05));
+        assert_eq!(evidence.degenerate_rescue_suggestions.len(), 1);
+        assert!(evidence.overlaps.iter().all(|overlap| {
+            overlap.degenerate_rescue_eligibility
+                == PrimerVariantDegenerateRescueEligibility::Eligible
+        }));
+        assert_eq!(
+            evidence.overlaps[0].source_annotations.get("CSQ"),
+            Some(&"splice_region_variant".to_string())
+        );
+        assert_eq!(
+            evidence.overlaps[0].source_annotations.get("DB"),
+            Some(&"true".to_string())
+        );
+
+        let rescue = &evidence.degenerate_rescue_suggestions[0];
+        assert_eq!(rescue.schema, PRIMER_VARIANT_DEGENERATE_RESCUE_SCHEMA);
+        assert_eq!(rescue.original_forward_sequence_5_to_3, FORWARD);
+        assert_eq!(rescue.adjusted_forward_sequence_5_to_3, "AACCRGTTAACC");
+        assert_eq!(rescue.original_reverse_sequence_5_to_3, REVERSE);
+        assert_eq!(rescue.adjusted_reverse_sequence_5_to_3, "GGAAYCTTGGAA");
+        assert_ne!(rescue.adjusted_pair_id, rescue.original_pair_id);
+        assert_eq!(rescue.forward_mixture_complexity, 2);
+        assert_eq!(rescue.reverse_mixture_complexity, 2);
+        assert_eq!(rescue.pair_mixture_complexity, 4);
+        assert!(rescue.requires_new_validation);
+        assert_eq!(rescue.changes.len(), 2);
+        assert_eq!(rescue.changes[0].role, "forward");
+        assert_eq!(rescue.changes[0].adjusted_iupac_base, "R");
+        assert_eq!(rescue.changes[0].represented_bases, vec!["A", "G"]);
+        assert_eq!(rescue.changes[1].role, "reverse");
+        assert_eq!(rescue.changes[1].adjusted_iupac_base, "Y");
+        assert_eq!(
+            rescue.changes[1].contributing_variants[0].primer_oriented_alternate_base,
+            "T"
+        );
+
+        let mut adjusted_candidate = standard_candidate("adjusted-mixed-base-pair");
+        adjusted_candidate.forward.sequence_5_to_3 =
+            rescue.adjusted_forward_sequence_5_to_3.clone();
+        adjusted_candidate.reverse.sequence_5_to_3 =
+            rescue.adjusted_reverse_sequence_5_to_3.clone();
+        let mut adjusted_request = request(&vcf, vec![adjusted_candidate]);
+        adjusted_request.degenerate_rescue_minimum_frequency = Some(0.05);
+        let adjusted_report =
+            screen_primer_variants(adjusted_request).expect("re-screen adjusted IUPAC pair");
+        assert_eq!(
+            adjusted_report.evidence_reports[0].pair_id,
+            rescue.adjusted_pair_id
+        );
+        assert!(
+            adjusted_report.evidence_reports[0]
+                .degenerate_rescue_suggestions
+                .is_empty()
+        );
+        assert!(
+            adjusted_report.evidence_reports[0]
+                .overlaps
+                .iter()
+                .all(|overlap| {
+                    overlap.degenerate_rescue_eligibility
+                        == PrimerVariantDegenerateRescueEligibility::AlternateAlreadyRepresented
+                })
+        );
+    }
+
+    #[test]
+    fn rescue_requires_frequency_pass_filter_and_explicit_critical_3prime_opt_in() {
+        let dir = tempdir().expect("temp dir");
+        let vcf = write_vcf(
+            &dir,
+            concat!(
+                "chr1\t104\trsRare\tG\tA\t.\tPASS\tAF=0.01\n",
+                "chr1\t105\trsUnknown\tG\tA\t.\tPASS\t.\n",
+                "chr1\t106\trsFiltered\tT\tC\t.\tLowQual\tAF=0.2\n",
+                "chr1\t111\trsCritical\tC\tT\t.\tPASS\tAF=0.2\n"
+            ),
+        );
+        let mut request = request(&vcf, vec![standard_candidate("rescue-gates")]);
+        request.degenerate_rescue_minimum_frequency = Some(0.05);
+        let report = screen_primer_variants(request.clone()).expect("gated rescue screen");
+        let evidence = &report.evidence_reports[0];
+        assert!(evidence.degenerate_rescue_suggestions.is_empty());
+        let eligibility = evidence
+            .overlaps
+            .iter()
+            .map(|overlap| {
+                (
+                    overlap.variant_id.as_str(),
+                    overlap.degenerate_rescue_eligibility,
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            eligibility["rsRare"],
+            PrimerVariantDegenerateRescueEligibility::BelowMinimumFrequency
+        );
+        assert_eq!(
+            eligibility["rsUnknown"],
+            PrimerVariantDegenerateRescueEligibility::MissingFrequency
+        );
+        assert_eq!(
+            eligibility["rsFiltered"],
+            PrimerVariantDegenerateRescueEligibility::SourceFiltered
+        );
+        assert_eq!(
+            eligibility["rsCritical"],
+            PrimerVariantDegenerateRescueEligibility::CriticalThreePrimeExcluded
+        );
+
+        request.allow_critical_3prime_degenerate_rescue = true;
+        let critical = screen_primer_variants(request).expect("critical rescue opt-in");
+        let suggestion = &critical.evidence_reports[0].degenerate_rescue_suggestions[0];
+        assert_eq!(suggestion.adjusted_forward_sequence_5_to_3, "AACCGGTTAACY");
+        assert_eq!(suggestion.changes.len(), 1);
+        assert!(suggestion.changes[0].critical_three_prime);
+    }
+
+    #[test]
     fn old_evidence_payload_defaults_new_additive_fields() {
         let old = serde_json::json!({
             "schema": "gentle.primer_variant_evidence.v1",
@@ -1707,5 +2236,12 @@ mod tests {
             PrimerVariantOverlapKind::Primer
         );
         assert_eq!(report.overlaps[0].reference_end_1based, 0);
+        assert_eq!(report.degenerate_rescue_minimum_frequency, None);
+        assert!(!report.allow_critical_3prime_degenerate_rescue);
+        assert!(report.degenerate_rescue_suggestions.is_empty());
+        assert_eq!(
+            report.overlaps[0].degenerate_rescue_eligibility,
+            PrimerVariantDegenerateRescueEligibility::NotRequested
+        );
     }
 }

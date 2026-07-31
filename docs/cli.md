@@ -3086,6 +3086,20 @@ Shared shell command:
       - verifies assembly, contig, and overlapping REF alleles. Missing AF is
         unknown rather than zero, and indels/MNVs remain conservative evidence
         rather than being silently normalized into a haplotype claim
+      - optional `source.annotation_info_fields` (or the corresponding manifest
+        field) retains selected local VCF INFO values for inspection, including
+        dbSNP-derived or splice-annotation context, without interpreting those
+        values as causal evidence
+      - setting `degenerate_rescue_minimum_frequency` emits a deterministic
+        mixed-IUPAC proposal only for passing, reference-verified simple primer
+        SNVs at or above that known population frequency. Critical 3-prime
+        changes additionally require
+        `allow_critical_3prime_degenerate_rescue=true`
+      - every proposal reports its synthesis-mixture complexity and receives a
+        new physical pair id. It is not an order-ready genotype claim: rerun
+        specificity, thermodynamic, cDNA, and experimental validation for the
+        adjusted pair. cDNA PCR/qPCR already interprets IUPAC symbols as allele
+        sets, equivalent to regular-expression character classes
       - `--path` writes the aggregate `gentle.primer_variant_screen.v1` report;
         `--evidence-dir` writes one `gentle.primer_variant_evidence.v1` JSON per
         pair for direct use with `primers experimental-handoff

@@ -12041,6 +12041,66 @@ fn test_cdna_qpcr_assay_requires_probe_inside_cdna_product() {
 }
 
 #[test]
+fn test_cdna_pcr_assay_matches_mixed_iupac_base_as_allele_set() {
+    let transcript_sequences = [
+        ("TX_A", "AAAACCGGGGGATTT"),
+        ("TX_G", "AAAGCCGGGGGGTTT"),
+        ("TX_OTHER", "AAATCCGGGGGCTTT"),
+    ];
+    let spacer = "N".repeat(10);
+    let combined = transcript_sequences
+        .iter()
+        .map(|(_, sequence)| *sequence)
+        .collect::<Vec<_>>()
+        .join(&spacer);
+    let mut dna = seq(&combined);
+    let mut start = 0usize;
+    for (transcript_id, sequence) in transcript_sequences {
+        let end = start + sequence.len();
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(start as i64, end as i64),
+            qualifiers: vec![
+                ("gene".into(), Some("MIXED".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(format!("MIXED {transcript_id}"))),
+            ],
+        });
+        start = end + spacer.len();
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("cdna_iupac".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .test_cdna_pcr_assay(
+            "cdna_iupac",
+            0,
+            "AAARCC",
+            "AAAYCC",
+            None,
+            Some(10),
+            Some(30),
+            Some(0),
+            Some(4),
+        )
+        .expect("mixed-IUPAC cDNA assay report");
+    let product_counts = report
+        .transcript_results
+        .iter()
+        .map(|row| (row.transcript_id.as_str(), row.products.len()))
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(product_counts["TX_A"], 1, "R/Y must accept A-oriented alleles");
+    assert_eq!(product_counts["TX_G"], 1, "R/Y must accept G-oriented alleles");
+    assert_eq!(
+        product_counts["TX_OTHER"],
+        0,
+        "R/Y must reject unrelated alleles"
+    );
+    assert_eq!(report.product_count, 2);
+}
+
+#[test]
 fn test_oligo_qc_flags_forward_probe_3prime_interaction() {
     let report = GentleEngine::build_oligo_qc_report(
         "qpcr",

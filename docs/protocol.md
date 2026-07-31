@@ -8617,8 +8617,8 @@ Primer variant screening (implemented):
 - The variant source is either a direct VCF path plus provenance or a local
   `gentle.primer_variant_resource_manifest.v1`. A manifest pins source name,
   release, population, retrieval label, assembly, optional AF INFO key,
-  optional content SHA-256, and contig aliases. Relative VCF paths resolve next
-  to the manifest.
+  optional INFO keys to retain as uninterpreted annotations, optional content
+  SHA-256, and contig aliases. Relative VCF paths resolve next to the manifest.
 - The operation verifies request/source/VCF assembly declarations, resolves
   contigs conservatively, and checks each overlapping VCF REF allele against
   the declared reference sequence. Incompatible assembly or reference evidence
@@ -8631,6 +8631,26 @@ Primer variant screening (implemented):
   allowed frequency, unknown AF remains relevant. Probe overlaps follow the
   requested `relevant`, `report_only`, or `ignore` policy; amplicon-only rows
   remain descriptive.
+- Setting `degenerate_rescue_minimum_frequency` enables an a posteriori
+  mixed-base rescue screen. Only verified, passing, simple primer SNVs with a
+  known allele frequency at or above that threshold qualify. Filtered calls,
+  missing frequency, indels/MNVs, probe/amplicon-only variants, and
+  incompatible REF evidence remain visible with an explicit ineligibility
+  reason. Changes in the configured critical 3-prime window additionally
+  require `allow_critical_3prime_degenerate_rescue=true`.
+- `gentle.primer_variant_degenerate_rescue.v1` records the original and
+  adjusted forward/reverse sequences, strand-aware primer-oriented alleles,
+  per-position IUPAC codes, contributing variant provenance, synthesis-mixture
+  complexity, and a new sequence-derived `pair_id`. The IUPAC sequence denotes
+  a mixed oligo synthesis, not a genotype or one heterozygous molecule, and the
+  new physical pair requires fresh specificity, thermodynamic, and experimental
+  validation. Retained VCF annotations such as locally supplied splice
+  consequences are context only; GENtle does not infer a splicing effect.
+- Adjusted IUPAC primers can be screened again against the same assembly-aware
+  geometry. The cDNA PCR/qPCR matcher evaluates IUPAC symbols as nucleotide
+  sets (the semantic equivalent of regular-expression character classes), so
+  each represented allele can match without expanding the oligo into every
+  sequence combination.
 - `gentle.primer_variant_screen.v1` wraps deterministic, source-fingerprinted
   `gentle.primer_variant_evidence.v1` reports. Identical forward/reverse
   sequences share one physical `pair_id` only when their binding geometry is

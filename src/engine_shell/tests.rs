@@ -18696,7 +18696,9 @@ fn execute_primers_screen_variants_emits_handoff_ready_evidence() {
                     }]
                 }
             }],
-            "maximum_allowed_frequency": 0.01
+            "maximum_allowed_frequency": 0.01,
+            "degenerate_rescue_minimum_frequency": 0.05,
+            "allow_critical_3prime_degenerate_rescue": true
         }))
         .expect("serialize screen request"),
     )
@@ -18720,6 +18722,18 @@ fn execute_primers_screen_variants_emits_handoff_ready_evidence() {
     assert_eq!(
         result.output["report"]["evidence_reports"][0]["status"].as_str(),
         Some("variant_detected")
+    );
+    assert_eq!(
+        result.output["report"]["evidence_reports"][0]["degenerate_rescue_suggestions"][0]
+            ["schema"]
+            .as_str(),
+        Some("gentle.primer_variant_degenerate_rescue.v1")
+    );
+    assert_eq!(
+        result.output["report"]["evidence_reports"][0]["degenerate_rescue_suggestions"][0]
+            ["adjusted_forward_sequence_5_to_3"]
+            .as_str(),
+        Some("AACCGGTTAACY")
     );
     assert!(output_path.is_file());
     let evidence_paths = std::fs::read_dir(&evidence_dir)

@@ -9290,6 +9290,8 @@ pub const PRIMER_VARIANT_RESOURCE_MANIFEST_SCHEMA: &str =
     "gentle.primer_variant_resource_manifest.v1";
 pub const PRIMER_VARIANT_SCREEN_REQUEST_SCHEMA: &str = "gentle.primer_variant_screen_request.v1";
 pub const PRIMER_VARIANT_SCREEN_SCHEMA: &str = "gentle.primer_variant_screen.v1";
+pub const PRIMER_VARIANT_DEGENERATE_RESCUE_SCHEMA: &str =
+    "gentle.primer_variant_degenerate_rescue.v1";
 
 fn default_primer_variant_critical_3prime_bases() -> usize {
     5
@@ -9334,6 +9336,23 @@ pub enum PrimerVariantKind {
     Deletion,
     #[default]
     Complex,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Why an overlap can or cannot contribute to a mixed-base rescue proposal.
+pub enum PrimerVariantDegenerateRescueEligibility {
+    Eligible,
+    NotPrimerOverlap,
+    NotSimpleSnv,
+    IncompatibleReference,
+    SourceFiltered,
+    MissingFrequency,
+    BelowMinimumFrequency,
+    CriticalThreePrimeExcluded,
+    AlternateAlreadyRepresented,
+    #[default]
+    NotRequested,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -9439,6 +9458,9 @@ pub struct PrimerVariantSourceInput {
     pub retrieval_time: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allele_frequency_info_field: Option<String>,
+    /// INFO keys copied verbatim into overlap rows for downstream inspection.
+    #[serde(default)]
+    pub annotation_info_fields: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_content_sha256: Option<String>,
     #[serde(default)]
@@ -9459,6 +9481,9 @@ pub struct PrimerVariantResourceManifest {
     pub retrieval_time: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allele_frequency_info_field: Option<String>,
+    /// INFO keys copied verbatim into overlap rows for downstream inspection.
+    #[serde(default)]
+    pub annotation_info_fields: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_content_sha256: Option<String>,
     #[serde(default)]
@@ -9483,6 +9508,14 @@ pub struct PrimerVariantScreenRequest {
     pub critical_3prime_bases: usize,
     #[serde(default)]
     pub probe_overlap_policy: PrimerVariantProbeOverlapPolicy,
+    /// Enables mixed-base rescue proposals for simple primer SNVs at or above
+    /// this population allele frequency. Missing frequency never qualifies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degenerate_rescue_minimum_frequency: Option<f64>,
+    /// Critical 3-prime changes require an explicit opt-in because a mixed
+    /// base there can alter extension efficiency and allele balance.
+    #[serde(default)]
+    pub allow_critical_3prime_degenerate_rescue: bool,
 }
 
 impl Default for PrimerVariantScreenRequest {
@@ -9495,6 +9528,8 @@ impl Default for PrimerVariantScreenRequest {
             maximum_allowed_frequency: None,
             critical_3prime_bases: default_primer_variant_critical_3prime_bases(),
             probe_overlap_policy: PrimerVariantProbeOverlapPolicy::default(),
+            degenerate_rescue_minimum_frequency: None,
+            allow_critical_3prime_degenerate_rescue: false,
         }
     }
 }
@@ -9527,8 +9562,68 @@ pub struct PrimerVariantOverlap {
     pub source_filter: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allele_frequency: Option<f64>,
+    /// Selected source INFO values, retained as uninterpreted provenance.
+    #[serde(default)]
+    pub source_annotations: BTreeMap<String, String>,
     pub relevant_under_policy: bool,
+    #[serde(default)]
+    pub degenerate_rescue_eligibility: PrimerVariantDegenerateRescueEligibility,
     pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One source allele contributing to an IUPAC mixed-base change.
+pub struct PrimerVariantDegenerateRescueAllele {
+    pub variant_id: String,
+    pub reference_allele: String,
+    pub alternate_allele: String,
+    /// Alternate base in the primer's 5-prime-to-3-prime synthesis orientation.
+    pub primer_oriented_alternate_base: String,
+    pub allele_frequency: f64,
+    pub source_filter: String,
+    #[serde(default)]
+    pub source_annotations: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One position changed from the original oligo to a mixed IUPAC base.
+pub struct PrimerVariantDegenerateRescueChange {
+    pub role: String,
+    pub original_oligo_id: String,
+    pub oligo_position_1based: usize,
+    pub original_iupac_base: String,
+    pub adjusted_iupac_base: String,
+    #[serde(default)]
+    pub represented_bases: Vec<String>,
+    pub critical_three_prime: bool,
+    #[serde(default)]
+    pub contributing_variants: Vec<PrimerVariantDegenerateRescueAllele>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// A deterministic post-screen mixed-base oligo proposal.
+///
+/// This describes a synthesis mixture, not a genotype call, and always has a
+/// new physical pair identity that requires its own assay validation.
+pub struct PrimerVariantDegenerateRescueSuggestion {
+    pub schema: String,
+    pub original_pair_id: String,
+    pub adjusted_pair_id: String,
+    pub original_forward_sequence_5_to_3: String,
+    pub adjusted_forward_sequence_5_to_3: String,
+    pub original_reverse_sequence_5_to_3: String,
+    pub adjusted_reverse_sequence_5_to_3: String,
+    #[serde(default)]
+    pub changes: Vec<PrimerVariantDegenerateRescueChange>,
+    pub forward_mixture_complexity: usize,
+    pub reverse_mixture_complexity: usize,
+    pub pair_mixture_complexity: usize,
+    pub requires_new_validation: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -9555,6 +9650,10 @@ pub struct PrimerVariantEvidenceReport {
     pub critical_3prime_bases: usize,
     #[serde(default)]
     pub probe_overlap_policy: PrimerVariantProbeOverlapPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degenerate_rescue_minimum_frequency: Option<f64>,
+    #[serde(default)]
+    pub allow_critical_3prime_degenerate_rescue: bool,
     #[serde(default)]
     pub screened_reference_names: Vec<String>,
     pub vcf_record_count: usize,
@@ -9563,6 +9662,8 @@ pub struct PrimerVariantEvidenceReport {
     pub status: PrimerVariantEvidenceStatus,
     #[serde(default)]
     pub overlaps: Vec<PrimerVariantOverlap>,
+    #[serde(default)]
+    pub degenerate_rescue_suggestions: Vec<PrimerVariantDegenerateRescueSuggestion>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }
