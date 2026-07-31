@@ -1,6 +1,6 @@
 ## Computational Provenance Parity
 
-Last updated: 2026-07-30
+Last updated: 2026-07-31
 
 This note turns GENtle's general provenance principle into a concrete rollout
 plan for persisted computational contributions.
@@ -211,13 +211,24 @@ Shipped baseline:
   - preserved / relaxed constraints
   - translation-table / speed-profile / speed-mark context
   - provenance-oriented ranking summary and next-step recommendations
+- graph-owned inspection actions make the recommended follow-up and its
+  rationale, source records, driving evidence ids, mode, and resolved focus
+  range portable rather than GUI-local
+- reasoning-guided dotplots retain a typed
+  `gentle.dotplot_inspection_provenance_citation.v1` citation to the graph and
+  action that requested them; engine verification records `pass`, `fail`, or
+  `unknown`, while an absent citation remains manual/not-recorded and is never
+  presented as a failed citation
+- GUI and headless lineage projection link each cited dotplot analysis node to
+  its recommending construct-reasoning graph; lineage details expose the
+  citation status, rationale, action id, driving evidence ids, and verification
+  reasons without recomputing provenance in the GUI
+- run bundles retain inspection actions in the full reasoning graph and the
+  citation in the journaled `ComputeDotplot` operation; the compact graph
+  summary intentionally does not duplicate those records
 
 Expected next step:
 
-- reasoning graphs and planning/decision traces should be inspectable as
-  sample-linked computational artifacts rather than only side-channel metadata
-- users should be able to tell not only what ran, but why a route or
-  interpretation was preferred
 - extend the same artifact pattern to self-translation planning outputs and
   broader protein-side reasoning once those engine objects exist
 

@@ -145,20 +145,20 @@ use crate::{
         ConstructReasoningGraph, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DEFAULT_HOST_PROFILE_CATALOG_PATH,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP, DbSnpFetchProgress, DbSnpFetchStage,
-        DisplaySettings, DisplayTarget, Engine, EngineError, EngineHistorySummary, ErrorCode,
-        FeatureExpertTarget, GenomeAnnotationScope, GenomeGeneExtractMode,
-        GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
-        GenomeTrackSyncReport, GentleEngine, HostProfileRecord, JasparCatalogReport,
-        JasparCatalogRow, JasparEntryExpertView, LabAssistantInstructionsFormat,
-        LineageMacroPortBinding, LinearSequenceLetterLayoutMode, MacroTemplateSuggestion, OpResult,
-        Operation, OperationProgress, PlanningEstimate, PlanningObjective, PlanningProfile,
-        PlanningProfileScope, PlanningSuggestionStatus, ProjectState, ProteaseDigestReport,
-        ProteinToDnaHandoffRankingGoal, ROUTINE_DECISION_TRACE_SCHEMA,
-        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, Rack,
-        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode,
-        RestrictionEnzymeDisplayMode, ReverseTranslationReport, RoutineDecisionTrace,
-        RoutineDecisionTraceCandidateScore, RoutineDecisionTraceComparison,
+        DisplaySettings, DisplayTarget, DotplotInspectionProvenanceStatus, Engine, EngineError,
+        EngineHistorySummary, ErrorCode, FeatureExpertTarget, GenomeAnnotationScope,
+        GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
+        GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, HostProfileRecord,
+        JasparCatalogReport, JasparCatalogRow, JasparEntryExpertView,
+        LabAssistantInstructionsFormat, LineageMacroPortBinding, LinearSequenceLetterLayoutMode,
+        MacroTemplateSuggestion, OpResult, Operation, OperationProgress, PlanningEstimate,
+        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
+        ProjectState, ProteaseDigestReport, ProteinToDnaHandoffRankingGoal,
+        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
+        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+        RackProfileKind, RenderSvgMode, RestrictionEnzymeDisplayMode, ReverseTranslationReport,
+        RoutineDecisionTrace, RoutineDecisionTraceCandidateScore, RoutineDecisionTraceComparison,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, RoutinePreferenceContextRecord, SequenceGenomeAnchorSummary,
@@ -17668,6 +17668,12 @@ Error: `{err}`"
                 });
             }
 
+            let construct_reasoning_summaries =
+                engine.list_construct_reasoning_graph_summaries(None);
+            let construct_reasoning_node_ids = construct_reasoning_summaries
+                .iter()
+                .map(|summary| format!("analysis:construct_reasoning:{}", summary.graph_id))
+                .collect::<HashSet<_>>();
             let dotplot_summaries = engine.list_dotplot_views(None);
             for summary in dotplot_summaries {
                 let node_id = format!("analysis:dotplot:{}", summary.dotplot_id);
@@ -17696,6 +17702,9 @@ Error: `{err}`"
                 {
                     parents.push(reference_seq_id.clone());
                 }
+                if let Some(citation) = summary.inspection_provenance.as_ref() {
+                    parents.push(format!("reasoning graph {}", citation.graph_id));
+                }
                 out.push(LineageRow {
                     kind: LineageNodeKind::Analysis,
                     node_id: node_id.clone(),
@@ -17721,7 +17730,13 @@ Error: `{err}`"
                     analysis_artifact_id: Some(summary.dotplot_id.clone()),
                     analysis_reference_seq_id: reference_seq_id.clone(),
                     analysis_mode: Some(summary.mode.as_str().to_string()),
-                    analysis_status: None,
+                    analysis_status: Some(
+                        summary
+                            .inspection_provenance
+                            .as_ref()
+                            .map(|citation| citation.status.as_str().to_string())
+                            .unwrap_or_else(|| "manual (no reasoning citation)".to_string()),
+                    ),
                     analysis_point_count: Some(summary.point_count),
                     analysis_bin_count: None,
                     analysis_read_count: None,
@@ -17750,6 +17765,26 @@ Error: `{err}`"
                             source_node_id.clone(),
                             node_id.clone(),
                             edge_op_id.clone(),
+                        ));
+                    }
+                }
+                if let Some(citation) = summary.inspection_provenance.as_ref() {
+                    let reasoning_node_id =
+                        format!("analysis:construct_reasoning:{}", citation.graph_id);
+                    if construct_reasoning_node_ids.contains(&reasoning_node_id) {
+                        let inspection_edge_id = format!(
+                            "inspection:{}:{}:{}",
+                            citation.graph_id, citation.action_id, summary.dotplot_id
+                        );
+                        op_label_by_id
+                            .entry(inspection_edge_id.clone())
+                            .or_insert_with(|| {
+                                format!("Reasoning recommendation ({})", citation.status.as_str())
+                            });
+                        lineage_edges.push((
+                            reasoning_node_id,
+                            node_id.clone(),
+                            inspection_edge_id,
                         ));
                     }
                 }
@@ -18216,8 +18251,6 @@ Error: `{err}`"
                 }
             }
 
-            let construct_reasoning_summaries =
-                engine.list_construct_reasoning_graph_summaries(None);
             for summary in construct_reasoning_summaries {
                 let node_id = format!("analysis:construct_reasoning:{}", summary.graph_id);
                 let created_by_op = summary.op_id.clone().unwrap_or_else(|| "-".to_string());

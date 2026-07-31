@@ -1052,6 +1052,18 @@ fn lineage_svg_node_subtitle(row: &EngineLineageRenderRow) -> String {
             row.macro_op_count
         ),
         EngineLineageRenderRowKind::Analysis => match row.analysis_kind.as_deref() {
+            Some("dotplot") => format!(
+                "dotplot | provenance={} | reference={}",
+                row.analysis_status
+                    .as_deref()
+                    .unwrap_or("manual (no reasoning citation)"),
+                row.analysis_reference_seq_id.as_deref().unwrap_or("self")
+            ),
+            Some("construct_reasoning") => row
+                .analysis_status
+                .as_deref()
+                .map(|status| format!("construct reasoning | freshness={status}"))
+                .unwrap_or_else(|| "construct reasoning".to_string()),
             Some("gene_set_promoter_cohort") => {
                 format!(
                     "gene-set promoters | windows={}",
@@ -1131,6 +1143,12 @@ pub fn build_lineage_svg_graph(
             report,
         );
     }
+    let construct_reasoning_graphs = GentleEngine::construct_reasoning_graphs_from_state(state);
+    let construct_reasoning_node_ids = construct_reasoning_graphs
+        .iter()
+        .map(|graph| format!("analysis:construct_reasoning:{}", graph.graph_id))
+        .collect::<HashSet<_>>();
+    let dotplot_views = GentleEngine::dotplot_views_from_state(state);
     let mut hub_op_ids = infer_gibson_like_operation_ids_from_state(state);
     let mut individually_rendered_multi_output_ops = hub_op_ids.clone();
     for record in operation_log {
@@ -1400,6 +1418,137 @@ pub fn build_lineage_svg_graph(
                 .or_insert_with(|| format!("out:{}", binding.port_id));
             for to_node_id in sequence_nodes_for_binding(state, binding) {
                 projected_edges.push((macro_node_id.clone(), to_node_id, edge_label_id.clone()));
+            }
+        }
+    }
+
+    for graph in construct_reasoning_graphs {
+        let node_id = format!("analysis:construct_reasoning:{}", graph.graph_id);
+        let created_by_op = graph.op_id.clone().unwrap_or_else(|| "-".to_string());
+        let edge_op_id = if created_by_op == "-" {
+            node_id.clone()
+        } else {
+            created_by_op.clone()
+        };
+        op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+            format!(
+                "Construct reasoning: seq={}, graph_id={}",
+                graph.seq_id, graph.graph_id
+            )
+        });
+        let seq_id = graph.seq_id.clone();
+        projected_rows.push(EngineLineageRenderRow {
+            node_id: node_id.clone(),
+            seq_id: seq_id.clone(),
+            display_name: if graph.objective.title.trim().is_empty() {
+                graph.graph_id.clone()
+            } else {
+                graph.objective.title.clone()
+            },
+            created_by_op,
+            created_at: graph.generated_at_unix_ms,
+            kind: EngineLineageRenderRowKind::Analysis,
+            length: 0,
+            circular: false,
+            pool_size: 0,
+            arrangement_id: None,
+            arrangement_mode: None,
+            lane_count: 0,
+            analysis_kind: Some("construct_reasoning".to_string()),
+            analysis_status: None,
+            analysis_reference_seq_id: None,
+            analysis_read_count: None,
+            analysis_trace_count: None,
+            analysis_target_count: Some(graph.candidates.len()),
+            analysis_variant_count: Some(graph.decisions.len()),
+            macro_instance_id: None,
+            macro_op_count: 0,
+            gene_set_artifact_id: None,
+            gene_set_producer_kind: None,
+            gene_set_resolved_member_count: None,
+            gene_set_unresolved_member_count: None,
+            gene_set_organism: None,
+            gene_set_taxon_id: None,
+            gene_set_symbol_namespace: None,
+        });
+        if let Some(source_node_id) = state.lineage.seq_to_node.get(&seq_id) {
+            projected_edges.push((source_node_id.clone(), node_id, edge_op_id));
+        }
+    }
+
+    for view in dotplot_views {
+        let node_id = format!("analysis:dotplot:{}", view.dotplot_id);
+        let created_by_op = view.op_id.clone().unwrap_or_else(|| "-".to_string());
+        let edge_op_id = if created_by_op == "-" {
+            node_id.clone()
+        } else {
+            created_by_op.clone()
+        };
+        op_label_by_id
+            .entry(edge_op_id.clone())
+            .or_insert_with(|| format!("Compute dotplot: id={}", view.dotplot_id));
+        let query_seq_id = view.seq_id.clone();
+        let reference_seq_id = view.reference_seq_id.clone();
+        projected_rows.push(EngineLineageRenderRow {
+            node_id: node_id.clone(),
+            seq_id: query_seq_id.clone(),
+            display_name: view.dotplot_id.clone(),
+            created_by_op,
+            created_at: view.generated_at_unix_ms,
+            kind: EngineLineageRenderRowKind::Analysis,
+            length: 0,
+            circular: false,
+            pool_size: 0,
+            arrangement_id: None,
+            arrangement_mode: None,
+            lane_count: 0,
+            analysis_kind: Some("dotplot".to_string()),
+            analysis_status: Some(
+                view.inspection_provenance
+                    .as_ref()
+                    .map(|citation| citation.status.as_str().to_string())
+                    .unwrap_or_else(|| "manual (no reasoning citation)".to_string()),
+            ),
+            analysis_reference_seq_id: reference_seq_id.clone(),
+            analysis_read_count: None,
+            analysis_trace_count: None,
+            analysis_target_count: None,
+            analysis_variant_count: None,
+            macro_instance_id: None,
+            macro_op_count: 0,
+            gene_set_artifact_id: None,
+            gene_set_producer_kind: None,
+            gene_set_resolved_member_count: None,
+            gene_set_unresolved_member_count: None,
+            gene_set_organism: None,
+            gene_set_taxon_id: None,
+            gene_set_symbol_namespace: None,
+        });
+        let mut seen_sources = HashSet::new();
+        for source_seq_id in std::iter::once(query_seq_id)
+            .chain(reference_seq_id)
+            .collect::<Vec<_>>()
+        {
+            let Some(source_node_id) = state.lineage.seq_to_node.get(&source_seq_id) else {
+                continue;
+            };
+            if seen_sources.insert(source_node_id.clone()) {
+                projected_edges.push((source_node_id.clone(), node_id.clone(), edge_op_id.clone()));
+            }
+        }
+        if let Some(citation) = view.inspection_provenance.as_ref() {
+            let reasoning_node_id = format!("analysis:construct_reasoning:{}", citation.graph_id);
+            if construct_reasoning_node_ids.contains(&reasoning_node_id) {
+                let inspection_edge_id = format!(
+                    "inspection:{}:{}:{}",
+                    citation.graph_id, citation.action_id, view.dotplot_id
+                );
+                op_label_by_id
+                    .entry(inspection_edge_id.clone())
+                    .or_insert_with(|| {
+                        format!("Reasoning recommendation ({})", citation.status.as_str())
+                    });
+                projected_edges.push((reasoning_node_id, node_id, inspection_edge_id));
             }
         }
     }

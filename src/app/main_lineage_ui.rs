@@ -1227,9 +1227,12 @@ impl GENtleApp {
                                                 let mode = row.analysis_mode.as_deref().unwrap_or("-");
                                                 match row.analysis_kind {
                                                     Some(LineageAnalysisKind::Dotplot) => format!(
-                                                        "{} | mode={} | points={}",
+                                                        "{} | mode={} | provenance={} | points={}",
                                                         artifact_id,
                                                         mode,
+                                                        row.analysis_status
+                                                            .as_deref()
+                                                            .unwrap_or("manual (no reasoning citation)"),
                                                         row.analysis_point_count.unwrap_or(0)
                                                     ),
                                                     Some(LineageAnalysisKind::FlexibilityTrack) => {
@@ -1895,9 +1898,12 @@ impl GENtleApp {
                                                 let mode = row.analysis_mode.as_deref().unwrap_or("-");
                                                 match row.analysis_kind {
                                                     Some(LineageAnalysisKind::Dotplot) => format!(
-                                                        "dotplot={} | mode={} | points={}",
+                                                        "dotplot={} | mode={} | provenance={} | points={}",
                                                         artifact_id,
                                                         mode,
+                                                        row.analysis_status
+                                                            .as_deref()
+                                                            .unwrap_or("manual (no reasoning citation)"),
                                                         row.analysis_point_count.unwrap_or(0)
                                                     ),
                                                     Some(LineageAnalysisKind::FlexibilityTrack) => {
@@ -2172,11 +2178,14 @@ impl GENtleApp {
                                                 match row.analysis_kind {
                                                     Some(LineageAnalysisKind::Dotplot) => {
                                                         ui.small(format!(
-                                                            "query={} | reference={} | points={}",
+                                                            "query={} | reference={} | provenance={} | points={}",
                                                             row.seq_id,
                                                             row.analysis_reference_seq_id
                                                                 .as_deref()
                                                                 .unwrap_or(&row.seq_id),
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("manual (no reasoning citation)"),
                                                             row.analysis_point_count.unwrap_or(0)
                                                         ));
                                                     }
@@ -3274,7 +3283,9 @@ impl GENtleApp {
                 } else if selected_row.kind == LineageNodeKind::Analysis {
                     ui.separator();
                     ui.heading("Selected Analysis Node");
-                    let kind = Self::infer_lineage_analysis_kind_from_row(&selected_row)
+                    let analysis_kind =
+                        Self::infer_lineage_analysis_kind_from_row(&selected_row);
+                    let kind = analysis_kind
                         .map(LineageAnalysisKind::as_str)
                         .unwrap_or("analysis");
                     ui.small(format!(
@@ -3315,7 +3326,99 @@ impl GENtleApp {
                         };
                         ui.small(format!("{mode_label}={mode}"));
                     }
-                    if let Some(status) = selected_row.analysis_status.as_deref() {
+                    if analysis_kind == Some(LineageAnalysisKind::Dotplot) {
+                        let inspection_provenance =
+                            Self::infer_lineage_analysis_artifact_id_from_row(&selected_row)
+                                .and_then(|dotplot_id| {
+                                    let engine = self.engine.read().ok()?;
+                                    engine
+                                        .get_dotplot_view(&dotplot_id)
+                                        .ok()?
+                                        .inspection_provenance
+                                });
+                        if let Some(citation) = inspection_provenance {
+                            let (status_color, status_label) = match citation.status {
+                                DotplotInspectionProvenanceStatus::Pass => (
+                                    egui::Color32::from_rgb(35, 125, 78),
+                                    "PASS",
+                                ),
+                                DotplotInspectionProvenanceStatus::Fail => (
+                                    egui::Color32::from_rgb(180, 45, 45),
+                                    "FAIL",
+                                ),
+                                DotplotInspectionProvenanceStatus::Unknown => (
+                                    egui::Color32::from_rgb(166, 109, 20),
+                                    "UNKNOWN",
+                                ),
+                            };
+                            ui.horizontal_wrapped(|ui| {
+                                ui.small("inspection provenance");
+                                ui.colored_label(
+                                    status_color,
+                                    egui::RichText::new(status_label).strong(),
+                                );
+                                ui.monospace(format!(
+                                    "graph={} | action={}",
+                                    citation.graph_id, citation.action_id
+                                ));
+                            });
+                            if !citation.rationale.trim().is_empty() {
+                                ui.small("why this inspection");
+                                ui.label(citation.rationale.clone());
+                            }
+                            ui.small(format!(
+                                "driving evidence IDs: {}",
+                                if citation.driving_evidence_ids.is_empty() {
+                                    "-".to_string()
+                                } else {
+                                    citation.driving_evidence_ids.join(", ")
+                                }
+                            ));
+                            if !citation.verification_reasons.is_empty() {
+                                ui.colored_label(
+                                    status_color,
+                                    format!(
+                                        "verification: {}",
+                                        citation.verification_reasons.join(" | ")
+                                    ),
+                                );
+                            }
+                            let reasoning_node_id = format!(
+                                "analysis:construct_reasoning:{}",
+                                citation.graph_id
+                            );
+                            let graph_is_present =
+                                valid_lineage_node_ids.contains(&reasoning_node_id);
+                            if ui
+                                .add_enabled(
+                                    graph_is_present,
+                                    egui::Button::new("Select Recommending Graph"),
+                                )
+                                .on_hover_text(if graph_is_present {
+                                    "Select the construct-reasoning graph that recommended this inspection"
+                                } else {
+                                    "The cited construct-reasoning graph is not present in this project"
+                                })
+                                .clicked()
+                            {
+                                self.lineage_graph_selected_node_id = Some(reasoning_node_id);
+                            }
+                        } else {
+                            ui.colored_label(
+                                egui::Color32::from_rgb(105, 105, 105),
+                                egui::RichText::new(
+                                    "inspection provenance: MANUAL / NO REASONING CITATION",
+                                )
+                                .strong(),
+                            )
+                            .on_hover_text(
+                                "No construct-reasoning citation was recorded; this is distinct from a failed citation",
+                            );
+                        }
+                    }
+                    if analysis_kind != Some(LineageAnalysisKind::Dotplot)
+                        && let Some(status) = selected_row.analysis_status.as_deref()
+                    {
                         let status_label = match Self::infer_lineage_analysis_kind_from_row(
                             &selected_row,
                         ) {

@@ -2143,6 +2143,12 @@ Node click behavior in lineage `Graph` view:
     - mode/model/backend depending on artifact family
     - point/bin count for dotplot/flexibility artifacts
     - pair/assay count for persisted primer/qPCR reports
+  - reasoning-guided dotplots are linked from the construct-reasoning graph
+    that recommended them; citation-free dotplots are labelled as manual/no
+    reasoning citation rather than failed
+  - selected dotplot details show the citation as visually distinct `PASS`,
+    `FAIL`, or `UNKNOWN`, plus rationale, action id, driving evidence ids,
+    verification reasons, and a shortcut back to the recommending graph
 
 Node groups in lineage view:
 

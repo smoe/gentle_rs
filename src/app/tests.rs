@@ -46,21 +46,24 @@ use crate::{
     dna_sequence::DNAsequence,
     engine::{
         Arrangement, ArrangementMode, BlastHitFeatureInput, BlastInvocationProvenance, Container,
-        ContainerKind, DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings, DotplotMode, Engine,
+        ContainerKind, DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings,
+        DotplotInspectionProvenanceStatus, DotplotInspectionRequestSnapshot, DotplotMode, Engine,
         FlexibilityModel, GenomeAnnotationProjectionTelemetry, GenomeGeneExtractMode,
         GenomeTrackSource, GenomeTrackSubscription, GentleEngine, LineageEdge, LineageNode,
         LinearSequenceLetterLayoutMode, OpResult, Operation, PLANNING_ESTIMATE_SCHEMA,
-        PairwiseAlignmentMode, PlanningEstimate, PlanningObjective, PrimerDesignPairConstraint,
-        PrimerDesignProvenanceCitation, PrimerDesignSideConstraint,
-        PrimerPairCharacterizationStatus, PrimerSpecificityReport, PrimerSpecificitySummary,
-        ProjectState, ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
-        PRIMER_DESIGN_REPORTS_METADATA_KEY, Rack, RackAuthoringTemplate, RackFillDirection,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
+        PlanningObjective, PrimerDesignPairConstraint, PrimerDesignProvenanceCitation,
+        PrimerDesignSideConstraint, PrimerPairCharacterizationStatus, PrimerSpecificityReport,
+        PrimerSpecificitySummary, ProjectState, ProteinToDnaHandoffRankingGoal,
+        ProteinToDnaHandoffStrategy, Rack, RackAuthoringTemplate, RackFillDirection,
         RackProfileKind, RackProfileSnapshot, RenderSvgMode, RestrictionCloningPcrHandoffMode,
         RestrictionEnzymeDisplayMode, ReverseTranslationReport,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore, SequenceOrigin,
         TranslationSpeedMark, TranslationSpeedProfile, TranslationSpeedProfileSource,
         UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
+        construct_reasoning_action_dotplot_request,
+        construct_reasoning_dotplot_inspection_provenance,
     },
     engine_shell::{
         AGENT_HISTORY_CONFIRMATION_REQUIRED, ShellCommand, ShellRunResult, UiIntentTarget,
@@ -87,6 +90,7 @@ use crate::{
         GibsonSuggestedDesignAdjustment,
     },
     i18n::UiLanguage,
+    lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph},
     uniprot::UniprotEntrySummary,
     window::Window,
 };
@@ -14039,6 +14043,10 @@ fn refresh_lineage_cache_includes_dotplot_and_flexibility_analysis_nodes() {
     );
     assert_eq!(dotplot_row.created_by_op, dotplot_op_id);
     assert!(dotplot_row.analysis_point_count.unwrap_or(0) > 0);
+    assert_eq!(
+        dotplot_row.analysis_status.as_deref(),
+        Some("manual (no reasoning citation)")
+    );
 
     let flex_row = app
         .lineage_rows
@@ -14075,6 +14083,232 @@ fn refresh_lineage_cache_includes_dotplot_and_flexibility_analysis_nodes() {
                 && to == "analysis:flex:p53_fx"
                 && op_id == &flex_op_id)
     );
+}
+
+#[test]
+fn refresh_lineage_cache_links_reasoning_guided_dotplots_and_distinguishes_citation_status() {
+    let sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let mut app = GENtleApp::default();
+    {
+        let mut engine = app.engine.write().unwrap();
+        let state = engine.state_mut();
+        state.sequences.insert(
+            "seq_reasoning_lineage".to_string(),
+            DNAsequence::from_sequence(&sequence).expect("sequence"),
+        );
+        insert_test_lineage_node(state, "n_reasoning_lineage", "seq_reasoning_lineage");
+    }
+
+    let (graph_id, action_id, rationale, driving_evidence_ids) = {
+        let mut engine = app.engine.write().unwrap();
+        let graph = engine
+            .build_construct_reasoning_graph("seq_reasoning_lineage", None, None)
+            .expect("construct-reasoning graph");
+        let action = graph
+            .inspection_actions
+            .iter()
+            .find(|action| !action.driving_evidence_ids.is_empty())
+            .cloned()
+            .expect("inspection action with driving evidence");
+        let snapshot_status = engine.construct_reasoning_graph_snapshot_status(&graph);
+        let resolved =
+            construct_reasoning_action_dotplot_request(&action, &graph.seq_id, sequence.len())
+                .expect("resolved inspection request");
+
+        let pass_request = DotplotInspectionRequestSnapshot {
+            dotplot_id: "reasoning_lineage_pass".to_string(),
+            seq_id: resolved.seq_id.clone(),
+            reference_seq_id: None,
+            span_start_0based: resolved.span_start_0based,
+            span_end_0based: resolved.span_end_0based,
+            reference_span_start_0based: resolved.span_start_0based,
+            reference_span_end_0based: resolved.span_end_0based,
+            mode: resolved.mode,
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+        };
+        let pass_citation = construct_reasoning_dotplot_inspection_provenance(
+            &graph,
+            &action,
+            &snapshot_status,
+            &resolved,
+            pass_request,
+        );
+        assert_eq!(
+            pass_citation.status,
+            DotplotInspectionProvenanceStatus::Pass
+        );
+        engine
+            .apply(Operation::ComputeDotplot {
+                seq_id: resolved.seq_id.clone(),
+                reference_seq_id: None,
+                span_start_0based: Some(resolved.span_start_0based),
+                span_end_0based: Some(resolved.span_end_0based),
+                reference_span_start_0based: None,
+                reference_span_end_0based: None,
+                mode: resolved.mode,
+                word_size: 4,
+                step_bp: 1,
+                max_mismatches: 0,
+                tile_bp: None,
+                store_as: Some("reasoning_lineage_pass".to_string()),
+                inspection_provenance: Some(Box::new(pass_citation)),
+            })
+            .expect("verified reasoning-guided dotplot");
+
+        let fail_request = DotplotInspectionRequestSnapshot {
+            dotplot_id: "reasoning_lineage_fail".to_string(),
+            seq_id: resolved.seq_id.clone(),
+            reference_seq_id: None,
+            span_start_0based: resolved.span_start_0based,
+            span_end_0based: resolved.span_end_0based,
+            reference_span_start_0based: resolved.span_start_0based,
+            reference_span_end_0based: resolved.span_end_0based,
+            mode: resolved.mode,
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+        };
+        let fail_citation = construct_reasoning_dotplot_inspection_provenance(
+            &graph,
+            &action,
+            &snapshot_status,
+            &resolved,
+            fail_request,
+        );
+        engine
+            .apply(Operation::ComputeDotplot {
+                seq_id: resolved.seq_id.clone(),
+                reference_seq_id: None,
+                span_start_0based: Some(resolved.span_start_0based),
+                span_end_0based: Some(resolved.span_end_0based),
+                reference_span_start_0based: None,
+                reference_span_end_0based: None,
+                mode: resolved.mode,
+                word_size: 5,
+                step_bp: 1,
+                max_mismatches: 0,
+                tile_bp: None,
+                store_as: Some("reasoning_lineage_fail".to_string()),
+                inspection_provenance: Some(Box::new(fail_citation)),
+            })
+            .expect("dotplot with failed request citation");
+        engine
+            .apply(Operation::ComputeDotplot {
+                seq_id: resolved.seq_id.clone(),
+                reference_seq_id: None,
+                span_start_0based: Some(resolved.span_start_0based),
+                span_end_0based: Some(resolved.span_end_0based),
+                reference_span_start_0based: None,
+                reference_span_end_0based: None,
+                mode: resolved.mode,
+                word_size: 4,
+                step_bp: 1,
+                max_mismatches: 0,
+                tile_bp: None,
+                store_as: Some("reasoning_lineage_manual".to_string()),
+                inspection_provenance: None,
+            })
+            .expect("manual dotplot");
+
+        (
+            graph.graph_id,
+            action.action_id,
+            action.rationale,
+            action.driving_evidence_ids,
+        )
+    };
+
+    app.refresh_lineage_cache_if_needed();
+
+    let reasoning_node_id = format!("analysis:construct_reasoning:{graph_id}");
+    let pass_node_id = "analysis:dotplot:reasoning_lineage_pass";
+    let fail_node_id = "analysis:dotplot:reasoning_lineage_fail";
+    let manual_node_id = "analysis:dotplot:reasoning_lineage_manual";
+    let pass_row = app
+        .lineage_rows
+        .iter()
+        .find(|row| row.node_id == pass_node_id)
+        .expect("verified dotplot lineage row");
+    assert_eq!(pass_row.analysis_status.as_deref(), Some("pass"));
+    assert!(
+        pass_row
+            .parents
+            .iter()
+            .any(|parent| parent == &format!("reasoning graph {graph_id}"))
+    );
+    let fail_row = app
+        .lineage_rows
+        .iter()
+        .find(|row| row.node_id == fail_node_id)
+        .expect("failed-citation dotplot lineage row");
+    assert_eq!(fail_row.analysis_status.as_deref(), Some("fail"));
+    let manual_row = app
+        .lineage_rows
+        .iter()
+        .find(|row| row.node_id == manual_node_id)
+        .expect("manual dotplot lineage row");
+    assert_eq!(
+        manual_row.analysis_status.as_deref(),
+        Some("manual (no reasoning citation)")
+    );
+
+    for dotplot_node_id in [pass_node_id, fail_node_id] {
+        let (_, _, edge_id) = app
+            .lineage_edges
+            .iter()
+            .find(|(from, to, _)| from == &reasoning_node_id && to == dotplot_node_id)
+            .expect("reasoning-to-dotplot lineage edge");
+        assert!(
+            app.lineage_op_label_by_id
+                .get(edge_id)
+                .is_some_and(|label| label.starts_with("Reasoning recommendation"))
+        );
+    }
+    assert!(
+        !app.lineage_edges
+            .iter()
+            .any(|(from, to, _)| { from == &reasoning_node_id && to == manual_node_id })
+    );
+
+    {
+        let engine = app.engine.read().unwrap();
+        let citation = engine
+            .get_dotplot_view("reasoning_lineage_pass")
+            .expect("stored verified dotplot")
+            .inspection_provenance
+            .expect("persisted citation");
+        assert_eq!(citation.graph_id, graph_id);
+        assert_eq!(citation.action_id, action_id);
+        assert_eq!(citation.rationale, rationale);
+        assert_eq!(citation.driving_evidence_ids, driving_evidence_ids);
+
+        let (svg_nodes, svg_edges) =
+            build_lineage_svg_graph(engine.state(), engine.operation_log());
+        assert!(svg_nodes.iter().any(|node| {
+            node.kind == LineageSvgNodeKind::Analysis && node.node_id == reasoning_node_id
+        }));
+        assert!(svg_nodes.iter().any(|node| {
+            node.kind == LineageSvgNodeKind::Analysis
+                && node.node_id == pass_node_id
+                && node.subtitle.contains("provenance=pass")
+        }));
+        assert!(svg_edges.iter().any(|edge| {
+            edge.from_node_id == reasoning_node_id
+                && edge.to_node_id == pass_node_id
+                && edge.label == "Reasoning recommendation (pass)"
+        }));
+    }
 }
 
 #[test]

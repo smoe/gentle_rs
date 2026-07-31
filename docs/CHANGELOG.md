@@ -14,6 +14,10 @@ understand what changed.
 
 ## 2026-07-31
 
+- Linked reasoning-guided dotplots back to their recommending
+  construct-reasoning graphs in interactive and exported lineage views;
+  lineage details now distinguish verified, failed, unknown, and absent/manual
+  citations and expose the stored rationale and driving evidence ids.
 - Kept tutorial evidence digests byte-exact while tolerating Windows CRLF
   checkouts: the tutorial runner stages an LF-normalized UTF-8 input only when
   that normalized content exactly matches the pinned SHA-256 digest. Windows

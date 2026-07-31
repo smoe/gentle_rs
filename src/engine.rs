@@ -20118,6 +20118,25 @@ impl GentleEngine {
         self.read_construct_reasoning_store()
     }
 
+    pub(crate) fn construct_reasoning_graphs_from_state(
+        state: &ProjectState,
+    ) -> Vec<ConstructReasoningGraph> {
+        let mut graphs = Self::read_construct_reasoning_store_from_metadata(
+            state.metadata.get(CONSTRUCT_REASONING_METADATA_KEY),
+        )
+        .graphs
+        .into_values()
+        .collect::<Vec<_>>();
+        graphs.sort_by(|left, right| {
+            left.seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.seq_id.to_ascii_lowercase())
+                .then(left.generated_at_unix_ms.cmp(&right.generated_at_unix_ms))
+                .then(left.graph_id.cmp(&right.graph_id))
+        });
+        graphs
+    }
+
     pub fn list_construct_reasoning_graph_summaries(
         &self,
         seq_id_filter: Option<&str>,
@@ -26725,6 +26744,27 @@ impl GentleEngine {
         Self::read_dotplot_analysis_store_from_metadata(
             self.state.metadata.get(DOTPLOT_ANALYSIS_METADATA_KEY),
         )
+    }
+
+    pub(crate) fn dotplot_views_from_state(state: &ProjectState) -> Vec<DotplotView> {
+        let mut views = Self::read_dotplot_analysis_store_from_metadata(
+            state.metadata.get(DOTPLOT_ANALYSIS_METADATA_KEY),
+        )
+        .dotplots
+        .into_values()
+        .collect::<Vec<_>>();
+        views.sort_by(|left, right| {
+            left.owner_seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.owner_seq_id.to_ascii_lowercase())
+                .then(left.generated_at_unix_ms.cmp(&right.generated_at_unix_ms))
+                .then(
+                    left.dotplot_id
+                        .to_ascii_lowercase()
+                        .cmp(&right.dotplot_id.to_ascii_lowercase()),
+                )
+        });
+        views
     }
 
     fn write_dotplot_analysis_store(

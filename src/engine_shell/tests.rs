@@ -3136,6 +3136,45 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
                     .map(|citation| citation.action_id.as_str()),
                 Some(protocol_action.action_id.as_str())
             );
+            execute_shell_command(
+                &mut engine,
+                &ShellCommand::ConstructReasoningRunInspectionAction {
+                    graph_id: graph.graph_id.clone(),
+                    action_id: direct_action.action_id.clone(),
+                    word_size: 4,
+                    step_bp: 1,
+                    max_mismatches: 0,
+                    tile_bp: Some(128),
+                    dotplot_id: Some("reasoning_action_plot_direct".to_string()),
+                    render_svg_path: None,
+                },
+            )
+            .expect("run direct-repeat inspection action");
+            let direct_stored = engine
+                .get_dotplot_view("reasoning_action_plot_direct")
+                .expect("stored direct-repeat reasoning-guided dotplot");
+            let reverse_citation = stored
+                .inspection_provenance
+                .as_ref()
+                .expect("reverse-complement citation");
+            let direct_citation = direct_stored
+                .inspection_provenance
+                .as_ref()
+                .expect("direct-repeat citation");
+            assert_eq!(
+                reverse_citation.dotplot_mode,
+                DotplotMode::SelfReverseComplement
+            );
+            assert_eq!(direct_citation.dotplot_mode, DotplotMode::SelfForward);
+            assert_ne!(reverse_citation.action_id, direct_citation.action_id);
+            assert_eq!(
+                reverse_citation.driving_evidence_ids, protocol_action.driving_evidence_ids,
+                "reverse-complement citation must retain its action-owned evidence set"
+            );
+            assert_eq!(
+                direct_citation.driving_evidence_ids, direct_action.driving_evidence_ids,
+                "direct-repeat citation must retain its action-owned evidence set"
+            );
             assert!(run.output["render_result"].is_object());
             assert!(svg_path.exists());
 
