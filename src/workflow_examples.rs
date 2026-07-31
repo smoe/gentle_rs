@@ -2294,6 +2294,59 @@ fn resolve_input_path(path: &str, repo_root: &Path) -> String {
     display_path(&repo_root.join(raw))
 }
 
+fn resolve_digest_pinned_text_input_path(
+    path: &str,
+    expected_sha256: Option<&str>,
+    repo_root: &Path,
+    run_dir: &Path,
+) -> Result<String, String> {
+    let resolved = resolve_input_path(path, repo_root);
+    let Some(expected_sha256) = expected_sha256
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(resolved);
+    };
+    let Ok(bytes) = fs::read(&resolved) else {
+        return Ok(resolved);
+    };
+    if crate::digest_utils::sha256_prefixed_bytes(&bytes) == expected_sha256 {
+        return Ok(resolved);
+    }
+    let Ok(text) = std::str::from_utf8(&bytes) else {
+        return Ok(resolved);
+    };
+    let normalized = text.replace("\r\n", "\n");
+    if normalized.as_bytes() == bytes.as_slice()
+        || crate::digest_utils::sha256_prefixed_bytes(normalized.as_bytes()) != expected_sha256
+    {
+        return Ok(resolved);
+    }
+
+    let file_name = Path::new(&resolved)
+        .file_name()
+        .map(|value| value.to_string_lossy())
+        .unwrap_or_else(|| "digest-pinned-input.json".into());
+    let staged_dir = run_dir.join("normalized-inputs");
+    fs::create_dir_all(&staged_dir).map_err(|error| {
+        format!(
+            "Could not create tutorial normalized-input directory '{}': {error}",
+            display_path(&staged_dir)
+        )
+    })?;
+    let staged_path = staged_dir.join(format!(
+        "{}-{file_name}",
+        crate::digest_utils::short_sha256_id("input", &resolved)
+    ));
+    fs::write(&staged_path, normalized.as_bytes()).map_err(|error| {
+        format!(
+            "Could not stage line-ending-normalized tutorial input '{}': {error}",
+            display_path(&staged_path)
+        )
+    })?;
+    Ok(display_path(&staged_path))
+}
+
 fn resolve_output_path(path: &str, run_dir: &Path) -> String {
     let raw = Path::new(path);
     if raw.is_absolute() {
@@ -2485,8 +2538,12 @@ fn rewrite_example_paths_for_execution(
             continue;
         }
         if let Operation::ComposeGeneTranscriptAssayRoutine { request, path } = op {
-            request.isoform_evidence_path =
-                resolve_input_path(&request.isoform_evidence_path, repo_root);
+            request.isoform_evidence_path = resolve_digest_pinned_text_input_path(
+                &request.isoform_evidence_path,
+                request.expected_isoform_evidence_sha256.as_deref(),
+                repo_root,
+                run_dir,
+            )?;
             rewrite_optional_output_path(path, run_dir);
             if let Some(path) = path.as_deref() {
                 ensure_parent_exists(path)?;
@@ -7136,6 +7193,86 @@ mod tests {
             }
             other => panic!("unexpected operation: {other:?}"),
         }
+    }
+
+    #[test]
+    fn rewrite_example_paths_normalizes_only_digest_matching_crlf_input() {
+        let repo_root = TempDir::new().expect("temp repo root");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let fixture_path = repo_root.path().join("fixtures/isoform_evidence.json");
+        fs::create_dir_all(fixture_path.parent().expect("fixture parent"))
+            .expect("create fixture parent");
+        let lf_content = "{\n  \"schema\": \"synthetic.fixture.v1\"\n}\n";
+        let expected_sha256 =
+            crate::digest_utils::sha256_prefixed_bytes(lf_content.as_bytes());
+        fs::write(&fixture_path, lf_content.replace('\n', "\r\n")).expect("write CRLF fixture");
+
+        let build_example = |expected_sha256: String| WorkflowExample {
+            schema: WORKFLOW_EXAMPLE_SCHEMA.to_string(),
+            id: "digest_pinned_crlf_rewrite_test".to_string(),
+            title: "digest-pinned CRLF rewrite test".to_string(),
+            summary: String::new(),
+            test_mode: ExampleTestMode::Skip,
+            required_files: vec!["fixtures/isoform_evidence.json".to_string()],
+            tags: vec![],
+            workflow: Workflow {
+                run_id: "digest_pinned_crlf_rewrite_test".to_string(),
+                ops: vec![Operation::ComposeGeneTranscriptAssayRoutine {
+                    request: GeneTranscriptAssayRoutineRequest {
+                        label: "Synthetic routine".to_string(),
+                        isoform_evidence_path: "fixtures/isoform_evidence.json".to_string(),
+                        expected_isoform_evidence_sha256: Some(expected_sha256),
+                        ..GeneTranscriptAssayRoutineRequest::default()
+                    },
+                    path: None,
+                }],
+            },
+        };
+
+        let rewritten = rewrite_example_paths_for_execution(
+            &build_example(expected_sha256.clone()),
+            repo_root.path(),
+            run_dir.path(),
+        )
+        .expect("matching normalized digest should stage input");
+        let Operation::ComposeGeneTranscriptAssayRoutine { request, .. } =
+            &rewritten.workflow.ops[0]
+        else {
+            panic!("unexpected operation: {:?}", rewritten.workflow.ops[0]);
+        };
+        assert!(request.isoform_evidence_path.starts_with(&display_path(
+            &run_dir.path().join("normalized-inputs")
+        )));
+        let staged = fs::read(&request.isoform_evidence_path).expect("read staged LF input");
+        assert_eq!(staged, lf_content.as_bytes());
+        assert_eq!(
+            crate::digest_utils::sha256_prefixed_bytes(&staged),
+            expected_sha256
+        );
+
+        fs::write(
+            &fixture_path,
+            lf_content
+                .replace("synthetic.fixture.v1", "changed.fixture.v1")
+                .replace('\n', "\r\n"),
+        )
+        .expect("write semantically changed CRLF fixture");
+        let rewritten = rewrite_example_paths_for_execution(
+            &build_example(expected_sha256),
+            repo_root.path(),
+            run_dir.path(),
+        )
+        .expect("mismatched digest should retain engine validation path");
+        let Operation::ComposeGeneTranscriptAssayRoutine { request, .. } =
+            &rewritten.workflow.ops[0]
+        else {
+            panic!("unexpected operation: {:?}", rewritten.workflow.ops[0]);
+        };
+        assert_eq!(
+            request.isoform_evidence_path,
+            display_path(&fixture_path),
+            "semantic mismatches must not be normalized around engine digest validation"
+        );
     }
 
     #[test]

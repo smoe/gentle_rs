@@ -12,11 +12,13 @@ use std::{
     process,
     sync::{
         LazyLock, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicU64, Ordering},
     },
     thread,
     time::{SystemTime, UNIX_EPOCH},
 };
+#[cfg(unix)]
+use std::sync::atomic::AtomicBool;
 
 /// Schema identifier for the process-local runtime status snapshot.
 pub const RUNTIME_STATUS_SCHEMA: &str = "gentle.runtime_status.v1";

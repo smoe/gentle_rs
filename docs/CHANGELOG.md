@@ -14,6 +14,10 @@ understand what changed.
 
 ## 2026-07-31
 
+- Kept tutorial evidence digests byte-exact while tolerating Windows CRLF
+  checkouts: the tutorial runner stages an LF-normalized UTF-8 input only when
+  that normalized content exactly matches the pinned SHA-256 digest. Windows
+  builds also no longer import the Unix-only SIGUSR1 `AtomicBool`.
 - Persisted construct-reasoning inspection provenance on stored dotplots:
   payloads and list summaries now retain operation/run identity plus a verified
   graph/action/fact/evidence/request citation, while manual absence remains
