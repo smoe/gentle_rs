@@ -122,6 +122,99 @@ cargo run --bin gentle_cli -- arrays import-apt-probe-region-output \
   --genome-build GRCh38.p14
 ```
 
+## Probe-Set Activity Presentation
+
+For figure preparation from a local full E-MTAB-14704/Affymetrix working set,
+GENtle keeps the code path in Git while leaving bulky CEL-derived
+intermediates outside the repository. The helper below renders a selected
+gene-panel view from explicit local inputs. It is an experiment-specific,
+read-only figure-preparation helper rather than a second expression-analysis
+engine or a GENtle protocol operation.
+
+The renderer requires all of the following to be prepared locally before it is
+started:
+
+- Python 3.10 or newer.
+- NumPy and Matplotlib in that Python environment. The script does not invoke
+  `pip`, `uv`, Conda, Homebrew, or any other installer.
+- An APT-style tab-separated raw PM-feature table with a unique `probe_id` and
+  all nine exact CEL filename columns listed below.
+- The `pd.clariom.d.human` SQLite database with readable `featureSet` and
+  `pmfeature` tables. It is opened in SQLite read-only mode.
+- The compact GENtle probeset fixture and, for requested genes absent from that
+  fixture, the local vendor ZIP containing exactly
+  `Clariom_D_Human.na36.hg38.probeset.csv`.
+- A writable output directory. Reuse is allowed, but a fresh directory avoids
+  confusing current output with artifacts from older renderer versions.
+
+Running this script performs no network access, downloads, package
+installation, APT/R execution, or archive extraction. The fixture is
+authoritative for each requested gene it contains; the vendor annotation is a
+fallback only for genes absent from the fixture. That source policy and SHA-256
+fingerprints of every input actually consulted are recorded in `manifest.json`.
+
+The declared pairing is fixed and auditable:
+
+| pair | GFP control | DNp73beta | TAp73alpha |
+| --- | --- | --- | --- |
+| E1 | `P_SKMel29_AdGFP_1.CEL` | `P_SKMel29_AdDNp73beta_1.CEL` | `P_SKMel29_AdTAp73alpha_1.CEL` |
+| E2 | `P_SKMel29_AdGFP_2.CEL` | `P_SKMel29_AdDNp73beta_2.CEL` | `P_SKMel29_AdTAp73alpha_2.CEL` |
+| E3 | `P_SKMel29_AdGFP_3.CEL` | `P_SKMel29_AdDNp73beta_3.CEL` | `P_SKMel29_AdTAp73alpha_3.CEL` |
+
+Each paired contrast is
+`log2(condition raw PM probeset mean + 1) - log2(matched GFP raw PM probeset mean + 1)`.
+The unpaired summary columns are differences between the corresponding means
+of per-array log2 raw PM probeset means. These labels describe arithmetic on
+the declared arrays; they do not imply a fitted expression model or paired
+significance test.
+
+Run the renderer explicitly:
+
+```bash
+python3 scripts/render_clariomd_probe_set_activity.py \
+  --raw-features analysis/e_mtab_14704_tp73_microarray/all_arrays_raw_features.tsv \
+  --sqlite analysis/e_mtab_14704_tp73_microarray/Rlib/pd.clariom.d.human/extdata/pd.clariom.d.human.sqlite \
+  --vendor-probeset-zip data/publication_resources/rostock_p73_clariomd_e_mtab_14704/library/Clariom_D_Human-na36-hg38-probeset-csv.zip \
+  --output-dir analysis/e_mtab_14704_tp73_microarray/gene_panel_probe_set_activity \
+  --genes TP73,FUS,PATZ1,E2F1,TARDBP,PLK1,TERT,HDAC1,HDAC2,HDAC6
+```
+
+Expected local-only outputs include:
+
+- `probe_set_activity_summary.tsv`: probeset-level raw PM-probe means and
+  group-level log2 contrasts.
+- `probe_level_activity.tsv`: selected PM-probe raw intensities.
+- `gene_contrast_probe_set_summary.png/.svg/.pdf`: compact per-gene contrast
+  distributions.
+- `probe_set_individual_arrays_heatmap.png/.pdf`: the nine arrays as individual
+  columns, grouped only by the declared E1/E2/E3 replicate IDs. Rows follow the
+  `--genes` order and are sorted within each gene by mean paired
+  `TAp73alpha_i - GFP_i`.
+- `probe_set_paired_contrast_heatmap.png/.pdf`: within-declared-pair
+  contrasts such as `TAp73alpha_i - GFP_i` and `DNp73beta_i - GFP_i`, using the
+  same row order as the individual-array heatmap.
+- `paired_gene_level_summary.tsv`: per-gene median paired contrasts.
+- `manifest.json`: exact source paths/sizes/SHA-256 hashes, annotation-source
+  policy, sample pairing, contrast formulas, renderer/runtime versions, safety
+  limits, and scientific interpretation limits.
+
+These outputs are deliberately uncommitted derived analysis artifacts. The raw
+feature table can be regenerated from CEL files with APT-style probe extraction
+or equivalent local tooling; the script only consumes that explicit table and
+does not claim a formal normalized expression model, statistical significance,
+probe specificity, primer binding, or isoform support. Input processing is
+streamed and bounded to 100 genes, 100,000 selected probe sets, 1,000,000
+selected PM probes, 10,000,000 scanned raw-feature rows, 5,000,000 annotation
+lines, 1,000,000 characters per input line, and a 2,000,000,000-byte uncompressed
+vendor CSV member. Exceeding a bound is an explicit failure rather than silent
+truncation.
+
+Matplotlib output uses a stable SVG hash salt and no current SVG timestamp.
+PDF creation/modification metadata uses the fixed Unix reproducibility epoch;
+it is not an acquisition date. Given identical input bytes, renderer version,
+Python/NumPy/Matplotlib versions, and fonts, repeated renders are byte-identical
+for the generated TSV, JSON, HTML, README, PNG, SVG, and PDF files.
+
 ## Committed Fixture Validation Path
 
 The committed validation fixture is deterministic and safe for CI:
@@ -180,7 +273,20 @@ specificity verdict, multi-hit assessment, or isoform-support call.
 
 ## Deterministic Tests
 
-Run the focused validation checks:
+Run the focused synthetic renderer test with a Python environment that already
+contains NumPy and Matplotlib:
+
+```bash
+python3 tests/test_render_clariomd_probe_set_activity.py -v
+```
+
+The test creates its tiny TSV, SQLite database, and probeset annotation in a
+temporary directory. It renders twice in separate processes with different
+Python hash seeds, compares every output hash including SVG/PDF, checks the
+declared pair order and contrast arithmetic, and deletes the synthetic inputs
+afterward. It never reads the live 512 MB feature table or 631 MB SQLite file.
+
+Then run the neighboring engine validation checks:
 
 ```bash
 cargo test --lib -- \

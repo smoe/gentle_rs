@@ -38,6 +38,10 @@ understand what changed.
 - Added the direct shared-shell `digest` parity route, made unknown restriction
   enzymes fail closed before mutation, and removed digest progress text from
   stdout so MCP stdio framing remains valid.
+- Added a local-only E-MTAB-14704 Clariom D probe-set activity renderer and
+  runbook. It emits provenance-bound descriptive raw-PM tables and figures with
+  explicit E1/E2/E3 pairing, bounded streamed inputs, deterministic SVG/PDF
+  metadata, and clear non-significance/non-specificity/non-isoform caveats.
 - Added non-mutating TFBS hit scanning as a collection `map` operation.
   Project sequences and explicitly sequence-bound gene-set members now share
   direct-scan motif/threshold semantics across engine, shell/CLI/MCP, and the
