@@ -21237,6 +21237,22 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "MAX_HITS", "required": false, "subject_kind": "other", "detail": "optional maximum number of hits"}),
             ],
         ),
+        sequence_optional_artifact_operation_descriptor(
+            "features tfbs-scan",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded sequence id when the target is not inline sequence text",
+            "optional external TFBS hit-scan JSON output path",
+            "Scan one loaded or inline sequence target for TFBS/PSSM hits.",
+            vec![
+                json!({"name": "MOTIFS", "required": true, "subject_kind": "other", "detail": "motif query tokens"}),
+                json!({"name": "--range", "required": false, "subject_kind": "other", "detail": "optional scan interval START..END"}),
+                json!({"name": "--min-llr-bits", "required": false, "subject_kind": "other", "detail": "optional minimum log-likelihood-ratio threshold in bits"}),
+                json!({"name": "--min-llr-quantile", "required": false, "subject_kind": "other", "detail": "optional quantile threshold"}),
+                json!({"name": "--max-hits", "required": false, "subject_kind": "other", "detail": "optional maximum number of retained hits"}),
+            ],
+        ),
         optional_artifact_resource_report_descriptor(
             "features repeat-query",
             "optional external repeat-annotation query JSON output path",
