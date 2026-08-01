@@ -1060,6 +1060,18 @@ Implemented collection-lifting baseline:
   logic. Its operation JSON is accepted through the normal CLI `op`/workflow,
   MCP `op`, JavaScript, and Lua paths; `collections run primer-specificity` is
   the shared-shell convenience form.
+- `FindRestrictionSitesCollection` proves the same `map` contract for a second
+  operation family. `collections run restriction-scan` calls the existing
+  single-sequence scanner once per loaded project sequence or explicitly
+  sequence-bound gene-set member, preserving sequence topology and effective
+  enzyme disclosure. Its `gentle.collection_restriction_site_scan.v1` wrapper
+  owns successful child reports because restriction scans have no persisted
+  report store; generic `produced_report_ids` therefore remains empty.
+- Restriction scanning is biological-context agnostic because it has no
+  genome-scoped parameter. Missing gene-set member bindings are typed dynamic
+  member failures, while unknown/duplicate bindings and unknown enzymes reject
+  the request. The membership fingerprint covers membership/order only, not
+  mutable sequence content.
 - A logical gene-set member has no inherent primer-assay identity. Its
   `PrimerSpecificityCollectionMemberBinding` must therefore name the exact
   `stable_member_id` and persisted `primer_report_id`. Project-sequence

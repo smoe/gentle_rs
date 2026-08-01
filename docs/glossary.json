@@ -3525,6 +3525,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "FindRestrictionSites"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features restriction-scan",
+         "summary": "Scan one loaded sequence for restriction-enzyme recognition and cut sites using configured preferred enzymes or explicit enzyme names.",
+         "usage": "features restriction-scan SEQ_ID [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "BuildExperimentalAssayHandoff"
          ],
          "interfaces": [
@@ -3565,6 +3579,21 @@
          "path": "collections run primer-specificity",
          "summary": "Map GENtle's existing local-BLAST primer specificity assessment over project sequences or a persisted gene-set resolution, retaining per-member failures and produced report IDs.",
          "usage": "collections run primer-specificity [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,...] [--member-report MEMBER_ID=PRIMER_REPORT_ID]... (--pair-rank N | --pair-index N) --target-genome GENOME_ID [--policy JSON_OR_@FILE] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FindRestrictionSitesCollection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "gui-menu"
+         ],
+         "path": "collections run restriction-scan",
+         "summary": "Map the shared restriction-site scanner over loaded project sequences or explicitly sequence-bound members of a persisted gene-set resolution.",
+         "usage": "collections run restriction-scan [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,...] [--member-sequence MEMBER_ID=SEQ_ID]... [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]"
       },
       {
          "aliases": [],

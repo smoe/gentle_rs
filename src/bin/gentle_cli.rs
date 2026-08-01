@@ -2250,6 +2250,36 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_forwarded_shell_command_routes_collection_restriction_scan() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "collections".to_string(),
+            "run".to_string(),
+            "restriction-scan".to_string(),
+            "resolution:cofactors".to_string(),
+            "--member-sequence".to_string(),
+            "gene_id:ensg1=seq_a".to_string(),
+            "--enzyme".to_string(),
+            "EcoRI".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1)
+            .expect("parse forwarded collection restriction scan")
+            .expect("collections is a forwarded shell root");
+        assert!(matches!(
+            parsed,
+            ShellCommand::CollectionsRunRestrictionScan {
+                collection_subject:
+                    CollectionSubjectRef::GeneSetResolution { report_id },
+                member_bindings,
+                enzymes,
+                ..
+            } if report_id == "resolution:cofactors"
+                && member_bindings.len() == 1
+                && enzymes == ["EcoRI"]
+        ));
+    }
+
+    #[test]
     fn test_parse_forwarded_shell_command_routes_hosts_through_shared_parser() {
         let args = vec![
             "gentle_cli".to_string(),

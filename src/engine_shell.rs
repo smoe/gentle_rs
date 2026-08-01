@@ -91,7 +91,8 @@ use crate::{
         RackProfileKind, ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RenderSvgMode,
         RepeatAnnotationFilter, RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode,
         ReporterConstraints, ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode,
-        RestrictionSiteScanReport, ReverseTranslationReport, ReverseTranslationReportSummary,
+        RestrictionSiteScanCollectionMemberBinding, RestrictionSiteScanReport,
+        ReverseTranslationReport, ReverseTranslationReportSummary,
         RnaReadAlignConfig, RnaReadAlignmentDisplayBatch, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
         RnaReadConcatemerInspectionSettings, RnaReadGeneSupportAuditCohortFilter,
@@ -2469,6 +2470,14 @@ pub enum ShellCommand {
         policy: PrimerSpecificityPolicy,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
+        path: Option<String>,
+    },
+    CollectionsRunRestrictionScan {
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<RestrictionSiteScanCollectionMemberBinding>,
+        enzymes: Vec<String>,
+        max_sites_per_enzyme: Option<usize>,
+        include_cut_geometry: bool,
         path: Option<String>,
     },
     PrimersSpecificityPlan {
@@ -11316,6 +11325,25 @@ impl ShellCommand {
                 collection_subject.kind(),
                 target_genome_id,
                 member_bindings.len(),
+                path.as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::CollectionsRunRestrictionScan {
+                collection_subject,
+                member_bindings,
+                enzymes,
+                path,
+                ..
+            } => format!(
+                "map restriction-site scanning over {:?} collection members (explicit_bindings={}, enzymes={}, path={})",
+                collection_subject.kind(),
+                member_bindings.len(),
+                if enzymes.is_empty() {
+                    "preferred/default".to_string()
+                } else {
+                    enzymes.join(",")
+                },
                 path.as_deref()
                     .filter(|value| !value.trim().is_empty())
                     .unwrap_or("none"),
@@ -20738,6 +20766,54 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
         ),
         json!({
+            "id": "FindRestrictionSitesCollection",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "other", "detail": "typed project_sequences or gene_set_resolution collection subject"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "member-id to loaded-sequence bindings; required for logical gene-set members"},
+                {"name": "ENZYMES", "required": false, "subject_kind": "other", "detail": "optional enzyme names; empty resolves configured preferred/default enzymes"},
+                {"name": "MAX_SITES_PER_ENZYME", "required": false, "subject_kind": "other", "detail": "optional per-enzyme site cap"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_restriction_scan",
+                "equals": "collection_restriction_scan",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Map the shared restriction-site scanner over a project-sequence or explicitly sequence-bound gene-set collection.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("FindRestrictionSitesCollection")
+        }),
+        json!({
+            "id": "collections run restriction-scan",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"},
+                {"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "loaded project sequence ids; alternative to GENE_SET_REPORT_ID"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "repeated MEMBER_ID=SEQ_ID bindings required for logical gene-set members"},
+                {"name": "ENZYMES", "required": false, "subject_kind": "other", "detail": "optional enzyme names"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_restriction_scan",
+                "equals": "collection_restriction_scan",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Map restriction-site scanning over loaded project sequences or explicitly sequence-bound gene-set members.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("collections run restriction-scan")
+        }),
+        json!({
             "id": "features query",
             "kind": "operation",
             "mutating": "false",
@@ -27341,6 +27417,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         ]),
         "features restriction-scan"
         | "FindRestrictionSites"
+        | "FindRestrictionSitesCollection"
+        | "collections run restriction-scan"
         | "features tfbs-score-tracks-svg"
         | "RenderTfbsScoreTracksSvg"
         | "SummarizeTfbsScoreTracks"
@@ -52451,6 +52529,40 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::CollectionsRunRestrictionScan {
+            collection_subject,
+            member_bindings,
+            enzymes,
+            max_sites_per_enzyme,
+            include_cut_geometry,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::FindRestrictionSitesCollection {
+                    collection_subject: collection_subject.clone(),
+                    member_bindings: member_bindings.clone(),
+                    enzymes: enzymes.clone(),
+                    max_sites_per_enzyme: *max_sites_per_enzyme,
+                    include_cut_geometry: *include_cut_geometry,
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result
+                .collection_restriction_site_scan
+                .clone()
+                .ok_or_else(|| {
+                    "Collection restriction-site scan operation returned no domain report"
+                        .to_string()
+                })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.collection_restriction_site_scan_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
+            })
+        }
         ShellCommand::PrimersSpecificityPlan {
             primer_report_id,
             pair_rank,
@@ -59079,6 +59191,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersDesignQpcr { .. }
             | ShellCommand::PrimersSpecificity { .. }
             | ShellCommand::CollectionsRunPrimerSpecificity { .. }
+            | ShellCommand::CollectionsRunRestrictionScan { .. }
             | ShellCommand::PrimersSpecificityPlan { .. }
             | ShellCommand::PrimersSpecificityImport { .. }
             | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
@@ -60818,6 +60931,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersDesignQpcr { .. }
         | ShellCommand::PrimersSpecificity { .. }
         | ShellCommand::CollectionsRunPrimerSpecificity { .. }
+        | ShellCommand::CollectionsRunRestrictionScan { .. }
         | ShellCommand::PrimersSpecificityPlan { .. }
         | ShellCommand::PrimersSpecificityImport { .. }
         | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }

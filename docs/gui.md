@@ -455,17 +455,20 @@ The project main window (lineage page) supports two views:
     form does not perform a live ontology lookup
   - the collection-operation catalog is projected from canonical
     engine-operation lifting policies rather than maintained as a GUI-only list
-  - the first typed adapters are promoter-cohort derivation (`derive`) and
-    primer-specificity assessment (`map`), each with independent form state and
-    operation-specific results
+  - typed adapters cover promoter-cohort derivation (`derive`),
+    primer-specificity assessment (`map`), and restriction-site scanning
+    (`map`), each with independent form state and operation-specific results
   - pool export, pooled-gel rendering, and serial arrangement remain visible but
     disabled with their typed physical-pool or materialization requirements
   - primer specificity binds every logical member to one exact persisted
     primer-design report, then chooses a one-based pair rank and prepared local
     BLAST target
+  - restriction scanning binds every logical member to one loaded DNA
+    sequence, accepts optional enzyme names/site caps/cut geometry, and shows
+    aggregate site counts without guessing sequence identity from gene labels
   - promoter derivation chooses one prepared genome, strand-aware window sizes,
     and an optional relationship expectation
-  - both adapters execute one shared shell command against one complete
+  - all adapters execute one shared shell command against one complete
     collection membership in a detached engine snapshot; `Discard result`
     always suppresses display and cooperatively prevents commit when the worker
     observes the request before detached commit, but does not remove an output

@@ -13,13 +13,14 @@ use super::*;
 use crate::{
     engine::{
         CollectionContextRequirement, CollectionLiftRejectionReason, CollectionMemberOutcome,
-        CollectionMemberRef, CollectionOperationReport, CollectionSubjectKind,
-        CollectionSubjectRef, DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+        CollectionMemberRef, CollectionOperationReport, CollectionRestrictionSiteScanReport,
+        CollectionSubjectKind, CollectionSubjectRef, DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
         DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP, GeneSetCohortRelationship,
         GeneSetPromoterCohortReport, GeneSetProvenanceRow, GeneSetRequest, GeneSetResolutionReport,
         GeneSetResolutionReviewStatus, PrimerDesignReportSummary,
         PrimerSpecificityCollectionMemberBinding, PrimerSpecificityPolicy,
-        homogeneous_collection_biological_context, validate_collection_context_target_genome,
+        RestrictionSiteScanCollectionMemberBinding, homogeneous_collection_biological_context,
+        validate_collection_context_target_genome,
     },
     engine_shell::{ShellCommand, execute_shell_command},
 };
@@ -302,6 +303,25 @@ struct GeneSetPromoterFormState {
     output_path: String,
 }
 
+#[derive(Clone, Debug)]
+struct GeneSetRestrictionScanFormState {
+    member_bindings: BTreeMap<String, String>,
+    enzymes: String,
+    max_sites_per_enzyme: String,
+    include_cut_geometry: bool,
+}
+
+impl Default for GeneSetRestrictionScanFormState {
+    fn default() -> Self {
+        Self {
+            member_bindings: BTreeMap::new(),
+            enzymes: String::new(),
+            max_sites_per_enzyme: String::new(),
+            include_cut_geometry: true,
+        }
+    }
+}
+
 impl Default for GeneSetPromoterFormState {
     fn default() -> Self {
         Self {
@@ -333,6 +353,7 @@ enum CollectionOperationPayload {
     PrimerSpecificity {
         child_reports: BTreeMap<String, PrimerSpecificityChildPresentation>,
     },
+    RestrictionScan(Box<CollectionRestrictionSiteScanReport>),
     PromoterCohort(Box<GeneSetPromoterCohortReport>),
 }
 
@@ -369,6 +390,7 @@ pub(super) struct GeneSetInspectorUiState {
     selected_resolution_id: String,
     selected_operation: CollectionLauncherAdapter,
     specificity_form: GeneSetSpecificityFormState,
+    restriction_scan_form: GeneSetRestrictionScanFormState,
     promoter_form: GeneSetPromoterFormState,
     status: String,
     resolve_form: GeneSetResolveFormState,
@@ -390,6 +412,7 @@ impl Default for GeneSetInspectorUiState {
             selected_resolution_id: String::new(),
             selected_operation: CollectionLauncherAdapter::default(),
             specificity_form: GeneSetSpecificityFormState::default(),
+            restriction_scan_form: GeneSetRestrictionScanFormState::default(),
             promoter_form: GeneSetPromoterFormState::default(),
             status: String::new(),
             resolve_form: GeneSetResolveFormState::default(),
@@ -639,6 +662,44 @@ impl GENtleApp {
                 .entry(member_id)
                 .or_default();
         }
+        let loaded_seq_ids = self
+            .engine
+            .read()
+            .ok()
+            .map(|engine| {
+                engine
+                    .state()
+                    .sequences
+                    .keys()
+                    .cloned()
+                    .collect::<BTreeSet<_>>()
+            })
+            .unwrap_or_default();
+        let selected_member_ids = self
+            .selected_gene_set_resolution()
+            .map(|choice| {
+                choice
+                    .report
+                    .resolved_members
+                    .iter()
+                    .map(|member| member.dedup_key.clone())
+                    .collect::<BTreeSet<_>>()
+            })
+            .unwrap_or_default();
+        self.gene_set_inspector
+            .restriction_scan_form
+            .member_bindings
+            .retain(|member_id, seq_id| {
+                selected_member_ids.contains(member_id)
+                    && (seq_id.is_empty() || loaded_seq_ids.contains(seq_id))
+            });
+        for member_id in selected_member_ids {
+            self.gene_set_inspector
+                .restriction_scan_form
+                .member_bindings
+                .entry(member_id)
+                .or_default();
+        }
     }
 
     fn gene_set_specificity_shell_command(&self) -> Result<ShellCommand, String> {
@@ -727,6 +788,74 @@ impl GENtleApp {
             policy,
             catalog_path: optional_path(&self.gene_set_inspector.specificity_form.catalog_path),
             cache_dir: optional_path(&self.gene_set_inspector.specificity_form.cache_dir),
+            path: None,
+        })
+    }
+
+    fn gene_set_restriction_scan_shell_command(&self) -> Result<ShellCommand, String> {
+        let choice = self
+            .selected_gene_set_resolution()
+            .ok_or_else(|| "Select a persisted gene-set resolution first".to_string())?;
+        if choice.report.resolved_members.is_empty() {
+            return Err("The selected gene set has no resolved members".to_string());
+        }
+        let mut member_bindings = Vec::with_capacity(choice.report.resolved_members.len());
+        let mut missing_members = Vec::new();
+        for member in &choice.report.resolved_members {
+            let seq_id = self
+                .gene_set_inspector
+                .restriction_scan_form
+                .member_bindings
+                .get(&member.dedup_key)
+                .map(String::as_str)
+                .unwrap_or_default()
+                .trim();
+            if seq_id.is_empty() {
+                missing_members.push(member.symbol.clone());
+            } else {
+                member_bindings.push(RestrictionSiteScanCollectionMemberBinding {
+                    stable_member_id: member.dedup_key.clone(),
+                    seq_id: seq_id.to_string(),
+                });
+            }
+        }
+        if !missing_members.is_empty() {
+            return Err(format!(
+                "Bind one loaded DNA sequence for every member; missing: {}",
+                missing_members.join(", ")
+            ));
+        }
+        let enzymes = self
+            .gene_set_inspector
+            .restriction_scan_form
+            .enzymes
+            .split([',', '\n'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let max_sites_per_enzyme = match self
+            .gene_set_inspector
+            .restriction_scan_form
+            .max_sites_per_enzyme
+            .trim()
+        {
+            "" => None,
+            value => Some(value.parse::<usize>().map_err(|_| {
+                "Maximum sites per enzyme must be a non-negative integer".to_string()
+            })?),
+        };
+        Ok(ShellCommand::CollectionsRunRestrictionScan {
+            collection_subject: CollectionSubjectRef::GeneSetResolution {
+                report_id: choice.report_id.clone(),
+            },
+            member_bindings,
+            enzymes,
+            max_sites_per_enzyme,
+            include_cut_geometry: self
+                .gene_set_inspector
+                .restriction_scan_form
+                .include_cut_geometry,
             path: None,
         })
     }
@@ -831,23 +960,42 @@ impl GENtleApp {
         let Some(adapter) = row.adapter else {
             return baseline;
         };
-        if adapter == CollectionLauncherAdapter::PrimerSpecificity {
+        if matches!(
+            adapter,
+            CollectionLauncherAdapter::PrimerSpecificity
+                | CollectionLauncherAdapter::RestrictionScan
+        ) {
+            let bindings = match adapter {
+                CollectionLauncherAdapter::PrimerSpecificity => {
+                    &self.gene_set_inspector.specificity_form.member_bindings
+                }
+                CollectionLauncherAdapter::RestrictionScan => {
+                    &self
+                        .gene_set_inspector
+                        .restriction_scan_form
+                        .member_bindings
+                }
+                CollectionLauncherAdapter::PromoterCohort => unreachable!(),
+            };
             let missing = report
                 .resolved_members
                 .iter()
                 .filter(|member| {
-                    self.gene_set_inspector
-                        .specificity_form
-                        .member_bindings
+                    bindings
                         .get(&member.dedup_key)
-                        .is_none_or(|report_id| report_id.trim().is_empty())
+                        .is_none_or(|value| value.trim().is_empty())
                 })
                 .map(|member| member.symbol.clone())
                 .collect::<Vec<_>>();
             if !missing.is_empty() {
                 return CollectionLauncherReadiness::NeedsBindings {
                     detail: format!(
-                        "Bind one exact primer-design report for: {}",
+                        "Bind one exact {} for: {}",
+                        match adapter {
+                            CollectionLauncherAdapter::PrimerSpecificity => "primer-design report",
+                            CollectionLauncherAdapter::RestrictionScan => "loaded DNA sequence",
+                            CollectionLauncherAdapter::PromoterCohort => unreachable!(),
+                        },
                         missing.join(", ")
                     ),
                 };
@@ -856,6 +1004,9 @@ impl GENtleApp {
         let command = match adapter {
             CollectionLauncherAdapter::PrimerSpecificity => {
                 self.gene_set_specificity_shell_command()
+            }
+            CollectionLauncherAdapter::RestrictionScan => {
+                self.gene_set_restriction_scan_shell_command()
             }
             CollectionLauncherAdapter::PromoterCohort => self.gene_set_promoter_shell_command(),
         };
@@ -871,6 +1022,7 @@ impl GENtleApp {
                 genome_id: target_genome_id,
                 ..
             } => target_genome_id,
+            ShellCommand::CollectionsRunRestrictionScan { .. } => "",
             _ => unreachable!("collection launcher adapters construct known shell commands"),
         };
         let normalized_report = if adapter == CollectionLauncherAdapter::PromoterCohort {
@@ -914,6 +1066,9 @@ impl GENtleApp {
         match self.gene_set_inspector.selected_operation {
             CollectionLauncherAdapter::PrimerSpecificity => {
                 self.gene_set_specificity_shell_command()
+            }
+            CollectionLauncherAdapter::RestrictionScan => {
+                self.gene_set_restriction_scan_shell_command()
             }
             CollectionLauncherAdapter::PromoterCohort => self.gene_set_promoter_shell_command(),
         }
@@ -972,6 +1127,34 @@ impl GENtleApp {
                     adapter,
                     report,
                     payload: CollectionOperationPayload::PrimerSpecificity { child_reports },
+                })
+            }
+            CollectionLauncherAdapter::RestrictionScan => {
+                let restriction_scan = serde_json::from_value::<
+                    CollectionRestrictionSiteScanReport,
+                >(
+                    output
+                        .get("report")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                )
+                .map_err(|error| {
+                    invalid_output(format!(
+                        "Collection restriction-scan command returned an invalid report: {error}"
+                    ))
+                })?;
+                if &restriction_scan.collection_operation.collection_subject != expected_subject {
+                    return Err(invalid_output(format!(
+                        "Collection restriction scan returned subject {:?}, expected {:?}",
+                        restriction_scan.collection_operation.collection_subject, expected_subject
+                    )));
+                }
+                Ok(CollectionOperationTaskResult {
+                    adapter,
+                    report: restriction_scan.collection_operation.clone(),
+                    payload: CollectionOperationPayload::RestrictionScan(Box::new(
+                        restriction_scan,
+                    )),
                 })
             }
             CollectionLauncherAdapter::PromoterCohort => {
@@ -1177,6 +1360,10 @@ impl GENtleApp {
                 self.gene_set_inspector.status = match &result.payload {
                     CollectionOperationPayload::PrimerSpecificity { .. } => format!(
                         "Collection specificity completed in {elapsed:.1}s: {succeeded} executed, {failed} failed. Biological pass/fail is shown per child report."
+                    ),
+                    CollectionOperationPayload::RestrictionScan(report) => format!(
+                        "Restriction scan completed in {elapsed:.1}s: {succeeded} executed, {failed} failed, {} total matched site(s).",
+                        report.total_matched_site_count
                     ),
                     CollectionOperationPayload::PromoterCohort(report) => format!(
                         "Promoter cohort completed in {elapsed:.1}s: {} window(s), {} unresolved. Derivation stores the cohort and may normalize missing source-context metadata.",
@@ -1677,6 +1864,105 @@ impl GENtleApp {
             });
     }
 
+    fn render_gene_set_restriction_scan_form(
+        &mut self,
+        ui: &mut Ui,
+        choice: &GeneSetResolutionChoice,
+    ) {
+        let sequence_ids = self
+            .engine
+            .read()
+            .ok()
+            .map(|engine| engine.state().sequences.keys().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        ui.strong("Sequence bindings");
+        ui.small("Each resolved gene is bound explicitly to one loaded DNA sequence.");
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!("Loaded DNA sequences: {}", sequence_ids.len()));
+            if ui
+                .button("Clear bindings")
+                .on_hover_text("Clear every member-to-sequence selection")
+                .clicked()
+            {
+                for seq_id in self
+                    .gene_set_inspector
+                    .restriction_scan_form
+                    .member_bindings
+                    .values_mut()
+                {
+                    seq_id.clear();
+                }
+            }
+        });
+        egui::ScrollArea::vertical()
+            .id_salt("gene_set_restriction_scan_bindings")
+            .max_height(300.0)
+            .show_rows(
+                ui,
+                34.0,
+                choice.report.resolved_members.len(),
+                |ui, row_range| {
+                    for row_index in row_range {
+                        let member = &choice.report.resolved_members[row_index];
+                        ui.horizontal(|ui| {
+                            ui.vertical(|ui| {
+                                ui.label(&member.symbol);
+                                ui.small(
+                                    member
+                                        .gene_id
+                                        .as_deref()
+                                        .unwrap_or(member.dedup_key.as_str()),
+                                );
+                            });
+                            ui.add_space(12.0);
+                            let binding = self
+                                .gene_set_inspector
+                                .restriction_scan_form
+                                .member_bindings
+                                .entry(member.dedup_key.clone())
+                                .or_default();
+                            egui::ComboBox::from_id_salt((
+                                "gene_set_member_restriction_sequence",
+                                &member.dedup_key,
+                            ))
+                            .selected_text(if binding.is_empty() {
+                                "Select loaded sequence..."
+                            } else {
+                                binding.as_str()
+                            })
+                            .width(420.0)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(binding, String::new(), "Not selected");
+                                for seq_id in &sequence_ids {
+                                    ui.selectable_value(binding, seq_id.clone(), seq_id);
+                                }
+                            });
+                        });
+                    }
+                },
+            );
+
+        ui.separator();
+        ui.strong("Restriction scan parameters");
+        let form = &mut self.gene_set_inspector.restriction_scan_form;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Enzymes");
+            ui.add(
+                egui::TextEdit::singleline(&mut form.enzymes)
+                    .desired_width(300.0)
+                    .hint_text("Configured preferred enzymes"),
+            )
+            .on_hover_text("Comma-separated names. Leave empty to use configured preferred enzymes, then the built-in default set.");
+            ui.label("Maximum sites / enzyme");
+            ui.add(
+                egui::TextEdit::singleline(&mut form.max_sites_per_enzyme)
+                    .desired_width(100.0)
+                    .hint_text("No limit"),
+            );
+            ui.checkbox(&mut form.include_cut_geometry, "Cut geometry");
+        });
+    }
+
     fn render_gene_set_promoter_form(&mut self, ui: &mut Ui) {
         ui.strong("Promoter-cohort parameters");
         ui.small(
@@ -1787,6 +2073,7 @@ impl GENtleApp {
         }
         let child_reports = match &result.payload {
             CollectionOperationPayload::PrimerSpecificity { child_reports } => Some(child_reports),
+            CollectionOperationPayload::RestrictionScan(_) => None,
             CollectionOperationPayload::PromoterCohort(_) => None,
         };
         let mut open_child: Option<(String, String)> = None;
@@ -1858,6 +2145,28 @@ impl GENtleApp {
                     ui.small(format!("- {warning}"));
                 }
             });
+        }
+
+        if let CollectionOperationPayload::RestrictionScan(restriction_scan) = &result.payload {
+            ui.separator();
+            ui.strong(format!(
+                "Restriction sites: {} across {} successful sequence(s)",
+                restriction_scan.total_matched_site_count,
+                restriction_scan.member_reports.len()
+            ));
+            ui.small(format!(
+                "enzymes={} | cut geometry={}",
+                restriction_scan.effective_enzymes.join(", "),
+                restriction_scan.include_cut_geometry
+            ));
+            if ui
+                .button("Copy restriction scan JSON")
+                .on_hover_text("Copy the complete portable collection restriction-scan report")
+                .clicked()
+                && let Ok(json) = serde_json::to_string_pretty(restriction_scan.as_ref())
+            {
+                ui.ctx().copy_text(json);
+            }
         }
 
         if let CollectionOperationPayload::PromoterCohort(promoter) = &result.payload {
@@ -2037,6 +2346,9 @@ impl GENtleApp {
         match self.gene_set_inspector.selected_operation {
             CollectionLauncherAdapter::PrimerSpecificity => {
                 self.render_gene_set_specificity_form(ui, choice)
+            }
+            CollectionLauncherAdapter::RestrictionScan => {
+                self.render_gene_set_restriction_scan_form(ui, choice)
             }
             CollectionLauncherAdapter::PromoterCohort => self.render_gene_set_promoter_form(ui),
         }
@@ -2800,6 +3112,27 @@ mod tests {
         }
     }
 
+    fn restriction_scan_command_projection(command: &ShellCommand) -> serde_json::Value {
+        match command {
+            ShellCommand::CollectionsRunRestrictionScan {
+                collection_subject,
+                member_bindings,
+                enzymes,
+                max_sites_per_enzyme,
+                include_cut_geometry,
+                path,
+            } => serde_json::json!({
+                "collection_subject": collection_subject,
+                "member_bindings": member_bindings,
+                "enzymes": enzymes,
+                "max_sites_per_enzyme": max_sites_per_enzyme,
+                "include_cut_geometry": include_cut_geometry,
+                "path": path,
+            }),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
     #[test]
     fn collection_operation_launcher_specificity_command_matches_shared_shell_parser_once() {
         let app = seeded_app();
@@ -2825,6 +3158,61 @@ mod tests {
             unreachable!("specificity adapter returns one collection command")
         };
         assert_eq!(member_bindings.len(), 2);
+    }
+
+    #[test]
+    fn collection_operation_launcher_restriction_scan_matches_shared_shell_parser_once() {
+        let mut app = seeded_app();
+        {
+            let mut engine = app.engine.write().expect("engine");
+            engine.state_mut().sequences.insert(
+                "seq_1".to_string(),
+                DNAsequence::from_sequence("AAGAATTCCCGG").expect("sequence 1"),
+            );
+            engine.state_mut().sequences.insert(
+                "seq_2".to_string(),
+                DNAsequence::from_sequence("TTTGGATCCAAA").expect("sequence 2"),
+            );
+        }
+        app.gene_set_inspector
+            .restriction_scan_form
+            .member_bindings
+            .insert("GENE1".to_string(), "seq_1".to_string());
+        app.gene_set_inspector
+            .restriction_scan_form
+            .member_bindings
+            .insert("GENE2".to_string(), "seq_2".to_string());
+        app.gene_set_inspector.restriction_scan_form.enzymes = "EcoRI, BamHI".to_string();
+        app.gene_set_inspector
+            .restriction_scan_form
+            .max_sites_per_enzyme = "3".to_string();
+        app.gene_set_inspector
+            .restriction_scan_form
+            .include_cut_geometry = false;
+
+        let gui_command = app
+            .gene_set_restriction_scan_shell_command()
+            .expect("GUI command");
+        let parsed = parse_shell_line(
+            "collections run restriction-scan resolution:genes \
+             --member-sequence GENE1=seq_1 --member-sequence GENE2=seq_2 \
+             --enzyme EcoRI --enzyme BamHI --max-sites-per-enzyme 3 --no-cut-geometry",
+        )
+        .expect("shared shell command");
+        assert_eq!(
+            restriction_scan_command_projection(&gui_command),
+            restriction_scan_command_projection(&parsed)
+        );
+
+        app.gene_set_inspector
+            .restriction_scan_form
+            .member_bindings
+            .remove("GENE2");
+        assert!(
+            app.gene_set_restriction_scan_shell_command()
+                .expect_err("missing binding")
+                .contains("missing: GENE2")
+        );
     }
 
     #[test]
@@ -2968,6 +3356,24 @@ mod tests {
                 ..
             }
         ));
+
+        app.gene_set_inspector
+            .restriction_scan_form
+            .member_bindings
+            .insert("GENE1".to_string(), "seq_1".to_string());
+        app.gene_set_inspector
+            .restriction_scan_form
+            .member_bindings
+            .insert("GENE2".to_string(), "seq_2".to_string());
+        let restriction = collection_launcher_rows(CollectionSubjectKind::GeneSetResolution)
+            .into_iter()
+            .find(|row| row.adapter == Some(CollectionLauncherAdapter::RestrictionScan))
+            .expect("restriction-scan row");
+        assert_eq!(
+            app.gene_set_collection_operation_readiness(&restriction, &mixed),
+            CollectionLauncherReadiness::Ready,
+            "restriction scanning has no genome-scoped parameter and is context agnostic"
+        );
 
         let mut engine = GentleEngine::new();
         engine

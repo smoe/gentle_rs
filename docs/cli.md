@@ -3044,6 +3044,8 @@ Shared shell command:
     - `primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
     - `collections run primer-specificity GENE_SET_REPORT_ID --member-report MEMBER_ID=PRIMER_REPORT_ID ... --pair-rank N --target-genome GENOME_ID [--policy JSON_OR_@FILE] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]`
     - `collections run primer-specificity --seq-ids SEQ_ID,... (--pair-rank N | --pair-index N) --target-genome GENOME_ID [--member-report MEMBER_ID=PRIMER_REPORT_ID]... [--policy JSON_OR_@FILE] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]`
+    - `collections run restriction-scan GENE_SET_REPORT_ID --member-sequence MEMBER_ID=SEQ_ID ... [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]`
+    - `collections run restriction-scan --seq-ids SEQ_ID,... [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]`
     - `primers specificity-plan REPORT_ID --pair-rank N --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-plan --forward SEQ --reverse SEQ --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-import HANDOFF.json [--path OUTPUT.json]`
@@ -3652,6 +3654,13 @@ Shared shell command:
         `summary.status = fail|incomplete|not_assessed`; those biological
         verdicts are preserved and summarized as aggregate warnings rather
         than mislabeled as execution errors
+      - `collections run restriction-scan` maps the same scanner used by
+        `features restriction-scan` over project sequences or explicitly
+        sequence-bound gene-set members. Empty enzyme input uses configured
+        preferred enzymes and then the built-in default set; unknown names
+        fail closed. The returned `gentle.collection_restriction_site_scan.v1`
+        wrapper includes successful child reports and aggregate counts because
+        restriction scans are not otherwise stored by report id.
       - the report follows GENtle's computational-artifact contract with
         `op_id`, `run_id`, sequence links, external inputs/database
         fingerprints, request/effective-setting summaries, a reopen hint, and

@@ -15,6 +15,7 @@ use gentle_protocol::{
 pub(super) enum CollectionLauncherAdapter {
     #[default]
     PrimerSpecificity,
+    RestrictionScan,
     PromoterCohort,
 }
 
@@ -22,6 +23,7 @@ impl CollectionLauncherAdapter {
     pub(super) fn capability_name(self) -> &'static str {
         match self {
             Self::PrimerSpecificity => "AssessPrimerPairSpecificity",
+            Self::RestrictionScan => "FindRestrictionSites",
             Self::PromoterCohort => "BuildGeneSetPromoterCohort",
         }
     }
@@ -29,6 +31,7 @@ impl CollectionLauncherAdapter {
     pub(super) fn label(self) -> &'static str {
         match self {
             Self::PrimerSpecificity => "Primer specificity",
+            Self::RestrictionScan => "Restriction scan",
             Self::PromoterCohort => "Promoter cohort",
         }
     }
@@ -36,6 +39,7 @@ impl CollectionLauncherAdapter {
     fn from_capability_name(name: &str) -> Option<Self> {
         match name {
             "AssessPrimerPairSpecificity" => Some(Self::PrimerSpecificity),
+            "FindRestrictionSites" => Some(Self::RestrictionScan),
             "BuildGeneSetPromoterCohort" => Some(Self::PromoterCohort),
             _ => None,
         }

@@ -53696,6 +53696,295 @@ fn test_find_restriction_sites_operation_supports_inline_sequence_targets() {
 }
 
 #[test]
+fn collection_restriction_scan_matches_direct_scans_defaults_and_circular_geometry() {
+    let mut linear = DNAsequence::from_sequence("AAGAATTCCCGG").expect("linear sequence");
+    linear.set_circular(false);
+    let mut circular = DNAsequence::from_sequence("TTCAAAAAAGAA").expect("circular sequence");
+    circular.set_circular(true);
+    let mut state = ProjectState::default();
+    state.sequences.insert("linear".to_string(), linear);
+    state.sequences.insert("circular".to_string(), circular);
+    state.display.preferred_restriction_enzymes = vec!["EcoRI".to_string()];
+    let mut engine = GentleEngine::from_state(state);
+
+    let direct_linear = engine
+        .find_restriction_sites(
+            SequenceScanTarget::SeqId {
+                seq_id: "linear".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            &[],
+            None,
+            true,
+            None,
+            None,
+        )
+        .expect("direct default-enzyme scan");
+    let direct_circular = engine
+        .find_restriction_sites(
+            SequenceScanTarget::SeqId {
+                seq_id: "circular".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            &["EcoRI".to_string()],
+            None,
+            true,
+            None,
+            None,
+        )
+        .expect("direct circular scan");
+    assert_eq!(
+        direct_circular.scan_topology,
+        InlineSequenceTopology::Circular
+    );
+
+    let result = engine
+        .apply(Operation::FindRestrictionSitesCollection {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec!["linear".to_string(), "circular".to_string()],
+            },
+            member_bindings: vec![],
+            enzymes: vec![],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect("collection restriction scan");
+    let collection = result
+        .collection_restriction_site_scan
+        .expect("domain collection report");
+
+    assert_eq!(collection.effective_enzymes, ["EcoRI"]);
+    assert_eq!(
+        collection.collection_operation.lifting_mode,
+        CollectionLiftingMode::Map
+    );
+    assert_eq!(
+        collection
+            .collection_operation
+            .lift_policy
+            .context_requirement,
+        CollectionContextRequirement::ContextAgnostic
+    );
+    assert_eq!(collection.member_reports.len(), 2);
+    assert!(
+        collection
+            .collection_operation
+            .per_member_status
+            .iter()
+            .all(|row| {
+                row.outcome == CollectionMemberOutcome::Succeeded
+                    && row.produced_report_ids.is_empty()
+                    && row.error.is_none()
+            })
+    );
+    let mapped_linear = collection
+        .member_reports
+        .iter()
+        .find(|row| row.seq_id == "linear")
+        .expect("mapped linear report");
+    let mapped_circular = collection
+        .member_reports
+        .iter()
+        .find(|row| row.seq_id == "circular")
+        .expect("mapped circular report");
+    assert_eq!(
+        serde_json::to_value(&mapped_linear.report.rows).expect("mapped linear rows"),
+        serde_json::to_value(&direct_linear.rows).expect("direct linear rows")
+    );
+    assert_eq!(
+        mapped_linear.report.enzymes_scanned,
+        direct_linear.enzymes_scanned
+    );
+    assert_eq!(
+        serde_json::to_value(&mapped_circular.report.rows).expect("mapped circular rows"),
+        serde_json::to_value(&direct_circular.rows).expect("direct circular rows")
+    );
+    assert_eq!(
+        mapped_circular.report.scan_topology,
+        InlineSequenceTopology::Circular
+    );
+    assert_eq!(
+        collection.total_matched_site_count,
+        direct_linear.matched_site_count + direct_circular.matched_site_count
+    );
+    assert_eq!(
+        collection.matched_site_counts_by_enzyme.get("EcoRI"),
+        Some(&collection.total_matched_site_count)
+    );
+    let encoded = serde_json::to_value(&collection).expect("serialize collection scan report");
+    let decoded: CollectionRestrictionSiteScanReport =
+        serde_json::from_value(encoded.clone()).expect("deserialize collection scan report");
+    assert_eq!(
+        serde_json::to_value(decoded).expect("reserialize collection scan report"),
+        encoded
+    );
+
+    engine
+        .state_mut()
+        .display
+        .preferred_restriction_enzymes
+        .clear();
+    let direct_builtin_default = engine
+        .find_restriction_sites(
+            SequenceScanTarget::SeqId {
+                seq_id: "linear".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            &[],
+            None,
+            true,
+            None,
+            None,
+        )
+        .expect("direct built-in default scan");
+    let collection_builtin_default = engine
+        .apply(Operation::FindRestrictionSitesCollection {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec!["linear".to_string()],
+            },
+            member_bindings: vec![],
+            enzymes: vec![],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect("collection built-in default scan")
+        .collection_restriction_site_scan
+        .expect("collection built-in default report");
+    assert_eq!(
+        collection_builtin_default.effective_enzymes,
+        direct_builtin_default.enzymes_scanned
+    );
+    assert_eq!(
+        serde_json::to_value(&collection_builtin_default.member_reports[0].report.rows)
+            .expect("mapped built-in default rows"),
+        serde_json::to_value(&direct_builtin_default.rows)
+            .expect("direct built-in default rows")
+    );
+
+    let error = engine
+        .apply(Operation::FindRestrictionSitesCollection {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec!["linear".to_string()],
+            },
+            member_bindings: vec![],
+            enzymes: vec!["DefinitelyNotAnEnzyme".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect_err("unknown enzymes fail before collection mapping");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("Unknown restriction enzyme"));
+}
+
+#[test]
+fn collection_restriction_scan_keeps_missing_gene_set_bindings_as_member_failures() {
+    let mut engine = GentleEngine::new();
+    engine.state_mut().sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("AAGAATTCCCGG").expect("sequence"),
+    );
+    let resolution = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 1,
+        op_id: Some("restriction_binding_fixture".to_string()),
+        resolved_member_count: 2,
+        resolved_members: vec![
+            GeneSetResolvedMember {
+                dedup_key: "GENE_A".to_string(),
+                symbol: "GENE_A".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+            GeneSetResolvedMember {
+                dedup_key: "GENE_B".to_string(),
+                symbol: "GENE_B".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+        ],
+        ..GeneSetResolutionReport::default()
+    };
+    let report_id = GentleEngine::gene_set_resolution_artifact_id(&resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(resolution)
+        .expect("persist gene-set resolution");
+
+    let report = engine
+        .apply(Operation::FindRestrictionSitesCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings: vec![RestrictionSiteScanCollectionMemberBinding {
+                stable_member_id: "GENE_A".to_string(),
+                seq_id: "seq_a".to_string(),
+            }],
+            enzymes: vec!["EcoRI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect("missing binding is a dynamic member failure")
+        .collection_restriction_site_scan
+        .expect("collection restriction report");
+    assert_eq!(report.member_reports.len(), 1);
+    assert_eq!(report.member_reports[0].stable_member_id, "GENE_A");
+    assert_eq!(report.collection_operation.per_member_status.len(), 2);
+    let failed = report
+        .collection_operation
+        .per_member_status
+        .iter()
+        .find(|row| row.member.stable_member_id == "GENE_B")
+        .expect("failed unbound member");
+    assert_eq!(failed.outcome, CollectionMemberOutcome::Failed);
+    assert!(failed.error.as_ref().is_some_and(|error| {
+        error
+            .message
+            .contains("requires an explicit member-to-sequence binding")
+    }));
+    assert_eq!(report.collection_operation.aggregate_warnings.len(), 1);
+
+    let error = engine
+        .apply(Operation::FindRestrictionSitesCollection {
+            collection_subject: report.collection_operation.collection_subject.clone(),
+            member_bindings: vec![RestrictionSiteScanCollectionMemberBinding {
+                stable_member_id: "UNKNOWN".to_string(),
+                seq_id: "seq_a".to_string(),
+            }],
+            enzymes: vec!["EcoRI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect_err("unknown binding is a request error");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("not in the collection"));
+
+    let duplicate = engine
+        .apply(Operation::FindRestrictionSitesCollection {
+            collection_subject: report.collection_operation.collection_subject,
+            member_bindings: vec![
+                RestrictionSiteScanCollectionMemberBinding {
+                    stable_member_id: "GENE_A".to_string(),
+                    seq_id: "seq_a".to_string(),
+                },
+                RestrictionSiteScanCollectionMemberBinding {
+                    stable_member_id: "GENE_A".to_string(),
+                    seq_id: "seq_a".to_string(),
+                },
+            ],
+            enzymes: vec!["EcoRI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect_err("duplicate member binding is a request error");
+    assert_eq!(duplicate.code, ErrorCode::InvalidInput);
+    assert!(duplicate.message.contains("more than one sequence binding"));
+}
+
+#[test]
 fn project_fact_graph_projects_loaded_sequence_facts() {
     let mut state = ProjectState::default();
     state.sequences.insert(

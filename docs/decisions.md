@@ -333,9 +333,12 @@ explicit typed rejection rather than an adapter-local conditional.
 
 Dynamic readiness failures remain operation/fact-graph results and must not be
 misclassified as permanent policy rejection. Generic collection reports carry
-typed member outcomes/errors and links to produced domain reports. Membership
-locks are set-like except for explicitly ordered subjects such as
-arrangements, whose numeric member order is part of the fingerprint.
+typed member outcomes/errors and links to produced domain reports. When a
+domain report has no persisted store/getter, a portable domain wrapper may own
+the child reports directly; in that case `produced_report_ids` stays empty so
+GENtle never emits dangling report references. Membership locks are set-like
+except for explicitly ordered subjects such as arrangements, whose numeric
+member order is part of the fingerprint.
 
 Collection members bind biological interpretation through a report-owned
 context registry. Context-sensitive policies are fail-closed: an undeclared

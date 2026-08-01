@@ -11247,9 +11247,10 @@ impl GentleEngine {
         )
     }
 
-    fn primer_specificity_collection_subject_members(
+    fn collection_subject_members_for_project_sequences_or_gene_set(
         &self,
         subject: &CollectionSubjectRef,
+        operation_label: &str,
     ) -> Result<
         (
             CollectionSubjectRef,
@@ -11270,9 +11271,9 @@ impl GentleEngine {
                 if normalized_ids.is_empty() {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
-                        message:
-                            "Project-sequence primer specificity requires at least one sequence id"
-                                .to_string(),
+                        message: format!(
+                            "Project-sequence {operation_label} requires at least one sequence id"
+                        ),
                         cause_chain: vec![],
                     });
                 }
@@ -11332,13 +11333,314 @@ impl GentleEngine {
                 Err(EngineError {
                     code: ErrorCode::Unsupported,
                     message: format!(
-                        "Primer specificity collection mapping does not support {:?} subjects",
+                        "{operation_label} collection mapping does not support {:?} subjects",
                         subject.kind()
                     ),
                     cause_chain: vec![],
                 })
             }
         }
+    }
+
+    fn restriction_site_scan_collection_binding_map(
+        bindings: Vec<RestrictionSiteScanCollectionMemberBinding>,
+    ) -> Result<BTreeMap<String, String>, EngineError> {
+        let mut by_member = BTreeMap::new();
+        let mut bound_sequences = BTreeMap::<String, String>::new();
+        for binding in bindings {
+            let stable_member_id = binding.stable_member_id.trim().to_string();
+            let seq_id = binding.seq_id.trim().to_string();
+            if stable_member_id.is_empty() || seq_id.is_empty() {
+                return Err(EngineError::invalid_input(
+                    "Collection restriction-scan bindings require non-empty stable_member_id and seq_id",
+                ));
+            }
+            if by_member
+                .insert(stable_member_id.clone(), seq_id.clone())
+                .is_some()
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Collection member '{}' has more than one sequence binding",
+                    stable_member_id
+                )));
+            }
+            if let Some(previous_member) =
+                bound_sequences.insert(seq_id.clone(), stable_member_id.clone())
+                && previous_member != stable_member_id
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Project sequence '{}' is bound to both '{}' and '{}'; one restriction scan must not be duplicated across collection members",
+                    seq_id, previous_member, stable_member_id
+                )));
+            }
+        }
+        Ok(by_member)
+    }
+
+    fn resolve_restriction_site_scan_collection_member_sequence(
+        &self,
+        member: &CollectionMemberRef,
+        explicit_seq_id: Option<&str>,
+    ) -> Result<(String, &'static str), EngineError> {
+        let seq_id = if let Some(explicit_seq_id) = explicit_seq_id {
+            let explicit_seq_id = explicit_seq_id.trim();
+            if let Some(member_seq_id) = member.seq_id.as_deref()
+                && member_seq_id != explicit_seq_id
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Collection member '{}' already identifies project sequence '{}', not explicit binding '{}'",
+                    member.stable_member_id, member_seq_id, explicit_seq_id
+                )));
+            }
+            (explicit_seq_id.to_string(), "explicit")
+        } else if let Some(seq_id) = member.seq_id.as_deref() {
+            (seq_id.to_string(), "collection_member")
+        } else {
+            return Err(EngineError::invalid_input(format!(
+                "Gene-set member '{}' requires an explicit member-to-sequence binding",
+                member.stable_member_id
+            )));
+        };
+        if !self.state.sequences.contains_key(&seq_id.0) {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Project sequence '{}' not found", seq_id.0),
+                cause_chain: vec![],
+            });
+        }
+        Ok(seq_id)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn find_restriction_sites_collection(
+        &self,
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<RestrictionSiteScanCollectionMemberBinding>,
+        enzymes: Vec<String>,
+        max_sites_per_enzyme: Option<usize>,
+        include_cut_geometry: bool,
+        op_id: &str,
+        run_id: &str,
+    ) -> Result<CollectionRestrictionSiteScanReport, EngineError> {
+        let subject_kind = collection_subject.kind();
+        let lift_policy = collection_lift_policy(
+            CapabilitySource::EngineOperation,
+            "FindRestrictionSites",
+            subject_kind,
+        )
+        .cloned()
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::Unsupported,
+            message: format!(
+                "FindRestrictionSites has no collection lift policy for {:?}",
+                subject_kind
+            ),
+            cause_chain: vec![],
+        })?;
+        if !matches!(
+            &lift_policy.support,
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Map,
+                ..
+            }
+        ) {
+            return Err(EngineError {
+                code: ErrorCode::Unsupported,
+                message: format!(
+                    "FindRestrictionSites collection lift policy for {:?} does not declare map support",
+                    subject_kind
+                ),
+                cause_chain: vec![],
+            });
+        }
+        if lift_policy.context_requirement != CollectionContextRequirement::ContextAgnostic {
+            return Err(EngineError::internal(format!(
+                "FindRestrictionSites collection lifting requires context_agnostic policy, found {:?}",
+                lift_policy.context_requirement
+            )));
+        }
+
+        let (collection_subject, members, provenance, biological_contexts) = self
+            .collection_subject_members_for_project_sequences_or_gene_set(
+                &collection_subject,
+                "restriction-site scan",
+            )?;
+        let bindings = Self::restriction_site_scan_collection_binding_map(member_bindings)?;
+        let member_ids = members
+            .iter()
+            .map(|member| member.stable_member_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let unknown_bindings = bindings
+            .keys()
+            .filter(|member_id| !member_ids.contains(member_id.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !unknown_bindings.is_empty() {
+            return Err(EngineError::invalid_input(format!(
+                "Sequence bindings reference member ids that are not in the collection: {}",
+                unknown_bindings.join(", ")
+            )));
+        }
+
+        let requested_enzymes = enzymes
+            .iter()
+            .map(|enzyme| enzyme.trim())
+            .filter(|enzyme| !enzyme.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let (effective_enzymes, _) = self.resolve_restriction_scan_enzymes(&requested_enzymes)?;
+        let resolved_members = members
+            .into_iter()
+            .map(|member| {
+                let resolved = self.resolve_restriction_site_scan_collection_member_sequence(
+                    &member,
+                    bindings.get(&member.stable_member_id).map(String::as_str),
+                );
+                (member, resolved)
+            })
+            .collect::<Vec<_>>();
+        let canonical_membership = canonical_collection_membership_json(
+            subject_kind,
+            &resolved_members
+                .iter()
+                .map(|(member, _)| member.clone())
+                .collect::<Vec<_>>(),
+        );
+        let membership_fingerprint = sha256_prefixed_str(&canonical_membership);
+        let identity = serde_json::to_string(&json!({
+            "collection_subject": &collection_subject,
+            "collection_membership_fingerprint_sha256": &membership_fingerprint,
+            "member_bindings": &bindings,
+            "effective_enzymes": &effective_enzymes,
+            "max_sites_per_enzyme": max_sites_per_enzyme,
+            "include_cut_geometry": include_cut_geometry,
+        }))
+        .map_err(|error| {
+            EngineError::internal(format!(
+                "Could not identify collection restriction-site scan report: {error}"
+            ))
+        })?;
+        let report_id = short_sha256_id("collection_restriction_scan", &identity);
+
+        let mut per_member_status = Vec::with_capacity(resolved_members.len());
+        let mut member_reports = Vec::new();
+        let mut aggregate_warnings = Vec::new();
+        let mut total_matched_site_count = 0usize;
+        let mut matched_site_counts_by_enzyme = effective_enzymes
+            .iter()
+            .cloned()
+            .map(|enzyme| (enzyme, 0usize))
+            .collect::<BTreeMap<_, _>>();
+        for (mut member, resolved) in resolved_members {
+            let (seq_id, resolution_kind) = match resolved {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    aggregate_warnings.push(format!(
+                        "Member '{}': {}",
+                        member.stable_member_id, error.message
+                    ));
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Failed,
+                        error: Some(error),
+                        produced_report_ids: vec![],
+                    });
+                    continue;
+                }
+            };
+            member.source_provenance.push(GeneSetProvenanceRow {
+                source_kind: "project_sequence_binding".to_string(),
+                source_id: seq_id.clone(),
+                source_label: None,
+                source_path: None,
+                note: Some(format!("Sequence binding resolved by {resolution_kind}")),
+            });
+            match self.find_restriction_sites(
+                SequenceScanTarget::SeqId {
+                    seq_id: seq_id.clone(),
+                    span_start_0based: None,
+                    span_end_0based_exclusive: None,
+                },
+                &effective_enzymes,
+                max_sites_per_enzyme,
+                include_cut_geometry,
+                Some(op_id),
+                Some(run_id),
+            ) {
+                Ok(report) => {
+                    total_matched_site_count =
+                        total_matched_site_count.saturating_add(report.matched_site_count);
+                    for row in &report.rows {
+                        *matched_site_counts_by_enzyme
+                            .entry(row.enzyme_name.clone())
+                            .or_default() += 1;
+                    }
+                    if !report.skipped_enzyme_names_due_to_max_sites.is_empty() {
+                        aggregate_warnings.push(format!(
+                            "Member '{}': skipped enzyme(s) due to max_sites_per_enzyme cap {}: {}",
+                            member.stable_member_id,
+                            report.max_sites_per_enzyme.unwrap_or_default(),
+                            report.skipped_enzyme_names_due_to_max_sites.join(", ")
+                        ));
+                    }
+                    member_reports.push(CollectionRestrictionSiteScanMemberReport {
+                        stable_member_id: member.stable_member_id.clone(),
+                        seq_id,
+                        report,
+                    });
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Succeeded,
+                        error: None,
+                        produced_report_ids: vec![],
+                    });
+                }
+                Err(error) => {
+                    aggregate_warnings.push(format!(
+                        "Member '{}': {}",
+                        member.stable_member_id, error.message
+                    ));
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Failed,
+                        error: Some(error),
+                        produced_report_ids: vec![],
+                    });
+                }
+            }
+        }
+
+        Ok(CollectionRestrictionSiteScanReport {
+            schema: COLLECTION_RESTRICTION_SITE_SCAN_REPORT_SCHEMA.to_string(),
+            collection_operation: CollectionOperationReport {
+                schema: COLLECTION_OPERATION_REPORT_SCHEMA.to_string(),
+                report_id,
+                op_id: Some(op_id.to_string()),
+                run_id: Some(run_id.to_string()),
+                generated_at_unix_ms: Self::now_unix_ms(),
+                capability_source: CapabilitySource::EngineOperation,
+                capability_name: "FindRestrictionSites".to_string(),
+                collection_subject,
+                lifting_mode: CollectionLiftingMode::Map,
+                lift_policy,
+                fingerprint_algorithm: COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM.to_string(),
+                collection_membership_fingerprint_sha256: membership_fingerprint,
+                biological_contexts,
+                dry_run: false,
+                applied: true,
+                per_member_status,
+                aggregate_warnings,
+                provenance,
+            },
+            requested_enzymes,
+            effective_enzymes,
+            max_sites_per_enzyme,
+            include_cut_geometry,
+            member_reports,
+            total_matched_site_count,
+            matched_site_counts_by_enzyme,
+            path: None,
+        })
     }
 
     fn primer_specificity_collection_binding_map(
@@ -11503,8 +11805,11 @@ impl GentleEngine {
             });
         }
 
-        let (collection_subject, members, provenance, biological_contexts) =
-            self.primer_specificity_collection_subject_members(&collection_subject)?;
+        let (collection_subject, members, provenance, biological_contexts) = self
+            .collection_subject_members_for_project_sequences_or_gene_set(
+                &collection_subject,
+                "primer specificity",
+            )?;
         match lift_policy.context_requirement {
             CollectionContextRequirement::NotReviewed => {
                 return Err(EngineError::internal(
@@ -26940,6 +27245,7 @@ impl GentleEngine {
             gene_set_resolution: None,
             gene_set_promoter_cohort: None,
             collection_operation: None,
+            collection_restriction_site_scan: None,
             gene_set_cutrun_regulatory_support: None,
             ortholog_promoter_cohort: None,
             ortholog_promoter_comparison: None,
@@ -32774,6 +33080,69 @@ impl GentleEngine {
                     ));
                     result.warnings.extend(report.aggregate_warnings.clone());
                     result.collection_operation = Some(report);
+                }
+                Operation::FindRestrictionSitesCollection {
+                    collection_subject,
+                    member_bindings,
+                    enzymes,
+                    max_sites_per_enzyme,
+                    include_cut_geometry,
+                    path,
+                } => {
+                    let mut report = self.find_restriction_sites_collection(
+                        collection_subject,
+                        member_bindings,
+                        enzymes,
+                        max_sites_per_enzyme,
+                        include_cut_geometry,
+                        &result.op_id,
+                        run_id,
+                    )?;
+                    parent_seq_ids.extend(
+                        report
+                            .member_reports
+                            .iter()
+                            .map(|member_report| member_report.seq_id.clone()),
+                    );
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        report.path = Some(path.to_string());
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "collection restriction-site scan report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote collection restriction-site scan report to '{path}'"
+                        ));
+                    }
+                    let succeeded = report
+                        .collection_operation
+                        .per_member_status
+                        .iter()
+                        .filter(|row| row.outcome == CollectionMemberOutcome::Succeeded)
+                        .count();
+                    let failed = report
+                        .collection_operation
+                        .per_member_status
+                        .iter()
+                        .filter(|row| row.outcome == CollectionMemberOutcome::Failed)
+                        .count();
+                    result.messages.push(format!(
+                        "Mapped restriction-site scanning over {} collection member(s): {} succeeded, {} failed, {} total matched site(s)",
+                        report.collection_operation.per_member_status.len(),
+                        succeeded,
+                        failed,
+                        report.total_matched_site_count,
+                    ));
+                    result
+                        .warnings
+                        .extend(report.collection_operation.aggregate_warnings.clone());
+                    result.collection_operation = Some(report.collection_operation.clone());
+                    result.collection_restriction_site_scan = Some(report);
                 }
                 Operation::PreparePrimerPairSpecificityHandoff {
                     primer_report_id,

@@ -4060,6 +4060,19 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    FindRestrictionSitesCollection {
+        collection_subject: CollectionSubjectRef,
+        #[serde(default)]
+        member_bindings: Vec<RestrictionSiteScanCollectionMemberBinding>,
+        #[serde(default)]
+        enzymes: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_sites_per_enzyme: Option<usize>,
+        #[serde(default = "default_true")]
+        include_cut_geometry: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     QueryRepeatAnnotations {
         genome_id: String,
         rmsk_path: String,
@@ -9349,6 +9362,7 @@ impl GentleEngine {
                 | Operation::InspectRnaReadGeneSupport { .. }
                 | Operation::QueryProteinResidueGenomicCoordinates { .. }
                 | Operation::FindRestrictionSites { .. }
+                | Operation::FindRestrictionSitesCollection { .. }
                 | Operation::QueryRepeatAnnotations { .. }
                 | Operation::QueryRepeatOverlaps { .. }
                 | Operation::BuildRepeatEnvironmentCohort { .. }

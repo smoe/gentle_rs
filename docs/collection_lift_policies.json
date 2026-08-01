@@ -33,6 +33,78 @@
     },
     {
       "source": "engine_operation",
+      "name": "FindRestrictionSites",
+      "subjects": [
+        {
+          "subject_kind": "project_sequences",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_restriction_site_scan.v1"
+          }
+        },
+        {
+          "subject_kind": "gene_set_resolution",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_restriction_site_scan.v1"
+          }
+        }
+      ]
+    },
+    {
+      "source": "glossary_command",
+      "name": "features restriction-scan",
+      "subjects": [
+        {
+          "subject_kind": "project_sequences",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_restriction_site_scan.v1"
+          }
+        },
+        {
+          "subject_kind": "gene_set_resolution",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_restriction_site_scan.v1"
+          }
+        }
+      ]
+    },
+    {
+      "source": "glossary_command",
+      "name": "collections run restriction-scan",
+      "subjects": [
+        {
+          "subject_kind": "project_sequences",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_restriction_site_scan.v1"
+          }
+        },
+        {
+          "subject_kind": "gene_set_resolution",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_restriction_site_scan.v1"
+          }
+        }
+      ]
+    },
+    {
+      "source": "engine_operation",
       "name": "AssessPrimerPairSpecificity",
       "subjects": [
         {

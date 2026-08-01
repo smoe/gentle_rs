@@ -1784,6 +1784,56 @@ pub struct RestrictionSiteScanReport {
     pub rows: Vec<RestrictionSiteScanHit>,
 }
 
+pub const COLLECTION_RESTRICTION_SITE_SCAN_REPORT_SCHEMA: &str =
+    "gentle.collection_restriction_site_scan.v1";
+
+/// Explicitly binds one logical collection member to one loaded DNA sequence.
+///
+/// Resolved gene-set members identify genes, not materialized sequence records,
+/// so collection restriction scans must not infer this association from a
+/// symbol or coordinate label.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct RestrictionSiteScanCollectionMemberBinding {
+    pub stable_member_id: String,
+    pub seq_id: String,
+}
+
+/// One successful wrapper-owned child restriction-site scan.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct CollectionRestrictionSiteScanMemberReport {
+    pub stable_member_id: String,
+    pub seq_id: String,
+    pub report: RestrictionSiteScanReport,
+}
+
+/// Domain result for mapping restriction-site inspection over a collection.
+///
+/// Restriction-site scan reports do not currently have a persisted report
+/// store. Successful child reports therefore live in this wrapper and generic
+/// `per_member_status[].produced_report_ids` remains empty.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct CollectionRestrictionSiteScanReport {
+    pub schema: String,
+    pub collection_operation: CollectionOperationReport,
+    #[serde(default)]
+    pub requested_enzymes: Vec<String>,
+    #[serde(default)]
+    pub effective_enzymes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_sites_per_enzyme: Option<usize>,
+    pub include_cut_geometry: bool,
+    #[serde(default)]
+    pub member_reports: Vec<CollectionRestrictionSiteScanMemberReport>,
+    pub total_matched_site_count: usize,
+    #[serde(default)]
+    pub matched_site_counts_by_enzyme: BTreeMap<String, usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
 pub const PROJECT_FACT_GRAPH_SCHEMA: &str = "gentle.project_fact_graph.v1";
 pub const FACT_EXPRESSION_SCHEMA: &str = "gentle.fact_expression.v1";
 pub const FACT_EVALUATION_SCHEMA: &str = "gentle.fact_evaluation.v1";
@@ -4517,6 +4567,8 @@ pub struct OpResult {
     pub gene_set_promoter_cohort: Option<GeneSetPromoterCohortReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collection_operation: Option<CollectionOperationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_restriction_site_scan: Option<CollectionRestrictionSiteScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_set_cutrun_regulatory_support: Option<GeneSetCutRunRegulatorySupportReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

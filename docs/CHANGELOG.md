@@ -14,6 +14,11 @@ understand what changed.
 
 ## 2026-08-01
 
+- Added restriction-site scanning as the second collection `map` operation.
+  Project sequences and explicitly sequence-bound gene-set members now use the
+  same topology-aware scanner through engine, shell/CLI/MCP, and the Gene Set
+  Inspector; a portable wrapper carries child reports and aggregate site
+  counts without dangling report ids.
 - Replaced the Gene Set Inspector's one-off primer action with a
   registry-projected collection-operation launcher. Typed promoter-cohort and
   primer-specificity adapters now share detached execution and subject checks,

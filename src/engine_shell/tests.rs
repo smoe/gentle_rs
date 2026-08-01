@@ -475,6 +475,9 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "collections run primer-specificity" => Some(
             "collections run primer-specificity --seq-ids demo --pair-rank 1 --target-genome demo",
         ),
+        "collections run restriction-scan" => {
+            Some("collections run restriction-scan --seq-ids demo --enzyme EcoRI")
+        }
         "seq-confirm run" => Some("seq-confirm run expected --reads read1"),
         "seq-primer suggest" => Some("seq-primer suggest expected --primers primer1"),
         "rna-reads allele-hash-screen" => Some(
@@ -6715,6 +6718,60 @@ fn parse_collections_run_primer_specificity_rejects_ambiguous_subjects_and_pairs
     )
     .expect_err("member binding requires an explicit member/report separator");
     assert!(malformed_binding.contains("MEMBER_ID=PRIMER_REPORT_ID"));
+}
+
+#[test]
+fn parse_collections_run_restriction_scan_for_gene_set_and_project_sequences() {
+    let gene_set = parse_shell_line(
+        "collections run restriction-scan resolution:cofactors \
+         --member-sequence gene_id:ensg1=seq_a \
+         --member-sequence gene_id:ensg2=seq_b \
+         --enzyme EcoRI --enzymes BamHI,SmaI \
+         --max-sites-per-enzyme 4 --no-cut-geometry --path collection.json",
+    )
+    .expect("parse gene-set collection restriction scan");
+    match gene_set {
+        ShellCommand::CollectionsRunRestrictionScan {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings,
+            enzymes,
+            max_sites_per_enzyme,
+            include_cut_geometry,
+            path,
+        } => {
+            assert_eq!(report_id, "resolution:cofactors");
+            assert_eq!(member_bindings.len(), 2);
+            assert_eq!(member_bindings[0].stable_member_id, "gene_id:ensg1");
+            assert_eq!(member_bindings[0].seq_id, "seq_a");
+            assert_eq!(enzymes, ["EcoRI", "BamHI", "SmaI"]);
+            assert_eq!(max_sites_per_enzyme, Some(4));
+            assert!(!include_cut_geometry);
+            assert_eq!(path.as_deref(), Some("collection.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    assert!(matches!(
+        parse_shell_line("collections run restriction-scan --seq-ids seq_b,seq_a")
+            .expect("parse project-sequence collection restriction scan"),
+        ShellCommand::CollectionsRunRestrictionScan {
+            collection_subject: CollectionSubjectRef::ProjectSequences { seq_ids },
+            member_bindings,
+            enzymes,
+            include_cut_geometry: true,
+            ..
+        } if seq_ids == ["seq_b", "seq_a"] && member_bindings.is_empty() && enzymes.is_empty()
+    ));
+
+    let ambiguous =
+        parse_shell_line("collections run restriction-scan resolution:set --seq-id seq_a")
+            .expect_err("gene-set and project-sequence subjects are mutually exclusive");
+    assert!(ambiguous.contains("either GENE_SET_REPORT_ID or --seq-ids"));
+    let malformed = parse_shell_line(
+        "collections run restriction-scan resolution:set --member-sequence missing_separator",
+    )
+    .expect_err("member binding requires an explicit member/sequence separator");
+    assert!(malformed.contains("MEMBER_ID=SEQ_ID"));
 }
 
 #[test]
@@ -17152,6 +17209,62 @@ fn execute_features_restriction_scan_matches_inline_and_stored_sequence_targets(
     assert_eq!(
         stored.output["report"]["skipped_enzyme_names_due_to_max_sites"],
         inline.output["report"]["skipped_enzyme_names_due_to_max_sites"]
+    );
+}
+
+#[test]
+fn execute_collection_restriction_scan_returns_wrapper_owned_child_reports() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("AAGAATTCCCGG").expect("sequence a"),
+    );
+    state.sequences.insert(
+        "seq_b".to_string(),
+        DNAsequence::from_sequence("TTTGGATCCAAA").expect("sequence b"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CollectionsRunRestrictionScan {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec!["seq_a".to_string(), "seq_b".to_string()],
+            },
+            member_bindings: vec![],
+            enzymes: vec!["EcoRI".to_string(), "BamHI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        },
+    )
+    .expect("execute collection restriction scan");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["schema"].as_str(),
+        Some("gentle.collection_restriction_site_scan_command.v1")
+    );
+    assert_eq!(
+        run.output["report"]["schema"].as_str(),
+        Some("gentle.collection_restriction_site_scan.v1")
+    );
+    assert_eq!(
+        run.output["report"]["member_reports"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        run.output["report"]["collection_operation"]["per_member_status"][0]["produced_report_ids"]
+            .as_array()
+            .map(Vec::len),
+        Some(0),
+        "restriction child reports are carried by the domain wrapper"
+    );
+    assert_eq!(
+        run.output["report"]["total_matched_site_count"].as_u64(),
+        Some(2)
     );
 }
 

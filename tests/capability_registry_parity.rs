@@ -448,6 +448,35 @@ fn registry_surfacing_covers_all_parity_adapters() {
             }
         }
     }
+
+    for (source, name) in [
+        (CapabilitySource::EngineOperation, "FindRestrictionSites"),
+        (CapabilitySource::GlossaryCommand, "features restriction-scan"),
+        (
+            CapabilitySource::GlossaryCommand,
+            "collections run restriction-scan",
+        ),
+    ] {
+        for subject_kind in [
+            CollectionSubjectKind::GeneSetResolution,
+            CollectionSubjectKind::ProjectSequences,
+        ] {
+            let policy = collection_lift_policy(source, name, subject_kind).unwrap_or_else(|| {
+                panic!("missing collection restriction-scan policy for {source:?} `{name}`")
+            });
+            assert!(matches!(
+                policy.support,
+                CollectionLiftSupport::Supported {
+                    mode: CollectionLiftingMode::Map,
+                    ..
+                }
+            ));
+            assert_eq!(
+                policy.context_requirement,
+                CollectionContextRequirement::ContextAgnostic
+            );
+        }
+    }
 }
 
 #[test]
