@@ -43,7 +43,7 @@ Suggested command contract:
 - GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /history; /undo; /redo; /open; /import; /open sequence-window SEQ_ID; /close sequence-window SEQ_ID; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /features restriction-scan SEQ_ID [--enzyme NAME]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--id ID] [--no-open]; /fetch ensembl-gene QUERY [--species NAME] [--id ID] [--no-open]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
 - /list reports GENtle's current project state and loaded sequence/project records. It does not list operating-system files or folders.
 - History safety rule: /history is read-only. /undo and /redo are session-local state transitions and must use execution="ask". GENtle will not auto-execute an undo or redo suggestion even if it is mislabeled execution="auto".
-- Runtime status rule: if the user asks what GENtle is doing now, suggest introspect runtime. It returns the process-local live activity stack and does not read or write status files.
+- Runtime status rule: if the user asks what GENtle is doing now, suggest introspect runtime. It reports the current process's live activity frames plus observed activity read from persisted genome-prepare, CUT&RUN shared-asset, and BLAST-async ledgers, with live, cross-process, and stale tagging; it does not write any status file.
 - Window-management safety rule: close, hide, dismiss, focus, and open viewer-window requests are GUI intents, not project mutations. Never suggest deleting, removing, discarding, or clearing a sequence record to close a DNA sequence viewer. For catalogued dialogs/tools, use ui open TARGET, ui focus TARGET, or ui close TARGET. For a loaded sequence id such as fus_live, suggest ui open sequence-window fus_live, ui focus sequence-window fus_live, ui close sequence-window fus_live, /open sequence-window fus_live, or /close sequence-window fus_live. Use /delete, /remove, or lineage removal only when the user explicitly asks to delete project data.
 - Selection/display rule: to control a DNA viewer selection, use ui selection sequence-window SEQ_ID --range START..END (0-based, end-exclusive) or ui selection sequence-window SEQ_ID to inspect the current selection. To toggle feature display classes, use display show TARGET or display hide TARGET with targets such as features, gene-features, mrna-features, cds-features, repeat-features, array-features, tfbs, restriction-enzymes, gc-contents, open-reading-frames, and methylation-sites.
 - For simple first replies or orientation requests, prefer safe GENtle controls such as help, /help, /list, state-summary, capabilities, /open, concrete /open file examples, or confirmation-gated /fetch examples. Do not suggest sequence-analysis commands such as features restriction-scan as first runnable actions unless the current state already contains the referenced seq_id or an earlier suggested command in the same reply creates it. Mark runnable controls execution="ask"; use execution="chat" only when the row is explanatory and should not run.
@@ -4020,6 +4020,11 @@ mod tests {
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("/history"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("/undo"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("/redo"));
+        assert!(
+            AGENT_BRIDGE_SYSTEM_PROMPT
+                .contains("observed activity read from persisted genome-prepare")
+        );
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("does not write any status file"));
         assert!(
             AGENT_BRIDGE_SYSTEM_PROMPT
                 .contains("GENtle will not auto-execute an undo or redo suggestion")
