@@ -3056,6 +3056,8 @@ Shared shell command:
     - `collections run primer-specificity --seq-ids SEQ_ID,... (--pair-rank N | --pair-index N) --target-genome GENOME_ID [--member-report MEMBER_ID=PRIMER_REPORT_ID]... [--policy JSON_OR_@FILE] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]`
     - `collections run restriction-scan GENE_SET_REPORT_ID --member-sequence MEMBER_ID=SEQ_ID ... [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]`
     - `collections run restriction-scan --seq-ids SEQ_ID,... [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]`
+    - `collections run tfbs-scan GENE_SET_REPORT_ID --member-sequence MEMBER_ID=SEQ_ID ... --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path OUTPUT.json]`
+    - `collections run tfbs-scan --seq-ids SEQ_ID,... --motif TOKEN [same threshold/cap/output options]`
     - `primers specificity-plan REPORT_ID --pair-rank N --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-plan --forward SEQ --reverse SEQ --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-import HANDOFF.json [--path OUTPUT.json]`
@@ -3671,6 +3673,15 @@ Shared shell command:
         fail closed. The returned `gentle.collection_restriction_site_scan.v1`
         wrapper includes successful child reports and aggregate counts because
         restriction scans are not otherwise stored by report id.
+      - `collections run tfbs-scan` maps the same non-mutating scanner used by
+        `features tfbs-scan` over project sequences or explicitly
+        sequence-bound gene-set members. Motifs are always explicit and use
+        the same token expansion and threshold rules as the direct command.
+        The returned `gentle.collection_tfbs_hit_scan.v1` wrapper embeds each
+        successful child report and labels aggregate counts as retained hits.
+        `aggregate_counts_complete=false` identifies failed members, capped
+        child scans, or effective motifs that were not scanned; omitted
+        `--max-hits` means unlimited per-member computation.
       - the report follows GENtle's computational-artifact contract with
         `op_id`, `run_id`, sequence links, external inputs/database
         fingerprints, request/effective-setting summaries, a reopen hint, and

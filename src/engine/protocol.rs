@@ -2501,6 +2501,66 @@ pub struct TfbsHitScanReport {
     pub rows: Vec<TfbsHitScanRow>,
 }
 
+pub const COLLECTION_TFBS_HIT_SCAN_REPORT_SCHEMA: &str =
+    "gentle.collection_tfbs_hit_scan.v1";
+
+/// Explicitly binds one logical collection member to one loaded DNA sequence.
+///
+/// Resolved gene-set members identify genes, not materialized sequence records,
+/// so collection TFBS scans must not infer this association from a symbol or
+/// coordinate label.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct TfbsHitScanCollectionMemberBinding {
+    pub stable_member_id: String,
+    pub seq_id: String,
+}
+
+/// One successful wrapper-owned child TFBS hit scan.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CollectionTfbsHitScanMemberReport {
+    pub stable_member_id: String,
+    pub seq_id: String,
+    pub report: TfbsHitScanReport,
+}
+
+/// Domain result for mapping non-mutating TFBS hit inspection over a collection.
+///
+/// `total_retained_hit_count` and `retained_hit_counts_by_tf_id` summarize rows
+/// actually retained by child reports. They are complete only when
+/// `aggregate_counts_complete` is true: a child cap can stop motif iteration,
+/// and motifs longer than a member sequence are not scanned.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CollectionTfbsHitScanReport {
+    pub schema: String,
+    pub collection_operation: CollectionOperationReport,
+    #[serde(default)]
+    pub requested_motifs: Vec<String>,
+    #[serde(default)]
+    pub effective_motif_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_min_llr_bits: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_min_llr_quantile: Option<f64>,
+    #[serde(default)]
+    pub per_tf_thresholds: Vec<TfThresholdOverride>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_hits_per_member: Option<usize>,
+    #[serde(default)]
+    pub member_reports: Vec<CollectionTfbsHitScanMemberReport>,
+    pub total_retained_hit_count: usize,
+    #[serde(default)]
+    pub retained_hit_counts_by_tf_id: BTreeMap<String, usize>,
+    pub aggregate_counts_complete: bool,
+    #[serde(default)]
+    pub incomplete_member_ids: Vec<String>,
+    pub truncated_member_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Deterministic score-distribution summary for one JASPAR motif over one
@@ -4569,6 +4629,8 @@ pub struct OpResult {
     pub collection_operation: Option<CollectionOperationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collection_restriction_site_scan: Option<CollectionRestrictionSiteScanReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_tfbs_hit_scan: Option<CollectionTfbsHitScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_set_cutrun_regulatory_support: Option<GeneSetCutRunRegulatorySupportReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -103,7 +103,8 @@ use crate::{
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequenceScanTarget,
         SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingRange,
-        SplicingScopePreset, TfThresholdOverride, TfbsRegionSummaryRequest,
+        SplicingScopePreset, TfThresholdOverride, TfbsHitScanCollectionMemberBinding,
+        TfbsRegionSummaryRequest,
         TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
         TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranscriptAssayAmpliconRange,
         TranscriptAssayCdnaSynthesis, TranscriptAssayCoveragePolicy,
@@ -2478,6 +2479,16 @@ pub enum ShellCommand {
         enzymes: Vec<String>,
         max_sites_per_enzyme: Option<usize>,
         include_cut_geometry: bool,
+        path: Option<String>,
+    },
+    CollectionsRunTfbsScan {
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<TfbsHitScanCollectionMemberBinding>,
+        motifs: Vec<String>,
+        min_llr_bits: Option<f64>,
+        min_llr_quantile: Option<f64>,
+        per_tf_thresholds: Vec<TfThresholdOverride>,
+        max_hits_per_member: Option<usize>,
         path: Option<String>,
     },
     PrimersSpecificityPlan {
@@ -11344,6 +11355,25 @@ impl ShellCommand {
                 } else {
                     enzymes.join(",")
                 },
+                path.as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::CollectionsRunTfbsScan {
+                collection_subject,
+                member_bindings,
+                motifs,
+                max_hits_per_member,
+                path,
+                ..
+            } => format!(
+                "map non-mutating TFBS hit scanning over {:?} collection members (explicit_bindings={}, motifs={}, max_hits_per_member={}, path={})",
+                collection_subject.kind(),
+                member_bindings.len(),
+                motifs.join(","),
+                max_hits_per_member
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "unlimited".to_string()),
                 path.as_deref()
                     .filter(|value| !value.trim().is_empty())
                     .unwrap_or("none"),
@@ -20814,6 +20844,56 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("collections run restriction-scan")
         }),
         json!({
+            "id": "ScanTfbsHitsCollection",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "other", "detail": "typed project_sequences or gene_set_resolution collection subject"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "member-id to loaded-sequence bindings; required for logical gene-set members"},
+                {"name": "MOTIFS", "required": true, "subject_kind": "other", "detail": "motif query tokens shared by all members"},
+                {"name": "MIN_LLR_BITS", "required": false, "subject_kind": "other", "detail": "optional minimum log-likelihood-ratio threshold in bits"},
+                {"name": "MIN_LLR_QUANTILE", "required": false, "subject_kind": "other", "detail": "optional quantile threshold"},
+                {"name": "MAX_HITS_PER_MEMBER", "required": false, "subject_kind": "other", "detail": "optional retained-hit cap per member; omitted means unlimited"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_tfbs_hit_scan",
+                "equals": "collection_tfbs_hit_scan",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Map the shared non-mutating TFBS hit scanner over a project-sequence or explicitly sequence-bound gene-set collection.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ScanTfbsHitsCollection")
+        }),
+        json!({
+            "id": "collections run tfbs-scan",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"},
+                {"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "loaded project sequence ids; alternative to GENE_SET_REPORT_ID"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "repeated MEMBER_ID=SEQ_ID bindings required for logical gene-set members"},
+                {"name": "MOTIFS", "required": true, "subject_kind": "other", "detail": "motif query tokens shared by all members"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external aggregate report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_tfbs_hit_scan",
+                "equals": "collection_tfbs_hit_scan",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Map non-mutating TFBS hit scanning over loaded project sequences or explicitly sequence-bound gene-set members.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("collections run tfbs-scan")
+        }),
+        json!({
             "id": "features query",
             "kind": "operation",
             "mutating": "false",
@@ -27415,6 +27495,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "AuditUniprotProjectionParity" => Some(vec![
             json!({"fact": "uniprot_projection.exists", "subject": {"arg": "PROJECTION_ID"}}),
         ]),
+        "ScanTfbsHitsCollection" | "collections run tfbs-scan" => Some(vec![]),
         "features restriction-scan"
         | "FindRestrictionSites"
         | "FindRestrictionSitesCollection"
@@ -52563,6 +52644,40 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::CollectionsRunTfbsScan {
+            collection_subject,
+            member_bindings,
+            motifs,
+            min_llr_bits,
+            min_llr_quantile,
+            per_tf_thresholds,
+            max_hits_per_member,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::ScanTfbsHitsCollection {
+                    collection_subject: collection_subject.clone(),
+                    member_bindings: member_bindings.clone(),
+                    motifs: motifs.clone(),
+                    min_llr_bits: *min_llr_bits,
+                    min_llr_quantile: *min_llr_quantile,
+                    per_tf_thresholds: per_tf_thresholds.clone(),
+                    max_hits_per_member: *max_hits_per_member,
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.collection_tfbs_hit_scan.clone().ok_or_else(|| {
+                "Collection TFBS hit scan operation returned no domain report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.collection_tfbs_hit_scan_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
+            })
+        }
         ShellCommand::PrimersSpecificityPlan {
             primer_report_id,
             pair_rank,
@@ -59192,6 +59307,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PrimersSpecificity { .. }
             | ShellCommand::CollectionsRunPrimerSpecificity { .. }
             | ShellCommand::CollectionsRunRestrictionScan { .. }
+            | ShellCommand::CollectionsRunTfbsScan { .. }
             | ShellCommand::PrimersSpecificityPlan { .. }
             | ShellCommand::PrimersSpecificityImport { .. }
             | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
@@ -60932,6 +61048,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersSpecificity { .. }
         | ShellCommand::CollectionsRunPrimerSpecificity { .. }
         | ShellCommand::CollectionsRunRestrictionScan { .. }
+        | ShellCommand::CollectionsRunTfbsScan { .. }
         | ShellCommand::PrimersSpecificityPlan { .. }
         | ShellCommand::PrimersSpecificityImport { .. }
         | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }

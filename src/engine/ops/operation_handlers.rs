@@ -11377,7 +11377,42 @@ impl GentleEngine {
         Ok(by_member)
     }
 
-    fn resolve_restriction_site_scan_collection_member_sequence(
+    fn tfbs_hit_scan_collection_binding_map(
+        bindings: Vec<TfbsHitScanCollectionMemberBinding>,
+    ) -> Result<BTreeMap<String, String>, EngineError> {
+        let mut by_member = BTreeMap::new();
+        let mut bound_sequences = BTreeMap::<String, String>::new();
+        for binding in bindings {
+            let stable_member_id = binding.stable_member_id.trim().to_string();
+            let seq_id = binding.seq_id.trim().to_string();
+            if stable_member_id.is_empty() || seq_id.is_empty() {
+                return Err(EngineError::invalid_input(
+                    "Collection TFBS-scan bindings require non-empty stable_member_id and seq_id",
+                ));
+            }
+            if by_member
+                .insert(stable_member_id.clone(), seq_id.clone())
+                .is_some()
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Collection member '{}' has more than one sequence binding",
+                    stable_member_id
+                )));
+            }
+            if let Some(previous_member) =
+                bound_sequences.insert(seq_id.clone(), stable_member_id.clone())
+                && previous_member != stable_member_id
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Project sequence '{}' is bound to both '{}' and '{}'; one TFBS scan must not be duplicated across collection members",
+                    seq_id, previous_member, stable_member_id
+                )));
+            }
+        }
+        Ok(by_member)
+    }
+
+    fn resolve_sequence_scan_collection_member_sequence(
         &self,
         member: &CollectionMemberRef,
         explicit_seq_id: Option<&str>,
@@ -11492,7 +11527,7 @@ impl GentleEngine {
         let resolved_members = members
             .into_iter()
             .map(|member| {
-                let resolved = self.resolve_restriction_site_scan_collection_member_sequence(
+                let resolved = self.resolve_sequence_scan_collection_member_sequence(
                     &member,
                     bindings.get(&member.stable_member_id).map(String::as_str),
                 );
@@ -11639,6 +11674,285 @@ impl GentleEngine {
             member_reports,
             total_matched_site_count,
             matched_site_counts_by_enzyme,
+            path: None,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn scan_tfbs_hits_collection(
+        &self,
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<TfbsHitScanCollectionMemberBinding>,
+        motifs: Vec<String>,
+        min_llr_bits: Option<f64>,
+        min_llr_quantile: Option<f64>,
+        per_tf_thresholds: Vec<TfThresholdOverride>,
+        max_hits_per_member: Option<usize>,
+        op_id: &str,
+        run_id: &str,
+    ) -> Result<CollectionTfbsHitScanReport, EngineError> {
+        let subject_kind = collection_subject.kind();
+        let lift_policy = collection_lift_policy(
+            CapabilitySource::EngineOperation,
+            "ScanTfbsHits",
+            subject_kind,
+        )
+        .cloned()
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::Unsupported,
+            message: format!("ScanTfbsHits has no collection lift policy for {:?}", subject_kind),
+            cause_chain: vec![],
+        })?;
+        if !matches!(
+            &lift_policy.support,
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Map,
+                ..
+            }
+        ) {
+            return Err(EngineError {
+                code: ErrorCode::Unsupported,
+                message: format!(
+                    "ScanTfbsHits collection lift policy for {:?} does not declare map support",
+                    subject_kind
+                ),
+                cause_chain: vec![],
+            });
+        }
+        if lift_policy.context_requirement != CollectionContextRequirement::ContextAgnostic {
+            return Err(EngineError::internal(format!(
+                "ScanTfbsHits collection lifting requires context_agnostic policy, found {:?}",
+                lift_policy.context_requirement
+            )));
+        }
+
+        let (collection_subject, members, provenance, biological_contexts) = self
+            .collection_subject_members_for_project_sequences_or_gene_set(
+                &collection_subject,
+                "TFBS hit scan",
+            )?;
+        let bindings = Self::tfbs_hit_scan_collection_binding_map(member_bindings)?;
+        let member_ids = members
+            .iter()
+            .map(|member| member.stable_member_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let unknown_bindings = bindings
+            .keys()
+            .filter(|member_id| !member_ids.contains(member_id.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !unknown_bindings.is_empty() {
+            return Err(EngineError::invalid_input(format!(
+                "Sequence bindings reference member ids that are not in the collection: {}",
+                unknown_bindings.join(", ")
+            )));
+        }
+
+        let requested_motifs = motifs
+            .iter()
+            .map(|motif| motif.trim())
+            .filter(|motif| !motif.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let effective_motifs = Self::expand_tf_query_tokens(&requested_motifs)?;
+        let mut seen_motif_ids = BTreeSet::new();
+        let mut effective_motif_ids = Vec::with_capacity(effective_motifs.len());
+        for motif in &effective_motifs {
+            let (tf_id, _, _, _) = Self::resolve_tf_motif_for_scoring(motif)?;
+            if seen_motif_ids.insert(tf_id.clone()) {
+                effective_motif_ids.push(tf_id);
+            }
+        }
+        let normalized_max_hits = max_hits_per_member.filter(|limit| *limit > 0);
+        let resolved_members = members
+            .into_iter()
+            .map(|member| {
+                let resolved = self.resolve_sequence_scan_collection_member_sequence(
+                    &member,
+                    bindings.get(&member.stable_member_id).map(String::as_str),
+                );
+                (member, resolved)
+            })
+            .collect::<Vec<_>>();
+        let canonical_membership = canonical_collection_membership_json(
+            subject_kind,
+            &resolved_members
+                .iter()
+                .map(|(member, _)| member.clone())
+                .collect::<Vec<_>>(),
+        );
+        let membership_fingerprint = sha256_prefixed_str(&canonical_membership);
+        let identity = serde_json::to_string(&json!({
+            "collection_subject": &collection_subject,
+            "collection_membership_fingerprint_sha256": &membership_fingerprint,
+            "member_bindings": &bindings,
+            "effective_motif_ids": &effective_motif_ids,
+            "min_llr_bits": min_llr_bits,
+            "min_llr_quantile": min_llr_quantile,
+            "per_tf_thresholds": &per_tf_thresholds,
+            "max_hits_per_member": normalized_max_hits,
+        }))
+        .map_err(|error| {
+            EngineError::internal(format!(
+                "Could not identify collection TFBS hit scan report: {error}"
+            ))
+        })?;
+        let report_id = short_sha256_id("collection_tfbs_hit_scan", &identity);
+
+        let mut per_member_status = Vec::with_capacity(resolved_members.len());
+        let mut member_reports = Vec::new();
+        let mut aggregate_warnings = Vec::new();
+        let mut total_retained_hit_count = 0usize;
+        let mut retained_hit_counts_by_tf_id = effective_motif_ids
+            .iter()
+            .cloned()
+            .map(|tf_id| (tf_id, 0usize))
+            .collect::<BTreeMap<_, _>>();
+        let mut incomplete_member_ids = Vec::new();
+        let mut truncated_member_count = 0usize;
+        for (mut member, resolved) in resolved_members {
+            let (seq_id, resolution_kind) = match resolved {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    incomplete_member_ids.push(member.stable_member_id.clone());
+                    aggregate_warnings.push(format!(
+                        "Member '{}': {}",
+                        member.stable_member_id, error.message
+                    ));
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Failed,
+                        error: Some(error),
+                        produced_report_ids: vec![],
+                    });
+                    continue;
+                }
+            };
+            member.source_provenance.push(GeneSetProvenanceRow {
+                source_kind: "project_sequence_binding".to_string(),
+                source_id: seq_id.clone(),
+                source_label: None,
+                source_path: None,
+                note: Some(format!("Sequence binding resolved by {resolution_kind}")),
+            });
+            match self.scan_tfbs_hits(
+                SequenceScanTarget::SeqId {
+                    seq_id: seq_id.clone(),
+                    span_start_0based: None,
+                    span_end_0based_exclusive: None,
+                },
+                &requested_motifs,
+                min_llr_bits,
+                min_llr_quantile,
+                &per_tf_thresholds,
+                normalized_max_hits,
+                Some(op_id),
+                Some(run_id),
+            ) {
+                Ok(report) => {
+                    total_retained_hit_count = total_retained_hit_count
+                        .saturating_add(report.matched_hit_count);
+                    for row in &report.rows {
+                        *retained_hit_counts_by_tf_id
+                            .entry(row.tf_id.clone())
+                            .or_default() += 1;
+                    }
+                    let scanned_ids = report
+                        .motifs_scanned
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<BTreeSet<_>>();
+                    let missing_motif_ids = effective_motif_ids
+                        .iter()
+                        .filter(|tf_id| !scanned_ids.contains(tf_id.as_str()))
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    if report.truncated_at_max_hits {
+                        truncated_member_count += 1;
+                    }
+                    if report.truncated_at_max_hits || !missing_motif_ids.is_empty() {
+                        incomplete_member_ids.push(member.stable_member_id.clone());
+                        let mut reasons = Vec::new();
+                        if report.truncated_at_max_hits {
+                            reasons.push(format!(
+                                "the max_hits_per_member cap ({}) stopped scanning",
+                                report.max_hits.unwrap_or_default()
+                            ));
+                        }
+                        if !missing_motif_ids.is_empty() {
+                            reasons.push(format!(
+                                "effective motif(s) were not scanned: {}",
+                                missing_motif_ids.join(", ")
+                            ));
+                        }
+                        aggregate_warnings.push(format!(
+                            "Member '{}': retained TFBS hit counts are incomplete because {}",
+                            member.stable_member_id,
+                            reasons.join("; ")
+                        ));
+                    }
+                    member_reports.push(CollectionTfbsHitScanMemberReport {
+                        stable_member_id: member.stable_member_id.clone(),
+                        seq_id,
+                        report,
+                    });
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Succeeded,
+                        error: None,
+                        produced_report_ids: vec![],
+                    });
+                }
+                Err(error) => {
+                    incomplete_member_ids.push(member.stable_member_id.clone());
+                    aggregate_warnings.push(format!(
+                        "Member '{}': {}",
+                        member.stable_member_id, error.message
+                    ));
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Failed,
+                        error: Some(error),
+                        produced_report_ids: vec![],
+                    });
+                }
+            }
+        }
+
+        Ok(CollectionTfbsHitScanReport {
+            schema: COLLECTION_TFBS_HIT_SCAN_REPORT_SCHEMA.to_string(),
+            collection_operation: CollectionOperationReport {
+                schema: COLLECTION_OPERATION_REPORT_SCHEMA.to_string(),
+                report_id,
+                op_id: Some(op_id.to_string()),
+                run_id: Some(run_id.to_string()),
+                generated_at_unix_ms: Self::now_unix_ms(),
+                capability_source: CapabilitySource::EngineOperation,
+                capability_name: "ScanTfbsHits".to_string(),
+                collection_subject,
+                lifting_mode: CollectionLiftingMode::Map,
+                lift_policy,
+                fingerprint_algorithm: COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM.to_string(),
+                collection_membership_fingerprint_sha256: membership_fingerprint,
+                biological_contexts,
+                dry_run: false,
+                applied: true,
+                per_member_status,
+                aggregate_warnings,
+                provenance,
+            },
+            requested_motifs,
+            effective_motif_ids,
+            default_min_llr_bits: min_llr_bits,
+            default_min_llr_quantile: min_llr_quantile,
+            per_tf_thresholds,
+            max_hits_per_member: normalized_max_hits,
+            member_reports,
+            total_retained_hit_count,
+            retained_hit_counts_by_tf_id,
+            aggregate_counts_complete: incomplete_member_ids.is_empty(),
+            incomplete_member_ids,
+            truncated_member_count,
             path: None,
         })
     }
@@ -27246,6 +27560,7 @@ impl GentleEngine {
             gene_set_promoter_cohort: None,
             collection_operation: None,
             collection_restriction_site_scan: None,
+            collection_tfbs_hit_scan: None,
             gene_set_cutrun_regulatory_support: None,
             ortholog_promoter_cohort: None,
             ortholog_promoter_comparison: None,
@@ -33143,6 +33458,78 @@ impl GentleEngine {
                         .extend(report.collection_operation.aggregate_warnings.clone());
                     result.collection_operation = Some(report.collection_operation.clone());
                     result.collection_restriction_site_scan = Some(report);
+                }
+                Operation::ScanTfbsHitsCollection {
+                    collection_subject,
+                    member_bindings,
+                    motifs,
+                    min_llr_bits,
+                    min_llr_quantile,
+                    per_tf_thresholds,
+                    max_hits_per_member,
+                    path,
+                } => {
+                    let mut report = self.scan_tfbs_hits_collection(
+                        collection_subject,
+                        member_bindings,
+                        motifs,
+                        min_llr_bits,
+                        min_llr_quantile,
+                        per_tf_thresholds,
+                        max_hits_per_member,
+                        &result.op_id,
+                        run_id,
+                    )?;
+                    parent_seq_ids.extend(
+                        report
+                            .member_reports
+                            .iter()
+                            .map(|member_report| member_report.seq_id.clone()),
+                    );
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        report.path = Some(path.to_string());
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "collection TFBS hit scan report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote collection TFBS hit scan report to '{path}'"
+                        ));
+                    }
+                    let succeeded = report
+                        .collection_operation
+                        .per_member_status
+                        .iter()
+                        .filter(|row| row.outcome == CollectionMemberOutcome::Succeeded)
+                        .count();
+                    let failed = report
+                        .collection_operation
+                        .per_member_status
+                        .iter()
+                        .filter(|row| row.outcome == CollectionMemberOutcome::Failed)
+                        .count();
+                    result.messages.push(format!(
+                        "Mapped TFBS hit scanning over {} collection member(s): {} succeeded, {} failed, {} retained hit(s), aggregate counts {}",
+                        report.collection_operation.per_member_status.len(),
+                        succeeded,
+                        failed,
+                        report.total_retained_hit_count,
+                        if report.aggregate_counts_complete {
+                            "complete"
+                        } else {
+                            "incomplete"
+                        },
+                    ));
+                    result
+                        .warnings
+                        .extend(report.collection_operation.aggregate_warnings.clone());
+                    result.collection_operation = Some(report.collection_operation.clone());
+                    result.collection_tfbs_hit_scan = Some(report);
                 }
                 Operation::PreparePrimerPairSpecificityHandoff {
                     primer_report_id,

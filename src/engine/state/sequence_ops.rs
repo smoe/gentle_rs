@@ -2285,6 +2285,20 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.sequence_ids, &binding.seq_id);
                 }
             }
+            Operation::ScanTfbsHitsCollection {
+                collection_subject,
+                member_bindings,
+                ..
+            } => {
+                if let CollectionSubjectRef::ProjectSequences { seq_ids } = collection_subject {
+                    for seq_id in seq_ids {
+                        Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                    }
+                }
+                for binding in member_bindings {
+                    Self::push_unique_token(&mut summary.sequence_ids, &binding.seq_id);
+                }
+            }
             Operation::QueryRepeatAnnotations { genome_id, .. }
             | Operation::BuildRepeatEnvironmentCohort { genome_id, .. }
             | Operation::SummarizeWindowCohortTfbs {
@@ -2592,6 +2606,9 @@ impl GentleEngine {
         | Operation::FindRestrictionSitesCollection {
             path: Some(path), ..
         }
+        | Operation::ScanTfbsHitsCollection {
+            path: Some(path), ..
+        }
         | Operation::ScanTfbsHits {
             path: Some(path), ..
         }
@@ -2679,6 +2696,9 @@ impl GentleEngine {
                 path: Some(path), ..
             }
             | Operation::FindRestrictionSitesCollection {
+                path: Some(path), ..
+            }
+            | Operation::ScanTfbsHitsCollection {
                 path: Some(path), ..
             } => push(path),
             Operation::ScanTfbsHits {

@@ -24,6 +24,11 @@ understand what changed.
 
 ## 2026-08-01
 
+- Added non-mutating TFBS hit scanning as a collection `map` operation.
+  Project sequences and explicitly sequence-bound gene-set members now share
+  direct-scan motif/threshold semantics across engine, shell/CLI/MCP, and the
+  Gene Set Inspector; the portable wrapper distinguishes retained aggregate
+  hits from complete counts when members fail or a cap stops motif scanning.
 - Added restriction-site scanning as the second collection `map` operation.
   Project sequences and explicitly sequence-bound gene-set members now use the
   same topology-aware scanner through engine, shell/CLI/MCP, and the Gene Set

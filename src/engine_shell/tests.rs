@@ -478,6 +478,9 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "collections run restriction-scan" => {
             Some("collections run restriction-scan --seq-ids demo --enzyme EcoRI")
         }
+        "collections run tfbs-scan" => {
+            Some("collections run tfbs-scan --seq-ids demo --motif AAA")
+        }
         "seq-confirm run" => Some("seq-confirm run expected --reads read1"),
         "seq-primer suggest" => Some("seq-primer suggest expected --primers primer1"),
         "rna-reads allele-hash-screen" => Some(
@@ -6772,6 +6775,59 @@ fn parse_collections_run_restriction_scan_for_gene_set_and_project_sequences() {
     )
     .expect_err("member binding requires an explicit member/sequence separator");
     assert!(malformed.contains("MEMBER_ID=SEQ_ID"));
+}
+
+#[test]
+fn parse_collections_run_tfbs_scan_preserves_direct_scan_parameters() {
+    let command = parse_shell_line(
+        "collections run tfbs-scan resolution:promoters \
+         --member-sequence GENE1=seq_a --member-sequence GENE2=seq_b \
+         --motif SP1 --motifs CTCF,MA0139.1 \
+         --min-llr-bits 3.5 --min-llr-quantile 0.9 \
+         --per-tf-min-llr-bits SP1=4.5 \
+         --per-tf-min-llr-quantile CTCF=0.95 \
+         --max-hits 40 --path collection_tfbs.json",
+    )
+    .expect("parse collection TFBS scan");
+    match command {
+        ShellCommand::CollectionsRunTfbsScan {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings,
+            motifs,
+            min_llr_bits,
+            min_llr_quantile,
+            per_tf_thresholds,
+            max_hits_per_member,
+            path,
+        } => {
+            assert_eq!(report_id, "resolution:promoters");
+            assert_eq!(member_bindings.len(), 2);
+            assert_eq!(motifs, ["SP1", "CTCF", "MA0139.1"]);
+            assert_eq!(min_llr_bits, Some(3.5));
+            assert_eq!(min_llr_quantile, Some(0.9));
+            assert_eq!(per_tf_thresholds.len(), 2);
+            assert_eq!(per_tf_thresholds[0].tf, "CTCF");
+            assert_eq!(per_tf_thresholds[0].min_llr_quantile, Some(0.95));
+            assert_eq!(per_tf_thresholds[1].tf, "SP1");
+            assert_eq!(per_tf_thresholds[1].min_llr_bits, Some(4.5));
+            assert_eq!(max_hits_per_member, Some(40));
+            assert_eq!(path.as_deref(), Some("collection_tfbs.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    assert!(
+        parse_shell_line("collections run tfbs-scan --seq-ids seq_a")
+            .expect_err("motifs are explicit")
+            .contains("at least one --motif")
+    );
+    assert!(
+        parse_shell_line(
+            "collections run tfbs-scan resolution:set --seq-id seq_a --motif AAA"
+        )
+        .expect_err("subjects are mutually exclusive")
+        .contains("either GENE_SET_REPORT_ID or --seq-ids")
+    );
 }
 
 #[test]
@@ -17265,6 +17321,73 @@ fn execute_collection_restriction_scan_returns_wrapper_owned_child_reports() {
     assert_eq!(
         run.output["report"]["total_matched_site_count"].as_u64(),
         Some(2)
+    );
+}
+
+#[test]
+fn execute_collection_tfbs_scan_returns_non_mutating_completeness_aware_report() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("AAAAAAAAAAAA").expect("sequence a"),
+    );
+    state.sequences.insert(
+        "seq_b".to_string(),
+        DNAsequence::from_sequence("CCCCCCCCCCCC").expect("sequence b"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let command = parse_shell_line(
+        "collections run tfbs-scan --seq-ids seq_a,seq_b --motif AAA --motif CCC",
+    )
+    .expect("parse collection TFBS command");
+    let run = execute_shell_command(&mut engine, &command).expect("execute collection TFBS scan");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["schema"].as_str(),
+        Some("gentle.collection_tfbs_hit_scan_command.v1")
+    );
+    assert_eq!(
+        run.output["report"]["schema"].as_str(),
+        Some("gentle.collection_tfbs_hit_scan.v1")
+    );
+    assert_eq!(
+        run.output["report"]["member_reports"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        run.output["report"]["collection_operation"]["per_member_status"][0]
+            ["produced_report_ids"]
+            .as_array()
+            .map(Vec::len),
+        Some(0),
+        "TFBS child reports are carried by the domain wrapper"
+    );
+    assert_eq!(
+        run.output["report"]["aggregate_counts_complete"].as_bool(),
+        Some(true)
+    );
+    assert!(
+        run.output["report"]["total_retained_hit_count"]
+            .as_u64()
+            .is_some_and(|count| count > 0)
+    );
+
+    let capped = parse_shell_line(
+        "collections run tfbs-scan --seq-ids seq_a --motif AAA --motif CCC --max-hits 1",
+    )
+    .expect("parse capped collection TFBS command");
+    let capped =
+        execute_shell_command(&mut engine, &capped).expect("execute capped collection TFBS scan");
+    assert_eq!(
+        capped.output["report"]["aggregate_counts_complete"].as_bool(),
+        Some(false)
+    );
+    assert_eq!(
+        capped.output["report"]["truncated_member_count"].as_u64(),
+        Some(1)
     );
 }
 

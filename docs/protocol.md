@@ -1080,6 +1080,20 @@ Implemented collection-lifting baseline:
   member failures, while unknown/duplicate bindings and unknown enzymes reject
   the request. The membership fingerprint covers membership/order only, not
   mutable sequence content.
+- `ScanTfbsHitsCollection` is the next `map` consumer. The shell convenience
+  route is `collections run tfbs-scan`; both paths invoke `ScanTfbsHits` once
+  per loaded project sequence or explicitly sequence-bound gene-set member.
+  Motif tokens and all default/per-TF thresholds have the same meaning as the
+  direct operation, and motifs are never silently defaulted.
+- `gentle.collection_tfbs_hit_scan.v1` owns successful child
+  `gentle.tfbs_hit_scan.v1` reports because those reports have no persisted
+  store. It exposes requested motifs, canonical effective motif ids,
+  thresholds, optional per-member cap, retained hit totals/counts by TF,
+  incomplete member ids, truncated member count, and
+  `aggregate_counts_complete`. Aggregate counts are complete only when every
+  member succeeds without truncation and scans every effective motif; a child
+  cap may stop motif iteration, so retained zero/count values must not imply
+  complete absence when that flag is false.
 - A logical gene-set member has no inherent primer-assay identity. Its
   `PrimerSpecificityCollectionMemberBinding` must therefore name the exact
   `stable_member_id` and persisted `primer_report_id`. Project-sequence

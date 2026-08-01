@@ -4073,6 +4073,22 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    ScanTfbsHitsCollection {
+        collection_subject: CollectionSubjectRef,
+        #[serde(default)]
+        member_bindings: Vec<TfbsHitScanCollectionMemberBinding>,
+        motifs: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_llr_bits: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_llr_quantile: Option<f64>,
+        #[serde(default)]
+        per_tf_thresholds: Vec<TfThresholdOverride>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_hits_per_member: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     QueryRepeatAnnotations {
         genome_id: String,
         rmsk_path: String,
@@ -9363,6 +9379,7 @@ impl GentleEngine {
                 | Operation::QueryProteinResidueGenomicCoordinates { .. }
                 | Operation::FindRestrictionSites { .. }
                 | Operation::FindRestrictionSitesCollection { .. }
+                | Operation::ScanTfbsHitsCollection { .. }
                 | Operation::QueryRepeatAnnotations { .. }
                 | Operation::QueryRepeatOverlaps { .. }
                 | Operation::BuildRepeatEnvironmentCohort { .. }

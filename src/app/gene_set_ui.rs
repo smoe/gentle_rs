@@ -14,12 +14,14 @@ use crate::{
     engine::{
         CollectionContextRequirement, CollectionLiftRejectionReason, CollectionMemberOutcome,
         CollectionMemberRef, CollectionOperationReport, CollectionRestrictionSiteScanReport,
-        CollectionSubjectKind, CollectionSubjectRef, DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+        CollectionSubjectKind, CollectionSubjectRef, CollectionTfbsHitScanReport,
+        DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
         DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP, GeneSetCohortRelationship,
         GeneSetPromoterCohortReport, GeneSetProvenanceRow, GeneSetRequest, GeneSetResolutionReport,
         GeneSetResolutionReviewStatus, PrimerDesignReportSummary,
         PrimerSpecificityCollectionMemberBinding, PrimerSpecificityPolicy,
-        RestrictionSiteScanCollectionMemberBinding, homogeneous_collection_biological_context,
+        RestrictionSiteScanCollectionMemberBinding, TfThresholdOverride,
+        TfbsHitScanCollectionMemberBinding, homogeneous_collection_biological_context,
         validate_collection_context_target_genome,
     },
     engine_shell::{ShellCommand, execute_shell_command},
@@ -162,6 +164,59 @@ fn parse_optional_usize(value: &str, label: &str) -> Result<Option<usize>, Strin
         .parse::<usize>()
         .map_err(|_| format!("{label} must be a non-negative integer"))?;
     Ok(Some(parsed))
+}
+
+fn parse_optional_f64(value: &str, label: &str) -> Result<Option<f64>, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    value
+        .parse::<f64>()
+        .map(Some)
+        .map_err(|_| format!("{label} must be a number"))
+}
+
+fn parse_tfbs_threshold_overrides(
+    min_bits: &str,
+    min_quantiles: &str,
+) -> Result<Vec<TfThresholdOverride>, String> {
+    let mut overrides = BTreeMap::<String, TfThresholdOverride>::new();
+    for (raw, label, quantile) in [
+        (min_bits, "Per-TF minimum bits", false),
+        (min_quantiles, "Per-TF minimum quantiles", true),
+    ] {
+        for entry in raw
+            .split([',', '\n'])
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+        {
+            let (tf, value) = entry
+                .split_once('=')
+                .ok_or_else(|| format!("{label} entries require TF=VALUE"))?;
+            let tf = tf.trim();
+            let value = value
+                .trim()
+                .parse::<f64>()
+                .map_err(|_| format!("{label} value for '{tf}' must be a number"))?;
+            if tf.is_empty() {
+                return Err(format!("{label} entries require a non-empty TF name"));
+            }
+            let row = overrides
+                .entry(tf.to_string())
+                .or_insert_with(|| TfThresholdOverride {
+                    tf: tf.to_string(),
+                    min_llr_bits: None,
+                    min_llr_quantile: None,
+                });
+            if quantile {
+                row.min_llr_quantile = Some(value);
+            } else {
+                row.min_llr_bits = Some(value);
+            }
+        }
+    }
+    Ok(overrides.into_values().collect())
 }
 
 fn gene_set_resolve_form_to_operation(form: &GeneSetResolveFormState) -> Result<Operation, String> {
@@ -311,6 +366,17 @@ struct GeneSetRestrictionScanFormState {
     include_cut_geometry: bool,
 }
 
+#[derive(Clone, Debug, Default)]
+struct GeneSetTfbsScanFormState {
+    member_bindings: BTreeMap<String, String>,
+    motifs: String,
+    min_llr_bits: String,
+    min_llr_quantile: String,
+    per_tf_min_llr_bits: String,
+    per_tf_min_llr_quantile: String,
+    max_hits_per_member: String,
+}
+
 impl Default for GeneSetRestrictionScanFormState {
     fn default() -> Self {
         Self {
@@ -354,6 +420,7 @@ enum CollectionOperationPayload {
         child_reports: BTreeMap<String, PrimerSpecificityChildPresentation>,
     },
     RestrictionScan(Box<CollectionRestrictionSiteScanReport>),
+    TfbsScan(Box<CollectionTfbsHitScanReport>),
     PromoterCohort(Box<GeneSetPromoterCohortReport>),
 }
 
@@ -391,6 +458,7 @@ pub(super) struct GeneSetInspectorUiState {
     selected_operation: CollectionLauncherAdapter,
     specificity_form: GeneSetSpecificityFormState,
     restriction_scan_form: GeneSetRestrictionScanFormState,
+    tfbs_scan_form: GeneSetTfbsScanFormState,
     promoter_form: GeneSetPromoterFormState,
     status: String,
     resolve_form: GeneSetResolveFormState,
@@ -413,6 +481,7 @@ impl Default for GeneSetInspectorUiState {
             selected_operation: CollectionLauncherAdapter::default(),
             specificity_form: GeneSetSpecificityFormState::default(),
             restriction_scan_form: GeneSetRestrictionScanFormState::default(),
+            tfbs_scan_form: GeneSetTfbsScanFormState::default(),
             promoter_form: GeneSetPromoterFormState::default(),
             status: String::new(),
             resolve_form: GeneSetResolveFormState::default(),
@@ -693,9 +762,23 @@ impl GENtleApp {
                 selected_member_ids.contains(member_id)
                     && (seq_id.is_empty() || loaded_seq_ids.contains(seq_id))
             });
-        for member_id in selected_member_ids {
+        for member_id in &selected_member_ids {
             self.gene_set_inspector
                 .restriction_scan_form
+                .member_bindings
+                .entry(member_id.clone())
+                .or_default();
+        }
+        self.gene_set_inspector
+            .tfbs_scan_form
+            .member_bindings
+            .retain(|member_id, seq_id| {
+                selected_member_ids.contains(member_id)
+                    && (seq_id.is_empty() || loaded_seq_ids.contains(seq_id))
+            });
+        for member_id in selected_member_ids {
+            self.gene_set_inspector
+                .tfbs_scan_form
                 .member_bindings
                 .entry(member_id)
                 .or_default();
@@ -860,6 +943,77 @@ impl GENtleApp {
         })
     }
 
+    fn gene_set_tfbs_scan_shell_command(&self) -> Result<ShellCommand, String> {
+        let choice = self
+            .selected_gene_set_resolution()
+            .ok_or_else(|| "Select a persisted gene-set resolution first".to_string())?;
+        if choice.report.resolved_members.is_empty() {
+            return Err("The selected gene set has no resolved members".to_string());
+        }
+        let mut member_bindings = Vec::with_capacity(choice.report.resolved_members.len());
+        let mut missing_members = Vec::new();
+        for member in &choice.report.resolved_members {
+            let seq_id = self
+                .gene_set_inspector
+                .tfbs_scan_form
+                .member_bindings
+                .get(&member.dedup_key)
+                .map(String::as_str)
+                .unwrap_or_default()
+                .trim();
+            if seq_id.is_empty() {
+                missing_members.push(member.symbol.clone());
+            } else {
+                member_bindings.push(TfbsHitScanCollectionMemberBinding {
+                    stable_member_id: member.dedup_key.clone(),
+                    seq_id: seq_id.to_string(),
+                });
+            }
+        }
+        if !missing_members.is_empty() {
+            return Err(format!(
+                "Bind one loaded DNA sequence for every member; missing: {}",
+                missing_members.join(", ")
+            ));
+        }
+        let form = &self.gene_set_inspector.tfbs_scan_form;
+        let motifs = form
+            .motifs
+            .split([',', '\n'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if motifs.is_empty() {
+            return Err("Enter at least one TF or motif query".to_string());
+        }
+        let max_hits_per_member = parse_optional_usize(
+            &form.max_hits_per_member,
+            "Maximum retained hits per member",
+        )?;
+        if max_hits_per_member == Some(0) {
+            return Err("Maximum retained hits per member must be at least 1".to_string());
+        }
+        Ok(ShellCommand::CollectionsRunTfbsScan {
+            collection_subject: CollectionSubjectRef::GeneSetResolution {
+                report_id: choice.report_id.clone(),
+            },
+            member_bindings,
+            motifs,
+            min_llr_bits: parse_optional_f64(&form.min_llr_bits, "Minimum LLR bits")?,
+            min_llr_quantile: parse_optional_f64(
+                &form.min_llr_quantile,
+                "Minimum LLR quantile",
+            )?,
+            per_tf_thresholds: parse_tfbs_threshold_overrides(
+                &form.per_tf_min_llr_bits,
+                &form.per_tf_min_llr_quantile,
+            )?,
+            max_hits_per_member,
+            path: None,
+        })
+    }
+
     fn seed_gene_set_promoter_form_from_selection(&mut self) {
         let selected_genome_id = self
             .selected_gene_set_resolution()
@@ -964,6 +1118,7 @@ impl GENtleApp {
             adapter,
             CollectionLauncherAdapter::PrimerSpecificity
                 | CollectionLauncherAdapter::RestrictionScan
+                | CollectionLauncherAdapter::TfbsScan
         ) {
             let bindings = match adapter {
                 CollectionLauncherAdapter::PrimerSpecificity => {
@@ -974,6 +1129,9 @@ impl GENtleApp {
                         .gene_set_inspector
                         .restriction_scan_form
                         .member_bindings
+                }
+                CollectionLauncherAdapter::TfbsScan => {
+                    &self.gene_set_inspector.tfbs_scan_form.member_bindings
                 }
                 CollectionLauncherAdapter::PromoterCohort => unreachable!(),
             };
@@ -994,6 +1152,7 @@ impl GENtleApp {
                         match adapter {
                             CollectionLauncherAdapter::PrimerSpecificity => "primer-design report",
                             CollectionLauncherAdapter::RestrictionScan => "loaded DNA sequence",
+                            CollectionLauncherAdapter::TfbsScan => "loaded DNA sequence",
                             CollectionLauncherAdapter::PromoterCohort => unreachable!(),
                         },
                         missing.join(", ")
@@ -1008,6 +1167,7 @@ impl GENtleApp {
             CollectionLauncherAdapter::RestrictionScan => {
                 self.gene_set_restriction_scan_shell_command()
             }
+            CollectionLauncherAdapter::TfbsScan => self.gene_set_tfbs_scan_shell_command(),
             CollectionLauncherAdapter::PromoterCohort => self.gene_set_promoter_shell_command(),
         };
         let command = match command {
@@ -1022,7 +1182,8 @@ impl GENtleApp {
                 genome_id: target_genome_id,
                 ..
             } => target_genome_id,
-            ShellCommand::CollectionsRunRestrictionScan { .. } => "",
+            ShellCommand::CollectionsRunRestrictionScan { .. }
+            | ShellCommand::CollectionsRunTfbsScan { .. } => "",
             _ => unreachable!("collection launcher adapters construct known shell commands"),
         };
         let normalized_report = if adapter == CollectionLauncherAdapter::PromoterCohort {
@@ -1070,6 +1231,7 @@ impl GENtleApp {
             CollectionLauncherAdapter::RestrictionScan => {
                 self.gene_set_restriction_scan_shell_command()
             }
+            CollectionLauncherAdapter::TfbsScan => self.gene_set_tfbs_scan_shell_command(),
             CollectionLauncherAdapter::PromoterCohort => self.gene_set_promoter_shell_command(),
         }
     }
@@ -1155,6 +1317,30 @@ impl GENtleApp {
                     payload: CollectionOperationPayload::RestrictionScan(Box::new(
                         restriction_scan,
                     )),
+                })
+            }
+            CollectionLauncherAdapter::TfbsScan => {
+                let tfbs_scan = serde_json::from_value::<CollectionTfbsHitScanReport>(
+                    output
+                        .get("report")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                )
+                .map_err(|error| {
+                    invalid_output(format!(
+                        "Collection TFBS-scan command returned an invalid report: {error}"
+                    ))
+                })?;
+                if &tfbs_scan.collection_operation.collection_subject != expected_subject {
+                    return Err(invalid_output(format!(
+                        "Collection TFBS scan returned subject {:?}, expected {:?}",
+                        tfbs_scan.collection_operation.collection_subject, expected_subject
+                    )));
+                }
+                Ok(CollectionOperationTaskResult {
+                    adapter,
+                    report: tfbs_scan.collection_operation.clone(),
+                    payload: CollectionOperationPayload::TfbsScan(Box::new(tfbs_scan)),
                 })
             }
             CollectionLauncherAdapter::PromoterCohort => {
@@ -1364,6 +1550,15 @@ impl GENtleApp {
                     CollectionOperationPayload::RestrictionScan(report) => format!(
                         "Restriction scan completed in {elapsed:.1}s: {succeeded} executed, {failed} failed, {} total matched site(s).",
                         report.total_matched_site_count
+                    ),
+                    CollectionOperationPayload::TfbsScan(report) => format!(
+                        "TFBS hit scan completed in {elapsed:.1}s: {succeeded} executed, {failed} failed, {} retained hit(s), aggregate counts {}.",
+                        report.total_retained_hit_count,
+                        if report.aggregate_counts_complete {
+                            "complete"
+                        } else {
+                            "incomplete"
+                        }
                     ),
                     CollectionOperationPayload::PromoterCohort(report) => format!(
                         "Promoter cohort completed in {elapsed:.1}s: {} window(s), {} unresolved. Derivation stores the cohort and may normalize missing source-context metadata.",
@@ -1963,6 +2158,139 @@ impl GENtleApp {
         });
     }
 
+    fn render_gene_set_tfbs_scan_form(
+        &mut self,
+        ui: &mut Ui,
+        choice: &GeneSetResolutionChoice,
+    ) {
+        let sequence_ids = self
+            .engine
+            .read()
+            .ok()
+            .map(|engine| engine.state().sequences.keys().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        ui.strong("Sequence bindings");
+        ui.small("Each resolved gene is bound explicitly to one loaded DNA sequence.");
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!("Loaded DNA sequences: {}", sequence_ids.len()));
+            if ui
+                .button("Clear bindings")
+                .on_hover_text("Clear every member-to-sequence selection")
+                .clicked()
+            {
+                for seq_id in self
+                    .gene_set_inspector
+                    .tfbs_scan_form
+                    .member_bindings
+                    .values_mut()
+                {
+                    seq_id.clear();
+                }
+            }
+        });
+        egui::ScrollArea::vertical()
+            .id_salt("gene_set_tfbs_scan_bindings")
+            .max_height(300.0)
+            .show_rows(
+                ui,
+                34.0,
+                choice.report.resolved_members.len(),
+                |ui, row_range| {
+                    for row_index in row_range {
+                        let member = &choice.report.resolved_members[row_index];
+                        ui.horizontal(|ui| {
+                            ui.vertical(|ui| {
+                                ui.label(&member.symbol);
+                                ui.small(
+                                    member
+                                        .gene_id
+                                        .as_deref()
+                                        .unwrap_or(member.dedup_key.as_str()),
+                                );
+                            });
+                            ui.add_space(12.0);
+                            let binding = self
+                                .gene_set_inspector
+                                .tfbs_scan_form
+                                .member_bindings
+                                .entry(member.dedup_key.clone())
+                                .or_default();
+                            egui::ComboBox::from_id_salt((
+                                "gene_set_member_tfbs_sequence",
+                                &member.dedup_key,
+                            ))
+                            .selected_text(if binding.is_empty() {
+                                "Select loaded sequence..."
+                            } else {
+                                binding.as_str()
+                            })
+                            .width(420.0)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(binding, String::new(), "Not selected");
+                                for seq_id in &sequence_ids {
+                                    ui.selectable_value(binding, seq_id.clone(), seq_id);
+                                }
+                            });
+                        });
+                    }
+                },
+            );
+
+        ui.separator();
+        ui.strong("TFBS hit-scan parameters");
+        let form = &mut self.gene_set_inspector.tfbs_scan_form;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Motifs");
+            ui.add(
+                egui::TextEdit::singleline(&mut form.motifs)
+                    .desired_width(360.0)
+                    .hint_text("SP1, CTCF, MA0139.1"),
+            )
+            .on_hover_text("Comma-separated motif IDs, TF names, groups, family prefixes, or IUPAC motifs");
+            ui.label("Max hits / member");
+            ui.add(
+                egui::TextEdit::singleline(&mut form.max_hits_per_member)
+                    .desired_width(100.0)
+                    .hint_text("Unlimited"),
+            )
+            .on_hover_text("A cap can stop motif iteration; leave empty for complete aggregate counts");
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Minimum LLR bits");
+            ui.add(
+                egui::TextEdit::singleline(&mut form.min_llr_bits)
+                    .desired_width(100.0)
+                    .hint_text("No minimum"),
+            );
+            ui.label("Minimum LLR quantile");
+            ui.add(
+                egui::TextEdit::singleline(&mut form.min_llr_quantile)
+                    .desired_width(100.0)
+                    .hint_text("0.0"),
+            );
+        });
+        egui::CollapsingHeader::new("Per-TF thresholds")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Minimum bits");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut form.per_tf_min_llr_bits)
+                            .desired_width(360.0)
+                            .hint_text("SP1=4.0, CTCF=5.0"),
+                    );
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Minimum quantiles");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut form.per_tf_min_llr_quantile)
+                            .desired_width(360.0)
+                            .hint_text("SP1=0.95, CTCF=0.99"),
+                    );
+                });
+            });
+    }
+
     fn render_gene_set_promoter_form(&mut self, ui: &mut Ui) {
         ui.strong("Promoter-cohort parameters");
         ui.small(
@@ -2074,6 +2402,7 @@ impl GENtleApp {
         let child_reports = match &result.payload {
             CollectionOperationPayload::PrimerSpecificity { child_reports } => Some(child_reports),
             CollectionOperationPayload::RestrictionScan(_) => None,
+            CollectionOperationPayload::TfbsScan(_) => None,
             CollectionOperationPayload::PromoterCohort(_) => None,
         };
         let mut open_child: Option<(String, String)> = None;
@@ -2166,6 +2495,115 @@ impl GENtleApp {
                 && let Ok(json) = serde_json::to_string_pretty(restriction_scan.as_ref())
             {
                 ui.ctx().copy_text(json);
+            }
+        }
+
+        if let CollectionOperationPayload::TfbsScan(tfbs_scan) = &result.payload {
+            ui.separator();
+            ui.strong(format!(
+                "TFBS hits retained: {} across {} successful sequence(s)",
+                tfbs_scan.total_retained_hit_count,
+                tfbs_scan.member_reports.len()
+            ));
+            let completeness = if tfbs_scan.aggregate_counts_complete {
+                "complete"
+            } else {
+                "incomplete"
+            };
+            ui.small(format!(
+                "motifs={} | aggregate counts={} | truncated members={}",
+                tfbs_scan.effective_motif_ids.join(", "),
+                completeness,
+                tfbs_scan.truncated_member_count
+            ));
+            if !tfbs_scan.retained_hit_counts_by_tf_id.is_empty() {
+                ui.small(format!(
+                    "retained by motif: {}",
+                    tfbs_scan
+                        .retained_hit_counts_by_tf_id
+                        .iter()
+                        .map(|(tf_id, count)| format!("{tf_id}={count}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+            if ui
+                .button("Copy TFBS scan JSON")
+                .on_hover_text("Copy the complete portable collection TFBS hit-scan report")
+                .clicked()
+                && let Ok(json) = serde_json::to_string_pretty(tfbs_scan.as_ref())
+            {
+                ui.ctx().copy_text(json);
+            }
+            egui::ScrollArea::vertical()
+                .id_salt("gene_set_tfbs_member_results")
+                .max_height(220.0)
+                .show(ui, |ui| {
+                    egui::Grid::new("gene_set_tfbs_member_result_grid")
+                        .striped(true)
+                        .spacing([12.0, 5.0])
+                        .show(ui, |ui| {
+                            ui.strong("Member");
+                            ui.strong("Sequence");
+                            ui.strong("Retained hits");
+                            ui.strong("Motifs scanned");
+                            ui.strong("Complete");
+                            ui.end_row();
+                            for member_report in tfbs_scan.member_reports.iter().take(100) {
+                                ui.label(&member_report.stable_member_id);
+                                ui.monospace(&member_report.seq_id);
+                                ui.label(member_report.report.matched_hit_count.to_string());
+                                ui.label(member_report.report.motifs_scanned.len().to_string());
+                                ui.label(
+                                    (!member_report.report.truncated_at_max_hits
+                                        && tfbs_scan.effective_motif_ids.iter().all(|tf_id| {
+                                            member_report.report.motifs_scanned.contains(tf_id)
+                                        }))
+                                    .to_string(),
+                                );
+                                ui.end_row();
+                            }
+                        });
+                });
+            for member_report in tfbs_scan.member_reports.iter().take(20) {
+                egui::CollapsingHeader::new(format!(
+                    "{} hits ({})",
+                    member_report.stable_member_id, member_report.report.matched_hit_count
+                ))
+                .default_open(false)
+                .show(ui, |ui| {
+                    egui::ScrollArea::both()
+                        .id_salt(("gene_set_tfbs_hits", &member_report.stable_member_id))
+                        .max_height(220.0)
+                        .show(ui, |ui| {
+                            egui::Grid::new((
+                                "gene_set_tfbs_hit_grid",
+                                &member_report.stable_member_id,
+                            ))
+                            .striped(true)
+                            .spacing([12.0, 5.0])
+                            .show(ui, |ui| {
+                                ui.strong("TF");
+                                ui.strong("Source range");
+                                ui.strong("Strand");
+                                ui.strong("LLR bits");
+                                ui.strong("Quantile");
+                                ui.end_row();
+                                for hit in member_report.report.rows.iter().take(100) {
+                                    ui.monospace(&hit.tf_id);
+                                    ui.monospace(format!(
+                                        "{}..{}",
+                                        hit.source_match_start_0based,
+                                        hit.source_match_end_0based_exclusive
+                                    ));
+                                    ui.label(if hit.forward_strand { "+" } else { "-" });
+                                    ui.label(format!("{:.3}", hit.llr_bits));
+                                    ui.label(format!("{:.3}", hit.llr_quantile));
+                                    ui.end_row();
+                                }
+                            });
+                        });
+                });
             }
         }
 
@@ -2350,6 +2788,7 @@ impl GENtleApp {
             CollectionLauncherAdapter::RestrictionScan => {
                 self.render_gene_set_restriction_scan_form(ui, choice)
             }
+            CollectionLauncherAdapter::TfbsScan => self.render_gene_set_tfbs_scan_form(ui, choice),
             CollectionLauncherAdapter::PromoterCohort => self.render_gene_set_promoter_form(ui),
         }
         let readiness = presented
@@ -3133,6 +3572,31 @@ mod tests {
         }
     }
 
+    fn tfbs_scan_command_projection(command: &ShellCommand) -> serde_json::Value {
+        match command {
+            ShellCommand::CollectionsRunTfbsScan {
+                collection_subject,
+                member_bindings,
+                motifs,
+                min_llr_bits,
+                min_llr_quantile,
+                per_tf_thresholds,
+                max_hits_per_member,
+                path,
+            } => serde_json::json!({
+                "collection_subject": collection_subject,
+                "member_bindings": member_bindings,
+                "motifs": motifs,
+                "min_llr_bits": min_llr_bits,
+                "min_llr_quantile": min_llr_quantile,
+                "per_tf_thresholds": per_tf_thresholds,
+                "max_hits_per_member": max_hits_per_member,
+                "path": path,
+            }),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
     #[test]
     fn collection_operation_launcher_specificity_command_matches_shared_shell_parser_once() {
         let app = seeded_app();
@@ -3212,6 +3676,67 @@ mod tests {
             app.gene_set_restriction_scan_shell_command()
                 .expect_err("missing binding")
                 .contains("missing: GENE2")
+        );
+    }
+
+    #[test]
+    fn collection_operation_launcher_tfbs_scan_matches_shared_shell_parser_once() {
+        let mut app = seeded_app();
+        app.gene_set_inspector
+            .tfbs_scan_form
+            .member_bindings
+            .insert("GENE1".to_string(), "seq_1".to_string());
+        app.gene_set_inspector
+            .tfbs_scan_form
+            .member_bindings
+            .insert("GENE2".to_string(), "seq_2".to_string());
+        app.gene_set_inspector.tfbs_scan_form.motifs = "SP1, CTCF".to_string();
+        app.gene_set_inspector.tfbs_scan_form.min_llr_bits = "3.5".to_string();
+        app.gene_set_inspector.tfbs_scan_form.min_llr_quantile = "0.9".to_string();
+        app.gene_set_inspector
+            .tfbs_scan_form
+            .per_tf_min_llr_bits = "SP1=4.5".to_string();
+        app.gene_set_inspector
+            .tfbs_scan_form
+            .per_tf_min_llr_quantile = "CTCF=0.95".to_string();
+        app.gene_set_inspector
+            .tfbs_scan_form
+            .max_hits_per_member = "40".to_string();
+
+        let gui_command = app
+            .gene_set_tfbs_scan_shell_command()
+            .expect("GUI TFBS command");
+        let parsed = parse_shell_line(
+            "collections run tfbs-scan resolution:genes \
+             --member-sequence GENE1=seq_1 --member-sequence GENE2=seq_2 \
+             --motif SP1 --motif CTCF --min-llr-bits 3.5 \
+             --min-llr-quantile 0.9 --per-tf-min-llr-bits SP1=4.5 \
+             --per-tf-min-llr-quantile CTCF=0.95 --max-hits 40",
+        )
+        .expect("shared shell TFBS command");
+        assert_eq!(
+            tfbs_scan_command_projection(&gui_command),
+            tfbs_scan_command_projection(&parsed)
+        );
+
+        app.gene_set_inspector
+            .tfbs_scan_form
+            .member_bindings
+            .remove("GENE2");
+        assert!(
+            app.gene_set_tfbs_scan_shell_command()
+                .expect_err("missing binding")
+                .contains("missing: GENE2")
+        );
+        app.gene_set_inspector
+            .tfbs_scan_form
+            .member_bindings
+            .insert("GENE2".to_string(), "seq_2".to_string());
+        app.gene_set_inspector.tfbs_scan_form.motifs.clear();
+        assert!(
+            app.gene_set_tfbs_scan_shell_command()
+                .expect_err("missing motifs")
+                .contains("at least one")
         );
     }
 
@@ -3373,6 +3898,25 @@ mod tests {
             app.gene_set_collection_operation_readiness(&restriction, &mixed),
             CollectionLauncherReadiness::Ready,
             "restriction scanning has no genome-scoped parameter and is context agnostic"
+        );
+
+        app.gene_set_inspector
+            .tfbs_scan_form
+            .member_bindings
+            .insert("GENE1".to_string(), "seq_1".to_string());
+        app.gene_set_inspector
+            .tfbs_scan_form
+            .member_bindings
+            .insert("GENE2".to_string(), "seq_2".to_string());
+        app.gene_set_inspector.tfbs_scan_form.motifs = "SP1".to_string();
+        let tfbs = collection_launcher_rows(CollectionSubjectKind::GeneSetResolution)
+            .into_iter()
+            .find(|row| row.adapter == Some(CollectionLauncherAdapter::TfbsScan))
+            .expect("TFBS-scan row");
+        assert_eq!(
+            app.gene_set_collection_operation_readiness(&tfbs, &mixed),
+            CollectionLauncherReadiness::Ready,
+            "TFBS hit scanning has no genome-scoped parameter and is context agnostic"
         );
 
         let mut engine = GentleEngine::new();
