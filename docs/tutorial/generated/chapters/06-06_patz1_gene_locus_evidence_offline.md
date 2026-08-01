@@ -20,11 +20,11 @@ generated_artifact_dir: "docs/tutorial/generated/artifacts/patz1_gene_locus_evid
 
 # PATZ1 Gene-Locus Evidence Composition (Offline Synthetic Demo)
 
-Compose one reproducible, strand-aware locus figure from PATZ1-like transcript models, cDNA/EST and array constraints, two probe-effect contrasts, grouped occupancy tracks, and a TP73 motif score track without network access.
+Compose one reproducible, strand-aware locus figure from PATZ1-like transcript models, cDNA/EST and array constraints, condition-wise abundance, differential probe activity, grouped occupancy tracks, and a TP73 motif score track without network access.
 
-Gene-centered interpretation becomes difficult when transcript order, genomic coordinates, probe geometry, occupancy tracks, and assay evidence are inspected in separate tools. GENtle's Gene Locus Evidence composer keeps these sources distinct but aligns them on one axis. This chapter uses an artificial 240 bp region labelled as a negative-strand PATZ1 locus. Its transcript models, PSR/JUC rows, effect values, occupancy intervals, and expression values are synthetic and exist only to make every transformation inspectable offline.
+Gene-centered interpretation becomes difficult when transcript order, genomic coordinates, probe geometry, abundance, differential activity, occupancy tracks, and assay evidence are inspected in separate tools. GENtle's Gene Locus Evidence composer keeps these sources distinct but aligns them on one axis. This chapter uses an artificial 240 bp region labelled as a negative-strand PATZ1 locus. Its transcript models, PSR/JUC rows, effect values, occupancy intervals, and expression values are synthetic and exist only to make every transformation inspectable offline.
 
-Read the figure as a structured evidence ledger. A probe interval or junction marker identifies where an array design interrogates the locus; its colored cells show raw activity differences, not statistical significance. An occupancy interval reports a projected experimental track at the locus, not the affected isoform. A motif score is a sequence-model result, not proof of binding. The shared visual axis helps formulate validation experiments while preserving those boundaries.
+Read the figure as a structured evidence ledger. A probe interval or junction marker identifies where an array design interrogates the locus. Its abundance cells report condition-wise probe-set signal, while separately scaled differential cells report raw activity changes rather than statistical significance. Signal can prioritize assay regions but does not prove PCR-primer binding. An occupancy interval reports a projected experimental track at the locus, not the affected isoform. A motif score is a sequence-model result, not proof of binding. The shared visual axis helps formulate validation experiments while preserving those boundaries.
 
 **Prerequisites:** Read [Chapter 10: TP53 isoform architecture expert panel (online)](./06-03_tp53_isoform_architecture_online.md), [Chapter 13: Determine and review PCR primer pairs (offline)](./04-02_pcr_selection_batch_primer_pairs_offline.md) first.
 
@@ -55,7 +55,7 @@ Read the figure as a structured evidence ledger. A probe interval or junction ma
 
 - Distinguish transcript 5'-to-3' display order from ascending genomic coordinates on a negative-strand gene.
 - Read PSR intervals and JUC junction markers as different array geometries.
-- Interpret raw probe effects, motif scores, occupancy tracks, and sequence support as separate evidence layers.
+- Interpret abundance, differential probe activity, motif scores, occupancy tracks, and sequence support as separate evidence layers.
 - Use resource readiness and provenance to relocate local evidence files without silently changing coordinate systems.
 - Move from an evidence row to an existing qPCR report or transcript-aware junction-assay design without claiming validation.
 
@@ -72,7 +72,7 @@ Read the figure as a structured evidence ledger. A probe interval or junction ma
 1. Open test_files/fixtures/isoform_evidence/patz1/patz1_minus_strand.gb, import...
 2. Select the Evidence tab and enter the committed probe-evidence JSON, cDNA/EST...
 3. Import the four small BED files from test_files/fixtures/gene_locus_evidence/...
-4. Select Locus figure, choose the committed probe-effect TSV, enter contrasts T...
+4. Select Locus figure, choose the committed probe-effect TSV, leave the contras...
 5. Set upstream and downstream flanks to 19, motif to TP73, score kind to llr_ba...
 6. Click Compose / refresh. Inspect the graphical preview, warnings, provenance,...
 
@@ -104,11 +104,11 @@ GUI: Import the four small BED files from `test_files/fixtures/gene_locus_eviden
 
 > Expected: Four projected occupancy tracks are present with explicit Saos-2 and SK-MEL-29 identities.
 
-### Step 4: Select Locus figure, choose the committed probe-effect TSV, enter contrasts T...
+### Step 4: Select Locus figure, choose the committed probe-effect TSV, leave the contras...
 
-GUI: Select `Locus figure`, choose the committed probe-effect TSV, enter contrasts `TAp73alpha-GFP, DNp73beta-GFP`, set coordinate system `GRCh38.p14`, and choose `docs/examples/gene_locus_evidence/patz1_cutrun_layout.json`.
+GUI: Select `Locus figure`, choose the committed probe-effect TSV, leave the contrast filter empty to retain all abundance and differential columns, set coordinate system `GRCh38.p14`, and choose `docs/examples/gene_locus_evidence/patz1_cutrun_layout.json`.
 
-> Expected: The request carries one PSR row, one JUC row, and two exact effect contrasts without inferring significance.
+> Expected: The request carries one PSR row, one JUC row, three abundance columns, and three differential columns without inferring primer binding or significance.
 
 ### Step 5: Set upstream and downstream flanks to 19, motif to TP73, score kind to llr_ba...
 
@@ -120,7 +120,7 @@ GUI: Set upstream and downstream flanks to `19`, motif to `TP73`, score kind to 
 
 GUI: Click `Compose / refresh`. Inspect the graphical preview, warnings, provenance, and assay continuations; then export SVG, PDF, or report JSON through the shared renderer/operation paths.
 
-> Expected: The SVG contains transcript rows, separate PSR/JUC geometry, both effect columns, two occupancy groups, a TP73 motif track, warnings, and source provenance.
+> Expected: The SVG contains transcript rows, separate PSR/JUC geometry, separately scaled abundance and differential lanes, two occupancy groups, a TP73 motif track, warnings, and source provenance.
 
 ![A strand-aware synthetic PATZ1 locus composition with transcript models, distinct PSR/JUC effects, grouped occupancy lanes, and a TP73 motif score track. The aligned layers are evidence for inspection, not proof of isoform-specific regulation.](../artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg)
 
@@ -150,8 +150,8 @@ cargo run --bin gentle_cli -- workflow @docs/examples/workflows/patz1_gene_locus
 
 - The canonical workflow runs offline and writes `patz1_gene_locus_evidence.svg`.
 - The SVG reports `gentle.gene_locus_evidence_display.v1` and preserves the negative-strand axis.
-- Stable SVG attributes identify PSR, JUC, both effect contrasts, both occupancy groups, and the TP73 motif matrix.
-- The figure labels probe effects as raw activity differences rather than significance.
+- Stable SVG attributes identify PSR, JUC, abundance and differential lanes, both occupancy groups, and the TP73 motif matrix.
+- The figure labels array signal as prioritization evidence rather than primer-binding proof or significance.
 - Warnings and provenance remain visible instead of being replaced by a biological verdict.
 
 ## What This Chapter Produces
