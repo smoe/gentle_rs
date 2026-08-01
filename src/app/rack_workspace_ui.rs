@@ -6,6 +6,20 @@
 
 use super::*;
 
+pub(super) fn container_pool_export_shell_command(
+    container_id: &str,
+    output: &str,
+) -> ShellCommand {
+    ShellCommand::CollectionsRunExportPool {
+        collection_subject: crate::engine::CollectionSubjectRef::Container {
+            container_id: container_id.to_string(),
+        },
+        output: output.to_string(),
+        pool_id: None,
+        human_id: None,
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum RackDragState {
     Sample {
@@ -91,6 +105,38 @@ pub(super) struct PersistedRackWorkspace {
 }
 
 impl GENtleApp {
+    pub(super) fn prompt_export_container_pool(&mut self, container_id: &str) {
+        let stem = Self::sanitize_file_stem(container_id, "pool");
+        let default_file_name = format!("{stem}.pool.gentle.json");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("GENtle pool JSON", &["json"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Pool export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let command = container_pool_export_shell_command(container_id, &path_text);
+        let result =
+            crate::engine_shell::execute_shell_command(&mut self.engine.write().unwrap(), &command);
+        match result {
+            Ok(run) => {
+                let member_count = run
+                    .output
+                    .pointer("/report/member_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or_default();
+                self.app_status = format!(
+                    "Exported container '{container_id}' with {member_count} member(s) to '{path_text}'"
+                );
+            }
+            Err(error) => {
+                self.app_status = format!("Could not export container pool: {error}");
+            }
+        }
+    }
+
     pub(super) fn prompt_export_serial_gel_svg(
         &mut self,
         default_stem: &str,
@@ -3236,5 +3282,36 @@ impl GENtleApp {
             open = false;
         }
         self.show_place_arrangement_rack_dialog = open;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn container_pool_export_gui_command_matches_shared_shell_parser() {
+        let gui = container_pool_export_shell_command("pool-a", "/tmp/pool-a.gentle.json");
+        let parsed = crate::engine_shell::parse_shell_line(
+            "collections run export-pool pool-a --path /tmp/pool-a.gentle.json",
+        )
+        .expect("parse collection pool export");
+        for command in [gui, parsed] {
+            match command {
+                ShellCommand::CollectionsRunExportPool {
+                    collection_subject:
+                        crate::engine::CollectionSubjectRef::Container { container_id },
+                    output,
+                    pool_id,
+                    human_id,
+                } => {
+                    assert_eq!(container_id, "pool-a");
+                    assert_eq!(output, "/tmp/pool-a.gentle.json");
+                    assert!(pool_id.is_none());
+                    assert!(human_id.is_none());
+                }
+                other => panic!("unexpected pool export command: {other:?}"),
+            }
+        }
     }
 }

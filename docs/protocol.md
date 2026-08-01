@@ -1138,6 +1138,15 @@ Implemented collection-lifting baseline:
 - Logical gene sets are explicitly rejected for `ExportPool` and
   `RenderPoolGelSvg` with `requires_physical_pool`; resolving genes never
   silently asserts that their products occupy one tube or gel lane.
+- `ExportPoolCollection` is the first physical-container `combine`. It accepts
+  only `CollectionSubjectRef::Container`, requires context-agnostic policy and
+  declared exhaustive contents, validates every member, then delegates one
+  atomic write to the existing `ExportPool` implementation. Its additive
+  `gentle.collection_pool_export.v1` report embeds the generic collection
+  report, identifies the `gentle.pool.v1` artifact/path and source container,
+  and links every successful member to the same wrapper report id. It does not
+  mutate project state. Non-exclusive containers fail before writing because
+  the current pool artifact has no field for incomplete physical membership.
 
 Collection membership fingerprints use
 `sha256_canonical_collection_members_v1`. GENtle hashes the UTF-8 canonical
@@ -2685,6 +2694,7 @@ Current draft operations:
 - `ExportDnaLadders { path, name_filter? }`
 - `ExportRnaLadders { path, name_filter? }`
 - `ExportPool { inputs, path, pool_id?, human_id? }`
+- `ExportPoolCollection { collection_subject, path, pool_id?, human_id? }`
 - `ExportProcessRunBundle { path, run_id? }`
 - `ExportLabAssistantInstructions { path, run_id?, title?, audience?, format? }`
 - `Digest { input, enzymes, output_prefix? }`
@@ -5126,7 +5136,8 @@ restriction-site scan evidence:
   a single deterministic output binding.
 - List-valued pool/container rows (`MergeContainers`, `MergeContainersById`,
   `Ligation`, `FilterByMolecularWeight`, `FilterByDesignConstraints`,
-  `ExportPool`, `RenderPoolGelSvg`, and their shell/adapter aliases) use
+  `ExportPool`, `ExportPoolCollection`, `RenderPoolGelSvg`, and their
+  shell/adapter aliases) use
   descriptor-side `foreach_arg` atoms for bound readiness. Sequence-list rows
   expand each supplied `INPUTS` id into `sequence.exists(id)` checks,
   container-list rows expand each supplied `CONTAINER_IDS` id into

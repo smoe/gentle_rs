@@ -325,11 +325,10 @@ wet-lab conclusions or unconfirmed mutations.
 - Weekly/monthly maintenance chore automation rollout from
   [`maintenance_chore_plan.md`](maintenance_chore_plan.md).
 - Browser/WebAssembly frontend portability after core/headless contracts settle.
-- Expand the landed policy-driven gene-set collection launcher beyond promoter
-  derivation, primer specificity, restriction-site scanning, and TFBS hit
-  scanning and fingerprint-locked restriction digestion to later shared
-  export, BLAST, non-gene collection, and explicit materialization adapters
-  described in
+- Expand the landed policy-driven collection surface beyond promoter
+  derivation, primer specificity, restriction-site and TFBS hit scanning,
+  fingerprint-locked restriction digestion, and atomic physical-container
+  pool export to later shared BLAST and explicit materialization adapters described in
   [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
 - Gene-set enrichment analysis over resolved logical sets, with an explicit
   background universe, identifier namespace/mapping audit, ontology and cache

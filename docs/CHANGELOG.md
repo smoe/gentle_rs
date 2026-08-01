@@ -47,6 +47,13 @@ understand what changed.
   direct-scan motif/threshold semantics across engine, shell/CLI/MCP, and the
   Gene Set Inspector; the portable wrapper distinguishes retained aggregate
   hits from complete counts when members fail or a cap stops motif scanning.
+- Added physical-container pool export as an atomic collection `combine`.
+  `ExportPoolCollection` and `collections run export-pool` reuse the existing
+  `gentle.pool.v1` exporter, return `gentle.collection_pool_export.v1`
+  provenance and membership-lock metadata, and reject non-exclusive containers
+  before writing because the pool artifact cannot preserve incomplete contents.
+  The Lineage container row calls the same shell/engine route, and the lift
+  registry now also declares the already-shipped container pooled-gel action.
 - Added restriction-site scanning as the second collection `map` operation.
   Project sequences and explicitly sequence-bound gene-set members now use the
   same topology-aware scanner through engine, shell/CLI/MCP, and the Gene Set

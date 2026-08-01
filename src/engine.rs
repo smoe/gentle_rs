@@ -3384,6 +3384,14 @@ pub enum Operation {
         pool_id: Option<String>,
         human_id: Option<String>,
     },
+    ExportPoolCollection {
+        collection_subject: CollectionSubjectRef,
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pool_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        human_id: Option<String>,
+    },
     ExportProcessRunBundle {
         path: String,
         #[serde(default)]
@@ -9370,6 +9378,7 @@ impl GentleEngine {
                 | Operation::ExportDnaLadders { .. }
                 | Operation::ExportRnaLadders { .. }
                 | Operation::ExportPool { .. }
+                | Operation::ExportPoolCollection { .. }
                 | Operation::ExportProcessRunBundle { .. }
                 | Operation::ExportLabAssistantInstructions { .. }
                 | Operation::ExportFeaturesBed { .. }

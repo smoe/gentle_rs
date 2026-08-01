@@ -11821,6 +11821,7 @@ Error: `{err}`"
                 collection_restriction_site_scan: None,
                 collection_tfbs_hit_scan: None,
                 collection_digest: None,
+                collection_pool_export: None,
                 gene_set_cutrun_regulatory_support: None,
                 ortholog_promoter_cohort: None,
                 ortholog_promoter_comparison: None,

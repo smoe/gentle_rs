@@ -2380,6 +2380,13 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.sequence_ids, seq_id);
                 }
             }
+            Operation::ExportPoolCollection {
+                collection_subject, ..
+            } => {
+                if let CollectionSubjectRef::Container { container_id } = collection_subject {
+                    Self::push_unique_token(&mut summary.container_ids, container_id);
+                }
+            }
             Operation::PrepareGenome { genome_id, .. }
             | Operation::ExtractGenomeRegion { genome_id, .. }
             | Operation::ExtractGenomeGene { genome_id, .. } => {
@@ -2659,6 +2666,7 @@ impl GentleEngine {
             | Operation::ExportDnaLadders { path, .. }
             | Operation::ExportRnaLadders { path, .. }
             | Operation::ExportPool { path, .. }
+            | Operation::ExportPoolCollection { path, .. }
             | Operation::ExportProcessRunBundle { path, .. }
             | Operation::ExportLabAssistantInstructions { path, .. }
             | Operation::ExportGuideOligos { path, .. }

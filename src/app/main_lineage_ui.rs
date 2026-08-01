@@ -538,6 +538,7 @@ impl GENtleApp {
         let mut open_lineage_retrieval: Option<LineageRetrievalDescriptor> = None;
         let mut open_lane_containers: Option<Vec<String>> = None;
         let mut export_container_gel: Option<(String, Vec<String>)> = None;
+        let mut export_container_pool: Option<String> = None;
         let mut set_container_exclusivity: Option<(String, bool)> = None;
         let mut export_arrangement_gel: Option<(String, String)> = None;
         let mut open_arrangement_gel_preview: Option<String> = None;
@@ -3790,6 +3791,25 @@ impl GENtleApp {
                                                 vec![c.container_id.clone()],
                                             ));
                                         }
+                                        let pool_export_ready =
+                                            c.member_count > 0 && c.declared_contents_exclusive;
+                                        let pool_export = ui
+                                            .add_enabled(
+                                                pool_export_ready,
+                                                egui::Button::new(
+                                                    self.tr("lineage.action.export_pool"),
+                                                ),
+                                            )
+                                            .on_hover_text(if !c.declared_contents_exclusive {
+                                                "Pool export requires declared exhaustive container contents"
+                                            } else if c.member_count == 0 {
+                                                "Pool export requires at least one container member"
+                                            } else {
+                                                "Export this physical container as one GENtle pool artifact"
+                                            });
+                                        if pool_export.clicked() {
+                                            export_container_pool = Some(c.container_id.clone());
+                                        }
                                     });
                                     ui.end_row();
                                 }
@@ -4067,6 +4087,9 @@ impl GENtleApp {
 
         if let Some((stem, container_ids)) = export_container_gel.take() {
             self.prompt_export_serial_gel_svg(&stem, Some(container_ids), None, None, None);
+        }
+        if let Some(container_id) = export_container_pool.take() {
+            self.prompt_export_container_pool(&container_id);
         }
         if let Some((container_id, exclusive)) = set_container_exclusivity.take() {
             let update_result = {

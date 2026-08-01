@@ -1004,6 +1004,12 @@ pub enum ShellCommand {
         output: String,
         human_id: Option<String>,
     },
+    CollectionsRunExportPool {
+        collection_subject: CollectionSubjectRef,
+        output: String,
+        pool_id: Option<String>,
+        human_id: Option<String>,
+    },
     ExportRunBundle {
         output: String,
         run_id: Option<String>,
@@ -7548,6 +7554,18 @@ impl ShellCommand {
                     inputs.len()
                 )
             }
+            Self::CollectionsRunExportPool {
+                collection_subject,
+                output,
+                pool_id,
+                human_id,
+            } => format!(
+                "combine {:?} collection members into pool artifact '{}' (pool_id={}, human_id={})",
+                collection_subject.kind(),
+                output,
+                pool_id.as_deref().unwrap_or("source container id"),
+                human_id.as_deref().unwrap_or("source container name"),
+            ),
             Self::ExportRunBundle { output, run_id } => {
                 let run_id = run_id
                     .as_deref()
@@ -19453,6 +19471,58 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             vec![sequence_inputs_foreach_atom()],
             json!({"all": [sequence_inputs_foreach_atom()]}),
         ),
+        json!({
+            "id": "ExportPoolCollection",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "CONTAINER_ID", "required": true, "subject_kind": "other", "detail": "exclusive persisted physical container"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external gentle.pool.v1 JSON artifact path"},
+                {"name": "POOL_ID", "required": false, "subject_kind": "other", "detail": "optional exported pool id; defaults to the source container id"},
+                {"name": "HUMAN_ID", "required": false, "subject_kind": "other", "detail": "optional exported pool label; defaults to the source container name"}
+            ],
+            "reads": [
+                {"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}
+            ],
+            "effects": [{
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }],
+            "precondition_expr": {"all": [
+                {"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}
+            ]},
+            "description": "Atomically combine one exclusive physical container into a portable GENtle pool artifact and collection report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ExportPoolCollection")
+        }),
+        json!({
+            "id": "collections run export-pool",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "CONTAINER_ID", "required": true, "subject_kind": "other", "detail": "exclusive persisted physical container"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external gentle.pool.v1 JSON artifact path"},
+                {"name": "POOL_ID", "required": false, "subject_kind": "other", "detail": "optional exported pool id"},
+                {"name": "HUMAN_ID", "required": false, "subject_kind": "other", "detail": "optional exported pool label"}
+            ],
+            "reads": [
+                {"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}
+            ],
+            "effects": [{
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }],
+            "precondition_expr": {"all": [
+                {"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}
+            ]},
+            "description": "Export one exclusive physical container through the shared collection pool-export operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("collections run export-pool")
+        }),
         pool_artifact_descriptor_with_readiness(
             "render-pool-gel-svg",
             "Render sequence, container, or arrangement pool lanes to an external SVG gel artifact.",
@@ -27671,6 +27741,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "collections run tfbs-scan"
         | "DigestCollection"
         | "collections run digest" => Some(vec![]),
+        "ExportPoolCollection" | "collections run export-pool" => Some(vec![
+            json!({"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}),
+        ]),
         "features restriction-scan"
         | "FindRestrictionSites"
         | "FindRestrictionSitesCollection"
@@ -47541,6 +47614,32 @@ fn execute_export_import_and_resource_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::CollectionsRunExportPool {
+            collection_subject,
+            output,
+            pool_id,
+            human_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportPoolCollection {
+                    collection_subject: collection_subject.clone(),
+                    path: output.clone(),
+                    pool_id: pool_id.clone(),
+                    human_id: human_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.collection_pool_export.clone().ok_or_else(|| {
+                "Collection pool export operation returned no domain report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.collection_pool_export_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
+            })
+        }
         ShellCommand::ExportRunBundle { output, run_id } => {
             let op_result = engine
                 .apply(Operation::ExportProcessRunBundle {
@@ -59363,6 +59462,7 @@ fn execute_shell_command_with_options_dispatch_inner(
     if matches!(
         command,
         ShellCommand::ExportPool { .. }
+            | ShellCommand::CollectionsRunExportPool { .. }
             | ShellCommand::ExportRunBundle { .. }
             | ShellCommand::ExportLabInstructions { .. }
             | ShellCommand::ImportPool { .. }
@@ -60133,6 +60233,7 @@ fn execute_shell_command_with_options_inner(
             execute_pool_gel_and_ladder_command(engine, command)?
         }
         ShellCommand::ExportPool { .. }
+        | ShellCommand::CollectionsRunExportPool { .. }
         | ShellCommand::ExportRunBundle { .. }
         | ShellCommand::ExportLabInstructions { .. }
         | ShellCommand::ImportPool { .. }

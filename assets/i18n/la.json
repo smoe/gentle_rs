@@ -291,6 +291,7 @@
   "lineage.action.carrier_svg": "Vector SVG",
   "lineage.action.export_gel": "Gel exportare",
   "lineage.action.gel_svg": "Gel SVG",
+  "lineage.action.export_pool": "Congeriem exportare",
   "lineage.action.open_pool": "Piscinam aperire",
   "lineage.action.open_rack": "Craticulam aperire",
   "lineage.action.open_seq": "Seq aperire",

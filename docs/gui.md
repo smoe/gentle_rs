@@ -415,7 +415,9 @@ The project main window (lineage page) supports two views:
 - SVG export operations (sequence, dotplot, feature-expert/splicing, gel) are
   also materialized as lineage analysis nodes, linked by operation edges for
   provenance/script parity
-- `Containers`: container list with kind/member-count, contents mode, open actions, and per-container gel export
+- `Containers`: container list with kind/member-count, contents mode, open
+  actions, per-container gel export, and pool-artifact export for declared
+  exhaustive containers
 - container contents mode is editable directly from the lineage `Containers` panel:
   - `Declared only`: the listed members are intended to be the full known contents of a clean vial/tube
   - `Known subset`: the listed members are known/measured constituents of a more complex sample that may also contain unlisted material
@@ -3711,7 +3713,10 @@ Serial gel export is available in two places:
   - `Arrangements` table: `Preview Gel` opens an in-app serial-gel preview with
     live left/right ladder selectors, a rendered gel image, `Save to
     Arrangement`, and `Export SVG...`.
-  - `Containers` table: `Gel SVG` exports one lane for that container.
+  - `Containers` table: `Gel SVG` exports one lane for that container;
+    `Export Pool` calls `collections run export-pool` and writes one
+    `gentle.pool.v1` artifact. The action is disabled for empty or
+    non-exclusive containers, matching the shared engine preflight.
   - `Arrangements` table: `Export Gel` exports all lanes defined in that
     arrangement, using the arrangement's saved ladder pair when present or auto
     ladder selection otherwise.

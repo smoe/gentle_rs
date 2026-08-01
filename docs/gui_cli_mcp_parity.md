@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 33 | 626 | 0 |
-| gentle_cli | 397 | 286 | 0 |
-| MCP | 88 | 446 | 52 |
-| JS | 78 | 442 | 55 |
-| Lua | 77 | 443 | 55 |
+| GUI | 34 | 627 | 0 |
+| gentle_cli | 398 | 287 | 0 |
+| MCP | 88 | 448 | 52 |
+| JS | 78 | 444 | 55 |
+| Lua | 77 | 445 | 55 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -300,6 +300,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | collections run restriction-scan | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | collections run tfbs-scan | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | collections run digest | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| collections run export-pool | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers specificity-plan | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers specificity-import | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers transcript-assay-specificity-plan | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -579,6 +580,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | ExportDnaLadders | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportRnaLadders | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportPool | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| ExportPoolCollection | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportProcessRunBundle | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportLabAssistantInstructions | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PrepareGenome | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |

@@ -252,6 +252,7 @@
   "lineage.action.carrier_svg": "Träger-SVG",
   "lineage.action.export_gel": "Gel exportieren",
   "lineage.action.gel_svg": "Gel-SVG",
+  "lineage.action.export_pool": "Pool exportieren",
   "lineage.action.open_pool": "Pool öffnen",
   "lineage.action.open_rack": "Rack öffnen",
   "lineage.action.open_seq": "Seq öffnen",
