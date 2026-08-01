@@ -348,6 +348,12 @@ GENtle never emits dangling report references. Membership locks are set-like
 except for explicitly ordered subjects such as arrangements, whose numeric
 member order is part of the fingerprint.
 
+Collection wrappers over non-persisted child scans own those reports directly
+and must describe aggregate completeness. A retained-row cap is not evidence
+that later motifs or candidates were scanned: aggregate count fields must be
+named as retained/observed values and accompanied by an explicit completeness
+flag plus affected member ids or warnings.
+
 Collection members bind biological interpretation through a report-owned
 context registry. Context-sensitive policies are fail-closed: an undeclared
 policy is `not_reviewed`, while reviewed consumers may require one homogeneous

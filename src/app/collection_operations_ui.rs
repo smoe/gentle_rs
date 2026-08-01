@@ -16,6 +16,7 @@ pub(super) enum CollectionLauncherAdapter {
     #[default]
     PrimerSpecificity,
     RestrictionScan,
+    TfbsScan,
     PromoterCohort,
 }
 
@@ -24,6 +25,7 @@ impl CollectionLauncherAdapter {
         match self {
             Self::PrimerSpecificity => "AssessPrimerPairSpecificity",
             Self::RestrictionScan => "FindRestrictionSites",
+            Self::TfbsScan => "ScanTfbsHits",
             Self::PromoterCohort => "BuildGeneSetPromoterCohort",
         }
     }
@@ -32,6 +34,7 @@ impl CollectionLauncherAdapter {
         match self {
             Self::PrimerSpecificity => "Primer specificity",
             Self::RestrictionScan => "Restriction scan",
+            Self::TfbsScan => "TFBS hit scan",
             Self::PromoterCohort => "Promoter cohort",
         }
     }
@@ -40,6 +43,7 @@ impl CollectionLauncherAdapter {
         match name {
             "AssessPrimerPairSpecificity" => Some(Self::PrimerSpecificity),
             "FindRestrictionSites" => Some(Self::RestrictionScan),
+            "ScanTfbsHits" => Some(Self::TfbsScan),
             "BuildGeneSetPromoterCohort" => Some(Self::PromoterCohort),
             _ => None,
         }

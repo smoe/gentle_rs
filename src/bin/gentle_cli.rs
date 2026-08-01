@@ -2280,6 +2280,36 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_forwarded_shell_command_routes_collection_tfbs_scan() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "collections".to_string(),
+            "run".to_string(),
+            "tfbs-scan".to_string(),
+            "resolution:promoters".to_string(),
+            "--member-sequence".to_string(),
+            "gene_id:ensg1=seq_a".to_string(),
+            "--motif".to_string(),
+            "SP1".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1)
+            .expect("parse forwarded collection TFBS scan")
+            .expect("collections is a forwarded shell root");
+        assert!(matches!(
+            parsed,
+            ShellCommand::CollectionsRunTfbsScan {
+                collection_subject:
+                    CollectionSubjectRef::GeneSetResolution { report_id },
+                member_bindings,
+                motifs,
+                ..
+            } if report_id == "resolution:promoters"
+                && member_bindings.len() == 1
+                && motifs == ["SP1"]
+        ));
+    }
+
+    #[test]
     fn test_parse_forwarded_shell_command_routes_hosts_through_shared_parser() {
         let args = vec![
             "gentle_cli".to_string(),

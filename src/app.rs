@@ -11819,6 +11819,7 @@ Error: `{err}`"
                 gene_set_promoter_cohort: None,
                 collection_operation: None,
                 collection_restriction_site_scan: None,
+                collection_tfbs_hit_scan: None,
                 gene_set_cutrun_regulatory_support: None,
                 ortholog_promoter_cohort: None,
                 ortholog_promoter_comparison: None,

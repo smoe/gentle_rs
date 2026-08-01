@@ -256,16 +256,18 @@ Tests:
 - GUI helper test that promoter derivation uses `BuildGeneSetPromoterCohort`
 - parity test for `gene-sets promoter-cohort` GUI affordance
 
-### Phase 5: collection operation launcher (gene-set A4a/A5 landed)
+### Phase 5: collection operation launcher (gene-set A4a/A5/A6 landed)
 
 - Landed A4a: the Gene Set Inspector projects every canonical gene-set
   engine-operation policy and displays its lifting mode, payload kind, and
   readiness without maintaining a second GUI operation catalog.
 - Typed adapters execute promoter derivation, primer specificity, and
-  restriction-site scanning through shared shell commands over the complete
-  selected membership. Restriction scanning requires explicit
-  member-to-sequence bindings and returns wrapper-owned child reports because
-  that domain has no persisted report store.
+  restriction-site and TFBS hit scanning through shared shell commands over
+  the complete selected membership. Both scan adapters require explicit
+  member-to-sequence bindings and return wrapper-owned child reports because
+  those domains have no persisted report stores. TFBS scans also require
+  explicit motifs and distinguish retained aggregate counts from complete
+  aggregate counts when a cap stops motif iteration.
 - Pool export, pooled-gel rendering, and serial arrangement are visible but
   disabled with their canonical typed physical/materialization requirements;
   the launcher does not silently convert logical sets into physical pools.

@@ -477,6 +477,35 @@ fn registry_surfacing_covers_all_parity_adapters() {
             );
         }
     }
+
+    for (source, name) in [
+        (CapabilitySource::EngineOperation, "ScanTfbsHits"),
+        (CapabilitySource::GlossaryCommand, "features tfbs-scan"),
+        (
+            CapabilitySource::GlossaryCommand,
+            "collections run tfbs-scan",
+        ),
+    ] {
+        for subject_kind in [
+            CollectionSubjectKind::GeneSetResolution,
+            CollectionSubjectKind::ProjectSequences,
+        ] {
+            let policy = collection_lift_policy(source, name, subject_kind).unwrap_or_else(|| {
+                panic!("missing collection TFBS-scan policy for {source:?} `{name}`")
+            });
+            assert!(matches!(
+                policy.support,
+                CollectionLiftSupport::Supported {
+                    mode: CollectionLiftingMode::Map,
+                    ..
+                }
+            ));
+            assert_eq!(
+                policy.context_requirement,
+                CollectionContextRequirement::ContextAgnostic
+            );
+        }
+    }
 }
 
 #[test]

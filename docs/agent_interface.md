@@ -345,6 +345,8 @@ an agent has selected a deterministic operation.
 - `features repeat-cohort`
 - `features repeat-overlaps`
 - `features repeat-query`
+- `features restriction-scan`
+- `features tfbs-scan`
 - `features tfbs-score-tracks-svg`
 - `features tfbs-summary`
 - `features window-cohort-tfbs`

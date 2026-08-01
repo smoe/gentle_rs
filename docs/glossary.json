@@ -3539,6 +3539,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ScanTfbsHits"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features tfbs-scan",
+         "summary": "Scan one loaded or inline DNA sequence for retained TFBS/PSSM hits using explicit motif queries and transparent likelihood thresholds.",
+         "usage": "features tfbs-scan SEQ_ID --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "BuildExperimentalAssayHandoff"
          ],
          "interfaces": [
@@ -3594,6 +3608,21 @@
          "path": "collections run restriction-scan",
          "summary": "Map the shared restriction-site scanner over loaded project sequences or explicitly sequence-bound members of a persisted gene-set resolution.",
          "usage": "collections run restriction-scan [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,...] [--member-sequence MEMBER_ID=SEQ_ID]... [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ScanTfbsHitsCollection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "gui-menu"
+         ],
+         "path": "collections run tfbs-scan",
+         "summary": "Map the shared non-mutating TFBS hit scanner over loaded project sequences or explicitly sequence-bound members of a persisted gene-set resolution, with explicit aggregate completeness.",
+         "usage": "collections run tfbs-scan [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,...] [--member-sequence MEMBER_ID=SEQ_ID]... --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path OUTPUT.json]"
       },
       {
          "aliases": [],

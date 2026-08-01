@@ -53985,6 +53985,192 @@ fn collection_restriction_scan_keeps_missing_gene_set_bindings_as_member_failure
 }
 
 #[test]
+fn collection_tfbs_scan_matches_direct_scans_and_round_trips_complete_aggregates() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "promoter_a".to_string(),
+        DNAsequence::from_sequence("AAAAAACCCCCC").expect("promoter A"),
+    );
+    state.sequences.insert(
+        "promoter_b".to_string(),
+        DNAsequence::from_sequence("CCCAAATTTCCC").expect("promoter B"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let motifs = vec!["AAA".to_string(), "CCC".to_string()];
+    let direct_a = engine
+        .scan_tfbs_hits(
+            SequenceScanTarget::SeqId {
+                seq_id: "promoter_a".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            &motifs,
+            None,
+            None,
+            &[],
+            None,
+            None,
+            None,
+        )
+        .expect("direct promoter A scan");
+    let direct_b = engine
+        .scan_tfbs_hits(
+            SequenceScanTarget::SeqId {
+                seq_id: "promoter_b".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            &motifs,
+            None,
+            None,
+            &[],
+            None,
+            None,
+            None,
+        )
+        .expect("direct promoter B scan");
+
+    let collection = engine
+        .apply(Operation::ScanTfbsHitsCollection {
+            collection_subject: CollectionSubjectRef::ProjectSequences {
+                seq_ids: vec!["promoter_a".to_string(), "promoter_b".to_string()],
+            },
+            member_bindings: vec![],
+            motifs,
+            min_llr_bits: None,
+            min_llr_quantile: None,
+            per_tf_thresholds: vec![],
+            max_hits_per_member: None,
+            path: None,
+        })
+        .expect("collection TFBS scan")
+        .collection_tfbs_hit_scan
+        .expect("collection TFBS report");
+
+    assert_eq!(collection.schema, COLLECTION_TFBS_HIT_SCAN_REPORT_SCHEMA);
+    assert_eq!(collection.effective_motif_ids, ["AAA", "CCC"]);
+    assert_eq!(
+        collection.collection_operation.lifting_mode,
+        CollectionLiftingMode::Map
+    );
+    assert_eq!(
+        collection
+            .collection_operation
+            .lift_policy
+            .context_requirement,
+        CollectionContextRequirement::ContextAgnostic
+    );
+    assert!(collection.aggregate_counts_complete);
+    assert!(collection.incomplete_member_ids.is_empty());
+    assert_eq!(collection.truncated_member_count, 0);
+    assert_eq!(collection.member_reports.len(), 2);
+    for (seq_id, direct) in [("promoter_a", direct_a), ("promoter_b", direct_b)] {
+        let mapped = collection
+            .member_reports
+            .iter()
+            .find(|row| row.seq_id == seq_id)
+            .expect("mapped member report");
+        assert_eq!(
+            serde_json::to_value(&mapped.report.rows).expect("mapped rows"),
+            serde_json::to_value(&direct.rows).expect("direct rows")
+        );
+        assert_eq!(mapped.report.motifs_scanned, direct.motifs_scanned);
+    }
+    assert_eq!(
+        collection.total_retained_hit_count,
+        collection
+            .member_reports
+            .iter()
+            .map(|row| row.report.matched_hit_count)
+            .sum::<usize>()
+    );
+    assert_eq!(
+        collection.retained_hit_counts_by_tf_id.values().sum::<usize>(),
+        collection.total_retained_hit_count
+    );
+    let encoded = serde_json::to_value(&collection).expect("serialize collection report");
+    let decoded: CollectionTfbsHitScanReport =
+        serde_json::from_value(encoded.clone()).expect("deserialize collection report");
+    assert_eq!(
+        serde_json::to_value(decoded).expect("reserialize collection report"),
+        encoded
+    );
+}
+
+#[test]
+fn collection_tfbs_scan_marks_capped_or_unbound_members_incomplete() {
+    let mut engine = GentleEngine::new();
+    engine.state_mut().sequences.insert(
+        "promoter_a".to_string(),
+        DNAsequence::from_sequence("AAAAAAAAAAAA").expect("promoter A"),
+    );
+    let resolution = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 1,
+        op_id: Some("tfbs_binding_fixture".to_string()),
+        resolved_member_count: 2,
+        resolved_members: vec![
+            GeneSetResolvedMember {
+                dedup_key: "GENE_A".to_string(),
+                symbol: "GENE_A".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+            GeneSetResolvedMember {
+                dedup_key: "GENE_B".to_string(),
+                symbol: "GENE_B".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+        ],
+        ..GeneSetResolutionReport::default()
+    };
+    let report_id = GentleEngine::gene_set_resolution_artifact_id(&resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(resolution)
+        .expect("persist gene set");
+
+    let collection = engine
+        .apply(Operation::ScanTfbsHitsCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings: vec![TfbsHitScanCollectionMemberBinding {
+                stable_member_id: "GENE_A".to_string(),
+                seq_id: "promoter_a".to_string(),
+            }],
+            motifs: vec!["AAA".to_string(), "CCC".to_string()],
+            min_llr_bits: None,
+            min_llr_quantile: None,
+            per_tf_thresholds: vec![],
+            max_hits_per_member: Some(1),
+            path: None,
+        })
+        .expect("partial collection TFBS scan")
+        .collection_tfbs_hit_scan
+        .expect("collection report");
+
+    assert!(!collection.aggregate_counts_complete);
+    assert_eq!(collection.total_retained_hit_count, 1);
+    assert_eq!(collection.truncated_member_count, 1);
+    assert_eq!(collection.incomplete_member_ids, ["GENE_A", "GENE_B"]);
+    assert_eq!(collection.member_reports[0].report.motifs_scanned, ["AAA"]);
+    assert!(collection.member_reports[0].report.truncated_at_max_hits);
+    let failed = collection
+        .collection_operation
+        .per_member_status
+        .iter()
+        .find(|row| row.member.stable_member_id == "GENE_B")
+        .expect("unbound member status");
+    assert_eq!(failed.outcome, CollectionMemberOutcome::Failed);
+    assert!(failed.error.as_ref().is_some_and(|error| {
+        error
+            .message
+            .contains("requires an explicit member-to-sequence binding")
+    }));
+    assert!(collection.collection_operation.aggregate_warnings.iter().any(|warning| {
+        warning.contains("retained TFBS hit counts are incomplete")
+            && warning.contains("CCC")
+    }));
+}
+
+#[test]
 fn project_fact_graph_projects_loaded_sequence_facts() {
     let mut state = ProjectState::default();
     state.sequences.insert(

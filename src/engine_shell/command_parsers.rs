@@ -7318,6 +7318,15 @@ pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellComman
         && tokens.get(1).map(String::as_str) == Some("run")
         && matches!(
             tokens.get(2).map(String::as_str),
+            Some("tfbs-scan" | "tfbs_scan")
+        )
+    {
+        return parse_collections_run_tfbs_scan(tokens);
+    }
+    if tokens.len() >= 3
+        && tokens.get(1).map(String::as_str) == Some("run")
+        && matches!(
+            tokens.get(2).map(String::as_str),
             Some("restriction-scan" | "restriction_scan")
         )
     {
@@ -7332,7 +7341,7 @@ pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellComman
         )
     {
         return Err(
-            "collections requires: run primer-specificity|restriction-scan [GENE_SET_REPORT_ID | --seq-ids ID,...] [operation options]"
+            "collections requires: run primer-specificity|restriction-scan|tfbs-scan [GENE_SET_REPORT_ID | --seq-ids ID,...] [operation options]"
                 .to_string(),
         );
     }
@@ -7589,6 +7598,171 @@ fn parse_collections_run_restriction_scan(tokens: &[String]) -> Result<ShellComm
         enzymes,
         max_sites_per_enzyme,
         include_cut_geometry,
+        path,
+    })
+}
+
+fn parse_collections_run_tfbs_scan(tokens: &[String]) -> Result<ShellCommand, String> {
+    const COMMAND: &str = "collections run tfbs-scan";
+    let mut gene_set_report_id: Option<String> = None;
+    let mut seq_ids = Vec::new();
+    let mut member_bindings = Vec::new();
+    let mut motifs = Vec::new();
+    let mut min_llr_bits = None;
+    let mut min_llr_quantile = None;
+    let mut per_tf_thresholds = std::collections::BTreeMap::<String, TfThresholdOverride>::new();
+    let mut max_hits_per_member = None;
+    let mut path = None;
+    let mut idx = 3usize;
+    if let Some(value) = tokens.get(idx)
+        && !value.starts_with("--")
+    {
+        gene_set_report_id = Some(value.trim().to_string());
+        idx += 1;
+    }
+
+    while idx < tokens.len() {
+        match tokens[idx].as_str() {
+            "--seq-id" => {
+                let seq_id = parse_option_path(tokens, &mut idx, "--seq-id", COMMAND)?;
+                if seq_id.trim().is_empty() {
+                    return Err("--seq-id must not be empty".to_string());
+                }
+                seq_ids.push(seq_id.trim().to_string());
+            }
+            "--seq-ids" => {
+                let raw = parse_option_path(tokens, &mut idx, "--seq-ids", COMMAND)?;
+                let parsed = raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                if parsed.is_empty() {
+                    return Err("--seq-ids requires at least one non-empty sequence id".to_string());
+                }
+                seq_ids.extend(parsed);
+            }
+            "--member-sequence" | "--member-binding" => {
+                let flag = tokens[idx].clone();
+                let raw = parse_option_path(tokens, &mut idx, &flag, COMMAND)?;
+                let (member_id, seq_id) = raw
+                    .split_once('=')
+                    .ok_or_else(|| format!("{flag} requires MEMBER_ID=SEQ_ID"))?;
+                let member_id = member_id.trim();
+                let seq_id = seq_id.trim();
+                if member_id.is_empty() || seq_id.is_empty() {
+                    return Err(format!("{flag} requires non-empty MEMBER_ID=SEQ_ID"));
+                }
+                member_bindings.push(TfbsHitScanCollectionMemberBinding {
+                    stable_member_id: member_id.to_string(),
+                    seq_id: seq_id.to_string(),
+                });
+            }
+            "--motif" => {
+                let motif = parse_option_path(tokens, &mut idx, "--motif", COMMAND)?;
+                if motif.trim().is_empty() {
+                    return Err("--motif must not be empty".to_string());
+                }
+                motifs.push(motif.trim().to_string());
+            }
+            "--motifs" => {
+                let raw = parse_option_path(tokens, &mut idx, "--motifs", COMMAND)?;
+                motifs.extend(
+                    raw.split(',')
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
+                );
+            }
+            "--min-llr-bits" => {
+                let raw = parse_option_path(tokens, &mut idx, "--min-llr-bits", COMMAND)?;
+                min_llr_bits = Some(raw.parse::<f64>().map_err(|error| {
+                    format!("Invalid --min-llr-bits value '{raw}' for {COMMAND}: {error}")
+                })?);
+            }
+            "--min-llr-quantile" => {
+                let raw = parse_option_path(tokens, &mut idx, "--min-llr-quantile", COMMAND)?;
+                min_llr_quantile = Some(raw.parse::<f64>().map_err(|error| {
+                    format!("Invalid --min-llr-quantile value '{raw}' for {COMMAND}: {error}")
+                })?);
+            }
+            "--per-tf-min-llr-bits" => {
+                let raw = parse_option_path(tokens, &mut idx, "--per-tf-min-llr-bits", COMMAND)?;
+                let (tf, value) =
+                    parse_tf_threshold_override_value(&raw, "--per-tf-min-llr-bits", COMMAND)?;
+                per_tf_thresholds
+                    .entry(tf.clone())
+                    .or_insert_with(|| TfThresholdOverride {
+                        tf: tf.clone(),
+                        min_llr_bits: None,
+                        min_llr_quantile: None,
+                    })
+                    .min_llr_bits = Some(value);
+            }
+            "--per-tf-min-llr-quantile" => {
+                let raw =
+                    parse_option_path(tokens, &mut idx, "--per-tf-min-llr-quantile", COMMAND)?;
+                let (tf, value) = parse_tf_threshold_override_value(
+                    &raw,
+                    "--per-tf-min-llr-quantile",
+                    COMMAND,
+                )?;
+                per_tf_thresholds
+                    .entry(tf.clone())
+                    .or_insert_with(|| TfThresholdOverride {
+                        tf: tf.clone(),
+                        min_llr_bits: None,
+                        min_llr_quantile: None,
+                    })
+                    .min_llr_quantile = Some(value);
+            }
+            "--max-hits" => {
+                let raw = parse_option_path(tokens, &mut idx, "--max-hits", COMMAND)?;
+                let parsed = parse_usize_option_value(&raw, "--max-hits")?;
+                if parsed == 0 {
+                    return Err("--max-hits must be >= 1".to_string());
+                }
+                max_hits_per_member = Some(parsed);
+            }
+            "--path" | "--output" => {
+                let flag = tokens[idx].clone();
+                path = Some(parse_option_path(tokens, &mut idx, &flag, COMMAND)?);
+            }
+            other => return Err(format!("Unknown option '{other}' for {COMMAND}")),
+        }
+    }
+
+    if motifs.is_empty() {
+        return Err(format!("{COMMAND} requires at least one --motif TOKEN"));
+    }
+    if gene_set_report_id.is_some() && !seq_ids.is_empty() {
+        return Err(format!(
+            "{COMMAND} accepts either GENE_SET_REPORT_ID or --seq-ids, not both"
+        ));
+    }
+    let collection_subject = if let Some(report_id) = gene_set_report_id {
+        if report_id.is_empty() {
+            return Err("GENE_SET_REPORT_ID must not be empty".to_string());
+        }
+        CollectionSubjectRef::GeneSetResolution { report_id }
+    } else {
+        if seq_ids.is_empty() {
+            return Err(format!(
+                "{COMMAND} requires GENE_SET_REPORT_ID or --seq-ids ID,..."
+            ));
+        }
+        CollectionSubjectRef::ProjectSequences { seq_ids }
+    };
+
+    Ok(ShellCommand::CollectionsRunTfbsScan {
+        collection_subject,
+        member_bindings,
+        motifs,
+        min_llr_bits,
+        min_llr_quantile,
+        per_tf_thresholds: per_tf_thresholds.into_values().collect(),
+        max_hits_per_member,
         path,
     })
 }
