@@ -1151,12 +1151,12 @@ impl GentleEngine {
             }
         }
 
-        if found.is_empty() {
+        if !missing.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "None of the requested enzymes are known: {}",
-                    enzymes.join(",")
+                    "Unknown restriction enzyme(s) for Digest: {}",
+                    missing.join(", ")
                 ),
 
                 cause_chain: vec![],

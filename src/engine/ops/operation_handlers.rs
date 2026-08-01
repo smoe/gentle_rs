@@ -32209,12 +32209,7 @@ impl GentleEngine {
                         })?
                         .clone();
 
-                    let (found, missing) = self.resolve_enzymes(&enzymes)?;
-                    if !missing.is_empty() {
-                        result
-                            .warnings
-                            .push(format!("Unknown enzymes ignored: {}", missing.join(",")));
-                    }
+                    let (found, _) = self.resolve_enzymes(&enzymes)?;
 
                     let fragments =
                         Self::digest_with_guard(&dna, found, self.max_fragments_per_container())?;
@@ -32246,12 +32241,7 @@ impl GentleEngine {
                 } => {
                     let inputs = self.container_members(&container_id)?;
                     parent_seq_ids.extend(inputs.clone());
-                    let (found, missing) = self.resolve_enzymes(&enzymes)?;
-                    if !missing.is_empty() {
-                        result
-                            .warnings
-                            .push(format!("Unknown enzymes ignored: {}", missing.join(",")));
-                    }
+                    let (found, _) = self.resolve_enzymes(&enzymes)?;
                     let prefix = output_prefix.unwrap_or_else(|| format!("{container_id}_digest"));
                     for input in inputs {
                         let dna = self

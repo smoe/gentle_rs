@@ -29574,6 +29574,47 @@ fn test_digest_container_and_state_summary_include_containers() {
 }
 
 #[test]
+fn digest_sequence_and_container_reject_partially_unknown_enzyme_lists_before_mutation() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "digest_input".to_string(),
+        DNAsequence::from_sequence("ATGGATCCGCATGGATCCGC")
+            .expect("digest input sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let initial_sequence_count = engine.state().sequences.len();
+
+    let direct = engine
+        .apply(Operation::Digest {
+            input: "digest_input".to_string(),
+            enzymes: vec!["BamHI".to_string(), "NotAnEnzyme".to_string()],
+            output_prefix: Some("direct_fragment".to_string()),
+        })
+        .expect_err("partially unknown direct digest enzymes must fail");
+    assert_eq!(direct.code, ErrorCode::InvalidInput);
+    assert!(direct.message.contains("NotAnEnzyme"));
+    assert_eq!(engine.state().sequences.len(), initial_sequence_count);
+
+    let container_id = engine
+        .state()
+        .container_state
+        .seq_to_latest_container
+        .get("digest_input")
+        .expect("source singleton container")
+        .clone();
+    let container = engine
+        .apply(Operation::DigestContainer {
+            container_id,
+            enzymes: vec!["BamHI".to_string(), "NotAnEnzyme".to_string()],
+            output_prefix: Some("container_fragment".to_string()),
+        })
+        .expect_err("partially unknown container digest enzymes must fail");
+    assert_eq!(container.code, ErrorCode::InvalidInput);
+    assert!(container.message.contains("NotAnEnzyme"));
+    assert_eq!(engine.state().sequences.len(), initial_sequence_count);
+}
+
+#[test]
 fn test_set_container_declared_contents_exclusive_updates_summary() {
     let mut state = ProjectState::default();
     state.sequences.insert(
