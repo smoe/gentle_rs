@@ -12,6 +12,14 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
 understand what changed.
 
+## 2026-08-01
+
+- Replaced the Gene Set Inspector's one-off primer action with a
+  registry-projected collection-operation launcher. Typed promoter-cohort and
+  primer-specificity adapters now share detached execution and subject checks,
+  while physical pool, pooled-gel, and serial-arrangement policies remain
+  visible with their canonical typed rejection reasons.
+
 ## 2026-07-31
 
 - Added all five gene-set source kinds to `Genome > Gene Set Inspector...`:

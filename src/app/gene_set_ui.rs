@@ -2,16 +2,24 @@
 //!
 //! This GUI is deliberately thin: it constructs the shared `ResolveGeneSet`
 //! operation, inspects persisted portable reports, requires explicit
-//! primer-report bindings, and executes collection specificity through the
+//! primer-report bindings, and executes typed collection adapters through the
 //! shared shell/engine path on detached engine snapshots.
 
+use super::collection_operations_ui::{
+    CollectionLauncherAdapter, CollectionLauncherReadiness, CollectionLauncherRow,
+    collection_launcher_rows,
+};
 use super::*;
 use crate::{
     engine::{
-        CollectionMemberOutcome, CollectionOperationReport, CollectionSubjectRef,
-        GeneSetProvenanceRow, GeneSetRequest, GeneSetResolutionReport,
+        CollectionContextRequirement, CollectionLiftRejectionReason, CollectionMemberOutcome,
+        CollectionMemberRef, CollectionOperationReport, CollectionSubjectKind,
+        CollectionSubjectRef, DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+        DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP, GeneSetCohortRelationship,
+        GeneSetPromoterCohortReport, GeneSetProvenanceRow, GeneSetRequest, GeneSetResolutionReport,
         GeneSetResolutionReviewStatus, PrimerDesignReportSummary,
         PrimerSpecificityCollectionMemberBinding, PrimerSpecificityPolicy,
+        homogeneous_collection_biological_context, validate_collection_context_target_genome,
     },
     engine_shell::{ShellCommand, execute_shell_command},
 };
@@ -23,6 +31,15 @@ fn gene_set_review_status_label(status: GeneSetResolutionReviewStatus) -> &'stat
         GeneSetResolutionReviewStatus::Included => "included",
         GeneSetResolutionReviewStatus::Draft => "draft",
         GeneSetResolutionReviewStatus::Deprecated => "deprecated",
+    }
+}
+
+fn gene_set_relationship_label(relationship: GeneSetCohortRelationship) -> &'static str {
+    match relationship {
+        GeneSetCohortRelationship::Unspecified => "Unspecified",
+        GeneSetCohortRelationship::Manual => "Manual",
+        GeneSetCohortRelationship::CoRegulated => "Co-regulated",
+        GeneSetCohortRelationship::AntiCoRegulated => "Anti-co-regulated",
     }
 }
 
@@ -252,6 +269,54 @@ struct GeneSetResolutionChoice {
     report: GeneSetResolutionReport,
 }
 
+#[derive(Clone, Debug)]
+struct GeneSetSpecificityFormState {
+    member_bindings: BTreeMap<String, String>,
+    pair_rank_1based: String,
+    target_genome_id: String,
+    catalog_path: String,
+    cache_dir: String,
+}
+
+impl Default for GeneSetSpecificityFormState {
+    fn default() -> Self {
+        Self {
+            member_bindings: BTreeMap::new(),
+            pair_rank_1based: "1".to_string(),
+            target_genome_id: String::new(),
+            catalog_path: String::new(),
+            cache_dir: String::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct GeneSetPromoterFormState {
+    genome_id: String,
+    relationship: GeneSetCohortRelationship,
+    upstream_bp: String,
+    downstream_bp: String,
+    gene_group_catalog_path: String,
+    genome_catalog_path: String,
+    cache_dir: String,
+    output_path: String,
+}
+
+impl Default for GeneSetPromoterFormState {
+    fn default() -> Self {
+        Self {
+            genome_id: String::new(),
+            relationship: GeneSetCohortRelationship::Unspecified,
+            upstream_bp: DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP.to_string(),
+            downstream_bp: DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP.to_string(),
+            gene_group_catalog_path: String::new(),
+            genome_catalog_path: String::new(),
+            cache_dir: String::new(),
+            output_path: String::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 struct PrimerSpecificityChildPresentation {
     report_id: String,
@@ -263,19 +328,29 @@ struct PrimerSpecificityChildPresentation {
     summary: String,
 }
 
-#[derive(Debug)]
-struct GeneSetSpecificityTaskResult {
-    report: CollectionOperationReport,
-    child_reports: BTreeMap<String, PrimerSpecificityChildPresentation>,
+#[derive(Clone, Debug)]
+enum CollectionOperationPayload {
+    PrimerSpecificity {
+        child_reports: BTreeMap<String, PrimerSpecificityChildPresentation>,
+    },
+    PromoterCohort(Box<GeneSetPromoterCohortReport>),
 }
 
-struct GeneSetSpecificityTask {
+#[derive(Clone, Debug)]
+struct CollectionOperationTaskResult {
+    adapter: CollectionLauncherAdapter,
+    report: CollectionOperationReport,
+    payload: CollectionOperationPayload,
+}
+
+struct GeneSetCollectionOperationTask {
     job_id: u64,
+    adapter: CollectionLauncherAdapter,
     resolution_id: String,
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
     runtime_frame: RuntimeStatusGuard,
-    receiver: mpsc::Receiver<Result<GeneSetSpecificityTaskResult, EngineError>>,
+    receiver: mpsc::Receiver<Result<CollectionOperationTaskResult, EngineError>>,
 }
 
 struct GeneSetResolveTask {
@@ -292,18 +367,15 @@ pub(super) struct GeneSetInspectorUiState {
     resolutions: Vec<GeneSetResolutionChoice>,
     primer_reports: Vec<PrimerDesignReportSummary>,
     selected_resolution_id: String,
-    member_bindings: BTreeMap<String, String>,
-    pair_rank_1based: String,
-    target_genome_id: String,
-    catalog_path: String,
-    cache_dir: String,
+    selected_operation: CollectionLauncherAdapter,
+    specificity_form: GeneSetSpecificityFormState,
+    promoter_form: GeneSetPromoterFormState,
     status: String,
     resolve_form: GeneSetResolveFormState,
     resolve_status: String,
     resolve_task: Option<GeneSetResolveTask>,
-    task: Option<GeneSetSpecificityTask>,
-    last_report: Option<CollectionOperationReport>,
-    child_reports: BTreeMap<String, PrimerSpecificityChildPresentation>,
+    task: Option<GeneSetCollectionOperationTask>,
+    last_result: Option<CollectionOperationTaskResult>,
 }
 
 impl Default for GeneSetInspectorUiState {
@@ -316,18 +388,15 @@ impl Default for GeneSetInspectorUiState {
             resolutions: vec![],
             primer_reports: vec![],
             selected_resolution_id: String::new(),
-            member_bindings: BTreeMap::new(),
-            pair_rank_1based: "1".to_string(),
-            target_genome_id: String::new(),
-            catalog_path: String::new(),
-            cache_dir: String::new(),
+            selected_operation: CollectionLauncherAdapter::default(),
+            specificity_form: GeneSetSpecificityFormState::default(),
+            promoter_form: GeneSetPromoterFormState::default(),
             status: String::new(),
             resolve_form: GeneSetResolveFormState::default(),
             resolve_status: String::new(),
             resolve_task: None,
             task: None,
-            last_report: None,
-            child_reports: BTreeMap::new(),
+            last_result: None,
         }
     }
 }
@@ -365,6 +434,7 @@ impl GENtleApp {
             self.gene_set_inspector.resolve_form.cache_dir = self.genome_cache_dir.clone();
         }
         self.refresh_gene_set_inspector_catalog(true);
+        self.seed_gene_set_promoter_form_from_selection();
         if self.gene_set_inspector.resolutions.is_empty() {
             self.gene_set_inspector.mode = GeneSetInspectorMode::Resolve;
         }
@@ -414,8 +484,7 @@ impl GENtleApp {
                 .first()
                 .map(|choice| choice.report_id.clone())
                 .unwrap_or_default();
-            self.gene_set_inspector.last_report = None;
-            self.gene_set_inspector.child_reports.clear();
+            self.gene_set_inspector.last_result = None;
         }
         self.reconcile_gene_set_inspector_bindings();
     }
@@ -505,8 +574,7 @@ impl GENtleApp {
                 let unresolved_count = report.unresolved_member_count;
                 self.refresh_gene_set_inspector_catalog(true);
                 self.gene_set_inspector.selected_resolution_id = report_id.clone();
-                self.gene_set_inspector.last_report = None;
-                self.gene_set_inspector.child_reports.clear();
+                self.gene_set_inspector.last_result = None;
                 self.reconcile_gene_set_inspector_bindings();
                 self.gene_set_inspector.mode = GeneSetInspectorMode::Inspect;
                 self.gene_set_inspector.resolve_status = format!(
@@ -558,6 +626,7 @@ impl GENtleApp {
             .map(|report| report.report_id.as_str())
             .collect::<BTreeSet<_>>();
         self.gene_set_inspector
+            .specificity_form
             .member_bindings
             .retain(|member_id, report_id| {
                 member_ids.contains(member_id)
@@ -565,6 +634,7 @@ impl GENtleApp {
             });
         for member_id in member_ids {
             self.gene_set_inspector
+                .specificity_form
                 .member_bindings
                 .entry(member_id)
                 .or_default();
@@ -580,6 +650,7 @@ impl GENtleApp {
         }
         let pair_rank = self
             .gene_set_inspector
+            .specificity_form
             .pair_rank_1based
             .trim()
             .parse::<usize>()
@@ -587,7 +658,11 @@ impl GENtleApp {
         if pair_rank == 0 {
             return Err("Pair rank must be at least 1".to_string());
         }
-        let target_genome_id = self.gene_set_inspector.target_genome_id.trim();
+        let target_genome_id = self
+            .gene_set_inspector
+            .specificity_form
+            .target_genome_id
+            .trim();
         if target_genome_id.is_empty() {
             return Err("Enter a prepared target genome or transcriptome id".to_string());
         }
@@ -602,6 +677,7 @@ impl GENtleApp {
         for member in &choice.report.resolved_members {
             let report_id = self
                 .gene_set_inspector
+                .specificity_form
                 .member_bindings
                 .get(&member.dedup_key)
                 .map(String::as_str)
@@ -649,26 +725,305 @@ impl GENtleApp {
             pair_index: None,
             target_genome_id: target_genome_id.to_string(),
             policy,
-            catalog_path: optional_path(&self.gene_set_inspector.catalog_path),
-            cache_dir: optional_path(&self.gene_set_inspector.cache_dir),
+            catalog_path: optional_path(&self.gene_set_inspector.specificity_form.catalog_path),
+            cache_dir: optional_path(&self.gene_set_inspector.specificity_form.cache_dir),
             path: None,
         })
     }
 
-    fn start_gene_set_specificity_task(&mut self) {
+    fn seed_gene_set_promoter_form_from_selection(&mut self) {
+        let selected_genome_id = self
+            .selected_gene_set_resolution()
+            .and_then(|choice| choice.report.genome_id.clone())
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| self.genome_id.clone());
+        let form = &mut self.gene_set_inspector.promoter_form;
+        if form.genome_id.trim().is_empty() {
+            form.genome_id = selected_genome_id;
+        }
+        if form.genome_catalog_path.trim().is_empty() {
+            form.genome_catalog_path = self.genome_catalog_path.clone();
+        }
+        if form.cache_dir.trim().is_empty() {
+            form.cache_dir = self.genome_cache_dir.clone();
+        }
+    }
+
+    fn gene_set_promoter_shell_command(&self) -> Result<ShellCommand, String> {
+        let choice = self
+            .selected_gene_set_resolution()
+            .ok_or_else(|| "Select a persisted gene-set resolution first".to_string())?;
+        if choice.report.resolved_members.is_empty() {
+            return Err("The selected gene set has no resolved members".to_string());
+        }
+        let form = &self.gene_set_inspector.promoter_form;
+        let genome_id = optional_trimmed(&form.genome_id)
+            .ok_or_else(|| "Enter the annotation genome for promoter derivation".to_string())?;
+        let parse_span = |value: &str, label: &str| {
+            value
+                .trim()
+                .parse::<usize>()
+                .map_err(|_| format!("{label} must be a non-negative integer"))
+        };
+        Ok(ShellCommand::GeneSetsPromoterCohort {
+            genome_id,
+            source: None,
+            resolution: Some(Box::new(choice.report.clone())),
+            relationship: form.relationship,
+            gene_group_catalog_path: optional_trimmed(&form.gene_group_catalog_path),
+            genome_catalog_path: optional_trimmed(&form.genome_catalog_path),
+            cache_dir: optional_trimmed(&form.cache_dir),
+            upstream_bp: parse_span(&form.upstream_bp, "Upstream bp")?,
+            downstream_bp: parse_span(&form.downstream_bp, "Downstream bp")?,
+            allow_draft: false,
+            allow_deprecated: false,
+            output: optional_trimmed(&form.output_path),
+        })
+    }
+
+    fn gene_set_collection_context_readiness(
+        report: &GeneSetResolutionReport,
+        requirement: CollectionContextRequirement,
+        target_genome_id: &str,
+    ) -> Result<(), crate::engine::CollectionContextValidationError> {
+        match requirement {
+            CollectionContextRequirement::ContextAgnostic => Ok(()),
+            CollectionContextRequirement::Homogeneous => {
+                let members = report
+                    .resolved_members
+                    .iter()
+                    .map(|member| CollectionMemberRef {
+                        stable_member_id: member.dedup_key.clone(),
+                        context_id: member.context_id.clone(),
+                        ..CollectionMemberRef::default()
+                    })
+                    .collect::<Vec<_>>();
+                let context = homogeneous_collection_biological_context(
+                    &report.biological_contexts,
+                    &members,
+                )?;
+                validate_collection_context_target_genome(&context, target_genome_id)
+            }
+            CollectionContextRequirement::NotReviewed
+            | CollectionContextRequirement::Partitionable
+            | CollectionContextRequirement::ExplicitCrossContext => {
+                Err(crate::engine::CollectionContextValidationError {
+                    reason: CollectionLiftRejectionReason::UnsupportedSubjectKind,
+                    member_id: None,
+                    detail: format!(
+                        "The GUI launcher does not implement {:?} collection-context readiness",
+                        requirement
+                    ),
+                })
+            }
+        }
+    }
+
+    fn gene_set_collection_operation_readiness(
+        &self,
+        row: &CollectionLauncherRow,
+        report: &GeneSetResolutionReport,
+    ) -> CollectionLauncherReadiness {
+        let baseline = row.baseline_readiness();
+        if !baseline.is_ready() {
+            return baseline;
+        }
+        let Some(adapter) = row.adapter else {
+            return baseline;
+        };
+        if adapter == CollectionLauncherAdapter::PrimerSpecificity {
+            let missing = report
+                .resolved_members
+                .iter()
+                .filter(|member| {
+                    self.gene_set_inspector
+                        .specificity_form
+                        .member_bindings
+                        .get(&member.dedup_key)
+                        .is_none_or(|report_id| report_id.trim().is_empty())
+                })
+                .map(|member| member.symbol.clone())
+                .collect::<Vec<_>>();
+            if !missing.is_empty() {
+                return CollectionLauncherReadiness::NeedsBindings {
+                    detail: format!(
+                        "Bind one exact primer-design report for: {}",
+                        missing.join(", ")
+                    ),
+                };
+            }
+        }
+        let command = match adapter {
+            CollectionLauncherAdapter::PrimerSpecificity => {
+                self.gene_set_specificity_shell_command()
+            }
+            CollectionLauncherAdapter::PromoterCohort => self.gene_set_promoter_shell_command(),
+        };
+        let command = match command {
+            Ok(command) => command,
+            Err(detail) => return CollectionLauncherReadiness::NeedsInput { detail },
+        };
+        let target_genome_id = match &command {
+            ShellCommand::CollectionsRunPrimerSpecificity {
+                target_genome_id, ..
+            }
+            | ShellCommand::GeneSetsPromoterCohort {
+                genome_id: target_genome_id,
+                ..
+            } => target_genome_id,
+            _ => unreachable!("collection launcher adapters construct known shell commands"),
+        };
+        let normalized_report = if adapter == CollectionLauncherAdapter::PromoterCohort {
+            let mut candidate = report.clone();
+            if let Err(error) = candidate.ensure_default_biological_context() {
+                let reason = match error {
+                    gentle_protocol::BiologicalContextResolutionError::ConflictingField {
+                        ..
+                    }
+                    | gentle_protocol::BiologicalContextResolutionError::DuplicateContextId {
+                        ..
+                    } => CollectionLiftRejectionReason::MixedBiologicalContext,
+                    gentle_protocol::BiologicalContextResolutionError::EmptyContextId
+                    | gentle_protocol::BiologicalContextResolutionError::UnknownContextId {
+                        ..
+                    } => CollectionLiftRejectionReason::MissingBiologicalContext,
+                };
+                return CollectionLauncherReadiness::PolicyRejected {
+                    reason,
+                    detail: error.to_string(),
+                };
+            }
+            Some(candidate)
+        } else {
+            None
+        };
+        match Self::gene_set_collection_context_readiness(
+            normalized_report.as_ref().unwrap_or(report),
+            row.policy.context_requirement,
+            target_genome_id,
+        ) {
+            Ok(()) => CollectionLauncherReadiness::Ready,
+            Err(error) => CollectionLauncherReadiness::PolicyRejected {
+                reason: error.reason,
+                detail: error.detail,
+            },
+        }
+    }
+
+    fn selected_gene_set_collection_shell_command(&self) -> Result<ShellCommand, String> {
+        match self.gene_set_inspector.selected_operation {
+            CollectionLauncherAdapter::PrimerSpecificity => {
+                self.gene_set_specificity_shell_command()
+            }
+            CollectionLauncherAdapter::PromoterCohort => self.gene_set_promoter_shell_command(),
+        }
+    }
+
+    fn collection_operation_task_result_from_output(
+        snapshot: &GentleEngine,
+        adapter: CollectionLauncherAdapter,
+        expected_subject: &CollectionSubjectRef,
+        output: serde_json::Value,
+    ) -> Result<CollectionOperationTaskResult, EngineError> {
+        let invalid_output = |message: String| EngineError::new(ErrorCode::Internal, message);
+        match adapter {
+            CollectionLauncherAdapter::PrimerSpecificity => {
+                let report = serde_json::from_value::<CollectionOperationReport>(
+                    output
+                        .get("report")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                )
+                .map_err(|error| {
+                    invalid_output(format!(
+                        "Collection specificity command returned an invalid report: {error}"
+                    ))
+                })?;
+                if &report.collection_subject != expected_subject {
+                    return Err(invalid_output(format!(
+                        "Collection specificity returned subject {:?}, expected {:?}",
+                        report.collection_subject, expected_subject
+                    )));
+                }
+                let mut child_reports = BTreeMap::new();
+                for report_id in report
+                    .per_member_status
+                    .iter()
+                    .flat_map(|row| row.produced_report_ids.iter())
+                {
+                    if let Ok(child) = snapshot.get_primer_specificity_report(report_id) {
+                        child_reports.insert(
+                            report_id.clone(),
+                            PrimerSpecificityChildPresentation {
+                                report_id: report_id.clone(),
+                                primary_seq_id: child.primary_seq_id,
+                                status: child.summary.status,
+                                specificity_pass: child.summary.specificity_pass,
+                                amplicon_count: child.summary.amplicon_count,
+                                failing_unintended_amplicon_count: child
+                                    .summary
+                                    .failing_unintended_amplicon_count,
+                                summary: child.summary.summary,
+                            },
+                        );
+                    }
+                }
+                Ok(CollectionOperationTaskResult {
+                    adapter,
+                    report,
+                    payload: CollectionOperationPayload::PrimerSpecificity { child_reports },
+                })
+            }
+            CollectionLauncherAdapter::PromoterCohort => {
+                let promoter = serde_json::from_value::<GeneSetPromoterCohortReport>(output)
+                    .map_err(|error| {
+                        invalid_output(format!(
+                            "Promoter-cohort command returned an invalid report: {error}"
+                        ))
+                    })?;
+                let report = promoter
+                    .collection_operation
+                    .as_deref()
+                    .cloned()
+                    .ok_or_else(|| {
+                        invalid_output(
+                            "Promoter-cohort report omitted its collection-operation wrapper"
+                                .to_string(),
+                        )
+                    })?;
+                if &report.collection_subject != expected_subject {
+                    return Err(invalid_output(format!(
+                        "Promoter cohort returned subject {:?}, expected {:?}",
+                        report.collection_subject, expected_subject
+                    )));
+                }
+                Ok(CollectionOperationTaskResult {
+                    adapter,
+                    report,
+                    payload: CollectionOperationPayload::PromoterCohort(Box::new(promoter)),
+                })
+            }
+        }
+    }
+
+    fn start_gene_set_collection_operation_task(&mut self) {
         if self.gene_set_inspector.task.is_some() {
             self.gene_set_inspector.status =
-                "Gene-set primer specificity is already running".to_string();
+                "A gene-set collection operation is already running".to_string();
             return;
         }
-        let command = match self.gene_set_specificity_shell_command() {
+        let command = match self.selected_gene_set_collection_shell_command() {
             Ok(command) => command,
             Err(error) => {
                 self.gene_set_inspector.status = error;
                 return;
             }
         };
+        let adapter = self.gene_set_inspector.selected_operation;
         let resolution_id = self.gene_set_inspector.selected_resolution_id.clone();
+        let expected_subject = CollectionSubjectRef::GeneSetResolution {
+            report_id: resolution_id.clone(),
+        };
         let member_count = self
             .selected_gene_set_resolution()
             .map(|choice| choice.report.resolved_members.len())
@@ -677,20 +1032,25 @@ impl GENtleApp {
         let cancel_requested = Arc::new(AtomicBool::new(false));
         let worker_cancel = cancel_requested.clone();
         let engine = self.engine.clone();
-        let (tx, receiver) = mpsc::channel::<Result<GeneSetSpecificityTaskResult, EngineError>>();
+        let (tx, receiver) = mpsc::channel::<Result<CollectionOperationTaskResult, EngineError>>();
         let runtime_frame = Self::push_runtime_background_job_frame(
-            BackgroundJobKind::PrimerSpecificityCollection,
+            BackgroundJobKind::CollectionOperation,
             job_id,
-            format!("resolution='{resolution_id}', members={member_count}"),
+            format!(
+                "operation={}, resolution='{resolution_id}', members={member_count}",
+                adapter.capability_name()
+            ),
         );
         runtime_frame.update_phase("running");
         self.push_job_event(
-            BackgroundJobKind::PrimerSpecificityCollection,
+            BackgroundJobKind::CollectionOperation,
             BackgroundJobEventPhase::Started,
             Some(job_id),
             format!(
-                "Collection primer specificity started: resolution='{}', members={}",
-                resolution_id, member_count
+                "Collection operation {} started: resolution='{}', members={}",
+                adapter.capability_name(),
+                resolution_id,
+                member_count
             ),
         );
         std::thread::spawn(move || {
@@ -699,67 +1059,39 @@ impl GENtleApp {
                 move |snapshot| {
                     if worker_cancel.load(Ordering::Relaxed) {
                         return Err(EngineError::invalid_input(
-                            "Collection primer specificity was discarded before execution",
+                            "Collection operation was discarded before execution",
                         ));
                     }
                     let shell_result = execute_shell_command(snapshot, &command)
                         .map_err(|message| EngineError::new(ErrorCode::InvalidInput, message))?;
                     if worker_cancel.load(Ordering::Relaxed) {
                         return Err(EngineError::invalid_input(
-                            "Collection primer specificity finished after discard was requested; detached result was not committed",
+                            "Collection operation finished after discard was requested; detached result was not committed",
                         ));
                     }
-                    let report = serde_json::from_value::<CollectionOperationReport>(
-                        shell_result
-                            .output
-                            .get("report")
-                            .cloned()
-                            .unwrap_or(serde_json::Value::Null),
-                    )
-                    .map_err(|error| {
-                        EngineError::new(
-                            ErrorCode::Internal,
-                            format!(
-                                "Collection specificity command returned an invalid report: {error}"
-                            ),
-                        )
-                    })?;
-                    let mut child_reports = BTreeMap::new();
-                    for report_id in report
-                        .per_member_status
-                        .iter()
-                        .flat_map(|row| row.produced_report_ids.iter())
-                    {
-                        if let Ok(child) = snapshot.get_primer_specificity_report(report_id) {
-                            child_reports.insert(
-                                report_id.clone(),
-                                PrimerSpecificityChildPresentation {
-                                    report_id: report_id.clone(),
-                                    primary_seq_id: child.primary_seq_id,
-                                    status: child.summary.status,
-                                    specificity_pass: child.summary.specificity_pass,
-                                    amplicon_count: child.summary.amplicon_count,
-                                    failing_unintended_amplicon_count: child
-                                        .summary
-                                        .failing_unintended_amplicon_count,
-                                    summary: child.summary.summary,
-                                },
-                            );
-                        }
+                    let task_result = Self::collection_operation_task_result_from_output(
+                        snapshot,
+                        adapter,
+                        &expected_subject,
+                        shell_result.output,
+                    )?;
+                    if worker_cancel.load(Ordering::Relaxed) {
+                        return Err(EngineError::invalid_input(
+                            "Collection operation finished after discard was requested; detached result was not committed",
+                        ));
                     }
-                    Ok(GeneSetSpecificityTaskResult {
-                        report,
-                        child_reports,
-                    })
+                    Ok(task_result)
                 },
             );
             let _ = tx.send(result);
         });
         self.gene_set_inspector.status = format!(
-            "Running primer specificity for {member_count} gene-set member(s) in background..."
+            "Running {} for {member_count} gene-set member(s) in background...",
+            adapter.label()
         );
-        self.gene_set_inspector.task = Some(GeneSetSpecificityTask {
+        self.gene_set_inspector.task = Some(GeneSetCollectionOperationTask {
             job_id,
+            adapter,
             resolution_id,
             started: Instant::now(),
             cancel_requested,
@@ -768,10 +1100,10 @@ impl GENtleApp {
         });
     }
 
-    fn request_gene_set_specificity_discard(&mut self, origin: &str) {
+    fn request_gene_set_collection_operation_discard(&mut self, origin: &str) {
         let Some(task) = self.gene_set_inspector.task.as_mut() else {
             self.gene_set_inspector.status =
-                "No running gene-set specificity task to discard".to_string();
+                "No running gene-set collection operation to discard".to_string();
             return;
         };
         if task.cancel_requested.swap(true, Ordering::Relaxed) {
@@ -782,17 +1114,17 @@ impl GENtleApp {
         let job_id = task.job_id;
         task.runtime_frame.update_phase("discard_requested");
         self.gene_set_inspector.status =
-            "Discard requested. An active BLAST process may finish before GENtle drops the detached result."
+            "Discard requested. Active external work may finish before GENtle drops the detached result; output files already written by the shared command are not rolled back."
                 .to_string();
         self.push_job_event(
-            BackgroundJobKind::PrimerSpecificityCollection,
+            BackgroundJobKind::CollectionOperation,
             BackgroundJobEventPhase::CancelRequested,
             Some(job_id),
             format!("Detached result discard requested from {origin}"),
         );
     }
 
-    pub(super) fn poll_gene_set_specificity_task(&mut self, ctx: &egui::Context) {
+    pub(super) fn poll_gene_set_collection_operation_task(&mut self, ctx: &egui::Context) {
         let Some(task) = self.gene_set_inspector.task.as_ref() else {
             return;
         };
@@ -802,7 +1134,7 @@ impl GENtleApp {
             Err(mpsc::TryRecvError::Empty) => None,
             Err(mpsc::TryRecvError::Disconnected) => Some(Err(EngineError::new(
                 ErrorCode::Io,
-                "Gene-set specificity background worker disconnected",
+                "Gene-set collection-operation background worker disconnected",
             ))),
         };
         let Some(outcome) = outcome else {
@@ -812,8 +1144,24 @@ impl GENtleApp {
             return;
         };
         let elapsed = task.started.elapsed().as_secs_f64();
+        if task.cancel_requested.load(Ordering::Relaxed) {
+            task.runtime_frame
+                .cancel("Collection operation result discarded".to_string());
+            self.gene_set_inspector.status = format!(
+                "Collection operation result discarded after {elapsed:.1}s; no result was displayed. Output files already written by the shared command are not rolled back."
+            );
+            self.push_job_event(
+                BackgroundJobKind::CollectionOperation,
+                BackgroundJobEventPhase::IgnoredStale,
+                Some(task.job_id),
+                self.gene_set_inspector.status.clone(),
+            );
+            ctx.request_repaint();
+            return;
+        }
         match outcome {
             Ok(result) => {
+                task.runtime_frame.update_phase("completed");
                 let succeeded = result
                     .report
                     .per_member_status
@@ -826,18 +1174,27 @@ impl GENtleApp {
                     .iter()
                     .filter(|row| row.outcome == CollectionMemberOutcome::Failed)
                     .count();
-                self.gene_set_inspector.status = format!(
-                    "Collection specificity completed in {elapsed:.1}s: {succeeded} executed, {failed} failed. Biological pass/fail is shown per child report."
-                );
-                self.gene_set_inspector.child_reports = result.child_reports;
-                self.gene_set_inspector.last_report = Some(result.report);
+                self.gene_set_inspector.status = match &result.payload {
+                    CollectionOperationPayload::PrimerSpecificity { .. } => format!(
+                        "Collection specificity completed in {elapsed:.1}s: {succeeded} executed, {failed} failed. Biological pass/fail is shown per child report."
+                    ),
+                    CollectionOperationPayload::PromoterCohort(report) => format!(
+                        "Promoter cohort completed in {elapsed:.1}s: {} window(s), {} unresolved. Derivation stores the cohort and may normalize missing source-context metadata.",
+                        report.returned_window_count,
+                        report.unresolved_members.len()
+                    ),
+                };
+                self.refresh_gene_set_inspector_catalog(true);
+                self.gene_set_inspector.selected_resolution_id = task.resolution_id.clone();
+                self.reconcile_gene_set_inspector_bindings();
+                self.gene_set_inspector.last_result = Some(result);
                 self.push_job_event(
-                    BackgroundJobKind::PrimerSpecificityCollection,
+                    BackgroundJobKind::CollectionOperation,
                     BackgroundJobEventPhase::Completed,
                     Some(task.job_id),
                     format!(
-                        "Collection primer specificity completed in {elapsed:.1}s for '{}': {succeeded} executed, {failed} failed",
-                        task.resolution_id
+                        "Collection operation {} completed in {elapsed:.1}s for '{}': {succeeded} executed, {failed} failed",
+                        task.adapter.capability_name(), task.resolution_id
                     ),
                 );
             }
@@ -846,20 +1203,26 @@ impl GENtleApp {
                 let discarded = error.message.contains("discard");
                 self.gene_set_inspector.status = if stale {
                     format!(
-                        "Collection specificity produced a stale result after {elapsed:.1}s; project state was not changed."
+                        "Collection operation produced a stale result after {elapsed:.1}s; project state was not changed."
                     )
                 } else if discarded {
                     format!(
-                        "Collection specificity result discarded after {elapsed:.1}s; project state was not changed."
+                        "Collection operation result discarded after {elapsed:.1}s; project state was not changed."
                     )
                 } else {
                     format!(
-                        "Collection specificity failed after {elapsed:.1}s: {}",
+                        "Collection operation {} failed after {elapsed:.1}s: {}",
+                        task.adapter.label(),
                         error.message
                     )
                 };
+                if stale || discarded {
+                    task.runtime_frame.cancel(error.message.clone());
+                } else {
+                    task.runtime_frame.fail(error.message.clone());
+                }
                 self.push_job_event(
-                    BackgroundJobKind::PrimerSpecificityCollection,
+                    BackgroundJobKind::CollectionOperation,
                     if stale || discarded {
                         BackgroundJobEventPhase::IgnoredStale
                     } else {
@@ -873,20 +1236,21 @@ impl GENtleApp {
         ctx.request_repaint();
     }
 
-    pub(super) fn has_active_gene_set_specificity_task(&self) -> bool {
+    pub(super) fn has_active_gene_set_collection_operation_task(&self) -> bool {
         self.gene_set_inspector.task.is_some()
     }
 
-    pub(super) fn render_gene_set_specificity_background_job(&mut self, ui: &mut Ui) {
+    pub(super) fn render_gene_set_collection_operation_background_job(&mut self, ui: &mut Ui) {
         ui.separator();
-        ui.strong("Gene-set Primer Specificity");
+        ui.strong("Gene-set Collection Operation");
         let mut discard_clicked = false;
         if let Some(task) = self.gene_set_inspector.task.as_ref() {
             ui.horizontal_wrapped(|ui| {
                 ui.add(egui::Spinner::new());
                 ui.label(format!(
-                    "Running #{} for '{}' ({:.1}s)",
+                    "Running #{} {} for '{}' ({:.1}s)",
                     task.job_id,
+                    task.adapter.label(),
                     task.resolution_id,
                     task.started.elapsed().as_secs_f32()
                 ));
@@ -895,7 +1259,7 @@ impl GENtleApp {
                 } else if ui
                     .button("Discard result")
                     .on_hover_text(
-                        "Stop waiting for the detached collection result. A running BLAST process may finish before GENtle can drop it.",
+                        "Drop the detached collection result. Active external work may finish, and output files already written by the shared command are not rolled back.",
                     )
                     .clicked()
                 {
@@ -908,7 +1272,7 @@ impl GENtleApp {
                 if ui
                     .button("Open inspector")
                     .on_hover_text(
-                        "Open the binding-aware gene-set inspector to configure a collection specificity run",
+                        "Open the gene-set inspector to configure a collection operation",
                     )
                     .clicked()
                 {
@@ -917,7 +1281,7 @@ impl GENtleApp {
             });
         }
         if discard_clicked {
-            self.request_gene_set_specificity_discard("background jobs panel");
+            self.request_gene_set_collection_operation_discard("background jobs panel");
         }
         if !self.gene_set_inspector.status.trim().is_empty() {
             ui.small(self.gene_set_inspector.status.clone());
@@ -1186,6 +1550,566 @@ impl GENtleApp {
         }
     }
 
+    fn render_gene_set_specificity_form(&mut self, ui: &mut Ui, choice: &GeneSetResolutionChoice) {
+        ui.strong("Primer-report bindings");
+        ui.small(
+            "Bindings are explicit and auditable. GENtle never guesses an assay from a gene symbol.",
+        );
+        let reports = self.gene_set_inspector.primer_reports.clone();
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!("Available primer reports: {}", reports.len()));
+            if ui
+                .button("Clear bindings")
+                .on_hover_text("Clear every member-to-primer-report selection")
+                .clicked()
+            {
+                for report_id in self
+                    .gene_set_inspector
+                    .specificity_form
+                    .member_bindings
+                    .values_mut()
+                {
+                    report_id.clear();
+                }
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.strong("Member");
+            ui.add_space(150.0);
+            ui.strong("Primer-design report");
+        });
+        egui::ScrollArea::vertical()
+            .id_salt("gene_set_inspector_member_bindings")
+            .max_height(300.0)
+            .show_rows(
+                ui,
+                34.0,
+                choice.report.resolved_members.len(),
+                |ui, row_range| {
+                    for row_index in row_range {
+                        let member = &choice.report.resolved_members[row_index];
+                        ui.horizontal(|ui| {
+                            ui.vertical(|ui| {
+                                ui.label(&member.symbol);
+                                ui.small(
+                                    member
+                                        .gene_id
+                                        .as_deref()
+                                        .unwrap_or(member.dedup_key.as_str()),
+                                );
+                            });
+                            ui.add_space(12.0);
+                            let binding = self
+                                .gene_set_inspector
+                                .specificity_form
+                                .member_bindings
+                                .entry(member.dedup_key.clone())
+                                .or_default();
+                            egui::ComboBox::from_id_salt((
+                                "gene_set_member_primer_report",
+                                &member.dedup_key,
+                            ))
+                            .selected_text(if binding.is_empty() {
+                                "Select exact primer report..."
+                            } else {
+                                binding.as_str()
+                            })
+                            .width(520.0)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(binding, String::new(), "Not selected");
+                                for report in &reports {
+                                    ui.selectable_value(
+                                        binding,
+                                        report.report_id.clone(),
+                                        format!(
+                                            "{} | template={} | pairs={} | {}",
+                                            report.report_id,
+                                            report.template,
+                                            report.pair_count,
+                                            report.backend_used
+                                        ),
+                                    );
+                                }
+                            });
+                        });
+                    }
+                },
+            );
+
+        ui.separator();
+        ui.strong("Specificity parameters");
+        let form = &mut self.gene_set_inspector.specificity_form;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Pair rank");
+            ui.add(
+                egui::TextEdit::singleline(&mut form.pair_rank_1based).desired_width(70.0),
+            )
+            .on_hover_text("One-based accepted pair rank, applied to every bound report");
+            ui.label("Prepared target genome/transcriptome");
+            ui.add(
+                egui::TextEdit::singleline(&mut form.target_genome_id)
+                    .desired_width(280.0)
+                    .hint_text("Genome catalog ID"),
+            )
+            .on_hover_text(
+                "Prepared local BLAST target id. GENtle uses the same specificity policy and database checks as the single-report command.",
+            );
+        });
+        egui::CollapsingHeader::new("Specificity paths")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Genome catalog");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut form.catalog_path)
+                            .desired_width(420.0)
+                            .hint_text("empty = configured/default catalog"),
+                    );
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Genome cache");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut form.cache_dir)
+                            .desired_width(420.0)
+                            .hint_text("empty = configured/default cache"),
+                    );
+                });
+            });
+    }
+
+    fn render_gene_set_promoter_form(&mut self, ui: &mut Ui) {
+        ui.strong("Promoter-cohort parameters");
+        ui.small(
+            "Derive strand-aware promoter windows through the shared promoter/TSS resolver. Relationship expectations are non-blocking evidence framing, not proof of co-regulation.",
+        );
+        let form = &mut self.gene_set_inspector.promoter_form;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Annotation genome");
+            ui.add(
+                egui::TextEdit::singleline(&mut form.genome_id)
+                    .desired_width(260.0)
+                    .hint_text("Genome catalog ID"),
+            );
+            ui.label("Relationship");
+            egui::ComboBox::from_id_salt("gene_set_promoter_relationship")
+                .selected_text(gene_set_relationship_label(form.relationship))
+                .show_ui(ui, |ui| {
+                    for relationship in [
+                        GeneSetCohortRelationship::Unspecified,
+                        GeneSetCohortRelationship::Manual,
+                        GeneSetCohortRelationship::CoRegulated,
+                        GeneSetCohortRelationship::AntiCoRegulated,
+                    ] {
+                        ui.selectable_value(
+                            &mut form.relationship,
+                            relationship,
+                            gene_set_relationship_label(relationship),
+                        );
+                    }
+                });
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Upstream bp");
+            ui.add(egui::TextEdit::singleline(&mut form.upstream_bp).desired_width(90.0));
+            ui.label("Downstream bp");
+            ui.add(egui::TextEdit::singleline(&mut form.downstream_bp).desired_width(90.0));
+        });
+        egui::CollapsingHeader::new("Promoter catalogs and output")
+            .default_open(false)
+            .show(ui, |ui| {
+                for (label, value, hint) in [
+                    (
+                        "Gene-group catalog",
+                        &mut form.gene_group_catalog_path,
+                        "empty = configured/default catalog",
+                    ),
+                    (
+                        "Genome catalog",
+                        &mut form.genome_catalog_path,
+                        "empty = configured/default catalog",
+                    ),
+                    (
+                        "Genome cache",
+                        &mut form.cache_dir,
+                        "empty = configured/default cache",
+                    ),
+                    (
+                        "Output JSON",
+                        &mut form.output_path,
+                        "optional portable cohort path",
+                    ),
+                ] {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(label);
+                        ui.add(
+                            egui::TextEdit::singleline(value)
+                                .desired_width(440.0)
+                                .hint_text(hint),
+                        );
+                    });
+                }
+            });
+    }
+
+    fn render_gene_set_collection_result(&mut self, ui: &mut Ui) {
+        let Some(result) = self.gene_set_inspector.last_result.clone() else {
+            return;
+        };
+        let report = &result.report;
+        ui.separator();
+        let succeeded = report
+            .per_member_status
+            .iter()
+            .filter(|row| row.outcome == CollectionMemberOutcome::Succeeded)
+            .count();
+        let failed = report
+            .per_member_status
+            .iter()
+            .filter(|row| row.outcome == CollectionMemberOutcome::Failed)
+            .count();
+        ui.strong(format!(
+            "Latest result: {} | {} executed, {} failed",
+            result.adapter.label(),
+            succeeded,
+            failed
+        ));
+        ui.small(format!(
+            "report_id={} | lift={:?} | fingerprint={}",
+            report.report_id, report.lifting_mode, report.collection_membership_fingerprint_sha256
+        ));
+        if ui
+            .button("Copy collection report JSON")
+            .on_hover_text("Copy the portable collection-operation report")
+            .clicked()
+            && let Ok(json) = serde_json::to_string_pretty(report)
+        {
+            ui.ctx().copy_text(json);
+        }
+        let child_reports = match &result.payload {
+            CollectionOperationPayload::PrimerSpecificity { child_reports } => Some(child_reports),
+            CollectionOperationPayload::PromoterCohort(_) => None,
+        };
+        let mut open_child: Option<(String, String)> = None;
+        egui::ScrollArea::vertical()
+            .id_salt("gene_set_inspector_result_rows")
+            .max_height(280.0)
+            .show_rows(
+                ui,
+                52.0,
+                report.per_member_status.len(),
+                |ui, row_range| {
+                    for row_index in row_range {
+                        let row = &report.per_member_status[row_index];
+                        ui.horizontal_wrapped(|ui| {
+                            ui.strong(
+                                row.member
+                                    .gene_symbol
+                                    .as_deref()
+                                    .unwrap_or(row.member.stable_member_id.as_str()),
+                            );
+                            ui.label(format!("execution={:?}", row.outcome));
+                            if let Some(parent) = row.member.parent_member_id.as_deref() {
+                                ui.small(format!("derived from {parent}"));
+                            }
+                            if let Some(error) = &row.error {
+                                ui.colored_label(
+                                    ui.visuals().error_fg_color,
+                                    error.message.clone(),
+                                );
+                            }
+                            for report_id in &row.produced_report_ids {
+                                if let Some(child) = child_reports
+                                    .and_then(|children| children.get(report_id))
+                                {
+                                    ui.label(format!(
+                                        "biology={} | pass={} | products={} | failing off-targets={}",
+                                        child.status,
+                                        child.specificity_pass,
+                                        child.amplicon_count,
+                                        child.failing_unintended_amplicon_count
+                                    ))
+                                    .on_hover_text(child.summary.clone());
+                                    if let Some(seq_id) = child.primary_seq_id.as_ref()
+                                        && ui
+                                            .button("Open report")
+                                            .on_hover_text(
+                                                "Open this persisted child specificity report in PCR Designer",
+                                            )
+                                            .clicked()
+                                    {
+                                        open_child =
+                                            Some((seq_id.clone(), child.report_id.clone()));
+                                    }
+                                } else {
+                                    ui.monospace(report_id);
+                                }
+                            }
+                        });
+                    }
+                },
+            );
+        if !report.aggregate_warnings.is_empty() {
+            egui::CollapsingHeader::new(format!(
+                "Aggregate warnings ({})",
+                report.aggregate_warnings.len()
+            ))
+            .show(ui, |ui| {
+                for warning in &report.aggregate_warnings {
+                    ui.small(format!("- {warning}"));
+                }
+            });
+        }
+
+        if let CollectionOperationPayload::PromoterCohort(promoter) = &result.payload {
+            ui.separator();
+            ui.strong(format!(
+                "Promoter windows: {} returned from {} requested member(s)",
+                promoter.returned_window_count, promoter.requested_member_count
+            ));
+            ui.small(format!(
+                "genome={} | upstream={} bp | downstream={} bp | relationship={}",
+                promoter.genome_id,
+                promoter.upstream_bp,
+                promoter.downstream_bp,
+                gene_set_relationship_label(promoter.relationship)
+            ));
+            if ui
+                .button("Copy promoter cohort JSON")
+                .on_hover_text("Copy the complete portable promoter-cohort report")
+                .clicked()
+                && let Ok(json) = serde_json::to_string_pretty(promoter.as_ref())
+            {
+                ui.ctx().copy_text(json);
+            }
+            egui::ScrollArea::both()
+                .id_salt("gene_set_promoter_window_rows")
+                .max_height(240.0)
+                .show(ui, |ui| {
+                    egui::Grid::new("gene_set_promoter_window_grid")
+                        .striped(true)
+                        .spacing([12.0, 5.0])
+                        .show(ui, |ui| {
+                            ui.strong("Gene");
+                            ui.strong("Transcript");
+                            ui.strong("TSS");
+                            ui.strong("Promoter window");
+                            ui.strong("Strand");
+                            ui.end_row();
+                            for window in &promoter.windows {
+                                ui.label(&window.display_label);
+                                ui.monospace(&window.transcript_id);
+                                ui.monospace(window.tss_1based.to_string());
+                                ui.monospace(format!(
+                                    "{}:{}-{}",
+                                    window.chromosome,
+                                    window.promoter_start_1based,
+                                    window.promoter_end_1based
+                                ));
+                                ui.label(&window.strand);
+                                ui.end_row();
+                            }
+                        });
+                });
+            if !promoter.unresolved_members.is_empty() {
+                egui::CollapsingHeader::new(format!(
+                    "Unresolved promoter members ({})",
+                    promoter.unresolved_members.len()
+                ))
+                .default_open(true)
+                .show(ui, |ui| {
+                    for member in &promoter.unresolved_members {
+                        ui.small(format!("{}: {}", member.query, member.reason));
+                    }
+                });
+            }
+            if !promoter.relationship_flags.is_empty() {
+                egui::CollapsingHeader::new(format!(
+                    "Relationship evidence flags ({})",
+                    promoter.relationship_flags.len()
+                ))
+                .default_open(true)
+                .show(ui, |ui| {
+                    for flag in &promoter.relationship_flags {
+                        ui.label(format!("{} | {}", flag.flag_kind, flag.evidence_kind))
+                            .on_hover_text(flag.detail.clone());
+                    }
+                    ui.small(
+                        "These flags are non-blocking association evidence, not regulatory proof.",
+                    );
+                });
+            }
+            if !promoter.warnings.is_empty() {
+                egui::CollapsingHeader::new(format!(
+                    "Promoter warnings ({})",
+                    promoter.warnings.len()
+                ))
+                .show(ui, |ui| {
+                    for warning in &promoter.warnings {
+                        ui.small(format!("- {warning}"));
+                    }
+                });
+            }
+        }
+        if let Some((seq_id, report_id)) = open_child {
+            self.open_sequence_window_for_primer_specificity_report(&seq_id, &report_id);
+        }
+    }
+
+    fn render_gene_set_collection_launcher(
+        &mut self,
+        ui: &mut Ui,
+        choice: &GeneSetResolutionChoice,
+    ) {
+        ui.separator();
+        ui.strong("Collection operations");
+        ui.small(
+            "The operation catalog comes from shared engine lifting policies. Logical gene sets are never silently converted into physical pools or gel lanes.",
+        );
+        let rows = collection_launcher_rows(CollectionSubjectKind::GeneSetResolution);
+        let presented = rows
+            .iter()
+            .cloned()
+            .map(|row| {
+                let readiness = self.gene_set_collection_operation_readiness(&row, &choice.report);
+                (row, readiness)
+            })
+            .collect::<Vec<_>>();
+        egui::ScrollArea::horizontal()
+            .id_salt("gene_set_collection_launcher_scroll")
+            .show(ui, |ui| {
+                egui::Grid::new("gene_set_collection_launcher_grid")
+                    .striped(true)
+                    .spacing([14.0, 7.0])
+                    .show(ui, |ui| {
+                ui.strong("Operation");
+                ui.strong("Mode");
+                ui.strong("Readiness");
+                ui.strong("Result payload");
+                ui.end_row();
+                for (row, readiness) in &presented {
+                    let title = row.title.as_str();
+                    if let Some(adapter) = row.adapter
+                        && !matches!(
+                            readiness,
+                            CollectionLauncherReadiness::AdapterUnavailable { .. }
+                                | CollectionLauncherReadiness::RequiresMaterialization { .. }
+                                | CollectionLauncherReadiness::RequiresPhysicalPool { .. }
+                                | CollectionLauncherReadiness::PolicyRejected { .. }
+                        )
+                    {
+                        ui.selectable_value(
+                            &mut self.gene_set_inspector.selected_operation,
+                            adapter,
+                            title,
+                        )
+                        .on_hover_text(row.description.clone());
+                    } else {
+                        ui.add_enabled(false, egui::Button::new(title))
+                            .on_disabled_hover_text(row.description.clone());
+                    }
+                    ui.label(row.lifting_mode_label());
+                    let readiness_color = if readiness.is_ready() {
+                        ui.visuals().strong_text_color()
+                    } else if matches!(
+                        readiness,
+                        CollectionLauncherReadiness::NeedsInput { .. }
+                            | CollectionLauncherReadiness::NeedsBindings { .. }
+                    ) {
+                        ui.visuals().warn_fg_color
+                    } else {
+                        ui.visuals().error_fg_color
+                    };
+                    let mut readiness_text = readiness.label().to_string();
+                    if let Some(reason) = readiness.rejection_reason() {
+                        readiness_text.push_str(&format!(" ({})", reason.as_str()));
+                    }
+                    let response = ui.colored_label(readiness_color, readiness_text);
+                    if let Some(detail) = readiness.detail() {
+                        response.on_hover_text(detail);
+                    }
+                    ui.monospace(row.result_payload_kind());
+                    ui.end_row();
+                    }
+                });
+            });
+
+        ui.separator();
+        match self.gene_set_inspector.selected_operation {
+            CollectionLauncherAdapter::PrimerSpecificity => {
+                self.render_gene_set_specificity_form(ui, choice)
+            }
+            CollectionLauncherAdapter::PromoterCohort => self.render_gene_set_promoter_form(ui),
+        }
+        let readiness = presented
+            .iter()
+            .find(|(row, _)| row.adapter == Some(self.gene_set_inspector.selected_operation))
+            .map(|(row, _)| self.gene_set_collection_operation_readiness(row, &choice.report))
+            .unwrap_or_else(|| CollectionLauncherReadiness::AdapterUnavailable {
+                detail: "The selected operation is absent from the shared policy registry"
+                    .to_string(),
+            });
+        let running = self.gene_set_inspector.task.is_some();
+        let mut run_clicked = false;
+        let mut discard_clicked = false;
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    !running && readiness.is_ready(),
+                    egui::Button::new(format!(
+                        "Run {}",
+                        self.gene_set_inspector.selected_operation.label()
+                    )),
+                )
+                .on_hover_text(
+                    readiness
+                        .detail()
+                        .unwrap_or("Run the shared shell/engine operation in a detached project snapshot"),
+                )
+                .clicked()
+            {
+                run_clicked = true;
+            }
+            if let Some(task) = self.gene_set_inspector.task.as_ref() {
+                ui.add(egui::Spinner::new());
+                ui.label(format!(
+                    "Running #{} {} ({:.1}s)",
+                    task.job_id,
+                    task.adapter.label(),
+                    task.started.elapsed().as_secs_f32()
+                ));
+                if task.cancel_requested.load(Ordering::Relaxed) {
+                    ui.small("Discard requested...");
+                } else if ui
+                    .button("Discard result")
+                    .on_hover_text(
+                        "Request that GENtle drop the detached result. Active external work may finish, and output files already written by the shared command are not rolled back.",
+                    )
+                    .clicked()
+                {
+                    discard_clicked = true;
+                }
+            }
+        });
+        if !readiness.is_ready() {
+            ui.small(format!(
+                "{}: {}",
+                readiness.label(),
+                readiness.detail().unwrap_or("not ready")
+            ));
+        }
+        if !self.gene_set_inspector.status.trim().is_empty() {
+            ui.small(self.gene_set_inspector.status.clone());
+        }
+        self.render_gene_set_collection_result(ui);
+
+        if run_clicked {
+            self.start_gene_set_collection_operation_task();
+        }
+        if discard_clicked {
+            self.request_gene_set_collection_operation_discard("gene-set inspector");
+        }
+    }
+
     fn render_gene_set_inspector_contents(&mut self, ui: &mut Ui) {
         let close_hover = Self::specialist_window_close_hover_text("Gene Set Inspector");
         if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
@@ -1213,10 +2137,10 @@ impl GENtleApp {
             return;
         }
         ui.label(
-            "Bind each logical gene-set member to one exact persisted primer-design report, then run the shared collection Map operation.",
+            "Inspect one persisted logical gene set, then choose a shared collection operation with its declared lifting policy.",
         );
         ui.small(
-            "Execution success means GENtle produced a specificity report. It does not mean the primer pair passed biological specificity.",
+            "Execution success means GENtle produced the requested report. Biological specificity, relationship evidence, and unresolved members remain separate result states.",
         );
         ui.separator();
 
@@ -1266,12 +2190,13 @@ impl GENtleApp {
                 .clicked()
             {
                 self.refresh_gene_set_inspector_catalog(true);
+                self.seed_gene_set_promoter_form_from_selection();
             }
         });
         if selection_changed {
-            self.gene_set_inspector.last_report = None;
-            self.gene_set_inspector.child_reports.clear();
+            self.gene_set_inspector.last_result = None;
             self.reconcile_gene_set_inspector_bindings();
+            self.seed_gene_set_promoter_form_from_selection();
         }
 
         let selected = self.selected_gene_set_resolution().cloned();
@@ -1461,283 +2386,7 @@ impl GENtleApp {
             });
         }
 
-        ui.separator();
-        ui.strong("Primer-report bindings");
-        ui.small(
-            "Bindings are explicit and auditable. GENtle never guesses an assay from a gene symbol.",
-        );
-        let reports = self.gene_set_inspector.primer_reports.clone();
-        ui.horizontal_wrapped(|ui| {
-            ui.label(format!("Available primer reports: {}", reports.len()));
-            if ui
-                .button("Clear bindings")
-                .on_hover_text("Clear every member-to-primer-report selection")
-                .clicked()
-            {
-                for report_id in self.gene_set_inspector.member_bindings.values_mut() {
-                    report_id.clear();
-                }
-            }
-        });
-        ui.horizontal(|ui| {
-            ui.strong("Member");
-            ui.add_space(150.0);
-            ui.strong("Primer-design report");
-        });
-        egui::ScrollArea::vertical()
-            .id_salt("gene_set_inspector_member_bindings")
-            .max_height(300.0)
-            .show_rows(
-                ui,
-                34.0,
-                choice.report.resolved_members.len(),
-                |ui, row_range| {
-                    for row_index in row_range {
-                        let member = &choice.report.resolved_members[row_index];
-                        ui.horizontal(|ui| {
-                            ui.vertical(|ui| {
-                                ui.label(&member.symbol);
-                                ui.small(
-                                    member
-                                        .gene_id
-                                        .as_deref()
-                                        .unwrap_or(member.dedup_key.as_str()),
-                                );
-                            });
-                            ui.add_space(12.0);
-                            let binding = self
-                                .gene_set_inspector
-                                .member_bindings
-                                .entry(member.dedup_key.clone())
-                                .or_default();
-                            egui::ComboBox::from_id_salt((
-                                "gene_set_member_primer_report",
-                                &member.dedup_key,
-                            ))
-                            .selected_text(if binding.is_empty() {
-                                "Select exact primer report..."
-                            } else {
-                                binding.as_str()
-                            })
-                            .width(520.0)
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(binding, String::new(), "Not selected");
-                                for report in &reports {
-                                    ui.selectable_value(
-                                        binding,
-                                        report.report_id.clone(),
-                                        format!(
-                                            "{} | template={} | pairs={} | {}",
-                                            report.report_id,
-                                            report.template,
-                                            report.pair_count,
-                                            report.backend_used
-                                        ),
-                                    );
-                                }
-                            });
-                        });
-                    }
-                },
-            );
-
-        ui.separator();
-        ui.strong("Specificity run");
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Pair rank");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.gene_set_inspector.pair_rank_1based)
-                    .desired_width(70.0),
-            )
-            .on_hover_text("One-based accepted pair rank, applied to every bound report");
-            ui.label("Prepared target genome/transcriptome");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.gene_set_inspector.target_genome_id)
-                    .desired_width(280.0)
-                    .hint_text("Genome catalog ID"),
-            )
-            .on_hover_text(
-                "Prepared local BLAST target id. GENtle uses the same specificity policy and database checks as the single-report command.",
-            );
-        });
-        egui::CollapsingHeader::new("Advanced local paths")
-            .default_open(false)
-            .show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Genome catalog");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.gene_set_inspector.catalog_path)
-                            .desired_width(420.0)
-                            .hint_text("empty = configured/default catalog"),
-                    );
-                });
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Genome cache");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.gene_set_inspector.cache_dir)
-                            .desired_width(420.0)
-                            .hint_text("empty = configured/default cache"),
-                    );
-                });
-            });
-
-        let readiness = self.gene_set_specificity_shell_command();
-        let running = self.gene_set_inspector.task.is_some();
-        let mut run_clicked = false;
-        let mut discard_clicked = false;
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .add_enabled(
-                    !running && readiness.is_ok(),
-                    egui::Button::new("Run specificity on gene set"),
-                )
-                .on_hover_text(
-                    readiness
-                        .as_ref()
-                        .map(|_| {
-                            "Run the shared collections primer-specificity command in a background engine snapshot"
-                        })
-                        .unwrap_or_else(|error| error.as_str()),
-                )
-                .clicked()
-            {
-                run_clicked = true;
-            }
-            if let Some(task) = self.gene_set_inspector.task.as_ref() {
-                ui.add(egui::Spinner::new());
-                ui.label(format!(
-                    "Running #{} ({:.1}s)",
-                    task.job_id,
-                    task.started.elapsed().as_secs_f32()
-                ));
-                if task.cancel_requested.load(Ordering::Relaxed) {
-                    ui.small("Discard requested...");
-                } else if ui
-                    .button("Discard result")
-                    .on_hover_text(
-                        "Request that GENtle drop the detached result. An active BLAST subprocess may still need to finish.",
-                    )
-                    .clicked()
-                {
-                    discard_clicked = true;
-                }
-            }
-        });
-        if let Err(readiness_error) = &readiness {
-            ui.small(format!("Not ready: {readiness_error}"));
-        }
-        if !self.gene_set_inspector.status.trim().is_empty() {
-            ui.small(self.gene_set_inspector.status.clone());
-        }
-
-        let mut open_child: Option<(String, String)> = None;
-        if let Some(report) = self.gene_set_inspector.last_report.clone() {
-            ui.separator();
-            let succeeded = report
-                .per_member_status
-                .iter()
-                .filter(|row| row.outcome == CollectionMemberOutcome::Succeeded)
-                .count();
-            let failed = report
-                .per_member_status
-                .iter()
-                .filter(|row| row.outcome == CollectionMemberOutcome::Failed)
-                .count();
-            ui.strong(format!(
-                "Latest collection result: {} executed, {} failed",
-                succeeded, failed
-            ));
-            ui.small(format!(
-                "report_id={} | lift={:?} | fingerprint={}",
-                report.report_id,
-                report.lifting_mode,
-                report.collection_membership_fingerprint_sha256
-            ));
-            if ui
-                .button("Copy collection report JSON")
-                .on_hover_text("Copy the portable collection-operation report")
-                .clicked()
-                && let Ok(json) = serde_json::to_string_pretty(&report)
-            {
-                ui.ctx().copy_text(json);
-            }
-            egui::ScrollArea::vertical()
-                .id_salt("gene_set_inspector_result_rows")
-                .max_height(280.0)
-                .show_rows(
-                    ui,
-                    52.0,
-                    report.per_member_status.len(),
-                    |ui, row_range| {
-                        for row_index in row_range {
-                            let row = &report.per_member_status[row_index];
-                            ui.horizontal_wrapped(|ui| {
-                                ui.strong(
-                                    row.member
-                                        .gene_symbol
-                                        .as_deref()
-                                        .unwrap_or(row.member.stable_member_id.as_str()),
-                                );
-                                ui.label(format!("execution={:?}", row.outcome));
-                                if let Some(error) = &row.error {
-                                    ui.colored_label(
-                                        ui.visuals().error_fg_color,
-                                        error.message.clone(),
-                                    );
-                                }
-                                for report_id in &row.produced_report_ids {
-                                    if let Some(child) =
-                                        self.gene_set_inspector.child_reports.get(report_id)
-                                    {
-                                        ui.label(format!(
-                                            "biology={} | pass={} | products={} | failing off-targets={}",
-                                            child.status,
-                                            child.specificity_pass,
-                                            child.amplicon_count,
-                                            child.failing_unintended_amplicon_count
-                                        ))
-                                        .on_hover_text(child.summary.clone());
-                                        if let Some(seq_id) = child.primary_seq_id.as_ref()
-                                            && ui
-                                                .button("Open report")
-                                                .on_hover_text(
-                                                    "Open this persisted child specificity report in PCR Designer",
-                                                )
-                                                .clicked()
-                                        {
-                                            open_child =
-                                                Some((seq_id.clone(), child.report_id.clone()));
-                                        }
-                                    } else {
-                                        ui.monospace(report_id);
-                                    }
-                                }
-                            });
-                        }
-                    },
-                );
-            if !report.aggregate_warnings.is_empty() {
-                egui::CollapsingHeader::new(format!(
-                    "Aggregate warnings ({})",
-                    report.aggregate_warnings.len()
-                ))
-                .show(ui, |ui| {
-                    for warning in &report.aggregate_warnings {
-                        ui.small(format!("• {warning}"));
-                    }
-                });
-            }
-        }
-
-        if run_clicked {
-            self.start_gene_set_specificity_task();
-        }
-        if discard_clicked {
-            self.request_gene_set_specificity_discard("gene-set inspector");
-        }
-        if let Some((seq_id, report_id)) = open_child {
-            self.open_sequence_window_for_primer_specificity_report(&seq_id, &report_id);
-        }
+        self.render_gene_set_collection_launcher(ui, &choice);
     }
 
     pub(super) fn render_gene_set_inspector_dialog(&mut self, ctx: &egui::Context) {
@@ -1789,7 +2438,10 @@ impl GENtleApp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{engine::GeneSetResolvedMember, engine_shell::parse_shell_line};
+    use crate::{
+        engine::{BiologicalContext, BiologicalContextRegistry, GeneSetResolvedMember},
+        engine_shell::parse_shell_line,
+    };
 
     fn resolve_operation_from_shell(command: ShellCommand) -> Operation {
         match command {
@@ -2024,48 +2676,66 @@ mod tests {
 
     fn seeded_app() -> GENtleApp {
         let mut app = GENtleApp::default();
-        app.gene_set_inspector.resolutions = vec![GeneSetResolutionChoice {
-            report_id: "resolution:genes".to_string(),
-            report: GeneSetResolutionReport {
-                review_status: GeneSetResolutionReviewStatus::Reviewed,
-                resolved_member_count: 2,
-                resolved_members: vec![
-                    GeneSetResolvedMember {
-                        dedup_key: "GENE1".to_string(),
-                        symbol: "GENE1".to_string(),
-                        ..GeneSetResolvedMember::default()
-                    },
-                    GeneSetResolvedMember {
-                        dedup_key: "GENE2".to_string(),
-                        symbol: "GENE2".to_string(),
-                        ..GeneSetResolvedMember::default()
-                    },
-                ],
-                ..GeneSetResolutionReport::default()
-            },
-        }];
+        let mut resolution = GeneSetResolutionReport {
+            op_id: Some("resolution:genes".to_string()),
+            review_status: GeneSetResolutionReviewStatus::Reviewed,
+            genome_id: Some("GRCh38".to_string()),
+            resolved_member_count: 2,
+            resolved_members: vec![
+                GeneSetResolvedMember {
+                    dedup_key: "GENE1".to_string(),
+                    symbol: "GENE1".to_string(),
+                    ..GeneSetResolvedMember::default()
+                },
+                GeneSetResolvedMember {
+                    dedup_key: "GENE2".to_string(),
+                    symbol: "GENE2".to_string(),
+                    ..GeneSetResolvedMember::default()
+                },
+            ],
+            ..GeneSetResolutionReport::default()
+        };
+        resolution
+            .ensure_default_biological_context()
+            .expect("seed biological context");
+        {
+            let mut engine = app.engine.write().expect("engine");
+            engine
+                .upsert_gene_set_resolution_artifact(resolution)
+                .expect("persist resolution");
+            engine.state_mut().metadata.insert(
+                crate::engine::PRIMER_DESIGN_REPORTS_METADATA_KEY.to_string(),
+                serde_json::json!({
+                    "schema": "gentle.primer_design_reports.v1",
+                    "reports": {
+                        "report_1": {
+                            "report_id": "report_1",
+                            "template": "seq_1",
+                            "pair_count": 2,
+                            "backend": {"used": "internal"}
+                        },
+                        "report_2": {
+                            "report_id": "report_2",
+                            "template": "seq_2",
+                            "pair_count": 1,
+                            "backend": {"used": "internal"}
+                        }
+                    }
+                }),
+            );
+        }
+        app.refresh_gene_set_inspector_catalog(true);
         app.gene_set_inspector.selected_resolution_id = "resolution:genes".to_string();
-        app.gene_set_inspector.primer_reports = vec![
-            PrimerDesignReportSummary {
-                report_id: "report_1".to_string(),
-                template: "seq_1".to_string(),
-                pair_count: 2,
-                ..PrimerDesignReportSummary::default()
-            },
-            PrimerDesignReportSummary {
-                report_id: "report_2".to_string(),
-                template: "seq_2".to_string(),
-                pair_count: 1,
-                ..PrimerDesignReportSummary::default()
-            },
-        ];
         app.gene_set_inspector
+            .specificity_form
             .member_bindings
             .insert("GENE1".to_string(), "report_1".to_string());
         app.gene_set_inspector
+            .specificity_form
             .member_bindings
             .insert("GENE2".to_string(), "report_2".to_string());
-        app.gene_set_inspector.target_genome_id = "GRCh38".to_string();
+        app.gene_set_inspector.specificity_form.target_genome_id = "GRCh38".to_string();
+        app.gene_set_inspector.promoter_form.genome_id = "GRCh38".to_string();
         app
     }
 
@@ -2097,8 +2767,41 @@ mod tests {
         }
     }
 
+    fn promoter_command_projection(command: &ShellCommand) -> serde_json::Value {
+        match command {
+            ShellCommand::GeneSetsPromoterCohort {
+                genome_id,
+                source,
+                resolution,
+                relationship,
+                gene_group_catalog_path,
+                genome_catalog_path,
+                cache_dir,
+                upstream_bp,
+                downstream_bp,
+                allow_draft,
+                allow_deprecated,
+                output,
+            } => serde_json::json!({
+                "genome_id": genome_id,
+                "source": source,
+                "resolution": resolution,
+                "relationship": relationship,
+                "gene_group_catalog_path": gene_group_catalog_path,
+                "genome_catalog_path": genome_catalog_path,
+                "cache_dir": cache_dir,
+                "upstream_bp": upstream_bp,
+                "downstream_bp": downstream_bp,
+                "allow_draft": allow_draft,
+                "allow_deprecated": allow_deprecated,
+                "output": output,
+            }),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
     #[test]
-    fn gene_set_inspector_command_matches_shared_shell_parser() {
+    fn collection_operation_launcher_specificity_command_matches_shared_shell_parser_once() {
         let app = seeded_app();
         let gui_command = app
             .gene_set_specificity_shell_command()
@@ -2115,12 +2818,22 @@ mod tests {
             command_projection(&gui_command),
             command_projection(&parsed)
         );
+        let ShellCommand::CollectionsRunPrimerSpecificity {
+            member_bindings, ..
+        } = gui_command
+        else {
+            unreachable!("specificity adapter returns one collection command")
+        };
+        assert_eq!(member_bindings.len(), 2);
     }
 
     #[test]
-    fn gene_set_inspector_requires_complete_explicit_bindings_and_valid_rank() {
+    fn collection_operation_launcher_requires_complete_explicit_bindings_and_valid_rank() {
         let mut app = seeded_app();
-        app.gene_set_inspector.member_bindings.remove("GENE2");
+        app.gene_set_inspector
+            .specificity_form
+            .member_bindings
+            .remove("GENE2");
         assert!(
             app.gene_set_specificity_shell_command()
                 .expect_err("missing binding")
@@ -2128,9 +2841,10 @@ mod tests {
         );
 
         app.gene_set_inspector
+            .specificity_form
             .member_bindings
             .insert("GENE2".to_string(), "report_2".to_string());
-        app.gene_set_inspector.pair_rank_1based = "2".to_string();
+        app.gene_set_inspector.specificity_form.pair_rank_1based = "2".to_string();
         assert!(
             app.gene_set_specificity_shell_command()
                 .expect_err("rank unavailable for report_2")
@@ -2139,16 +2853,382 @@ mod tests {
     }
 
     #[test]
-    fn gene_set_specificity_task_completion_preserves_execution_and_biology_states() {
-        let mut app = GENtleApp::default();
+    fn collection_operation_launcher_promoter_command_matches_shared_shell_parser() {
+        let mut app = seeded_app();
+        app.gene_set_inspector.promoter_form = GeneSetPromoterFormState {
+            genome_id: "GRCh38".to_string(),
+            relationship: GeneSetCohortRelationship::CoRegulated,
+            upstream_bp: "750".to_string(),
+            downstream_bp: "125".to_string(),
+            gene_group_catalog_path: "groups.json".to_string(),
+            genome_catalog_path: "genomes.json".to_string(),
+            cache_dir: "cache".to_string(),
+            output_path: "cohort.json".to_string(),
+        };
+        let gui_command = app.gene_set_promoter_shell_command().expect("GUI command");
+        let resolution_json = serde_json::to_string(
+            &app.selected_gene_set_resolution()
+                .expect("selected resolution")
+                .report,
+        )
+        .expect("resolution JSON");
+        let parsed = parse_shell_line(&format!(
+            "gene-sets promoter-cohort GRCh38 --resolution '{resolution_json}' \
+             --relationship co-regulated --upstream-bp 750 --downstream-bp 125 \
+             --catalog groups.json --genome-catalog genomes.json --cache-dir cache \
+             --output cohort.json"
+        ))
+        .expect("shared shell command");
+
+        assert_eq!(
+            promoter_command_projection(&gui_command),
+            promoter_command_projection(&parsed)
+        );
+        let ShellCommand::GeneSetsPromoterCohort {
+            resolution: Some(resolution),
+            ..
+        } = &gui_command
+        else {
+            panic!("promoter adapter must inline one complete resolution")
+        };
+        assert_eq!(resolution.resolved_members.len(), 2);
+        assert_eq!(
+            app.gene_set_inspector.specificity_form.target_genome_id, "GRCh38",
+            "promoter and specificity parameters remain separate form state"
+        );
+    }
+
+    #[test]
+    fn collection_operation_launcher_missing_bindings_is_not_materialization() {
+        let mut app = seeded_app();
+        app.gene_set_inspector
+            .specificity_form
+            .member_bindings
+            .remove("GENE2");
+        let report = app
+            .selected_gene_set_resolution()
+            .expect("selected resolution")
+            .report
+            .clone();
+        let row = collection_launcher_rows(CollectionSubjectKind::GeneSetResolution)
+            .into_iter()
+            .find(|row| row.adapter == Some(CollectionLauncherAdapter::PrimerSpecificity))
+            .expect("specificity row");
+        assert!(matches!(
+            app.gene_set_collection_operation_readiness(&row, &report),
+            CollectionLauncherReadiness::NeedsBindings { .. }
+        ));
+    }
+
+    #[test]
+    fn collection_operation_launcher_mixed_context_readiness_matches_engine_rejection() {
+        let context = |context_id: &str, genome_id: &str| BiologicalContext {
+            context_id: context_id.to_string(),
+            genome_id: Some(genome_id.to_string()),
+            ..BiologicalContext::default()
+        };
+        let mut mixed = GeneSetResolutionReport {
+            op_id: Some("resolution:mixed".to_string()),
+            resolved_member_count: 2,
+            resolved_members: vec![
+                GeneSetResolvedMember {
+                    dedup_key: "GENE1".to_string(),
+                    symbol: "GENE1".to_string(),
+                    context_id: Some("human".to_string()),
+                    ..GeneSetResolvedMember::default()
+                },
+                GeneSetResolvedMember {
+                    dedup_key: "GENE2".to_string(),
+                    symbol: "GENE2".to_string(),
+                    context_id: Some("mouse".to_string()),
+                    ..GeneSetResolvedMember::default()
+                },
+            ],
+            biological_contexts: BiologicalContextRegistry {
+                contexts: vec![context("human", "GRCh38"), context("mouse", "GRCm39")],
+                default_context_id: Some("human".to_string()),
+            },
+            ..GeneSetResolutionReport::default()
+        };
+        let mut app = seeded_app();
+        app.gene_set_inspector.resolutions = vec![GeneSetResolutionChoice {
+            report_id: "resolution:mixed".to_string(),
+            report: mixed.clone(),
+        }];
+        app.gene_set_inspector.selected_resolution_id = "resolution:mixed".to_string();
+        let row = collection_launcher_rows(CollectionSubjectKind::GeneSetResolution)
+            .into_iter()
+            .find(|row| row.adapter == Some(CollectionLauncherAdapter::PrimerSpecificity))
+            .expect("specificity row");
+        let readiness = app.gene_set_collection_operation_readiness(&row, &mixed);
+        assert!(matches!(
+            readiness,
+            CollectionLauncherReadiness::PolicyRejected {
+                reason: CollectionLiftRejectionReason::MixedBiologicalContext,
+                ..
+            }
+        ));
+
+        let mut engine = GentleEngine::new();
+        engine
+            .upsert_gene_set_resolution_artifact(std::mem::take(&mut mixed))
+            .expect("persist mixed resolution");
+        let error = engine
+            .apply(Operation::AssessPrimerPairSpecificityCollection {
+                collection_subject: CollectionSubjectRef::GeneSetResolution {
+                    report_id: "resolution:mixed".to_string(),
+                },
+                member_bindings: vec![],
+                pair_rank: Some(1),
+                pair_index: None,
+                target_genome_id: "GRCh38".to_string(),
+                policy: PrimerSpecificityPolicy::default(),
+                catalog_path: None,
+                cache_dir: None,
+                path: None,
+            })
+            .expect_err("mixed context must fail before report bindings or BLAST");
+        assert!(error.message.contains("mixed_biological_context"));
+    }
+
+    #[test]
+    fn collection_operation_launcher_promoter_readiness_matches_legacy_context_normalization() {
+        let app = seeded_app();
+        let mut legacy = app
+            .selected_gene_set_resolution()
+            .expect("selected resolution")
+            .report
+            .clone();
+        legacy.biological_contexts = BiologicalContextRegistry::default();
+        for member in &mut legacy.resolved_members {
+            member.context_id = None;
+        }
+        let rows = collection_launcher_rows(CollectionSubjectKind::GeneSetResolution);
+        let promoter = rows
+            .iter()
+            .find(|row| row.adapter == Some(CollectionLauncherAdapter::PromoterCohort))
+            .expect("promoter row");
+        assert_eq!(
+            app.gene_set_collection_operation_readiness(promoter, &legacy),
+            CollectionLauncherReadiness::Ready,
+            "promoter engine promotes legacy report-level genome context"
+        );
+
+        let specificity = rows
+            .iter()
+            .find(|row| row.adapter == Some(CollectionLauncherAdapter::PrimerSpecificity))
+            .expect("specificity row");
+        assert!(matches!(
+            app.gene_set_collection_operation_readiness(specificity, &legacy),
+            CollectionLauncherReadiness::PolicyRejected {
+                reason: CollectionLiftRejectionReason::MissingBiologicalContext,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn collection_operation_launcher_promoter_subject_identity_and_success_refresh_are_preserved() {
+        let mut app = seeded_app();
+        app.gene_set_inspector.selected_operation = CollectionLauncherAdapter::PromoterCohort;
+        app.gene_set_inspector.promoter_form.upstream_bp = "777".to_string();
+        app.gene_set_inspector.promoter_form.downstream_bp = "123".to_string();
+        let selected_report = app
+            .selected_gene_set_resolution()
+            .expect("selected resolution")
+            .report
+            .clone();
+        let expected_subject = CollectionSubjectRef::GeneSetResolution {
+            report_id: "resolution:genes".to_string(),
+        };
+        let collection_report = CollectionOperationReport {
+            report_id: "collection:promoters".to_string(),
+            collection_subject: expected_subject.clone(),
+            per_member_status: vec![crate::engine::CollectionMemberStatusRow {
+                outcome: CollectionMemberOutcome::Succeeded,
+                ..crate::engine::CollectionMemberStatusRow::default()
+            }],
+            ..CollectionOperationReport::default()
+        };
+        let promoter_report = GeneSetPromoterCohortReport {
+            genome_id: "GRCh38".to_string(),
+            upstream_bp: 777,
+            downstream_bp: 123,
+            gene_set_resolution: selected_report,
+            requested_member_count: 2,
+            returned_window_count: 1,
+            collection_operation: Some(Box::new(collection_report)),
+            ..GeneSetPromoterCohortReport::default()
+        };
+        let parsed = {
+            let engine = app.engine.read().expect("engine");
+            GENtleApp::collection_operation_task_result_from_output(
+                &engine,
+                CollectionLauncherAdapter::PromoterCohort,
+                &expected_subject,
+                serde_json::to_value(&promoter_report).expect("promoter output"),
+            )
+            .expect("normalize promoter output")
+        };
+
+        let mut mismatched = promoter_report.clone();
+        mismatched
+            .collection_operation
+            .as_mut()
+            .expect("wrapper")
+            .collection_subject = CollectionSubjectRef::GeneSetResolution {
+            report_id: "resolution:other".to_string(),
+        };
+        let mismatch_error = {
+            let engine = app.engine.read().expect("engine");
+            GENtleApp::collection_operation_task_result_from_output(
+                &engine,
+                CollectionLauncherAdapter::PromoterCohort,
+                &expected_subject,
+                serde_json::to_value(mismatched).expect("mismatched output"),
+            )
+            .expect_err("mismatched source identity must fail")
+        };
+        assert!(mismatch_error.message.contains("expected"));
+
         let (tx, receiver) = mpsc::channel();
         let runtime_frame = GENtleApp::push_runtime_background_job_frame(
-            BackgroundJobKind::PrimerSpecificityCollection,
+            BackgroundJobKind::CollectionOperation,
+            10,
+            "test promoter",
+        );
+        app.gene_set_inspector.task = Some(GeneSetCollectionOperationTask {
+            job_id: 10,
+            adapter: CollectionLauncherAdapter::PromoterCohort,
+            resolution_id: "resolution:genes".to_string(),
+            started: Instant::now(),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
+            runtime_frame,
+            receiver,
+        });
+        tx.send(Ok(parsed)).expect("send promoter result");
+        app.poll_gene_set_collection_operation_task(&egui::Context::default());
+
+        assert_eq!(
+            app.gene_set_inspector.selected_resolution_id,
+            "resolution:genes"
+        );
+        assert_eq!(
+            app.gene_set_inspector.specificity_form.member_bindings["GENE1"],
+            "report_1"
+        );
+        assert_eq!(app.gene_set_inspector.promoter_form.upstream_bp, "777");
+        assert_eq!(app.gene_set_inspector.promoter_form.downstream_bp, "123");
+        assert!(matches!(
+            app.gene_set_inspector.last_result.as_ref(),
+            Some(CollectionOperationTaskResult {
+                payload: CollectionOperationPayload::PromoterCohort(_),
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn collection_operation_launcher_discard_drops_an_already_queued_success() {
+        let mut app = seeded_app();
+        app.gene_set_inspector.selected_operation = CollectionLauncherAdapter::PromoterCohort;
+        app.gene_set_inspector.promoter_form.upstream_bp = "901".to_string();
+        app.gene_set_inspector.promoter_form.downstream_bp = "101".to_string();
+        let (tx, receiver) = mpsc::channel();
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        app.gene_set_inspector.task = Some(GeneSetCollectionOperationTask {
+            job_id: 11,
+            adapter: CollectionLauncherAdapter::PromoterCohort,
+            resolution_id: "resolution:genes".to_string(),
+            started: Instant::now(),
+            cancel_requested: cancel_requested.clone(),
+            runtime_frame: GENtleApp::push_runtime_background_job_frame(
+                BackgroundJobKind::CollectionOperation,
+                11,
+                "test discard",
+            ),
+            receiver,
+        });
+        tx.send(Ok(CollectionOperationTaskResult {
+            adapter: CollectionLauncherAdapter::PrimerSpecificity,
+            report: CollectionOperationReport {
+                report_id: "collection:discarded".to_string(),
+                collection_subject: CollectionSubjectRef::GeneSetResolution {
+                    report_id: "resolution:genes".to_string(),
+                },
+                ..CollectionOperationReport::default()
+            },
+            payload: CollectionOperationPayload::PrimerSpecificity {
+                child_reports: BTreeMap::new(),
+            },
+        }))
+        .expect("queue successful result");
+        app.request_gene_set_collection_operation_discard("test");
+        app.poll_gene_set_collection_operation_task(&egui::Context::default());
+
+        assert!(cancel_requested.load(Ordering::Relaxed));
+        assert!(app.gene_set_inspector.task.is_none());
+        assert!(app.gene_set_inspector.last_result.is_none());
+        assert!(
+            app.gene_set_inspector
+                .status
+                .contains("no result was displayed")
+        );
+        assert_eq!(
+            app.gene_set_inspector.selected_operation,
+            CollectionLauncherAdapter::PromoterCohort
+        );
+        assert_eq!(app.gene_set_inspector.promoter_form.upstream_bp, "901");
+        assert_eq!(app.gene_set_inspector.promoter_form.downstream_bp, "101");
+    }
+
+    #[test]
+    fn collection_operation_launcher_failure_preserves_selection_and_parameters() {
+        let mut app = seeded_app();
+        app.gene_set_inspector.selected_operation = CollectionLauncherAdapter::PromoterCohort;
+        app.gene_set_inspector.promoter_form.upstream_bp = "811".to_string();
+        app.gene_set_inspector.promoter_form.downstream_bp = "211".to_string();
+        let (tx, receiver) = mpsc::channel();
+        app.gene_set_inspector.task = Some(GeneSetCollectionOperationTask {
+            job_id: 12,
+            adapter: CollectionLauncherAdapter::PromoterCohort,
+            resolution_id: "resolution:genes".to_string(),
+            started: Instant::now(),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
+            runtime_frame: GENtleApp::push_runtime_background_job_frame(
+                BackgroundJobKind::CollectionOperation,
+                12,
+                "test failure",
+            ),
+            receiver,
+        });
+        tx.send(Err(EngineError::invalid_input("synthetic failure")))
+            .expect("send failed result");
+        app.poll_gene_set_collection_operation_task(&egui::Context::default());
+
+        assert!(app.gene_set_inspector.task.is_none());
+        assert!(app.gene_set_inspector.last_result.is_none());
+        assert!(app.gene_set_inspector.status.contains("synthetic failure"));
+        assert_eq!(
+            app.gene_set_inspector.selected_operation,
+            CollectionLauncherAdapter::PromoterCohort
+        );
+        assert_eq!(app.gene_set_inspector.promoter_form.upstream_bp, "811");
+        assert_eq!(app.gene_set_inspector.promoter_form.downstream_bp, "211");
+    }
+
+    #[test]
+    fn collection_operation_launcher_specificity_completion_preserves_biology_states() {
+        let mut app = seeded_app();
+        let (tx, receiver) = mpsc::channel();
+        let runtime_frame = GENtleApp::push_runtime_background_job_frame(
+            BackgroundJobKind::CollectionOperation,
             9,
             "test",
         );
-        app.gene_set_inspector.task = Some(GeneSetSpecificityTask {
+        app.gene_set_inspector.task = Some(GeneSetCollectionOperationTask {
             job_id: 9,
+            adapter: CollectionLauncherAdapter::PrimerSpecificity,
             resolution_id: "resolution:genes".to_string(),
             started: Instant::now(),
             cancel_requested: Arc::new(AtomicBool::new(false)),
@@ -2162,9 +3242,13 @@ mod tests {
             summary: "Synthetic biological failure".to_string(),
             ..PrimerSpecificityChildPresentation::default()
         };
-        tx.send(Ok(GeneSetSpecificityTaskResult {
+        tx.send(Ok(CollectionOperationTaskResult {
+            adapter: CollectionLauncherAdapter::PrimerSpecificity,
             report: CollectionOperationReport {
                 report_id: "collection:1".to_string(),
+                collection_subject: CollectionSubjectRef::GeneSetResolution {
+                    report_id: "resolution:genes".to_string(),
+                },
                 per_member_status: vec![crate::engine::CollectionMemberStatusRow {
                     outcome: CollectionMemberOutcome::Succeeded,
                     produced_report_ids: vec!["specificity:1".to_string()],
@@ -2172,11 +3256,13 @@ mod tests {
                 }],
                 ..CollectionOperationReport::default()
             },
-            child_reports: BTreeMap::from([("specificity:1".to_string(), child)]),
+            payload: CollectionOperationPayload::PrimerSpecificity {
+                child_reports: BTreeMap::from([("specificity:1".to_string(), child)]),
+            },
         }))
         .expect("send result");
 
-        app.poll_gene_set_specificity_task(&egui::Context::default());
+        app.poll_gene_set_collection_operation_task(&egui::Context::default());
 
         assert!(app.gene_set_inspector.task.is_none());
         assert!(
@@ -2184,12 +3270,16 @@ mod tests {
                 .status
                 .contains("1 executed, 0 failed")
         );
-        assert_eq!(
-            app.gene_set_inspector.child_reports["specificity:1"].status,
-            "fail"
-        );
+        let Some(CollectionOperationTaskResult {
+            payload: CollectionOperationPayload::PrimerSpecificity { child_reports },
+            ..
+        }) = app.gene_set_inspector.last_result.as_ref()
+        else {
+            panic!("specificity result")
+        };
+        assert_eq!(child_reports["specificity:1"].status, "fail");
         assert!(
-            !app.gene_set_inspector.child_reports["specificity:1"].specificity_pass,
+            !child_reports["specificity:1"].specificity_pass,
             "execution success must not be conflated with biological pass"
         );
     }

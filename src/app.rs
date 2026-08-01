@@ -101,6 +101,9 @@ mod rack_workspace_ui;
 #[path = "app/gibson_ui.rs"]
 mod gibson_ui;
 
+#[path = "app/collection_operations_ui.rs"]
+mod collection_operations_ui;
+
 #[path = "app/gene_set_ui.rs"]
 mod gene_set_ui;
 
@@ -1308,6 +1311,8 @@ enum BackgroundJobKind {
     TrackImport,
     OpenTutorialProject,
     AgentAssist,
+    CollectionOperation,
+    /// Legacy persisted job-history value retained for backwards compatibility.
     PrimerSpecificityCollection,
 }
 
@@ -1319,6 +1324,7 @@ impl BackgroundJobKind {
             Self::TrackImport => "TrackImport",
             Self::OpenTutorialProject => "OpenTutorialProject",
             Self::AgentAssist => "AgentAssist",
+            Self::CollectionOperation => "CollectionOperation",
             Self::PrimerSpecificityCollection => "PrimerSpecificityCollection",
         }
     }
@@ -4702,6 +4708,7 @@ Error: `{err}`"
         let mut track_import = 0usize;
         let mut tutorial = 0usize;
         let mut agent = 0usize;
+        let mut collection_operation = 0usize;
         let mut primer_specificity_collection = 0usize;
         let mut origin_counts: BTreeMap<String, usize> = BTreeMap::new();
         let mut min_snapshot_id = u64::MAX;
@@ -4715,6 +4722,7 @@ Error: `{err}`"
                 BackgroundJobKind::TrackImport => track_import += 1,
                 BackgroundJobKind::OpenTutorialProject => tutorial += 1,
                 BackgroundJobKind::AgentAssist => agent += 1,
+                BackgroundJobKind::CollectionOperation => collection_operation += 1,
                 BackgroundJobKind::PrimerSpecificityCollection => {
                     primer_specificity_collection += 1
                 }
@@ -4750,13 +4758,14 @@ Error: `{err}`"
             }
         }
         format!(
-            "{} match(es) · kinds: PrepareGenome={} BlastGenome={} TrackImport={} OpenTutorialProject={} AgentAssist={} PrimerSpecificityCollection={} · origins: {} · ids #{}..#{} · captured_at {}..{}",
+            "{} match(es) · kinds: PrepareGenome={} BlastGenome={} TrackImport={} OpenTutorialProject={} AgentAssist={} CollectionOperation={} PrimerSpecificityCollection={} · origins: {} · ids #{}..#{} · captured_at {}..{}",
             snapshots.len(),
             prepare,
             blast,
             track_import,
             tutorial,
             agent,
+            collection_operation,
             primer_specificity_collection,
             if origin_preview.is_empty() {
                 "-".to_string()
@@ -5213,7 +5222,7 @@ Error: `{err}`"
             || self.tutorial_project_task.is_some()
             || self.agent_task.is_some()
             || self.has_active_gene_set_resolution_task()
-            || self.has_active_gene_set_specificity_task()
+            || self.has_active_gene_set_collection_operation_task()
     }
 
     fn refresh_sequence_windows_for_seq_ids(&mut self, seq_ids: &[String]) -> usize {
@@ -22536,7 +22545,7 @@ Error: `{err}`"
                 self.render_agent_status_message(ui, &self.agent_status, false);
             }
 
-            self.render_gene_set_specificity_background_job(ui);
+            self.render_gene_set_collection_operation_background_job(ui);
 
             ui.separator();
             ui.strong("Recent job events");
@@ -24814,7 +24823,7 @@ impl GENtleApp {
             self.poll_agent_model_discovery_task(ctx);
             self.poll_clawbio_task(ctx);
             self.poll_gene_set_resolution_task(ctx);
-            self.poll_gene_set_specificity_task(ctx);
+            self.poll_gene_set_collection_operation_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
             self.sync_open_windows_if_display_changed(ctx);
             self.refresh_root_frame_presentation_caches();

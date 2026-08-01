@@ -256,19 +256,19 @@ Tests:
 - GUI helper test that promoter derivation uses `BuildGeneSetPromoterCohort`
 - parity test for `gene-sets promoter-cohort` GUI affordance
 
-### Phase 5: collection operation launcher
+### Phase 5: collection operation launcher (gene-set A4a landed)
 
-- Add a generic collection operation launcher that starts with a small curated
-  operation set:
-  - export FASTA / multi-record artifact
-  - digest per member
-  - BLAST per member
-  - promoter derivation from gene set
-  - pool/gel via explicit pool or arrangement action
-- The launcher displays the selected lifting mode before execution.
-- The launcher must not silently convert logical sets into physical pools.
-- Each operation row must show whether it is ready, requires materialization,
-  or is unsupported with a typed reason.
+- Landed A4a: the Gene Set Inspector projects every canonical gene-set
+  engine-operation policy and displays its lifting mode, payload kind, and
+  readiness without maintaining a second GUI operation catalog.
+- Typed adapters currently execute promoter derivation and primer specificity
+  through one shared shell command over the complete selected membership.
+- Pool export, pooled-gel rendering, and serial arrangement are visible but
+  disabled with their canonical typed physical/materialization requirements;
+  the launcher does not silently convert logical sets into physical pools.
+- Remaining Phase 5 work is to add shared engine policies/routes and typed GUI
+  adapters for export, digest, BLAST, non-gene subjects, and explicit
+  materialization when those contracts are ready.
 
 File targets:
 
@@ -329,25 +329,17 @@ Tests:
 
 ## Release-Oriented First Slice
 
-Current status: the engine-owned collection subject/report baseline, the first
-`map` consumer, and its binding-aware GUI inspector are implemented. The shared
-`collections run primer-specificity` route and `Genome > Gene Set
-Inspector...` both require auditable member-to-primer-report bindings for
-logical gene sets. Broader Phase 3 source authoring and the generic Phase 5
-launcher remain open.
+Current status: all five gene-set source forms, persisted resolution inspection,
+and the registry-projected A4a launcher are implemented. The launcher has typed
+adapters for `map` primer specificity and `derive` promoter cohorts, uses one
+detached shared-shell execution path, and preserves canonical typed rejections
+for operations that require physical or materialized members.
 
-The next smallest implementation slice after the binding-aware inspector is:
-
-1. Add GUI helper code that converts a gene-set resolve form into
-   `Operation::ResolveGeneSet`.
-2. Add tests proving that the GUI helper and shared shell parser produce the
-   same operation payload for one catalog-group source and one explicit-members
-   source.
-3. Keep display minimal: status, warnings, resolved/unresolved member table,
-   and JSON export.
-
-This slice avoids broad collection launchers while proving the core parity
-shape.
+The next release-oriented slice should remain narrow: add one adapter only
+after its shared engine lifting policy, complete-membership route, portable
+result, and deterministic GUI-to-engine parity test exist. Export, digest,
+BLAST, non-gene collection subjects, and physical materialization remain open;
+they should not be simulated by GUI-local member loops.
 
 ## Acceptance Criteria For The Full Plan
 

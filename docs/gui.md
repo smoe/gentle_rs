@@ -453,16 +453,31 @@ The project main window (lineage page) supports two views:
     portable JSON copy/export
   - external mappings are resolved from configured local catalogs; opening the
     form does not perform a live ontology lookup
-  - bind every logical member to one exact persisted primer-design report
-  - choose a one-based pair rank and a prepared local BLAST target
-  - run the shared `collections run primer-specificity` route in a background
-    engine snapshot
-  - inspect per-member execution outcomes separately from each child
-    specificity report's biological pass/fail verdict
+  - the collection-operation catalog is projected from canonical
+    engine-operation lifting policies rather than maintained as a GUI-only list
+  - the first typed adapters are promoter-cohort derivation (`derive`) and
+    primer-specificity assessment (`map`), each with independent form state and
+    operation-specific results
+  - pool export, pooled-gel rendering, and serial arrangement remain visible but
+    disabled with their typed physical-pool or materialization requirements
+  - primer specificity binds every logical member to one exact persisted
+    primer-design report, then chooses a one-based pair rank and prepared local
+    BLAST target
+  - promoter derivation chooses one prepared genome, strand-aware window sizes,
+    and an optional relationship expectation
+  - both adapters execute one shared shell command against one complete
+    collection membership in a detached engine snapshot; `Discard result`
+    always suppresses display and cooperatively prevents commit when the worker
+    observes the request before detached commit, but does not remove an output
+    file the shared command already wrote
+  - result views keep per-member execution outcomes separate from biological
+    verdicts and verify that the returned collection subject is still the one
+    displayed by the inspector
 - The inspector never infers an assay from a gene symbol. Missing bindings,
-  unavailable pair ranks, stale detached results, and member-level execution
-  failures remain explicit. The portable collection report can be copied as
-  JSON, and persisted child reports can be opened in PCR Designer.
+  unavailable pair ranks, mixed or mismatched biological context, stale
+  detached results, and member-level execution failures remain explicit. The
+  portable collection report can be copied as JSON, and persisted child reports
+  can be opened in PCR Designer.
 - Detailed implementation plan:
   [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
 - Operations offered for a collection should expose the engine-declared lifting
