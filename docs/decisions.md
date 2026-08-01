@@ -1,5 +1,13 @@
 # GENtle Decisions
 
+## 2026-08-01: derive web and print gene-set reports from one record
+
+Publication-style multi-gene analyses use one portable manifest and one
+resolved semantic record. Responsive HTML remains the main browsable report;
+the PDF is a printable companion containing the full primer list and all
+selected figures. This retains the useful PARK7-style overview while removing
+hard-coded gene lists and independently maintained HTML/PDF assembly scripts.
+
 This file records durable implementation constraints and architectural
 decisions. It is intentionally short: if an entry becomes a backlog item, move
 that work to [`roadmap.md`](roadmap.md); if it describes completed history,

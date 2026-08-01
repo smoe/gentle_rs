@@ -12,6 +12,7 @@ pub mod dna_ladder;
 pub mod feature_location_edit;
 pub mod feature_record_curation;
 pub mod gene_groups;
+pub mod gene_set_publication;
 pub mod gene_sets;
 pub mod isoform_evidence;
 pub mod orthologs;
@@ -89,6 +90,15 @@ pub use gene_groups::{
     GeneGroupCatalog, GeneGroupCatalogSourceReport, GeneGroupDoctorReport, GeneGroupDraftReport,
     GeneGroupExternalMapping, GeneGroupExternalResource, GeneGroupListEntry, GeneGroupListReport,
     GeneGroupMember, GeneGroupRecord, GeneGroupResolveReport, GeneGroupShowReport,
+};
+pub use gene_set_publication::{
+    GENE_SET_PUBLICATION_GENERATION_SCHEMA, GENE_SET_PUBLICATION_REPORT_SCHEMA,
+    GENE_SET_PUBLICATION_REQUEST_SCHEMA, GeneSetPublicationDownload,
+    GeneSetPublicationDownloadRequest, GeneSetPublicationFigure, GeneSetPublicationFigureRequest,
+    GeneSetPublicationGene, GeneSetPublicationGeneRequest, GeneSetPublicationGenerationReport,
+    GeneSetPublicationMetric, GeneSetPublicationNarrativeSection,
+    GeneSetPublicationPrimerColumnMap, GeneSetPublicationPrimerRow,
+    GeneSetPublicationPrimerTableSource, GeneSetPublicationReport, GeneSetPublicationRequest,
 };
 pub use gene_sets::{
     GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA,

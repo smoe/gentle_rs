@@ -1,5 +1,13 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Gene-set publication report
+
+`gentle.gene_set_publication_request.v1` is the portable multi-gene publication
+input. It resolves to `gentle.gene_set_publication_report.v1`, which normalises
+the complete primer table and copied asset paths. The generation receipt is
+`gentle.gene_set_publication_generation.v1`. HTML and printable output are
+projections of this record, not independent sources.
+
 This document defines the draft machine-facing protocol for operating GENtle
 through a shared core engine.
 

@@ -1,5 +1,13 @@
 # GENtle Architecture (Working Draft)
 
+## Publication projections
+
+Multi-gene publication output follows a request → resolved report → renderer
+boundary. File resolution and primer-table normalisation happen once. Web and
+print renderers consume the same record, preserving gene order, primer rows,
+captions, figure inventory, and provenance. Bespoke analysis scripts may
+prepare evidence inputs but must not maintain a second publication data model.
+
 Last updated: 2026-05-07
 
 This document describes how GENtle is intended to work and the durable
