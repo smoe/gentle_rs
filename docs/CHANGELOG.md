@@ -5,7 +5,10 @@
   companion containing the complete primer-pair list and all selected locus,
   primer/exon-map, and virtual-gel figures. The new
   `gentle_publication_report` binary makes this reusable for arbitrary gene
-  sets and emits an auditable generation receipt.
+  sets and emits an auditable generation receipt. Bundle filenames are confined
+  to the output root, colliding asset basenames are rejected, and optional PDF
+  tool failures identify their executable override without leaving a false PDF
+  link in the resolved report.
 
 This file is the auditable record of completed work that used to accumulate in
 [`roadmap.md`](roadmap.md). Keep entries brief and outcome-focused. Durable

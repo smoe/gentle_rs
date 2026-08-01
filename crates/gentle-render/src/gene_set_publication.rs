@@ -124,7 +124,10 @@ pub fn render_gene_set_publication_html(report: &GeneSetPublicationReport) -> St
     let primary_count = report
         .primers
         .iter()
-        .filter(|primer| primer.status.eq_ignore_ascii_case("primary"))
+        .filter(|primer| {
+            primer.role.eq_ignore_ascii_case("primary")
+                || primer.status.eq_ignore_ascii_case("primary")
+        })
         .count();
     let overview = format!(
         "<section class=\"overview\" aria-label=\"Analysis overview\"><div class=\"overview-card\"><small>Evidence</small><b>{} labelled conditions</b><span>Transcript models, abundance, differential activity, and specificity inputs</span></div><div class=\"overview-arrow\">→</div><div class=\"overview-card\"><small>Assay panel</small><b>{} pairs across {} genes</b><span>{} primary pairs; review gates and rejection states remain visible</span></div><div class=\"overview-arrow\">→</div><div class=\"overview-card\"><small>Interpretation</small><b>{} linked figures</b><span>Locus evidence, primer/exon maps, and expected virtual-gel products</span></div></section>",
@@ -316,8 +319,9 @@ fn render_markdown_primer_list(rows: &[&GeneSetPublicationPrimerRow]) -> String 
 /// Render the print narrative and full primer list from the resolved report.
 ///
 /// Figure assets are listed in their append order. The bundle generator joins
-/// their PDF pages after this narrative so large vector figures retain their
-/// original detail.
+/// their PDF pages after this narrative; explicitly supplied PDF sources can
+/// retain vector detail, while SVG-only sources use GENtle's rasterized PDF
+/// fallback.
 pub fn render_gene_set_publication_markdown(report: &GeneSetPublicationReport) -> String {
     let mut markdown = format!(
         "---\ntitle: \"{}\"\nsubtitle: \"{}\"\ndate: \"{}\"\nlang: en-GB\ngeometry: margin=20mm\nfontsize: 9pt\npapersize: a4\ncolorlinks: true\nheader-includes:\n  - |\n    ```{{=latex}}\n    \\usepackage{{booktabs}}\n    \\usepackage{{longtable}}\n    \\usepackage{{array}}\n    \\usepackage{{microtype}}\n    \\setlength{{\\emergencystretch}}{{3em}}\n    ```\n---\n\n# Purpose and summary\n\n{}\n\n",
@@ -453,6 +457,7 @@ mod tests {
         }
         assert!(html.contains("data-gentle-figure-kind=\"locus_evidence\""));
         assert!(html.contains("aria-label=\"Analysis overview\""));
+        assert!(html.contains("1 primary pairs"));
         assert!(markdown.contains("Complete primer-pair list"));
     }
 }

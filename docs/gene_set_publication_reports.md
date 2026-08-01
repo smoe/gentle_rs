@@ -39,6 +39,16 @@ with `GENTLE_PANDOC_BIN`, `GENTLE_PDFUNITE_BIN`, and
 
 Relative inputs resolve from the manifest directory. Assets are copied under
 `figures/` and `data/`, making the result independently publishable.
+Configured HTML, Markdown, and PDF names must be plain filenames and cannot
+replace GENtle's internal receipt paths. If two different source assets would
+land at the same case-insensitive bundle path, generation stops with a clear
+collision error rather than silently replacing one asset.
+
+With `--pdf`, each external tool must both exit successfully and produce a
+non-empty expected output. Errors identify the executable and corresponding
+override variable. The HTML, Markdown, and resolved record are still written
+without a PDF link when PDF generation cannot complete, so a failed optional
+print step cannot masquerade as a complete PDF bundle.
 
 Minimal shape (real reports normally add metrics, narrative, downloads, and
 three figures per gene):
