@@ -1094,6 +1094,27 @@ Implemented collection-lifting baseline:
   member succeeds without truncation and scans every effective motif; a child
   cap may stop motif iteration, so retained zero/count values must not imply
   complete absence when that flag is false.
+- `DigestCollection` is the first mutating `map` lift. Project-sequence
+  subjects resolve directly, while logical gene-set members require explicit
+  `DigestCollectionMemberBinding` rows. The operation reuses the existing
+  topology-aware `Digest` implementation, rejects unknown enzymes before
+  member execution, and retains typed member failures for member-local digest
+  errors.
+- Preview is the default for `collections run digest`. The portable
+  `gentle.collection_digest.v1` report owns per-member source snapshot hashes,
+  effective output prefixes, planned fragment ids, lengths, topology,
+  fragment snapshot hashes, and materialization state. Aggregate fields expose
+  planned/created counts, completeness, and incomplete member ids.
+- `sha256_collection_digest_plan_v1` binds the collection subject and
+  membership fingerprint, exact bound source snapshots, effective enzymes,
+  normalized output prefix, deterministic sequential id reservation, planned
+  fragment snapshots, and typed failed-member details. Apply requires that
+  exact preview fingerprint and rejects drift before mutation. Applied
+  fragments receive lineage only from their own source member; logical
+  collection digestion does not create a physical container. Existing
+  `DigestContainer` remains the explicit physical-container route, while
+  generic `Digest` collection policies reject container and arrangement
+  subjects.
 - A logical gene-set member has no inherent primer-assay identity. Its
   `PrimerSpecificityCollectionMemberBinding` must therefore name the exact
   `stable_member_id` and persisted `primer_report_id`. Project-sequence

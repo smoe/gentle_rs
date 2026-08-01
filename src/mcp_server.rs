@@ -1231,6 +1231,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "collections run primer-specificity",
             "collections run restriction-scan",
             "collections run tfbs-scan",
+            "collections run digest",
             "primers specificity-plan",
             "primers specificity-import",
             "primers compose-gene-assay-routine",

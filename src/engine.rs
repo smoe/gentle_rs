@@ -4049,6 +4049,20 @@ pub enum Operation {
         enzymes: Vec<String>,
         output_prefix: Option<String>,
     },
+    DigestCollection {
+        collection_subject: CollectionSubjectRef,
+        #[serde(default)]
+        member_bindings: Vec<DigestCollectionMemberBinding>,
+        enzymes: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_prefix: Option<String>,
+        #[serde(default)]
+        dry_run: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_plan_fingerprint_sha256: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     FindRestrictionSites {
         target: SequenceScanTarget,
         #[serde(default)]
@@ -9380,6 +9394,7 @@ impl GentleEngine {
                 | Operation::FindRestrictionSites { .. }
                 | Operation::FindRestrictionSitesCollection { .. }
                 | Operation::ScanTfbsHitsCollection { .. }
+                | Operation::DigestCollection { dry_run: true, .. }
                 | Operation::QueryRepeatAnnotations { .. }
                 | Operation::QueryRepeatOverlaps { .. }
                 | Operation::BuildRepeatEnvironmentCohort { .. }

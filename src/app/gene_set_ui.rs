@@ -12,15 +12,15 @@ use super::collection_operations_ui::{
 use super::*;
 use crate::{
     engine::{
-        CollectionContextRequirement, CollectionLiftRejectionReason, CollectionMemberOutcome,
-        CollectionMemberRef, CollectionOperationReport, CollectionRestrictionSiteScanReport,
-        CollectionSubjectKind, CollectionSubjectRef, CollectionTfbsHitScanReport,
-        DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
-        DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP, GeneSetCohortRelationship,
-        GeneSetPromoterCohortReport, GeneSetProvenanceRow, GeneSetRequest, GeneSetResolutionReport,
-        GeneSetResolutionReviewStatus, PrimerDesignReportSummary,
-        PrimerSpecificityCollectionMemberBinding, PrimerSpecificityPolicy,
-        RestrictionSiteScanCollectionMemberBinding, TfThresholdOverride,
+        CollectionContextRequirement, CollectionDigestReport, CollectionLiftRejectionReason,
+        CollectionMemberOutcome, CollectionMemberRef, CollectionOperationReport,
+        CollectionRestrictionSiteScanReport, CollectionSubjectKind, CollectionSubjectRef,
+        CollectionTfbsHitScanReport, DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+        DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP, DigestCollectionMemberBinding,
+        GeneSetCohortRelationship, GeneSetPromoterCohortReport, GeneSetProvenanceRow,
+        GeneSetRequest, GeneSetResolutionReport, GeneSetResolutionReviewStatus,
+        PrimerDesignReportSummary, PrimerSpecificityCollectionMemberBinding,
+        PrimerSpecificityPolicy, RestrictionSiteScanCollectionMemberBinding, TfThresholdOverride,
         TfbsHitScanCollectionMemberBinding, homogeneous_collection_biological_context,
         validate_collection_context_target_genome,
     },
@@ -377,6 +377,15 @@ struct GeneSetTfbsScanFormState {
     max_hits_per_member: String,
 }
 
+#[derive(Clone, Debug, Default)]
+struct GeneSetDigestFormState {
+    member_bindings: BTreeMap<String, String>,
+    enzymes: String,
+    output_prefix: String,
+    apply_change: bool,
+    expected_plan_fingerprint_sha256: String,
+}
+
 impl Default for GeneSetRestrictionScanFormState {
     fn default() -> Self {
         Self {
@@ -421,6 +430,7 @@ enum CollectionOperationPayload {
     },
     RestrictionScan(Box<CollectionRestrictionSiteScanReport>),
     TfbsScan(Box<CollectionTfbsHitScanReport>),
+    Digest(Box<CollectionDigestReport>),
     PromoterCohort(Box<GeneSetPromoterCohortReport>),
 }
 
@@ -459,6 +469,7 @@ pub(super) struct GeneSetInspectorUiState {
     specificity_form: GeneSetSpecificityFormState,
     restriction_scan_form: GeneSetRestrictionScanFormState,
     tfbs_scan_form: GeneSetTfbsScanFormState,
+    digest_form: GeneSetDigestFormState,
     promoter_form: GeneSetPromoterFormState,
     status: String,
     resolve_form: GeneSetResolveFormState,
@@ -482,6 +493,7 @@ impl Default for GeneSetInspectorUiState {
             specificity_form: GeneSetSpecificityFormState::default(),
             restriction_scan_form: GeneSetRestrictionScanFormState::default(),
             tfbs_scan_form: GeneSetTfbsScanFormState::default(),
+            digest_form: GeneSetDigestFormState::default(),
             promoter_form: GeneSetPromoterFormState::default(),
             status: String::new(),
             resolve_form: GeneSetResolveFormState::default(),
@@ -770,6 +782,20 @@ impl GENtleApp {
                 .or_default();
         }
         self.gene_set_inspector
+            .digest_form
+            .member_bindings
+            .retain(|member_id, seq_id| {
+                selected_member_ids.contains(member_id)
+                    && (seq_id.is_empty() || loaded_seq_ids.contains(seq_id))
+            });
+        for member_id in &selected_member_ids {
+            self.gene_set_inspector
+                .digest_form
+                .member_bindings
+                .entry(member_id.clone())
+                .or_default();
+        }
+        self.gene_set_inspector
             .tfbs_scan_form
             .member_bindings
             .retain(|member_id, seq_id| {
@@ -1014,6 +1040,69 @@ impl GENtleApp {
         })
     }
 
+    fn gene_set_digest_shell_command(&self) -> Result<ShellCommand, String> {
+        let choice = self
+            .selected_gene_set_resolution()
+            .ok_or_else(|| "Select a persisted gene-set resolution first".to_string())?;
+        if choice.report.resolved_members.is_empty() {
+            return Err("The selected gene set has no resolved members".to_string());
+        }
+        let form = &self.gene_set_inspector.digest_form;
+        let mut member_bindings = Vec::with_capacity(choice.report.resolved_members.len());
+        let mut missing_members = Vec::new();
+        for member in &choice.report.resolved_members {
+            let seq_id = form
+                .member_bindings
+                .get(&member.dedup_key)
+                .map(String::as_str)
+                .unwrap_or_default()
+                .trim();
+            if seq_id.is_empty() {
+                missing_members.push(member.symbol.clone());
+            } else {
+                member_bindings.push(DigestCollectionMemberBinding {
+                    stable_member_id: member.dedup_key.clone(),
+                    seq_id: seq_id.to_string(),
+                });
+            }
+        }
+        if !missing_members.is_empty() {
+            return Err(format!(
+                "Bind one loaded DNA sequence for every member; missing: {}",
+                missing_members.join(", ")
+            ));
+        }
+        let enzymes = form
+            .enzymes
+            .split([',', '\n'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if enzymes.is_empty() {
+            return Err("Enter at least one restriction enzyme".to_string());
+        }
+        let expected_plan_fingerprint_sha256 = if form.apply_change {
+            Some(
+                optional_trimmed(&form.expected_plan_fingerprint_sha256)
+                    .ok_or_else(|| "Preview this digest before applying it".to_string())?,
+            )
+        } else {
+            None
+        };
+        Ok(ShellCommand::CollectionsRunDigest {
+            collection_subject: CollectionSubjectRef::GeneSetResolution {
+                report_id: choice.report_id.clone(),
+            },
+            member_bindings,
+            enzymes,
+            output_prefix: optional_trimmed(&form.output_prefix),
+            dry_run: !form.apply_change,
+            expected_plan_fingerprint_sha256,
+            path: None,
+        })
+    }
+
     fn seed_gene_set_promoter_form_from_selection(&mut self) {
         let selected_genome_id = self
             .selected_gene_set_resolution()
@@ -1119,6 +1208,7 @@ impl GENtleApp {
             CollectionLauncherAdapter::PrimerSpecificity
                 | CollectionLauncherAdapter::RestrictionScan
                 | CollectionLauncherAdapter::TfbsScan
+                | CollectionLauncherAdapter::Digest
         ) {
             let bindings = match adapter {
                 CollectionLauncherAdapter::PrimerSpecificity => {
@@ -1132,6 +1222,9 @@ impl GENtleApp {
                 }
                 CollectionLauncherAdapter::TfbsScan => {
                     &self.gene_set_inspector.tfbs_scan_form.member_bindings
+                }
+                CollectionLauncherAdapter::Digest => {
+                    &self.gene_set_inspector.digest_form.member_bindings
                 }
                 CollectionLauncherAdapter::PromoterCohort => unreachable!(),
             };
@@ -1153,6 +1246,7 @@ impl GENtleApp {
                             CollectionLauncherAdapter::PrimerSpecificity => "primer-design report",
                             CollectionLauncherAdapter::RestrictionScan => "loaded DNA sequence",
                             CollectionLauncherAdapter::TfbsScan => "loaded DNA sequence",
+                            CollectionLauncherAdapter::Digest => "loaded DNA sequence",
                             CollectionLauncherAdapter::PromoterCohort => unreachable!(),
                         },
                         missing.join(", ")
@@ -1168,6 +1262,7 @@ impl GENtleApp {
                 self.gene_set_restriction_scan_shell_command()
             }
             CollectionLauncherAdapter::TfbsScan => self.gene_set_tfbs_scan_shell_command(),
+            CollectionLauncherAdapter::Digest => self.gene_set_digest_shell_command(),
             CollectionLauncherAdapter::PromoterCohort => self.gene_set_promoter_shell_command(),
         };
         let command = match command {
@@ -1183,7 +1278,8 @@ impl GENtleApp {
                 ..
             } => target_genome_id,
             ShellCommand::CollectionsRunRestrictionScan { .. }
-            | ShellCommand::CollectionsRunTfbsScan { .. } => "",
+            | ShellCommand::CollectionsRunTfbsScan { .. }
+            | ShellCommand::CollectionsRunDigest { .. } => "",
             _ => unreachable!("collection launcher adapters construct known shell commands"),
         };
         let normalized_report = if adapter == CollectionLauncherAdapter::PromoterCohort {
@@ -1232,6 +1328,7 @@ impl GENtleApp {
                 self.gene_set_restriction_scan_shell_command()
             }
             CollectionLauncherAdapter::TfbsScan => self.gene_set_tfbs_scan_shell_command(),
+            CollectionLauncherAdapter::Digest => self.gene_set_digest_shell_command(),
             CollectionLauncherAdapter::PromoterCohort => self.gene_set_promoter_shell_command(),
         }
     }
@@ -1341,6 +1438,30 @@ impl GENtleApp {
                     adapter,
                     report: tfbs_scan.collection_operation.clone(),
                     payload: CollectionOperationPayload::TfbsScan(Box::new(tfbs_scan)),
+                })
+            }
+            CollectionLauncherAdapter::Digest => {
+                let digest = serde_json::from_value::<CollectionDigestReport>(
+                    output
+                        .get("report")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                )
+                .map_err(|error| {
+                    invalid_output(format!(
+                        "Collection digest command returned an invalid report: {error}"
+                    ))
+                })?;
+                if &digest.collection_operation.collection_subject != expected_subject {
+                    return Err(invalid_output(format!(
+                        "Collection digest returned subject {:?}, expected {:?}",
+                        digest.collection_operation.collection_subject, expected_subject
+                    )));
+                }
+                Ok(CollectionOperationTaskResult {
+                    adapter,
+                    report: digest.collection_operation.clone(),
+                    payload: CollectionOperationPayload::Digest(Box::new(digest)),
                 })
             }
             CollectionLauncherAdapter::PromoterCohort => {
@@ -1560,12 +1681,32 @@ impl GENtleApp {
                             "incomplete"
                         }
                     ),
+                    CollectionOperationPayload::Digest(report) => format!(
+                        "Collection digest {} in {elapsed:.1}s: {succeeded} executed, {failed} failed, {} fragment(s) {}.",
+                        if report.collection_operation.applied {
+                            "applied"
+                        } else {
+                            "previewed"
+                        },
+                        report.total_planned_fragment_count,
+                        if report.collection_operation.applied {
+                            "created"
+                        } else {
+                            "planned"
+                        }
+                    ),
                     CollectionOperationPayload::PromoterCohort(report) => format!(
                         "Promoter cohort completed in {elapsed:.1}s: {} window(s), {} unresolved. Derivation stores the cohort and may normalize missing source-context metadata.",
                         report.returned_window_count,
                         report.unresolved_members.len()
                     ),
                 };
+                if let CollectionOperationPayload::Digest(report) = &result.payload {
+                    self.gene_set_inspector
+                        .digest_form
+                        .expected_plan_fingerprint_sha256 = report.plan_fingerprint_sha256.clone();
+                    self.gene_set_inspector.digest_form.apply_change = false;
+                }
                 self.refresh_gene_set_inspector_catalog(true);
                 self.gene_set_inspector.selected_resolution_id = task.resolution_id.clone();
                 self.reconcile_gene_set_inspector_bindings();
@@ -2291,6 +2432,128 @@ impl GENtleApp {
             });
     }
 
+    fn render_gene_set_digest_form(&mut self, ui: &mut Ui, choice: &GeneSetResolutionChoice) {
+        let sequence_ids = self
+            .engine
+            .read()
+            .ok()
+            .map(|engine| engine.state().sequences.keys().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        let mut plan_inputs_changed = false;
+        ui.strong("Sequence bindings");
+        ui.small("Each resolved gene is bound explicitly to one loaded DNA sequence.");
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!("Loaded DNA sequences: {}", sequence_ids.len()));
+            if ui
+                .button("Clear bindings")
+                .on_hover_text("Clear every member-to-sequence selection")
+                .clicked()
+            {
+                for seq_id in self
+                    .gene_set_inspector
+                    .digest_form
+                    .member_bindings
+                    .values_mut()
+                {
+                    seq_id.clear();
+                }
+                plan_inputs_changed = true;
+            }
+        });
+        egui::ScrollArea::vertical()
+            .id_salt("gene_set_digest_bindings")
+            .max_height(300.0)
+            .show_rows(
+                ui,
+                34.0,
+                choice.report.resolved_members.len(),
+                |ui, row_range| {
+                    for row_index in row_range {
+                        let member = &choice.report.resolved_members[row_index];
+                        ui.horizontal(|ui| {
+                            ui.vertical(|ui| {
+                                ui.label(&member.symbol);
+                                ui.small(
+                                    member
+                                        .gene_id
+                                        .as_deref()
+                                        .unwrap_or(member.dedup_key.as_str()),
+                                );
+                            });
+                            ui.add_space(12.0);
+                            let binding = self
+                                .gene_set_inspector
+                                .digest_form
+                                .member_bindings
+                                .entry(member.dedup_key.clone())
+                                .or_default();
+                            egui::ComboBox::from_id_salt((
+                                "gene_set_member_digest_sequence",
+                                &member.dedup_key,
+                            ))
+                            .selected_text(if binding.is_empty() {
+                                "Select loaded sequence..."
+                            } else {
+                                binding.as_str()
+                            })
+                            .width(420.0)
+                            .show_ui(ui, |ui| {
+                                plan_inputs_changed |= ui
+                                    .selectable_value(binding, String::new(), "Not selected")
+                                    .changed();
+                                for seq_id in &sequence_ids {
+                                    plan_inputs_changed |= ui
+                                        .selectable_value(binding, seq_id.clone(), seq_id)
+                                        .changed();
+                                }
+                            });
+                        });
+                    }
+                },
+            );
+
+        ui.separator();
+        ui.strong("Restriction digest parameters");
+        let form = &mut self.gene_set_inspector.digest_form;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Enzymes");
+            plan_inputs_changed |= ui
+                .add(
+                    egui::TextEdit::singleline(&mut form.enzymes)
+                        .desired_width(300.0)
+                        .hint_text("EcoRI, BamHI"),
+                )
+                .changed();
+            ui.label("Output prefix");
+            plan_inputs_changed |= ui
+                .add(
+                    egui::TextEdit::singleline(&mut form.output_prefix)
+                        .desired_width(220.0)
+                        .hint_text("Generated per member"),
+                )
+                .changed();
+        });
+        if plan_inputs_changed {
+            form.expected_plan_fingerprint_sha256.clear();
+            form.apply_change = false;
+        }
+        ui.horizontal_wrapped(|ui| {
+            let has_preview = !form.expected_plan_fingerprint_sha256.trim().is_empty();
+            ui.add_enabled_ui(has_preview, |ui| {
+                ui.checkbox(&mut form.apply_change, "Apply previewed digest")
+                    .on_hover_text("Materialize the exact fingerprint-locked fragment plan");
+            });
+            if has_preview {
+                let fingerprint = form.expected_plan_fingerprint_sha256.as_str();
+                let compact = fingerprint.chars().take(24).collect::<String>();
+                ui.monospace(format!("plan {compact}..."))
+                    .on_hover_text(fingerprint);
+            } else {
+                ui.small("No locked preview");
+            }
+        });
+    }
+
     fn render_gene_set_promoter_form(&mut self, ui: &mut Ui) {
         ui.strong("Promoter-cohort parameters");
         ui.small(
@@ -2403,9 +2666,11 @@ impl GENtleApp {
             CollectionOperationPayload::PrimerSpecificity { child_reports } => Some(child_reports),
             CollectionOperationPayload::RestrictionScan(_) => None,
             CollectionOperationPayload::TfbsScan(_) => None,
+            CollectionOperationPayload::Digest(_) => None,
             CollectionOperationPayload::PromoterCohort(_) => None,
         };
         let mut open_child: Option<(String, String)> = None;
+        let mut open_digest_sequence: Option<String> = None;
         egui::ScrollArea::vertical()
             .id_salt("gene_set_inspector_result_rows")
             .max_height(280.0)
@@ -2607,6 +2872,97 @@ impl GENtleApp {
             }
         }
 
+        if let CollectionOperationPayload::Digest(digest) = &result.payload {
+            ui.separator();
+            ui.strong(format!(
+                "Digest fragments: {} planned, {} created",
+                digest.total_planned_fragment_count, digest.total_created_fragment_count
+            ));
+            ui.small(format!(
+                "enzymes={} | mode={} | aggregate counts={}",
+                digest.effective_enzymes.join(", "),
+                if digest.collection_operation.applied {
+                    "applied"
+                } else {
+                    "preview"
+                },
+                if digest.aggregate_counts_complete {
+                    "complete"
+                } else {
+                    "incomplete"
+                }
+            ));
+            ui.monospace(format!("plan={}", digest.plan_fingerprint_sha256));
+            if ui
+                .button("Copy digest JSON")
+                .on_hover_text("Copy the complete portable collection digest report")
+                .clicked()
+                && let Ok(json) = serde_json::to_string_pretty(digest.as_ref())
+            {
+                ui.ctx().copy_text(json);
+            }
+            egui::ScrollArea::vertical()
+                .id_salt("gene_set_digest_member_results")
+                .max_height(240.0)
+                .show(ui, |ui| {
+                    egui::Grid::new("gene_set_digest_member_result_grid")
+                        .striped(true)
+                        .spacing([12.0, 5.0])
+                        .show(ui, |ui| {
+                            ui.strong("Member");
+                            ui.strong("Source");
+                            ui.strong("Fragments");
+                            ui.strong("Sequence IDs");
+                            ui.strong("Open");
+                            ui.end_row();
+                            for member in digest.member_reports.iter().take(100) {
+                                ui.label(&member.stable_member_id);
+                                ui.monospace(&member.source_seq_id);
+                                ui.label(member.fragments.len().to_string());
+                                let all_ids = member
+                                    .fragments
+                                    .iter()
+                                    .map(|fragment| fragment.seq_id.as_str())
+                                    .collect::<Vec<_>>();
+                                let visible_ids = all_ids
+                                    .iter()
+                                    .take(3)
+                                    .copied()
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                ui.monospace(if all_ids.len() > 3 {
+                                    format!("{visible_ids}, ...")
+                                } else {
+                                    visible_ids
+                                })
+                                .on_hover_text(all_ids.join("\n"));
+                                ui.add_enabled_ui(
+                                    member
+                                        .fragments
+                                        .iter()
+                                        .any(|fragment| fragment.materialized),
+                                    |ui| {
+                                        ui.menu_button("Open", |ui| {
+                                            for fragment in member
+                                                .fragments
+                                                .iter()
+                                                .filter(|fragment| fragment.materialized)
+                                            {
+                                                if ui.button(&fragment.seq_id).clicked() {
+                                                    open_digest_sequence =
+                                                        Some(fragment.seq_id.clone());
+                                                    ui.close();
+                                                }
+                                            }
+                                        });
+                                    },
+                                );
+                                ui.end_row();
+                            }
+                        });
+                });
+        }
+
         if let CollectionOperationPayload::PromoterCohort(promoter) = &result.payload {
             ui.separator();
             ui.strong(format!(
@@ -2700,6 +3056,9 @@ impl GENtleApp {
         if let Some((seq_id, report_id)) = open_child {
             self.open_sequence_window_for_primer_specificity_report(&seq_id, &report_id);
         }
+        if let Some(seq_id) = open_digest_sequence {
+            self.open_sequence_window(&seq_id);
+        }
     }
 
     fn render_gene_set_collection_launcher(
@@ -2789,6 +3148,7 @@ impl GENtleApp {
                 self.render_gene_set_restriction_scan_form(ui, choice)
             }
             CollectionLauncherAdapter::TfbsScan => self.render_gene_set_tfbs_scan_form(ui, choice),
+            CollectionLauncherAdapter::Digest => self.render_gene_set_digest_form(ui, choice),
             CollectionLauncherAdapter::PromoterCohort => self.render_gene_set_promoter_form(ui),
         }
         let readiness = presented
@@ -2946,6 +3306,11 @@ impl GENtleApp {
         });
         if selection_changed {
             self.gene_set_inspector.last_result = None;
+            self.gene_set_inspector
+                .digest_form
+                .expected_plan_fingerprint_sha256
+                .clear();
+            self.gene_set_inspector.digest_form.apply_change = false;
             self.reconcile_gene_set_inspector_bindings();
             self.seed_gene_set_promoter_form_from_selection();
         }
@@ -3597,6 +3962,29 @@ mod tests {
         }
     }
 
+    fn digest_command_projection(command: &ShellCommand) -> serde_json::Value {
+        match command {
+            ShellCommand::CollectionsRunDigest {
+                collection_subject,
+                member_bindings,
+                enzymes,
+                output_prefix,
+                dry_run,
+                expected_plan_fingerprint_sha256,
+                path,
+            } => serde_json::json!({
+                "collection_subject": collection_subject,
+                "member_bindings": member_bindings,
+                "enzymes": enzymes,
+                "output_prefix": output_prefix,
+                "dry_run": dry_run,
+                "expected_plan_fingerprint_sha256": expected_plan_fingerprint_sha256,
+                "path": path,
+            }),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
     #[test]
     fn collection_operation_launcher_specificity_command_matches_shared_shell_parser_once() {
         let app = seeded_app();
@@ -3737,6 +4125,69 @@ mod tests {
             app.gene_set_tfbs_scan_shell_command()
                 .expect_err("missing motifs")
                 .contains("at least one")
+        );
+    }
+
+    #[test]
+    fn collection_operation_launcher_digest_matches_shared_shell_preview_and_apply() {
+        let mut app = seeded_app();
+        app.gene_set_inspector
+            .digest_form
+            .member_bindings
+            .insert("GENE1".to_string(), "seq_1".to_string());
+        app.gene_set_inspector
+            .digest_form
+            .member_bindings
+            .insert("GENE2".to_string(), "seq_2".to_string());
+        app.gene_set_inspector.digest_form.enzymes = "EcoRI, BamHI".to_string();
+        app.gene_set_inspector.digest_form.output_prefix = "batch".to_string();
+
+        let gui_preview = app
+            .gene_set_digest_shell_command()
+            .expect("GUI preview command");
+        let parsed_preview = parse_shell_line(
+            "collections run digest resolution:genes \
+             --member-sequence GENE1=seq_1 --member-sequence GENE2=seq_2 \
+             --enzyme EcoRI --enzyme BamHI --output-prefix batch",
+        )
+        .expect("shared shell preview command");
+        assert_eq!(
+            digest_command_projection(&gui_preview),
+            digest_command_projection(&parsed_preview)
+        );
+
+        app.gene_set_inspector.digest_form.apply_change = true;
+        assert!(
+            app.gene_set_digest_shell_command()
+                .expect_err("apply requires a preview lock")
+                .contains("Preview this digest")
+        );
+        app.gene_set_inspector
+            .digest_form
+            .expected_plan_fingerprint_sha256 = "sha256:locked".to_string();
+        let gui_apply = app
+            .gene_set_digest_shell_command()
+            .expect("GUI apply command");
+        let parsed_apply = parse_shell_line(
+            "collections run digest resolution:genes \
+             --member-sequence GENE1=seq_1 --member-sequence GENE2=seq_2 \
+             --enzyme EcoRI --enzyme BamHI --output-prefix batch --apply \
+             --expected-plan-fingerprint-sha256 sha256:locked",
+        )
+        .expect("shared shell apply command");
+        assert_eq!(
+            digest_command_projection(&gui_apply),
+            digest_command_projection(&parsed_apply)
+        );
+
+        app.gene_set_inspector
+            .digest_form
+            .member_bindings
+            .remove("GENE2");
+        assert!(
+            app.gene_set_digest_shell_command()
+                .expect_err("missing binding")
+                .contains("missing: GENE2")
         );
     }
 
@@ -3917,6 +4368,25 @@ mod tests {
             app.gene_set_collection_operation_readiness(&tfbs, &mixed),
             CollectionLauncherReadiness::Ready,
             "TFBS hit scanning has no genome-scoped parameter and is context agnostic"
+        );
+
+        app.gene_set_inspector
+            .digest_form
+            .member_bindings
+            .insert("GENE1".to_string(), "seq_1".to_string());
+        app.gene_set_inspector
+            .digest_form
+            .member_bindings
+            .insert("GENE2".to_string(), "seq_2".to_string());
+        app.gene_set_inspector.digest_form.enzymes = "EcoRI".to_string();
+        let digest = collection_launcher_rows(CollectionSubjectKind::GeneSetResolution)
+            .into_iter()
+            .find(|row| row.adapter == Some(CollectionLauncherAdapter::Digest))
+            .expect("digest row");
+        assert_eq!(
+            app.gene_set_collection_operation_readiness(&digest, &mixed),
+            CollectionLauncherReadiness::Ready,
+            "restriction digestion is context agnostic"
         );
 
         let mut engine = GentleEngine::new();

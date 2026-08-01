@@ -354,6 +354,15 @@ that later motifs or candidates were scanned: aggregate count fields must be
 named as retained/observed values and accompanied by an explicit completeness
 flag plus affected member ids or warnings.
 
+A mutating collection lift must expose a non-mutating preview before apply.
+Its apply lock binds the exact source snapshots, effective parameters, and the
+deterministically reserved output namespace in addition to the collection
+membership fingerprint; the membership fingerprint alone is not a mutation
+guard. Apply must reject a changed plan before inserting any output. Derived
+sequence lineage is recorded from each source member to its own products, and
+logical collection products do not imply that those products occupy one
+physical container.
+
 Collection members bind biological interpretation through a report-owned
 context registry. Context-sensitive policies are fail-closed: an undeclared
 policy is `not_reviewed`, while reviewed consumers may require one homogeneous

@@ -444,13 +444,6 @@
     },
     {
       "source": "glossary_command",
-      "name": "digest",
-      "adapter": "gui",
-      "surfacing": "not_applicable",
-      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
-    },
-    {
-      "source": "glossary_command",
       "name": "dotplot list",
       "adapter": "js",
       "surfacing": "not_applicable",

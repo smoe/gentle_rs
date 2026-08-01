@@ -24,6 +24,15 @@ understand what changed.
 
 ## 2026-08-01
 
+- Added restriction digestion as the first mutating collection `map`
+  operation. Shared shell/CLI/MCP and the Gene Set Inspector now preview exact
+  source- and namespace-locked fragment plans before apply; successful apply
+  preserves circular/linear direct-digest semantics, creates individually
+  openable sequences with per-source lineage, and never implies a pooled
+  physical container.
+- Added the direct shared-shell `digest` parity route, made unknown restriction
+  enzymes fail closed before mutation, and removed digest progress text from
+  stdout so MCP stdio framing remains valid.
 - Added non-mutating TFBS hit scanning as a collection `map` operation.
   Project sequences and explicitly sequence-bound gene-set members now share
   direct-scan motif/threshold semantics across engine, shell/CLI/MCP, and the

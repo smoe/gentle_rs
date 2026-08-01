@@ -481,6 +481,8 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "collections run tfbs-scan" => {
             Some("collections run tfbs-scan --seq-ids demo --motif AAA")
         }
+        "collections run digest" => Some("collections run digest --seq-ids demo --enzyme EcoRI"),
+        "digest" => Some("digest demo --enzyme EcoRI"),
         "seq-confirm run" => Some("seq-confirm run expected --reads read1"),
         "seq-primer suggest" => Some("seq-primer suggest expected --primers primer1"),
         "rna-reads allele-hash-screen" => Some(
@@ -544,6 +546,10 @@ fn skip_glossary_flag_parse(path: &str, flag: &str) -> bool {
                     "--resolution" | "--gene-set-resolution"
                 )
                 | ("collections run primer-specificity", "--pair-index")
+                | (
+                    "collections run digest",
+                    "--apply" | "--expected-plan-fingerprint-sha256"
+                )
                 | (
                     "features tfbs-score-tracks-svg",
                     "--end" | "--output" | "--sequence-text" | "--start"
@@ -6822,11 +6828,82 @@ fn parse_collections_run_tfbs_scan_preserves_direct_scan_parameters() {
             .contains("at least one --motif")
     );
     assert!(
+        parse_shell_line("collections run tfbs-scan resolution:set --seq-id seq_a --motif AAA")
+            .expect_err("subjects are mutually exclusive")
+            .contains("either GENE_SET_REPORT_ID or --seq-ids")
+    );
+}
+
+#[test]
+fn parse_digest_and_collection_digest_preserve_shared_parameters_and_apply_guard() {
+    assert!(matches!(
+        parse_shell_line("digest seq_a --enzyme EcoRI --enzymes BamHI,SmaI --output-prefix cut")
+            .expect("parse direct digest"),
+        ShellCommand::Digest {
+            input,
+            enzymes,
+            output_prefix: Some(output_prefix),
+        } if input == "seq_a"
+            && enzymes == ["EcoRI", "BamHI", "SmaI"]
+            && output_prefix == "cut"
+    ));
+
+    let preview = parse_shell_line(
+        "collections run digest resolution:constructs \
+         --member-sequence GENE1=seq_a --member-sequence GENE2=seq_b \
+         --enzyme EcoRI --enzymes BamHI,SmaI --output-prefix batch \
+         --path digest_preview.json",
+    )
+    .expect("parse collection digest preview");
+    match preview {
+        ShellCommand::CollectionsRunDigest {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings,
+            enzymes,
+            output_prefix,
+            dry_run,
+            expected_plan_fingerprint_sha256,
+            path,
+        } => {
+            assert_eq!(report_id, "resolution:constructs");
+            assert_eq!(member_bindings.len(), 2);
+            assert_eq!(member_bindings[0].stable_member_id, "GENE1");
+            assert_eq!(member_bindings[0].seq_id, "seq_a");
+            assert_eq!(enzymes, ["EcoRI", "BamHI", "SmaI"]);
+            assert_eq!(output_prefix.as_deref(), Some("batch"));
+            assert!(dry_run);
+            assert!(expected_plan_fingerprint_sha256.is_none());
+            assert_eq!(path.as_deref(), Some("digest_preview.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let apply = parse_shell_line(
+        "collections run digest --seq-ids seq_a,seq_b --enzyme EcoRI --apply \
+         --expected-plan-fingerprint-sha256 sha256:abc",
+    )
+    .expect("parse collection digest apply");
+    assert!(matches!(
+        apply,
+        ShellCommand::CollectionsRunDigest {
+            collection_subject: CollectionSubjectRef::ProjectSequences { seq_ids },
+            dry_run: false,
+            expected_plan_fingerprint_sha256: Some(fingerprint),
+            ..
+        } if seq_ids == ["seq_a", "seq_b"] && fingerprint == "sha256:abc"
+    ));
+    assert!(
+        parse_shell_line("collections run digest --seq-ids seq_a --enzyme EcoRI --apply")
+            .expect_err("apply requires preview fingerprint")
+            .contains("--apply requires --expected-plan-fingerprint-sha256")
+    );
+    assert!(
         parse_shell_line(
-            "collections run tfbs-scan resolution:set --seq-id seq_a --motif AAA"
+            "collections run digest --seq-ids seq_a --enzyme EcoRI \
+             --expected-plan-fingerprint-sha256 sha256:abc"
         )
-        .expect_err("subjects are mutually exclusive")
-        .contains("either GENE_SET_REPORT_ID or --seq-ids")
+        .expect_err("preview rejects an apply fingerprint")
+        .contains("only with --apply")
     );
 }
 
@@ -17389,6 +17466,70 @@ fn execute_collection_tfbs_scan_returns_non_mutating_completeness_aware_report()
         capped.output["report"]["truncated_member_count"].as_u64(),
         Some(1)
     );
+}
+
+#[test]
+fn execute_collection_digest_previews_then_applies_the_same_plan() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("AAGAATTCCCGG").expect("sequence a"),
+    );
+    state.sequences.insert(
+        "seq_b".to_string(),
+        DNAsequence::from_sequence("TTTGAATTCAAA").expect("sequence b"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let preview_command = parse_shell_line(
+        "collections run digest --seq-ids seq_a,seq_b --enzyme EcoRI --output-prefix shell_batch",
+    )
+    .expect("parse collection digest preview");
+    let preview = execute_shell_command(&mut engine, &preview_command)
+        .expect("execute collection digest preview");
+    assert!(!preview.state_changed);
+    assert_eq!(
+        preview.output["schema"].as_str(),
+        Some("gentle.collection_digest_command.v1")
+    );
+    assert_eq!(
+        preview.output["report"]["schema"].as_str(),
+        Some("gentle.collection_digest.v1")
+    );
+    assert_eq!(
+        preview.output["report"]["collection_operation"]["dry_run"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        preview.output["report"]["total_created_fragment_count"].as_u64(),
+        Some(0)
+    );
+    let fingerprint = preview.output["report"]["plan_fingerprint_sha256"]
+        .as_str()
+        .expect("preview fingerprint");
+    let apply_command = parse_shell_line(&format!(
+        "collections run digest --seq-ids seq_a,seq_b --enzyme EcoRI --output-prefix shell_batch --apply --expected-plan-fingerprint-sha256 {fingerprint}"
+    ))
+    .expect("parse collection digest apply");
+    let applied =
+        execute_shell_command(&mut engine, &apply_command).expect("apply collection digest");
+    assert!(applied.state_changed);
+    assert_eq!(
+        applied.output["report"]["plan_fingerprint_sha256"].as_str(),
+        Some(fingerprint)
+    );
+    assert_eq!(
+        applied.output["report"]["total_created_fragment_count"].as_u64(),
+        Some(4)
+    );
+    let created_ids = applied.output["result"]["created_seq_ids"]
+        .as_array()
+        .expect("created sequence ids");
+    assert_eq!(created_ids.len(), 4);
+    assert!(created_ids.iter().all(|value| {
+        value
+            .as_str()
+            .is_some_and(|seq_id| engine.state().sequences.contains_key(seq_id))
+    }));
 }
 
 #[test]

@@ -2294,6 +2294,20 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.sequence_ids, &binding.seq_id);
                 }
             }
+            Operation::DigestCollection {
+                collection_subject,
+                member_bindings,
+                ..
+            } => {
+                if let CollectionSubjectRef::ProjectSequences { seq_ids } = collection_subject {
+                    for seq_id in seq_ids {
+                        Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                    }
+                }
+                for binding in member_bindings {
+                    Self::push_unique_token(&mut summary.sequence_ids, &binding.seq_id);
+                }
+            }
             Operation::QueryRepeatAnnotations { genome_id, .. }
             | Operation::BuildRepeatEnvironmentCohort { genome_id, .. }
             | Operation::SummarizeWindowCohortTfbs {
@@ -2604,6 +2618,9 @@ impl GentleEngine {
         | Operation::ScanTfbsHitsCollection {
             path: Some(path), ..
         }
+        | Operation::DigestCollection {
+            path: Some(path), ..
+        }
         | Operation::ScanTfbsHits {
             path: Some(path), ..
         }
@@ -2694,6 +2711,9 @@ impl GentleEngine {
                 path: Some(path), ..
             }
             | Operation::ScanTfbsHitsCollection {
+                path: Some(path), ..
+            } => push(path),
+            Operation::DigestCollection {
                 path: Some(path), ..
             } => push(path),
             Operation::ScanTfbsHits {
@@ -3890,6 +3910,19 @@ impl GentleEngine {
                 output_prefix,
             } => vec![format!(
                 "Digest all contents of container `{container_id}` with {} and keep products under prefix `{}`.",
+                Self::lab_join_or_dash(enzymes),
+                output_prefix.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::DigestCollection {
+                collection_subject,
+                enzymes,
+                output_prefix,
+                dry_run,
+                ..
+            } => vec![format!(
+                "{} restriction digestion over the {:?} collection with {}; fragment prefix: `{}`.",
+                if *dry_run { "Preview" } else { "Apply" },
+                collection_subject.kind(),
                 Self::lab_join_or_dash(enzymes),
                 output_prefix.as_deref().unwrap_or("GENtle-generated")
             )],

@@ -7316,6 +7316,12 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
 pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() >= 3
         && tokens.get(1).map(String::as_str) == Some("run")
+        && tokens.get(2).map(String::as_str) == Some("digest")
+    {
+        return parse_collections_run_digest(tokens);
+    }
+    if tokens.len() >= 3
+        && tokens.get(1).map(String::as_str) == Some("run")
         && matches!(
             tokens.get(2).map(String::as_str),
             Some("tfbs-scan" | "tfbs_scan")
@@ -7341,7 +7347,7 @@ pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellComman
         )
     {
         return Err(
-            "collections requires: run primer-specificity|restriction-scan|tfbs-scan [GENE_SET_REPORT_ID | --seq-ids ID,...] [operation options]"
+            "collections requires: run primer-specificity|restriction-scan|tfbs-scan|digest [GENE_SET_REPORT_ID | --seq-ids ID,...] [operation options]"
                 .to_string(),
         );
     }
@@ -7477,6 +7483,212 @@ pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellComman
         policy,
         catalog_path,
         cache_dir,
+        path,
+    })
+}
+
+pub(super) fn parse_digest_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    const COMMAND: &str = "digest";
+    if tokens.len() < 2 {
+        return Err(
+            "digest requires SEQ_ID --enzyme NAME [--enzyme NAME ...] [--enzymes CSV] [--output-prefix PREFIX]"
+                .to_string(),
+        );
+    }
+    let input = tokens[1].trim().to_string();
+    if input.is_empty() || input.starts_with("--") {
+        return Err("digest requires a non-empty SEQ_ID".to_string());
+    }
+    let mut enzymes = Vec::new();
+    let mut output_prefix = None;
+    let mut idx = 2usize;
+    while idx < tokens.len() {
+        match tokens[idx].as_str() {
+            "--enzyme" => {
+                let enzyme = parse_option_path(tokens, &mut idx, "--enzyme", COMMAND)?;
+                if enzyme.trim().is_empty() {
+                    return Err("--enzyme must not be empty".to_string());
+                }
+                enzymes.push(enzyme.trim().to_string());
+            }
+            "--enzymes" => {
+                let raw = parse_option_path(tokens, &mut idx, "--enzymes", COMMAND)?;
+                enzymes.extend(
+                    raw.split(',')
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
+                );
+            }
+            "--output-prefix" => {
+                output_prefix = Some(parse_option_path(
+                    tokens,
+                    &mut idx,
+                    "--output-prefix",
+                    COMMAND,
+                )?);
+            }
+            other => return Err(format!("Unknown option '{other}' for {COMMAND}")),
+        }
+    }
+    if enzymes.is_empty() {
+        return Err("digest requires at least one --enzyme NAME".to_string());
+    }
+    Ok(ShellCommand::Digest {
+        input,
+        enzymes,
+        output_prefix,
+    })
+}
+
+fn parse_collections_run_digest(tokens: &[String]) -> Result<ShellCommand, String> {
+    const COMMAND: &str = "collections run digest";
+    let mut gene_set_report_id: Option<String> = None;
+    let mut seq_ids = Vec::new();
+    let mut member_bindings = Vec::new();
+    let mut enzymes = Vec::new();
+    let mut output_prefix = None;
+    let mut dry_run = true;
+    let mut expected_plan_fingerprint_sha256 = None;
+    let mut path = None;
+    let mut idx = 3usize;
+    if let Some(value) = tokens.get(idx)
+        && !value.starts_with("--")
+    {
+        gene_set_report_id = Some(value.trim().to_string());
+        idx += 1;
+    }
+
+    while idx < tokens.len() {
+        match tokens[idx].as_str() {
+            "--seq-id" => {
+                let seq_id = parse_option_path(tokens, &mut idx, "--seq-id", COMMAND)?;
+                if seq_id.trim().is_empty() {
+                    return Err("--seq-id must not be empty".to_string());
+                }
+                seq_ids.push(seq_id.trim().to_string());
+            }
+            "--seq-ids" => {
+                let raw = parse_option_path(tokens, &mut idx, "--seq-ids", COMMAND)?;
+                let parsed = raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                if parsed.is_empty() {
+                    return Err("--seq-ids requires at least one non-empty sequence id".to_string());
+                }
+                seq_ids.extend(parsed);
+            }
+            "--member-sequence" | "--member-binding" => {
+                let flag = tokens[idx].clone();
+                let raw = parse_option_path(tokens, &mut idx, &flag, COMMAND)?;
+                let (member_id, seq_id) = raw
+                    .split_once('=')
+                    .ok_or_else(|| format!("{flag} requires MEMBER_ID=SEQ_ID"))?;
+                let member_id = member_id.trim();
+                let seq_id = seq_id.trim();
+                if member_id.is_empty() || seq_id.is_empty() {
+                    return Err(format!("{flag} requires non-empty MEMBER_ID=SEQ_ID"));
+                }
+                member_bindings.push(DigestCollectionMemberBinding {
+                    stable_member_id: member_id.to_string(),
+                    seq_id: seq_id.to_string(),
+                });
+            }
+            "--enzyme" => {
+                let enzyme = parse_option_path(tokens, &mut idx, "--enzyme", COMMAND)?;
+                if enzyme.trim().is_empty() {
+                    return Err("--enzyme must not be empty".to_string());
+                }
+                enzymes.push(enzyme.trim().to_string());
+            }
+            "--enzymes" => {
+                let raw = parse_option_path(tokens, &mut idx, "--enzymes", COMMAND)?;
+                enzymes.extend(
+                    raw.split(',')
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
+                );
+            }
+            "--output-prefix" => {
+                output_prefix = Some(parse_option_path(
+                    tokens,
+                    &mut idx,
+                    "--output-prefix",
+                    COMMAND,
+                )?);
+            }
+            "--dry-run" | "--preview" => {
+                dry_run = true;
+                idx += 1;
+            }
+            "--apply" => {
+                dry_run = false;
+                idx += 1;
+            }
+            "--expected-plan-fingerprint-sha256" => {
+                expected_plan_fingerprint_sha256 = Some(parse_option_path(
+                    tokens,
+                    &mut idx,
+                    "--expected-plan-fingerprint-sha256",
+                    COMMAND,
+                )?);
+            }
+            "--path" | "--output" => {
+                let flag = tokens[idx].clone();
+                path = Some(parse_option_path(tokens, &mut idx, &flag, COMMAND)?);
+            }
+            other => return Err(format!("Unknown option '{other}' for {COMMAND}")),
+        }
+    }
+
+    if enzymes.is_empty() {
+        return Err(format!("{COMMAND} requires at least one --enzyme NAME"));
+    }
+    if gene_set_report_id.is_some() && !seq_ids.is_empty() {
+        return Err(format!(
+            "{COMMAND} accepts either GENE_SET_REPORT_ID or --seq-ids, not both"
+        ));
+    }
+    let collection_subject = if let Some(report_id) = gene_set_report_id {
+        if report_id.is_empty() {
+            return Err("GENE_SET_REPORT_ID must not be empty".to_string());
+        }
+        CollectionSubjectRef::GeneSetResolution { report_id }
+    } else {
+        if seq_ids.is_empty() {
+            return Err(format!(
+                "{COMMAND} requires GENE_SET_REPORT_ID or --seq-ids ID,..."
+            ));
+        }
+        CollectionSubjectRef::ProjectSequences { seq_ids }
+    };
+    if !dry_run
+        && expected_plan_fingerprint_sha256
+            .as_deref()
+            .map(str::trim)
+            .is_none_or(str::is_empty)
+    {
+        return Err(format!(
+            "{COMMAND} --apply requires --expected-plan-fingerprint-sha256 SHA256"
+        ));
+    }
+    if dry_run && expected_plan_fingerprint_sha256.is_some() {
+        return Err(format!(
+            "{COMMAND} accepts --expected-plan-fingerprint-sha256 only with --apply"
+        ));
+    }
+
+    Ok(ShellCommand::CollectionsRunDigest {
+        collection_subject,
+        member_bindings,
+        enzymes,
+        output_prefix,
+        dry_run,
+        expected_plan_fingerprint_sha256,
         path,
     })
 }
@@ -7703,11 +7915,8 @@ fn parse_collections_run_tfbs_scan(tokens: &[String]) -> Result<ShellCommand, St
             "--per-tf-min-llr-quantile" => {
                 let raw =
                     parse_option_path(tokens, &mut idx, "--per-tf-min-llr-quantile", COMMAND)?;
-                let (tf, value) = parse_tf_threshold_override_value(
-                    &raw,
-                    "--per-tf-min-llr-quantile",
-                    COMMAND,
-                )?;
+                let (tf, value) =
+                    parse_tf_threshold_override_value(&raw, "--per-tf-min-llr-quantile", COMMAND)?;
                 per_tf_thresholds
                     .entry(tf.clone())
                     .or_insert_with(|| TfThresholdOverride {

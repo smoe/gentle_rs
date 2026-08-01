@@ -3058,6 +3058,10 @@ Shared shell command:
     - `collections run restriction-scan --seq-ids SEQ_ID,... [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]`
     - `collections run tfbs-scan GENE_SET_REPORT_ID --member-sequence MEMBER_ID=SEQ_ID ... --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path OUTPUT.json]`
     - `collections run tfbs-scan --seq-ids SEQ_ID,... --motif TOKEN [same threshold/cap/output options]`
+    - `digest SEQ_ID --enzyme NAME [--enzyme NAME ...] [--enzymes CSV] [--output-prefix PREFIX]`
+    - `collections run digest GENE_SET_REPORT_ID --member-sequence MEMBER_ID=SEQ_ID ... --enzyme NAME [--enzyme NAME ...] [--enzymes CSV] [--output-prefix PREFIX] [--preview] [--path REPORT.json]`
+    - `collections run digest --seq-ids SEQ_ID,... --enzyme NAME [same enzyme/prefix/report options]`
+    - `collections run digest SUBJECT [same inputs] --apply --expected-plan-fingerprint-sha256 SHA`
     - `primers specificity-plan REPORT_ID --pair-rank N --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-plan --forward SEQ --reverse SEQ --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-import HANDOFF.json [--path OUTPUT.json]`
@@ -3682,6 +3686,19 @@ Shared shell command:
         `aggregate_counts_complete=false` identifies failed members, capped
         child scans, or effective motifs that were not scanned; omitted
         `--max-hits` means unlimited per-member computation.
+      - `digest` exposes the existing mutating `Digest` operation through the
+        shared shell. Enzyme names are explicit and unknown names reject the
+        complete request before any fragment is created.
+      - `collections run digest` maps the same topology-aware digest over
+        project sequences or explicitly sequence-bound gene-set members.
+        Preview is the default and returns `gentle.collection_digest.v1`
+        without mutation. Apply requires the preview's
+        `plan_fingerprint_sha256`; the lock covers source sequence snapshots,
+        effective enzymes, output-prefix policy, and sequentially reserved
+        fragment ids, so a changed source or namespace rejects before any
+        insertion. Successful apply creates individual fragment sequences with
+        exact source lineage and does not create a pool/container. `--path`
+        writes the portable report JSON only.
       - the report follows GENtle's computational-artifact contract with
         `op_id`, `run_id`, sequence links, external inputs/database
         fingerprints, request/effective-setting summaries, a reopen hint, and

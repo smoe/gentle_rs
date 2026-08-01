@@ -17,6 +17,7 @@ pub(super) enum CollectionLauncherAdapter {
     PrimerSpecificity,
     RestrictionScan,
     TfbsScan,
+    Digest,
     PromoterCohort,
 }
 
@@ -26,6 +27,7 @@ impl CollectionLauncherAdapter {
             Self::PrimerSpecificity => "AssessPrimerPairSpecificity",
             Self::RestrictionScan => "FindRestrictionSites",
             Self::TfbsScan => "ScanTfbsHits",
+            Self::Digest => "Digest",
             Self::PromoterCohort => "BuildGeneSetPromoterCohort",
         }
     }
@@ -35,6 +37,7 @@ impl CollectionLauncherAdapter {
             Self::PrimerSpecificity => "Primer specificity",
             Self::RestrictionScan => "Restriction scan",
             Self::TfbsScan => "TFBS hit scan",
+            Self::Digest => "Restriction digest",
             Self::PromoterCohort => "Promoter cohort",
         }
     }
@@ -44,6 +47,7 @@ impl CollectionLauncherAdapter {
             "AssessPrimerPairSpecificity" => Some(Self::PrimerSpecificity),
             "FindRestrictionSites" => Some(Self::RestrictionScan),
             "ScanTfbsHits" => Some(Self::TfbsScan),
+            "Digest" => Some(Self::Digest),
             "BuildGeneSetPromoterCohort" => Some(Self::PromoterCohort),
             _ => None,
         }
@@ -326,5 +330,39 @@ mod tests {
             row.baseline_readiness(),
             CollectionLauncherReadiness::AdapterUnavailable { .. }
         ));
+    }
+
+    #[test]
+    fn collection_digest_adapter_projects_supported_logical_and_rejected_physical_subjects() {
+        for subject_kind in [
+            CollectionSubjectKind::ProjectSequences,
+            CollectionSubjectKind::GeneSetResolution,
+        ] {
+            let row = collection_launcher_rows(subject_kind)
+                .into_iter()
+                .find(|row| row.adapter == Some(CollectionLauncherAdapter::Digest))
+                .expect("digest launcher row");
+            assert!(row.baseline_readiness().is_ready());
+            assert_eq!(
+                row.policy.context_requirement,
+                gentle_protocol::CollectionContextRequirement::ContextAgnostic
+            );
+            assert_eq!(row.result_payload_kind(), "gentle.collection_digest.v1");
+        }
+
+        let container = collection_launcher_rows(CollectionSubjectKind::Container)
+            .into_iter()
+            .find(|row| row.capability_name == "Digest")
+            .expect("physical-container digest policy row");
+        assert_eq!(
+            container.baseline_readiness().rejection_reason(),
+            Some(CollectionLiftRejectionReason::UnsupportedSubjectKind)
+        );
+        assert!(
+            container
+                .baseline_readiness()
+                .detail()
+                .is_some_and(|detail| detail.contains("DigestContainer"))
+        );
     }
 }

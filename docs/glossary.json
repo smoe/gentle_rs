@@ -3627,6 +3627,21 @@
       {
          "aliases": [],
          "engine_operations": [
+            "DigestCollection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "gui-menu"
+         ],
+         "path": "collections run digest",
+         "summary": "Preview or apply the shared restriction digest over loaded project sequences or explicitly sequence-bound members of a persisted gene-set resolution.",
+         "usage": "collections run digest [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,...] [--member-sequence MEMBER_ID=SEQ_ID]... --enzyme NAME [--enzyme NAME ...] [--enzymes CSV] [--output-prefix PREFIX] [--dry-run | --apply --expected-plan-fingerprint-sha256 SHA256] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "PreparePrimerPairSpecificityHandoff"
          ],
          "interfaces": [
@@ -5795,11 +5810,14 @@
             "Digest"
          ],
          "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
             "js"
          ],
          "path": "digest",
-         "summary": "Apply Digest operation using comma-separated enzyme names.",
-         "usage": "digest(state, input, enzymes_csv, [output_prefix])"
+         "summary": "Digest one loaded sequence with known restriction enzymes and create fragment sequences.",
+         "usage": "digest SEQ_ID --enzyme NAME [--enzyme NAME ...] [--enzymes CSV] [--output-prefix PREFIX]"
       },
       {
          "aliases": [],

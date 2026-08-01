@@ -3842,6 +3842,7 @@ impl GentleEngine {
                 | Operation::PcrOverlapExtensionMutagenesis { .. }
                 | Operation::TestCdnaPcr { .. }
                 | Operation::TestCdnaQpcr { .. }
+                | Operation::DigestCollection { .. }
         ) {
             return;
         }

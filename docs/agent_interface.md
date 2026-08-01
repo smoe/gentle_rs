@@ -312,6 +312,10 @@ an agent has selected a deterministic operation.
 - `candidates template-run`
 - `candidates template-show`
 - `candidates top-k`
+- `collections run digest`
+- `collections run primer-specificity`
+- `collections run restriction-scan`
+- `collections run tfbs-scan`
 - `construct-reasoning build-protein-dna-handoff`
 - `construct-reasoning export-graph`
 - `cutrun export-coverage`
@@ -325,6 +329,7 @@ an agent has selected a deterministic operation.
 - `cutrun show-read-report`
 - `cutrun status`
 - `dbsnp fetch`
+- `digest`
 - `display`
 - `dotplot compute`
 - `dotplot list`

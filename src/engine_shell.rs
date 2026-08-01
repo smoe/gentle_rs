@@ -45,10 +45,10 @@ use crate::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
-        DOTPLOT_ANALYSIS_METADATA_KEY, DisplayTarget, DotplotInspectionRequestSnapshot,
-        DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayQuerySpec, DotplotOverlayXAxisMode,
-        EditableStatus, Engine, EvidenceClass, ExonSkipReturnKind, ExonSkipSelectionCriterion,
-        ExperimentalAssayReadinessPolicy,
+        DOTPLOT_ANALYSIS_METADATA_KEY, DigestCollectionMemberBinding, DisplayTarget,
+        DotplotInspectionRequestSnapshot, DotplotMode, DotplotOverlayAnchorExonRef,
+        DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine, EvidenceClass,
+        ExonSkipReturnKind, ExonSkipSelectionCriterion, ExperimentalAssayReadinessPolicy,
         ExternalPrimerPairImportRequest, ExternalPrimerPairSpecificityRequest, FactAtom, FactBasis,
         FactExpression, FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode,
         FeatureExpertTarget, FeatureExpertView, FeatureLocationEditRequest,
@@ -822,6 +822,11 @@ pub enum ShellCommand {
     },
     GibsonApply {
         request_json: String,
+    },
+    Digest {
+        input: String,
+        enzymes: Vec<String>,
+        output_prefix: Option<String>,
     },
     CacheInspect {
         scope: CacheCleanupScope,
@@ -2489,6 +2494,15 @@ pub enum ShellCommand {
         min_llr_quantile: Option<f64>,
         per_tf_thresholds: Vec<TfThresholdOverride>,
         max_hits_per_member: Option<usize>,
+        path: Option<String>,
+    },
+    CollectionsRunDigest {
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<DigestCollectionMemberBinding>,
+        enzymes: Vec<String>,
+        output_prefix: Option<String>,
+        dry_run: bool,
+        expected_plan_fingerprint_sha256: Option<String>,
         path: Option<String>,
     },
     PrimersSpecificityPlan {
@@ -7145,6 +7159,16 @@ impl ShellCommand {
             Self::GibsonApply { .. } => {
                 "apply Gibson assembly plan and create output sequences".to_string()
             }
+            Self::Digest {
+                input,
+                enzymes,
+                output_prefix,
+            } => format!(
+                "digest '{}' with {} (output_prefix={})",
+                input,
+                enzymes.join(","),
+                output_prefix.as_deref().unwrap_or("generated")
+            ),
             Self::CacheInspect { scope, cache_dirs } => {
                 let roots = if cache_dirs.is_empty() {
                     default_cache_cleanup_roots(*scope).join(",")
@@ -11374,6 +11398,25 @@ impl ShellCommand {
                 max_hits_per_member
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "unlimited".to_string()),
+                path.as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
+            Self::CollectionsRunDigest {
+                collection_subject,
+                member_bindings,
+                enzymes,
+                output_prefix,
+                dry_run,
+                path,
+                ..
+            } => format!(
+                "{} restriction digest over {:?} collection members (explicit_bindings={}, enzymes={}, output_prefix={}, path={})",
+                if *dry_run { "preview" } else { "apply" },
+                collection_subject.kind(),
+                member_bindings.len(),
+                enzymes.join(","),
+                output_prefix.as_deref().unwrap_or("generated"),
                 path.as_deref()
                     .filter(|value| !value.trim().is_empty())
                     .unwrap_or("none"),
@@ -20753,6 +20796,104 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("RecomputeFeatures")
         }),
         json!({
+            "id": "Digest",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "INPUT_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded source sequence id"},
+                {"name": "ENZYMES", "required": true, "subject_kind": "other", "detail": "one or more known restriction enzyme names"},
+                {"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional fragment sequence-id prefix"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+                ]
+            },
+            "description": "Digest one loaded sequence with known restriction enzymes and create fragment sequences.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("Digest")
+        }),
+        json!({
+            "id": "digest",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "INPUT_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded source sequence id"},
+                {"name": "--enzyme", "required": true, "subject_kind": "other", "detail": "repeatable restriction enzyme name"},
+                {"name": "--output-prefix", "required": false, "subject_kind": "other", "detail": "optional fragment sequence-id prefix"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+                ]
+            },
+            "description": "Digest one loaded sequence through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("digest")
+        }),
+        json!({
+            "id": "DigestCollection",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "other", "detail": "typed project_sequences or gene_set_resolution collection subject"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "member-id to loaded-sequence bindings; required for logical gene-set members"},
+                {"name": "ENZYMES", "required": true, "subject_kind": "other", "detail": "one or more known restriction enzyme names"},
+                {"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional common prefix; member ids are appended deterministically"},
+                {"name": "DRY_RUN", "required": false, "subject_kind": "other", "detail": "preview products without mutation"},
+                {"name": "EXPECTED_PLAN_FINGERPRINT_SHA256", "required": false, "subject_kind": "other", "detail": "preview fingerprint required when applying"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_digest",
+                "equals": "collection_digest",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Preview or apply a fingerprint-locked restriction digest over a logical sequence collection.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("DigestCollection")
+        }),
+        json!({
+            "id": "collections run digest",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"},
+                {"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "loaded project sequence ids; alternative to GENE_SET_REPORT_ID"},
+                {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "repeated MEMBER_ID=SEQ_ID bindings required for logical gene-set members"},
+                {"name": "ENZYMES", "required": true, "subject_kind": "other", "detail": "one or more known restriction enzyme names"},
+                {"name": "--apply", "required": false, "subject_kind": "other", "detail": "materialize a previously previewed plan"},
+                {"name": "--expected-plan-fingerprint-sha256", "required": false, "subject_kind": "other", "detail": "required with --apply"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external report JSON path"}
+            ],
+            "reads": [],
+            "effects": [{
+                "fact": "report.exists",
+                "report_kind": "collection_digest",
+                "equals": "collection_digest",
+                "effect_kind": "must_on_success"
+            }],
+            "precondition_expr": {"all": []},
+            "description": "Preview by default or explicitly apply a fingerprint-locked collection digest.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("collections run digest")
+        }),
+        json!({
             "id": "features restriction-scan",
             "kind": "operation",
             "mutating": "false",
@@ -21220,6 +21361,21 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "ANCHOR_MOTIF", "required": true, "subject_kind": "other", "detail": "anchor motif token carried by anchor_motif"}),
                 json!({"name": "CANDIDATE_MOTIFS", "required": false, "subject_kind": "other", "detail": "candidate motif tokens carried by candidate_motifs"}),
                 json!({"name": "RANKING_METRIC", "required": false, "subject_kind": "other", "detail": "similarity ranking metric"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "features tfbs-scan",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded sequence id when the target is not inline sequence text",
+            "optional external TFBS hit-scan JSON output path",
+            "Scan one loaded or inline sequence target for TFBS/PSSM hits.",
+            vec![
+                json!({"name": "--motif|--motifs", "required": true, "subject_kind": "other", "detail": "motif query tokens"}),
+                json!({"name": "--min-llr-bits", "required": false, "subject_kind": "other", "detail": "optional minimum log-likelihood-ratio threshold in bits"}),
+                json!({"name": "--min-llr-quantile", "required": false, "subject_kind": "other", "detail": "optional quantile threshold"}),
+                json!({"name": "--max-hits", "required": false, "subject_kind": "other", "detail": "optional maximum number of hits"}),
             ],
         ),
         sequence_optional_artifact_operation_descriptor(
@@ -27511,7 +27667,10 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "AuditUniprotProjectionParity" => Some(vec![
             json!({"fact": "uniprot_projection.exists", "subject": {"arg": "PROJECTION_ID"}}),
         ]),
-        "ScanTfbsHitsCollection" | "collections run tfbs-scan" => Some(vec![]),
+        "ScanTfbsHitsCollection"
+        | "collections run tfbs-scan"
+        | "DigestCollection"
+        | "collections run digest" => Some(vec![]),
         "features restriction-scan"
         | "FindRestrictionSites"
         | "FindRestrictionSitesCollection"
@@ -39883,6 +40042,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 )),
             }
         }
+        "digest" => parse_digest_command(tokens),
         "render-pool-gel-svg" | "render-gel-svg" => {
             if tokens.len() < 3 {
                 return Err(token_error(cmd));
@@ -52694,6 +52854,38 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::CollectionsRunDigest {
+            collection_subject,
+            member_bindings,
+            enzymes,
+            output_prefix,
+            dry_run,
+            expected_plan_fingerprint_sha256,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::DigestCollection {
+                    collection_subject: collection_subject.clone(),
+                    member_bindings: member_bindings.clone(),
+                    enzymes: enzymes.clone(),
+                    output_prefix: output_prefix.clone(),
+                    dry_run: *dry_run,
+                    expected_plan_fingerprint_sha256: expected_plan_fingerprint_sha256.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            let report = op_result.collection_digest.clone().ok_or_else(|| {
+                "Collection digest operation returned no domain report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: !dry_run && !op_result.created_seq_ids.is_empty(),
+                output: json!({
+                    "schema": "gentle.collection_digest_command.v1",
+                    "report": report,
+                    "result": op_result,
+                }),
+            })
+        }
         ShellCommand::PrimersSpecificityPlan {
             primer_report_id,
             pair_rank,
@@ -59324,6 +59516,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::CollectionsRunPrimerSpecificity { .. }
             | ShellCommand::CollectionsRunRestrictionScan { .. }
             | ShellCommand::CollectionsRunTfbsScan { .. }
+            | ShellCommand::CollectionsRunDigest { .. }
             | ShellCommand::PrimersSpecificityPlan { .. }
             | ShellCommand::PrimersSpecificityImport { .. }
             | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }
@@ -59842,6 +60035,26 @@ fn execute_shell_command_with_options_inner(
         }
         ShellCommand::GibsonPreview { .. } | ShellCommand::GibsonApply { .. } => {
             execute_gibson_command(engine, command)?
+        }
+        ShellCommand::Digest {
+            input,
+            enzymes,
+            output_prefix,
+        } => {
+            let op_result = engine
+                .apply(Operation::Digest {
+                    input: input.clone(),
+                    enzymes: enzymes.clone(),
+                    output_prefix: output_prefix.clone(),
+                })
+                .map_err(|error| error.to_string())?;
+            ShellRunResult {
+                state_changed: !op_result.created_seq_ids.is_empty(),
+                output: json!({
+                    "schema": "gentle.digest_command.v1",
+                    "result": op_result,
+                }),
+            }
         }
         ShellCommand::CacheInspect { .. } | ShellCommand::CacheClear { .. } => {
             execute_cache_command(engine, command)?
@@ -61065,6 +61278,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::CollectionsRunPrimerSpecificity { .. }
         | ShellCommand::CollectionsRunRestrictionScan { .. }
         | ShellCommand::CollectionsRunTfbsScan { .. }
+        | ShellCommand::CollectionsRunDigest { .. }
         | ShellCommand::PrimersSpecificityPlan { .. }
         | ShellCommand::PrimersSpecificityImport { .. }
         | ShellCommand::PrimersTranscriptAssaySpecificityPlan { .. }

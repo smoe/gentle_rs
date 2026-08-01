@@ -506,6 +506,47 @@ fn registry_surfacing_covers_all_parity_adapters() {
             );
         }
     }
+
+    for (source, name) in [
+        (CapabilitySource::EngineOperation, "Digest"),
+        (CapabilitySource::GlossaryCommand, "digest"),
+        (CapabilitySource::GlossaryCommand, "collections run digest"),
+    ] {
+        for subject_kind in [
+            CollectionSubjectKind::GeneSetResolution,
+            CollectionSubjectKind::ProjectSequences,
+        ] {
+            let policy = collection_lift_policy(source, name, subject_kind).unwrap_or_else(|| {
+                panic!("missing collection digest policy for {source:?} `{name}`")
+            });
+            assert!(matches!(
+                policy.support,
+                CollectionLiftSupport::Supported {
+                    mode: CollectionLiftingMode::Map,
+                    ..
+                }
+            ));
+            assert_eq!(
+                policy.context_requirement,
+                CollectionContextRequirement::ContextAgnostic
+            );
+        }
+        for subject_kind in [
+            CollectionSubjectKind::Container,
+            CollectionSubjectKind::Arrangement,
+        ] {
+            let policy = collection_lift_policy(source, name, subject_kind).unwrap_or_else(|| {
+                panic!("missing rejected collection digest policy for {source:?} `{name}`")
+            });
+            assert!(matches!(
+                policy.support,
+                CollectionLiftSupport::Rejected {
+                    reason: gentle_protocol::CollectionLiftRejectionReason::UnsupportedSubjectKind,
+                    ..
+                }
+            ));
+        }
+    }
 }
 
 #[test]

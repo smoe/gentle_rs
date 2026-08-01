@@ -54212,6 +54212,340 @@ fn collection_tfbs_scan_marks_capped_or_unbound_members_incomplete() {
 }
 
 #[test]
+fn collection_digest_preview_apply_matches_direct_digest_and_preserves_lineage() {
+    let mut linear = DNAsequence::from_sequence("AAGAATTCCCGG").expect("linear sequence");
+    linear.set_circular(false);
+    let mut circular = DNAsequence::from_sequence("TTCAAAAAAGAA").expect("circular sequence");
+    circular.set_circular(true);
+    let mut state = ProjectState::default();
+    state.sequences.insert("linear".to_string(), linear);
+    state.sequences.insert("circular".to_string(), circular);
+
+    let mut collection_engine = GentleEngine::from_state(state.clone());
+    let initial_sequence_count = collection_engine.state().sequences.len();
+    let initial_container_count = collection_engine.state().container_state.containers.len();
+    let initial_revision = collection_engine.mutation_revision();
+    let subject = CollectionSubjectRef::ProjectSequences {
+        seq_ids: vec!["linear".to_string(), "circular".to_string()],
+    };
+    let preview_result = collection_engine
+        .apply(Operation::DigestCollection {
+            collection_subject: subject.clone(),
+            member_bindings: vec![],
+            enzymes: vec!["EcoRI".to_string()],
+            output_prefix: Some("batch".to_string()),
+            dry_run: true,
+            expected_plan_fingerprint_sha256: None,
+            path: None,
+        })
+        .expect("preview collection digest");
+    assert!(preview_result.created_seq_ids.is_empty());
+    assert_eq!(
+        collection_engine.state().sequences.len(),
+        initial_sequence_count
+    );
+    assert_eq!(collection_engine.mutation_revision(), initial_revision);
+    let preview = preview_result
+        .collection_digest
+        .expect("collection digest preview report");
+    assert_eq!(preview.schema, COLLECTION_DIGEST_REPORT_SCHEMA);
+    assert_eq!(
+        preview.collection_operation.lifting_mode,
+        CollectionLiftingMode::Map
+    );
+    assert_eq!(
+        preview.collection_operation.lift_policy.context_requirement,
+        CollectionContextRequirement::ContextAgnostic
+    );
+    assert!(preview.collection_operation.dry_run);
+    assert!(!preview.collection_operation.applied);
+    assert_eq!(preview.effective_enzymes, ["EcoRI"]);
+    assert_eq!(preview.total_planned_fragment_count, 3);
+    assert_eq!(preview.total_created_fragment_count, 0);
+    assert!(preview.aggregate_counts_complete);
+    assert!(preview.incomplete_member_ids.is_empty());
+    assert!(
+        preview
+            .member_reports
+            .iter()
+            .flat_map(|member| &member.fragments)
+            .all(|fragment| !fragment.materialized)
+    );
+    let encoded = serde_json::to_value(&preview).expect("serialize collection digest report");
+    let decoded: CollectionDigestReport =
+        serde_json::from_value(encoded.clone()).expect("deserialize collection digest report");
+    assert_eq!(
+        serde_json::to_value(decoded).expect("reserialize collection digest report"),
+        encoded
+    );
+
+    let applied_result = collection_engine
+        .apply(Operation::DigestCollection {
+            collection_subject: subject,
+            member_bindings: vec![],
+            enzymes: vec!["EcoRI".to_string()],
+            output_prefix: Some("batch".to_string()),
+            dry_run: false,
+            expected_plan_fingerprint_sha256: Some(preview.plan_fingerprint_sha256.clone()),
+            path: None,
+        })
+        .expect("apply previewed collection digest");
+    let applied = applied_result
+        .collection_digest
+        .as_ref()
+        .expect("applied collection digest report");
+    assert!(applied.collection_operation.applied);
+    assert!(!applied.collection_operation.dry_run);
+    assert_eq!(
+        applied.plan_fingerprint_sha256,
+        preview.plan_fingerprint_sha256
+    );
+    assert_eq!(applied.total_created_fragment_count, 3);
+    assert_eq!(applied_result.created_seq_ids.len(), 3);
+    assert!(
+        applied
+            .member_reports
+            .iter()
+            .flat_map(|member| &member.fragments)
+            .all(|fragment| fragment.materialized)
+    );
+
+    let mut direct_engine = GentleEngine::from_state(state);
+    let mut direct_ids_by_source = BTreeMap::<String, Vec<String>>::new();
+    for source_seq_id in ["linear", "circular"] {
+        let direct = direct_engine
+            .apply(Operation::Digest {
+                input: source_seq_id.to_string(),
+                enzymes: vec!["EcoRI".to_string()],
+                output_prefix: Some(format!("batch__{source_seq_id}")),
+            })
+            .expect("direct member digest");
+        direct_ids_by_source.insert(source_seq_id.to_string(), direct.created_seq_ids);
+    }
+    for member in &applied.member_reports {
+        let direct_ids = direct_ids_by_source
+            .get(&member.source_seq_id)
+            .expect("direct ids for member");
+        assert_eq!(
+            member
+                .fragments
+                .iter()
+                .map(|fragment| fragment.seq_id.as_str())
+                .collect::<Vec<_>>(),
+            direct_ids.iter().map(String::as_str).collect::<Vec<_>>()
+        );
+        for fragment in &member.fragments {
+            assert_eq!(
+                serde_json::to_value(
+                    collection_engine
+                        .state()
+                        .sequences
+                        .get(&fragment.seq_id)
+                        .expect("collection fragment")
+                )
+                .expect("serialize collection fragment"),
+                serde_json::to_value(
+                    direct_engine
+                        .state()
+                        .sequences
+                        .get(&fragment.seq_id)
+                        .expect("direct fragment")
+                )
+                .expect("serialize direct fragment")
+            );
+            let source_node = collection_engine
+                .state()
+                .lineage
+                .seq_to_node
+                .get(&member.source_seq_id)
+                .expect("source lineage node");
+            let fragment_node = collection_engine
+                .state()
+                .lineage
+                .seq_to_node
+                .get(&fragment.seq_id)
+                .expect("fragment lineage node");
+            assert!(collection_engine.state().lineage.edges.iter().any(|edge| {
+                &edge.from_node_id == source_node
+                    && &edge.to_node_id == fragment_node
+                    && edge.op_id == applied_result.op_id
+            }));
+            assert!(!applied.member_reports.iter().any(|other_member| {
+                other_member.source_seq_id != member.source_seq_id
+                    && collection_engine.state().lineage.edges.iter().any(|edge| {
+                        collection_engine
+                            .state()
+                            .lineage
+                            .seq_to_node
+                            .get(&other_member.source_seq_id)
+                            .is_some_and(|other_source_node| {
+                                &edge.from_node_id == other_source_node
+                                    && &edge.to_node_id == fragment_node
+                                    && edge.op_id == applied_result.op_id
+                            })
+                    })
+            }));
+            assert!(
+                !collection_engine
+                    .state()
+                    .container_state
+                    .seq_to_latest_container
+                    .contains_key(&fragment.seq_id),
+                "logical collection products must not be pooled automatically"
+            );
+        }
+    }
+    assert_eq!(
+        collection_engine.state().container_state.containers.len(),
+        initial_container_count
+    );
+    assert_eq!(
+        collection_engine
+            .state()
+            .container_state
+            .containers
+            .values()
+            .filter(|container| {
+                container.created_by_op.as_deref() == Some(applied_result.op_id.as_str())
+            })
+            .count(),
+        0
+    );
+}
+
+#[test]
+fn collection_digest_plan_lock_and_gene_set_failures_are_explicit() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("ATGGATCCGC").expect("sequence A"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let subject = CollectionSubjectRef::ProjectSequences {
+        seq_ids: vec!["seq_a".to_string()],
+    };
+    let preview = engine
+        .apply(Operation::DigestCollection {
+            collection_subject: subject.clone(),
+            member_bindings: vec![],
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: Some("locked".to_string()),
+            dry_run: true,
+            expected_plan_fingerprint_sha256: None,
+            path: None,
+        })
+        .expect("preview collection digest")
+        .collection_digest
+        .expect("preview report");
+    engine.state_mut().sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("ATGGATCCGCAT").expect("changed sequence A"),
+    );
+    let stale = engine
+        .apply(Operation::DigestCollection {
+            collection_subject: subject,
+            member_bindings: vec![],
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: Some("locked".to_string()),
+            dry_run: false,
+            expected_plan_fingerprint_sha256: Some(preview.plan_fingerprint_sha256),
+            path: None,
+        })
+        .expect_err("changed sequence invalidates collection digest plan");
+    assert_eq!(stale.code, ErrorCode::InvalidInput);
+    assert!(stale.message.contains("plan changed after preview"));
+    assert!(
+        !engine
+            .state()
+            .sequences
+            .keys()
+            .any(|id| id.starts_with("locked_"))
+    );
+
+    let resolution = GeneSetResolutionReport {
+        schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+        generated_at_unix_ms: 1,
+        op_id: Some("digest_binding_fixture".to_string()),
+        resolved_member_count: 2,
+        resolved_members: vec![
+            GeneSetResolvedMember {
+                dedup_key: "GENE_A".to_string(),
+                symbol: "GENE_A".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+            GeneSetResolvedMember {
+                dedup_key: "GENE_B".to_string(),
+                symbol: "GENE_B".to_string(),
+                ..GeneSetResolvedMember::default()
+            },
+        ],
+        ..GeneSetResolutionReport::default()
+    };
+    let report_id = GentleEngine::gene_set_resolution_artifact_id(&resolution);
+    engine
+        .upsert_gene_set_resolution_artifact(resolution)
+        .expect("persist gene-set resolution");
+    let report = engine
+        .apply(Operation::DigestCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution { report_id },
+            member_bindings: vec![DigestCollectionMemberBinding {
+                stable_member_id: "GENE_A".to_string(),
+                seq_id: "seq_a".to_string(),
+            }],
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: None,
+            dry_run: true,
+            expected_plan_fingerprint_sha256: None,
+            path: None,
+        })
+        .expect("preview partially bound gene-set digest")
+        .collection_digest
+        .expect("gene-set digest report");
+    assert!(!report.aggregate_counts_complete);
+    assert_eq!(report.incomplete_member_ids, ["GENE_B"]);
+    assert_eq!(report.member_reports.len(), 1);
+    let failed = report
+        .collection_operation
+        .per_member_status
+        .iter()
+        .find(|row| row.member.stable_member_id == "GENE_B")
+        .expect("unbound member failure");
+    assert_eq!(failed.outcome, CollectionMemberOutcome::Failed);
+    assert!(failed.error.as_ref().is_some_and(|error| {
+        error
+            .message
+            .contains("requires an explicit member-to-sequence binding")
+    }));
+
+    let container_id = engine
+        .state()
+        .container_state
+        .seq_to_latest_container
+        .get("seq_a")
+        .expect("source container")
+        .clone();
+    let rejected = engine
+        .apply(Operation::DigestCollection {
+            collection_subject: CollectionSubjectRef::Container { container_id },
+            member_bindings: vec![],
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: None,
+            dry_run: true,
+            expected_plan_fingerprint_sha256: None,
+            path: None,
+        })
+        .expect_err("physical container uses dedicated digest route");
+    assert_eq!(rejected.code, ErrorCode::InvalidInput);
+    assert!(
+        rejected
+            .cause_chain
+            .iter()
+            .any(|cause| cause.contains("unsupported_subject_kind"))
+    );
+    assert!(rejected.message.contains("DigestContainer"));
+}
+
+#[test]
 fn project_fact_graph_projects_loaded_sequence_facts() {
     let mut state = ProjectState::default();
     state.sequences.insert(

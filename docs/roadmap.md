@@ -327,8 +327,9 @@ wet-lab conclusions or unconfirmed mutations.
 - Browser/WebAssembly frontend portability after core/headless contracts settle.
 - Expand the landed policy-driven gene-set collection launcher beyond promoter
   derivation, primer specificity, restriction-site scanning, and TFBS hit
-  scanning to later shared export, digest products, BLAST, non-gene
-  collection, and explicit materialization adapters described in
+  scanning and fingerprint-locked restriction digestion to later shared
+  export, BLAST, non-gene collection, and explicit materialization adapters
+  described in
   [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
 - Gene-set enrichment analysis over resolved logical sets, with an explicit
   background universe, identifier namespace/mapping audit, ontology and cache

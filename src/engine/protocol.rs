@@ -1834,6 +1834,69 @@ pub struct CollectionRestrictionSiteScanReport {
     pub path: Option<String>,
 }
 
+pub const COLLECTION_DIGEST_REPORT_SCHEMA: &str = "gentle.collection_digest.v1";
+pub const COLLECTION_DIGEST_PLAN_FINGERPRINT_ALGORITHM: &str = "sha256_collection_digest_plan_v1";
+
+/// Explicitly binds one logical collection member to one loaded DNA sequence.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct DigestCollectionMemberBinding {
+    pub stable_member_id: String,
+    pub seq_id: String,
+}
+
+/// One fragment planned or materialized by a lifted restriction digest.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct CollectionDigestFragmentRow {
+    pub seq_id: String,
+    pub length_bp: usize,
+    pub circular: bool,
+    pub sequence_snapshot_sha256: String,
+    pub materialized: bool,
+}
+
+/// Digest products and source lock for one successful collection member.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct CollectionDigestMemberReport {
+    pub stable_member_id: String,
+    pub source_seq_id: String,
+    pub source_sequence_snapshot_sha256: String,
+    pub effective_output_prefix: String,
+    #[serde(default)]
+    pub fragments: Vec<CollectionDigestFragmentRow>,
+}
+
+/// Preview or applied result for mapping restriction digestion over a collection.
+///
+/// The collection membership fingerprint locks identity/order only. The plan
+/// fingerprint additionally binds exact source-sequence snapshots, effective
+/// enzymes, output naming, and the sequentially reserved fragment ids.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CollectionDigestReport {
+    pub schema: String,
+    pub collection_operation: CollectionOperationReport,
+    #[serde(default)]
+    pub requested_enzymes: Vec<String>,
+    #[serde(default)]
+    pub effective_enzymes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_prefix: Option<String>,
+    pub plan_fingerprint_algorithm: String,
+    pub plan_fingerprint_sha256: String,
+    #[serde(default)]
+    pub member_reports: Vec<CollectionDigestMemberReport>,
+    pub total_planned_fragment_count: usize,
+    pub total_created_fragment_count: usize,
+    pub aggregate_counts_complete: bool,
+    #[serde(default)]
+    pub incomplete_member_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
 pub const PROJECT_FACT_GRAPH_SCHEMA: &str = "gentle.project_fact_graph.v1";
 pub const FACT_EXPRESSION_SCHEMA: &str = "gentle.fact_expression.v1";
 pub const FACT_EVALUATION_SCHEMA: &str = "gentle.fact_evaluation.v1";
@@ -4631,6 +4694,8 @@ pub struct OpResult {
     pub collection_restriction_site_scan: Option<CollectionRestrictionSiteScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collection_tfbs_hit_scan: Option<CollectionTfbsHitScanReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_digest: Option<CollectionDigestReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_set_cutrun_regulatory_support: Option<GeneSetCutRunRegulatorySupportReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

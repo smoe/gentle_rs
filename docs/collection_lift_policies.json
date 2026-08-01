@@ -177,6 +177,126 @@
     },
     {
       "source": "engine_operation",
+      "name": "Digest",
+      "subjects": [
+        {
+          "subject_kind": "project_sequences",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_digest.v1"
+          }
+        },
+        {
+          "subject_kind": "gene_set_resolution",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_digest.v1"
+          }
+        },
+        {
+          "subject_kind": "container",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "A physical container has dedicated DigestContainer semantics; use that operation instead of treating the sample as a logical collection."
+          }
+        },
+        {
+          "subject_kind": "arrangement",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "Collection digest does not yet preserve ordered arrangement placement for derived fragments."
+          }
+        }
+      ]
+    },
+    {
+      "source": "glossary_command",
+      "name": "digest",
+      "subjects": [
+        {
+          "subject_kind": "project_sequences",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_digest.v1"
+          }
+        },
+        {
+          "subject_kind": "gene_set_resolution",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_digest.v1"
+          }
+        },
+        {
+          "subject_kind": "container",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "A physical container has dedicated DigestContainer semantics; use that operation instead of treating the sample as a logical collection."
+          }
+        },
+        {
+          "subject_kind": "arrangement",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "Collection digest does not yet preserve ordered arrangement placement for derived fragments."
+          }
+        }
+      ]
+    },
+    {
+      "source": "glossary_command",
+      "name": "collections run digest",
+      "subjects": [
+        {
+          "subject_kind": "project_sequences",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_digest.v1"
+          }
+        },
+        {
+          "subject_kind": "gene_set_resolution",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "map",
+            "result_payload_kind": "gentle.collection_digest.v1"
+          }
+        },
+        {
+          "subject_kind": "container",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "A physical container has dedicated DigestContainer semantics; use that operation instead of treating the sample as a logical collection."
+          }
+        },
+        {
+          "subject_kind": "arrangement",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "Collection digest does not yet preserve ordered arrangement placement for derived fragments."
+          }
+        }
+      ]
+    },
+    {
+      "source": "engine_operation",
       "name": "AssessPrimerPairSpecificity",
       "subjects": [
         {

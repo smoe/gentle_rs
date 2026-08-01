@@ -202,6 +202,12 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: None,
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "collections run digest",
+        menu_path: "Genome > Gene Set Inspector...",
+        palette_title: "Gene Set Inspector",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "mirna scan-target",
         menu_path: "Patterns > microRNA Target Scan...",
         palette_title: "microRNA Target Scan",

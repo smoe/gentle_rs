@@ -11412,6 +11412,67 @@ impl GentleEngine {
         Ok(by_member)
     }
 
+    fn digest_collection_binding_map(
+        bindings: Vec<DigestCollectionMemberBinding>,
+    ) -> Result<BTreeMap<String, String>, EngineError> {
+        let mut by_member = BTreeMap::new();
+        let mut bound_sequences = BTreeMap::<String, String>::new();
+        for binding in bindings {
+            let stable_member_id = binding.stable_member_id.trim().to_string();
+            let seq_id = binding.seq_id.trim().to_string();
+            if stable_member_id.is_empty() || seq_id.is_empty() {
+                return Err(EngineError::invalid_input(
+                    "Collection digest bindings require non-empty stable_member_id and seq_id",
+                ));
+            }
+            if by_member
+                .insert(stable_member_id.clone(), seq_id.clone())
+                .is_some()
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Collection member '{}' has more than one sequence binding",
+                    stable_member_id
+                )));
+            }
+            if let Some(previous_member) =
+                bound_sequences.insert(seq_id.clone(), stable_member_id.clone())
+                && previous_member != stable_member_id
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Project sequence '{}' is bound to both '{}' and '{}'; one digest must not be duplicated across collection members",
+                    seq_id, previous_member, stable_member_id
+                )));
+            }
+        }
+        Ok(by_member)
+    }
+
+    fn reserve_collection_digest_seq_id(reserved: &mut BTreeSet<String>, base: &str) -> String {
+        if reserved.insert(base.to_string()) {
+            return base.to_string();
+        }
+        let mut suffix = 2usize;
+        loop {
+            let candidate = format!("{base}_{suffix}");
+            if reserved.insert(candidate.clone()) {
+                return candidate;
+            }
+            suffix += 1;
+        }
+    }
+
+    fn digest_sequence_snapshot_sha256(
+        dna: &DNAsequence,
+        context: &str,
+    ) -> Result<String, EngineError> {
+        let canonical = serde_json::to_string(dna).map_err(|error| {
+            EngineError::internal(format!(
+                "Could not serialize {context} for collection digest planning: {error}"
+            ))
+        })?;
+        Ok(sha256_prefixed_str(&canonical))
+    }
+
     fn resolve_sequence_scan_collection_member_sequence(
         &self,
         member: &CollectionMemberRef,
@@ -11955,6 +12016,377 @@ impl GentleEngine {
             truncated_member_count,
             path: None,
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn digest_collection(
+        &mut self,
+        collection_subject: CollectionSubjectRef,
+        member_bindings: Vec<DigestCollectionMemberBinding>,
+        enzymes: Vec<String>,
+        output_prefix: Option<String>,
+        dry_run: bool,
+        expected_plan_fingerprint_sha256: Option<&str>,
+        op_id: &str,
+        run_id: &str,
+    ) -> Result<(CollectionDigestReport, Vec<String>), EngineError> {
+        struct PlannedMember {
+            source_seq_id: String,
+            report_index: usize,
+            fragments: Vec<(String, DNAsequence)>,
+        }
+
+        let subject_kind = collection_subject.kind();
+        let lift_policy =
+            collection_lift_policy(CapabilitySource::EngineOperation, "Digest", subject_kind)
+                .cloned()
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::Unsupported,
+                    message: format!(
+                        "Digest has no collection lift policy for {:?}",
+                        subject_kind
+                    ),
+                    cause_chain: vec![],
+                })?;
+        match &lift_policy.support {
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Map,
+                ..
+            } => {}
+            CollectionLiftSupport::Supported { mode, .. } => {
+                return Err(EngineError::internal(format!(
+                    "Digest collection lift policy for {:?} declares {:?}, expected map",
+                    subject_kind, mode
+                )));
+            }
+            CollectionLiftSupport::Rejected { reason, detail } => {
+                return Err(EngineError::invalid_input(format!(
+                    "Digest cannot consume {:?}: {}",
+                    subject_kind, detail
+                ))
+                .with_cause(format!(
+                    "collection_lift_rejection_reason={}",
+                    reason.as_str()
+                )));
+            }
+        }
+        if lift_policy.context_requirement != CollectionContextRequirement::ContextAgnostic {
+            return Err(EngineError::internal(format!(
+                "Digest collection lifting requires context_agnostic policy, found {:?}",
+                lift_policy.context_requirement
+            )));
+        }
+
+        let (collection_subject, members, provenance, biological_contexts) = self
+            .collection_subject_members_for_project_sequences_or_gene_set(
+                &collection_subject,
+                "digest",
+            )?;
+        let bindings = Self::digest_collection_binding_map(member_bindings)?;
+        let member_ids = members
+            .iter()
+            .map(|member| member.stable_member_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let unknown_bindings = bindings
+            .keys()
+            .filter(|member_id| !member_ids.contains(member_id.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !unknown_bindings.is_empty() {
+            return Err(EngineError::invalid_input(format!(
+                "Sequence bindings reference member ids that are not in the collection: {}",
+                unknown_bindings.join(", ")
+            )));
+        }
+
+        let requested_enzymes = enzymes
+            .iter()
+            .map(|enzyme| enzyme.trim())
+            .filter(|enzyme| !enzyme.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let (resolved_enzymes, _) = self.resolve_enzymes(&requested_enzymes)?;
+        let effective_enzymes = resolved_enzymes
+            .iter()
+            .map(|enzyme| enzyme.name.clone())
+            .collect::<Vec<_>>();
+        let normalized_output_prefix = output_prefix
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let resolved_members = members
+            .into_iter()
+            .map(|member| {
+                let resolved = self.resolve_sequence_scan_collection_member_sequence(
+                    &member,
+                    bindings.get(&member.stable_member_id).map(String::as_str),
+                );
+                (member, resolved)
+            })
+            .collect::<Vec<_>>();
+        let canonical_membership = canonical_collection_membership_json(
+            subject_kind,
+            &resolved_members
+                .iter()
+                .map(|(member, _)| member.clone())
+                .collect::<Vec<_>>(),
+        );
+        let membership_fingerprint = sha256_prefixed_str(&canonical_membership);
+
+        let mut reserved_seq_ids = self
+            .state
+            .sequences
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let mut per_member_status = Vec::with_capacity(resolved_members.len());
+        let mut member_reports = Vec::new();
+        let mut planned_members = Vec::new();
+        let mut aggregate_warnings = Vec::new();
+        let mut incomplete_member_ids = Vec::new();
+        let mut total_planned_fragment_count = 0usize;
+        for (mut member, resolved) in resolved_members {
+            let (source_seq_id, resolution_kind) = match resolved {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    incomplete_member_ids.push(member.stable_member_id.clone());
+                    aggregate_warnings.push(format!(
+                        "Member '{}': {}",
+                        member.stable_member_id, error.message
+                    ));
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Failed,
+                        error: Some(error),
+                        produced_report_ids: vec![],
+                    });
+                    continue;
+                }
+            };
+            member.source_provenance.push(GeneSetProvenanceRow {
+                source_kind: "project_sequence_binding".to_string(),
+                source_id: source_seq_id.clone(),
+                source_label: None,
+                source_path: None,
+                note: Some(format!("Sequence binding resolved by {resolution_kind}")),
+            });
+            let dna = self
+                .state
+                .sequences
+                .get(&source_seq_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Project sequence '{}' disappeared during collection digest planning",
+                        source_seq_id
+                    ),
+                    cause_chain: vec![],
+                })?
+                .clone();
+            let source_sequence_snapshot_sha256 =
+                Self::digest_sequence_snapshot_sha256(&dna, "source sequence")?;
+            let mut fragments = match Self::digest_with_guard(
+                &dna,
+                resolved_enzymes.clone(),
+                self.max_fragments_per_container(),
+            ) {
+                Ok(fragments) => fragments,
+                Err(error) => {
+                    incomplete_member_ids.push(member.stable_member_id.clone());
+                    aggregate_warnings.push(format!(
+                        "Member '{}': {}",
+                        member.stable_member_id, error.message
+                    ));
+                    per_member_status.push(CollectionMemberStatusRow {
+                        member,
+                        outcome: CollectionMemberOutcome::Failed,
+                        error: Some(error),
+                        produced_report_ids: vec![],
+                    });
+                    continue;
+                }
+            };
+            total_planned_fragment_count =
+                total_planned_fragment_count.saturating_add(fragments.len());
+            if total_planned_fragment_count > self.max_fragments_per_container() {
+                return Err(EngineError::invalid_input(format!(
+                    "Collection digest would create {} fragments, exceeding max_fragments_per_container={}",
+                    total_planned_fragment_count,
+                    self.max_fragments_per_container()
+                )));
+            }
+            let effective_output_prefix = if let Some(prefix) = &normalized_output_prefix {
+                format!(
+                    "{}__{}",
+                    prefix,
+                    Self::normalize_id_token(&member.stable_member_id)
+                )
+            } else {
+                format!("{source_seq_id}_digest")
+            };
+            let mut fragment_rows = Vec::with_capacity(fragments.len());
+            let mut planned_fragments = Vec::with_capacity(fragments.len());
+            for (index, mut fragment) in fragments.drain(..).enumerate() {
+                Self::prepare_sequence_light(&mut fragment);
+                let candidate = format!("{}_{}", effective_output_prefix, index + 1);
+                let seq_id =
+                    Self::reserve_collection_digest_seq_id(&mut reserved_seq_ids, &candidate);
+                let sequence_snapshot_sha256 =
+                    Self::digest_sequence_snapshot_sha256(&fragment, "planned fragment")?;
+                fragment_rows.push(CollectionDigestFragmentRow {
+                    seq_id: seq_id.clone(),
+                    length_bp: fragment.len(),
+                    circular: fragment.is_circular(),
+                    sequence_snapshot_sha256,
+                    materialized: false,
+                });
+                planned_fragments.push((seq_id, fragment));
+            }
+            let report_index = member_reports.len();
+            member_reports.push(CollectionDigestMemberReport {
+                stable_member_id: member.stable_member_id.clone(),
+                source_seq_id: source_seq_id.clone(),
+                source_sequence_snapshot_sha256,
+                effective_output_prefix,
+                fragments: fragment_rows,
+            });
+            planned_members.push(PlannedMember {
+                source_seq_id,
+                report_index,
+                fragments: planned_fragments,
+            });
+            per_member_status.push(CollectionMemberStatusRow {
+                member,
+                outcome: CollectionMemberOutcome::Succeeded,
+                error: None,
+                produced_report_ids: vec![],
+            });
+        }
+
+        let plan_identity = serde_json::to_string(&json!({
+            "collection_subject": &collection_subject,
+            "collection_membership_fingerprint_sha256": &membership_fingerprint,
+            "member_bindings": &bindings,
+            "effective_enzymes": &effective_enzymes,
+            "output_prefix": &normalized_output_prefix,
+            "member_reports": member_reports.iter().map(|report| json!({
+                "stable_member_id": report.stable_member_id,
+                "source_seq_id": report.source_seq_id,
+                "source_sequence_snapshot_sha256": report.source_sequence_snapshot_sha256,
+                "effective_output_prefix": report.effective_output_prefix,
+                "fragments": report.fragments.iter().map(|fragment| json!({
+                    "seq_id": fragment.seq_id,
+                    "length_bp": fragment.length_bp,
+                    "circular": fragment.circular,
+                    "sequence_snapshot_sha256": fragment.sequence_snapshot_sha256,
+                })).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
+            "failed_members": per_member_status.iter().filter_map(|status| {
+                status.error.as_ref().map(|error| json!({
+                    "stable_member_id": status.member.stable_member_id,
+                    "code": error.code,
+                    "message": error.message,
+                }))
+            }).collect::<Vec<_>>(),
+        }))
+        .map_err(|error| {
+            EngineError::internal(format!(
+                "Could not identify collection digest plan: {error}"
+            ))
+        })?;
+        let plan_fingerprint_sha256 = sha256_prefixed_str(&plan_identity);
+        if !dry_run {
+            let expected = expected_plan_fingerprint_sha256
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    EngineError::invalid_input(
+                        "Applying a collection digest requires the plan fingerprint returned by preview",
+                    )
+                })?;
+            if expected != plan_fingerprint_sha256 {
+                return Err(EngineError::invalid_input(format!(
+                    "Collection digest plan changed after preview: expected {}, found {}",
+                    expected, plan_fingerprint_sha256
+                )));
+            }
+        }
+
+        let mut created_seq_ids = Vec::new();
+        if !dry_run {
+            if let Some(seq_id) = planned_members
+                .iter()
+                .flat_map(|member| member.fragments.iter().map(|(seq_id, _)| seq_id))
+                .find(|seq_id| self.state.sequences.contains_key(*seq_id))
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Collection digest output sequence '{}' appeared after preview",
+                    seq_id
+                )));
+            }
+            for planned in planned_members {
+                let child_ids = planned
+                    .fragments
+                    .iter()
+                    .map(|(seq_id, _)| seq_id.clone())
+                    .collect::<Vec<_>>();
+                for (seq_id, fragment) in planned.fragments {
+                    self.state.sequences.insert(seq_id.clone(), fragment);
+                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(op_id));
+                    created_seq_ids.push(seq_id);
+                }
+                self.add_lineage_edges(
+                    std::slice::from_ref(&planned.source_seq_id),
+                    &child_ids,
+                    op_id,
+                    run_id,
+                );
+                for fragment in &mut member_reports[planned.report_index].fragments {
+                    fragment.materialized = true;
+                }
+            }
+        }
+
+        let report_id = short_sha256_id("collection_digest", &plan_identity);
+        Ok((
+            CollectionDigestReport {
+                schema: COLLECTION_DIGEST_REPORT_SCHEMA.to_string(),
+                collection_operation: CollectionOperationReport {
+                    schema: COLLECTION_OPERATION_REPORT_SCHEMA.to_string(),
+                    report_id,
+                    op_id: Some(op_id.to_string()),
+                    run_id: Some(run_id.to_string()),
+                    generated_at_unix_ms: Self::now_unix_ms(),
+                    capability_source: CapabilitySource::EngineOperation,
+                    capability_name: "Digest".to_string(),
+                    collection_subject,
+                    lifting_mode: CollectionLiftingMode::Map,
+                    lift_policy,
+                    fingerprint_algorithm: COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM.to_string(),
+                    collection_membership_fingerprint_sha256: membership_fingerprint,
+                    biological_contexts,
+                    dry_run,
+                    applied: !dry_run,
+                    per_member_status,
+                    aggregate_warnings,
+                    provenance,
+                },
+                requested_enzymes,
+                effective_enzymes,
+                output_prefix: normalized_output_prefix,
+                plan_fingerprint_algorithm: COLLECTION_DIGEST_PLAN_FINGERPRINT_ALGORITHM
+                    .to_string(),
+                plan_fingerprint_sha256,
+                member_reports,
+                total_planned_fragment_count,
+                total_created_fragment_count: created_seq_ids.len(),
+                aggregate_counts_complete: incomplete_member_ids.is_empty(),
+                incomplete_member_ids,
+                path: None,
+            },
+            created_seq_ids,
+        ))
     }
 
     fn primer_specificity_collection_binding_map(
@@ -27561,6 +27993,7 @@ impl GentleEngine {
             collection_operation: None,
             collection_restriction_site_scan: None,
             collection_tfbs_hit_scan: None,
+            collection_digest: None,
             gene_set_cutrun_regulatory_support: None,
             ortholog_promoter_cohort: None,
             ortholog_promoter_comparison: None,
@@ -32233,6 +32666,64 @@ impl GentleEngine {
                         "Digest created {} fragment(s); feature recomputation deferred",
                         result.created_seq_ids.len()
                     ));
+                }
+                Operation::DigestCollection {
+                    collection_subject,
+                    member_bindings,
+                    enzymes,
+                    output_prefix,
+                    dry_run,
+                    expected_plan_fingerprint_sha256,
+                    path,
+                } => {
+                    let (mut report, created_seq_ids) = self.digest_collection(
+                        collection_subject,
+                        member_bindings,
+                        enzymes,
+                        output_prefix,
+                        dry_run,
+                        expected_plan_fingerprint_sha256.as_deref(),
+                        &result.op_id,
+                        run_id,
+                    )?;
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        report.path = Some(path.to_string());
+                        self.write_pretty_json_file(&report, path, "collection digest report")?;
+                        result
+                            .messages
+                            .push(format!("Wrote collection digest report to '{path}'"));
+                    }
+                    let succeeded = report
+                        .collection_operation
+                        .per_member_status
+                        .iter()
+                        .filter(|row| row.outcome == CollectionMemberOutcome::Succeeded)
+                        .count();
+                    let failed = report
+                        .collection_operation
+                        .per_member_status
+                        .iter()
+                        .filter(|row| row.outcome == CollectionMemberOutcome::Failed)
+                        .count();
+                    result.messages.push(format!(
+                        "{} collection digest over {} member(s): {} succeeded, {} failed, {} fragment(s) {}",
+                        if dry_run { "Previewed" } else { "Applied" },
+                        report.collection_operation.per_member_status.len(),
+                        succeeded,
+                        failed,
+                        report.total_planned_fragment_count,
+                        if dry_run { "planned" } else { "created" },
+                    ));
+                    result
+                        .warnings
+                        .extend(report.collection_operation.aggregate_warnings.clone());
+                    result.created_seq_ids.extend(created_seq_ids);
+                    result.collection_operation = Some(report.collection_operation.clone());
+                    result.collection_digest = Some(report);
                 }
                 Operation::DigestContainer {
                     container_id,

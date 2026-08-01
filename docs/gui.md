@@ -457,8 +457,8 @@ The project main window (lineage page) supports two views:
     engine-operation lifting policies rather than maintained as a GUI-only list
   - typed adapters cover promoter-cohort derivation (`derive`),
     primer-specificity assessment (`map`), restriction-site scanning (`map`),
-    and non-mutating TFBS hit scanning (`map`), each with independent form
-    state and operation-specific results
+    non-mutating TFBS hit scanning (`map`), and restriction digestion (`map`),
+    each with independent form state and operation-specific results
   - pool export, pooled-gel rendering, and serial arrangement remain visible but
     disabled with their typed physical-pool or materialization requirements
   - primer specificity binds every logical member to one exact persisted
@@ -472,6 +472,12 @@ The project main window (lineage page) supports two views:
     Its computation is unlimited by default; result rows show retained hit
     counts and whether caps, failures, or unscanned effective motifs made the
     aggregate incomplete
+  - restriction digestion binds every logical member to one loaded DNA
+    sequence and requires explicit known enzyme names. The first run previews
+    deterministic fragment ids without changing the project; apply is enabled
+    only for that exact fingerprint-locked plan. Applied fragments retain
+    per-source lineage and can be opened directly from the result table. The
+    operation does not create a pooled container
   - promoter derivation chooses one prepared genome, strand-aware window sizes,
     and an optional relationship expectation
   - all adapters execute one shared shell command against one complete

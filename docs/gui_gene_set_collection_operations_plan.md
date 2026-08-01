@@ -256,23 +256,29 @@ Tests:
 - GUI helper test that promoter derivation uses `BuildGeneSetPromoterCohort`
 - parity test for `gene-sets promoter-cohort` GUI affordance
 
-### Phase 5: collection operation launcher (gene-set A4a/A5/A6 landed)
+### Phase 5: collection operation launcher (gene-set A4a/A5/A6/A7 landed)
 
 - Landed A4a: the Gene Set Inspector projects every canonical gene-set
   engine-operation policy and displays its lifting mode, payload kind, and
   readiness without maintaining a second GUI operation catalog.
 - Typed adapters execute promoter derivation, primer specificity, and
-  restriction-site and TFBS hit scanning through shared shell commands over
-  the complete selected membership. Both scan adapters require explicit
-  member-to-sequence bindings and return wrapper-owned child reports because
-  those domains have no persisted report stores. TFBS scans also require
-  explicit motifs and distinguish retained aggregate counts from complete
-  aggregate counts when a cap stops motif iteration.
+  restriction-site and TFBS hit scanning plus preview/apply restriction
+  digestion through shared shell commands over the complete selected
+  membership. The scan and digest adapters require explicit
+  member-to-sequence bindings. Scan wrappers own their child reports because
+  those domains have no persisted report stores, while the digest wrapper owns
+  planned/materialized fragment rows. TFBS scans also require explicit motifs
+  and distinguish retained aggregate counts from complete aggregate counts
+  when a cap stops motif iteration.
+- Restriction digestion is the first mutating collection lift. Its preview
+  locks exact source snapshots and deterministic fragment ids; apply creates
+  individually openable fragment sequences with per-source lineage and never
+  infers one pooled physical sample from a logical gene set.
 - Pool export, pooled-gel rendering, and serial arrangement are visible but
   disabled with their canonical typed physical/materialization requirements;
   the launcher does not silently convert logical sets into physical pools.
 - Remaining Phase 5 work is to add shared engine policies/routes and typed GUI
-  adapters for export, digest products, BLAST, non-gene subjects, and explicit
+  adapters for export, BLAST, non-gene subjects, and explicit
   materialization when those contracts are ready.
 
 File targets:
@@ -336,14 +342,15 @@ Tests:
 
 Current status: all five gene-set source forms, persisted resolution inspection,
 and the registry-projected A4a launcher are implemented. The launcher has typed
-adapters for `map` primer specificity and `derive` promoter cohorts, uses one
-detached shared-shell execution path, and preserves canonical typed rejections
-for operations that require physical or materialized members.
+adapters for promoter cohorts, primer specificity, restriction/TFBS scans, and
+fingerprint-locked restriction digestion, uses one detached shared-shell
+execution path, and preserves canonical typed rejections for operations that
+require physical or materialized members.
 
 The next release-oriented slice should remain narrow: add one adapter only
 after its shared engine lifting policy, complete-membership route, portable
-result, and deterministic GUI-to-engine parity test exist. Export, digest,
-BLAST, non-gene collection subjects, and physical materialization remain open;
+result, and deterministic GUI-to-engine parity test exist. Export, BLAST,
+non-gene collection subjects, and physical materialization remain open;
 they should not be simulated by GUI-local member loops.
 
 ## Acceptance Criteria For The Full Plan
