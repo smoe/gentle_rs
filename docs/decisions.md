@@ -373,6 +373,14 @@ digests use fragment-count, round-count, repeated-state, and no-progress
 limits; wall-clock load must not decide whether an otherwise identical digest
 succeeds.
 
+A collection `combine` that writes one external artifact is atomic rather than
+partially successful: all members validate before the single write, and a
+successful report links every member to the same wrapper report. Pool export
+requires an explicit physical container whose declared contents are exclusive.
+`gentle.pool.v1` has no incompleteness/provenance slot, so exporting a
+non-exclusive known subset is rejected before writing rather than silently
+losing that meaning at the artifact boundary.
+
 Collection members bind biological interpretation through a report-owned
 context registry. Context-sensitive policies are fail-closed: an undeclared
 policy is `not_reviewed`, while reviewed consumers may require one homogeneous

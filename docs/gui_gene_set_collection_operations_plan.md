@@ -256,7 +256,7 @@ Tests:
 - GUI helper test that promoter derivation uses `BuildGeneSetPromoterCohort`
 - parity test for `gene-sets promoter-cohort` GUI affordance
 
-### Phase 5: collection operation launcher (gene-set A4a/A5/A6/A7 landed)
+### Phase 5: collection operation launcher (gene-set A4a/A5/A6/A7 and container A8 landed)
 
 - Landed A4a: the Gene Set Inspector projects every canonical gene-set
   engine-operation policy and displays its lifting mode, payload kind, and
@@ -277,6 +277,13 @@ Tests:
 - Pool export, pooled-gel rendering, and serial arrangement are visible but
   disabled with their canonical typed physical/materialization requirements;
   the launcher does not silently convert logical sets into physical pools.
+- A8 adds the first supported physical-container collection route without
+  turning the Gene Set Inspector into a generic container launcher. The
+  Lineage `Containers` row invokes `collections run export-pool`, which wraps
+  the existing pool exporter as an atomic `combine`; registry projection still
+  exposes the supported container policy and preserves the gene-set
+  `requires_physical_pool` rejection. The same policy pass declares the
+  existing container pooled-gel action.
 - Remaining Phase 5 work is to add shared engine policies/routes and typed GUI
   adapters for export, BLAST, non-gene subjects, and explicit
   materialization when those contracts are ready.

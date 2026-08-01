@@ -6908,6 +6908,78 @@ fn parse_digest_and_collection_digest_preserve_shared_parameters_and_apply_guard
 }
 
 #[test]
+fn parse_and_execute_collection_pool_export_uses_the_container_combine_contract() {
+    let parsed = parse_shell_line(
+        "collections run export-pool physical-pool --path /tmp/export.pool.gentle.json \
+         --pool-id exported-pool --human-id 'Exported pool'",
+    )
+    .expect("parse collection pool export");
+    assert!(matches!(
+        parsed,
+        ShellCommand::CollectionsRunExportPool {
+            collection_subject: CollectionSubjectRef::Container { ref container_id },
+            ref output,
+            pool_id: Some(ref pool_id),
+            human_id: Some(ref human_id),
+        } if container_id == "physical-pool"
+            && output == "/tmp/export.pool.gentle.json"
+            && pool_id == "exported-pool"
+            && human_id == "Exported pool"
+    ));
+    assert!(
+        parse_shell_line("collections run export-pool physical-pool")
+            .expect_err("path is required")
+            .contains("requires --path")
+    );
+
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "member-a".to_string(),
+        DNAsequence::from_sequence("ATGC").expect("sequence a"),
+    );
+    state.sequences.insert(
+        "member-b".to_string(),
+        DNAsequence::from_sequence("TTAA").expect("sequence b"),
+    );
+    state.container_state.containers.insert(
+        "physical-pool".to_string(),
+        Container {
+            container_id: "physical-pool".to_string(),
+            kind: ContainerKind::Pool,
+            name: Some("Physical pool".to_string()),
+            members: vec!["member-a".to_string(), "member-b".to_string()],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let temp = tempdir().expect("tempdir");
+    let path = temp.path().join("shell.pool.gentle.json");
+    let command = parse_shell_line(&format!(
+        "collections run export-pool physical-pool --path {}",
+        path.display()
+    ))
+    .expect("parse executable collection pool export");
+    let mut engine = GentleEngine::from_state(state);
+    let run = execute_shell_command(&mut engine, &command).expect("execute pool export");
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["schema"].as_str(),
+        Some("gentle.collection_pool_export_command.v1")
+    );
+    assert_eq!(
+        run.output["report"]["schema"].as_str(),
+        Some("gentle.collection_pool_export.v1")
+    );
+    assert_eq!(
+        run.output["report"]["collection_operation"]["lifting_mode"].as_str(),
+        Some("combine")
+    );
+    assert_eq!(run.output["report"]["member_count"].as_u64(), Some(2));
+    assert!(path.is_file());
+}
+
+#[test]
 fn parse_primers_specificity_plan_and_import() {
     let plan = parse_shell_line(
         "primers specificity-plan --forward ACGTACGTACGTACGTAC --reverse TTTTCCCCAAAAGGGGTT --target-genome GRCh38.p14 --output-dir specificity_run --max-hits-per-primer 75",

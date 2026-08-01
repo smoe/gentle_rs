@@ -28107,6 +28107,150 @@ fn test_export_pool_operation() {
 }
 
 #[test]
+fn collection_pool_export_matches_direct_export_and_round_trips_report() {
+    let mut state = ProjectState::default();
+    let mut circular = seq("ATGCGGATCC");
+    circular.set_circular(true);
+    circular.set_name("Circular member");
+    state.sequences.insert("a".to_string(), circular);
+    state.sequences.insert("b".to_string(), seq("TTAACCGG"));
+    state.container_state.containers.insert(
+        "tube-pool".to_string(),
+        Container {
+            container_id: "tube-pool".to_string(),
+            kind: ContainerKind::Pool,
+            name: Some("Two-member physical pool".to_string()),
+            members: vec!["a".to_string(), "b".to_string()],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let temp = tempdir().expect("tempdir");
+    let direct_path = temp.path().join("direct.pool.gentle.json");
+    let collection_path = temp.path().join("collection.pool.gentle.json");
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::ExportPool {
+            inputs: vec!["a".to_string(), "b".to_string()],
+            path: direct_path.display().to_string(),
+            pool_id: Some("exported-pool".to_string()),
+            human_id: Some("Exported physical pool".to_string()),
+        })
+        .expect("direct pool export");
+    let result = engine
+        .apply(Operation::ExportPoolCollection {
+            collection_subject: CollectionSubjectRef::Container {
+                container_id: "tube-pool".to_string(),
+            },
+            path: collection_path.display().to_string(),
+            pool_id: Some("exported-pool".to_string()),
+            human_id: Some("Exported physical pool".to_string()),
+        })
+        .expect("collection pool export");
+
+    let direct: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&direct_path).expect("read direct pool artifact"))
+            .expect("parse direct artifact");
+    let lifted: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&collection_path).expect("read lifted pool artifact"),
+    )
+    .expect("parse lifted artifact");
+    assert_eq!(lifted, direct);
+
+    let report = result
+        .collection_pool_export
+        .expect("collection pool export report");
+    assert_eq!(report.schema, COLLECTION_POOL_EXPORT_REPORT_SCHEMA);
+    assert_eq!(report.artifact_schema, "gentle.pool.v1");
+    assert_eq!(report.member_count, 2);
+    assert_eq!(report.source_container_id, "tube-pool");
+    assert!(report.source_container_declared_contents_exclusive);
+    assert_eq!(
+        report.collection_operation.lifting_mode,
+        CollectionLiftingMode::Combine
+    );
+    assert_eq!(
+        report.collection_operation.fingerprint_algorithm,
+        COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM
+    );
+    assert_eq!(report.collection_operation.per_member_status.len(), 2);
+    assert!(
+        report
+            .collection_operation
+            .per_member_status
+            .iter()
+            .all(|row| {
+                row.outcome == CollectionMemberOutcome::Succeeded
+                    && row.produced_report_ids == [report.collection_operation.report_id.clone()]
+                    && row.member.container_id.as_deref() == Some("tube-pool")
+            })
+    );
+    let encoded = serde_json::to_string(&report).expect("serialize collection pool report");
+    let decoded: CollectionPoolExportReport =
+        serde_json::from_str(&encoded).expect("deserialize collection pool report");
+    assert_eq!(decoded, report);
+}
+
+#[test]
+fn collection_pool_export_rejects_nonexclusive_or_nonphysical_subjects_before_writing() {
+    let mut state = ProjectState::default();
+    state.sequences.insert("a".to_string(), seq("ATGC"));
+    state.container_state.containers.insert(
+        "known-subset".to_string(),
+        Container {
+            container_id: "known-subset".to_string(),
+            kind: ContainerKind::Pool,
+            name: None,
+            members: vec!["a".to_string()],
+            declared_contents_exclusive: false,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let temp = tempdir().expect("tempdir");
+    let subset_path = temp.path().join("subset.pool.gentle.json");
+    let logical_path = temp.path().join("logical.pool.gentle.json");
+    let mut engine = GentleEngine::from_state(state);
+
+    let subset_error = engine
+        .apply(Operation::ExportPoolCollection {
+            collection_subject: CollectionSubjectRef::Container {
+                container_id: "known-subset".to_string(),
+            },
+            path: subset_path.display().to_string(),
+            pool_id: None,
+            human_id: None,
+        })
+        .expect_err("non-exclusive container must be rejected");
+    assert!(
+        subset_error
+            .cause_chain
+            .iter()
+            .any(|cause| cause == "container_declared_contents_exclusive=false")
+    );
+    assert!(!subset_path.exists());
+
+    let logical_error = engine
+        .apply(Operation::ExportPoolCollection {
+            collection_subject: CollectionSubjectRef::GeneSetResolution {
+                report_id: "genes:set".to_string(),
+            },
+            path: logical_path.display().to_string(),
+            pool_id: None,
+            human_id: None,
+        })
+        .expect_err("logical gene set must not become a physical pool");
+    assert!(
+        logical_error
+            .cause_chain
+            .iter()
+            .any(|cause| { cause == "collection_lift_rejection_reason=requires_physical_pool" })
+    );
+    assert!(!logical_path.exists());
+}
+
+#[test]
 fn test_export_pool_operation_preserves_supercoiled_topology_hint() {
     let mut state = ProjectState::default();
     let mut plasmid = seq(&"ATGC".repeat(10));

@@ -5244,6 +5244,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportDnaLadders",
     "ExportRnaLadders",
     "ExportPool",
+    "ExportPoolCollection",
     "ExportProcessRunBundle",
     "ExportLabAssistantInstructions",
     "PrepareGenome",

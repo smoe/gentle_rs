@@ -11507,6 +11507,185 @@ impl GentleEngine {
         Ok(seq_id)
     }
 
+    fn export_pool_collection(
+        &self,
+        collection_subject: CollectionSubjectRef,
+        path: String,
+        pool_id: Option<String>,
+        human_id: Option<String>,
+        op_id: &str,
+        run_id: &str,
+    ) -> Result<CollectionPoolExportReport, EngineError> {
+        let subject_kind = collection_subject.kind();
+        let lift_policy = collection_lift_policy(
+            CapabilitySource::EngineOperation,
+            "ExportPoolCollection",
+            subject_kind,
+        )
+        .cloned()
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::Unsupported,
+            message: format!(
+                "ExportPoolCollection has no collection lift policy for {:?}",
+                subject_kind
+            ),
+            cause_chain: vec![],
+        })?;
+        match &lift_policy.support {
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Combine,
+                ..
+            } => {}
+            CollectionLiftSupport::Supported { mode, .. } => {
+                return Err(EngineError::internal(format!(
+                    "ExportPoolCollection policy for {:?} declares {:?}, expected combine",
+                    subject_kind, mode
+                )));
+            }
+            CollectionLiftSupport::Rejected { reason, detail } => {
+                return Err(EngineError::invalid_input(format!(
+                    "ExportPoolCollection cannot consume {:?}: {}",
+                    subject_kind, detail
+                ))
+                .with_cause(format!(
+                    "collection_lift_rejection_reason={}",
+                    reason.as_str()
+                )));
+            }
+        }
+        if lift_policy.context_requirement != CollectionContextRequirement::ContextAgnostic {
+            return Err(EngineError::internal(format!(
+                "ExportPoolCollection requires context_agnostic policy, found {:?}",
+                lift_policy.context_requirement
+            )));
+        }
+
+        let container_id = match &collection_subject {
+            CollectionSubjectRef::Container { container_id } => container_id.clone(),
+            _ => {
+                return Err(EngineError::internal(
+                    "ExportPoolCollection supported a non-container subject",
+                ));
+            }
+        };
+        let container = self
+            .state
+            .container_state
+            .containers
+            .get(&container_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Container '{container_id}' not found"),
+                cause_chain: vec![],
+            })?;
+        if !container.declared_contents_exclusive {
+            return Err(EngineError::invalid_input(format!(
+                "Container '{container_id}' is a known subset, but gentle.pool.v1 cannot preserve incomplete physical-container provenance"
+            ))
+            .with_cause("container_declared_contents_exclusive=false"));
+        }
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError::invalid_input(
+                "ExportPoolCollection requires a non-empty output path",
+            ));
+        }
+        let input_seq_ids = self.container_members(&container_id)?;
+        let provenance = vec![GeneSetProvenanceRow {
+            source_kind: "physical_container".to_string(),
+            source_id: container_id.clone(),
+            source_label: container.name.clone(),
+            source_path: None,
+            note: Some("Declared contents are exclusive and exported atomically".to_string()),
+        }];
+        let members = input_seq_ids
+            .iter()
+            .map(|seq_id| CollectionMemberRef {
+                stable_member_id: seq_id.clone(),
+                seq_id: Some(seq_id.clone()),
+                container_id: Some(container_id.clone()),
+                source_provenance: provenance.clone(),
+                ..CollectionMemberRef::default()
+            })
+            .collect::<Vec<_>>();
+        let canonical_membership = canonical_collection_membership_json(subject_kind, &members);
+        let membership_fingerprint = sha256_prefixed_str(&canonical_membership);
+        let effective_pool_id = pool_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| container_id.clone());
+        let effective_human_id = human_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .or_else(|| container.name.clone())
+            .unwrap_or_else(|| Self::default_pool_human_id(&input_seq_ids));
+        let identity = serde_json::to_string(&json!({
+            "collection_subject": &collection_subject,
+            "collection_membership_fingerprint_sha256": &membership_fingerprint,
+            "artifact_path": path,
+            "pool_id": &effective_pool_id,
+            "human_id": &effective_human_id,
+        }))
+        .map_err(|error| {
+            EngineError::internal(format!(
+                "Could not identify collection pool export report: {error}"
+            ))
+        })?;
+        let report_id = short_sha256_id("collection_pool_export", &identity);
+
+        let (pool_id, human_id, member_count) = self.export_pool_file(
+            &input_seq_ids,
+            path,
+            Some(effective_pool_id),
+            Some(effective_human_id),
+        )?;
+        let per_member_status = members
+            .into_iter()
+            .map(|member| CollectionMemberStatusRow {
+                member,
+                outcome: CollectionMemberOutcome::Succeeded,
+                error: None,
+                produced_report_ids: vec![report_id.clone()],
+            })
+            .collect();
+
+        Ok(CollectionPoolExportReport {
+            schema: COLLECTION_POOL_EXPORT_REPORT_SCHEMA.to_string(),
+            collection_operation: CollectionOperationReport {
+                schema: COLLECTION_OPERATION_REPORT_SCHEMA.to_string(),
+                report_id,
+                op_id: Some(op_id.to_string()),
+                run_id: Some(run_id.to_string()),
+                generated_at_unix_ms: Self::now_unix_ms(),
+                capability_source: CapabilitySource::EngineOperation,
+                capability_name: "ExportPoolCollection".to_string(),
+                collection_subject,
+                lifting_mode: CollectionLiftingMode::Combine,
+                lift_policy,
+                fingerprint_algorithm: COLLECTION_MEMBERSHIP_FINGERPRINT_ALGORITHM.to_string(),
+                collection_membership_fingerprint_sha256: membership_fingerprint,
+                biological_contexts: BiologicalContextRegistry::default(),
+                dry_run: false,
+                applied: true,
+                per_member_status,
+                aggregate_warnings: vec![],
+                provenance,
+            },
+            artifact_schema: "gentle.pool.v1".to_string(),
+            artifact_path: path.to_string(),
+            pool_id,
+            human_id,
+            member_count,
+            source_container_id: container_id,
+            source_container_declared_contents_exclusive: true,
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn find_restriction_sites_collection(
         &self,
@@ -27994,6 +28173,7 @@ impl GentleEngine {
             collection_restriction_site_scan: None,
             collection_tfbs_hit_scan: None,
             collection_digest: None,
+            collection_pool_export: None,
             gene_set_cutrun_regulatory_support: None,
             ortholog_promoter_cohort: None,
             ortholog_promoter_comparison: None,
@@ -29281,6 +29461,30 @@ impl GentleEngine {
                         "Wrote pool export '{}' ({}) with {} members to '{}'",
                         pool_id, human_id, count, path
                     ));
+                }
+                Operation::ExportPoolCollection {
+                    collection_subject,
+                    path,
+                    pool_id,
+                    human_id,
+                } => {
+                    let report = self.export_pool_collection(
+                        collection_subject,
+                        path,
+                        pool_id,
+                        human_id,
+                        &result.op_id,
+                        run_id,
+                    )?;
+                    result.messages.push(format!(
+                        "Exported exclusive container '{}' as pool '{}' with {} member(s) to '{}'",
+                        report.source_container_id,
+                        report.pool_id,
+                        report.member_count,
+                        report.artifact_path
+                    ));
+                    result.collection_operation = Some(report.collection_operation.clone());
+                    result.collection_pool_export = Some(report);
                 }
                 Operation::ExportProcessRunBundle { path, run_id } => {
                     let bundle = self.export_process_run_bundle_file(&path, run_id.as_deref())?;

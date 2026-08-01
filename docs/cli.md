@@ -3062,6 +3062,7 @@ Shared shell command:
     - `collections run digest GENE_SET_REPORT_ID --member-sequence MEMBER_ID=SEQ_ID ... --enzyme NAME [--enzyme NAME ...] [--enzymes CSV] [--output-prefix PREFIX] [--preview] [--path REPORT.json]`
     - `collections run digest --seq-ids SEQ_ID,... --enzyme NAME [same enzyme/prefix/report options]`
     - `collections run digest SUBJECT [same inputs] --apply --expected-plan-fingerprint-sha256 SHA`
+    - `collections run export-pool CONTAINER_ID --path OUTPUT.pool.gentle.json [--pool-id POOL_ID] [--human-id HUMAN_ID]`
     - `primers specificity-plan REPORT_ID --pair-rank N --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-plan --forward SEQ --reverse SEQ --target-genome GENOME_ID --output-dir DIR [same policy/catalog/cache options as specificity]`
     - `primers specificity-import HANDOFF.json [--path OUTPUT.json]`
@@ -3699,6 +3700,14 @@ Shared shell command:
         insertion. Successful apply creates individual fragment sequences with
         exact source lineage and does not create a pool/container. `--path`
         writes the portable report JSON only.
+      - `collections run export-pool` combines the declared exhaustive members
+        of one physical container into the same `gentle.pool.v1` artifact as
+        direct `export-pool`. It returns a
+        `gentle.collection_pool_export.v1` wrapper with source-container
+        provenance, the canonical membership fingerprint, and one common
+        report link for all successful members. Non-exclusive containers are
+        rejected before the artifact is written because `gentle.pool.v1`
+        cannot represent unknown/unlisted physical contents.
       - the report follows GENtle's computational-artifact contract with
         `op_id`, `run_id`, sequence links, external inputs/database
         fingerprints, request/effective-setting summaries, a reopen hint, and
@@ -4448,6 +4457,7 @@ Introspection models imported isoform panels as sequence-bound project facts:
 Pool exchange commands:
 
 - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
+- `collections run export-pool CONTAINER_ID --path OUTPUT.pool.gentle.json [--pool-id POOL_ID] [--human-id HUMAN_ID]`
   - Exports explicit sequence IDs (`IDS` is comma-separated) with topology and
     overhang fields into a versioned JSON pool artifact.
   - topology now preserves richer gel-oriented circular-form hints when GENtle

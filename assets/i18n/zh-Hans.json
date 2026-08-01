@@ -291,6 +291,7 @@
   "lineage.action.carrier_svg": "载体 SVG",
   "lineage.action.export_gel": "导出凝胶",
   "lineage.action.gel_svg": "凝胶 SVG",
+  "lineage.action.export_pool": "导出池",
   "lineage.action.open_pool": "打开池",
   "lineage.action.open_rack": "打开架",
   "lineage.action.open_seq": "打开序列",

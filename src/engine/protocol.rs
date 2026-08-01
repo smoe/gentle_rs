@@ -1837,6 +1837,27 @@ pub struct CollectionRestrictionSiteScanReport {
 pub const COLLECTION_DIGEST_REPORT_SCHEMA: &str = "gentle.collection_digest.v1";
 pub const COLLECTION_DIGEST_PLAN_FINGERPRINT_ALGORITHM: &str = "sha256_collection_digest_plan_v1";
 
+pub const COLLECTION_POOL_EXPORT_REPORT_SCHEMA: &str = "gentle.collection_pool_export.v1";
+
+/// Atomic export of one exclusive physical container to a pool artifact.
+///
+/// The exported `gentle.pool.v1` file is the single combined artifact. The
+/// nested collection report preserves which physical container and members
+/// produced it without changing the existing pool-artifact schema.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct CollectionPoolExportReport {
+    pub schema: String,
+    pub collection_operation: CollectionOperationReport,
+    pub artifact_schema: String,
+    pub artifact_path: String,
+    pub pool_id: String,
+    pub human_id: String,
+    pub member_count: usize,
+    pub source_container_id: String,
+    pub source_container_declared_contents_exclusive: bool,
+}
+
 /// Explicitly binds one logical collection member to one loaded DNA sequence.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
@@ -4696,6 +4717,8 @@ pub struct OpResult {
     pub collection_tfbs_hit_scan: Option<CollectionTfbsHitScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collection_digest: Option<CollectionDigestReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_pool_export: Option<CollectionPoolExportReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_set_cutrun_regulatory_support: Option<GeneSetCutRunRegulatorySupportReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

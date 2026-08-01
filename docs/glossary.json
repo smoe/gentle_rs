@@ -3642,6 +3642,21 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ExportPoolCollection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "gui-menu"
+         ],
+         "path": "collections run export-pool",
+         "summary": "Atomically combine one exclusive physical container into the existing GENtle pool JSON artifact with a portable collection report.",
+         "usage": "collections run export-pool CONTAINER_ID --path OUTPUT.pool.gentle.json [--pool-id POOL_ID] [--human-id HUMAN_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "PreparePrimerPairSpecificityHandoff"
          ],
          "interfaces": [

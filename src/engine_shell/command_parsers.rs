@@ -7316,6 +7316,15 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
 pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() >= 3
         && tokens.get(1).map(String::as_str) == Some("run")
+        && matches!(
+            tokens.get(2).map(String::as_str),
+            Some("export-pool" | "export_pool")
+        )
+    {
+        return parse_collections_run_export_pool(tokens);
+    }
+    if tokens.len() >= 3
+        && tokens.get(1).map(String::as_str) == Some("run")
         && tokens.get(2).map(String::as_str) == Some("digest")
     {
         return parse_collections_run_digest(tokens);
@@ -7347,7 +7356,7 @@ pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellComman
         )
     {
         return Err(
-            "collections requires: run primer-specificity|restriction-scan|tfbs-scan|digest [GENE_SET_REPORT_ID | --seq-ids ID,...] [operation options]"
+            "collections requires: run primer-specificity|restriction-scan|tfbs-scan|digest|export-pool SUBJECT [operation options]"
                 .to_string(),
         );
     }
@@ -7484,6 +7493,47 @@ pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellComman
         catalog_path,
         cache_dir,
         path,
+    })
+}
+
+fn parse_collections_run_export_pool(tokens: &[String]) -> Result<ShellCommand, String> {
+    const COMMAND: &str = "collections run export-pool";
+    let container_id = tokens
+        .get(3)
+        .map(String::as_str)
+        .filter(|value| !value.starts_with("--"))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("{COMMAND} requires CONTAINER_ID"))?
+        .to_string();
+    let mut output = None;
+    let mut pool_id = None;
+    let mut human_id = None;
+    let mut idx = 4usize;
+    while idx < tokens.len() {
+        match tokens[idx].as_str() {
+            "--path" | "--output" => {
+                let flag = tokens[idx].clone();
+                output = Some(parse_option_path(tokens, &mut idx, &flag, COMMAND)?);
+            }
+            "--pool-id" => {
+                pool_id = Some(parse_option_path(tokens, &mut idx, "--pool-id", COMMAND)?);
+            }
+            "--human-id" => {
+                human_id = Some(parse_option_path(tokens, &mut idx, "--human-id", COMMAND)?);
+            }
+            other => return Err(format!("Unknown option '{other}' for {COMMAND}")),
+        }
+    }
+    let output = output
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("{COMMAND} requires --path OUTPUT.pool.gentle.json"))?;
+    Ok(ShellCommand::CollectionsRunExportPool {
+        collection_subject: CollectionSubjectRef::Container { container_id },
+        output,
+        pool_id,
+        human_id,
     })
 }
 

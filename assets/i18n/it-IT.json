@@ -291,6 +291,7 @@
   "lineage.action.carrier_svg": "SVG supporto",
   "lineage.action.export_gel": "Esporta gel",
   "lineage.action.gel_svg": "Gel SVG",
+  "lineage.action.export_pool": "Esporta pool",
   "lineage.action.open_pool": "Apri pool",
   "lineage.action.open_rack": "Apri rack",
   "lineage.action.open_seq": "Apri Seq",

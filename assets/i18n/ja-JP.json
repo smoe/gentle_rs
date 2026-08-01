@@ -291,6 +291,7 @@
   "lineage.action.carrier_svg": "キャリア SVG",
   "lineage.action.export_gel": "ゲルを出力",
   "lineage.action.gel_svg": "ゲル SVG",
+  "lineage.action.export_pool": "プールを書き出す",
   "lineage.action.open_pool": "プールを開く",
   "lineage.action.open_rack": "ラックを開く",
   "lineage.action.open_seq": "配列を開く",

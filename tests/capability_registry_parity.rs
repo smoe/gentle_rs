@@ -339,7 +339,7 @@ fn collection_lift_policies_attach_only_to_existing_capabilities() {
 
 #[test]
 fn logical_gene_set_is_not_silently_treated_as_a_physical_pool() {
-    for capability_name in ["ExportPool", "RenderPoolGelSvg"] {
+    for capability_name in ["ExportPool", "ExportPoolCollection", "RenderPoolGelSvg"] {
         let policy = collection_lift_policy(
             CapabilitySource::EngineOperation,
             capability_name,
@@ -353,6 +353,33 @@ fn logical_gene_set_is_not_silently_treated_as_a_physical_pool() {
                 ..
             }
         ));
+    }
+}
+
+#[test]
+fn physical_container_pool_actions_are_declared_as_context_agnostic_combines() {
+    for (source, name) in [
+        (CapabilitySource::EngineOperation, "ExportPoolCollection"),
+        (
+            CapabilitySource::GlossaryCommand,
+            "collections run export-pool",
+        ),
+        (CapabilitySource::EngineOperation, "RenderPoolGelSvg"),
+        (CapabilitySource::GlossaryCommand, "render-pool-gel-svg"),
+    ] {
+        let policy = collection_lift_policy(source, name, CollectionSubjectKind::Container)
+            .unwrap_or_else(|| panic!("missing container combine policy for {source:?} `{name}`"));
+        assert!(matches!(
+            policy.support,
+            CollectionLiftSupport::Supported {
+                mode: CollectionLiftingMode::Combine,
+                ..
+            }
+        ));
+        assert_eq!(
+            policy.context_requirement,
+            CollectionContextRequirement::ContextAgnostic
+        );
     }
 }
 

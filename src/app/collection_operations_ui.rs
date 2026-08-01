@@ -365,4 +365,30 @@ mod tests {
                 .is_some_and(|detail| detail.contains("DigestContainer"))
         );
     }
+
+    #[test]
+    fn container_collection_projection_exposes_pool_export_and_existing_gel_combine_policies() {
+        let rows = collection_launcher_rows(CollectionSubjectKind::Container);
+        for (capability_name, payload_kind) in [
+            ("ExportPoolCollection", "gentle.collection_pool_export.v1"),
+            ("RenderPoolGelSvg", "gentle.pool_gel_svg.v1"),
+        ] {
+            let row = rows
+                .iter()
+                .find(|row| row.capability_name == capability_name)
+                .unwrap_or_else(|| panic!("missing container policy row for {capability_name}"));
+            assert!(matches!(
+                row.policy.support,
+                CollectionLiftSupport::Supported {
+                    mode: CollectionLiftingMode::Combine,
+                    ..
+                }
+            ));
+            assert_eq!(row.result_payload_kind(), payload_kind);
+            assert_eq!(
+                row.policy.context_requirement,
+                gentle_protocol::CollectionContextRequirement::ContextAgnostic
+            );
+        }
+    }
 }

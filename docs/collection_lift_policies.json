@@ -382,6 +382,45 @@
       ]
     },
     {
+      "source": "engine_operation",
+      "name": "ExportPoolCollection",
+      "subjects": [
+        {
+          "subject_kind": "project_sequences",
+          "support": {
+            "status": "rejected",
+            "reason": "requires_physical_pool",
+            "detail": "A project sequence selection does not assert that its members share one physical sample. Select an explicit container before pool export."
+          }
+        },
+        {
+          "subject_kind": "container",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "combine",
+            "result_payload_kind": "gentle.collection_pool_export.v1"
+          }
+        },
+        {
+          "subject_kind": "arrangement",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "An arrangement preserves ordered lane placement rather than asserting that every lane is one physical pool. Export an explicit container instead."
+          }
+        },
+        {
+          "subject_kind": "gene_set_resolution",
+          "support": {
+            "status": "rejected",
+            "reason": "requires_physical_pool",
+            "detail": "A logical gene set does not imply that its members share one physical sample. Materialize or select a container explicitly before pool export."
+          }
+        }
+      ]
+    },
+    {
       "source": "glossary_command",
       "name": "export-pool",
       "subjects": [
@@ -396,9 +435,57 @@
       ]
     },
     {
+      "source": "glossary_command",
+      "name": "collections run export-pool",
+      "subjects": [
+        {
+          "subject_kind": "project_sequences",
+          "support": {
+            "status": "rejected",
+            "reason": "requires_physical_pool",
+            "detail": "A project sequence selection does not assert that its members share one physical sample. Select an explicit container before pool export."
+          }
+        },
+        {
+          "subject_kind": "container",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "combine",
+            "result_payload_kind": "gentle.collection_pool_export.v1"
+          }
+        },
+        {
+          "subject_kind": "arrangement",
+          "support": {
+            "status": "rejected",
+            "reason": "unsupported_subject_kind",
+            "detail": "An arrangement preserves ordered lane placement rather than asserting that every lane is one physical pool. Export an explicit container instead."
+          }
+        },
+        {
+          "subject_kind": "gene_set_resolution",
+          "support": {
+            "status": "rejected",
+            "reason": "requires_physical_pool",
+            "detail": "A logical gene set does not imply that its members share one physical sample. Materialize or select a container explicitly before pool export."
+          }
+        }
+      ]
+    },
+    {
       "source": "engine_operation",
       "name": "RenderPoolGelSvg",
       "subjects": [
+        {
+          "subject_kind": "container",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "combine",
+            "result_payload_kind": "gentle.pool_gel_svg.v1"
+          }
+        },
         {
           "subject_kind": "gene_set_resolution",
           "support": {
@@ -413,6 +500,15 @@
       "source": "glossary_command",
       "name": "render-pool-gel-svg",
       "subjects": [
+        {
+          "subject_kind": "container",
+          "context_requirement": "context_agnostic",
+          "support": {
+            "status": "supported",
+            "mode": "combine",
+            "result_payload_kind": "gentle.pool_gel_svg.v1"
+          }
+        },
         {
           "subject_kind": "gene_set_resolution",
           "support": {

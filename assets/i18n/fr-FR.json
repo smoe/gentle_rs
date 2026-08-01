@@ -291,6 +291,7 @@
   "lineage.action.carrier_svg": "SVG du support",
   "lineage.action.export_gel": "Exporter le gel",
   "lineage.action.gel_svg": "Gel SVG",
+  "lineage.action.export_pool": "Exporter le pool",
   "lineage.action.open_pool": "Ouvrir le pool",
   "lineage.action.open_rack": "Ouvrir le rack",
   "lineage.action.open_seq": "Ouvrir Seq",

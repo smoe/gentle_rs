@@ -313,6 +313,7 @@ an agent has selected a deterministic operation.
 - `candidates template-show`
 - `candidates top-k`
 - `collections run digest`
+- `collections run export-pool`
 - `collections run primer-specificity`
 - `collections run restriction-scan`
 - `collections run tfbs-scan`
